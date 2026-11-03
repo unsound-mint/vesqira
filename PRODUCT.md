@@ -33,7 +33,6 @@ A scientific instrument plus thoughtful workspace, not a SaaS KPI dashboard. Its
 - v0.1: FITS cube and VGT output import/reference; truthful FITS/WCS/spectral metadata; spectral/region viewer with ROIs, layers and masks; VGT run comparison with axial-angle semantics and reliability/validity masks; figures and version-pinned research boards; permission-scoped supervisor review with comments.
 - Astronomy-only MVP.
 - Non-negotiable invariants live in `AGENTS.md` (no invented calibration, axial statistics for orientations, zero is not missing, QC is not file validity, originals never silently altered).
-- Production UI requires an approved visual direction first (`docs/design/design-directions.md`).
 - Licence: AGPL-3.0-only (see `LICENSE`, `docs/adr/0002-license-agpl-3-0-only.md`). Copyright holder and name/trademark clearance are unresolved (`docs/product/brand.md`).
 
 ## Brand Commitments
@@ -41,7 +40,7 @@ A scientific instrument plus thoughtful workspace, not a SaaS KPI dashboard. Its
 Canonical docs: `docs/product/vision.md`, `brand.md`; this file only summarizes them.
 
 
-Name: Vesqira. Design intent: "instrument-grade editorial" (see `docs/design/design-directions.md`; no direction approved yet). No visual direction is binding yet; avoid copying any commercial product's identity.
+Name: Vesqira. Design: a slick, modern productivity tool in the spirit of VS Code, Notion, Photoshop and Premiere Pro, not a playful or marketing look. The workbench layout and tokens were approved on 2026-11-04 (see `docs/design/design-directions.md` and ADR 0005). Avoid copying any commercial product's identity.
 
 ## Evidence on Hand
 

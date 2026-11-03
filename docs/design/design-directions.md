@@ -1,6 +1,6 @@
 # Design directions (v0.1, astronomy)
 
-**Status:** exploration. Three disposable prototypes exist; **no direction is approved**. Only the project owner approves a direction. The recommendation below is a recommendation.
+**Status:** direction approved by the owner on 2026-11-04: the Workbench (prototype B's layout on the tokens in `design/tokens.css`), recorded in [ADR 0005](../adr/0005-workbench-layout-and-tokens.md). The three exploration prototypes and the review below are kept as history; the approved reference is [`prototypes/workbench/`](prototypes/workbench/).
 
 All imagery and numbers are **synthetic** (`prototypes/_shared/make_mock_assets.py`, fixed seed). Nothing is a scientific result. Prototypes are plain HTML/CSS/JS opened from disk; they are not the production app and their controls are partly cosmetic (see each `NOTES.md`).
 
@@ -38,11 +38,10 @@ Each covers four screens (dataset explorer, spectral viewer, VGT comparison, boa
 7. Add a non-colour mask cue to C's reviewer panel and fix its blocked-state tile (invented geometry).
 8. Before production: golden fixtures for the 1°/179° axial mean, degenerate resultant, NaN versus 0, incompatible WCS and missing spectral reference.
 
-## Recommendation (not an approval)
+## Earlier recommendation (superseded by ADR 0005)
 
 **A hybrid, with A as the base:** A's visual language (paper surface, serif figure titles, framed plate, caption-led board); B's viewer mechanics (channel timeline showing flagged gaps, status bar, collapsible panels, mobile drawers); C's explorer for the Datasets screen (sortable columns, baseline/candidate selection, side-by-side provenance). The viewer image should reach at least 700px square at 1280×800 by collapsing the margin notes into one column. If you prefer a single unmixed direction: A for a review-first product, C for a data-management-first product.
 
-## Decisions needed from the owner
+## Next
 
-1. Approve a direction (A, B, C or the hybrid) or request revision.
-2. Approve the first implementation slice: FITS cube registration, one-plane read, WCS-correct readout, tested against an independent implementation.
+The foundation is built first (tokens, fonts, icons, base components), then the viewer slice: FITS cube registration, one-plane read, a WCS-correct readout tested against an independent implementation.

@@ -1,45 +1,38 @@
-/* EXPERIMENTAL tokens. Require design approval and contrast tests before production. */
-:root {
-  color-scheme: light;
-  --font-ui: "Inter", "IBM Plex Sans", system-ui, sans-serif;
-  --font-data: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
-  --c-bg: #f7f8f8;
-  --c-surface: #ffffff;
-  --c-surface-2: #eff2f2;
-  --c-border: #cbd4d7;
-  --c-text: #17252d;
-  --c-muted: #4c626b;
-  --c-accent: #006d68;
-  --c-accent-soft: #dbf3ef;
-  --c-warning: #8c4e00;
-  --c-danger: #b42336;
-  --c-success: #136a46;
-  --c-focus: #0b65c2;
-  --radius-control: 7px;
-  --radius-panel: 11px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --panel-rail: 56px;
-  --panel-explorer: 236px;
-  --panel-inspector: 320px;
-  --control-height: 38px;
+/* Vesqira design tokens. Approved by the owner 2026-11-04 (ADR 0005).
+   Single source of truth: dark-first, light theme included. Every size, colour and font in the app comes from here. */
+:root{
+  /* type */
+  --font-ui:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif; --font-data:'Geist Mono',ui-monospace,'JetBrains Mono',monospace;
+  --text-xs:12px; --text-sm:13px; --text-md:14px; --text-lg:16px; --text-xl:20px;
+  --lh-xs:16px; --lh-sm:18px; --lh-md:20px; --lh-lg:24px; --lh-xl:28px;
+  --w-regular:400; --w-medium:500; --w-strong:600;
+  /* space: 4px grid */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px; --sp-10:40px;
+  /* controls */
+  --ctl-sm:28px; --ctl-md:32px; --ctl-lg:40px; --row:28px; --pill:22px; --strip:44px; --icon-sm:16px; --icon-md:20px; --rail-btn:40px;
+  /* radius, borders, motion */
+  --r-sm:4px; --r-md:6px; --r-lg:8px; --r-pill:999px; --bw:1px;
+  --dur-fast:100ms; --dur-base:160ms; --ease:cubic-bezier(.2,.0,.0,1);
+  /* layout */
+  --w-rail:48px; --w-side:280px; --w-insp:360px; --h-status:28px; --h-title:40px;
+  /* colour: dark-first (cool slate + cyan) */
+  --bg-0:#0a0e13; --bg-1:#0f151c; --bg-2:#141c25; --bg-3:#1a242f; --canvas:#06080c;
+  --line:#222d39; --line-strong:#2f3d4c;
+  --text:#e7ecf2; --text-2:#a7b3c1; --text-3:#7f8c9b;
+  --accent:#3cc4e8; --accent-hover:#6fd6f0; --accent-ink:#04202a; --accent-bg:rgba(60,196,232,.14);
+  --ok:#4cc38a; --ok-bg:rgba(76,195,138,.14); --warn:#f0b04c; --warn-bg:rgba(240,176,76,.14); --err:#ff7b7b; --err-bg:rgba(255,123,123,.14);
+  --focus:#7cd8f2; --shadow:0 8px 28px rgba(0,0,0,.5);
+  color-scheme:dark;
 }
-[data-theme="dark"] {
-  color-scheme: dark;
-  --c-bg: #10191e;
-  --c-surface: #172329;
-  --c-surface-2: #203039;
-  --c-border: #3e5860;
-  --c-text: #f0f4f4;
-  --c-muted: #b6cbce;
-  --c-accent: #66d4c6;
-  --c-accent-soft: #1e3d3c;
-  --c-warning: #ffd28a;
-  --c-danger: #ff9b9e;
-  --c-success: #87e0b7;
-  --c-focus: #98c2ff;
-}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --bg-0:#e9edf2; --bg-1:#f3f6f9; --bg-2:#ffffff; --bg-3:#eef2f6; --canvas:#0b0e13;
+  --line:#d8dfe7; --line-strong:#bcc7d3; --text:#0e1620; --text-2:#455364; --text-3:#5b6877;
+  --accent:#0a6f8f; --accent-hover:#065a75; --accent-ink:#ffffff; --accent-bg:rgba(10,111,143,.10);
+  --ok:#0b7a52; --ok-bg:rgba(11,122,82,.10); --warn:#8f5700; --warn-bg:rgba(143,87,0,.10); --err:#b3261e; --err-bg:rgba(179,38,30,.08);
+  --focus:#0a6f8f; --shadow:0 8px 28px rgba(14,22,32,.18); color-scheme:light}}
+:root[data-theme="light"]{
+  --bg-0:#e9edf2; --bg-1:#f3f6f9; --bg-2:#ffffff; --bg-3:#eef2f6; --canvas:#0b0e13;
+  --line:#d8dfe7; --line-strong:#bcc7d3; --text:#0e1620; --text-2:#455364; --text-3:#5b6877;
+  --accent:#0a6f8f; --accent-hover:#065a75; --accent-ink:#ffffff; --accent-bg:rgba(10,111,143,.10);
+  --ok:#0b7a52; --ok-bg:rgba(11,122,82,.10); --warn:#8f5700; --warn-bg:rgba(143,87,0,.10); --err:#b3261e; --err-bg:rgba(179,38,30,.08);
+  --focus:#0a6f8f; --shadow:0 8px 28px rgba(14,22,32,.18); color-scheme:light}

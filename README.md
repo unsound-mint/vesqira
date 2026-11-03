@@ -14,7 +14,7 @@ Scientific honesty is a product feature: no invented calibration, units or coord
 
 ## Design
 
-`docs/design/design-directions.md` compares three disposable prototypes built on synthetic data (no direction approved yet).
+The approved workbench layout and design tokens are described in `docs/design/design-directions.md` and `docs/adr/0005-workbench-layout-and-tokens.md`. All prototypes use synthetic data.
 
 ## Contributing
 
