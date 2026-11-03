@@ -22,6 +22,10 @@
   white-space: nowrap;
 }
 
+.scroller {
+  overflow-x: auto;
+}
+
 .axes {
   width: 100%;
   border-collapse: collapse;
@@ -36,6 +40,7 @@
 
 .axes th,
 .axes td {
+  white-space: nowrap;
   padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
   border-bottom: var(--bw) solid var(--line);
   font-family: var(--font-data);

@@ -72,8 +72,11 @@ func TestRejects(t *testing.T) {
 			t.Errorf("%s: %q was authorized", name, p)
 		}
 	}
-	if _, err := r.Resolve(outside); !errors.Is(err, ErrOutsideRoots) {
-		t.Errorf("sibling should be ErrOutsideRoots, got %v", err)
+	// Existing-outside, missing, directory and malformed paths are indistinguishable to the caller.
+	for name, p := range cases {
+		if _, err := r.Resolve(p); !errors.Is(err, ErrNotAllowed) {
+			t.Errorf("%s: want ErrNotAllowed, got %v", name, err)
+		}
 	}
 }
 

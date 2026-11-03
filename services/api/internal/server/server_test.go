@@ -70,8 +70,8 @@ func TestRegisterRefusesPathsOutsideRootsAndNeverCallsWorker(t *testing.T) {
 	os.WriteFile(outside, []byte("x"), 0o644)
 	os.Symlink(outside, filepath.Join(root, "link.fits"))
 	for _, p := range []string{outside, filepath.Join(root, "link.fits"), filepath.Join(root, "..", "data2", "o.fits"), "relative.fits"} {
-		if code := post(t, ts, p, nil).StatusCode; code != 403 && code != 400 {
-			t.Errorf("%q: status %d, want 400/403", p, code)
+		if code := post(t, ts, p, nil).StatusCode; code != 403 {
+			t.Errorf("%q: status %d, want 403", p, code)
 		}
 	}
 	if fw.calls != 0 {

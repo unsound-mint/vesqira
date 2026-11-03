@@ -121,11 +121,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	real, err := s.Roots.Resolve(in.Path)
 	if err != nil {
-		code := 400
-		if errors.Is(err, sourceroot.ErrOutsideRoots) {
-			code = 403
-		}
-		fail(w, code, err.Error())
+		fail(w, 403, err.Error())
 		return
 	}
 	hdr, err := s.Worker.Header(r.Context(), real)

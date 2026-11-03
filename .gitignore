@@ -34,3 +34,7 @@ __pycache__/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# local tooling output
+.playwright-mcp/
+.pytest_cache/

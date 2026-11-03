@@ -9,7 +9,8 @@ import (
 	"strings"
 )
 
-var ErrOutsideRoots = errors.New("path is outside the configured source roots")
+// ErrNotAllowed is the single refusal for anything that is not a regular file inside a source root.
+var ErrNotAllowed = errors.New("path is not an existing file inside the configured source roots")
 
 // Roots is a set of canonical (symlink-resolved, absolute) directories.
 type Roots []string
@@ -40,11 +41,12 @@ func New(dirs []string) (Roots, error) {
 // decided with filepath.Rel, never a string prefix (/data must not authorize /data2).
 func (r Roots) Resolve(p string) (string, error) {
 	if p == "" || strings.ContainsRune(p, 0) || !filepath.IsAbs(p) {
-		return "", errors.New("path must be absolute")
+		return "", ErrNotAllowed
 	}
+	// Every refusal returns the same error, so a caller cannot probe which paths exist outside the roots.
 	real, err := filepath.EvalSymlinks(filepath.Clean(p))
 	if err != nil {
-		return "", errors.New("file not found")
+		return "", ErrNotAllowed
 	}
 	for _, root := range r {
 		rel, err := filepath.Rel(root, real)
@@ -52,13 +54,10 @@ func (r Roots) Resolve(p string) (string, error) {
 			continue
 		}
 		fi, err := os.Stat(real)
-		if err != nil {
-			return "", errors.New("file not found")
-		}
-		if !fi.Mode().IsRegular() {
-			return "", errors.New("not a regular file")
+		if err != nil || !fi.Mode().IsRegular() {
+			return "", ErrNotAllowed
 		}
 		return real, nil
 	}
-	return "", ErrOutsideRoots
+	return "", ErrNotAllowed
 }

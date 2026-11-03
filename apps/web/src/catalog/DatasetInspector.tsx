@@ -19,6 +19,7 @@ export function DatasetInspector({ d }: { d: Dataset }) {
         <dt>Spectral frame</dt>
         <dd className="mono">{show(h.specsys)}</dd>
       </dl>
+      <div className={s.scroller} role="region" aria-label="Axes table" tabIndex={0}>
       <table className={s.axes}>
         <caption>Axes as declared in the header, in native FITS order</caption>
         <thead>
@@ -44,6 +45,7 @@ export function DatasetInspector({ d }: { d: Dataset }) {
           ))}
         </tbody>
       </table>
+      </div>
       <p className={s.note}>Declared by the file, not verified. Unresolved means the header does not say; Vesqira does not guess.</p>
     </div>
   );
