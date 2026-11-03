@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viewer - Vesqira prototype B</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="style.css">
+<script>try{var q=new URLSearchParams(location.search).get('theme')||localStorage.getItem('vq-b-theme');if(q)document.documentElement.dataset.theme=q}catch(e){}</script>
+</head>
+<body data-page="viewer" data-state="default" data-roi="on" >
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><symbol id="i-datasets" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></symbol><symbol id="i-viewer" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></symbol><symbol id="i-compare" viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/><path d="M7 9v6M17 9v6"/></symbol><symbol id="i-boards" viewBox="0 0 24 24"><path d="M3 3h18v18H3zM9 3v18M9 11h12"/></symbol><symbol id="i-review" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></symbol><symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 010 16z" fill="currentColor"/></symbol><symbol id="i-cmd" viewBox="0 0 24 24"><path d="M9 6a3 3 0 10-3 3h12a3 3 0 10-3-3v12a3 3 0 103-3H6a3 3 0 103 3z"/></symbol><symbol id="i-pl" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M9 4v16"/></symbol><symbol id="i-pr" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M15 4v16"/></symbol><symbol id="i-pb" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 15h18"/></symbol><symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></symbol><symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></symbol><symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 115 .5c0 1.5-2.5 2-2.5 3.5M12 17v.5"/></symbol><symbol id="i-cloud" viewBox="0 0 24 24"><path d="M6 18a4 4 0 010-8 6 6 0 0111-1 4.5 4.5 0 011 9z"/></symbol><symbol id="i-clouds" viewBox="0 0 24 24"><path d="M6 18a4 4 0 010-8 6 6 0 0111-1 4.5 4.5 0 011 9z"/><path d="M3 3l18 18"/></symbol><symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol><symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12c3-6 6 6 9 0s6 6 9 0"/></symbol><symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol><symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14l-3-3M20 16H6l3 3"/></symbol><symbol id="i-x2" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol></defs></svg>
+<a class="skip" href="#main">Skip to main content</a>
+<nav class="rail" aria-label="Primary"><div class="brand" aria-hidden="true" title="Vesqira">V</div><a class="ri owner-only" href="01-explorer.html" data-rail="datasets" aria-label="Datasets"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-datasets"/></svg><span class="lbl">Datasets</span><span class="tip" aria-hidden="true">Datasets</span></a><a class="ri owner-only" href="02-viewer.html" data-rail="viewer" aria-current="page" aria-label="Viewer"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-viewer"/></svg><span class="lbl">Viewer</span><span class="tip" aria-hidden="true">Viewer</span></a><a class="ri owner-only" href="03-compare.html" data-rail="compare" aria-label="Compare"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-compare"/></svg><span class="lbl">Compare</span><span class="tip" aria-hidden="true">Compare</span></a><a class="ri owner-only" href="04-board.html" data-rail="boards" aria-label="Boards"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-boards"/></svg><span class="lbl">Boards</span><span class="tip" aria-hidden="true">Boards</span></a><a class="ri " href="04-board.html?state=reviewer" data-rail="review" aria-label="Review"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-review"/></svg><span class="lbl">Review</span><span class="tip" aria-hidden="true">Review</span></a></nav>
+<header class="top">
+  <div class="crumbs" aria-label="Location"><span class="dim hide-m trunc">MOCK_projectX_HI</span><span class="sep" aria-hidden="true">/</span><span class=" trunc">MOCK_HI_cube_L1234_v2.fits</span></div>
+  <span class="mockpill" title="Synthetic imagery and values. Nothing on this page is a scientific result.">ILLUSTRATIVE MOCK DATA</span>
+  <label class="protosw"><span>Prototype state</span><select id="state-select" aria-label="Prototype state switcher"><option value="default">Default</option><option value="loading">Loading plane 128/256</option><option value="error">Error: partial range</option><option value="no-wcs">No WCS</option><option value="no-spectral">No spectral axis</option><option value="palette">Command palette open</option></select></label>
+  <span class="divider d-only" aria-hidden="true"></span>
+  <button class="tbtn d-only" type="button" data-toggle="explorer" aria-expanded="true" aria-label="Toggle explorer (E)" title="Toggle explorer (E)"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-pl"/></svg></button><button class="tbtn d-only" type="button" data-toggle="inspector" aria-expanded="true" aria-label="Toggle inspector (I)" title="Toggle inspector (I)"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-pr"/></svg></button><button class="tbtn d-only" type="button" data-toggle="dock" aria-expanded="true" aria-label="Toggle bottom dock (D)" title="Toggle bottom dock (D)"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-pb"/></svg></button>
+  <button class="tbtn" id="theme-toggle" type="button" aria-pressed="false" aria-label="Light theme"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-theme"/></svg></button>
+  <button class="tbtn bordered" type="button" data-open-palette aria-label="Open command palette (Ctrl+K)" title="Command palette (Ctrl+K)"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-cmd"/></svg><span class="t">Command</span><kbd>Ctrl K</kbd></button>
+</header>
+<div class="mockstrip" role="note">ILLUSTRATIVE MOCK DATA: synthetic, not a result</div>
+<div class="work three" id="main" tabindex="-1">
+<aside class="panel explorer" aria-label="Explorer">
+  <div class="phead"><span class="grow">Open cubes</span></div>
+  <ul class="tree" style="padding:4px 0">
+   <li><a class="row two" style="--d:0;text-decoration:none;color:var(--text)" href="02-viewer.html" aria-current="true" title="/mnt/hpc-scratch/projectX/survey_L1234/reduced/v2/cubes/MOCK_HI_cube_L1234_v2.fits"><svg class="i gl" aria-hidden="true" focusable="false"><use href="#i-file"/></svg><span class="nm trunc">MOCK_HI_cube_L1234_v2.fits</span><span class="badge b-info "><svg class="i " aria-hidden="true" focusable="false"><use href="#i-cloud"/></svg>remote</span></a></li>
+   <li><a class="row two" style="--d:0;text-decoration:none;color:var(--text)" href="02-viewer.html" title="/home/user/data/projectX/MOCK_HI_cube_L1234_v1.fits"><svg class="i gl" aria-hidden="true" focusable="false"><use href="#i-file"/></svg><span class="nm trunc">MOCK_HI_cube_L1234_v1.fits</span><span class="badge b-neutral "><svg class="i " aria-hidden="true" focusable="false"><use href="#i-file"/></svg>local</span></a></li>
+  </ul>
+  <div class="phead">Regions</div>
+  <ul class="tree"><li><div class="row" style="--d:0"><svg class="i gl" aria-hidden="true" focusable="false"><use href="#i-eye"/></svg><span class="nm trunc">ROI 1 &middot; rectangle</span><span class="faint num">R</span></div></li></ul>
+  <div class="phead">Quick keys</div>
+  <div class="pbody dim" style="font-size:12px;line-height:1.9"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>J</kbd> <kbd>K</kbd> channel<br><kbd>Shift</kbd> + arrow &times;10<br><kbd>Home</kbd> <kbd>End</kbd> first / last<br><kbd>Ctrl</kbd> <kbd>K</kbd> command palette<br><kbd>E</kbd> <kbd>I</kbd> <kbd>D</kbd> panels &middot; <kbd>T</kbd> theme</div>
+</aside><section class="center" aria-label="Cube viewer">
+ <div class="toolbar" role="toolbar" aria-label="Viewer tools">
+  <span class="dim d-only" style="padding:0 4px">Stretch</span>
+  <div class="seg d-only" role="radiogroup" aria-label="Stretch"><button type="button" role="radio" aria-checked="true" data-act="stretch-linear">linear</button><button type="button" role="radio" aria-checked="false" data-act="stretch-asinh">asinh</button></div>
+  <span class="divider d-only" aria-hidden="true"></span>
+  <button class="tbtn" type="button" data-act="roi" aria-pressed="true" title="Toggle ROI (R)">ROI <kbd>R</kbd></button>
+  <button class="tbtn d-only" type="button" data-act="grid" aria-pressed="false">Grid</button>
+  <span class="grow"></span>
+  <button class="tbtn m-only" type="button" data-toggle="explorer" aria-expanded="false">Files</button>
+  <button class="tbtn m-only" type="button" data-toggle="inspector" aria-expanded="false">Layers</button>
+  <button class="tbtn m-only" type="button" data-toggle="dock" aria-expanded="false">Spectrum</button>
+  <span class="faint d-only" style="padding:0 8px;font-size:12px">Click image to pin cursor</span>
+</div>
+ <div class="canvas"><div class="strips" role="region" aria-label="Notices">
+ <div class="strip warn" data-when="default palette"><span aria-hidden="true"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-warn"/></svg></span><span class="grow"><b>2 channel ranges flagged</b> (ch 120&ndash;124, 196&ndash;199): shown as gaps in the timeline. Spectral frame LSRK is declared, not verified.</span><button type="button">Details</button><button type="button" data-act="dismiss" aria-label="Dismiss notice"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-x2"/></svg></button></div>
+ <div class="strip info" data-when="loading" role="status"><span aria-hidden="true"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-cloud"/></svg></span><span class="grow"><b>Loading plane 128 / 256.</b> Showing a blurred low-resolution cached preview until the plane arrives.</span></div>
+ <div class="strip err" data-when="error" role="alert"><span aria-hidden="true"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-warn"/></svg></span><span class="grow"><b>Partial range request failed.</b> Server returned 1.9 of 4.0 MiB for plane 128 (connection reset). Showing the cached preview from 2026-11-03; it may differ from the file now.</span><button type="button">Retry</button><button type="button">Use cached only</button></div>
+ <div class="strip warn" data-when="no-wcs" role="status"><span aria-hidden="true"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-warn"/></svg></span><span class="grow"><b>No valid WCS: sky coordinates unavailable.</b> Pixel coordinates only. No RA/Dec, no angular scale bar.</span><button type="button">Header details</button></div>
+ <div class="strip warn" data-when="no-spectral" role="status"><span aria-hidden="true"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-warn"/></svg></span><span class="grow"><b>No spectral axis: velocity unavailable.</b> Channels are indexed only. The spectrum is plotted against channel index.</span><button type="button">Header details</button></div>
+</div><div class="stagebox"><div class="stage" id="stage" aria-label="Image canvas. Move the pointer to read pixel values; click to pin the cursor.">
+   <img class="layer" id="plane-img" src="../_shared/assets/chan_+0kms.png" alt="Synthetic H I channel map, magma colour scale, mock data. Exact plane and values are in the readout." draggable="false">
+   <img class="layer" id="mom0-img" src="../_shared/assets/mom0.png" alt="" style="display:none;opacity:.6" draggable="false">
+   <img class="layer" id="mask-img" src="assets/invalid_hatch.png" alt="" style="opacity:.55" draggable="false">
+   <div class="grid" hidden></div>
+   <div class="roi" aria-hidden="true"><i></i><i></i><i></i><i></i><span>ROI 1 &middot; 104&times;92 preview px</span></div>
+   <div class="xhair" aria-hidden="true"></div>
+   <div class="sc" data-unless="no-wcs"><i></i><span>1.6&deg; = 25% of field</span></div>
+   <div class="flagmsg" id="flag-msg" hidden>Channel flagged invalid: no plane data</div>
+  </div><div class="hud hud-tl" role="group" aria-label="Cursor readout">
+   <h3>Cursor <span id="pin-state" style="text-transform:none;letter-spacing:0" class="dim">live</span></h3>
+   <dl>
+    <dt>Pixel (x, y)</dt><dd><span id="r-x">&ndash;</span>, <span id="r-y">&ndash;</span></dd>
+    <dt data-unless="no-wcs">RA</dt><dd data-unless="no-wcs" id="r-ra">&ndash;</dd>
+    <dt data-unless="no-wcs">Dec</dt><dd data-unless="no-wcs" id="r-dec">&ndash;</dd>
+    <dt data-unless="no-wcs" class="hide-m">RA, Dec (deg)</dt><dd data-unless="no-wcs" class="hide-m"><span id="r-radeg">&ndash;</span> <span id="r-decdeg">&ndash;</span></dd>
+    <dt data-when="no-wcs">Sky position</dt><dd data-when="no-wcs"><em class="na">unavailable (no WCS)</em></dd>
+    <dt>Value</dt><dd id="r-val">&ndash;</dd>
+    <dt>Mask</dt><dd id="r-mask">&ndash;</dd>
+   </dl></div>
+  <div class="hud hud-tr" role="group" aria-label="Plane"><h3>Plane</h3><dl><dt>Channel</dt><dd id="h-plane">&ndash;</dd><dt>Velocity (LSR)</dt><dd id="h-vel">&ndash;</dd><dt>Preview</dt><dd id="h-sample">&ndash;</dd><dt>Stretch / map</dt><dd><span id="h-stretch">linear</span> &middot; <span id="h-cmap">magma</span></dd></dl><div class="cbar" style="margin-top:6px;justify-content:flex-end"><span>&minus;0.3</span><img id="cbar-img" src="../_shared/assets/bar_magma.png" alt="Magma colour bar, mock range minus 0.3 to 18.3 K"><span>18.3 K</span></div></div>
+  <div class="hud hud-bl">ILLUSTRATIVE MOCK DATA<br><span style="font-weight:400;letter-spacing:0">synthetic, not a result</span></div>
+  <div class="overlay-msg" data-when="loading" role="status" aria-live="polite">
+   <div class="row"><b>Fetching plane 128 / 256</b><span class="grow" style="flex:1"></span><button class="btn sm" type="button" data-act="cancel">Cancel</button></div>
+   <div class="bar" role="progressbar" aria-label="Plane download" aria-valuemin="0" aria-valuemax="100" aria-valuenow="20"><i style="width:20%"></i></div>
+   <p class="dim" style="margin:0;font-size:12px">4.0 MiB of 20.3 MiB for this plane. Session total 4.0 MiB of the 5.1 GiB remote cube; only requested ranges are read.</p></div></div></div>
+ <div class="bottom"><div class="timeline">
+ <div class="tl-head"><span class="cur" id="tl-cur">ch 128</span><span id="tl-flag" class="badge b-ok">valid</span><span class="grow"></span><span class="legend" aria-label="Timeline legend"><span><svg width="8" height="14" aria-hidden="true"><rect width="4" height="14" fill="var(--cyan)"/></svg>valid</span><span><svg width="8" height="14" aria-hidden="true"><rect y="9" width="4" height="5" fill="var(--warn)"/></svg>flagged</span><span><svg width="8" height="14" aria-hidden="true"><rect width="4" height="4" fill="var(--copper)"/></svg>cached plane</span></span>
+  <span class="keys"><button class="btn sm stepb" type="button" data-step="-10" aria-label="Back 10 channels">&minus;10</button><button class="btn sm stepb" type="button" data-step="-1" aria-label="Previous channel">&minus;1</button><button class="btn sm stepb" type="button" data-step="1" aria-label="Next channel">+1</button><button class="btn sm stepb" type="button" data-step="10" aria-label="Forward 10 channels">+10</button></span></div>
+ <div class="tl" id="tl" role="slider" tabindex="0" aria-label="Channel timeline, 256 channels" aria-valuemin="0" aria-valuemax="255" aria-valuenow="128" aria-orientation="horizontal"></div>
+ <div class="tl-axis" data-unless="no-spectral"><span>&minus;32.00 km/s</span><span>0</span><span>+31.75 km/s</span></div>
+ <div class="tl-axis" data-when="no-spectral"><span>ch 0</span><span>ch 128</span><span>ch 255</span></div>
+</div><div class="dock" aria-label="Bottom dock">
+ <div class="dock-tabs"><div class="tabs" role="tablist" aria-label="Dock"><button role="tab" type="button" id="tab-spec" aria-controls="dp-spec" aria-selected="true" tabindex="0">Region spectrum</button><button role="tab" type="button" id="tab-tab" aria-controls="dp-tab" aria-selected="false" tabindex="-1">Data table</button></div></div>
+ <div class="dock-panes">
+  <section class="dpane spec on" id="dp-spec" aria-label="Region-mean spectrum"><div class="phead"><span class="grow">Region-mean spectrum &middot; ROI 1 &middot; mock</span><span class="faint" style="text-transform:none;letter-spacing:0">flagged channels shaded</span></div>
+   <div class="host" id="spec-host"><svg id="spec-svg" class="plot" role="img" aria-label="Region-mean spectrum"></svg></div></section>
+  <section class="dpane" id="dp-tab" aria-label="Spectrum data table"><div class="phead"><span class="grow">Data table (same data as plot)</span></div>
+   <table class="dt" id="spec-table"><thead><tr><th class="r">Ch</th><th class="r">v [km/s]</th><th class="r">T_b [K]</th><th>State</th></tr></thead><tbody></tbody></table></section>
+ </div>
+</div></div>
+</section><aside class="panel inspector" aria-label="Inspector">
+ <div class="tabs" role="tablist" aria-label="Inspector"><button role="tab" type="button" id="tab-disp" aria-controls="ip-disp" aria-selected="true" tabindex="0">Display</button><button role="tab" type="button" id="tab-lay" aria-controls="ip-lay" aria-selected="false" tabindex="-1">Layers</button><button role="tab" type="button" id="tab-meta" aria-controls="ip-meta" aria-selected="false" tabindex="-1">Metadata</button></div>
+ <div class="tabpane pbody" id="ip-disp" role="tabpanel" aria-labelledby="tab-disp" style="overflow:auto;flex:1"><div class="field"><label for="cm">Colormap</label><select id="cm"><option value="magma">Magma (sequential)</option><option value="cividis">Cividis (sequential)</option></select></div>
+<div class="field"><label for="vmin">Min (K)</label><input id="vmin" type="number" step="0.1" value="-0.3"></div>
+<div class="field"><label for="vmax">Max (K)</label><input id="vmax" type="number" step="0.1" value="18.3"></div>
+<div class="field"><label for="clip">Clip</label><select id="clip"><option>2% &ndash; 99.5% percentile</option><option>Manual</option><option>Min &ndash; max</option></select></div>
+<div class="sect"><h3>Colour bar</h3><img id="insp-bar" src="../_shared/assets/bar_magma.png" alt="Colour bar for current colormap" style="width:100%;height:14px;border:1px solid var(--line-strong);display:block"><div class="dim num" style="display:flex;justify-content:space-between;font-size:11px"><span>&minus;0.3</span><span>K</span><span>18.3</span></div></div>
+<p class="note">Prototype limit: planes are pre-rendered magma images, so colormap, range and stretch change labels and bars only.</p></div>
+ <div class="tabpane pbody" id="ip-lay" role="tabpanel" aria-labelledby="tab-lay" style="overflow:auto;flex:1" hidden><div class="layer" data-target="#plane-img"><button class="eye" type="button" aria-pressed="true" aria-label="Show H I plane"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-eye"/></svg></button><div class="nm">H I plane<small>chan_*kms.png &middot; magma</small></div><span class="op">100%</span><input type="range" min="0" max="100" value="100" aria-label="H I plane opacity"></div>
+<div class="layer" data-target="#mask-img"><button class="eye" type="button" aria-pressed="true" aria-label="Show invalid-pixel mask"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-eye"/></svg></button><div class="nm">Invalid-pixel mask<small>hatched + dimmed &middot; mock</small></div><span class="op">55%</span><input type="range" min="0" max="100" value="55" aria-label="Mask opacity"></div>
+<div class="layer" data-target="#mom0-img"><button class="eye" type="button" aria-pressed="false" aria-label="Show moment-0 layer"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-eye"/></svg></button><div class="nm">Moment 0 (integrated)<small>mom0.png &middot; hidden</small></div><span class="op">60%</span><input type="range" min="0" max="100" value="60" aria-label="Moment 0 opacity"></div>
+<p class="note">Masked pixels are blank, never zero. Mask is hatched so it does not rely on colour.</p></div>
+ <div class="tabpane pbody" id="ip-meta" role="tabpanel" aria-labelledby="tab-meta" style="overflow:auto;flex:1" hidden><table class="kv"><tbody>
+<tr><th scope="row">Cube</th><td class="trunc" title="/mnt/hpc-scratch/projectX/survey_L1234/reduced/v2/cubes/MOCK_HI_cube_L1234_v2.fits">MOCK_HI_cube_L1234_v2.fits</td></tr>
+<tr><th scope="row">Shape</th><td>2304 &times; 2304 &times; 256 &middot; float32</td></tr>
+<tr><th scope="row">Preview</th><td>LOD 1: 512 &times; 512 (binned 4.5&times;); readout maps to full pixels</td></tr>
+<tr><th scope="row">Axes</th><td data-unless="no-wcs no-spectral">RA---SIN, DEC--SIN, VELO-LSR</td><td data-when="no-wcs">pixel x, pixel y, VELO-LSR</td><td data-when="no-spectral">RA---SIN, DEC--SIN, (spectral axis absent)</td></tr>
+<tr><th scope="row">Units</th><td>K (BUNIT) &middot; deg &middot; km/s</td></tr>
+<tr><th scope="row">Pixel scale</th><td data-unless="no-wcs">10.0&Prime;/px (CDELT, declared)</td><td data-when="no-wcs"><em>unknown</em></td></tr>
+<tr><th scope="row">WCS</th><td><span data-unless="no-wcs"><span class="badge b-ok "><svg class="i " aria-hidden="true" focusable="false"><use href="#i-ok"/></svg>WCS valid</span></span><span data-when="no-wcs"><span class="badge b-err "><svg class="i " aria-hidden="true" focusable="false"><use href="#i-x"/></svg>WCS missing</span></span></td></tr>
+<tr><th scope="row">Spectral</th><td data-unless="no-spectral">LSRK, radio <span class="faint">(frame declared, convention inferred)</span></td><td data-when="no-spectral"><span class="badge b-err "><svg class="i " aria-hidden="true" focusable="false"><use href="#i-x"/></svg>absent</span></td></tr>
+</tbody></table>
+<div class="sect" style="margin-top:12px"><h3>Provenance words</h3><table class="kv"><tbody>
+<tr><th scope="row">Header values</th><td><span class="badge p-declared"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-file"/></svg>declared</span></td></tr><tr><th scope="row">Velocity conv.</th><td><span class="badge p-inferred"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-wave"/></svg>inferred</span></td></tr><tr><th scope="row">Pipeline</th><td><span class="badge p-unresolved"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-help"/></svg>unresolved</span></td></tr><tr><th scope="row">Pixel checksum</th><td><span class="badge p-declared"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-file"/></svg>declared</span></td></tr></tbody></table></div></div>
+</aside>
+</div>
+<footer class="status" aria-label="Status bar"><span class="src" title="/mnt/hpc-scratch/projectX/survey_L1234/reduced/v2/cubes/MOCK_HI_cube_L1234_v2.fits"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-cloud"/></svg><span class="trunc">hpc-scratch:&hellip;/v2/cubes/MOCK_HI_cube_L1234_v2.fits</span></span>
+<span><span data-when="default palette no-wcs no-spectral loading">RTT 84 ms</span><span data-when="error"><span class="bad">RTT timeout</span></span></span>
+<span><span data-when="default palette no-wcs no-spectral">cache 312 MiB &middot; 41 planes</span><span data-when="loading">cache 308 MiB &middot; fetching</span><span data-when="error">cache 312 MiB &middot; stale 2026-11-03</span></span>
+<span><span data-when="default palette loading error no-spectral"><span class="ok">WCS valid</span></span><span data-when="no-wcs"><span class="bad">WCS missing</span></span></span>
+<span class="rd" id="st-readout" aria-live="off">x &ndash; y &ndash;</span></footer>
+<div class="scrim"></div>
+<div class="palette-back" id="palette-back">
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="q"><svg class="i " aria-hidden="true" focusable="false"><use href="#i-cmd"/></svg><input id="palette-input" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" aria-label="Type a command" placeholder="Type a command: channel, theme, compare, go to&hellip;" autocomplete="off" spellcheck="false"></div>
+    <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
+    <div class="foot"><span><kbd>&uarr;</kbd> <kbd>&darr;</kbd> select</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
