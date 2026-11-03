@@ -1,6 +1,6 @@
 # Contributing to Vesqira
 
-Vesqira is in the **specification and design stage**. There is no application to run yet, so the most useful contributions today are scientific review, design critique, and documentation fixes.
+Vesqira is in **early development**: the web app foundation exists, the scientific viewer does not. The most useful contributions today are scientific review, design critique, and documentation fixes.
 
 ## Before you start
 
@@ -14,15 +14,19 @@ Do not invent calibration, units, or coordinate frames. Treat unknown as `unknow
 
 ## UI work
 
-No production UI before a human-approved visual direction (`docs/design/design-directions.md`). Prototypes under `docs/design/prototypes/` use synthetic data and are disposable.
+The approved direction is recorded in ADR 0005 and `docs/design/design-directions.md`; build on it rather than proposing new layouts without discussion. Prototypes under `docs/design/prototypes/` use synthetic data and are disposable.
 
 ## Checks
 
+Requires Node 24 and Python 3.
+
 ```sh
-make check   # relative links, license identity, forbidden files
+cd apps/web && npm ci   # once
+npm run dev             # components page at http://localhost:5173
+make check              # docs checks, typecheck, stylelint (token guard), tests, build
 ```
 
-CI runs the same command. More checks are added only when the code they cover exists.
+CI runs `make docs` always and `make web` only when web or design files change. All visual values come from `design/tokens.css`; stylelint rejects anything else. More checks are added only when the code they cover exists.
 
 ## Data and privacy
 

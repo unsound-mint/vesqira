@@ -2,7 +2,7 @@
 
 **An open-source, extensible workspace for scientific research.** *Your research, connected.* (tagline provisional)
 
-**Status: specification and design stage.** There is no application yet; nothing here is implemented, validated or released. The name is not yet cleared (`docs/product/brand.md`).
+**Status: early development.** The web app foundation (design tokens, base components, examples page) exists. There is no viewer yet; no scientific feature is implemented, validated or released. The name is not yet cleared (`docs/product/brand.md`).
 
 ## v0.1: astronomy
 

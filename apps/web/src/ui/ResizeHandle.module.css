@@ -1,0 +1,42 @@
+.handle {
+  position: relative;
+  flex: none;
+  background: var(--line);
+  touch-action: none;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.v {
+  width: 1px;
+  cursor: col-resize;
+}
+
+.h {
+  height: 1px;
+  cursor: row-resize;
+}
+
+/* wider invisible hit area, 9px */
+.handle::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.v::before {
+  inset: 0 -4px;
+}
+
+.h::before {
+  inset: -4px 0;
+}
+
+.handle:hover,
+.handle:focus-visible,
+.handle:active {
+  background: var(--accent);
+}
+
+.handle:focus-visible {
+  outline-offset: 0;
+}

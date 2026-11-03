@@ -1,0 +1,63 @@
+@import url("../../../../design/tokens.css");
+@import url("@fontsource-variable/geist");
+@import url("@fontsource-variable/geist-mono");
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  font-weight: var(--w-regular);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+/* Browser surfaces themed from the tokens. */
+::selection {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+* {
+  caret-color: var(--accent);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.mono,
+code,
+kbd {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reduced motion zeroes the motion tokens, so every component follows without per-rule overrides. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0s;
+    --dur-base: 0s;
+  }
+}

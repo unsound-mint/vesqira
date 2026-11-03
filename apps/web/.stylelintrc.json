@@ -1,0 +1,24 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "plugins": ["stylelint-declaration-strict-value"],
+  "ignoreFiles": ["../../design/tokens.css"],
+  "rules": {
+    "selector-class-pattern": null,
+    "no-descending-specificity": null,
+    "custom-property-pattern": null,
+    "declaration-empty-line-before": null,
+    "scale-unlimited/declaration-strict-value": [
+      [
+        "/color$/", "background", "fill", "stroke", "box-shadow", "font-family", "font-size", "font-weight",
+        "line-height", "border-radius", "gap", "row-gap", "column-gap", "z-index",
+        "/^padding/", "/^margin/", "transition-duration", "animation-duration", "transition-timing-function"
+      ],
+      {
+        "ignoreValues": ["0", "none", "auto", "inherit", "initial", "unset", "transparent", "currentColor", "normal", "100%", "50%", "/^-?[0-9]+$/"],
+        "ignoreFunctions": false,
+        "disableFix": true,
+        "message": "Use a design token (var(--…)) from design/tokens.css instead of ${value} for ${property}."
+      }
+    ]
+  }
+}

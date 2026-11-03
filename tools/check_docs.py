@@ -14,7 +14,7 @@ if "GNU AFFERO GENERAL PUBLIC LICENSE" not in lic or "Version 3, 19 November 200
 
 link = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 for md in ROOT.rglob("*.md"):
-    if any(p in md.parts for p in (".git", "node_modules", "sources")):
+    if any(p in md.parts for p in (".git", "node_modules", "dist", "sources")):
         continue
     for target in link.findall(md.read_text(errors="ignore")):
         if re.match(r"^(https?:|mailto:|#)", target):

@@ -1,0 +1,32 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  height: var(--pill);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: var(--w-medium);
+  white-space: nowrap;
+}
+
+.ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.err {
+  background: var(--err-bg);
+  color: var(--err);
+}
+
+.accent {
+  background: var(--accent-bg);
+  color: var(--accent);
+}

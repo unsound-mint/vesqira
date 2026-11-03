@@ -2,7 +2,7 @@
    Single source of truth: dark-first, light theme included. Every size, colour and font in the app comes from here. */
 :root{
   /* type */
-  --font-ui:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif; --font-data:'Geist Mono',ui-monospace,'JetBrains Mono',monospace;
+  --font-ui:'Geist Variable','Geist',system-ui,-apple-system,'Segoe UI',sans-serif; --font-data:'Geist Mono Variable','Geist Mono',ui-monospace,'JetBrains Mono',monospace;
   --text-xs:12px; --text-sm:13px; --text-md:14px; --text-lg:16px; --text-xl:20px;
   --lh-xs:16px; --lh-sm:18px; --lh-md:20px; --lh-lg:24px; --lh-xl:28px;
   --w-regular:400; --w-medium:500; --w-strong:600;

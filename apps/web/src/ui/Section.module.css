@@ -1,0 +1,60 @@
+.section {
+  border-bottom: var(--bw) solid var(--line);
+}
+
+.heading {
+  margin: 0;
+  font: inherit;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  height: var(--ctl-md);
+  padding: 0 var(--sp-3);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--w-strong);
+  text-align: left;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--bg-3);
+}
+
+.chev,
+.chevOpen {
+  display: inline-flex;
+  color: var(--text-3);
+  transition: transform var(--dur-base) var(--ease);
+}
+
+.chevOpen {
+  transform: rotate(90deg);
+}
+
+.title {
+  flex: 1;
+}
+
+.meta {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  font-weight: var(--w-regular);
+}
+
+.body {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3) var(--sp-4);
+}
+
+.body[hidden] {
+  display: none;
+}
