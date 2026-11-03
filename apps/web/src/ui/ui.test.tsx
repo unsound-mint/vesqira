@@ -35,6 +35,41 @@ describe("ResizeHandle", () => {
   });
 });
 
+describe("ResizeHandle direction", () => {
+  function Insp() {
+    const [v, setV] = useState(360);
+    return <ResizeHandle orientation="vertical" direction={-1} label="Resize inspector" value={v} min={280} max={560} onChange={setV} />;
+  }
+  function Tl() {
+    const [v, setV] = useState(132);
+    return <ResizeHandle orientation="horizontal" direction={-1} label="Resize timeline" value={v} min={88} max={320} onChange={setV} />;
+  }
+
+  it("a right-hand panel grows when the handle moves left", async () => {
+    const user = userEvent.setup();
+    render(<Insp />);
+    const h = screen.getByRole("separator");
+    h.focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(h).toHaveAttribute("aria-valuenow", "368");
+    await user.keyboard("{ArrowRight}");
+    await user.keyboard("{ArrowRight}");
+    expect(h).toHaveAttribute("aria-valuenow", "352");
+  });
+
+  it("a bottom panel grows when the handle moves up", async () => {
+    const user = userEvent.setup();
+    render(<Tl />);
+    const h = screen.getByRole("separator");
+    expect(h).toHaveAttribute("aria-orientation", "horizontal");
+    h.focus();
+    await user.keyboard("{ArrowUp}");
+    expect(h).toHaveAttribute("aria-valuenow", "140");
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    expect(h).toHaveAttribute("aria-valuenow", "124");
+  });
+});
+
 describe("Section", () => {
   it("toggles aria-expanded and the controlled region", async () => {
     const user = userEvent.setup();

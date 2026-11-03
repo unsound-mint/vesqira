@@ -1,0 +1,177 @@
+.shell {
+  display: grid;
+  grid-template-areas:
+    "title title title title"
+    "rail side canvas insp"
+    "rail side timeline insp"
+    "status status status status";
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg-0);
+}
+
+.title {
+  grid-area: title;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-3);
+  border-bottom: var(--bw) solid var(--line);
+  background: var(--bg-1);
+}
+
+.name {
+  font-size: var(--text-sm);
+  font-weight: var(--w-strong);
+}
+
+.crumb {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) 0;
+  border-right: var(--bw) solid var(--line);
+  background: var(--bg-1);
+}
+
+.grow {
+  flex: 1;
+}
+
+.side,
+.insp,
+.timeline {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-1);
+}
+
+/* the panel never scrolls (so its splitter stays put); its content does */
+.scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.side {
+  grid-area: side;
+}
+
+.insp {
+  grid-area: insp;
+  background: var(--bg-2);
+}
+
+.timeline {
+  grid-area: timeline;
+  border-top: var(--bw) solid var(--line);
+}
+
+.side[hidden],
+.insp[hidden],
+.timeline[hidden] {
+  display: none;
+}
+
+/* each splitter sits on the edge of the panel it resizes, inside that panel's landmark */
+.timeline .scroll {
+  padding: var(--sp-3);
+}
+
+.side > [role="separator"] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.insp > [role="separator"] {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.timeline > [role="separator"] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+.canvas {
+  grid-area: canvas;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  background: var(--canvas);
+  color: var(--canvas-text);
+}
+
+.stage {
+  max-width: 360px;
+  padding: var(--sp-6);
+  text-align: center;
+}
+
+.stageTitle {
+  margin-bottom: var(--sp-2);
+  font-size: var(--text-lg);
+  font-weight: var(--w-strong);
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.canvas .empty {
+  color: var(--canvas-text-2);
+}
+
+.status {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-2);
+  border-top: var(--bw) solid var(--line);
+  background: var(--bg-1);
+}
+
+/* Narrow screens: one pane at a time. Panels open over the canvas. */
+@media (width <= 800px) {
+  .shell {
+    grid-template-columns: var(--w-rail) minmax(0, 1fr) !important;
+    grid-template-areas:
+      "title title"
+      "rail canvas"
+      "rail timeline"
+      "status status";
+  }
+
+  .side,
+  .insp {
+    grid-row: 2 / 4;
+    grid-column: 2;
+    z-index: 1;
+    width: 100%;
+    box-shadow: var(--shadow);
+  }
+
+  .side > [role="separator"],
+  .insp > [role="separator"] {
+    display: none;
+  }
+}
