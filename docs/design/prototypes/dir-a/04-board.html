@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boards | Vesqira (direction A prototype)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="board" data-default-state="owner">
+<a class="skip" href="#main">Skip to main content</a>
+<div class="proto" role="region" aria-label="Prototype chrome">
+  <span class="mockflag">ILLUSTRATIVE MOCK DATA</span>
+  <nav aria-label="Prototype state switcher"><span class="lbl">Prototype state switcher</span><a href="?state=owner" data-state="owner">Owner view</a><a href="?state=reviewer" data-state="reviewer">Reviewer view</a><a href="?state=denied" data-state="denied">Reviewer: access denied</a></nav>
+</div>
+<header class="topbar">
+  <a class="brand" href="01-explorer.html" aria-label="Vesqira, home"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="2" width="16" height="16"/><path d="M10 2v16M2 10h16"/><circle cx="10" cy="10" r="3.2"/></svg>Vesqira</a>
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="01-explorer.html">Projects</a><span aria-hidden="true">/</span><a class="opt" href="01-explorer.html">L1234 H I and VGT (mock)</a><span class="opt" aria-hidden="true">/</span><span aria-current="location">Candidate against baseline</span></nav>
+  <nav class="tabs" aria-label="Sections"><a href="01-explorer.html">Datasets</a><a href="02-viewer.html">Viewer</a><a href="03-compare.html">Comparisons</a><a href="04-board.html" aria-current="page">Boards</a></nav>
+  <div class="tools">
+    <div class="search"><label class="sr-only" for="cmd">Command search</label><input id="cmd" type="search" placeholder="Search or run…" autocomplete="off"><kbd aria-hidden="true">/</kbd></div>
+    <button class="btn iconbtn only-narrow" id="searchBtn" type="button" aria-label="Search" aria-expanded="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg></button>
+    <button class="btn iconbtn" id="themeBtn" type="button" aria-pressed="false" aria-label="Switch theme"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button>
+  </div>
+</header>
+<main id="main" class="page" >
+<div class="pagehead">
+  <div><p class="eyebrow">Board · VGT method comparison, L1234</p><h1>Candidate method against baseline</h1>
+  <p class="deck"><span data-role-only="owner">Working board. Panels follow pinned revisions; reviewers see the frozen snapshot s-0007.</span><span data-role-only="reviewer">Review snapshot s-0007, published 2026-11-03 by r.owner.</span></p></div>
+  <div class="seg" role="group" aria-label="Prototype role preview"><button class="btn" type="button" data-roleBtn="owner" aria-pressed="true">Owner view</button><button class="btn" type="button" data-roleBtn="reviewer" aria-pressed="false">Reviewer view</button></div>
+</div>
+<div class="banner info" data-role-only="reviewer" role="status"><span class="ico" aria-hidden="true">i</span><div><strong>You are reviewing a fixed snapshot as m.example (reviewer)</strong><p>Later changes by the owner do not alter this page. You can comment and request a comparison. Nothing here gives access to raw data or to the owner’s machines.</p></div></div>
+
+<div class="board">
+<div>
+  <div class="panels"><article class="panel"><figure class="plate compact" data-plate data-mode="sky" data-n="512" data-cdelt="0.0044444" data-ra0="187.5" data-dec0="12" data-ticks="4">
+<div class="plate__y" aria-hidden="true"></div><div class="plate__frame" tabindex="0" role="img" aria-label="Panel a, baseline axial orientation map, synthetic"><img class="layer" src="../_shared/assets/vgt_baseline_axial.png" alt=""><div class="layer" data-hatch></div></div><div class="plate__x" aria-hidden="true"></div></figure><h3>(a) Baseline, axial θ</h3><div class="pin"><span class="mono">pinned rev 7 of vgt_run_2026-10-28T14-02Z</span><span class="badge b-ok"><i aria-hidden="true">✓</i>pinned, current</span>
+<span class="small" data-role-only="owner">Source: <a href="01-explorer.html" class="mono" title="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/vgt_baseline_axial_theta.fits">vgt_baseline_axial_theta.fits</a></span>
+<span class="small" data-role-only="reviewer">Source: <button type="button" class="btn quiet sm rawlink" style="min-height:24px;padding:0">vgt_baseline_axial_theta.fits <span aria-hidden="true">🔒</span><span class="sr-only">(raw file, not available to you)</span></button></span></div></article><article class="panel"><figure class="plate compact" data-plate data-mode="sky" data-n="512" data-cdelt="0.0044444" data-ra0="187.5" data-dec0="12" data-ticks="4">
+<div class="plate__y" aria-hidden="true"></div><div class="plate__frame" tabindex="0" role="img" aria-label="Panel b, candidate axial orientation map, synthetic, comment 1 anchored to a region"><img class="layer" src="../_shared/assets/vgt_candidate_axial.png" alt=""><div class="layer" data-hatch></div><div class="pinmark" style="left:56%;top:30%;width:20%;height:18%"><b>1</b></div></div><div class="plate__x" aria-hidden="true"></div></figure><h3>(b) Candidate, axial θ</h3><div class="pin"><span class="mono">pinned rev 7 of vgt_run_2026-10-28T14-02Z</span><span class="badge b-ok"><i aria-hidden="true">✓</i>pinned, current</span>
+<span class="small" data-role-only="owner">Source: <a href="01-explorer.html" class="mono" title="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/vgt_candidate_axial_theta.fits">vgt_candidate_axial_theta.fits</a></span>
+<span class="small" data-role-only="reviewer">Source: <button type="button" class="btn quiet sm rawlink" style="min-height:24px;padding:0">vgt_candidate_axial_theta.fits <span aria-hidden="true">🔒</span><span class="sr-only">(raw file, not available to you)</span></button></span></div></article><article class="panel"><figure class="plate compact" data-plate data-mode="sky" data-n="512" data-cdelt="0.0044444" data-ra0="187.5" data-dec0="12" data-ticks="4">
+<div class="plate__y" aria-hidden="true"></div><div class="plate__frame" tabindex="0" role="img" aria-label="Panel c, smallest axial angle difference, synthetic"><img class="layer" src="../_shared/assets/vgt_axial_diff.png" alt=""><div class="layer" data-hatch></div></div><div class="plate__x" aria-hidden="true"></div></figure><h3>(c) Difference, |Δθ|</h3><div class="pin"><span class="mono">pinned rev 6 of vgt_run_2026-10-28T14-02Z</span><span class="badge b-warn"><i aria-hidden="true">▲</i>newer revision available: rev 7</span><button class="btn sm" type="button" data-role-only="owner">Review rev 7 changes</button><span class="xs muted" data-role-only="reviewer">Snapshot is fixed at rev 6. The owner may have a newer one.</span>
+<span class="small" data-role-only="owner">Source: <a href="01-explorer.html" class="mono" title="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/vgt_axial_diff_deg.fits">vgt_axial_diff_deg.fits</a></span>
+<span class="small" data-role-only="reviewer">Source: <button type="button" class="btn quiet sm rawlink" style="min-height:24px;padding:0">vgt_axial_diff_deg.fits <span aria-hidden="true">🔒</span><span class="sr-only">(raw file, not available to you)</span></button></span></div></article></div>
+  <div class="legendrow">
+    <div class="span2"><img src="../_shared/assets/axial_legend.png" alt="Cyclic colour bar for axial orientation, 0 to 180 degrees, ends identical" style="max-width:361px"><div class="small" style="display:flex;justify-content:space-between;max-width:361px"><span>0°</span><span>90°</span><span>180° ≡ 0°</span></div><p class="small" style="margin-top:6px"><span class="swatch" aria-hidden="true"></span>Hatched and dimmed: invalid pixels.</p></div>
+    <div><img src="../_shared/assets/bar_cividis.png" alt="Sequential colour bar, 0 to 90 degrees" style="max-width:361px;width:100%;height:16px;border:1px solid var(--ink)"><div class="small" style="display:flex;justify-content:space-between;max-width:361px"><span>0°</span><span>90°</span></div></div>
+  </div>
+  <p class="fig-caption"><b>Figure 3.</b> Axial orientation of the plane-of-sky field from the baseline (a) and candidate (b) methods, and (c) the smallest axial angle between them, |Δθ| in [0°, 90°]. Colours in (a, b) are cyclic, 0° ≡ 180°. Over pixels valid in both maps, the median is 6.51°, the 90th percentile 15.56° and the valid fraction 0.81 (doubled-angle statistics). <i>Illustrative mock data; no scientific interpretation is made here.</i></p>
+  <section class="note-sec" data-role-only="owner" aria-labelledby="h-ev"><h2 class="sec-h" id="h-ev">Evidence links</h2>
+  <ul class="small" style="display:grid;gap:4px"><li><a href="03-compare.html">Comparison with checklist and statistics</a> (grids compatible; two items unverified)</li><li><a href="03-compare.html">Method provenance</a>: code commits verified; seeds unresolved</li></ul></section>
+</div>
+
+<aside class="board__margin" aria-label="Review">
+  <section class="note-sec" data-role-only="reviewer" aria-labelledby="h-acc">
+    <h2 class="sec-h" id="h-acc">Your access</h2>
+    <ul class="scope"><li class="y"><span class="tick" aria-hidden="true">✓</span><span><b>You can see:</b> 3 published previews (a, b, c), their captions, and provenance status words.</span></li>
+    <li class="n"><span class="tick" aria-hidden="true">✕</span><span><b>You cannot see:</b> raw FITS files, HPC or remote storage, credentials.</span></li></ul>
+    <p style="margin-top:8px" class="small"><b>Expires 2026-12-04</b> (30 days). Read, comment, request comparison.</p>
+  </section>
+  <section class="note-sec" data-role-only="owner" aria-labelledby="h-share">
+    <h2 class="sec-h" id="h-share">Share for review</h2>
+    <fieldset style="border:0;padding:0;margin:0"><legend class="small" style="padding:0 0 4px">Included in snapshot s-0007</legend>
+    <ul class="scope">
+      <li><input type="checkbox" id="s1" checked><label for="s1">Published previews (a, b, c), captions, provenance words</label></li>
+      <li><input type="checkbox" id="s2" checked><label for="s2">Comments on panels</label></li>
+      <li><input type="checkbox" id="s3" checked><label for="s3">Request a comparison</label></li>
+      <li><input type="checkbox" id="s4" disabled><label for="s4">Raw FITS, remote paths, credentials: never shareable through a review</label></li>
+    </ul></fieldset>
+    <div class="field" style="margin-top:12px"><label for="exp">Access expires</label><input id="exp" type="date" value="2026-12-04"></div>
+    <p class="small" style="margin:8px 0">Reviewer: m.example (invited). Link carries a scoped token only.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" type="button">Publish snapshot</button><button class="btn sm" type="button">Preview as reviewer</button></div>
+    <p class="xs muted" style="margin-top:8px">Panel c has a newer revision. Publishing a new snapshot does not change s-0007.</p>
+  </section>
+  <section class="note-sec" aria-labelledby="h-cm">
+    <h2 class="sec-h" id="h-cm">Comments <span class="muted" style="text-transform:none;letter-spacing:0">anchored to panel regions</span></h2>
+    <ol class="thread" id="thread">
+      <li><div class="who"><span><b>m.example</b> (reviewer) · on panel b, region 1</span><span>2026-11-03</span></div><p>The hatched area in b looks larger than in a. Is the mask threshold the same for both runs?</p></li>
+      <li><div class="who"><span><b>r.owner</b> · reply</span><span>2026-11-04</span></div><p>Both configs declare S/N ≥ 3. That is declared, not re-derived; I will add it to the checklist.</p></li>
+    </ol>
+    <form id="commentForm" style="margin-top:12px"><div class="field"><label for="cm">Reply to thread on region 1</label><textarea id="cm"></textarea></div><div style="margin-top:8px"><button class="btn sm primary" type="submit">Add comment</button></div></form>
+  </section>
+  <section class="note-sec" data-role-only="reviewer" aria-labelledby="h-rq">
+    <h2 class="sec-h" id="h-rq">Request a comparison</h2>
+    <p class="small">Ask the owner for another view. Nothing runs on your behalf.</p>
+    <button class="btn sm" id="reqBtn" type="button" aria-expanded="false" aria-controls="reqForm" style="margin-top:8px">Request comparison</button>
+    <form id="reqForm" hidden style="margin-top:12px"><div class="field"><label for="rq1">Compare</label><select id="rq1"><option>(a) Baseline with (b) Candidate, different mask threshold</option><option>(a) Baseline with the 2026-10-21 baseline</option></select></div>
+    <div class="field" style="margin-top:8px"><label for="rq2">Why</label><textarea id="rq2"></textarea></div><div style="margin-top:8px"><button class="btn sm primary" id="reqSend" type="button">Send request to owner</button></div><p class="small" id="reqMsg" role="status" style="margin-top:8px"></p></form>
+  </section>
+</aside>
+</div>
+</main>
+<dialog id="denied" aria-labelledby="dh"><h2 id="dh">Raw FITS is outside this review</h2>
+<p class="badge b-bad" style="margin-bottom:12px"><span aria-hidden="true">✕</span> Access denied</p>
+<p>The link you opened points to a raw data file in the owner’s project. Your review link grants published previews only. Raw files, remote storage and compute are never reachable through a review, even by following a link.</p>
+<p style="margin-top:12px"><b>Next step:</b> ask the owner to publish a preview of this file, or request a comparison that includes it.</p>
+<div class="acts"><button class="btn primary closeDlg" type="button">Ask owner to publish a preview</button><button class="btn closeDlg" type="button">Back to the review</button></div></dialog>
+<script src="script.js"></script>
+</body>
+</html>

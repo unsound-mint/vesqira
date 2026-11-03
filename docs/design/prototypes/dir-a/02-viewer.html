@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viewer | Vesqira (direction A prototype)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="viewer" data-default-state="ready">
+<a class="skip" href="#main">Skip to main content</a>
+<div class="proto" role="region" aria-label="Prototype chrome">
+  <span class="mockflag">ILLUSTRATIVE MOCK DATA</span>
+  <nav aria-label="Prototype state switcher"><span class="lbl">Prototype state switcher</span><a href="?state=ready" data-state="ready">Ready</a><a href="?state=loading" data-state="loading">Loading</a><a href="?state=error" data-state="error">Range error</a><a href="?state=nowcs" data-state="nowcs">No WCS</a><a href="?state=nospectral" data-state="nospectral">No spectral ref</a></nav>
+</div>
+<header class="topbar">
+  <a class="brand" href="01-explorer.html" aria-label="Vesqira, home"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="2" width="16" height="16"/><path d="M10 2v16M2 10h16"/><circle cx="10" cy="10" r="3.2"/></svg>Vesqira</a>
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="01-explorer.html">Projects</a><span aria-hidden="true">/</span><a class="opt" href="01-explorer.html">L1234 H I and VGT (mock)</a><span class="opt" aria-hidden="true">/</span><span aria-current="location">MOCK_HI_cube_L1234_v2.fits</span></nav>
+  <nav class="tabs" aria-label="Sections"><a href="01-explorer.html">Datasets</a><a href="02-viewer.html" aria-current="page">Viewer</a><a href="03-compare.html">Comparisons</a><a href="04-board.html">Boards</a></nav>
+  <div class="tools">
+    <div class="search"><label class="sr-only" for="cmd">Command search</label><input id="cmd" type="search" placeholder="Search or run…" autocomplete="off"><kbd aria-hidden="true">/</kbd></div>
+    <button class="btn iconbtn only-narrow" id="searchBtn" type="button" aria-label="Search" aria-expanded="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg></button>
+    <button class="btn iconbtn" id="themeBtn" type="button" aria-pressed="false" aria-label="Switch theme"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button>
+  </div>
+</header>
+<main id="main" class="page tightpage">
+<div class="pagehead">
+  <div><p class="eyebrow">Viewer · spectral cube · remote-available · 5.1 GiB</p>
+  <h1 style="overflow-wrap:anywhere">MOCK_HI_cube_L1234_v2.fits</h1>
+  <p class="deck">2316 × 2316 × 256 · BUNIT K · RA-DEC-VELO. Planes are read on demand; the cube is never downloaded whole.</p></div>
+  <div class="tools"><a class="btn sm" href="#notices"><span class="badge b-warn b-dash" style="border:0;background:none;padding:0"><i aria-hidden="true">⚠</i></span><span id="nNotices">3 metadata notices</span></a><button class="btn sm" id="helpBtn" type="button">Shortcuts <kbd>?</kbd></button></div>
+</div>
+
+<div data-only="nowcs"><div class="banner warn" role="status"><span class="ico" aria-hidden="true">⚠</span><div><strong>No valid WCS: sky coordinates unavailable — showing pixels</strong><p>CTYPE1/2 and CRVAL1/2 are missing from HDU 0. The spectral axis keywords are intact, so velocity is still shown (declared). No RA/Dec, no angular scale bar: axes and the scale bar are in native pixels.</p><div class="acts"><button class="btn sm" type="button">View FITS header</button></div></div></div></div>
+<div data-only="nospectral"><div class="banner warn" role="status"><span class="ico" aria-hidden="true">⚠</span><div><strong>Spectral reference missing: velocity unavailable — showing channel index only</strong><p>CRVAL3/CDELT3 are present, but RESTFRQ and SPECSYS are not, so no velocity is computed. Sky coordinates are unaffected.</p><div class="acts"><button class="btn sm" type="button">View FITS header</button></div></div></div></div>
+<div data-only="error"><div class="banner bad" role="alert"><span class="ico" aria-hidden="true">✕</span><div><strong>Partial range request failed. Showing a cached 64 × 64 preview</strong><p>Bytes 2 147 483 648–2 151 677 951 of the remote file: HTTP 503 after 3 retries. The image below is a low-resolution cached preview, not the current plane. Pixel values are unavailable, not zero.</p><div class="acts"><button class="btn sm primary" id="retryFetch" type="button">Retry range request</button><button class="btn sm" type="button">Keep cached preview</button></div></div></div></div>
+<div id="liveBox" hidden><div class="banner info" role="status"><span class="ico" aria-hidden="true">i</span><div id="liveMsg"></div></div></div>
+
+<div class="viewer">
+<div class="viewer__plate">
+  <figure class="plate" data-plate data-wcs-aware data-mode="sky" data-n="2316" data-cdelt="0.0022222" data-ra0="187.5" data-dec0="12" data-ticks="5">
+    <div class="plate__y" aria-hidden="true"></div>
+    <div class="plate__frame" id="frame" tabindex="0" role="group" aria-roledescription="image viewer" aria-label="H I channel image plate">
+      <img id="imgBase" class="layer" src="../_shared/assets/chan_+0kms.png" alt="">
+      <img id="imgMom" class="layer" src="../_shared/assets/mom0.png" alt="" style="opacity:.5">
+      <canvas id="cached" class="layer pix" width="64" height="64" data-only="error" aria-hidden="true"></canvas>
+      <img id="imgMask" class="layer" src="../_shared/assets/vgt_invalid_mask.png" alt="" style="opacity:.6">
+      <div id="hatchWrap" class="layer" data-hatch></div>
+      <div id="roi" class="roi" style="left:24%;top:38%;width:20%;height:20%"><span>ROI 1</span></div>
+      <div class="xhair" aria-hidden="true"></div>
+      <div class="scalebar" data-hide="nowcs loading"><span>10′ on sky (declared WCS)</span><i style="width:75px"></i></div>
+      <div class="scalebar" data-only="nowcs"><span>500 native pixels</span><i style="width:110px"></i></div>
+      <div class="plate-tag" data-only="error">CACHED PREVIEW 64 × 64</div>
+      <div class="plate-note" id="fetchPanel" data-only="loading" role="status">
+        <div><b>Fetching plane index 128 of 256</b> — 4 MiB of a 5.1 GiB remote cube. The rest of the cube is not transferred.</div>
+        <label class="sr-only" for="prog">Fetch progress</label><progress id="prog" value="38" max="100">38%</progress>
+        <div class="acts"><span class="small">1.5 of 4 MiB · showing the previously cached plane, dimmed</span><button class="btn sm" id="cancelFetch" type="button">Cancel fetch</button></div>
+      </div>
+    </div>
+    <div class="plate__x" aria-hidden="true"></div>
+  </figure>
+  <p class="plate__cap" data-hide="nowcs"><span>x: right ascension · y: declination (ICRS, declared)</span><span>Overview 512 × 512 of 2316 × 2316 native pixels</span></p>
+  <p class="plate__cap" data-only="nowcs"><span>x, y: native pixel index (1-based), no sky frame</span><span>Overview 512 × 512 of 2316 × 2316 native pixels</span></p>
+  <p class="mini-read" id="miniRead" aria-live="off"></p>
+
+  <div class="scrub" role="group" aria-label="Spectral channel">
+    <div class="scrub__row">
+      <div class="velbig"><span><b id="velBig">+0.00</b> <span class="u" id="velUnit">km/s</span></span><span class="ch"><span id="chBig">ch 128</span> <span class="muted" id="chOf">of 0–255</span></span></div>
+      <div style="flex:1;min-width:120px"><label class="sr-only" for="chan">Channel index</label><input id="chan" type="range" min="0" max="255" value="128" step="1"></div>
+      <div class="field"><label for="chanNum">Channel</label><input id="chanNum" type="number" min="0" max="255" value="128"></div>
+    </div>
+    <p class="scrub__hint kb"><span><kbd>←</kbd><kbd>→</kbd> step</span><span><kbd>Shift</kbd>+arrow ×10</span><span><kbd>Home</kbd><kbd>End</kbd> first / last</span><span><kbd>Ctrl</kbd>+arrow moves cursor</span><span><kbd>R</kbd> ROI</span><span><kbd>M</kbd> mask</span></p>
+    <p class="xs muted" id="planeNote"></p>
+  </div>
+</div>
+
+<aside class="viewer__margin drawer-panel" id="inspector" aria-label="Inspector">
+  <div class="mcol">
+  <section class="note-sec" aria-labelledby="h-read">
+    <h2 class="sec-h" id="h-read">Cursor readout</h2>
+    <dl class="readout">
+      <dt>Pixel x, y</dt><dd id="rdPix"></dd>
+      <dt>RA</dt><dd id="rdRa"></dd>
+      <dt>Dec</dt><dd id="rdDec"></dd>
+      <dt>RA, Dec (deg)</dt><dd><span id="rdRaD"></span>, <span id="rdDecD"></span></dd>
+      <dt>Velocity</dt><dd id="rdVel"></dd>
+      <dt>Value</dt><dd id="rdVal"></dd>
+      <dt>Mask / validity</dt><dd id="rdMask"></dd>
+    </dl>
+    <p class="xs muted" style="margin-top:8px">Values on this page are generated for the mock and are not read from the images.</p>
+  </section>
+
+  <section class="note-sec spec" aria-labelledby="h-spec">
+    <h2 class="sec-h" id="h-spec"><span>Region-mean spectrum, ROI 1</span></h2>
+    <svg id="specSvg" viewBox="0 0 360 176" role="img" aria-label="Region-mean spectrum of ROI 1: brightness temperature in kelvin against velocity. A broad line peaks near 18 K between about minus 5 and plus 5 kilometres per second. The data table below lists the same values."></svg>
+    <label class="xs" style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="roiOn" checked> Show ROI on plate (R)</label>
+    <dl class="kv" style="margin-top:8px"><dt>ROI (native px)</dt><dd class="mono">x 556–1019, y 880–1343</dd><dt>Statistic</dt><dd>mean of valid pixels; masked and NaN excluded</dd></dl>
+    <details class="alt"><summary>Data table alternative (every 10th sample)</summary><div class="scroll"><table class="mini" id="specTable" style="width:100%;border-collapse:collapse"></table></div></details>
+  </section>
+
+  </div><div class="mcol">
+  <section class="note-sec" aria-labelledby="h-disp">
+    <h2 class="sec-h" id="h-disp">Display</h2>
+    <div class="row2"><div class="field"><label for="vmin">Min (K)</label><input id="vmin" type="number" value="0" step="0.5"></div><div class="field"><label for="vmax">Max (K)</label><input id="vmax" type="number" value="20" step="0.5"></div></div>
+    <div style="display:flex;gap:16px;margin:12px 0" role="radiogroup" aria-label="Stretch"><label style="display:flex;gap:6px;align-items:center"><input type="radio" name="stretch" value="linear" checked> linear</label><label style="display:flex;gap:6px;align-items:center"><input type="radio" name="stretch" value="asinh"> asinh</label></div>
+    <div class="field"><label for="cmap">Colormap</label><select id="cmap"><option value="magma">magma (perceptual)</option><option value="cividis">cividis (perceptual, colour-vision safe)</option></select></div>
+    <div class="cbar" style="margin-top:12px"><img id="cbImg" src="../_shared/assets/bar_magma.png" alt="Colour bar for the selected colormap, low to high"><div class="ends"><span id="cbLo">0 K</span><span id="cbMid">linear stretch</span><span id="cbHi">20 K</span></div></div>
+    <p class="xs muted" style="margin-top:8px">Prototype: these controls update labels only; the synthetic images are not re-rendered.</p>
+  </section>
+
+  <section class="note-sec" aria-labelledby="h-lay">
+    <h2 class="sec-h" id="h-lay">Layers</h2>
+    <ul class="layers">
+      <li><input type="checkbox" id="lyMask" checked aria-label="Mask overlay visible"><label for="lyMask">Validity mask (dim) <span class="muted">S/N rule declared</span></label><input class="op" id="opMask" type="range" min="0" max="100" value="60" aria-label="Mask overlay opacity"></li>
+      <li><input type="checkbox" id="lyHatch" checked aria-label="Hatching for masked pixels visible"><label for="lyHatch">Hatching on masked pixels <span class="muted">non-colour cue</span></label><span></span></li>
+      <li><input type="checkbox" id="lyMom" aria-label="Moment 0 visible"><label for="lyMom">Moment 0 (K km/s)</label><input class="op" id="opMom" type="range" min="0" max="100" value="50" aria-label="Moment 0 opacity"></li>
+      <li><input type="checkbox" checked disabled aria-label="Channel image always visible"><label>Channel plane (base)</label><span class="xs muted">base</span></li>
+    </ul>
+  </section>
+
+  <section class="note-sec" id="notices" aria-labelledby="h-warn">
+    <h2 class="sec-h" id="h-warn">Metadata notices <span class="muted" style="text-transform:none;letter-spacing:0">non-blocking</span></h2>
+    <ul class="warnlist">
+      <li><span class="badge b-info"><i aria-hidden="true">◆</i>declared</span><span>SPECSYS = LSRK is stated in the header and has not been independently checked.</span></li>
+      <li><span class="badge b-warn b-dash"><i aria-hidden="true">≈</i>inferred</span><span>CUNIT3 = m/s; shown in km/s (exact factor 10<sup>-3</sup>).</span></li>
+      <li><span class="badge b-bad"><i aria-hidden="true">✕</i>missing</span><span>BMAJ/BMIN absent: beam size unknown, so no beam-dependent unit conversion is offered.</span></li>
+    </ul>
+  </section>
+  </div>
+</aside>
+</div>
+</main>
+<button class="drawerbtn" type="button" aria-expanded="false" aria-controls="inspector"><span class="dlabel">Inspector</span><span class="sum" id="sumText"></span></button>
+<dialog id="help" aria-labelledby="hh"><h2 id="hh">Keyboard shortcuts</h2>
+<table class="tbl" style="table-layout:auto"><tbody>
+<tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous / next channel</td></tr>
+<tr><td><kbd>Shift</kbd> + <kbd>←</kbd> <kbd>→</kbd></td><td>Step 10 channels</td></tr>
+<tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First / last channel</td></tr>
+<tr><td><kbd>Ctrl</kbd> + arrows</td><td>Move cursor readout (Shift: 10 steps)</td></tr>
+<tr><td><kbd>R</kbd> / <kbd>M</kbd></td><td>Toggle ROI / mask overlay</td></tr>
+<tr><td><kbd>/</kbd></td><td>Command search</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>Leave the plate, close drawer or dialog</td></tr>
+</tbody></table>
+<div class="acts"><button class="btn primary" id="helpClose" type="button">Close</button></div></dialog>
+<script src="script.js"></script>
+</body>
+</html>

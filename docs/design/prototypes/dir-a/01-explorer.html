@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datasets | Vesqira (direction A prototype)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="explorer" data-default-state="ready">
+<a class="skip" href="#main">Skip to main content</a>
+<div class="proto" role="region" aria-label="Prototype chrome">
+  <span class="mockflag">ILLUSTRATIVE MOCK DATA</span>
+  <nav aria-label="Prototype state switcher"><span class="lbl">Prototype state switcher</span><a href="?state=ready" data-state="ready">Inventory</a><a href="?state=empty" data-state="empty">Empty project</a></nav>
+</div>
+<header class="topbar">
+  <a class="brand" href="01-explorer.html" aria-label="Vesqira, home"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="2" width="16" height="16"/><path d="M10 2v16M2 10h16"/><circle cx="10" cy="10" r="3.2"/></svg>Vesqira</a>
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="01-explorer.html">Projects</a><span aria-hidden="true">/</span><a class="opt" href="01-explorer.html">L1234 H I and VGT (mock)</a><span class="opt" aria-hidden="true">/</span><span aria-current="location">Datasets</span></nav>
+  <nav class="tabs" aria-label="Sections"><a href="01-explorer.html" aria-current="page">Datasets</a><a href="02-viewer.html">Viewer</a><a href="03-compare.html">Comparisons</a><a href="04-board.html">Boards</a></nav>
+  <div class="tools">
+    <div class="search"><label class="sr-only" for="cmd">Command search</label><input id="cmd" type="search" placeholder="Search or run…" autocomplete="off"><kbd aria-hidden="true">/</kbd></div>
+    <button class="btn iconbtn only-narrow" id="searchBtn" type="button" aria-label="Search" aria-expanded="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg></button>
+    <button class="btn iconbtn" id="themeBtn" type="button" aria-pressed="false" aria-label="Switch theme"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button>
+  </div>
+</header>
+<main id="main" class="page">
+<div class="pagehead">
+  <div><p class="eyebrow">Project · L1234 H I and VGT (mock)</p><h1>Datasets</h1>
+  <p class="deck" data-hide="empty">Twelve registered FITS files. Sources stay where they are: nothing here has been copied, and a path existing is not proof the bytes are unchanged.</p></div>
+  <div class="tools"><a class="btn primary" href="#register">Register existing data</a><a class="btn" href="#register">Upload managed copy</a></div>
+</div>
+
+<div class="explorer" data-hide="empty">
+<div>
+  <form class="filters" role="search" aria-label="Filter datasets" onsubmit="return false">
+    <fieldset><legend class="flab">Product type</legend><div class="grp"><button type="button" class="chip" data-facet="type" data-val="cube" aria-pressed="false">Spectral cube <span class="ct" aria-hidden="true"></span></button><button type="button" class="chip" data-facet="type" data-val="orient" aria-pressed="false">VGT orientation <span class="ct" aria-hidden="true"></span></button><button type="button" class="chip" data-facet="type" data-val="mask" aria-pressed="false">Reliability mask <span class="ct" aria-hidden="true"></span></button><button type="button" class="chip" data-facet="type" data-val="moment" aria-pressed="false">Moment map <span class="ct" aria-hidden="true"></span></button></div></fieldset>
+    <fieldset><legend class="flab">WCS status</legend><div class="grp"><button type="button" class="chip" data-facet="wcs" data-val="valid" aria-pressed="false">valid <span class="ct" aria-hidden="true"></span></button><button type="button" class="chip" data-facet="wcs" data-val="unverified" aria-pressed="false">unverified <span class="ct" aria-hidden="true"></span></button><button type="button" class="chip" data-facet="wcs" data-val="missing" aria-pressed="false">missing <span class="ct" aria-hidden="true"></span></button></div></fieldset>
+    <fieldset><legend class="flab">Source availability</legend><div class="grp"><button type="button" class="chip" data-facet="src" data-val="local" aria-pressed="false">local <span class="ct" aria-hidden="true"></span></button><button type="button" class="chip" data-facet="src" data-val="remote" aria-pressed="false">remote-available <span class="ct" aria-hidden="true"></span></button><button type="button" class="chip" data-facet="src" data-val="offline" aria-pressed="false">remote-OFFLINE <span class="ct" aria-hidden="true"></span></button></div></fieldset>
+  </form>
+  <div class="statusline"><span><span id="count" role="status" aria-live="polite">12 of 12 files shown</span> <button type="button" class="btn quiet sm" id="clear" hidden>Clear filters</button></span><div class="findbox"><label for="find">Name or path</label><input id="find" type="search" placeholder="e.g. L1234 or vgt_run_2026-10-28" autocomplete="off"></div></div>
+  <div class="tblwrap">
+  <table class="tbl" aria-label="Registered datasets">
+    <colgroup><col style="width:24%"><col style="width:10%"><col style="width:11%"><col style="width:10%"><col style="width:15%"><col style="width:12%"><col style="width:7%"><col style="width:11%"></colgroup>
+    <thead><tr><th scope="col">Dataset</th><th scope="col">Type</th><th scope="col">Axes / units</th><th scope="col">WCS</th><th scope="col">Source</th><th scope="col">Provenance</th><th scope="col" class="r">Size</th><th scope="col">Owner</th></tr></thead>
+    <tbody>
+<tr data-id="r1" data-name="MOCK_HI_cube_L1234_v2.fits" data-path="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/regrid_v2/cubes/MOCK_HI_cube_L1234_v2.fits" data-type="cube" data-wcs="valid" data-src="remote" data-src-label="remote-available" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="MOCK_HI_cube_L1234_v2.fits">MOCK_HI_cube_L1234_v2.fits</button><span class="path cut" title="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/regrid_v2/cubes/MOCK_HI_cube_L1234_v2.fits">/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/regrid_v2/cubes/MOCK_HI_cube_L1234_v2.fits</span></td>
+<td data-label="Type">Spectral cube</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC-VELO">RA-DEC-VELO</span><span class="muted cut">K · km/s</span></td>
+<td data-label="WCS"><span class="badge b-ok"><i aria-hidden="true">✓</i>valid</span></td>
+<td data-label="Source"><span class="badge b-info"><i aria-hidden="true">↗</i>remote-available</span></td>
+<td data-label="Provenance"><span class="badge b-info"><i aria-hidden="true">◆</i>declared</span></td>
+<td class="r" data-label="Size">5.1 GiB</td>
+<td data-label="Owner / modified"><span class="cut">r.owner</span><span class="muted cut">2026-10-28</span></td>
+</tr>
+<tr data-id="r2" data-name="MOCK_HI_cube_L1234_v1.fits" data-path="/data/vesqira-projects/L1234/raw/cubes/MOCK_HI_cube_L1234_v1.fits" data-type="cube" data-wcs="valid" data-src="local" data-src-label="local file" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="MOCK_HI_cube_L1234_v1.fits">MOCK_HI_cube_L1234_v1.fits</button><span class="path cut" title="/data/vesqira-projects/L1234/raw/cubes/MOCK_HI_cube_L1234_v1.fits">/data/vesqira-projects/L1234/raw/cubes/MOCK_HI_cube_L1234_v1.fits</span></td>
+<td data-label="Type">Spectral cube</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC-VELO">RA-DEC-VELO</span><span class="muted cut">K · km/s</span></td>
+<td data-label="WCS"><span class="badge b-ok"><i aria-hidden="true">✓</i>valid</span></td>
+<td data-label="Source"><span class="badge b-neutral"><i aria-hidden="true">●</i>local</span></td>
+<td data-label="Provenance"><span class="badge b-ok"><i aria-hidden="true">✓</i>verified</span></td>
+<td class="r" data-label="Size">4.8 GiB</td>
+<td data-label="Owner / modified"><span class="cut">r.owner</span><span class="muted cut">2026-09-14</span></td>
+</tr>
+<tr data-id="r3" data-name="vgt_baseline_axial_theta.fits" data-path="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/baseline/vgt_baseline_axial_theta.fits" data-type="orient" data-wcs="valid" data-src="remote" data-src-label="remote-available" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="vgt_baseline_axial_theta.fits">vgt_baseline_axial_theta.fits</button><span class="path cut" title="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/baseline/vgt_baseline_axial_theta.fits">/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/baseline/vgt_baseline_axial_theta.fits</span></td>
+<td data-label="Type">VGT orientation map</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC">RA-DEC</span><span class="muted cut">deg</span></td>
+<td data-label="WCS"><span class="badge b-ok"><i aria-hidden="true">✓</i>valid</span></td>
+<td data-label="Source"><span class="badge b-info"><i aria-hidden="true">↗</i>remote-available</span></td>
+<td data-label="Provenance"><span class="badge b-ok"><i aria-hidden="true">✓</i>verified</span></td>
+<td class="r" data-label="Size">8.4 MiB</td>
+<td data-label="Owner / modified"><span class="cut">r.owner</span><span class="muted cut">2026-10-28</span></td>
+</tr>
+<tr data-id="r4" data-name="vgt_candidate_axial_theta.fits" data-path="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/candidate/vgt_candidate_axial_theta.fits" data-type="orient" data-wcs="valid" data-src="remote" data-src-label="remote-available" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="vgt_candidate_axial_theta.fits">vgt_candidate_axial_theta.fits</button><span class="path cut" title="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/candidate/vgt_candidate_axial_theta.fits">/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/candidate/vgt_candidate_axial_theta.fits</span></td>
+<td data-label="Type">VGT orientation map</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC">RA-DEC</span><span class="muted cut">deg</span></td>
+<td data-label="WCS"><span class="badge b-ok"><i aria-hidden="true">✓</i>valid</span></td>
+<td data-label="Source"><span class="badge b-info"><i aria-hidden="true">↗</i>remote-available</span></td>
+<td data-label="Provenance"><span class="badge b-info"><i aria-hidden="true">◆</i>declared</span></td>
+<td class="r" data-label="Size">8.4 MiB</td>
+<td data-label="Owner / modified"><span class="cut">r.owner</span><span class="muted cut">2026-10-28</span></td>
+</tr>
+<tr data-id="r5" data-name="vgt_reliability_mask.fits" data-path="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/candidate/vgt_reliability_mask.fits" data-type="mask" data-wcs="valid" data-src="remote" data-src-label="remote-available" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="vgt_reliability_mask.fits">vgt_reliability_mask.fits</button><span class="path cut" title="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/candidate/vgt_reliability_mask.fits">/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/candidate/vgt_reliability_mask.fits</span></td>
+<td data-label="Type">Reliability mask</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC">RA-DEC</span><span class="muted cut">flag (1 = valid)</span></td>
+<td data-label="WCS"><span class="badge b-ok"><i aria-hidden="true">✓</i>valid</span></td>
+<td data-label="Source"><span class="badge b-info"><i aria-hidden="true">↗</i>remote-available</span></td>
+<td data-label="Provenance"><span class="badge b-warn b-dash"><i aria-hidden="true">≈</i>inferred</span></td>
+<td class="r" data-label="Size">2.1 MiB</td>
+<td data-label="Owner / modified"><span class="cut">r.owner</span><span class="muted cut">2026-10-28</span></td>
+</tr>
+<tr data-id="r6" data-name="MOCK_HI_mom0_L1234_v2.fits" data-path="/data/vesqira-projects/L1234/derived/moments/MOCK_HI_mom0_L1234_v2.fits" data-type="moment" data-wcs="valid" data-src="local" data-src-label="local file" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="MOCK_HI_mom0_L1234_v2.fits">MOCK_HI_mom0_L1234_v2.fits</button><span class="path cut" title="/data/vesqira-projects/L1234/derived/moments/MOCK_HI_mom0_L1234_v2.fits">/data/vesqira-projects/L1234/derived/moments/MOCK_HI_mom0_L1234_v2.fits</span></td>
+<td data-label="Type">Moment map</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC">RA-DEC</span><span class="muted cut">K km/s</span></td>
+<td data-label="WCS"><span class="badge b-ok"><i aria-hidden="true">✓</i>valid</span></td>
+<td data-label="Source"><span class="badge b-neutral"><i aria-hidden="true">●</i>local</span></td>
+<td data-label="Provenance"><span class="badge b-warn b-dash"><i aria-hidden="true">≈</i>inferred</span></td>
+<td class="r" data-label="Size">21.5 MiB</td>
+<td data-label="Owner / modified"><span class="cut">r.owner</span><span class="muted cut">2026-10-29</span></td>
+</tr>
+<tr data-id="r7" data-name="MOCK_HI_cube_L1301_nowcs.fits" data-path="/data/vesqira-projects/L1301/incoming/2026-10/cubes/MOCK_HI_cube_L1301_nowcs.fits" data-type="cube" data-wcs="missing" data-src="local" data-src-label="local file" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="MOCK_HI_cube_L1301_nowcs.fits">MOCK_HI_cube_L1301_nowcs.fits</button><span class="path cut" title="/data/vesqira-projects/L1301/incoming/2026-10/cubes/MOCK_HI_cube_L1301_nowcs.fits">/data/vesqira-projects/L1301/incoming/2026-10/cubes/MOCK_HI_cube_L1301_nowcs.fits</span></td>
+<td data-label="Type">Spectral cube</td>
+<td data-label="Axes / units"><span class="cut" title="X-Y-CHAN (no WCS)">X-Y-CHAN (no WCS)</span><span class="muted cut">K</span></td>
+<td data-label="WCS"><span class="badge b-bad"><i aria-hidden="true">✕</i>missing</span></td>
+<td data-label="Source"><span class="badge b-neutral"><i aria-hidden="true">●</i>local</span></td>
+<td data-label="Provenance"><span class="badge b-bad b-dash"><i aria-hidden="true">?</i>unresolved</span></td>
+<td class="r" data-label="Size">1.2 GiB</td>
+<td data-label="Owner / modified"><span class="cut">k.collab</span><span class="muted cut">2026-10-30</span></td>
+</tr>
+<tr data-id="r8" data-name="MOCK_HI_cube_L0990_archive_v3.fits" data-path="/mnt/archive-mirror-b/hi-survey-mock/L0990/final/v3/cubes/MOCK_HI_cube_L0990_archive_v3.fits" data-type="cube" data-wcs="unverified" data-src="offline" data-src-label="remote-OFFLINE (last seen 2026-10-12)" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="MOCK_HI_cube_L0990_archive_v3.fits">MOCK_HI_cube_L0990_archive_v3.fits</button><span class="path cut" title="/mnt/archive-mirror-b/hi-survey-mock/L0990/final/v3/cubes/MOCK_HI_cube_L0990_archive_v3.fits">/mnt/archive-mirror-b/hi-survey-mock/L0990/final/v3/cubes/MOCK_HI_cube_L0990_archive_v3.fits</span></td>
+<td data-label="Type">Spectral cube</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC-VELO (cached)">RA-DEC-VELO (cached)</span><span class="muted cut">K · km/s</span></td>
+<td data-label="WCS"><span class="badge b-warn b-dash"><i aria-hidden="true">?</i>unverified</span></td>
+<td data-label="Source"><span class="badge b-bad"><i aria-hidden="true">✕</i>remote-OFFLINE</span></td>
+<td data-label="Provenance"><span class="badge b-info"><i aria-hidden="true">◆</i>declared</span></td>
+<td class="r" data-label="Size">11.4 GiB</td>
+<td data-label="Owner / modified"><span class="cut">k.collab</span><span class="muted cut">2026-08-02</span></td>
+</tr>
+<tr data-id="r9" data-name="MOCK_HI_cube_L1234_v2_trunc.fits" data-path="/data/vesqira-projects/L1234/scratch/failed-transfer-2026-10-27/MOCK_HI_cube_L1234_v2_trunc.fits" data-type="cube" data-wcs="unverified" data-src="local" data-src-label="local file" aria-selected="false" class="is-corrupt">
+<td class="c-name"><button type="button" class="nm cut" title="MOCK_HI_cube_L1234_v2_trunc.fits">MOCK_HI_cube_L1234_v2_trunc.fits</button><span class="path cut" title="/data/vesqira-projects/L1234/scratch/failed-transfer-2026-10-27/MOCK_HI_cube_L1234_v2_trunc.fits">/data/vesqira-projects/L1234/scratch/failed-transfer-2026-10-27/MOCK_HI_cube_L1234_v2_trunc.fits</span></td>
+<td data-label="Type">Spectral cube<br><span class="badge b-bad" style="margin-top:4px"><i aria-hidden="true">⚠</i>corrupt file</span></td>
+<td data-label="Axes / units"><span class="cut" title="unreadable">unreadable</span><span class="muted cut">K</span></td>
+<td data-label="WCS"><span class="badge b-warn b-dash"><i aria-hidden="true">?</i>unverified</span></td>
+<td data-label="Source"><span class="badge b-neutral"><i aria-hidden="true">●</i>local</span></td>
+<td data-label="Provenance"><span class="badge b-bad b-dash"><i aria-hidden="true">?</i>unresolved</span></td>
+<td class="r" data-label="Size">2.0 GiB</td>
+<td data-label="Owner / modified"><span class="cut">r.owner</span><span class="muted cut">2026-10-27</span></td>
+</tr>
+<tr data-id="r10" data-name="vgt_baseline_axial_theta.fits" data-path="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-21T09-40Z/baseline/vgt_baseline_axial_theta.fits" data-type="orient" data-wcs="valid" data-src="remote" data-src-label="remote-available" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="vgt_baseline_axial_theta.fits">vgt_baseline_axial_theta.fits</button><span class="path cut" title="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-21T09-40Z/baseline/vgt_baseline_axial_theta.fits">/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-21T09-40Z/baseline/vgt_baseline_axial_theta.fits</span></td>
+<td data-label="Type">VGT orientation map</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC">RA-DEC</span><span class="muted cut">deg</span></td>
+<td data-label="WCS"><span class="badge b-ok"><i aria-hidden="true">✓</i>valid</span></td>
+<td data-label="Source"><span class="badge b-info"><i aria-hidden="true">↗</i>remote-available</span></td>
+<td data-label="Provenance"><span class="badge b-ok"><i aria-hidden="true">✓</i>verified</span></td>
+<td class="r" data-label="Size">8.4 MiB</td>
+<td data-label="Owner / modified"><span class="cut">r.owner</span><span class="muted cut">2026-10-21</span></td>
+</tr>
+<tr data-id="r11" data-name="MOCK_HI_mom0_L1301.fits" data-path="/data/vesqira-projects/L1301/derived/MOCK_HI_mom0_L1301.fits" data-type="moment" data-wcs="unverified" data-src="local" data-src-label="local file" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="MOCK_HI_mom0_L1301.fits">MOCK_HI_mom0_L1301.fits</button><span class="path cut" title="/data/vesqira-projects/L1301/derived/MOCK_HI_mom0_L1301.fits">/data/vesqira-projects/L1301/derived/MOCK_HI_mom0_L1301.fits</span></td>
+<td data-label="Type">Moment map</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC">RA-DEC</span><span class="muted cut">K km/s</span></td>
+<td data-label="WCS"><span class="badge b-warn b-dash"><i aria-hidden="true">?</i>unverified</span></td>
+<td data-label="Source"><span class="badge b-neutral"><i aria-hidden="true">●</i>local</span></td>
+<td data-label="Provenance"><span class="badge b-info"><i aria-hidden="true">◆</i>declared</span></td>
+<td class="r" data-label="Size">6.1 MiB</td>
+<td data-label="Owner / modified"><span class="cut">k.collab</span><span class="muted cut">2026-10-30</span></td>
+</tr>
+<tr data-id="r12" data-name="vgt_axial_diff_deg.fits" data-path="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/compare/vgt_axial_diff_deg.fits" data-type="orient" data-wcs="valid" data-src="remote" data-src-label="remote-available" aria-selected="false">
+<td class="c-name"><button type="button" class="nm cut" title="vgt_axial_diff_deg.fits">vgt_axial_diff_deg.fits</button><span class="path cut" title="/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/compare/vgt_axial_diff_deg.fits">/mnt/hpc-scratch/projectX/hi-survey-mock/L1234/vgt/vgt_run_2026-10-28T14-02Z/compare/vgt_axial_diff_deg.fits</span></td>
+<td data-label="Type">VGT orientation map</td>
+<td data-label="Axes / units"><span class="cut" title="RA-DEC">RA-DEC</span><span class="muted cut">deg (0–90)</span></td>
+<td data-label="WCS"><span class="badge b-ok"><i aria-hidden="true">✓</i>valid</span></td>
+<td data-label="Source"><span class="badge b-info"><i aria-hidden="true">↗</i>remote-available</span></td>
+<td data-label="Provenance"><span class="badge b-info"><i aria-hidden="true">◆</i>declared</span></td>
+<td class="r" data-label="Size">8.4 MiB</td>
+<td data-label="Owner / modified"><span class="cut">r.owner</span><span class="muted cut">2026-10-29</span></td>
+</tr>
+
+    <tr id="nohit" class="nohit" hidden><td colspan="8">No files match these filters. <button type="button" class="btn quiet sm" id="clear2">Clear filters</button></td></tr>
+    </tbody>
+  </table></div>
+  <div class="legendline" aria-label="Provenance status words">
+    <span><span class="badge b-ok"><i aria-hidden="true">✓</i>verified</span> verified: checked by Vesqira against a recorded checksum or commit</span>
+    <span><span class="badge b-info"><i aria-hidden="true">◆</i>declared</span> declared: stated by a header or manifest, not checked</span>
+    <span><span class="badge b-warn b-dash"><i aria-hidden="true">≈</i>inferred</span> inferred: guessed from names or context</span>
+    <span><span class="badge b-bad b-dash"><i aria-hidden="true">?</i>unresolved</span> unresolved: unknown</span>
+  </div>
+</div>
+
+<aside class="explorer__margin" aria-label="Selected dataset" id="detail">
+  <section class="note-sec">
+    <h2 class="sec-h">Selected file</h2>
+    <p class="big" style="font:500 20px/1.25 var(--serif);overflow-wrap:anywhere" id="dName"></p>
+    <p class="mono small muted" style="overflow-wrap:anywhere;margin-top:8px" id="dPath"></p>
+  </section>
+  <section class="note-sec">
+    <h2 class="sec-h">Header summary</h2>
+    <dl class="kv"><dt>Source</dt><dd id="dSrc"></dd><dt>Shape</dt><dd id="dDims"></dd><dt>Axes</dt><dd id="dAx"></dd><dt>Units</dt><dd id="dUn"></dd></dl>
+  </section>
+  <section class="note-sec">
+    <h2 class="sec-h">Notices</h2>
+    <ul class="warnlist" id="dWarn"></ul><p class="small muted" id="dNone" hidden>None recorded. This is not a scientific validation.</p>
+  </section>
+  <section class="note-sec"><a class="btn primary" id="dOpen" href="02-viewer.html">Open in viewer</a></section>
+</aside>
+</div>
+
+<section class="empty" id="register" data-only="empty" aria-labelledby="eh">
+  <p class="eyebrow">Project · L1234 H I and VGT (mock)</p>
+  <h2 id="eh">No datasets in this project yet</h2>
+  <p class="deck" style="margin:0">Vesqira can refer to FITS files where they already live, or keep a managed copy. Nothing is read until you choose, and no file is changed either way.</p>
+  <ol>
+    <li><b>Register existing data.</b> Give a path on this machine or an approved remote source. Vesqira reads the header, reports axes, units and WCS status, and shows a first plane without downloading the whole cube.</li>
+    <li><b>Review the notices.</b> Missing WCS, unknown spectral reference or a corrupt file are listed before you open anything.</li>
+    <li><b>Open it in the viewer</b>, or pin it to a board for a supervisor.</li>
+  </ol>
+  <div class="acts"><button class="btn primary" type="button">Register existing data</button><button class="btn" type="button">Upload managed copy</button><button class="btn quiet" type="button">What does remote-available mean?</button></div>
+  <p class="small muted">Remote sources that are temporarily unreachable appear in the list as <span class="badge b-bad"><i aria-hidden="true">✕</i>remote-OFFLINE</span> with their last known header, never as missing files.</p>
+</section>
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>

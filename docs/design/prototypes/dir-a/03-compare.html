@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comparisons | Vesqira (direction A prototype)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="compare" data-default-state="ready">
+<a class="skip" href="#main">Skip to main content</a>
+<div class="proto" role="region" aria-label="Prototype chrome">
+  <span class="mockflag">ILLUSTRATIVE MOCK DATA</span>
+  <nav aria-label="Prototype state switcher"><span class="lbl">Prototype state switcher</span><a href="?state=ready" data-state="ready">Compatible grids</a><a href="?state=blocked" data-state="blocked">Blocked: WCS mismatch</a></nav>
+</div>
+<header class="topbar">
+  <a class="brand" href="01-explorer.html" aria-label="Vesqira, home"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="2" width="16" height="16"/><path d="M10 2v16M2 10h16"/><circle cx="10" cy="10" r="3.2"/></svg>Vesqira</a>
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="01-explorer.html">Projects</a><span aria-hidden="true">/</span><a class="opt" href="01-explorer.html">L1234 H I and VGT (mock)</a><span class="opt" aria-hidden="true">/</span><span aria-current="location">Baseline vs candidate</span></nav>
+  <nav class="tabs" aria-label="Sections"><a href="01-explorer.html">Datasets</a><a href="02-viewer.html">Viewer</a><a href="03-compare.html" aria-current="page">Comparisons</a><a href="04-board.html">Boards</a></nav>
+  <div class="tools">
+    <div class="search"><label class="sr-only" for="cmd">Command search</label><input id="cmd" type="search" placeholder="Search or run…" autocomplete="off"><kbd aria-hidden="true">/</kbd></div>
+    <button class="btn iconbtn only-narrow" id="searchBtn" type="button" aria-label="Search" aria-expanded="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg></button>
+    <button class="btn iconbtn" id="themeBtn" type="button" aria-pressed="false" aria-label="Switch theme"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 1 0 14z" fill="currentColor"/></svg></button>
+  </div>
+</header>
+<main id="main" class="page">
+<div class="pagehead">
+  <div><p class="eyebrow">Comparison · VGT axial orientation · run 2026-10-28T14-02Z</p><h1>Baseline and candidate method, field L1234</h1>
+  <p class="deck">Two orientation maps of the same field, drawn at the same view transform. Compatibility is checked before any number is shown.</p></div>
+  <div class="tools"><button class="btn" type="button" data-hide="blocked">Pin to board</button><button class="btn" type="button" data-only="blocked" disabled aria-disabled="true" title="Withheld until grids are compatible">Pin to board (withheld)</button></div>
+</div>
+
+<div data-only="blocked">
+<div class="banner bad" role="alert"><span class="ico" aria-hidden="true">✕</span><div><strong>Numeric comparison withheld: the WCS grids are not compatible</strong>
+<p>Baseline grid is 512 × 512 at 16.0″ per pixel; candidate grid is 340 × 340 at 24.0″ per pixel with a different reference position (both declared in headers). Differencing them pixel by pixel would pair different sky positions, so no difference map, median or percentile is computed.</p>
+<div class="acts"><button class="btn sm primary" id="resampleBtn" type="button">Resample with stated policy…</button><button class="btn sm" type="button">Open both headers</button></div></div></div>
+<section id="policy" hidden class="note-sec" style="margin-bottom:24px" aria-labelledby="ph"><h2 class="sec-h" id="ph">Resampling policy (proposal, nothing has run)</h2>
+<dl class="kv"><dt>Target grid</dt><dd>baseline (512 × 512, 16.0″ per pixel)</dd><dt>Quantity resampled</dt><dd>doubled-angle components cos 2θ and sin 2θ, then θ = ½ atan2; never θ itself, because 0° and 180° are the same orientation</dd><dt>Interpolation</dt><dd>bilinear on the components; invalid pixels excluded, not set to 0</dd><dt>Not done</dt><dd>beam or resolution matching: the candidate stays coarser than the target and this is stated on the result</dd><dt>Result</dt><dd>stored as a derived product with this policy recorded; both originals unchanged</dd></dl>
+<div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary sm" type="button">Preview resampled candidate</button><button class="btn sm" type="button">Cancel</button></div></section>
+</div>
+
+<p class="small linknote" data-hide="blocked" style="margin-bottom:12px"><b>Linked view:</b> A, B and C share one pan and zoom (1.0×, centre 256, 256 px). Hover any map to mark the same pixel in all three.</p>
+<p class="small linknote" data-only="blocked" style="margin-bottom:12px;color:var(--bad)"><b>Linking off:</b> the grids differ, so the same pixel is not the same sky position. Each map keeps its own coordinates.</p>
+<div class="trio">
+  <figure><figcaption>A · Baseline <small>θ, axial, 0–180°</small></figcaption><figure class="plate compact" data-plate data-mode="sky" data-n="512" data-cdelt="0.0044444" data-ra0="187.5" data-dec0="12" data-ticks="4">
+<div class="plate__y" aria-hidden="true"></div>
+<div class="plate__frame" data-link tabindex="0" role="img" aria-label="Baseline axial orientation map, synthetic, with hatching on invalid pixels">
+<img class="layer" src="../_shared/assets/vgt_baseline_axial.png" alt=""><div class="layer" data-hatch></div><div class="xhair" aria-hidden="true" hidden></div></div>
+<div class="plate__x" aria-hidden="true"></div></figure>
+  <p class="plate__cap xs"><span>Grid 512 × 512 · 16.0″ per px (declared)</span></p></figure>
+  <figure><figcaption>B · Candidate <small>θ, axial, 0–180°</small></figcaption><figure class="plate compact" data-plate data-mode="sky" data-n="512" data-cdelt="0.0044444" data-ra0="187.5" data-dec0="12" data-ticks="4" data-blocked-cdelt="0.0066667" data-blocked-ra0="187.62">
+<div class="plate__y" aria-hidden="true"></div>
+<div class="plate__frame" data-link tabindex="0" role="img" aria-label="Candidate axial orientation map, synthetic, with hatching on invalid pixels">
+<img class="layer" src="../_shared/assets/vgt_candidate_axial.png" alt=""><div class="layer" data-hatch></div><div class="xhair" aria-hidden="true" hidden></div></div>
+<div class="plate__x" aria-hidden="true"></div></figure>
+  <p class="plate__cap xs"><span data-hide="blocked">Grid 512 × 512 · 16.0″ per px (declared)</span><span data-only="blocked" style="color:var(--bad);font-weight:600">Grid 340 × 340 · 24.0″ per px (declared): differs</span></p></figure>
+  <figure><figcaption>C · Difference <small>|Δθ| smallest axial angle, 0–90°</small></figcaption>
+  <div data-hide="blocked"><figure class="plate compact" data-plate data-mode="sky" data-n="512" data-cdelt="0.0044444" data-ra0="187.5" data-dec0="12" data-ticks="4">
+<div class="plate__y" aria-hidden="true"></div>
+<div class="plate__frame" data-link tabindex="0" role="img" aria-label="Difference map of the smallest axial angle, 0 to 90 degrees, synthetic; black where not comparable">
+<img class="layer" src="../_shared/assets/vgt_axial_diff.png" alt=""><div class="layer" data-hatch></div><div class="xhair" aria-hidden="true" hidden></div></div>
+<div class="plate__x" aria-hidden="true"></div></figure><p class="plate__cap xs"><span>Black: not comparable (invalid in either map)</span></p></div>
+  <div class="withheld" data-only="blocked" role="status"><strong>Difference map withheld</strong><p>Reason: the two maps are on different WCS grids. No numbers are drawn here, not even approximate ones.</p><p class="small">Offer: resample the candidate onto the baseline grid with an explicit policy, then compare.</p></div></figure>
+</div>
+
+<div class="legendrow">
+  <div class="span2"><h2 class="sec-h">Axial orientation (A, B), cyclic</h2>
+    <img src="../_shared/assets/axial_legend.png" alt="Cyclic colour bar for axial orientation from 0 degrees through 90 degrees to 180 degrees; the end colours are identical">
+    <div class="small" style="display:flex;justify-content:space-between;max-width:361px;margin-top:2px"><span>0°</span><span>90°</span><span>180° ≡ 0°</span></div>
+    <p class="small muted" style="margin-top:4px">The colour wraps: 0° and 180° are the same orientation. Zero reference follows the run manifest (unverified, see checklist).</p>
+    <p class="small" style="margin-top:8px"><span class="swatch" aria-hidden="true"></span><b>Hatched and dimmed</b> = invalid or low-reliability pixel (reliability mask). The hatching is the cue; colour is not needed to find it.</p></div>
+  <div data-hide="blocked"><h2 class="sec-h">Difference (C), 0–90°</h2><div class="cbar"><img src="../_shared/assets/bar_cividis.png" alt="Sequential colour bar for the difference, 0 to 90 degrees" style="max-width:361px"><div class="ends" style="max-width:361px"><span>0°</span><span>45°</span><span>90°</span></div></div><p class="small muted" style="margin-top:4px">Sequential, not cyclic: the smallest angle between two axial orientations cannot exceed 90°.</p></div>
+</div>
+
+<div class="cols3">
+<section aria-labelledby="h-chk"><h2 class="sec-h" id="h-chk">Comparability checklist</h2>
+<ul class="check" data-hide="blocked">
+<li><span class="badge b-ok">✓ pass</span><div>Same WCS grid<small>CTYPE, CRVAL, CRPIX, CDELT and NAXIS identical in both headers (declared).</small></div></li><li><span class="badge b-ok">✓ pass</span><div>Units<small>BUNIT deg in both; θ in [0°, 180°).</small></div></li><li><span class="badge b-warn b-dash">? unverified</span><div>Resolution and beam<small>Candidate has no BMAJ/BMIN, so effective resolution is not stated.</small></div></li><li><span class="badge b-ok">✓ pass</span><div>Validity masks<small>Both use S/N ≥ 3, declared in the run configs.</small></div></li><li><span class="badge b-warn b-dash">? unverified</span><div>Orientation zero reference<small>Baseline manifest names it; candidate manifest does not.</small></div></li>
+</ul>
+<ul class="check" data-only="blocked">
+<li><span class="badge b-bad">✕ fail</span><div>Same WCS grid<small>16.0″ vs 24.0″ per pixel; 512 vs 340 pixels; reference position offset by 0.12° (declared).</small></div></li><li><span class="badge b-ok">✓ pass</span><div>Units<small>BUNIT deg in both; θ in [0°, 180°).</small></div></li><li><span class="badge b-warn b-dash">? unverified</span><div>Resolution and beam<small>Pixel scale differs; beams not stated, so matching is not evaluated.</small></div></li><li><span class="badge b-warn b-dash">? unverified</span><div>Validity masks<small>Candidate mask is on its own grid; overlap cannot be computed.</small></div></li><li><span class="badge b-warn b-dash">? unverified</span><div>Orientation zero reference<small>Candidate manifest does not name it.</small></div></li>
+</ul></section>
+
+<section aria-labelledby="h-sum"><h2 class="sec-h" id="h-sum">Quantitative summary <span class="muted" style="text-transform:none;letter-spacing:0">mock values</span></h2>
+<div data-hide="blocked">
+<div class="stat"><span>Median axial difference</span><span><b>6.51</b><span class="u">°</span></span></div>
+<div class="stat"><span>90th percentile</span><span><b>15.56</b><span class="u">°</span></span></div>
+<div class="stat"><span>Valid fraction (valid in both maps)</span><span><b>0.81</b><span class="u"> (81 %)</span></span></div>
+</div>
+<div data-only="blocked"><div class="stat"><span>Median axial difference</span><span><b>—</b></span></div><div class="stat"><span>90th percentile</span><span><b>—</b></span></div><div class="stat"><span>Valid fraction</span><span><b>—</b></span></div>
+<p class="small" style="margin-top:8px"><b>Withheld:</b> grids differ (see checklist). A missing value here is not zero.</p></div>
+<p class="small" style="margin-top:12px"><b>Axial statistics (doubled-angle); arithmetic mean is invalid.</b> Angles are axial (θ ≡ θ + 180°). Differences are the smallest axial angle, <span style="white-space:nowrap">|Δθ| ∈ [0°, 90°]</span>, and any mean orientation is taken in doubled-angle form. The arithmetic mean of 1° and 179° is 90°, yet they are 2° apart across the wrap.</p>
+<p class="xs muted" style="margin-top:8px">Fixture observed in the mock stats file: axial mean of {1°, 179°} = 2.1×10<sup>-15</sup>° (0° to rounding). Not a scientific validation of the method.</p></section>
+
+<section aria-labelledby="h-prov"><h2 class="sec-h" id="h-prov">Method provenance</h2>
+<h3 class="small" style="font-weight:600;margin:12px 0 0">Baseline method</h3><ul class="prov"><li><span>Code commit</span><span class="badge b-ok"><i aria-hidden="true">✓</i>verified</span><span class="mono">1f3a9c0e7b24d5a8c6e1 (resolved in repository)</span></li><li><span>Config hash</span><span class="badge b-info"><i aria-hidden="true">◆</i>declared</span><span class="mono">sha256:7c1e4a90…b52d, from run manifest</span></li><li><span>Input cube</span><span class="badge b-ok"><i aria-hidden="true">✓</i>verified</span><span class="mono">MOCK_HI_cube_L1234_v2.fits, checksum matches manifest</span></li><li><span>Random seed</span><span class="badge b-bad b-dash"><i aria-hidden="true">?</i>unresolved</span><span class="mono">not recorded</span></li></ul><h3 class="small" style="font-weight:600;margin:12px 0 0">Candidate method</h3><ul class="prov"><li><span>Code commit</span><span class="badge b-ok"><i aria-hidden="true">✓</i>verified</span><span class="mono">8b27e41d90c3f6a1d207 (resolved in repository)</span></li><li><span>Config hash</span><span class="badge b-info"><i aria-hidden="true">◆</i>declared</span><span class="mono">sha256:e09b3f71…a4c8, from run manifest</span></li><li><span>Input cube</span><span class="badge b-warn b-dash"><i aria-hidden="true">≈</i>inferred</span><span class="mono">matched by filename only</span></li><li><span>Random seed</span><span class="badge b-bad b-dash"><i aria-hidden="true">?</i>unresolved</span><span class="mono">not recorded</span></li></ul>
+<p class="xs muted" style="margin-top:12px">Words: verified = checked by Vesqira; declared = stated by a manifest or header; inferred = guessed from context; unresolved = unknown. Hashes below are fictional.</p></section>
+</div>
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>
