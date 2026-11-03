@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research board and review · Vesqira (Direction C prototype)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="board">
+<a class="skip" href="#work">Skip to board</a>
+<div class="mockstrip" role="note">ILLUSTRATIVE MOCK DATA<span class="x"> · synthetic imagery · fictional paths, hashes and numbers</span></div>
+<header class="tabbar">
+  <div class="brand"><span>V</span>Vesqira</div>
+  <nav aria-label="Open workspaces"><ul class="tabs">
+    <li><a href="01-explorer.html"><span class="ic" aria-hidden="true">▤</span><span class="t">Datasets</span></a></li>
+    <li class="ownonly"><a href="02-viewer.html"><span class="ic" aria-hidden="true">◫</span><span class="t">Viewer · MOCK_HI_cube_L1234_v2</span></a></li>
+    <li class="ownonly"><a href="03-compare.html"><span class="ic" aria-hidden="true">⇄</span><span class="t">Compare · B ⇄ C</span></a></li>
+    <li><a href="04-board.html" aria-current="page"><span class="ic" aria-hidden="true">▦</span><span class="t" id="tab-board-name">Board · Orion HI draft</span></a></li>
+  </ul></nav>
+  <div class="tabbar-actions"><button class="btn" id="drawer-toggle" type="button" aria-controls="drawer" aria-expanded="false">Ledger <kbd>[</kbd></button><button class="btn" id="theme-toggle" type="button" aria-pressed="false"><span class="lbl">Light</span><span class="sr-only"> theme, toggle</span></button></div>
+</header>
+<div class="shell" data-drawer="hidden">
+<aside class="drawer" id="drawer" aria-label="Ledger drawer">
+  <div class="drawer-head"><h2 id="drawer-title">Project ledger</h2><button class="btn" id="drawer-pin" type="button" aria-pressed="true">Unpin</button><button class="btn icon" id="drawer-close" type="button" aria-label="Close ledger" hidden>✕</button></div>
+  <div class="ledger-tools"><label class="sr-only" for="lg-filter">Filter ledger rows</label><input id="lg-filter" class="field" type="search" placeholder="Filter ( / )" autocomplete="off" style="flex:1 1 100%">
+    <label class="sr-only" for="lg-type">Type</label><select id="lg-type" class="field"><option value="all">All types</option><option>HI cube</option><option>VGT run</option><option>Figure</option></select>
+    <label class="sr-only" for="lg-sort">Sort</label><select id="lg-sort" class="field"></select></div>
+  <div class="ledger-scroll"><table class="ledger compact" id="drawer-table" aria-label="Ledger rows"></table></div>
+  <div class="drawer-foot"><span id="lg-status" role="status" aria-live="polite"></span><br><span class="ownonly">Owner view: whole project.</span><span class="revonly">Reviewer view: published previews only. Raw data, HPC and credentials are not listed.</span></div>
+</aside>
+<div class="scrim"></div>
+<main class="work" id="work" tabindex="-1">
+  <div class="cmp-head">
+    <h1>Orion HI · baseline vs candidate <span class="muted" style="font-weight:400">· research board</span></h1>
+    <span style="flex:1"></span>
+    <span class="muted" style="font-size:12px" id="role-lab">View as</span>
+    <div class="seg" id="role-seg" role="group" aria-labelledby="role-lab"><button type="button" data-role="owner" aria-pressed="true">Owner</button><button type="button" data-role="reviewer" aria-pressed="false">Reviewer</button></div>
+  </div>
+  <div class="board-grid" id="board-body">
+    <div class="board-main">
+      <div class="scope revonly" hidden role="note"><b>You can see:</b> 3 published previews (pinned, read-only). <b>You cannot see:</b> raw FITS, HPC, credentials, other project items. Review link expires <b>2026-11-18</b> (14 days). It shows pinned rev 7; later revisions are not visible to you.</div>
+      <div class="banner warn ownonly"><span><b>Newer revision available:</b> source run <span class="mono">vgt_run_2026-10-30T09-41Z</span> has rev 8 (unpublished). The review still shows <b>pinned rev 7</b>.</span><button class="btn" type="button">Compare rev 7 → 8</button><button class="btn" type="button" aria-disabled="true" disabled>Update pin and republish</button></div>
+      <section class="card ownonly" aria-labelledby="h-order"><h2 id="h-order">Board order</h2>
+        <div class="ledger-scroll"><table class="ledger" id="board-table" aria-label="Figures on the board, in order">
+          <colgroup><col style="width:36px"><col><col style="width:100px" class="pri2"><col style="width:260px"><col style="width:72px"><col style="width:120px" class="pri3"></colgroup>
+          <thead><tr><th scope="col" class="num" style="padding:0 8px">#</th><th scope="col" style="padding:0 8px">Figure</th><th scope="col" class="pri2" style="padding:0 8px">Source</th><th scope="col" style="padding:0 8px">Revision</th><th scope="col" class="num" style="padding:0 8px">Notes</th><th scope="col" class="pri3" style="padding:0 8px">Review</th></tr></thead>
+          <tbody>
+            <tr data-panel="a" aria-selected="false" tabindex="0"><td class="num">1</td><td class="name"><span class="nm">fig_baseline_vs_candidate</span><span class="pth" style="direction:ltr;font-family:var(--font)">3 panels · axial orientation, difference</span></td><td class="pri2"><span class="mono">r1 + r2</span></td><td><span class="chip ok"><i aria-hidden="true">●</i>pinned rev 7</span> <span class="chip warn"><i aria-hidden="true">▲</i>rev 8 available</span></td><td class="num">3</td><td class="pri3">published</td></tr>
+            <tr data-panel="b" aria-selected="false" tabindex="-1"><td class="num">2</td><td class="name"><span class="nm">fig_axial_difference</span><span class="pth" style="direction:ltr;font-family:var(--font)">1 panel · smallest axial angle</span></td><td class="pri2"><span class="mono">r1 + r2</span></td><td><span class="chip ok"><i aria-hidden="true">●</i>pinned rev 3</span> <span class="chip neutral">current</span></td><td class="num">1</td><td class="pri3">published</td></tr>
+            <tr data-panel="c" aria-selected="false" tabindex="-1"><td class="num">3</td><td class="name"><span class="nm">fig_channel_maps</span><span class="pth" style="direction:ltr;font-family:var(--font)">5 panels · HI channel maps</span></td><td class="pri2"><span class="mono">c1</span></td><td><span class="chip ok"><i aria-hidden="true">●</i>pinned rev 2</span> <span class="chip neutral">current</span></td><td class="num">0</td><td class="pri3">published</td></tr>
+          </tbody></table></div></section>
+      <div id="comp-wrap">
+        <h2 class="sr-only">Composition preview</h2>
+        <article class="comp" aria-label="Composition preview of figure 1">
+          <h2>Figure 1 · Axial orientation, baseline vs candidate (synthetic illustration)</h2>
+          <div class="cp">
+            <figure data-panel="a"><div class="pimg"><img src="../_shared/assets/vgt_baseline_axial.png" alt="Panel A: baseline axial orientation map, hue encodes 0 to 180 degrees; flat dark areas are invalid pixels."><button class="pin" data-n="1" style="left:8px;top:8px" type="button" aria-pressed="false" aria-label="Comment 1 on panel A">1</button></div>
+              <figcaption><b>A</b> Baseline. Axial angle (deg), 0°≡180°.<span class="src">source: run r1 · pinned rev 7</span></figcaption></figure>
+            <figure data-panel="a"><div class="pimg"><img src="../_shared/assets/vgt_candidate_axial.png" alt="Panel B: candidate axial orientation map on the same hue scale; flat dark areas are invalid pixels."><button class="pin" data-n="2" style="left:8px;top:8px" type="button" aria-pressed="false" aria-label="Comment 2 on panel B">2</button></div>
+              <figcaption><b>B</b> Candidate. Axial angle (deg), 0°≡180°.<span class="src">source: run r2 · pinned rev 7</span></figcaption></figure>
+            <figure data-panel="b"><div class="pimg"><img src="../_shared/assets/vgt_axial_diff.png" alt="Panel C: smallest axial angle between A and B, 0 to 90 degrees; flat dark areas are masked, no value."><button class="pin" data-n="3" style="left:8px;top:8px" type="button" aria-pressed="false" aria-label="Comment 3 on panel C">3</button></div>
+              <figcaption><b>C</b> Δ smallest axial angle (deg, 0–90). Masked pixels carry no value.<span class="src">source: r1 vs r2 · pinned rev 7 (fig. rev 3)</span></figcaption></figure>
+          </div>
+          <p style="margin:12px 0 0;font-size:12px;color:#1b2430">Caption: Axial orientation from two VGT runs on the same WCS grid; resolution match unverified. Axial statistics use the doubled-angle convention. Imagery is synthetic.</p>
+        </article>
+      </div>
+    </div>
+    <aside class="board-side" aria-label="Review panel">
+      <section class="ownonly"><h3>Review scope</h3>
+        <ul style="list-style:none;padding:0;margin:0 0 8px"><li><label><input type="checkbox" checked> 3 published previews (pinned)</label></li><li><label><input type="checkbox" disabled> Raw FITS / VGT outputs</label> <span class="muted">never shared via review</span></li><li><label><input type="checkbox" disabled> HPC sessions, credentials</label> <span class="muted">never shared</span></li></ul>
+        <p class="muted" style="margin:0 0 8px;font-size:12px">Link expires 2026-11-18 · supervisor can comment, not edit.</p><button class="btn" type="button">Copy review link</button></section>
+      <section><h3>Comments <span class="mono">3</span></h3>
+        <div class="thread" data-n="1"><div class="who">Supervisor <span>on panel A · 2026-11-03</span></div><p>Why is the lower-left region blank?</p><p class="muted" style="font-size:12px">Owner: invalid under the standard mask (reliability below 0.35); it has no value, it is not zero.</p><button class="btn anchor" type="button" style="margin-top:4px">Show anchor</button></div>
+        <div class="thread" data-n="2"><div class="who">Supervisor <span>on panel B · 2026-11-03</span></div><p>Is this run’s mask the same as A’s?</p><p class="muted" style="font-size:12px">Owner: yes, both “standard”, per run records (declared).</p><button class="btn anchor" type="button" style="margin-top:4px">Show anchor</button></div>
+        <div class="thread" data-n="3"><div class="who">Supervisor <span>on panel C · 2026-11-04</span></div><p>Does the beam being unverified change how I should read the difference?</p><button class="btn anchor" type="button" style="margin-top:4px">Show anchor</button></div>
+      </section>
+      <section class="revonly" hidden><h3>Request a comparison</h3>
+        <div class="reqform"><label for="req-t" style="font-size:12px">What would you like compared? The owner decides whether to run or publish it.</label><textarea id="req-t" placeholder="e.g. same panels using the strict-mask run"></textarea><button class="btn primary" id="req-send" type="button">Send request to owner</button><p id="req-status" role="status" class="muted" style="margin:0;font-size:12px"></p></div></section>
+      <section class="revonly" hidden><h3>Add a comment</h3><p class="muted" style="font-size:12px;margin:0">Select a numbered marker on a panel, then write. Comments stay attached to that panel of rev 7.</p></section>
+    </aside>
+  </div>
+  <div class="denied" id="denied" hidden role="alert">
+    <h1>Access denied: raw data is not part of this review</h1>
+    <p>The link you followed points to a raw FITS dataset. Review links only open the three published previews you were given.</p>
+    <p><b>Next step:</b></p>
+    <ul><li>Open a published preview from the ledger, or</li><li>ask the owner to publish a specific preview or plane for you.</li></ul>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary" href="04-board.html?role=reviewer" style="text-decoration:none">Back to published previews</a><button class="btn" type="button">Ask the owner to publish it</button></div>
+    <p class="muted" style="font-size:12px;margin-bottom:0">Reference: <span class="mono">E-REVIEW-SCOPE</span> · no file path is disclosed.</p>
+  </div>
+  <div class="statebar"><strong>Prototype state</strong><a href="04-board.html?role=owner">owner</a> · <a href="04-board.html?role=reviewer">reviewer</a> · <a href="04-board.html?role=reviewer&amp;state=denied">reviewer, raw-data link denied</a></div>
+</main>
+</div>
+<script src="data.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datasets ledger · Vesqira (Direction C prototype)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="explorer">
+<a class="skip" href="#work">Skip to ledger</a>
+<div class="mockstrip" role="note">ILLUSTRATIVE MOCK DATA<span class="x"> · synthetic imagery · fictional paths, hashes and numbers</span></div>
+<header class="tabbar">
+  <div class="brand"><span>V</span>Vesqira</div>
+  <nav aria-label="Open workspaces"><ul class="tabs">
+    <li><a href="01-explorer.html" aria-current="page"><span class="ic" aria-hidden="true">▤</span><span class="t">Datasets</span></a></li>
+    <li><a href="02-viewer.html"><span class="ic" aria-hidden="true">◫</span><span class="t">Viewer · MOCK_HI_cube_L1234_v2</span></a></li>
+    <li><a href="03-compare.html"><span class="ic" aria-hidden="true">⇄</span><span class="t">Compare · B ⇄ C</span></a></li>
+    <li><a href="04-board.html"><span class="ic" aria-hidden="true">▦</span><span class="t">Board · Orion HI draft</span></a></li>
+  </ul></nav>
+  <div class="tabbar-actions"><button class="btn" id="theme-toggle" type="button" aria-pressed="false"><span class="lbl">Light</span><span class="sr-only"> theme, toggle</span></button></div>
+</header>
+<div class="shell" data-drawer="hidden">
+<main class="work" id="work" tabindex="-1">
+  <div class="l-head">
+    <h1>Datasets &amp; runs <span class="muted" style="font-weight:400">· project MOCK-Orion-HI</span></h1>
+    <span class="muted" id="lg-count" aria-hidden="true"></span>
+    <button class="btn" type="button">Register files…</button>
+  </div>
+  <div class="l-tools" role="search" aria-label="Ledger controls">
+    <div class="search"><label class="sr-only" for="lg-filter">Filter rows</label><input id="lg-filter" class="field" type="search" placeholder="Filter rows" autocomplete="off"><kbd aria-hidden="true">/</kbd></div>
+    <label class="sr-only" for="lg-type">Type filter</label>
+    <select id="lg-type" class="field"><option value="all">All types</option><option>HI cube</option><option>Moment map</option><option>Mask</option><option>VGT run</option><option>Figure</option></select>
+    <label class="sr-only" for="lg-sort">Sort by</label>
+    <select id="lg-sort" class="field mobile-sort" aria-label="Sort by"></select>
+    <div class="views" id="lg-views" role="group" aria-label="Saved views"></div>
+    <div class="colmenu" style="margin-left:auto"><button class="btn" id="lg-cols" type="button" aria-expanded="false" aria-controls="colpop">Columns</button><div class="pop" id="colpop" hidden></div></div>
+  </div>
+  <div class="banner info" id="runs-note" hidden></div>
+  <div class="l-split">
+    <div class="ledger-scroll" id="lg-scroll"><table class="ledger" id="lg-table" aria-label="Datasets and runs; use arrow keys to move between rows, Enter to open"></table></div>
+    <aside class="detail" id="detail" aria-label="Selected row detail" data-empty="1"></aside>
+  </div>
+  <div class="l-foot"><span id="lg-status" role="status" aria-live="polite"></span>
+    <span><kbd>↑</kbd><kbd>↓</kbd> rows · <kbd>Enter</kbd> open · <kbd>/</kbd> filter · <kbd>B</kbd>/<kbd>C</kbd> baseline / candidate (VGT runs)</span>
+    <span class="muted">Unknown values show as “unknown”, never 0. Provenance: ● verified ◐ declared ◇ inferred ○ unresolved</span></div>
+</main>
+</div>
+<script src="data.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

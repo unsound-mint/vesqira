@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cube viewer · Vesqira (Direction C prototype)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="viewer">
+<a class="skip" href="#work">Skip to viewer</a>
+<div class="mockstrip" role="note">ILLUSTRATIVE MOCK DATA<span class="x"> · synthetic imagery · fictional paths, hashes and numbers</span></div>
+<header class="tabbar">
+  <div class="brand"><span>V</span>Vesqira</div>
+  <nav aria-label="Open workspaces"><ul class="tabs">
+    <li><a href="01-explorer.html"><span class="ic" aria-hidden="true">▤</span><span class="t">Datasets</span></a></li>
+    <li><a href="02-viewer.html" aria-current="page"><span class="ic" aria-hidden="true">◫</span><span class="t">Viewer · <span id="tab-viewer-name">MOCK_HI_cube_L1234_v2</span></span></a></li>
+    <li><a href="03-compare.html"><span class="ic" aria-hidden="true">⇄</span><span class="t">Compare · B ⇄ C</span></a></li>
+    <li><a href="04-board.html"><span class="ic" aria-hidden="true">▦</span><span class="t">Board · Orion HI draft</span></a></li>
+  </ul></nav>
+  <div class="tabbar-actions"><button class="btn" id="drawer-toggle" type="button" aria-controls="drawer" aria-expanded="false">Ledger <kbd>[</kbd></button><button class="btn" id="theme-toggle" type="button" aria-pressed="false"><span class="lbl">Light</span><span class="sr-only"> theme, toggle</span></button></div>
+</header>
+<div class="shell" data-drawer="hidden">
+<aside class="drawer" id="drawer" aria-label="Ledger drawer">
+  <div class="drawer-head"><h2 id="drawer-title">Ledger · viewable</h2><button class="btn" id="drawer-pin" type="button" aria-pressed="true">Unpin</button><button class="btn icon" id="drawer-close" type="button" aria-label="Close ledger" hidden>✕</button></div>
+  <div class="ledger-tools"><label class="sr-only" for="lg-filter">Filter ledger rows</label><input id="lg-filter" class="field" type="search" placeholder="Filter ( / )" autocomplete="off" style="flex:1 1 100%">
+    <label class="sr-only" for="lg-type">Type</label><select id="lg-type" class="field"><option value="HI cube|Moment map|Mask">Viewable</option><option value="all">All types</option><option>HI cube</option><option>Moment map</option><option>Mask</option><option>VGT run</option><option>Figure</option></select>
+    <label class="sr-only" for="lg-sort">Sort</label><select id="lg-sort" class="field"></select></div>
+  <div class="ledger-scroll"><table class="ledger compact" id="drawer-table" aria-label="Ledger rows; arrow keys move, selection switches the viewer"></table></div>
+  <div class="drawer-foot"><span id="lg-status" role="status" aria-live="polite"></span><br><kbd>↑</kbd><kbd>↓</kbd> select · <kbd>Enter</kbd> open elsewhere · selecting a cube loads it here</div>
+</aside>
+<div class="scrim"></div>
+<main class="work" id="work" tabindex="-1">
+  <div class="toolbar" role="toolbar" aria-label="Channel stepper and tools">
+    <button class="btn icon" id="ch-first" type="button" aria-label="First channel (Home)">⇤</button>
+    <button class="btn icon" id="ch-prev" type="button" aria-label="Previous channel (Left arrow)">◀</button>
+    <label class="sr-only" for="ch-input">Channel index</label><input id="ch-input" class="field" type="number" min="0" max="240" value="120">
+    <button class="btn icon" id="ch-next" type="button" aria-label="Next channel (Right arrow)">▶</button>
+    <button class="btn icon" id="ch-last" type="button" aria-label="Last channel (End)">⇥</button>
+    <output class="vel" id="ch-vel"></output>
+    <span class="sep"></span>
+    <button class="btn" id="tool-roi" type="button" aria-pressed="false">ROI <kbd>R</kbd></button>
+    <span class="grow"></span>
+    <span class="muted desk" style="font-size:12px"><kbd>←</kbd><kbd>→</kbd> channel · <kbd>Shift</kbd> ×10 · <kbd>Alt</kbd>+arrows cursor</span>
+  </div>
+  <div class="viewer-grid">
+    <section class="pane pane-image" aria-label="Image plane">
+      <div class="banner" id="banner" hidden></div>
+      <div class="img-stage">
+        <div class="img-wrap" id="stage" tabindex="0" role="group" aria-label="Image plane. Arrow keys change channel. Alt plus arrow keys move the cursor.">
+          <img class="layer" id="plane" src="../_shared/assets/chan_+0kms.png" alt="HI brightness temperature preview">
+          <img class="layer" id="lyr-mom0" src="../_shared/assets/mom0.png" alt="" style="display:none">
+          <img class="layer" id="lyr-mask" src="../_shared/assets/vgt_invalid_mask.png" alt="" style="display:none">
+          <div class="pending" id="pending" hidden>tiles pending</div>
+          <div class="roi" id="roi"><span>ROI A</span></div>
+          <div class="xh" id="xh"></div>
+          <div class="stamp" id="stamp" hidden>CACHED PREVIEW</div>
+          <div class="scalebar" id="scalebar"><span>30′</span><i style="width:90px"></i></div>
+        </div>
+      </div>
+      <dl class="readout" aria-label="Cursor readout (mock values)">
+        <div><dt>Pixel x, y (FITS 1-based)</dt><dd class="v" id="r-px"></dd></div>
+        <div><dt>RA</dt><dd class="v" id="r-ra"></dd></div>
+        <div><dt>Dec</dt><dd class="v" id="r-dec"></dd></div>
+        <div><dt>Value</dt><dd class="v" id="r-val"></dd></div>
+        <div><dt>Mask</dt><dd class="v" id="r-mask"></dd></div>
+      </dl>
+      <div class="plane-note" id="plane-note"></div>
+      <div class="sr-only" id="sr-chan" aria-live="polite"></div>
+    </section>
+    <section class="pane pane-plot" aria-label="Linked region spectrum">
+      <div class="plot-head"><h2>Region spectrum</h2><span class="muted" id="plot-sub" style="font-size:12px"></span>
+        <div class="seg" id="plot-mode" role="group" aria-label="Spectrum presentation"><button type="button" data-m="plot" aria-pressed="true">Plot</button><button type="button" data-m="table" aria-pressed="false">Table</button></div></div>
+      <div class="plot-body"><svg id="plot" role="img" aria-label="Mock region spectrum; use the table view for values"></svg><div class="tbl-wrap" id="tbl-wrap" hidden tabindex="0" role="region" aria-label="Spectrum values table"></div></div>
+    </section>
+    <aside class="sheet" aria-label="Property sheet">
+      <button class="sheet-handle" id="sheet-toggle" type="button" aria-expanded="false" aria-controls="sheet-body"><span>Controls &amp; properties</span><span aria-hidden="true">▲</span></button>
+      <div id="sheet-body">
+      <section><h3>Dataset</h3><p class="title" id="sheet-title">MOCK_HI_cube_L1234_v2.fits</p><dl class="props" id="props"></dl></section>
+      <section><h3>World coordinates</h3><dl class="props" id="wcs-props"></dl></section>
+      <section><h3>Display <span style="text-transform:none;letter-spacing:0">(CSS approximation)</span></h3>
+        <div class="ctl"><label for="ctl-cmap">Colormap</label><select id="ctl-cmap"><option value="magma">magma (as rendered)</option><option value="gray">grayscale</option></select></div>
+        <div class="ctl"><label for="ctl-stretch">Stretch</label><select id="ctl-stretch"><option value="linear">linear</option><option value="asinh">asinh</option></select></div>
+        <div class="ctl"><label for="ctl-contrast">Contrast</label><input id="ctl-contrast" type="range" min="0" max="100" value="50"></div>
+        <div class="cbar"><img id="cbar-img" src="../_shared/assets/bar_magma.png" alt="Magma colour scale, low to high"><div><span>low</span><span id="cbar-mid">linear</span><span>high</span></div></div>
+      </section>
+      <section><h3>Layers</h3>
+        <ul class="layers">
+          <li><input type="checkbox" checked disabled aria-label="Base plane (always on)"><span>HI plane (base)</span><span class="muted">100 %</span></li>
+          <li data-layer="lyr-mom0"><input type="checkbox" id="cb-mom0" aria-label="Moment-0 layer visible"><label for="cb-mom0">Moment 0 overlay</label><input type="range" min="0" max="100" value="45" aria-label="Moment-0 opacity"></li>
+          <li data-layer="lyr-mask"><input type="checkbox" id="cb-mask" aria-label="Invalid mask layer visible"><label for="cb-mask">Invalid-pixel mask</label><input type="range" min="0" max="100" value="60" aria-label="Mask opacity"></li>
+        </ul></section>
+      <section><h3>Region of interest</h3>
+        <div class="roi-fields"><label>x0<input id="roi-x0" type="number" min="1" max="512" value="180"></label><label>y0<input id="roi-y0" type="number" min="1" max="512" value="150"></label><label>x1<input id="roi-x1" type="number" min="1" max="512" value="300"></label><label>y1<input id="roi-y1" type="number" min="1" max="512" value="250"></label></div>
+        <p class="muted" style="font-size:12px;margin:8px 0 0">Pixel box, FITS 1-based. Typing here is the keyboard alternative to dragging.</p></section>
+      </div>
+    </aside>
+  </div>
+  <div class="statebar"><label for="state-sel"><strong>Prototype state switcher</strong></label>
+    <select id="state-sel"><option value="default">default</option><option value="loading">loading</option><option value="error">error (partial range failed)</option><option value="no-wcs">no-wcs</option><option value="no-spectral">no-spectral</option></select>
+    <span>also via <code>?state=…</code></span></div>
+</main>
+</div>
+<script src="data.js"></script>
+<script src="spectrum-data.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

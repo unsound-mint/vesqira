@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VGT comparison · Vesqira (Direction C prototype)</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="compare">
+<a class="skip" href="#work">Skip to comparison</a>
+<div class="mockstrip" role="note">ILLUSTRATIVE MOCK DATA<span class="x"> · synthetic imagery · fictional paths, hashes and numbers</span></div>
+<header class="tabbar">
+  <div class="brand"><span>V</span>Vesqira</div>
+  <nav aria-label="Open workspaces"><ul class="tabs">
+    <li><a href="01-explorer.html"><span class="ic" aria-hidden="true">▤</span><span class="t">Datasets</span></a></li>
+    <li><a href="02-viewer.html"><span class="ic" aria-hidden="true">◫</span><span class="t">Viewer · MOCK_HI_cube_L1234_v2</span></a></li>
+    <li><a href="03-compare.html" aria-current="page"><span class="ic" aria-hidden="true">⇄</span><span class="t">Compare · <span id="tab-cmp-name">B ⇄ C</span></span></a></li>
+    <li><a href="04-board.html"><span class="ic" aria-hidden="true">▦</span><span class="t">Board · Orion HI draft</span></a></li>
+  </ul></nav>
+  <div class="tabbar-actions"><button class="btn" id="drawer-toggle" type="button" aria-controls="drawer" aria-expanded="false">Ledger <kbd>[</kbd></button><button class="btn" id="theme-toggle" type="button" aria-pressed="false"><span class="lbl">Light</span><span class="sr-only"> theme, toggle</span></button></div>
+</header>
+<div class="shell" data-drawer="hidden">
+<aside class="drawer" id="drawer" aria-label="Ledger drawer">
+  <div class="drawer-head"><h2 id="drawer-title">Ledger · VGT runs</h2><button class="btn" id="drawer-pin" type="button" aria-pressed="true">Unpin</button><button class="btn icon" id="drawer-close" type="button" aria-label="Close ledger" hidden>✕</button></div>
+  <div class="ledger-tools"><label class="sr-only" for="lg-filter">Filter ledger rows</label><input id="lg-filter" class="field" type="search" placeholder="Filter ( / )" autocomplete="off" style="flex:1 1 100%">
+    <label class="sr-only" for="lg-type">Type</label><select id="lg-type" class="field"><option value="VGT run">VGT runs</option><option value="all">All types</option><option>HI cube</option><option>Figure</option></select>
+    <label class="sr-only" for="lg-sort">Sort</label><select id="lg-sort" class="field"></select></div>
+  <div class="ledger-scroll"><table class="ledger compact" id="drawer-table" aria-label="VGT runs. Press B to set the baseline, C to set the candidate"></table></div>
+  <div class="drawer-foot"><span id="lg-status" role="status" aria-live="polite"></span><br>Focus a run, then <kbd>B</kbd> baseline · <kbd>C</kbd> candidate</div>
+</aside>
+<div class="scrim"></div>
+<main class="work" id="work" tabindex="-1">
+  <div class="cmp-head">
+    <h1 class="sr-only">VGT run comparison</h1>
+    <div class="pair"><div class="slot" id="slot-b"><b>B</b><span></span></div><button class="btn icon" id="swap" type="button" aria-label="Swap baseline and candidate">⇄</button><div class="slot" id="slot-c"><b class="c">C</b><span></span></div></div>
+    <label class="btn" style="cursor:pointer"><input type="checkbox" id="mask-toggle" checked> Hatch invalid pixels</label>
+    <span class="cmp-sub">Same-scale panels only when the checklist allows it. Imagery is a single synthetic pair reused for every selection.</span>
+  </div>
+  <div class="cmp-scroll">
+    <div id="gate"></div>
+    <p class="banner info" id="resample-note" hidden role="status"><span>Resampling is not run in this prototype. A real flow would ask for method, target grid and flux handling, record them as provenance, and label the result “resampled”.</span></p>
+    <div class="panels">
+      <figure class="panel" id="panel-b"><div class="pimg"><div class="stack" data-hatch><img class="main" src="../_shared/assets/vgt_baseline_axial.png" alt="Baseline axial orientation map, hue encodes orientation 0 to 180 degrees; dark hatched regions are invalid pixels with no value."></div><span class="tag">B</span></div>
+        <figcaption><b>Baseline · axial orientation</b>unit: deg, 0°≡180°</figcaption></figure>
+      <figure class="panel" id="panel-c"><div class="pimg"><div class="stack" data-hatch><img class="main" src="../_shared/assets/vgt_candidate_axial.png" alt="Candidate axial orientation map, same hue scale as baseline; dark hatched regions are invalid pixels with no value."></div><span class="tag">C</span></div>
+        <figcaption><b>Candidate · axial orientation</b>unit: deg, 0°≡180°</figcaption></figure>
+      <figure class="panel" id="panel-d"><div class="pimg" id="panel-d-body"></div><figcaption id="panel-d-cap"></figcaption></figure>
+      <figure class="panel" id="panel-r"><div class="pimg"><div class="stack"><img class="main" src="../_shared/assets/vgt_reliability.png" alt="Reliability map of the candidate, zero to one, light is more reliable. Greyscale, so the cue does not depend on colour."></div><span class="tag">C</span></div>
+        <figcaption><b>Reliability (0–1) · greyscale</b>lighter = more reliable. <span class="hatchkey" aria-hidden="true"></span>hatch = invalid, no value (not 0)</figcaption></figure>
+    </div>
+    <div class="legend"><strong>Axial angle</strong>
+      <div><img src="../_shared/assets/axial_legend.png" alt="Colour scale for axial orientation from 0 to 180 degrees"><div class="ticks"><span>0°</span><span>45°</span><span>90°</span><span>135°</span><span>180°</span></div></div>
+      <p style="margin:0;font-size:12px"><b>0° ≡ 180°:</b> these are the same orientation. The scale is cyclic in meaning; colour is never the only cue, read the degree labels and the difference panel.</p></div>
+    <div class="cmp-cols">
+      <section class="card" aria-labelledby="h-chk"><h2 id="h-chk">Comparability checklist</h2><div class="body"><p style="margin:0 0 4px;font-size:12px" id="chk-lead" class="muted"></p>
+        <table class="kv"><caption class="sr-only">Comparability checks</caption><thead class="sr-only"><tr><th scope="col">Check</th><th scope="col">Result and basis</th></tr></thead><tbody id="checks"></tbody></table></div></section>
+      <section class="card" aria-labelledby="h-prov"><h2 id="h-prov">Method provenance</h2><div class="body"><table class="kv" id="prov"><caption class="sr-only">Method provenance for the two runs</caption></table>
+        <p class="note">Words, not ticks: ● verified ◐ declared ◇ inferred ○ unresolved. Hashes here are fictional.</p></div></section>
+      <section class="card" aria-labelledby="h-st"><h2 id="h-st">Quantitative summary</h2><div class="body"><table class="kv"><caption class="sr-only">Summary statistics for the difference</caption><tbody id="stats"></tbody></table>
+        <p class="note">Axial statistics (doubled-angle); arithmetic mean invalid. Synthetic values from the shared mock file, not a scientific result.</p>
+        <p class="note" id="stats-warn" hidden>Statistics use the joint valid set under different masks: not equivalent to either run on its own.</p></div></section>
+    </div>
+  </div>
+  <div class="statebar"><strong>Prototype state</strong><a href="03-compare.html">default</a> · <a href="03-compare.html?state=blocked">blocked (incompatible WCS grids)</a><span>Runs chosen in the ledger drawer; B/C persist across pages.</span></div>
+</main>
+</div>
+<script src="data.js"></script>
+<script src="spectrum-data.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
