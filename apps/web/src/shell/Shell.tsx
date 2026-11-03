@@ -1,11 +1,15 @@
-import { Database, FileText, FolderOpen, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
-import { IconButton, Pill, ResizeHandle, Section, TreeRow } from "../ui";
+import { FolderOpen, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { DatasetInspector } from "../catalog/DatasetInspector";
+import { Explorer } from "../catalog/Explorer";
+import { useCatalog } from "../catalog/useCatalog";
+import { IconButton, Pill, ResizeHandle, Section } from "../ui";
 import { LIMITS, useLayout } from "./useLayout";
 import s from "./Shell.module.css";
 
 /** Workbench frame (ADR 0005). Panels hold honest empty states until datasets exist. */
 export function Shell() {
   const { layout: L, set, toggle } = useLayout();
+  const cat = useCatalog();
   const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", L.inspOpen ? `${L.insp}px` : "0px"].join(" ");
   const rows = ["var(--h-title)", "minmax(0,1fr)", L.timelineOpen ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
 
@@ -22,12 +26,8 @@ export function Shell() {
 
       <aside className={s.side} aria-label="Explorer" hidden={!L.sideOpen}>
         <div className={s.scroll}>
-          <Section title="Datasets" meta="0">
-            <p className={s.empty}>Register a FITS cube or a VGT result to see it here.</p>
-          </Section>
-          <Section title="Examples" defaultOpen={false}>
-            <TreeRow icon={Database} trailing="—">Cube (placeholder)</TreeRow>
-            <TreeRow icon={FileText} trailing="—">Map (placeholder)</TreeRow>
+          <Section title="Datasets" meta={String(cat.datasets.length)}>
+            <Explorer datasets={cat.datasets} selectedId={cat.selectedId} loading={cat.loading} error={cat.error} onSelect={cat.select} onRegister={cat.register} />
           </Section>
         </div>
         <ResizeHandle orientation="vertical" label="Resize explorer" value={L.side} min={LIMITS.side.min} max={LIMITS.side.max} onChange={(v) => set("side", v)} />
@@ -35,8 +35,8 @@ export function Shell() {
 
       <main className={s.canvas} aria-label="Viewer">
         <div className={s.stage}>
-          <p className={s.stageTitle}>No dataset open</p>
-          <p className={s.empty}>Planes and maps appear here. The image keeps its native shape and never stretches.</p>
+          <p className={s.stageTitle}>{cat.selected ? cat.selected.name : "No dataset open"}</p>
+          <p className={s.empty}>{cat.selected ? "Header registered. The plane viewer is not built yet." : "Planes and maps appear here. The image keeps its native shape and never stretches."}</p>
         </div>
       </main>
 
@@ -44,7 +44,7 @@ export function Shell() {
         <ResizeHandle orientation="vertical" direction={-1} label="Resize inspector" value={L.insp} min={LIMITS.insp.min} max={LIMITS.insp.max} onChange={(v) => set("insp", v)} />
         <div className={s.scroll}>
           <Section title="Dataset">
-            <p className={s.empty}>Nothing selected. Unknown values will show as —.</p>
+            {cat.selected ? <DatasetInspector d={cat.selected} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
           </Section>
           <Section title="Coordinates" defaultOpen={false}>
             <p className={s.empty}>—</p>
@@ -67,7 +67,7 @@ export function Shell() {
         <IconButton icon={PanelBottom} label="Toggle timeline" pressed={L.timelineOpen} onClick={() => toggle("timelineOpen")} />
         <IconButton icon={PanelRight} label="Toggle inspector" pressed={L.inspOpen} onClick={() => toggle("inspOpen")} />
         <span className={s.grow} />
-        <Pill>No dataset</Pill>
+        <Pill>{cat.selected ? "Header only" : "No dataset"}</Pill>
       </footer>
     </div>
   );

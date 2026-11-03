@@ -1,0 +1,60 @@
+.wrap {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.facts dt {
+  color: var(--text-2);
+}
+
+.facts dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.axes {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.axes caption {
+  padding-bottom: var(--sp-1);
+  color: var(--text-2);
+  text-align: left;
+}
+
+.axes th,
+.axes td {
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
+  border-bottom: var(--bw) solid var(--line);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--w-regular);
+  text-align: left;
+}
+
+.axes thead th {
+  color: var(--text-2);
+  font-family: var(--font-ui);
+}
+
+.unres {
+  color: var(--warn);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}

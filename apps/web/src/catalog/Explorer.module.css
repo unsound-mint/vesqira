@@ -1,0 +1,22 @@
+.wrap {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.form {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0 var(--sp-2);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}
