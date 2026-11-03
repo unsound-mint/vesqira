@@ -1,0 +1,30 @@
+node_modules/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+.cache/
+.venv/
+__pycache__/
+.local/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Local tooling and scratch
+.local/
+.DS_Store
+*.log
+.impeccable/config.local.json
+# Scientific data must never be committed
+*.fits
+*.fit
+*.fits.gz
+*.tif
+*.tiff
+*.czi
+*.parquet
