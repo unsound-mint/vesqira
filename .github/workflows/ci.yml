@@ -24,14 +24,26 @@ jobs:
           if git diff --name-only HEAD^1 HEAD | grep -qE '^(fixtures/|Makefile$|\.github/workflows/ci\.yml$)'; then
             echo "fixtures=true" >> "$GITHUB_OUTPUT"
           fi
-      - if: steps.f.outputs.fixtures == 'true'
+          if git diff --name-only HEAD^1 HEAD | grep -qE '^(services/|fixtures/|Makefile$|\.github/workflows/ci\.yml$)'; then
+            echo "api=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.f.outputs.fixtures == 'true' || steps.f.outputs.api == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: fixtures/requirements.txt
+      - if: steps.f.outputs.fixtures == 'true' || steps.f.outputs.api == 'true'
+        run: pip install -r fixtures/requirements.txt
       - if: steps.f.outputs.fixtures == 'true'
-        run: pip install -r fixtures/requirements.txt && make fixtures
+        run: make fixtures
+      - if: steps.f.outputs.api == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/api/go.mod
+          cache-dependency-path: services/api/go.sum
+      - if: steps.f.outputs.api == 'true'
+        run: make api
       - if: steps.f.outputs.web == 'true'
         uses: actions/setup-node@v4
         with:

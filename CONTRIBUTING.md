@@ -27,6 +27,8 @@ pip install -r fixtures/requirements.txt   # once, for the science fixtures
 make check              # docs checks, fixtures, typecheck, stylelint (token guard), tests, build
 ```
 
+Run the API against a data folder: `cd services/api && go run . --root /path/to/data` (loopback only; files outside `--root` are never read).
+
 CI runs `make docs` always and `make web` only when web or design files change. All visual values come from `design/tokens.css`; stylelint rejects anything else. More checks are added only when the code they cover exists.
 
 ## Data and privacy

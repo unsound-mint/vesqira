@@ -1,5 +1,5 @@
-.PHONY: check docs web fixtures
-check: docs fixtures web
+.PHONY: check docs web fixtures api
+check: docs fixtures api web
 
 docs:
 	python3 tools/check_docs.py
@@ -15,3 +15,9 @@ web:
 # Needs numpy and astropy: pip install -r fixtures/requirements.txt
 fixtures:
 	cd fixtures && python3 -m unittest discover -s .
+
+# Go control plane and the Python header worker. Needs Go and the fixtures requirements.
+api:
+	@if [ -f services/api/go.mod ]; then \
+	  cd services/scientific-worker && python3 -m unittest discover -s . && cd ../api && gofmt -l . | (! grep .) && go vet ./... && VESQIRA_REQUIRE_WORKER=1 go test ./...; \
+	fi
