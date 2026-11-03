@@ -1,0 +1,45 @@
+/* EXPERIMENTAL tokens. Require design approval and contrast tests before production. */
+:root {
+  color-scheme: light;
+  --font-ui: "Inter", "IBM Plex Sans", system-ui, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --c-bg: #f7f8f8;
+  --c-surface: #ffffff;
+  --c-surface-2: #eff2f2;
+  --c-border: #cbd4d7;
+  --c-text: #17252d;
+  --c-muted: #4c626b;
+  --c-accent: #006d68;
+  --c-accent-soft: #dbf3ef;
+  --c-warning: #8c4e00;
+  --c-danger: #b42336;
+  --c-success: #136a46;
+  --c-focus: #0b65c2;
+  --radius-control: 7px;
+  --radius-panel: 11px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --panel-rail: 56px;
+  --panel-explorer: 236px;
+  --panel-inspector: 320px;
+  --control-height: 38px;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --c-bg: #10191e;
+  --c-surface: #172329;
+  --c-surface-2: #203039;
+  --c-border: #3e5860;
+  --c-text: #f0f4f4;
+  --c-muted: #b6cbce;
+  --c-accent: #66d4c6;
+  --c-accent-soft: #1e3d3c;
+  --c-warning: #ffd28a;
+  --c-danger: #ff9b9e;
+  --c-success: #87e0b7;
+  --c-focus: #98c2ff;
+}
