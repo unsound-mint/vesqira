@@ -33,7 +33,7 @@ type AnalysisConfig struct {
 	Timeout    time.Duration
 }
 
-var analysisOps = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true, "convolve": true}
+var analysisOps = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true, "convolve": true, "scalar_diff": true}
 
 // analysisArgs turns the request's options into command-line options, each validated by the same patterns the job
 // template uses, so a value can never become anything but a number or a known word.
@@ -101,7 +101,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	}
 	args := []string{"-P", s.Analysis.Script, in.Op, "--input", real}
 	sources := []int64{d.ID}
-	if in.Op == "align" || in.Op == "axial_diff" {
+	if in.Op == "align" || in.Op == "axial_diff" || in.Op == "scalar_diff" {
 		ref, code, msg := s.dataset(in.ReferenceID)
 		if code != 0 {
 			fail(w, 422, "reference: "+msg)
@@ -119,6 +119,17 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			args = append(args, "--unit", ia.Unit, "--unit-ref", ib.Unit)
+		}
+		if in.Op == "scalar_diff" {
+			// angles are periodic: a map declared axial has its own difference, and a plain subtraction would be wrong for it
+			if (d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation") || (ref.Interpretation != nil && ref.Interpretation.Kind == "axial_orientation") {
+				fail(w, 422, "a map declared as an axial orientation map needs the axial difference, which is taken modulo 180 degrees")
+				return
+			}
+			if why, err := compat.Grids(d.Header, ref.Header); err != nil || len(why) > 0 {
+				writeJSON(w, 409, map[string]any{"error": "the maps are not known to share a grid, so a pixel-by-pixel difference is not meaningful", "reasons": why})
+				return
+			}
 		}
 		if ref.HostID != 0 {
 			fail(w, 409, "the reference lives on another host; both files must be on the same machine to be aligned")
@@ -221,6 +232,10 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	d, code, msg := s.dataset(in.DatasetID)
 	if code != 0 {
 		fail(w, code, msg)
+		return
+	}
+	if in.Op == "scalar_diff" {
+		fail(w, 409, "a difference is computed on this computer, from two maps registered here")
 		return
 	}
 	if in.Op == "axial_diff" {

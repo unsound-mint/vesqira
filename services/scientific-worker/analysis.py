@@ -342,6 +342,42 @@ def op_axial_diff(args) -> dict:
     return {"ok": True, "op": "axial_diff", "summary": summary}
 
 
+def op_scalar_diff(args) -> dict:
+    """Difference (input minus reference) of two scalar maps on the same grid, in the maps' common brightness unit.
+
+    Refused unless both maps declare the same BUNIT: nothing is converted or assumed. A pixel without a value in either map
+    is NaN in the result, never 0; a recorded 0 is a value. A difference of orientation maps is a different operation
+    (axial_diff), because angles are periodic.
+    """
+    a = open_cube(args.input)
+    b = open_cube(args.reference)
+    if a.channels != 1 or b.channels != 1 or (a.shape[a.y], a.shape[a.x]) != (b.shape[b.y], b.shape[b.x]):
+        fail("both maps must be single planes of the same shape")
+    ua, ub = a.h.get("BUNIT"), b.h.get("BUNIT")
+    if not isinstance(ua, str) or not isinstance(ub, str) or not ua.strip() or not ub.strip():
+        fail("both maps must declare their brightness unit (BUNIT); none is assumed")
+    if ua.strip() != ub.strip():
+        fail("the maps declare different brightness units; convert one first, nothing is converted here")
+    _, pa = next(planes(a, 0, 0))
+    _, pb = next(planes(b, 0, 0))
+    with np.errstate(all="ignore"):
+        d = pa - pb
+    ok = np.isfinite(d)
+    n = int(ok.sum())
+    summary = {"pixels_compared": n, "pixels_without_data": int((~ok).sum()), "unit": ua.strip(),
+               "mean": None, "median": None, "rms": None, "min": None, "max": None}
+    if n:
+        v = d[ok]
+        summary.update(mean=float(v.mean()), median=float(np.median(v)), rms=float(np.sqrt((v ** 2).mean())), min=float(v.min()), max=float(v.max()))
+    h = image_header(a, {"BUNIT": ua.strip(), "VESQOP": "scalar_diff"})
+    h["HISTORY"] = "Vesqira scalar difference (input minus reference), same grid, same declared unit"
+    write_fits(args.out, d.astype("<f4"), h)
+    summary["policy"] = ("Input minus reference. A pixel without a value in either map is NaN, never 0; a recorded 0 is a value. The grids were checked "
+                         "for agreement before this ran, but different resolution (beam) between the maps is not corrected: a difference of maps with "
+                         "different beams mixes resolution with signal. The mean is a plain arithmetic mean of the finite differences.")
+    return {"ok": True, "op": "scalar_diff", "summary": summary}
+
+
 FWHM_TO_SIGMA = 1.0 / (2.0 * math.sqrt(2.0 * math.log(2.0)))
 
 
@@ -440,7 +476,7 @@ def op_convolve(args) -> dict:
                       "Units in K are smoothed as they are; Jy/beam values are rescaled by the beam-area ratio."}}
 
 
-OPS = {"convolve": op_convolve, "axial_diff": op_axial_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
+OPS = {"convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
 
 
 def main(argv: list[str]) -> int:
@@ -467,7 +503,7 @@ def main(argv: list[str]) -> int:
     try:
         if args.op != "stats" and not args.out:
             fail("--out is required")
-        if args.op in ("align", "axial_diff") and not args.reference:
+        if args.op in ("align", "axial_diff", "scalar_diff") and not args.reference:
             fail("--reference is required")
         result = OPS[args.op](args)
         import astropy

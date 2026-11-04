@@ -585,7 +585,7 @@ type AnalysisSettings struct {
 var (
 	pyRe       = regexp.MustCompile(`^[A-Za-z0-9_./~-]{1,200}$`)
 	scriptDirR = regexp.MustCompile(`^\$HOME/\.cache/vesqira/[0-9a-f]{16}$`)
-	analysisOp = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true, "convolve": true}
+	analysisOp = map[string]bool{"axial_diff": true, "scalar_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true, "convolve": true}
 	argKinds   = map[string]*regexp.Regexp{
 		"order": regexp.MustCompile(`^[012]$`), "chan-start": intRe, "chan-end": intRe, "x0": intRe, "x1": intRe, "y0": intRe, "y1": intRe,
 		"threshold": numRe, "target-bmaj": numRe, "target-bmin": numRe, "target-bpa": numRe, "method": regexp.MustCompile(`^(interp|nearest|exact)$`),

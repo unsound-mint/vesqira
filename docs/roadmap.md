@@ -65,7 +65,7 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 
 - [x] Zoom and pan, shared colour scale across panels (Q24, Q25). Blink: dropped for now.
 - [x] Histogram of the visible plane with draggable and typed colour limits. Of a region: not yet.
-- [ ] Scalar difference map between two compatible maps.
+- [x] Scalar difference map between two compatible maps with the same declared unit (ADR 0017 amendment); a map declared axial uses the axial difference.
 - Channel animation: dropped for now.
 - [x] Saved, named regions: create, rename, change shape, duplicate, hide, delete with undo, export as DS9 (ADR 0026). DS9 import in image coordinates with a preview; sky-coordinate import still to do.
 - [ ] Exploration history and "continue from here" (Q96–Q98).

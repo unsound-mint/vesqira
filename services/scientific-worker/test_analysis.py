@@ -184,6 +184,40 @@ class Analysis(unittest.TestCase):
         code, r = run("axial_diff", "--input", a, "--reference", self.f["hi_cube.fits"], "--out", self.out("bad.fits"))
         self.assertEqual(code, 2)
 
+    def test_scalar_difference_is_exact_keeps_missing_missing_and_refuses_unit_guesses(self):
+        shape = (4, 4)
+        a = np.arange(16, dtype=np.float64).reshape(shape)
+        b = np.full(shape, 1.5)
+        a[0, 0] = np.nan                                   # no value in the first map
+        b[3, 3] = np.nan                                   # no value in the second map
+        a[1, 1] = 1.5                                      # a real zero difference
+        def write(name, data, unit):
+            hd = fits.PrimaryHDU(data, header=g._map_header(shape))
+            if unit is not None:
+                hd.header["BUNIT"] = unit
+            path = self.dir / name
+            fits.HDUList([hd]).writeto(path, overwrite=True)
+            return str(path)
+        pa, pb = write("sa.fits", a, "K"), write("sb.fits", b, "K")
+        out = self.out("sdiff.fits")
+        code, r = run("scalar_diff", "--input", pa, "--reference", pb, "--out", out)
+        self.assertEqual(code, 0, r)
+        d = fits.getdata(out).astype(float)
+        want = a - b
+        np.testing.assert_allclose(d[np.isfinite(want)], want[np.isfinite(want)], rtol=1e-6)
+        self.assertTrue(np.isnan(d[0, 0]) and np.isnan(d[3, 3]))        # missing in either map stays missing
+        self.assertEqual(d[1, 1], 0.0)                                   # a real zero is a value
+        self.assertEqual(r["summary"]["pixels_without_data"], 2)
+        self.assertEqual(r["summary"]["pixels_compared"], 14)
+        self.assertAlmostEqual(r["summary"]["mean"], float(np.nanmean(want)), places=6)
+        self.assertEqual(fits.getheader(out)["BUNIT"], "K")
+        for pa2, pb2 in ((write("su.fits", a, None), pb), (pa, write("sl.fits", b, "Jy/beam")), (write("sw.fits", a, ""), pb)):
+            code, r = run("scalar_diff", "--input", pa2, "--reference", pb2, "--out", self.out("never.fits"))
+            self.assertEqual(code, 2, r)                                 # unknown or different units are refused, not guessed
+            self.assertFalse((self.dir / "never.fits").exists())
+        big = write("sbig.fits", np.zeros((5, 5)), "K")
+        self.assertEqual(run("scalar_diff", "--input", pa, "--reference", big, "--out", self.out("never.fits"))[0], 2)
+
     def test_inputs_are_never_modified_and_failures_leave_no_output(self):
         before = sha(self.f["hi_cube.fits"])
         run("moment", "--input", self.f["hi_cube.fits"], "--order", 0, "--out", self.out("again.fits"))

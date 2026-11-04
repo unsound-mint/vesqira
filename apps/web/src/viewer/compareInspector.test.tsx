@@ -31,6 +31,21 @@ describe("comparison inspector", () => {
   });
 });
 
+describe("difference of scalar maps", () => {
+  it("is offered only for two undeclared maps on one grid, and says the beams are not matched", () => {
+    render(<CompareInspector a={ds(1, "a.fits")} b={ds(2, "b.fits")} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: true, reasons: [] }} onCreated={() => {}} />);
+    expect(screen.getByRole("button", { name: /Difference map \(a.fits − b.fits\)/ })).toBeInTheDocument();
+    expect(screen.getByText(/beams are not matched/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Axial difference map/ })).toBeNull();
+  });
+  it("is not offered for orientation maps (they have the axial difference) or for different grids", () => {
+    const { rerender } = render(<CompareInspector a={ds(1, "a.fits", true)} b={ds(2, "b.fits", true)} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: true, reasons: [] }} onCreated={() => {}} />);
+    expect(screen.queryByRole("button", { name: /^Difference map/ })).toBeNull();
+    rerender(<CompareInspector a={ds(1, "a.fits")} b={ds(2, "b.fits")} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: false, reasons: ["x"] }} onCreated={() => {}} />);
+    expect(screen.queryByRole("button", { name: /^Difference map/ })).toBeNull();
+  });
+});
+
 describe("resolution", () => {
   it("keeps beam and pixel scale apart and never assumes one from the other", async () => {
     const { beamText, pixelScale } = await import("../catalog/resolution");

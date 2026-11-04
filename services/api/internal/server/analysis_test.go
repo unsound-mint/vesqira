@@ -218,6 +218,18 @@ func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
 		t.Errorf("an axial difference against a cube was accepted: %d", r.StatusCode)
 	}
 
+	// scalar difference: a map against itself is exactly zero everywhere it has a value; orientation maps are sent to the axial difference
+	r, sb = postJSON(t, api("/api/analysis"), map[string]any{"op": "scalar_diff", "datasetId": m.Dataset.ID, "referenceId": m.Dataset.ID})
+	if r.StatusCode != 201 || !strings.Contains(string(sb), `"name":"scalar_diff-`) || !strings.Contains(string(sb), `"mean":0.0`) || !strings.Contains(string(sb), `"pixels_without_data":9`) {
+		t.Fatalf("scalar_diff of a map with itself: %d %s", r.StatusCode, sb)
+	}
+	if r, _ := postJSON(t, api("/api/analysis"), map[string]any{"op": "scalar_diff", "datasetId": psi.ID, "referenceId": psiR.ID}); r.StatusCode != 422 {
+		t.Errorf("a plain difference of declared orientation maps: %d, want 422", r.StatusCode)
+	}
+	if r, _ := postJSON(t, api("/api/analysis"), map[string]any{"op": "scalar_diff", "datasetId": m.Dataset.ID}); r.StatusCode < 400 {
+		t.Errorf("a difference without a reference was accepted: %d", r.StatusCode)
+	}
+
 	// the reviewer learns how a figure's data was made, by file name only
 	_, fb := postJSON(t, api("/api/figures"), map[string]any{"datasetId": m.Dataset.ID, "title": "Moment 0", "view": map[string]any{"kind": "plane", "channel": 0}, "previewPng": testPNG(t)})
 	var fig boards.Figure

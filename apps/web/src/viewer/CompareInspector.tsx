@@ -59,7 +59,7 @@ export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a:
   const bothAxial = a.interpretation !== null && b.interpretation !== null;
   const sameMachine = a.hostId === 0 && b.hostId === 0;
 
-  async function go(op: "axial_diff" | "align", from: Dataset, to: Dataset) {
+  async function go(op: "axial_diff" | "scalar_diff" | "align", from: Dataset, to: Dataset) {
     setBusy(true);
     setErr(null);
     try {
@@ -117,6 +117,12 @@ export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a:
         <div className={s.next}>
           <Button type="button" disabled={busy} onClick={() => go("axial_diff", a, b)}>Axial difference map ({a.name} − {b.name})</Button>
           <p className={s.note}>Taken modulo 180°: 1° and 179° differ by 2°, not 178°. Pixels without a value in either map stay NaN.</p>
+        </div>
+      ) : null}
+      {!a.interpretation && !b.interpretation && compat?.compatible && sameMachine ? (
+        <div className={s.next}>
+          <Button type="button" disabled={busy} onClick={() => go("scalar_diff", a, b)}>Difference map ({a.name} − {b.name})</Button>
+          <p className={s.note}>Needs the same declared brightness unit in both; nothing is converted. Pixels without a value in either map stay NaN, a real zero stays 0. The maps’ beams are not matched: if their resolutions differ, the difference mixes resolution with signal (beams: {beamText(a)}; {beamText(b)}).</p>
         </div>
       ) : null}
       {compat && !compat.compatible && sameMachine ? (
