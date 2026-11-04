@@ -106,3 +106,42 @@ export function parsePlane(buf: ArrayBuffer): Plane {
 
 export const getPlane = (id: number, channel: number, signal?: AbortSignal) =>
   request(`${base(id)}/plane?channel=${channel}`, signal).then((r) => r.arrayBuffer()).then(parsePlane);
+
+export type RegionShape = { shape: "rect"; x0: number; y0: number; x1: number; y1: number } | { shape: "circle"; cx: number; cy: number; r: number };
+
+export type SpectrumHeader = {
+  channels: number;
+  region: { pixels: number; requested_pixels: number; clipped: boolean; bbox: { x0: number; y0: number; x1: number; y1: number } };
+  size: { pixel_scale_arcsec: [number, number]; area_arcmin2: number; note: string } | null;
+  axis: { kind: "spectral" | "channel"; name: string | null; unit: string | null };
+  mask_policy: string;
+  bunit: string | null;
+};
+
+/** mean[c] is NaN when the channel has no finite pixel in the region: unknown, never zero. */
+export type Spectrum = { head: SpectrumHeader; axis: Float64Array; mean: Float64Array; count: Uint32Array };
+
+export function regionQuery(r: RegionShape): string {
+  return r.shape === "rect" ? `shape=rect&x0=${r.x0}&y0=${r.y0}&x1=${r.x1}&y1=${r.y1}` : `shape=circle&cx=${r.cx}&cy=${r.cy}&r=${r.r}`;
+}
+
+export function parseSpectrum(buf: ArrayBuffer): Spectrum {
+  const dv = new DataView(buf);
+  const n = dv.getUint32(0, true);
+  if (4 + n > buf.byteLength) throw new ApiError("The spectrum response is malformed.");
+  const head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))) as SpectrumHeader;
+  const c = head.channels;
+  if (!Number.isInteger(c) || c < 0 || buf.byteLength - 4 - n !== c * 20) throw new ApiError("The spectrum response has the wrong size.");
+  const at = 4 + n;
+  const f64 = (off: number) => {
+    const out = new Float64Array(c);
+    for (let i = 0; i < c; i++) out[i] = dv.getFloat64(off + i * 8, true);
+    return out;
+  };
+  const count = new Uint32Array(c);
+  for (let i = 0; i < c; i++) count[i] = dv.getUint32(at + c * 16 + i * 4, true);
+  return { head, axis: f64(at), mean: f64(at + c * 8), count };
+}
+
+export const getSpectrum = (id: number, r: RegionShape, signal?: AbortSignal) =>
+  request(`${base(id)}/spectrum?${regionQuery(r)}`, signal).then((x) => x.arrayBuffer()).then(parseSpectrum);

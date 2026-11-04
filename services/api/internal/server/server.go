@@ -35,6 +35,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
 	mux.HandleFunc("GET /api/datasets/{id}/plane", s.plane)
 	mux.HandleFunc("GET /api/datasets/{id}/coord", s.coord)
+	mux.HandleFunc("GET /api/datasets/{id}/spectrum", s.spectrum)
 	return localOnly(mux)
 }
 

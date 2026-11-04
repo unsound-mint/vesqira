@@ -6,6 +6,8 @@ import { EM } from "../catalog/format";
 import { ChannelTimeline } from "../viewer/ChannelTimeline";
 import { CoordinateReadout, DisplayControls } from "../viewer/Panels";
 import { PlaneViewer } from "../viewer/PlaneViewer";
+import { RegionPanel } from "../viewer/RegionPanel";
+import { SpectrumPlot } from "../viewer/SpectrumPlot";
 import { flagState } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
 import { IconButton, Pill, ResizeHandle, Section } from "../ui";
@@ -61,11 +63,14 @@ export function Shell() {
           <Section title="Display">
             {cat.selected ? <DisplayControls v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
+          <Section title="Region">
+            {cat.selected ? <RegionPanel v={viewer} /> : <p className={s.empty}>{EM}</p>}
+          </Section>
+          <Section title="Spectrum">
+            {cat.selected ? <SpectrumPlot v={viewer} /> : <p className={s.empty}>{EM}</p>}
+          </Section>
           <Section title="Dataset">
             {cat.selected ? <DatasetInspector d={cat.selected} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
-          </Section>
-          <Section title="Region" defaultOpen={false}>
-            <p className={s.empty}>—</p>
           </Section>
         </div>
       </aside>

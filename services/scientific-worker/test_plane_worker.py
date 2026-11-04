@@ -200,6 +200,72 @@ class PlaneWorker(unittest.TestCase):
         junk.write_bytes(b"x" * 5000)
         self.assertNotIn(self.tmp.name, self.c.ask(op="view", path=str(junk))[0]["error"])
 
+    def spectrum(self, path, **req):
+        head, payload = self.c.ask(op="spectrum", path=str(path), **req)
+        if not head["ok"]:
+            return head, None
+        nc = head["channels"]
+        axis = np.frombuffer(payload, "<f8", nc, 0)
+        mean = np.frombuffer(payload, "<f8", nc, 8 * nc)
+        count = np.frombuffer(payload, "<u4", nc, 16 * nc)
+        return head, (axis, mean, count)
+
+    def test_rect_spectrum_matches_an_independent_numpy_mean_and_counts_nan(self):
+        with fits.open(self.f["hi_cube.fits"]) as h:
+            full = h[0].data.astype(np.float64)
+        # a 6x6 box that contains the 3x3 NaN block (x 2-4, y 2-4)
+        head, (axis, mean, count) = self.spectrum(self.f["hi_cube.fits"], shape="rect", x0=0, y0=0, x1=5, y1=5)
+        sub = full[:, 0:6, 0:6]
+        np.testing.assert_allclose(mean, np.nanmean(sub.reshape(g.NC, -1), axis=1), rtol=1e-12)
+        self.assertTrue((count == 36 - 9).all())                        # NaN pixels excluded, and counted as excluded
+        self.assertEqual(head["region"]["pixels"], 36)
+        self.assertFalse(head["region"]["clipped"])
+        np.testing.assert_allclose(axis, g.V0_MS + np.arange(g.NC) * g.DV_MS)
+        self.assertEqual(head["axis"]["unit"], "m/s")
+        self.assertIn("NaN", head["mask_policy"])
+        sx = head["size"]["pixel_scale_arcsec"][0]
+        self.assertAlmostEqual(sx, g.CDELT_DEG * 3600, places=6)
+        self.assertAlmostEqual(head["size"]["area_arcmin2"], 36 * (g.CDELT_DEG * 60) ** 2, places=6)
+
+    def test_all_nan_region_is_unknown_not_zero(self):
+        head, (axis, mean, count) = self.spectrum(self.f["hi_cube.fits"], shape="rect", x0=2, y0=2, x1=4, y1=4)
+        self.assertTrue(np.isnan(mean).all())
+        self.assertTrue((count == 0).all())
+
+    def test_circle_uses_pixel_centres_and_clips_at_the_edge(self):
+        head, (axis, mean, count) = self.spectrum(self.f["hi_cube.fits"], shape="circle", cx=20, cy=9, r=3)
+        yy, xx = np.mgrid[0:g.NY, 0:g.NX]
+        inside = (xx - 20) ** 2 + (yy - 9) ** 2 <= 9
+        self.assertEqual(head["region"]["pixels"], int(inside.sum()))
+        with fits.open(self.f["hi_cube.fits"]) as h:
+            np.testing.assert_allclose(mean, h[0].data[:, inside].astype(np.float64).mean(axis=1), rtol=1e-12)
+        self.assertEqual(int(mean.argmax()), g.SOURCE_CHANNEL)         # the synthetic source peaks in its own channel
+        edge, _ = self.spectrum(self.f["hi_cube.fits"], shape="circle", cx=0, cy=0, r=3)
+        self.assertTrue(edge["region"]["clipped"])
+        self.assertLess(edge["region"]["pixels"], edge["region"]["requested_pixels"])
+
+    def test_spectrum_without_spectral_reference_uses_channel_numbers(self):
+        head, (axis, mean, count) = self.spectrum(self.f["hi_cube_no_spectral_ref.fits"], shape="rect", x0=10, y0=10, x1=11, y1=11)
+        self.assertEqual(head["axis"]["kind"], "channel")
+        self.assertIsNone(head["axis"]["unit"])
+        np.testing.assert_array_equal(axis, np.arange(g.NC))
+
+    def test_blank_pixels_do_not_enter_the_mean(self):
+        bx, by, bc = g.SCALED_BLANK_PIX
+        head, (axis, mean, count) = self.spectrum(self.f["cube_int16_scaled.fits"], shape="rect", x0=0, y0=0, x1=g.SCALED_SHAPE[2] - 1, y1=g.SCALED_SHAPE[1] - 1)
+        self.assertEqual(int(count[bc]), g.SCALED_SHAPE[1] * g.SCALED_SHAPE[2] - 1)
+        raw = g.scaled_raw()[bc].astype(np.float64)
+        keep = raw != g.SCALED_BLANK
+        self.assertAlmostEqual(float(mean[bc]), float((raw[keep] * g.SCALED_BSCALE + g.SCALED_BZERO).mean()), places=9)
+
+    def test_bad_regions_fail_in_a_controlled_way(self):
+        p = self.f["hi_cube.fits"]
+        for req in ({"shape": "rect", "x0": 100, "y0": 0, "x1": 120, "y1": 5}, {"shape": "blob"}, {"shape": "circle", "cx": 1, "cy": 1, "r": -1},
+                    {"shape": "circle", "cx": 1, "cy": 1, "r": 10**9}, {"shape": "rect", "x0": "a", "y0": 0, "x1": 1, "y1": 1}):
+            head, _ = self.spectrum(p, **req)
+            self.assertEqual(head["code"], "bad_request", req)
+        self.assertTrue(self.c.plane(p, 0)[0]["ok"])                    # worker still alive
+
     def test_no_celestial_wcs_falls_back_to_pixels(self):
         path = self.f["hi_cube_no_celestial_wcs.fits"]
         v, _ = self.c.ask(op="view", path=str(path))

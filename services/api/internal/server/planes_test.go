@@ -67,7 +67,7 @@ func TestPlaneFrameAndValidation(t *testing.T) {
 		t.Fatalf("%d %v", resp.StatusCode, resp.Header)
 	}
 	n := binary.LittleEndian.Uint32(body[:4])
-	if strings.TrimRight(string(body[4:4+n]), " ") != head || (4+n)%4 != 0 || len(body) != 4+int(n)+8 {
+	if strings.TrimRight(string(body[4:4+n]), " ") != head || (4+n)%8 != 0 || len(body) != 4+int(n)+8 {
 		t.Fatalf("frame layout wrong: %q", body)
 	}
 	if fp.calls[0]["channel"] != 3 || fp.calls[0]["op"] != "plane" {
@@ -280,6 +280,23 @@ func TestPlaneViewerEndToEndWithRealWorker(t *testing.T) {
 	if sv.FitsAxes.Channel != 4 || sv.Spectral.Velocity != "unresolved" {
 		t.Fatalf("stokes cube view: %s", sb)
 	}
+	// Region spectrum: the synthetic source peaks in channel 40 (0-based) inside this circle.
+	sresp, sbody := get(t, api+"/spectrum?shape=circle&cx=20&cy=9&r=3")
+	if sresp.StatusCode != 200 {
+		t.Fatalf("spectrum: %d %s", sresp.StatusCode, sbody)
+	}
+	sh := int(binary.LittleEndian.Uint32(sbody[:4]))
+	sp := sbody[4+sh:]
+	best, bestV := -1, math.Inf(-1)
+	for c := 0; c < 64; c++ {
+		v := math.Float64frombits(binary.LittleEndian.Uint64(sp[8*64+8*c:]))
+		if v > bestV {
+			best, bestV = c, v
+		}
+	}
+	if best != 40 {
+		t.Fatalf("spectrum peak at channel %d, want 40", best)
+	}
 	if pw.Starts.Load() != 1 {
 		t.Errorf("worker started %d times, want 1 for the whole session", pw.Starts.Load())
 	}
@@ -304,5 +321,33 @@ func TestSameSecondRewriteAndCrossSiteGetAreRefused(t *testing.T) {
 	}
 	if len(fp.calls) != 0 {
 		t.Error("worker ran for a refused request")
+	}
+}
+
+func TestSpectrumQueryValidationAndFrame(t *testing.T) {
+	head := `{"ok":true,"nbytes":8}`
+	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(head), Payload: make([]byte, 8)}}
+	base, _, _, _, id := planeServer(t, fp)
+	u := func(q string) string { return base + "/api/datasets/" + itoa(id) + "/spectrum" + q }
+	resp, body := get(t, u("?shape=rect&x0=-3&y0=0&x1=5&y1=6"))
+	if resp.StatusCode != 200 || (4+binary.LittleEndian.Uint32(body[:4]))%8 != 0 {
+		t.Fatalf("%d", resp.StatusCode)
+	}
+	if fp.calls[0]["x0"] != -3 || fp.calls[0]["shape"] != "rect" {
+		t.Fatalf("worker got %v", fp.calls[0])
+	}
+	get(t, u("?shape=rect&x0=-3&y0=0&x1=5&y1=6"))
+	if len(fp.calls) != 1 {
+		t.Errorf("identical region must come from the cache, worker calls=%d", len(fp.calls))
+	}
+	get(t, u("?shape=circle&cx=4&cy=4&r=2"))
+	get(t, u("?shape=rect&x0=-3&y0=0&x1=5&y1=7"))
+	if len(fp.calls) != 3 {
+		t.Errorf("distinct regions must not share a cache entry, calls=%d", len(fp.calls))
+	}
+	for _, q := range []string{"", "?shape=blob", "?shape=rect&x0=1", "?shape=circle&cx=1&cy=1&r=x", "?shape=rect&x0=99999999&y0=0&x1=1&y1=1"} {
+		if r, _ := get(t, u(q)); r.StatusCode != 400 {
+			t.Errorf("%q: %d, want 400", q, r.StatusCode)
+		}
 	}
 }

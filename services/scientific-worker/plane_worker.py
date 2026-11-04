@@ -26,6 +26,8 @@ from fits_header import axes_shape, clean, read_header
 MAX_PLANE_ELEMENTS = 1 << 24      # 16.7M pixels = 64 MiB as float32
 MAX_REQUEST_BYTES = 8192
 MAX_CHANNELS = 1 << 24
+MAX_SPECTRUM_CHANNELS = 1 << 16
+MAX_REGION_WORK = 200_000_000     # region pixels x channels read for one spectrum
 CUBES_KEPT = 4
 
 # FITS standard default units, used only when CUNIT is absent and then reported as "inferred".
@@ -223,35 +225,111 @@ class Cube:
                     "channels": [int(i) for i in np.flatnonzero(np.asarray(hdu.data) != 0)]}
 
     # ----- one plane, read selectively -----
-    def read_plane(self, channel: int) -> tuple[np.ndarray, int]:
-        """(float32 plane, number of finite source values too large for float32, which became infinite)."""
+    def _index(self, channel: int, ys: slice, xs: slice) -> tuple:
         n = len(self.shape)
         idx = []
         for k in range(n):                                # numpy axis k is FITS axis n-k
             f = n - 1 - k
-            idx.append(slice(None) if f in (self.x, self.y) else (channel if f == self.chan else 0))
-        with fits.open(self.path, memmap=True, do_not_scale_image_data=True) as hdul:
-            hdu = hdul[0]
-            if hdu.data is None:
-                raise Refused("unreadable", "the file holds no image data")
-            raw = np.asarray(hdu.section[tuple(idx)])
-        if raw.shape != (self.shape[self.y], self.shape[self.x]):
-            raise Refused("unreadable", "unexpected plane shape")
+            idx.append(ys if f == self.y else xs if f == self.x else (channel if f == self.chan else 0))
+        return tuple(idx)
+
+    def _physical(self, raw: np.ndarray) -> np.ndarray:
+        """float64 physical values: BSCALE/BZERO applied, BLANK (integer data) is NaN, never 0."""
         bscale, bzero = self.h.get("BSCALE", 1.0), self.h.get("BZERO", 0.0)
         if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in (bscale, bzero)):
             raise Refused("unreadable", "BSCALE/BZERO are not finite numbers")
         with np.errstate(all="ignore"):
-            if raw.dtype.kind == "f":
-                phys = raw.astype("<f8") * bscale + bzero if (bscale != 1 or bzero != 0) else raw
-            else:
-                phys = raw.astype("<f8") * bscale + bzero
+            phys = raw.astype("<f8") * bscale + bzero
+            if raw.dtype.kind != "f":
                 blank = self.h.get("BLANK")
                 if blank is not None:
-                    phys[raw == blank] = np.nan           # BLANK is missing data, never zero
-            out = np.ascontiguousarray(phys, dtype="<f4")
-            overflow = int(np.count_nonzero(np.isfinite(phys) & ~np.isfinite(out)))
-            return out, overflow
+                    phys[raw == blank] = np.nan
+        return phys
 
+    def read_plane(self, channel: int) -> tuple[np.ndarray, int]:
+        """(float32 plane, number of finite source values too large for float32, which became infinite)."""
+        with fits.open(self.path, memmap=True, do_not_scale_image_data=True) as hdul:
+            hdu = hdul[0]
+            if hdu.data is None:
+                raise Refused("unreadable", "the file holds no image data")
+            raw = np.asarray(hdu.section[self._index(channel, slice(None), slice(None))])
+        if raw.shape != (self.shape[self.y], self.shape[self.x]):
+            raise Refused("unreadable", "unexpected plane shape")
+        phys = self._physical(raw)
+        with np.errstate(all="ignore"):
+            out = np.ascontiguousarray(phys, dtype="<f4")
+        return out, int(np.count_nonzero(np.isfinite(phys) & ~np.isfinite(out)))
+
+    # ----- region spectrum: mean of the finite pixels inside the region, per channel -----
+    def spectrum(self, req: dict) -> tuple[dict, bytes]:
+        nx, ny, nc = self.shape[self.x], self.shape[self.y], self.channels
+        if nc > MAX_SPECTRUM_CHANNELS:
+            raise Refused("unsupported", "too many channels for a region spectrum")
+        shape = req.get("shape")
+        if shape == "rect":
+            x0, y0, x1, y1 = (as_int(req, k, -(1 << 20), 1 << 20) for k in ("x0", "y0", "x1", "y1"))
+            x0, x1, y0, y1 = min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1)
+            bx0, bx1, by0, by1 = max(x0, 0), min(x1, nx - 1), max(y0, 0), min(y1, ny - 1)
+            requested = (x1 - x0 + 1) * (y1 - y0 + 1)
+            inside = None
+        elif shape == "circle":
+            cx, cy = (as_int(req, k, -(1 << 20), 1 << 20) for k in ("cx", "cy"))
+            r = as_int(req, "r", 0, 4096)
+            bx0, bx1, by0, by1 = max(cx - r, 0), min(cx + r, nx - 1), max(cy - r, 0), min(cy + r, ny - 1)
+            x0, x1, y0, y1 = cx - r, cx + r, cy - r, cy + r
+            requested = None
+            inside = lambda yy, xx: (xx - cx) ** 2 + (yy - cy) ** 2 <= r * r   # pixel centres inside the circle
+        else:
+            raise Refused("bad_request", "shape must be rect or circle")
+        if bx0 > bx1 or by0 > by1:
+            raise Refused("bad_request", "the region does not overlap the image")
+        yy, xx = np.mgrid[by0 : by1 + 1, bx0 : bx1 + 1]
+        mask = np.ones(yy.shape, dtype=bool) if inside is None else inside(yy, xx)
+        npix = int(mask.sum())
+        if npix == 0:
+            raise Refused("bad_request", "the region contains no pixel centre")
+        if npix * nc > MAX_REGION_WORK:
+            raise Refused("unsupported", "the region is too large for a spectrum; draw a smaller one")
+        if requested is None:
+            requested = int(np.count_nonzero(inside(*np.mgrid[y0 : y1 + 1, x0 : x1 + 1])))
+        mean, count = np.full(nc, np.nan), np.zeros(nc, dtype="<u4")
+        ys, xs = slice(by0, by1 + 1), slice(bx0, bx1 + 1)
+        with fits.open(self.path, memmap=True, do_not_scale_image_data=True) as hdul:
+            hdu = hdul[0]
+            for c in range(nc):
+                vals = self._physical(np.asarray(hdu.section[self._index(c, ys, xs)]))[mask]
+                finite = vals[np.isfinite(vals)]
+                count[c] = finite.size
+                if finite.size:
+                    mean[c] = finite.mean()          # a channel with no finite pixel is NaN (unknown), never 0
+        facts = self.spectral_facts()
+        resolved = facts is not None and facts["resolved"]
+        if resolved:
+            pix = np.zeros((nc, len(self.shape)))
+            pix[:, self.chan] = np.arange(nc)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                axis = np.asarray(self.wcs.all_pix2world(pix, 0)[:, self.spec], dtype="<f8")
+        else:
+            axis = np.arange(nc, dtype="<f8")
+        size = None
+        if self.celestial and self.wcs is not None:
+            from astropy.wcs.utils import proj_plane_pixel_scales
+            sx, sy = (float(v) * 3600.0 for v in proj_plane_pixel_scales(self.wcs.celestial))
+            size = {"pixel_scale_arcsec": [sx, sy], "area_arcmin2": npix * sx * sy / 3600.0,
+                    "note": "Pixel scale and area are taken at the reference pixel; projection distortion across the region is ignored"}
+        payload = axis.astype("<f8").tobytes() + mean.astype("<f8").tobytes() + count.tobytes()
+        head = {"ok": True, "op": "spectrum", "origin": 0, "channels": nc, "shape": shape, "nbytes": len(payload),
+                "layout": "float64 axis[channels], float64 mean[channels] (NaN = no finite pixel), uint32 count[channels], little-endian",
+                "region": {"pixels": npix, "requested_pixels": requested, "clipped": npix != requested,
+                          "bbox": {"x0": bx0, "y0": by0, "x1": bx1, "y1": by1}},
+                "size": size,
+                "axis": {"kind": "spectral" if resolved else "channel", "name": None if facts is None else facts["name"],
+                         "unit": facts["unit"] if resolved else None},
+                "mask_policy": "Mean of the finite pixels inside the region, per channel. NaN, BLANK and infinite values are excluded and counted; "
+                               "no weighting; flagged channels keep their data.",
+                "bunit": clean(self.h.get("BUNIT")) if "BUNIT" in self.h else None}
+        return head, payload
 
 _cubes: dict[str, Cube] = {}
 
@@ -276,6 +354,13 @@ def as_index(req: dict, key: str, upper: int) -> int:
     return v
 
 
+def as_int(req: dict, key: str, lo: int, hi: int) -> int:
+    v = req.get(key)
+    if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+        raise Refused("bad_request", f"{key} must be an integer")
+    return v
+
+
 def stats(a: np.ndarray) -> dict:
     finite = a[np.isfinite(a)]
     out = {"finite_count": int(finite.size), "nonfinite_count": int(a.size - finite.size),
@@ -288,7 +373,7 @@ def stats(a: np.ndarray) -> dict:
 
 def handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
-    if op not in ("view", "plane", "coord") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+    if op not in ("view", "plane", "coord", "spectrum") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")
     c = cube_for(path)
     bunit = clean(c.h.get("BUNIT")) if "BUNIT" in c.h else None
@@ -299,6 +384,9 @@ def handle(req: dict) -> tuple[dict, bytes]:
                 "fits_axes": {"x": c.x + 1, "y": c.y + 1, "channel": None if c.chan is None else c.chan + 1},
                 "sky": c.sky_facts(), "spectral": c.spectral_facts(), "flags": fl,
                 "provenance_note": "axis roles come from the WCS; values are declared by the file, not verified"}, b""
+    if op == "spectrum":
+        head, payload = c.spectrum(req)
+        return {**base, **head}, payload
     channel = as_index(req, "channel", c.channels)
     if op == "coord":
         x, y = as_index(req, "x", c.shape[c.x]), as_index(req, "y", c.shape[c.y])

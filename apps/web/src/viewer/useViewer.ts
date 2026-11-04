@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "../api/catalog";
-import { getCoord, getPlane, getView } from "../api/planes";
-import type { Coord, Plane, View } from "../api/planes";
+import { getCoord, getPlane, getSpectrum, getView } from "../api/planes";
+import type { Coord, Plane, RegionShape, Spectrum, View } from "../api/planes";
+import type { Tool } from "./region";
 import { channelForKey } from "./geometry";
 import type { ColormapId } from "./colormaps";
 import type { RangeMode, Stretch } from "./render";
@@ -27,6 +28,11 @@ export function useViewer(datasetId: number | null) {
   const [pinned, setPinned] = useState<Pixel | null>(null);
   const [coord, setCoord] = useState<Coord | null>(null);
   const [coordError, setCoordError] = useState<string | null>(null);
+  const [tool, setTool] = useState<Tool>("pointer");
+  const [region, setRegion] = useState<RegionShape | null>(null);
+  const [spectrum, setSpectrum] = useState<Spectrum | null>(null);
+  const [spectrumError, setSpectrumError] = useState<string | null>(null);
+  const [spectrumLoading, setSpectrumLoading] = useState(false);
 
   // A different dataset: forget everything that belonged to the previous one.
   useEffect(() => {
@@ -38,6 +44,9 @@ export function useViewer(datasetId: number | null) {
     setHover(null);
     setPinned(null);
     setCoord(null);
+    setRegion(null);
+    setSpectrum(null);
+    setTool("pointer");
     if (datasetId === null) return;
     const ac = new AbortController();
     getView(datasetId, ac.signal)
@@ -95,6 +104,36 @@ export function useViewer(datasetId: number | null) {
     };
   }, [datasetId, probe?.x, probe?.y, shownChannel]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The mean spectrum of the region, from the worker. A newer region aborts the older request.
+  useEffect(() => {
+    if (datasetId === null || !view || !region) {
+      setSpectrum(null);
+      setSpectrumError(null);
+      setSpectrumLoading(false);
+      return;
+    }
+    const ac = new AbortController();
+    setSpectrumLoading(true);
+    const t = setTimeout(() => {
+      getSpectrum(datasetId, region, ac.signal)
+        .then((sp) => {
+          setSpectrum(sp);
+          setSpectrumError(null);
+          setSpectrumLoading(false);
+        })
+        .catch((e: unknown) => {
+          if (isAbort(e)) return;
+          setSpectrum(null);
+          setSpectrumError(message(e, "Could not compute the spectrum."));
+          setSpectrumLoading(false);
+        });
+    }, 120);
+    return () => {
+      clearTimeout(t);
+      ac.abort();
+    };
+  }, [datasetId, view, region]);
+
   const channels = view?.channels ?? 0;
   const onChannelKey = useCallback(
     (key: string): boolean => {
@@ -117,6 +156,7 @@ export function useViewer(datasetId: number | null) {
     datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
     colormap, setColormap, stretch, setStretch, range, setRange,
     hover, setHover, pinned, setPinned, probe, pixelValue, coord, coordError,
+    tool, setTool, region, setRegion, spectrum, spectrumError, spectrumLoading,
     onChannelKey, retry: () => setRetry((n) => n + 1),
   };
 }

@@ -7,6 +7,9 @@ import { limits, outputSize, renderPlane } from "./render";
 import type { Rgb } from "./render";
 import type { Viewer } from "./useViewer";
 import { channelLabel } from "./format";
+import { fromDrag, outline } from "./region";
+import type { Pt } from "./region";
+import type { RegionShape } from "../api/planes";
 import s from "./PlaneViewer.module.css";
 
 function token(name: string, fallback: Rgb): Rgb {
@@ -20,6 +23,8 @@ export function PlaneViewer({ v }: { v: Viewer }) {
   const box = useRef<HTMLDivElement>(null);
   const cv = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  const [draft, setDraft] = useState<RegionShape | null>(null);
+  const anchor = useRef<Pt | null>(null);
   const { plane, view } = v;
 
   useEffect(() => {
@@ -60,8 +65,18 @@ export function PlaneViewer({ v }: { v: Viewer }) {
     return pixelAt(e.clientX - r.left, e.clientY - r.top, r.width, r.height, plane.head.width, plane.head.height);
   }
 
+  function commit() {
+    if (draft) v.setRegion(draft);
+    anchor.current = null;
+    setDraft(null);
+  }
+
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape" && v.pinned) {
+    if (e.key === "Escape" && anchor.current) {
+      anchor.current = null;
+      setDraft(null);
+      e.preventDefault();
+    } else if (e.key === "Escape" && v.pinned) {
       v.setPinned(null);
       e.preventDefault();
     } else if (v.onChannelKey(e.key)) {
@@ -104,13 +119,38 @@ export function PlaneViewer({ v }: { v: Viewer }) {
             role="img"
             aria-label={`${channelLabel(plane.head.channel, plane.head.channels, view?.spectral ?? null, plane.head.spectral_value)}, ${plane.head.width} by ${plane.head.height} pixels`}
             style={{ width: shape.width, height: shape.height }}
-            onMouseMove={(e) => v.setHover(pick(e))}
-            onMouseLeave={() => v.setHover(null)}
+            onMouseDown={(e) => {
+              if (v.tool === "pointer") return;
+              const p = pick(e);
+              if (p) {
+                anchor.current = p;
+                setDraft(fromDrag(v.tool, p, p));
+              }
+            }}
+            onMouseMove={(e) => {
+              const p = pick(e);
+              v.setHover(p);
+              if (anchor.current && p && v.tool !== "pointer") setDraft(fromDrag(v.tool, anchor.current, p));
+            }}
+            onMouseUp={commit}
+            onMouseLeave={() => {
+              v.setHover(null);
+              commit();
+            }}
             onClick={(e) => {
+              if (v.tool !== "pointer") return;
               const p = pick(e);
               v.setPinned(p && v.pinned && v.pinned.x === p.x && v.pinned.y === p.y ? null : p);
             }}
           />
+          <svg className={s.overlay} viewBox={`0 0 ${plane.head.width} ${plane.head.height}`} preserveAspectRatio="none" aria-hidden="true">
+            {[v.region, draft].map((r, i) => {
+              if (!r) return null;
+              const o = outline(r, plane.head.height);
+              const cls = i === 0 ? s.region : s.draft;
+              return o.kind === "rect" ? <rect key={i} className={cls} x={o.x} y={o.y} width={o.w} height={o.h} /> : <circle key={i} className={cls} cx={o.cx} cy={o.cy} r={o.r} />;
+            })}
+          </svg>
           {probe && probe.x < plane.head.width && probe.y < plane.head.height ? (
             <span
               className={v.pinned ? s.pinned : s.marker}

@@ -27,6 +27,7 @@ type cacheKey struct {
 	op      string
 	channel int
 	x, y    int
+	q       string // canonical region description for spectra
 }
 
 // PlaneCache is a byte-bounded LRU of worker replies. Misses cost a worker read; hits cost nothing.
@@ -174,8 +175,26 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(rep.Head)
 }
 
-// plane answers with a binary frame: uint32 little-endian header length, the JSON header, then the pixels
-// (float32 little-endian, row-major, row 0 is FITS y=1). The browser never receives more than one plane.
+// writeFrame sends a binary frame: uint32 little-endian header length, the JSON header, then the payload
+// (little-endian numbers, layout stated in the header). The JSON is padded with spaces so the payload starts
+// 8-byte aligned and the browser can view it in place.
+func writeFrame(w http.ResponseWriter, rep worker.Reply) {
+	head := rep.Head
+	if pad := (8 - (4+len(head))%8) % 8; pad > 0 {
+		head = append(append(make([]byte, 0, len(head)+pad), head...), "       "[:pad]...)
+	}
+	var n [4]byte
+	binary.LittleEndian.PutUint32(n[:], uint32(len(head)))
+	w.Header().Set("Content-Type", "application/vnd.vesqira.plane")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(n[:])
+	_, _ = w.Write(head)
+	_, _ = w.Write(rep.Payload)
+}
+
+// plane answers with a frame whose payload is float32 pixels, row-major, row 0 = FITS y=1.
+// The browser never receives more than one plane.
 func (s *Server) plane(w http.ResponseWriter, r *http.Request) {
 	_, real, k, ok := s.source(w, r)
 	if !ok {
@@ -190,19 +209,52 @@ func (s *Server) plane(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Pad the JSON with spaces so the pixels start 4-byte aligned and the browser can view them in place.
-	head := rep.Head
-	if pad := (4 - (4+len(head))%4) % 4; pad > 0 {
-		head = append(append(make([]byte, 0, len(head)+pad), head...), "   "[:pad]...)
+	writeFrame(w, rep)
+}
+
+// integer reads a required integer query parameter that may be negative (regions can overhang the image).
+func integer(w http.ResponseWriter, r *http.Request, name string) (int, bool) {
+	v, err := strconv.Atoi(r.URL.Query().Get(name))
+	if err != nil || v < -(1<<20) || v > 1<<20 {
+		fail(w, 400, name+" must be an integer")
+		return 0, false
 	}
-	var n [4]byte
-	binary.LittleEndian.PutUint32(n[:], uint32(len(head)))
-	w.Header().Set("Content-Type", "application/vnd.vesqira.plane")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	_, _ = w.Write(n[:])
-	_, _ = w.Write(head)
-	_, _ = w.Write(rep.Payload)
+	return v, true
+}
+
+// spectrum answers with the mean spectrum of a rectangle or circle (0-based pixel coordinates).
+func (s *Server) spectrum(w http.ResponseWriter, r *http.Request) {
+	_, real, k, ok := s.source(w, r)
+	if !ok {
+		return
+	}
+	shape := r.URL.Query().Get("shape")
+	var names []string
+	switch shape {
+	case "rect":
+		names = []string{"x0", "y0", "x1", "y1"}
+	case "circle":
+		names = []string{"cx", "cy", "r"}
+	default:
+		fail(w, 400, "shape must be rect or circle")
+		return
+	}
+	req := map[string]any{"op": "spectrum", "path": real, "shape": shape}
+	q := shape
+	for _, n := range names {
+		v, ok := integer(w, r, n)
+		if !ok {
+			return
+		}
+		req[n] = v
+		q += "," + strconv.Itoa(v)
+	}
+	k.op, k.q = "spectrum", q
+	rep, ok := s.ask(w, r, k, req)
+	if !ok {
+		return
+	}
+	writeFrame(w, rep)
 }
 
 func (s *Server) coord(w http.ResponseWriter, r *http.Request) {
