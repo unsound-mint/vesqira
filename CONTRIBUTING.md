@@ -24,7 +24,8 @@ Requires Node 24 and Python 3.
 cd apps/web && npm ci   # once
 npm run dev             # components page at http://localhost:5173
 pip install -r fixtures/requirements.txt   # once, for the science fixtures
-make check              # docs checks, fixtures, typecheck, stylelint (token guard), tests, build
+make check              # docs checks, fixtures, worker, Go API, typecheck, stylelint (token guard), web tests, build
+make e2e                # browser walk-through (docs/demo.md); needs Chromium: cd e2e && npm ci && npx playwright install chromium
 ```
 
 Run the API against a data folder: `cd services/api && go run . --root /path/to/data` (loopback only; files outside `--root` are never read).

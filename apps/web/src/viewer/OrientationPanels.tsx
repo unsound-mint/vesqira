@@ -74,12 +74,18 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
   );
 }
 
+/** Degrees in [0, 180): a mean that rounds to 180.00 is the same orientation as 0.00, and is shown as 0. */
+export function axialMeanText(d: number): string {
+  const t = d.toFixed(2);
+  return `${t === "180.00" ? "0.00" : t}°`;
+}
+
 function Row({ label, a, pixelsLabel = "Pixels" }: { label: string; a: AxialSummary | null; pixelsLabel?: string }) {
   if (!a) return null;
   return (
     <>
       <dt>{label}</dt>
-      <dd className="mono">{a.defined && a.mean_deg !== null ? `${a.mean_deg.toFixed(2)}°` : "undefined"}</dd>
+      <dd className="mono">{a.defined && a.mean_deg !== null ? axialMeanText(a.mean_deg) : "undefined"}</dd>
       <dt>Resultant R</dt>
       <dd className="mono">{a.resultant === null ? EM : a.resultant.toPrecision(4)}</dd>
       <dt>{pixelsLabel}</dt>

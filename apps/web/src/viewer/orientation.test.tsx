@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { Dataset } from "../api/catalog";
 import { lut } from "./colormaps";
 import { glyphStride, orientationLines } from "./glyphs";
-import { InterpretationPanel, suggestCompanion } from "./OrientationPanels";
+import { axialMeanText, InterpretationPanel, suggestCompanion } from "./OrientationPanels";
 import { axialDegrees, renderPlane } from "./render";
 import type { Viewer } from "./useViewer";
 
@@ -29,6 +29,14 @@ describe("axial angles", () => {
   it("draws NaN angles as no value, not as an orientation", () => {
     const img = renderPlane(new Float32Array([NaN]), 1, 1, { lut: lut("twilight"), range: null, stretch: "linear", outW: 1, outH: 1, nodata: [[1, 2, 3], [9, 9, 9]], axial: { toDegrees: 1 } });
     expect(Array.from(img.pixels.slice(0, 3))).toEqual([1, 2, 3]);
+  });
+});
+
+describe("axial mean text", () => {
+  it("shows an orientation that rounds to 180 as 0, since they are the same", () => {
+    expect(axialMeanText(179.9999999)).toBe("0.00°");
+    expect(axialMeanText(0)).toBe("0.00°");
+    expect(axialMeanText(152.0683)).toBe("152.07°");
   });
 });
 

@@ -136,9 +136,14 @@
 
 .pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+}
+
+/* with two panes each has a header row above its map */
+.panes2 .pane {
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .panes2 .pane + .pane {

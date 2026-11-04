@@ -1,4 +1,4 @@
-.PHONY: check docs web fixtures api
+.PHONY: check docs web fixtures api e2e demo
 check: docs fixtures api web
 
 docs:
@@ -21,3 +21,12 @@ api:
 	@if [ -f services/api/go.mod ]; then \
 	  cd services/scientific-worker && python3 -m unittest discover -s . && cd ../api && gofmt -l . | (! grep .) && go vet ./... && VESQIRA_REQUIRE_WORKER=1 go test ./...; \
 	fi
+
+# Acceptance walk-through in a real browser. Needs python3 with astropy, Go, and: cd apps/web && npm ci; cd e2e && npm ci && npx playwright install chromium
+e2e:
+	cd apps/web && npm run build
+	cd e2e && npx playwright test
+
+# Run the app on generated fixtures and follow docs/demo.md
+demo:
+	tools/demo.sh

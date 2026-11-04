@@ -38,3 +38,4 @@ __pycache__/
 # local tooling output
 .playwright-mcp/
 .pytest_cache/
+.demo/

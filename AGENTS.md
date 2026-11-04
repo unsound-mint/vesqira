@@ -1,6 +1,6 @@
 # AGENTS.md — Vesqira
 
-> Instructions for contributors and coding agents. **Status:** early development. Only the web foundation (`apps/web`, `make check`) exists; everything else here describes intended behavior.
+> Instructions for contributors and coding agents. **Status:** pre-release. The v0.1 workflow exists (`apps/web`, `services/api`, `services/scientific-worker`, `fixtures`, `e2e`; verify with `make check` and `make e2e`); rules below that mention things not yet built say so.
 
 ## Mission
 
