@@ -101,3 +101,12 @@
   font-size: var(--text-sm);
   resize: vertical;
 }
+
+.known {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}

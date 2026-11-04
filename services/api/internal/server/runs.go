@@ -157,6 +157,7 @@ type runJSON struct {
 		DatasetID int64  `json:"datasetId"`
 		Basis     string `json:"basis"`
 	} `json:"inputHint"`
+	Reproducibility []runs.Fact `json:"reproducibility"`
 }
 
 func (s *Server) runView(r runs.Run) runJSON {
@@ -174,6 +175,7 @@ func (s *Server) runView(r runs.Run) runJSON {
 			}
 		}
 	}
+	out.Reproducibility = runs.Reproducibility(r, out.InputHint != nil)
 	return out
 }
 

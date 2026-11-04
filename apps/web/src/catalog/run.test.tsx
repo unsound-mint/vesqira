@@ -43,3 +43,16 @@ describe("assessment", () => {
     expect(screen.queryByText(/\bvalid\b/i)).toBeNull();
   });
 });
+
+describe("reproducibility", () => {
+  it("lists what is declared and what is unresolved, and says it is not about correctness", () => {
+    const facts = [
+      { key: "code", label: "Code version", status: "declared" as const, detail: "Commit bcbaed4ec980 with uncommitted changes." },
+      { key: "seed", label: "Random seed", status: "unresolved" as const, detail: "No seed is recorded." },
+    ];
+    render(<RunPanel run={run({ reproducibility: facts })} role="psi" datasets={[]} onOpen={() => {}} onCompare={() => {}} />);
+    expect(screen.getByText(/What is known about rerunning this \(1 unresolved\)/)).toBeInTheDocument();
+    expect(screen.getByText(/No seed is recorded/)).toBeInTheDocument();
+    expect(screen.getByText(/says nothing about whether the result is right/)).toBeInTheDocument();
+  });
+});

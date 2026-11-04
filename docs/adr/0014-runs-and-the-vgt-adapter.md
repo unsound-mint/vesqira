@@ -26,3 +26,7 @@ Parser tests: parameters kept, every location-like key and value dropped, output
 
 ## Rollback / Migration
 Drop the `runs` and `run_outputs` tables and the routes; datasets are unaffected.
+
+## Amendment: what is known about rerunning a run
+
+A run now carries a list of facts about reproducibility, each marked `declared`, `inferred` or `unresolved`: code version (commit, and whether the run reports uncommitted changes), parameters, input (name and size as declared; a registered file with the same name and size is only *inferred*, and no content hash is recorded), software environment (not recorded by the run metadata, so unresolved), random seed (declared only when a parameter named like a seed exists), output files (registered by reference, no checksums recorded), what counts as the same result (not stated), and evaluations that failed (declared only when the run reports both attempts and failures; cancelled or excluded evaluations are not recorded). The run panel shows them under "What is known about rerunning this". This is not an assessment of the result and never replaces the author's own QC. Recording more (environment capture, hashes) would be done by the pipeline or an explicit Vesqira action, not guessed.

@@ -75,6 +75,19 @@ export function RunPanel({ run, role, datasets, job, onOpen, onCompare }: { run:
         </ul>
       </div>
       <Assessment run={run} />
+      {run.reproducibility && run.reproducibility.length > 0 ? (
+        <details className={s.det}>
+          <summary>What is known about rerunning this ({run.reproducibility.filter((f) => f.status === "unresolved").length} unresolved)</summary>
+          <p className={s.note}>Declared means the run’s own metadata says so and it was not checked here; unresolved means nothing records it. This says nothing about whether the result is right.</p>
+          <ul className={s.known}>
+            {run.reproducibility.map((f) => (
+              <li key={f.key}>
+                <Pill tone={f.status === "unresolved" ? "warn" : "neutral"}>{f.status}</Pill> <strong>{f.label}.</strong> {f.detail}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       <details className={s.det}>
         <summary>Parameters ({run.params.length})</summary>
         <table className={s.table}>

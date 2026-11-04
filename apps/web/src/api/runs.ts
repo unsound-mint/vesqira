@@ -5,8 +5,11 @@ export type RunOutput = { role: "psi" | "reliability" | "support" | "fit_rbar2";
 
 export type RunReview = { qc: "not_assessed" | "passed" | "failed" | "inconclusive"; interpretation: "not_interpreted" | "supports" | "challenges" | "inconclusive"; note: string };
 
+export type RunFact = { key: string; label: string; status: "declared" | "inferred" | "unresolved"; detail: string };
+
 export type Run = {
   review: RunReview;
+  reproducibility?: RunFact[];
   id: number;
   name: string;
   kind: string;

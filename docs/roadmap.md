@@ -51,9 +51,9 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 
 - [ ] Typed run metrics with units and uncertainty; cross-run filtering and plotting (Q128–Q131).
 - [ ] Parameter sweeps and "explore variations" as a set of linked runs (Q128, Q222).
-- [ ] Reproducibility record beyond the git flag: seed, software versions, environment, equivalence criterion (Q121–Q125, Q198).
+- [x] Reproducibility facts beyond the git flag, each declared, inferred or unresolved (Q121–Q125, Q198). Capturing environment and hashes is still to do.
 - [ ] Rerun modes: strict, best effort, adapted (Q123).
-- [ ] Accounting of failed, cancelled and excluded evaluations per run (Q224).
+- [x] Accounting of failed evaluations when the run reports them; cancelled and excluded are stated as not recorded (Q224).
 - [ ] Structured fields for controls: smoothing, noise model, how a control was constructed (Q246).
 - [x] ROHSA job template next to the existing VGT one (follows hpc/irgetas/rohsa.slurm; results are not imported as a run).
 - [x] Beam matching (convolution to a common beam) as an explicit derived resource; never implied by reprojection (Q205).
