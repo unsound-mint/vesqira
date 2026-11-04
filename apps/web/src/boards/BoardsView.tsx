@@ -4,6 +4,7 @@ import { Button, IconButton, Input, Select } from "../ui";
 import { addToBoard as _unused, createBoard, figurePreviewUrl, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments } from "../api/boards";
 import type { Board, Comment, Snapshot } from "../api/boards";
 import { EM } from "../catalog/format";
+import { RunLine } from "./RunLine";
 import s from "./BoardsView.module.css";
 
 void _unused;
@@ -110,6 +111,7 @@ export function BoardsView() {
               {it.figure.caption ? <p className={s.cap}>{it.figure.caption}</p> : null}
               <details className={s.det}>
                 <summary>Where this came from</summary>
+                {it.figure.provenance.run ? <RunLine run={it.figure.provenance.run} /> : null}
                 <ul>{it.figure.provenance.statements.map((t) => <li key={t}>{t}</li>)}</ul>
                 <p className={s.src}>{it.figure.provenance.source.identity}. Revision <span className="mono">{it.figure.revision.slice(0, 12)}</span></p>
               </details>

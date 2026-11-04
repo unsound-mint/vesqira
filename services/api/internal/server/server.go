@@ -12,6 +12,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
 
@@ -26,6 +27,7 @@ type Server struct {
 	Planes PlaneService // persistent plane worker; nil answers 503
 	Cache  *PlaneCache  // optional; nil disables caching
 	Boards *boards.Store
+	Runs   *runs.Store
 }
 
 func (s *Server) Handler() http.Handler {
@@ -34,6 +36,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets", s.list)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
 	mux.HandleFunc("POST /api/datasets", s.register)
+	if s.Runs != nil {
+		mux.HandleFunc("POST /api/runs/import", s.importRun)
+		mux.HandleFunc("GET /api/runs", s.listRuns)
+		mux.HandleFunc("GET /api/runs/{id}", s.getRun)
+	}
 	if s.Boards != nil {
 		mux.HandleFunc("POST /api/figures", s.createFigure)
 		mux.HandleFunc("GET /api/figures", s.listFigures)
@@ -139,6 +146,24 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, d)
 }
 
+// registerPath reads the header of an already-authorized file and records the reference.
+func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset, int, string) {
+	hdr, err := s.Worker.Header(ctx, real)
+	if err != nil {
+		return catalog.Dataset{}, 422, err.Error()
+	}
+	info, err := statFile(real)
+	if err != nil {
+		return catalog.Dataset{}, 404, "file not found"
+	}
+	d, err := s.Store.Upsert(catalog.Dataset{Path: real, Name: filepath.Base(real), SizeBytes: info.Size(), ModifiedAt: info.ModTime(), Header: hdr})
+	if err != nil {
+		log.Printf("register: %v", err)
+		return catalog.Dataset{}, 500, "internal error"
+	}
+	return d, 0, ""
+}
+
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var in struct {
@@ -153,20 +178,9 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, err.Error())
 		return
 	}
-	hdr, err := s.Worker.Header(r.Context(), real)
-	if err != nil {
-		fail(w, 422, err.Error())
-		return
-	}
-	info, err := statFile(real)
-	if err != nil {
-		fail(w, 404, "file not found")
-		return
-	}
-	d, err := s.Store.Upsert(catalog.Dataset{Path: real, Name: filepath.Base(real), SizeBytes: info.Size(), ModifiedAt: info.ModTime(), Header: hdr})
-	if err != nil {
-		log.Printf("register: %v", err)
-		fail(w, 500, "internal error")
+	d, code, msg := s.registerPath(r.Context(), real)
+	if code != 0 {
+		fail(w, code, msg)
 		return
 	}
 	writeJSON(w, 201, d)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
 // ---- figure provenance: built here from catalogued facts and a validated, whitelisted view description ----
@@ -108,6 +109,7 @@ type Provenance struct {
 		Header     safeHeader `json:"headerDeclaredByFile"`
 	} `json:"source"`
 	Interpretation *safeInterpretation `json:"interpretation,omitempty"`
+	Run            *runs.Summary       `json:"run,omitempty"`
 	View           ViewParams          `json:"view"`
 	Statements     []string            `json:"statements"`
 }
@@ -130,7 +132,7 @@ func (p ViewParams) checkAgainst(h safeHeader) bool {
 	return true
 }
 
-func buildProvenance(d catalog.Dataset, p ViewParams) (json.RawMessage, error) {
+func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary) (json.RawMessage, error) {
 	var pr Provenance
 	pr.Source.Name, pr.Source.SizeBytes, pr.Source.ModifiedAt = d.Name, d.SizeBytes, d.ModifiedAt
 	pr.Source.Identity = "a reference to the file by name, size and modification time; its bytes were not hashed"
@@ -141,14 +143,19 @@ func buildProvenance(d catalog.Dataset, p ViewParams) (json.RawMessage, error) {
 		return nil, errBadView
 	}
 	pr.View = p
+	pr.Run = run
 	pr.Statements = []string{
 		"Header values are declared by the file and are not verified.",
 		"The picture was drawn by the author's browser and the view settings are as reported by it; the server checked them against the catalogued header (channel range, brightness unit) but did not redraw the picture.",
 		"Pixels are shown as float32; the author's viewer treats NaN, BLANK and infinite values as no value and never draws them as zero.",
 	}
 	if d.Interpretation != nil {
-		pr.Interpretation = &safeInterpretation{Kind: d.Interpretation.Kind, Unit: d.Interpretation.Unit, DeclaredBy: "the author of this board", HasReliability: d.Interpretation.ReliabilityID != nil}
-		pr.Statements = append(pr.Statements, "The orientation unit and meaning were declared by the author, not by the file. Angles are axial (0° and 180° are the same orientation) and statistics use the doubled-angle method.")
+		by := "the author of this board"
+		if d.Interpretation.DeclaredBy != "user" {
+			by = "the run import adapter (" + d.Interpretation.DeclaredBy + "), not the file"
+		}
+		pr.Interpretation = &safeInterpretation{Kind: d.Interpretation.Kind, Unit: d.Interpretation.Unit, DeclaredBy: by, HasReliability: d.Interpretation.ReliabilityID != nil}
+		pr.Statements = append(pr.Statements, "The orientation unit and meaning were declared by "+by+", not by the file. Angles are axial (0° and 180° are the same orientation) and statistics use the doubled-angle method.")
 	}
 	if p.Region != nil {
 		pr.Statements = append(pr.Statements, "Region values are means of the finite pixels inside the region; flagged channels keep their data; pixel scale is taken at the reference pixel.")
@@ -226,7 +233,11 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, status, m)
 		return
 	}
-	prov, err := buildProvenance(d, vp)
+	var run *runs.Summary
+	if s.Runs != nil {
+		run, _ = s.Runs.ForDataset(d.ID)
+	}
+	prov, err := buildProvenance(d, vp, run)
 	if errors.Is(err, errBadView) {
 		fail(w, 400, "the view description does not match the dataset")
 		return

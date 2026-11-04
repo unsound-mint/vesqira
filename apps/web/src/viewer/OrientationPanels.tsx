@@ -68,7 +68,7 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
       {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
       {cur?.stale ? <p role="alert" className={s.warn}>The file changed since you declared it. Declare it again to confirm the unit still applies.</p> : null}
       <p className={s.note}>
-        {cur ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : "Not declared: shown as an ordinary scalar map."} Kept with the catalog; the file is never changed. The file does not declare an angle convention. Vesqira assumes the one the VGT pipeline uses (from the +x pixel axis towards +y, counter-clockwise on screen); check it against your pipeline.
+        {cur ? (cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : `Proposed by the run import (${cur.declaredBy}) as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}: from the pipeline, not from the file. Choose below and apply to override.`) : "Not declared: shown as an ordinary scalar map."} Kept with the catalog; the file is never changed. The file does not declare an angle convention. Vesqira assumes the one the VGT pipeline uses (from the +x pixel axis towards +y, counter-clockwise on screen); check it against your pipeline.
       </p>
     </div>
   );

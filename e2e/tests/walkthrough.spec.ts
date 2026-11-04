@@ -223,3 +223,47 @@ test("the workbench is usable in the light theme and at phone width", async ({ b
     await ctx.close();
   }
 });
+
+test("a VGT run is imported with its parameters, linked to its outputs and carried to the reviewer", async ({ page, browser }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Runs", exact: false }).first().click().catch(() => undefined);
+  await page.getByLabel("Import a VGT run").fill(path.join(data, "vgt_run_demo"));
+  await page.getByRole("button", { name: "Import run" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: "vgt_run_demo" })).toBeVisible();
+  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
+
+  // the run, its code version, and the honest label for an uncommitted tree
+  const insp = inspector(page);
+  await expect(insp.getByText("Not reproducible from the commit: uncommitted changes")).toBeVisible();
+  await expect(insp.getByText(/No registered file matches it by name and size/)).toBeVisible();
+  await insp.getByText(/^Parameters \(/).click();
+  await expect(insp.getByRole("rowheader", { name: "fitter_mode" })).toBeVisible();
+  await expect(insp.getByText("input_file")).toHaveCount(0); // locations are not kept
+
+  // the adapter proposed the orientation: shown as the run import's, not the file's and not the user's
+  await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
+  await expect(insp.getByText("Mean orientation")).toBeVisible();
+
+  // figure -> board -> reviewer sees the run's parameters and the dirty commit, never a path
+  await page.getByRole("button", { name: "Figure", exact: true }).click();
+  await insp.getByLabel("Title").first().fill("Demo run psi");
+  await insp.getByRole("button", { name: "Save as figure" }).click();
+  await expect(insp.getByText(/Saved: “Demo run psi”/)).toBeVisible();
+  await insp.getByLabel("New board name").fill("Run board");
+  await insp.getByRole("button", { name: "Add to board" }).click();
+  await expect(insp.getByText("Added to the board.")).toBeVisible();
+  await page.getByRole("button", { name: "Boards", exact: true }).click();
+  await page.getByLabel("Board", { exact: true }).selectOption({ label: "Run board" });
+  await page.getByRole("button", { name: "Freeze and create link" }).click();
+  const link = await page.getByLabel("Review link").inputValue();
+  const ctx = await browser.newContext();
+  const sup = await ctx.newPage();
+  await sup.goto(link);
+  await sup.getByText("Where this came from and what it does not show").click();
+  await expect(sup.getByText(/uncommitted changes, so not reproducible from the commit/)).toBeVisible();
+  await sup.getByText(/^Run parameters \(/).click();
+  await expect(sup.getByText("axial_vonmises").first()).toBeVisible();
+  const text = await sup.locator("body").innerText();
+  expect(text).not.toMatch(/\/tmp\/|\/home\/|vgt_inputs|validation_output|\.run\/data/);
+  await ctx.close();
+});

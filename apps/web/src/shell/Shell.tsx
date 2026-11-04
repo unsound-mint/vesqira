@@ -4,6 +4,8 @@ import { BoardsView } from "../boards/BoardsView";
 import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { Explorer } from "../catalog/Explorer";
+import { RunPanel, runFor } from "../catalog/RunPanel";
+import { RunsList } from "../catalog/RunsList";
 import { getCompat } from "../api/catalog";
 import type { Compat } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
@@ -92,6 +94,9 @@ export function Shell() {
 
       <aside className={s.side} aria-label="Explorer" hidden={!L.sideOpen}>
         <div className={s.scroll}>
+          <Section title="Runs" meta={String(cat.runs.length)} defaultOpen={cat.runs.length > 0}>
+            <RunsList runs={cat.runs} onImport={cat.importRunFolder} onOpen={(r) => { const o = r.outputs.find((x) => x.role === "psi") ?? r.outputs[0]; if (o) cat.select(o.datasetId); }} />
+          </Section>
           <Section title="Datasets" meta={String(cat.datasets.length)}>
             <Explorer datasets={cat.datasets} selectedId={cat.selectedId} loading={cat.loading} error={cat.error} onSelect={cat.select} onRegister={cat.register} />
           </Section>
@@ -129,10 +134,15 @@ export function Shell() {
       <aside className={s.insp} aria-label="Inspector" hidden={!L.inspOpen}>
         <ResizeHandle orientation="vertical" direction={-1} label="Resize inspector" value={L.insp} min={LIMITS.insp.min} max={LIMITS.insp.max} onChange={(v) => set("insp", v)} />
         <div className={s.scroll}>
+          {actDs && runFor(cat.runs, actDs.id) ? (
+            <Section title="Run">
+              <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} datasets={cat.datasets} onOpen={cat.select} onCompare={(id) => { if (id !== cat.selected?.id) setCompareId(id); }} />
+            </Section>
+          ) : null}
           <Section title="Coordinates">
             {actDs ? <CoordinateReadout v={viewer} other={linked && other.view ? { name: (useB ? cat.selected : compareDs)?.name ?? "", v: other } : null} /> : <p className={s.empty}>{EM}</p>}
           </Section>
-          {actDs && viewer.view?.channels === 1 ? (
+          {actDs && (viewer.view === null || viewer.view.channels === 1) ? (
             <Section title="Interpretation">
               <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} declare={cat.declare} />
             </Section>

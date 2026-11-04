@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, listDatasets, registerDataset, setInterpretation } from "../api/catalog";
 import type { Dataset, InterpretationRequest } from "../api/catalog";
+import { importRun, listRuns } from "../api/runs";
+import type { Run } from "../api/runs";
 
 export function useCatalog() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
+    listRuns().then((r) => live && setRuns(r)).catch(() => undefined);
     listDatasets()
       .then((d) => live && (setDatasets(d), setError(null)))
       .catch((e: unknown) => live && setError(e instanceof ApiError ? e.message : "Could not load datasets."))
@@ -42,5 +46,19 @@ export function useCatalog() {
     }
   }, []);
 
-  return { declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
+  /** Import a run folder; returns an error text, or null. Refreshes datasets, because the import registers outputs and may declare one. */
+  const importRunFolder = useCallback(async (path: string): Promise<string | null> => {
+    try {
+      const run = await importRun(path);
+      setRuns(await listRuns());
+      setDatasets(await listDatasets());
+      const first = run.outputs.find((o) => o.role === "psi") ?? run.outputs[0];
+      if (first) setSelectedId(first.datasetId);
+      return null;
+    } catch (e) {
+      return e instanceof ApiError ? e.message : "Could not import the run.";
+    }
+  }, []);
+
+  return { runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
 }

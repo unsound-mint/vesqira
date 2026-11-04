@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,7 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/review"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
@@ -522,5 +527,123 @@ func TestCompatibilityEndpointLinksOnlyKnownSameGrids(t *testing.T) {
 	}
 	if r, _ := get(t, ts.URL+"/api/compat?a=1&b=zz"); r.StatusCode != 400 {
 		t.Errorf("bad ids: %d", r.StatusCode)
+	}
+}
+
+// A VGT run folder: import links the outputs, pairs the reliability map, proposes the axial interpretation as the
+// adapter's (not the user's), shows the dirty commit as not reproducible, and nothing location-like reaches a reviewer.
+func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
+	repo, _ := filepath.Abs("../../../..")
+	if exec.Command("python3", "-c", "import astropy").Run() != nil {
+		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
+			t.Fatal("python3 with astropy is required")
+		}
+		t.Skip("python3 with astropy not available")
+	}
+	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	os.MkdirAll(root, 0o755)
+	rs, _ := sourceroot.New([]string{root})
+	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cat.Close()
+	bs, _ := boards.Open(cat.DB(), base)
+	rn, err := runs.Open(cat.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: hdr, Boards: bs, Runs: rn}).Handler())
+	defer ts.Close()
+	rv := httptest.NewServer((&review.Handler{Store: bs}).Handler())
+	defer rv.Close()
+	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
+	gen.Dir = filepath.Join(repo, "fixtures")
+	if out, err := gen.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	// the run's input cube, registered under the name the metadata gives it (same size): an inferred link only
+	cubeBytes, _ := os.ReadFile(filepath.Join(root, "hi_cube.fits"))
+	os.WriteFile(filepath.Join(root, "demo_cube.fits"), cubeBytes, 0o644)
+	var cube catalog.Dataset
+	json.NewDecoder(post(t, ts, filepath.Join(root, "demo_cube.fits"), nil).Body).Decode(&cube)
+
+	dir := filepath.Join(root, "vgt_run_demo")
+	if r, _ := postJSON(t, ts.URL+"/api/runs/import", map[string]any{"path": filepath.Join(base, "elsewhere")}); r.StatusCode != 403 {
+		t.Errorf("a path outside the roots: %d, want 403", r.StatusCode)
+	}
+	r, out := postJSON(t, ts.URL+"/api/runs/import", map[string]any{"path": dir})
+	if r.StatusCode != 201 {
+		t.Fatalf("import: %d %s", r.StatusCode, out)
+	}
+	var run struct {
+		ID           int64
+		Name         string
+		Dirty        bool
+		Reproducible bool `json:"reproducibleFromCommit"`
+		Outputs      []struct {
+			Role      string
+			DatasetID int64
+		}
+		InputHint *struct{ DatasetID int64 } `json:"inputHint"`
+	}
+	json.Unmarshal(out, &run)
+	if len(run.Outputs) != 4 || run.Name != "vgt_run_demo" || !run.Dirty || run.Reproducible {
+		t.Fatalf("run: %s", out)
+	}
+	if run.InputHint == nil || run.InputHint.DatasetID != cube.ID {
+		t.Errorf("the input cube should be linked by name and size: %s", out)
+	}
+	ids := map[string]int64{}
+	for _, o := range run.Outputs {
+		ids[o.Role] = o.DatasetID
+	}
+	_, pb := get(t, ts.URL+"/api/datasets/"+itoa(int(ids["psi"])))
+	var psi catalog.Dataset
+	json.Unmarshal(pb, &psi)
+	if psi.Interpretation == nil || psi.Interpretation.DeclaredBy != "vgt-run-adapter" || psi.Interpretation.Unit != "rad" ||
+		psi.Interpretation.ReliabilityID == nil || *psi.Interpretation.ReliabilityID != ids["reliability"] {
+		t.Fatalf("adapter interpretation: %+v", psi.Interpretation)
+	}
+	// importing again refreshes the same run
+	if r, _ := postJSON(t, ts.URL+"/api/runs/import", map[string]any{"path": filepath.Join(dir, "run_metadata.toml")}); r.StatusCode != 201 {
+		t.Errorf("re-import: %d", r.StatusCode)
+	}
+	if _, lb := get(t, ts.URL+"/api/runs"); strings.Count(string(lb), `"kind":"vgt"`) != 1 {
+		t.Errorf("re-importing must not duplicate the run: %s", lb)
+	}
+	// a user's own declaration is never overwritten by a later import
+	postJSON(t, ts.URL+"/api/datasets/"+itoa(int(ids["psi"]))+"/interpretation", map[string]any{"kind": "axial_orientation", "unit": "deg"})
+	postJSON(t, ts.URL+"/api/runs/import", map[string]any{"path": dir})
+	_, pb = get(t, ts.URL+"/api/datasets/"+itoa(int(ids["psi"])))
+	json.Unmarshal(pb, &psi)
+	if psi.Interpretation.DeclaredBy != "user" || psi.Interpretation.Unit != "deg" {
+		t.Errorf("a re-import overwrote the user's declaration: %+v", psi.Interpretation)
+	}
+
+	// a figure of a run output carries the run's parameters and commit, and nothing that names a place or a person
+	_, fb := postJSON(t, ts.URL+"/api/figures", map[string]any{"datasetId": ids["psi"], "title": "Psi", "view": map[string]any{"kind": "plane", "channel": 0}, "previewPng": testPNG(t)})
+	var f boards.Figure
+	json.Unmarshal(fb, &f)
+	_, bb := postJSON(t, ts.URL+"/api/boards", map[string]any{"title": "Run board"})
+	var b boards.Board
+	json.Unmarshal(bb, &b)
+	postJSON(t, ts.URL+"/api/boards/"+itoa(int(b.ID))+"/items", map[string]any{"figureId": f.ID})
+	_, pub := postJSON(t, ts.URL+"/api/boards/"+itoa(int(b.ID))+"/publish", map[string]any{"hours": 1})
+	var p struct{ Token string }
+	json.Unmarshal(pub, &p)
+	_, rbody := get(t, rv.URL+"/review-api/"+p.Token)
+	body := string(rbody)
+	for _, want := range []string{"axial_vonmises", "-dirty", `"reproducibleFromCommit":false`, "vgt_run_demo"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the reviewer should see %q: %s", want, body)
+		}
+	}
+	for _, leak := range []string{"/tmp/vgt_inputs", "someone", "Projects/VGT", "validation_output", "input_file", root, base, "drwatson"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("reviewer response leaks %q", leak)
+		}
 	}
 }

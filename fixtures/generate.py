@@ -235,6 +235,69 @@ def vgt_tangential_deg() -> fits.HDUList:
     return fits.HDUList([fits.PrimaryHDU(theta.astype(np.float64), header=_map_header((n, n)))])
 
 
+def write_vgt_run(directory: Path, dirty: bool = True) -> Path:
+    """A VGT-style run folder: the four output maps and a run_metadata.toml shaped like the real pipeline's.
+
+    The metadata keeps the pipeline's habit of recording output paths relative to the machine it ran on, an input
+    path under /tmp and a "-dirty" commit, so importers can be tested against what real runs contain.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    psi = vgt_psi("rad")
+    psi.writeto(directory / "psi_demo.fits", overwrite=True)
+    vgt_reliability_map().writeto(directory / "psi_reliability_demo.fits", overwrite=True)
+    support = fits.HDUList([fits.PrimaryHDU(np.ones((4, 4), dtype=np.float32), header=_map_header((4, 4)))])
+    support.writeto(directory / "psi_support_demo.fits", overwrite=True)
+    fit = fits.HDUList([fits.PrimaryHDU(np.full((4, 4), 0.2, dtype=np.float64), header=_map_header((4, 4)))])
+    fit.writeto(directory / "psi_fit_rbar2_demo.fits", overwrite=True)
+    commit = "bcbaed4ec9800ef95c561cfb4ad45c344743e469" + ("-dirty" if dirty else "")
+    (directory / "run_metadata.toml").write_text(f"""generated_at_utc = "2026-06-25T09:21:44Z"
+gitcommit = "{commit}"
+
+[config]
+dn = 10
+fitter_mode = "axial_vonmises"
+input_file = "/tmp/vgt_inputs/demo_cube.fits"
+ker = 8
+noise = 0.37
+output_dir = "validation_output/demo_run"
+
+[diagnostics]
+fit_attempts = 1000
+fit_failures = 0
+
+[input]
+absolute_path = "/tmp/vgt_inputs/demo_cube.fits"
+path = "/tmp/vgt_inputs/demo_cube.fits"
+size_bytes = 207360
+stem = "demo_cube"
+
+[outputs]
+fit_rbar2_path = "validation_output/demo_run/psi_fit_rbar2_demo.fits"
+metadata_path = "validation_output/demo_run/run_metadata.toml"
+psi_path = "validation_output/demo_run/psi_demo.fits"
+reliability_path = "validation_output/demo_run/psi_reliability_demo.fits"
+support_path = "validation_output/demo_run/psi_support_demo.fits"
+
+[performance]
+elapsed_seconds = 106.162
+finished_at_utc = "2026-06-25T09:21:20Z"
+julia_threads = 16
+
+[project]
+drwatson_projectdir = "/home/someone/Projects/VGT"
+name = "Astronomy"
+
+[run_parameters]
+dn = 10
+fitter = "axial_vonmises"
+input = "demo_cube"
+ker = 8
+label = "vgt"
+noise = 0.37
+""")
+    return directory / "run_metadata.toml"
+
+
 def write_all(directory: Path) -> dict[str, Path]:
     directory.mkdir(parents=True, exist_ok=True)
     out = {}
@@ -255,6 +318,7 @@ def write_all(directory: Path) -> dict[str, Path]:
         path = directory / name
         hdul.writeto(path, overwrite=True)
         out[name] = path
+    write_vgt_run(directory / "vgt_run_demo")
     return out
 
 

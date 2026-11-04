@@ -5,6 +5,7 @@ go 1.26.0
 require modernc.org/sqlite v1.61.1
 
 require (
+	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect

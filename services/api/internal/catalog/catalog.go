@@ -28,7 +28,7 @@ type Interpretation struct {
 	Kind          string    `json:"kind"` // "axial_orientation"
 	Unit          string    `json:"unit"` // "deg" or "rad", required
 	ReliabilityID *int64    `json:"reliabilityId"`
-	DeclaredBy    string    `json:"declaredBy"`
+	DeclaredBy    string    `json:"declaredBy"` // "user" or the name of an adapter, e.g. "vgt-run-adapter"
 	DeclaredAt    time.Time `json:"declaredAt"`
 	// Stale is true when the file's registered size or modification time differs from what it was when the user
 	// made the declaration: the declaration may no longer describe these bytes.
@@ -62,6 +62,10 @@ func Open(dsn string) (*Store, error) {
 			declared_at INTEGER NOT NULL,
 			size_bytes INTEGER NOT NULL DEFAULT 0,
 			modified_ns INTEGER NOT NULL DEFAULT 0)`)
+	}
+	if err == nil {
+		// older catalogs lack the column that records who made a declaration; adding it twice is harmless
+		_, _ = db.Exec(`ALTER TABLE interpretations ADD COLUMN declared_by TEXT NOT NULL DEFAULT 'user'`)
 	}
 	if err != nil {
 		db.Close()
@@ -124,7 +128,7 @@ func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
 	var in Interpretation
 	var rel sql.NullInt64
 	var at, size, mod int64
-	err := s.db.QueryRow(`SELECT kind,unit,reliability_id,declared_at,size_bytes,modified_ns FROM interpretations WHERE dataset_id=?`, id).Scan(&in.Kind, &in.Unit, &rel, &at, &size, &mod)
+	err := s.db.QueryRow(`SELECT kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by FROM interpretations WHERE dataset_id=?`, id).Scan(&in.Kind, &in.Unit, &rel, &at, &size, &mod, &in.DeclaredBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -134,7 +138,7 @@ func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
 	if rel.Valid {
 		in.ReliabilityID = &rel.Int64
 	}
-	in.DeclaredBy, in.DeclaredAt = "user", time.Unix(at, 0).UTC()
+	in.DeclaredAt = time.Unix(at, 0).UTC()
 	in.Stale = size != d.SizeBytes || mod != d.ModifiedAt.UnixNano()
 	return &in, nil
 }
@@ -146,10 +150,14 @@ func (s *Store) SetInterpretation(d Dataset, in Interpretation) error {
 	if in.ReliabilityID != nil {
 		rel = *in.ReliabilityID
 	}
-	_, err := s.db.Exec(`INSERT INTO interpretations(dataset_id,kind,unit,reliability_id,declared_at,size_bytes,modified_ns) VALUES(?,?,?,?,?,?,?)
+	by := in.DeclaredBy
+	if by == "" {
+		by = "user"
+	}
+	_, err := s.db.Exec(`INSERT INTO interpretations(dataset_id,kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by) VALUES(?,?,?,?,?,?,?,?)
 		ON CONFLICT(dataset_id) DO UPDATE SET kind=excluded.kind,unit=excluded.unit,reliability_id=excluded.reliability_id,declared_at=excluded.declared_at,
-			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns`,
-		id, in.Kind, in.Unit, rel, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano())
+			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns,declared_by=excluded.declared_by`,
+		id, in.Kind, in.Unit, rel, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano(), by)
 	return err
 }
 

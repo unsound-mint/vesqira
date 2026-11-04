@@ -1,0 +1,354 @@
+// Package runs records pipeline executions (a Run is one execution: its parameters, code version, status and
+// output files) and links them to registered datasets. A VGT adapter reads the pipeline's run_metadata.toml.
+//
+// Nothing a run exposes contains a path, host or user name: parameters whose key or value looks like a location are
+// dropped when the run is parsed, and outputs are referenced by dataset id and file name only.
+package runs
+
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/BurntSushi/toml"
+)
+
+const (
+	MaxMetadataBytes = 256 << 10
+	maxParams        = 200
+	maxValue         = 200
+)
+
+var ErrNotFound = errors.New("not found")
+
+type Param struct {
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Source string `json:"source"` // config | run_parameters
+}
+
+type Output struct {
+	Role      string `json:"role"` // psi | reliability | support | fit_rbar2
+	DatasetID int64  `json:"datasetId"`
+	Name      string `json:"name"`
+}
+
+type Run struct {
+	ID             int64             `json:"id"`
+	Name           string            `json:"name"`
+	Kind           string            `json:"kind"`
+	ImportedAt     time.Time         `json:"importedAt"`
+	GeneratedAt    string            `json:"generatedAt"`
+	GitCommit      string            `json:"gitCommit"`
+	Dirty          bool              `json:"dirty"`
+	Reproducible   bool              `json:"reproducibleFromCommit"`
+	ElapsedSeconds *float64          `json:"elapsedSeconds"`
+	Params         []Param           `json:"params"`
+	Diagnostics    map[string]string `json:"diagnostics"`
+	InputName      string            `json:"inputName"`
+	InputSizeBytes int64             `json:"inputSizeBytes"`
+	Outputs        []Output          `json:"outputs"`
+}
+
+// Summary is what leaves the machine with a figure: no paths, ids or locations.
+type Summary struct {
+	Name         string  `json:"name"`
+	Kind         string  `json:"kind"`
+	Role         string  `json:"role"`
+	GitCommit    string  `json:"gitCommit"`
+	Dirty        bool    `json:"dirty"`
+	Reproducible bool    `json:"reproducibleFromCommit"`
+	GeneratedAt  string  `json:"generatedAt"`
+	Params       []Param `json:"params"`
+}
+
+// ---- parsing ----
+
+type vgtMeta struct {
+	GeneratedAt string         `toml:"generated_at_utc"`
+	GitCommit   string         `toml:"gitcommit"`
+	Config      map[string]any `toml:"config"`
+	Diag        map[string]any `toml:"diagnostics"`
+	Input       struct {
+		Path      string `toml:"path"`
+		SizeBytes int64  `toml:"size_bytes"`
+		Stem      string `toml:"stem"`
+	} `toml:"input"`
+	Outputs map[string]any `toml:"outputs"`
+	Perf    struct {
+		Elapsed *float64 `toml:"elapsed_seconds"`
+	} `toml:"performance"`
+	RunParams map[string]any `toml:"run_parameters"`
+}
+
+// Parsed is a run read from metadata, before it is linked to datasets.
+type Parsed struct {
+	Run
+	// OutputFiles maps role to a file name that must sit next to the metadata file.
+	OutputFiles map[string]string
+}
+
+var outputKeys = map[string]string{"psi_path": "psi", "reliability_path": "reliability", "support_path": "support", "fit_rbar2_path": "fit_rbar2"}
+var locationKey = regexp.MustCompile(`(?i)(^|_)(file|path|dir|directory|home|root|host|user)(_|$)`)
+
+func scalar(v any) (string, bool) {
+	switch x := v.(type) {
+	case string:
+		return x, true
+	case int64, float64, bool:
+		return fmt.Sprint(x), true
+	case time.Time:
+		return x.UTC().Format(time.RFC3339), true
+	}
+	return "", false
+}
+
+// looksLikeLocation reports values that name a place on some machine. They are never kept.
+func looksLikeLocation(s string) bool {
+	return strings.Contains(s, "/") || strings.Contains(s, `\`) || strings.HasPrefix(s, "~")
+}
+
+func params(m map[string]any, source string) []Param {
+	var out []Param
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		s, ok := scalar(m[k])
+		if !ok || locationKey.MatchString(k) || looksLikeLocation(s) || len(k) > 80 {
+			continue
+		}
+		if len(s) > maxValue {
+			s = s[:maxValue]
+		}
+		out = append(out, Param{Key: k, Value: s, Source: source})
+	}
+	return out
+}
+
+// ParseVGT reads the VGT pipeline's run_metadata.toml. Output paths in the file are relative to the machine the run
+// happened on, so only their file names are kept and the caller looks for them next to the metadata.
+func ParseVGT(data []byte, dirName string) (Parsed, error) {
+	if len(data) > MaxMetadataBytes {
+		return Parsed{}, errors.New("run metadata is too large")
+	}
+	var m vgtMeta
+	if _, err := toml.Decode(string(data), &m); err != nil {
+		return Parsed{}, errors.New("run metadata is not valid TOML")
+	}
+	if m.Outputs == nil && m.GitCommit == "" && m.Config == nil {
+		return Parsed{}, errors.New("this does not look like a VGT run_metadata.toml")
+	}
+	p := Parsed{OutputFiles: map[string]string{}}
+	p.Kind = "vgt"
+	p.Name = dirName
+	p.GeneratedAt = m.GeneratedAt
+	p.GitCommit = m.GitCommit
+	p.Dirty = strings.HasSuffix(m.GitCommit, "-dirty")
+	p.Reproducible = m.GitCommit != "" && !p.Dirty // a dirty tree is not described by its commit hash
+	p.ElapsedSeconds = m.Perf.Elapsed
+	p.InputName = filepath.Base(m.Input.Path)
+	if m.Input.Path == "" {
+		p.InputName = ""
+	}
+	p.InputSizeBytes = m.Input.SizeBytes
+	p.Params = mergeParams(params(m.Config, "config"), params(m.RunParams, "run_parameters"))
+	if len(p.Params) > maxParams {
+		p.Params = p.Params[:maxParams]
+	}
+	p.Diagnostics = map[string]string{}
+	for k, v := range m.Diag {
+		if s, ok := scalar(v); ok && len(k) <= 60 {
+			p.Diagnostics[k] = s
+		}
+	}
+	for k, role := range outputKeys {
+		if s, ok := m.Outputs[k].(string); ok && s != "" {
+			if b := filepath.Base(filepath.FromSlash(s)); b != "." && b != string(filepath.Separator) {
+				p.OutputFiles[role] = b
+			}
+		}
+	}
+	return p, nil
+}
+
+// ---- store ----
+
+type Store struct{ db *sql.DB }
+
+func Open(db *sql.DB) (*Store, error) {
+	for _, q := range []string{
+		`CREATE TABLE IF NOT EXISTS runs(
+			id INTEGER PRIMARY KEY AUTOINCREMENT, dir TEXT NOT NULL UNIQUE, name TEXT NOT NULL, kind TEXT NOT NULL,
+			imported_at INTEGER NOT NULL, generated_at TEXT NOT NULL, git_commit TEXT NOT NULL, elapsed REAL,
+			input_name TEXT NOT NULL, input_size INTEGER NOT NULL, params TEXT NOT NULL, diagnostics TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS run_outputs(
+			run_id INTEGER NOT NULL, role TEXT NOT NULL, dataset_id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(run_id, role))`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			return nil, err
+		}
+	}
+	return &Store{db}, nil
+}
+
+// Save records a run (or refreshes it when the same directory is imported again) with its linked outputs.
+func (s *Store) Save(dir string, p Parsed, outs []Output) (Run, error) {
+	pj, _ := jsonMarshal(p.Params)
+	dj, _ := jsonMarshal(p.Diagnostics)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Run{}, err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`INSERT INTO runs(dir,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(dir) DO UPDATE SET name=excluded.name,imported_at=excluded.imported_at,generated_at=excluded.generated_at,
+			git_commit=excluded.git_commit,elapsed=excluded.elapsed,input_name=excluded.input_name,input_size=excluded.input_size,
+			params=excluded.params,diagnostics=excluded.diagnostics`,
+		dir, p.Name, p.Kind, time.Now().Unix(), p.GeneratedAt, p.GitCommit, p.ElapsedSeconds, p.InputName, p.InputSizeBytes, pj, dj)
+	if err != nil {
+		return Run{}, err
+	}
+	var id int64
+	if err := tx.QueryRow(`SELECT id FROM runs WHERE dir=?`, dir).Scan(&id); err != nil {
+		return Run{}, err
+	}
+	if _, err := tx.Exec(`DELETE FROM run_outputs WHERE run_id=?`, id); err != nil {
+		return Run{}, err
+	}
+	for _, o := range outs {
+		if _, err := tx.Exec(`INSERT INTO run_outputs(run_id,role,dataset_id,name) VALUES(?,?,?,?)`, id, o.Role, o.DatasetID, o.Name); err != nil {
+			return Run{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Run{}, err
+	}
+	return s.Get(id)
+}
+
+const runCols = `id,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics`
+
+func scanRun(row interface{ Scan(...any) error }) (Run, error) {
+	var r Run
+	var at int64
+	var el sql.NullFloat64
+	var pj, dj string
+	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj); err != nil {
+		return Run{}, err
+	}
+	r.ImportedAt = time.Unix(at, 0).UTC()
+	if el.Valid {
+		r.ElapsedSeconds = &el.Float64
+	}
+	r.Dirty = strings.HasSuffix(r.GitCommit, "-dirty")
+	r.Reproducible = r.GitCommit != "" && !r.Dirty
+	_ = jsonUnmarshal(pj, &r.Params)
+	_ = jsonUnmarshal(dj, &r.Diagnostics)
+	if r.Params == nil {
+		r.Params = []Param{}
+	}
+	return r, nil
+}
+
+func (s *Store) outputs(id int64) ([]Output, error) {
+	rows, err := s.db.Query(`SELECT role,dataset_id,name FROM run_outputs WHERE run_id=? ORDER BY role`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Output{}
+	for rows.Next() {
+		var o Output
+		if err := rows.Scan(&o.Role, &o.DatasetID, &o.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Get(id int64) (Run, error) {
+	r, err := scanRun(s.db.QueryRow(`SELECT `+runCols+` FROM runs WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Run{}, ErrNotFound
+	}
+	if err != nil {
+		return Run{}, err
+	}
+	r.Outputs, err = s.outputs(id)
+	return r, err
+}
+
+func (s *Store) List() ([]Run, error) {
+	rows, err := s.db.Query(`SELECT ` + runCols + ` FROM runs ORDER BY imported_at DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	var rs []Run
+	for rows.Next() {
+		r, err := scanRun(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rs = append(rs, r)
+	}
+	rows.Close()
+	out := []Run{}
+	for _, r := range rs {
+		if r.Outputs, err = s.outputs(r.ID); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// ForDataset returns the reviewer-safe summary of the run that produced a dataset, or nil.
+func (s *Store) ForDataset(datasetID int64) (*Summary, error) {
+	var id int64
+	var role string
+	err := s.db.QueryRow(`SELECT run_id,role FROM run_outputs WHERE dataset_id=? ORDER BY run_id DESC LIMIT 1`, datasetID).Scan(&id, &role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	commit := r.GitCommit
+	if i := strings.Index(commit, "-dirty"); i > 12 {
+		commit = commit[:12] + commit[i:]
+	} else if len(commit) > 12 && i < 0 {
+		commit = commit[:12]
+	}
+	return &Summary{Name: r.Name, Kind: r.Kind, Role: role, GitCommit: commit, Dirty: r.Dirty, Reproducible: r.Reproducible, GeneratedAt: r.GeneratedAt, Params: r.Params}, nil
+}
+
+// mergeParams keeps one row for a setting recorded identically in both sections, and both rows when they disagree.
+func mergeParams(a, b []Param) []Param {
+	seen := map[string]string{}
+	for _, p := range a {
+		seen[p.Key] = p.Value
+	}
+	out := a
+	for _, p := range b {
+		if v, ok := seen[p.Key]; ok && v == p.Value {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}

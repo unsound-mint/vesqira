@@ -157,3 +157,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## BurntSushi/toml (Go API)
+
+`github.com/BurntSushi/toml` is used to read run metadata. MIT License, Copyright (c) 2013 TOML authors.

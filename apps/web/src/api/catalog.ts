@@ -25,7 +25,7 @@ export type Header = {
   radesys: string | null;
 };
 
-export type Interpretation = { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null; declaredBy: "user"; declaredAt: string; stale: boolean };
+export type Interpretation = { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null; declaredBy: string; declaredAt: string; stale: boolean };
 
 export type Dataset = { interpretation: Interpretation | null; id: number; path: string; name: string; sizeBytes: number; modifiedAt: string; addedAt: string; header: Header };
 

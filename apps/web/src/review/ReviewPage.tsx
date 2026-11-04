@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Input } from "../ui";
+import { RunLine } from "../boards/RunLine";
 import { addReviewComment, getReview, reviewPreviewUrl } from "../api/boards";
 import type { Comment, Review } from "../api/boards";
 import s from "./ReviewPage.module.css";
@@ -52,6 +53,7 @@ export function ReviewPage({ token }: { token: string }) {
           {it.note ? <p className={s.noteBox}><strong>Note from the author:</strong> {it.note}</p> : null}
           <details className={s.det}>
             <summary>Where this came from and what it does not show</summary>
+            {it.provenance.run ? <RunLine run={it.provenance.run} /> : null}
             <ul>
               <li>File: <span className="mono">{it.provenance.source.name}</span> ({it.provenance.source.identity}).</li>
               {it.provenance.interpretation ? <li>Interpretation declared by {it.provenance.interpretation.declaredBy}: {it.provenance.interpretation.kind}, unit {it.provenance.interpretation.unit}.</li> : null}
