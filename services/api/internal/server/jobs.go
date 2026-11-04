@@ -300,6 +300,8 @@ func (s *Server) jobLog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"log": string(out)})
 }
 
+type hostRef struct{ hosts.Host }
+
 // registerJobOutputs imports the finished job's run folder from its host and links the Run to the job.
 func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 	j, h, ok := s.jobFrom(w, r)
@@ -312,6 +314,15 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
+	if j.Template == "analysis" {
+		d, code, msg := s.registerAnalysisJob(ctx, j, hostRef{h})
+		if code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		writeJSON(w, 201, d)
+		return
+	}
 	run, code, msg := s.importFrom(ctx, remoteRun{s: s, h: h, dir: j.OutputDir})
 	if code != 0 {
 		fail(w, code, msg)

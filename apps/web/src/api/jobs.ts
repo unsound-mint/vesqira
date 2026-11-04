@@ -7,7 +7,7 @@ export type Job = {
   id: number;
   hostId: number;
   name: string;
-  template: "vgt" | "custom";
+  template: "vgt" | "custom" | "analysis";
   script: string;
   scriptHash: string;
   state: JobState;

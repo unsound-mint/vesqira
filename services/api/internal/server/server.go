@@ -12,6 +12,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -23,16 +24,18 @@ type HeaderReader interface {
 }
 
 type Server struct {
-	Roots  sourceroot.Roots
-	Store  *catalog.Store
-	Worker HeaderReader
-	Planes PlaneService // persistent plane worker; nil answers 503
-	Cache  *PlaneCache  // optional; nil disables caching
-	Boards *boards.Store
-	Runs   *runs.Store
-	HostDB *hosts.Store // remote hosts; nil disables them
-	Remote *hosts.Manager
-	Jobs   *jobs.Store
+	Roots    sourceroot.Roots
+	Store    *catalog.Store
+	Worker   HeaderReader
+	Planes   PlaneService // persistent plane worker; nil answers 503
+	Cache    *PlaneCache  // optional; nil disables caching
+	Boards   *boards.Store
+	Runs     *runs.Store
+	HostDB   *hosts.Store // remote hosts; nil disables them
+	Remote   *hosts.Manager
+	Jobs     *jobs.Store
+	Derived  *derived.Store
+	Analysis *AnalysisConfig
 }
 
 func (s *Server) Handler() http.Handler {
@@ -59,6 +62,14 @@ func (s *Server) Handler() http.Handler {
 			mux.HandleFunc("POST /api/jobs/{id}/cancel", s.cancelJob)
 			mux.HandleFunc("GET /api/jobs/{id}/log", s.jobLog)
 			mux.HandleFunc("POST /api/jobs/{id}/register", s.registerJobOutputs)
+			mux.HandleFunc("GET /api/jobs/{id}/result", s.jobResult)
+		}
+	}
+	if s.analysisDeps() {
+		mux.HandleFunc("POST /api/analysis", s.analyze)
+		mux.HandleFunc("GET /api/datasets/{id}/derived", s.getDerived)
+		if s.HostDB != nil && s.Remote != nil && s.Jobs != nil {
+			mux.HandleFunc("POST /api/analysis/job", s.analysisJob)
 		}
 	}
 	if s.Runs != nil {

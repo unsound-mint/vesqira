@@ -5,6 +5,7 @@ import { JobsView, jobFor } from "../jobs/JobsView";
 import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { Explorer } from "../catalog/Explorer";
+import { AnalysisPanel, DerivedPanel } from "../catalog/AnalysisPanel";
 import { HostsPanel } from "../catalog/HostsPanel";
 import { RunPanel, runFor } from "../catalog/RunPanel";
 import { RunsList } from "../catalog/RunsList";
@@ -77,6 +78,7 @@ export function Shell() {
   useEffect(() => {
     if (!linked) viewerA.setMirror(null), viewerB.setMirror(null);
   }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [focusJob, setFocusJob] = useState<number | null>(null);
   const [mode, setMode] = useState<"viewer" | "boards" | "jobs">("viewer");
   const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", L.inspOpen ? `${L.insp}px` : "0px"].join(" ");
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
@@ -112,7 +114,7 @@ export function Shell() {
 
       <main className={s.canvas} aria-label="Viewer">
         {mode === "jobs" ? (
-          <JobsView hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => { const o = r.outputs.find((x) => x.role === "psi") ?? r.outputs[0]; if (o) { cat.select(o.datasetId); setMode("viewer"); } }} />
+          <JobsView focusJob={focusJob} hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => { const o = r.outputs.find((x) => x.role === "psi") ?? r.outputs[0]; if (o) { cat.select(o.datasetId); setMode("viewer"); } }} />
         ) : mode === "boards" ? (
           <BoardsView />
         ) : cat.selected ? (
@@ -169,6 +171,16 @@ export function Shell() {
           <Section title="Spectrum">
             {actDs ? <SpectrumPlot v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
+          {actDs ? (
+            <Section title="Made from" defaultOpen={false}>
+              <DerivedPanel dataset={actDs} datasets={cat.datasets} />
+            </Section>
+          ) : null}
+          {actDs ? (
+            <Section title="Analysis" defaultOpen={false}>
+              <AnalysisPanel dataset={actDs} datasets={cat.datasets} channels={viewer.view?.channels ?? 1} onCreated={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} onJob={(j) => { setFocusJob(j.id); setMode("jobs"); }} />
+            </Section>
+          ) : null}
           <Section title="Figure" defaultOpen={false}>
             {actDs ? <FigurePanel v={viewer} dataset={actDs} /> : <p className={s.empty}>{EM}</p>}
           </Section>

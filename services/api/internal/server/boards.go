@@ -13,6 +13,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
@@ -110,6 +111,7 @@ type Provenance struct {
 	} `json:"source"`
 	Interpretation *safeInterpretation `json:"interpretation,omitempty"`
 	Run            *runs.Summary       `json:"run,omitempty"`
+	Derived        *derived.Summary    `json:"derived,omitempty"`
 	View           ViewParams          `json:"view"`
 	Statements     []string            `json:"statements"`
 }
@@ -132,7 +134,7 @@ func (p ViewParams) checkAgainst(h safeHeader) bool {
 	return true
 }
 
-func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary) (json.RawMessage, error) {
+func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary) (json.RawMessage, error) {
 	var pr Provenance
 	pr.Source.Name, pr.Source.SizeBytes, pr.Source.ModifiedAt = d.Name, d.SizeBytes, d.ModifiedAt
 	pr.Source.Identity = "a reference to the file by name, size and modification time; its bytes were not hashed"
@@ -144,6 +146,7 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary) (json.R
 	}
 	pr.View = p
 	pr.Run = run
+	pr.Derived = der
 	pr.Statements = []string{
 		"Header values are declared by the file and are not verified.",
 		"The picture was drawn by the author's browser and the view settings are as reported by it; the server checked them against the catalogued header (channel range, brightness unit) but did not redraw the picture.",
@@ -237,7 +240,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	if s.Runs != nil {
 		run, _ = s.Runs.ForDataset(d.ID)
 	}
-	prov, err := buildProvenance(d, vp, run)
+	prov, err := buildProvenance(d, vp, run, s.derivedSummary(d.ID))
 	if errors.Is(err, errBadView) {
 		fail(w, 400, "the view description does not match the dataset")
 		return

@@ -21,6 +21,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -179,12 +180,24 @@ func NewManager(ssh string, files map[string][]byte) *Manager {
 // Hash identifies the deployed worker version.
 func (m *Manager) Hash() string {
 	h := sha256.New()
-	for _, n := range []string{"fits_header.py", "plane_worker.py"} {
+	for _, n := range m.fileNames() {
 		h.Write([]byte(n))
 		h.Write(m.Files[n])
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
+
+func (m *Manager) fileNames() []string {
+	names := make([]string, 0, len(m.Files))
+	for n := range m.Files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// RemoteDir is where the deployed worker scripts live on a host (the shell expands $HOME there).
+func (m *Manager) RemoteDir() string { return m.remoteDir() }
 
 func (m *Manager) sshArgs(h Host) []string {
 	return []string{"-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
@@ -210,11 +223,8 @@ func (m *Manager) remoteDir() string { return "$HOME/.cache/vesqira/" + m.Hash()
 func (m *Manager) tarball() ([]byte, error) {
 	var b bytes.Buffer
 	tw := tar.NewWriter(&b)
-	for _, n := range []string{"fits_header.py", "plane_worker.py"} {
-		data, ok := m.Files[n]
-		if !ok {
-			return nil, fmt.Errorf("worker file %s is not loaded", n)
-		}
+	for _, n := range m.fileNames() {
+		data := m.Files[n]
 		if err := tw.WriteHeader(&tar.Header{Name: n, Mode: 0o644, Size: int64(len(data)), ModTime: time.Unix(0, 0)}); err != nil {
 			return nil, err
 		}

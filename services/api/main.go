@@ -15,6 +15,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
@@ -58,6 +59,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, "at least one --root is required: files outside source roots are never read")
 		os.Exit(2)
 	}
+	// derived results (moment maps, cutouts, aligned cubes) are written under the data directory, which is a source root
+	ddir := *dataDir
+	if ddir == "" {
+		ddir = filepath.Dir(strings.TrimPrefix(*db, "file:"))
+	}
+	derivedDir := filepath.Join(ddir, "derived")
+	if err := os.MkdirAll(derivedDir, 0o700); err != nil {
+		log.Fatal(err)
+	}
+	roots = append(roots, derivedDir)
 	rs, err := sourceroot.New(roots)
 	if err != nil {
 		log.Fatal(err)
@@ -85,7 +96,7 @@ func main() {
 		log.Fatal(err)
 	}
 	files := map[string][]byte{}
-	for _, f := range []string{"plane_worker.py", "fits_header.py"} {
+	for _, f := range []string{"plane_worker.py", "fits_header.py", "analysis.py"} {
 		b, err := os.ReadFile(filepath.Join(filepath.Dir(*planeScript), f))
 		if err != nil {
 			log.Fatalf("remote hosts need the worker scripts: %v", err)
@@ -93,6 +104,10 @@ func main() {
 		files[f] = b
 	}
 	jobStore, err := jobs.Open(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
+	derivedStore, err := derived.Open(store.DB())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,7 +123,8 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore}
+	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore,
+		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
 	}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Input, Pill, Select } from "../ui";
+import { jobResult } from "../api/analysis";
 import { cancelJob, createJob, editScript, hostText, jobLog, listJobs, readSetting, refreshJob, registerOutputs, submitJob } from "../api/jobs";
 import type { Job, JobState } from "../api/jobs";
 import type { Host } from "../api/hosts";
@@ -24,9 +25,9 @@ export function jobFor(jobs: Job[], runId: number): Job | null {
 }
 
 /** Slurm jobs on your hosts: render a script from settings, read it, submit exactly that text, follow it, import its results. */
-export function JobsView({ hosts, onImported, onOpenRun }: { hosts: Host[]; onImported: (run: Run) => void; onOpenRun: (run: Run) => void }) {
+export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { hosts: Host[]; focusJob?: number | null; onImported: (run: Run | null) => void; onOpenRun: (run: Run) => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [sel, setSel] = useState<number | null>(null);
+  const [sel, setSel] = useState<number | null>(focusJob);
   const [err, setErr] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -38,7 +39,10 @@ export function JobsView({ hosts, onImported, onOpenRun }: { hosts: Host[]; onIm
   }, []);
   useEffect(() => {
     void reload();
-  }, [reload]);
+  }, [reload, focusJob]);
+  useEffect(() => {
+    if (focusJob !== null) setSel(focusJob);
+  }, [focusJob]);
   const job = jobs.find((j) => j.id === sel) ?? null;
   const replace = (j: Job) => setJobs((cur) => (cur.some((x) => x.id === j.id) ? cur.map((x) => (x.id === j.id ? j : x)) : [j, ...cur]));
 
@@ -159,7 +163,7 @@ function NewJob({ hosts, onCreated }: { hosts: Host[]; onCreated: (j: Job) => vo
   );
 }
 
-function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; host: Host | null; onChange: (j: Job) => void; onImported: (run: Run) => void; onOpenRun: (run: Run) => void }) {
+function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; host: Host | null; onChange: (j: Job) => void; onImported: (run: Run | null) => void; onOpenRun: (run: Run) => void }) {
   const [script, setScript] = useState(job.script);
   const [log, setLog] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -207,7 +211,9 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; h
           <Button disabled={busy} onClick={() => act(() => refreshJob(job.id), onChange)}>Refresh status</Button>
           {ACTIVE.includes(job.state) ? <Button disabled={busy} onClick={() => act(() => cancelJob(job.id), onChange)}>Cancel job</Button> : null}
           <Button disabled={busy} onClick={() => act(() => jobLog(job.id), setLog)}>Show log</Button>
-          {job.state === "completed" && !job.runId ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), (r) => { setRun(r); onChange({ ...job, runId: r.id }); onImported(r); })}>Import results as a run</Button> : null}
+          {job.template === "analysis" && job.state === "completed" ? <Button disabled={busy} onClick={() => act(() => jobResult(job.id), (r) => setLog(JSON.stringify(r.summary, null, 2)))}>Show the result</Button> : null}
+          {job.template === "analysis" && job.state === "completed" ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), () => onImported(null))}>Register the result file</Button> : null}
+          {job.template === "vgt" && job.state === "completed" && !job.runId ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), (r) => { setRun(r); onChange({ ...job, runId: r.id }); onImported(r); })}>Import results as a run</Button> : null}
         </div>
       ) : null}
       {job.runId ? <p className={s.note}>Results imported. {run ? <Button onClick={() => onOpenRun(run)}>Open the run</Button> : "Find the run in the explorer."}</p> : null}

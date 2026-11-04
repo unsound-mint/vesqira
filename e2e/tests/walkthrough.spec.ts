@@ -19,8 +19,9 @@ const bigChannel = (page: Page) => page.getByRole("region", { name: "Channels" }
 
 async function register(page: Page, file: string) {
   await page.getByLabel("Register a FITS file").fill(path.join(data, file));
-  await page.getByRole("button", { name: "Register" }).click();
+  await page.getByRole("button", { name: "Register", exact: true }).click();
   await expect(page.getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}`) })).toBeVisible();
+  await expect(page.getByLabel("Register a FITS file")).toHaveValue(""); // the form clears itself once the registration has finished
 }
 
 async function open(page: Page, file: string) {
@@ -372,4 +373,38 @@ test("a Slurm job: render, read, submit exactly that text, follow it, import its
   const insp = inspector(page);
   await expect(insp.getByText(/vgt-ker8 · 4242 · completed/)).toBeVisible(); // the run knows its job
   await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
+});
+
+test("analysis makes new files with their provenance, and keeps missing data missing", async ({ page }) => {
+  await page.goto("/");
+  await register(page, "hi_cube.fits");
+  await register(page, "hi_cube_coarser.fits");
+  await page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^hi_cube\.fits/ }).click();
+  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
+  const insp = inspector(page);
+  await page.getByRole("button", { name: "Analysis", exact: true }).click();
+
+  // statistics: the 3 x 3 block of NaN pixels in every channel is counted as no value, not as zeros
+  await insp.getByLabel("Analysis", { exact: true }).selectOption("stats");
+  await insp.getByRole("button", { name: "Compute statistics" }).click();
+  await expect(insp.getByText("576", { exact: true })).toBeVisible(); // 9 pixels x 64 channels
+  await expect(insp.getByText(/x 21, y 10, channel 41/)).toBeVisible(); // the synthetic source
+
+  // a moment map becomes a new dataset that says how it was made
+  await insp.getByLabel("Analysis", { exact: true }).selectOption("moment");
+  await insp.getByLabel("Only values at or above (optional)").fill("1");
+  await insp.getByRole("button", { name: "Create the new file" }).click();
+  await expect(page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^moment-/ })).toBeVisible();
+  await page.getByRole("button", { name: "Made from", exact: true }).click();
+  await expect(insp.getByText("hi_cube.fits").first()).toBeVisible();
+  await expect(insp.getByText(/a pixel with no selected value is NaN, never 0/)).toBeVisible();
+  await expect(insp.getByText(/threshold=1/)).toBeVisible();
+
+  // aligning onto the coarser grid says plainly what it does and does not do
+  await page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^hi_cube\.fits/ }).click();
+  await insp.getByLabel("Analysis", { exact: true }).selectOption("align");
+  await insp.getByLabel("Align onto the grid of").selectOption({ label: "hi_cube_coarser.fits" });
+  await insp.getByRole("button", { name: "Create the new file" }).click();
+  await expect(page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^align-/ })).toBeVisible();
+  await expect(insp.getByText(/does not match angular resolution/).first()).toBeVisible();
 });

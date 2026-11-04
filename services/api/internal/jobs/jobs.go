@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -48,6 +49,8 @@ type Job struct {
 	SubmittedAt *time.Time `json:"submittedAt"`
 	FinishedAt  *time.Time `json:"finishedAt"`
 	RunID       *int64     `json:"runId"`
+	// Params records what an analysis job was asked to do (operation, source dataset ids) so its result can be described.
+	Params string `json:"params"`
 }
 
 func Hash(script string) string { h := sha256.Sum256([]byte(script)); return hex.EncodeToString(h[:]) }
@@ -317,6 +320,7 @@ func ParseStatus(out string) (state, detail string) {
 type Store struct{ db *sql.DB }
 
 func Open(db *sql.DB) (*Store, error) {
+	defer func() { _, _ = db.Exec(`ALTER TABLE jobs ADD COLUMN params TEXT NOT NULL DEFAULT ''`) }()
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS jobs(
 		id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, name TEXT NOT NULL, template TEXT NOT NULL,
 		script TEXT NOT NULL, script_hash TEXT NOT NULL, state TEXT NOT NULL, detail TEXT NOT NULL, slurm_id TEXT NOT NULL,
@@ -328,13 +332,13 @@ func Open(db *sql.DB) (*Store, error) {
 	return &Store{db}, nil
 }
 
-const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id`
+const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params`
 
 func scan(row interface{ Scan(...any) error }) (Job, error) {
 	var j Job
 	var c int64
 	var sub, fin, run sql.NullInt64
-	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run); err != nil {
+	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params); err != nil {
 		return Job{}, err
 	}
 	j.CreatedAt = time.Unix(c, 0).UTC()
@@ -359,8 +363,8 @@ func (s *Store) CreateDraft(j Job) (Job, error) {
 	if !nameRe.MatchString(j.Name) {
 		return Job{}, fmt.Errorf("%w: bad job name", ErrInvalid)
 	}
-	res, err := s.db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		j.HostID, j.Name, j.Template, j.Script, Hash(j.Script), StateDraft, "", "", NewWorkDir(), j.OutputDir, time.Now().Unix())
+	res, err := s.db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,params) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		j.HostID, j.Name, j.Template, j.Script, Hash(j.Script), StateDraft, "", "", NewWorkDir(), j.OutputDir, time.Now().Unix(), j.Params)
 	if err != nil {
 		return Job{}, err
 	}
@@ -431,4 +435,67 @@ func (s *Store) Active() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE state IN (?,?)`, StateSubmitted, StateRunning).Scan(&n)
 	return n, err
+}
+
+// AnalysisSettings describe one analysis.py run on a host. Every value is validated, because it lands in a script.
+type AnalysisSettings struct {
+	Name, Python, ScriptDir string // ScriptDir is the deployed worker directory, as the shell on the host will expand it
+	Op                      string // stats | moment | cutout | slab | align
+	Input, Reference        string // absolute host paths
+	OutDir                  string // absolute host path inside the source roots
+	Args                    map[string]string
+	CPUs                    int
+	Mem, Time               string
+}
+
+var (
+	pyRe       = regexp.MustCompile(`^[A-Za-z0-9_./~-]{1,200}$`)
+	scriptDirR = regexp.MustCompile(`^\$HOME/\.cache/vesqira/[0-9a-f]{16}$`)
+	analysisOp = map[string]bool{"stats": true, "moment": true, "cutout": true, "slab": true, "align": true}
+	argKinds   = map[string]*regexp.Regexp{
+		"order": regexp.MustCompile(`^[012]$`), "chan-start": intRe, "chan-end": intRe, "x0": intRe, "x1": intRe, "y0": intRe, "y1": intRe,
+		"threshold": numRe, "method": regexp.MustCompile(`^(interp|nearest|exact)$`),
+	}
+)
+
+// RenderAnalysis renders the batch script for one analysis. The output is result.fits and result.json in OutDir.
+func RenderAnalysis(p AnalysisSettings) (string, error) {
+	switch {
+	case !nameRe.MatchString(p.Name):
+		return "", fmt.Errorf("%w: bad job name", ErrInvalid)
+	case !pyRe.MatchString(p.Python), !scriptDirR.MatchString(p.ScriptDir):
+		return "", fmt.Errorf("%w: bad interpreter or worker directory", ErrInvalid)
+	case !analysisOp[p.Op]:
+		return "", fmt.Errorf("%w: unknown analysis", ErrInvalid)
+	case !ValidPath(p.Input), p.Op == "align" && !ValidPath(p.Reference), !ValidPath(p.OutDir):
+		return "", fmt.Errorf("%w: file and folder paths must be absolute, without spaces, quotes or ..", ErrInvalid)
+	case p.CPUs < 1 || p.CPUs > 256, !memRe.MatchString(p.Mem), !timeRe.MatchString(p.Time):
+		return "", fmt.Errorf("%w: bad resources", ErrInvalid)
+	}
+	var args strings.Builder
+	keys := make([]string, 0, len(p.Args))
+	for k := range p.Args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		re, ok := argKinds[k]
+		if !ok || !re.MatchString(p.Args[k]) {
+			return "", fmt.Errorf("%w: bad analysis option %q", ErrInvalid, k)
+		}
+		fmt.Fprintf(&args, " --%s %s", k, p.Args[k])
+	}
+	var b strings.Builder
+	b.WriteString("#!/bin/bash -l\n")
+	fmt.Fprintf(&b, "#SBATCH --job-name=%s\n#SBATCH --nodes=1\n#SBATCH --ntasks=1\n#SBATCH --cpus-per-task=%d\n#SBATCH --mem=%s\n#SBATCH --time=%s\n", p.Name, p.CPUs, p.Mem, p.Time)
+	b.WriteString("#SBATCH --output=%x-%j.out\n#SBATCH --error=%x-%j.err\n\n")
+	b.WriteString("# Rendered by Vesqira. This exact text is what is submitted. Analyses run here, on a compute node, never on the login node.\n")
+	b.WriteString("set -euo pipefail\n")
+	fmt.Fprintf(&b, "out=%s\nmkdir -p \"$out\"\n", p.OutDir)
+	ref := ""
+	if p.Op == "align" {
+		ref = " --reference " + p.Reference
+	}
+	fmt.Fprintf(&b, "%s -P \"%s/analysis.py\" %s --input %s%s%s --out \"$out/result.fits\" > \"$out/result.json\"\n", p.Python, p.ScriptDir, p.Op, p.Input, ref, args.String())
+	return b.String(), nil
 }
