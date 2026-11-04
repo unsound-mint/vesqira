@@ -95,7 +95,7 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [ ] Delete and archive with an impact preview (Q145).
 - [ ] Virtual subsets (a definition, not only a materialized cutout) (Q141).
 - [ ] Generic import: scan a folder, review the proposed mapping, save the rules (Q17, Q82).
-- [ ] Import hosts from `~/.ssh/config` names (Q27).
+- [x] Host aliases from your ssh config are offered while adding a host (alias, plain host name and user only; keys, proxy commands and wildcard patterns are never read out; `--ssh-config` changes or disables it) (Q27).
 - [ ] Transfers with a resumable queue and conflict handling (Q36–Q38).
 - [ ] "Prepare for offline" (Q108).
 

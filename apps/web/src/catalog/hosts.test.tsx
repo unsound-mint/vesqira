@@ -17,6 +17,30 @@ function mockFetch(routes: Record<string, (init?: RequestInit) => { status?: num
 }
 afterEach(() => vi.unstubAllGlobals());
 
+describe("hosts panel and your ssh config", () => {
+  it("offers the aliases from your ssh config, and fills the name from a chosen alias", async () => {
+    mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: true, hosts: [{ alias: "irgetas", hostName: "login.example.org", user: "denis" }] } }) });
+    render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
+    await waitFor(() => expect(document.querySelectorAll("#ssh-aliases option")).toHaveLength(1));
+    expect(document.querySelector("#ssh-aliases option")?.getAttribute("value")).toBe("irgetas");
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("SSH destination"), "irgetas");
+    expect(screen.getByLabelText("Host name")).toHaveValue("irgetas");
+    await user.clear(screen.getByLabelText("Host name"));
+    await user.type(screen.getByLabelText("Host name"), "Cluster");
+    await user.clear(screen.getByLabelText("SSH destination"));
+    await user.type(screen.getByLabelText("SSH destination"), "irgetas");
+    expect(screen.getByLabelText("Host name")).toHaveValue("Cluster"); // a name you wrote is not overwritten
+  });
+
+  it("works without any ssh config", async () => {
+    mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: false, hosts: [] } }) });
+    render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
+    await waitFor(() => expect(screen.getByLabelText("SSH destination")).toBeInTheDocument());
+    expect(document.querySelectorAll("#ssh-aliases option")).toHaveLength(0);
+  });
+});
+
 describe("hosts panel", () => {
   it("explains the connection model and never asks for a key or password", () => {
     render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
@@ -36,7 +60,7 @@ describe("hosts panel", () => {
     await userEvent.type(screen.getByLabelText(/Source folders/), "/data{Enter}/more");
     await userEvent.click(add);
     await waitFor(() => expect(changed).toBe(1));
-    expect(JSON.parse(String(calls[0]!.init!.body))).toEqual({ name: "Second laptop", dest: "laptop2", python: "python3", roots: ["/data", "/more"] });
+    expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init!.body))).toEqual({ name: "Second laptop", dest: "laptop2", python: "python3", roots: ["/data", "/more"] });
   });
 
   it("checks the connection, browses, and registers a FITS file that stays on the host", async () => {

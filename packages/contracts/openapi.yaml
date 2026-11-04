@@ -260,6 +260,11 @@ paths:
       operationId: owner_s_createHost_post_api_hosts
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/hosts/ssh-config:
+    get:
+      operationId: owner_s_sshConfigHosts_get_api_hosts_ssh_config
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/hosts/{id}/check:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}

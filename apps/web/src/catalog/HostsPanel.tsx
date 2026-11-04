@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { File, Folder } from "lucide-react";
 import { Button, Input } from "../ui";
-import { checkHost, createHost, deleteHost, listRemote, registerRemote } from "../api/hosts";
-import type { Host, HostCheck, RemoteEntry } from "../api/hosts";
+import { checkHost, createHost, deleteHost, listRemote, registerRemote, sshConfigHosts } from "../api/hosts";
+import type { Host, HostCheck, RemoteEntry, SshAlias } from "../api/hosts";
 import { bytes } from "./format";
 import s from "./HostsPanel.module.css";
 
@@ -16,6 +16,19 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
   const [form, setForm] = useState({ name: "", dest: "", python: "python3", roots: "" });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [aliases, setAliases] = useState<SshAlias[]>([]);
+
+  // Names that already work with `ssh <name>`, offered while typing the destination. Failing to read them offers none.
+  useEffect(() => {
+    let live = true;
+    sshConfigHosts().then((a) => live && setAliases(a)).catch(() => undefined);
+    return () => { live = false; };
+  }, []);
+
+  function setDest(dest: string) {
+    const known = aliases.find((a) => a.alias === dest);
+    setForm((f) => ({ ...f, dest, name: known && !f.name.trim() ? dest : f.name }));
+  }
 
   async function add(e: FormEvent) {
     e.preventDefault();
@@ -37,7 +50,10 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
       {hosts.length === 0 ? <p className={s.note}>No hosts yet. Files stay on the host; only planes travel.</p> : null}
       <form className={s.form} onSubmit={add} aria-label="Add a host">
         <Input label="Host name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Cluster login" />
-        <Input label="SSH destination" value={form.dest} onChange={(e) => setForm({ ...form, dest: e.target.value })} placeholder="alias from your ssh config" spellCheck={false} />
+        <Input label="SSH destination" value={form.dest} onChange={(e) => setDest(e.target.value)} placeholder="alias from your ssh config" spellCheck={false} list="ssh-aliases" autoComplete="off" />
+        <datalist id="ssh-aliases">
+          {aliases.map((a) => <option key={a.alias} value={a.alias}>{[a.user, a.hostName].filter(Boolean).join("@")}</option>)}
+        </datalist>
         <Input label="Python on the host" value={form.python} onChange={(e) => setForm({ ...form, python: e.target.value })} spellCheck={false} />
         <div className={s.field}>
           <label htmlFor="host-roots" className={s.label}>Source folders on the host (one per line)</label>

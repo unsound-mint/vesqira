@@ -279,3 +279,14 @@ func (s *Server) remoteText(ctx context.Context, h hosts.Host, p string) (string
 	}
 	return t.Text, 0, ""
 }
+
+// sshConfigHosts offers the host aliases written in the user's ssh configuration, so a host can be added by picking a name
+// that already works with `ssh <name>`. Nothing else from the file (keys, proxy commands) is read out.
+func (s *Server) sshConfigHosts(w http.ResponseWriter, r *http.Request) {
+	if s.SSHConfig == "" {
+		writeJSON(w, 200, map[string]any{"found": false, "hosts": []hosts.SSHHost{}})
+		return
+	}
+	list, found := hosts.LoadSSHConfig(s.SSHConfig)
+	writeJSON(w, 200, map[string]any{"found": found, "hosts": list})
+}

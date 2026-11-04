@@ -43,6 +43,7 @@ type Server struct {
 	Analysis   *AnalysisConfig
 	Audit      *audit.Store // nil records nothing
 	Regions    *regions.Store
+	SSHConfig  string // the user's ssh_config, only read to offer host aliases; empty offers none
 	WebDist    string // built web app served at / on this (loopback) listener; empty serves the API only
 }
 
@@ -54,6 +55,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/datasets", s.register)
 	if s.HostDB != nil && s.Remote != nil {
 		mux.HandleFunc("GET /api/hosts", s.listHosts)
+		mux.HandleFunc("GET /api/hosts/ssh-config", s.sshConfigHosts)
 		mux.HandleFunc("POST /api/hosts", s.createHost)
 		mux.HandleFunc("POST /api/hosts/{id}/check", s.checkHost)
 		mux.HandleFunc("POST /api/hosts/{id}/delete", s.deleteHost)

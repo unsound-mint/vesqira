@@ -46,4 +46,4 @@ FAKE
 chmod +x "$run/fake-ssh"
 cd "$root"
 exec "$run/api" --ssh "$run/fake-ssh" --addr 127.0.0.1:8787 --db "$run/t.db" --data-dir "$run" --root "$run/data" \
-  --review-addr 127.0.0.1:8788 --web-dist "$root/apps/web/dist"
+  --review-addr 127.0.0.1:8788 --web-dist "$root/apps/web/dist" --ssh-config ""

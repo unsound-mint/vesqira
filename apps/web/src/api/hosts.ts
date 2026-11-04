@@ -19,6 +19,9 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 
 const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+export type SshAlias = { alias: string; hostName?: string; user?: string };
+/** Names written in your own ssh configuration. Only aliases and the plain host name and user are offered. */
+export const sshConfigHosts = () => call<{ found: boolean; hosts: SshAlias[] }>("/api/hosts/ssh-config").then((r) => (Array.isArray(r.hosts) ? r.hosts : []));
 export const listHosts = () => call<{ hosts: Host[] }>("/api/hosts").then((r) => r.hosts);
 export const createHost = (h: { name: string; dest: string; python: string; roots: string[] }) => post<Host>("/api/hosts", h);
 export const checkHost = (id: number) => post<HostCheck>(`/api/hosts/${id}/check`, {});

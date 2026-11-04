@@ -48,6 +48,7 @@ func main() {
 	clientIP := flag.String("review-client-ip-header", "", "header a trusted reverse proxy sets to the client address (for example X-Forwarded-For); without it all clients behind a proxy share one failure allowance")
 	webDist := flag.String("web-dist", "", "built web app: served on this address, and on the review address when there is one")
 	sshBin := flag.String("ssh", "ssh", "ssh client used to reach remote hosts (your own ssh config and agent are used; Vesqira never handles keys)")
+	sshConfig := flag.String("ssh-config", "~/.ssh/config", "ssh_config read only to offer its host aliases when adding a host (empty offers none)")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
 
@@ -144,6 +145,12 @@ func main() {
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
+	}
+	if p := *sshConfig; p != "" { // only to offer host names that already work with ssh
+		if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, "~/") {
+			p = filepath.Join(home, p[2:])
+		}
+		srv.SSHConfig = p
 	}
 	log.Printf("listening on http://%s, roots: %v", *addr, []string(rs))
 	log.Fatal((&http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second}).ListenAndServe())
