@@ -33,6 +33,11 @@ Scientific honesty is a product feature: no invented calibration, units or coord
 
 The approved workbench layout and design tokens are described in `docs/design/design-directions.md` and `docs/adr/0005-workbench-layout-and-tokens.md`. All prototypes use synthetic data.
 
+## Where things are
+
+- What the product is meant to be: `docs/product/shape.md`. What is built and what is next: `docs/roadmap.md`. Decisions: `docs/adr/`.
+- How fast it is and how that is measured: `docs/performance.md` (`make bench`).
+
 ## Contributing
 
 See `CONTRIBUTING.md`. Run `make check` before pushing.
