@@ -32,6 +32,9 @@ func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
 func main() {
+	if archiveCommand(os.Args[1:]) {
+		return
+	}
 	var roots multi
 	addr := flag.String("addr", "127.0.0.1:8787", "listen address (must be a loopback address)")
 	db := flag.String("db", "vesqira.db", "SQLite database path")

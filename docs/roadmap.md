@@ -20,7 +20,7 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 - [x] Review and QC history: run review becomes append-only revisions with author, time and the previous value (Q196, Q118).
 - [x] Audit log for actions that change state or expose data: host added, job submitted/cancelled, review published/revoked, copy made (Q118, Q119).
 - [x] Schema versioning: a version table, ordered migrations, a failing upgrade stops start-up, and an automatic backup of the catalog before a migration (Q166, Q167).
-- [ ] Project export and restore of the catalog with a manifest of external references (Q68, Q85).
+- [x] Project export and restore of the catalog with a manifest of external references (Q68, Q85).
 
 ## Stage 2 — Review with a supervisor
 

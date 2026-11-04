@@ -3,6 +3,8 @@
 #   vesqira              open Vesqira (starting it when needed)
 #   vesqira add-root DIR let Vesqira read FITS files under DIR (restarts it if running)
 #   vesqira roots        list the folders Vesqira may read
+#   vesqira export [FILE]   save the catalog, figures and derived files to one archive (default: ~/Vesqira-backup-DATE.tar.gz)
+#   vesqira restore FILE    restore an archive into an empty Vesqira (stop it first; refuses to overwrite a catalog)
 #   vesqira status|stop|logs
 # The server listens on 127.0.0.1 only and reads files only under the folders listed in
 # ${XDG_CONFIG_HOME:-~/.config}/vesqira/roots (one path per line). The first run creates ~/Vesqira.
@@ -67,10 +69,19 @@ case "${1:-open}" in
     grep -qxF "$dir" "$roots_file" || printf '%s\n' "$dir" >> "$roots_file"
     if alive; then stop; start; fi
     say "Vesqira may now read files under $dir" ;;
+  export)
+    out="${2:-$HOME/Vesqira-backup-$(date +%Y%m%d-%H%M).tar.gz}"
+    mkdir -p "$data"
+    "$libexec/vesqira-api" export --data-dir "$data" --file "$out" ;;
+  restore)
+    [ -n "${2:-}" ] && [ -f "$2" ] || { say "usage: vesqira restore ARCHIVE.tar.gz"; exit 2; }
+    alive && { say "Stop Vesqira first: vesqira stop"; exit 1; }
+    mkdir -p "$data"
+    "$libexec/vesqira-api" restore --data-dir "$data" --file "$2" ;;
   roots) read_roots; grep -v '^#' "$roots_file" ;;
   status) if alive; then say "Running at $url (pid $(cat "$pidfile"))"; else say "Not running"; fi ;;
   stop) stop ;;
   logs) exec tail -n 100 -f "$state/api.log" ;;
-  -h|--help|help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h|--help|help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) say "unknown command: $1 (try: vesqira --help)"; exit 2 ;;
 esac
