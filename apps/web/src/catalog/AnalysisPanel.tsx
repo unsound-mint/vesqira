@@ -149,7 +149,7 @@ export function DerivedPanel({ dataset, datasets }: { dataset: Dataset; datasets
     <div className={s.wrap}>
       <dl className={s.facts}>
         <dt>Made by</dt>
-        <dd>{d.op}</dd>
+        <dd>{d.op === "managed-copy" ? "managed copy (byte for byte)" : d.op}</dd>
         <dt>From</dt>
         <dd className="mono">{names.join(", ")}</dd>
         <dt>Options</dt>

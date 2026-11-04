@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
@@ -32,9 +34,9 @@ func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
 	}
 	py, _ := exec.LookPath("python3")
 	base := t.TempDir()
-	localRoot, derivedDir := filepath.Join(base, "local"), filepath.Join(base, "derived")
+	localRoot, derivedDir, managedDir := filepath.Join(base, "local"), filepath.Join(base, "derived"), filepath.Join(base, "managed")
 	remoteHome, remoteRoot := filepath.Join(base, "remote-home"), filepath.Join(base, "remote_data")
-	for _, d := range []string{localRoot, derivedDir, remoteHome, remoteRoot} {
+	for _, d := range []string{localRoot, derivedDir, managedDir, remoteHome, remoteRoot} {
 		os.MkdirAll(d, 0o755)
 	}
 	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), localRoot)
@@ -66,14 +68,14 @@ func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
 	rn, _ := runs.Open(cat.DB())
 	ds, _ := derived.Open(cat.DB())
 	bs, _ := boards.Open(cat.DB(), base)
-	rs, err := sourceroot.New([]string{localRoot, derivedDir})
+	rs, err := sourceroot.New([]string{localRoot, derivedDir, managedDir})
 	if err != nil {
 		t.Fatal(err)
 	}
 	local := &worker.Persistent{Command: []string{py, "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(local.Close)
 	hdr := worker.Runner{Command: []string{py, "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
-	ts := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: hdr, Planes: local, Cache: NewPlaneCache(8 << 20), Boards: bs, Runs: rn, HostDB: hs, Remote: mgr, Jobs: js, Derived: ds,
+	ts := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: hdr, Planes: local, Cache: NewPlaneCache(8 << 20), Boards: bs, Runs: rn, HostDB: hs, Remote: mgr, Jobs: js, Derived: ds, ManagedDir: managedDir,
 		Analysis: &AnalysisConfig{Python: py, Script: filepath.Join(repo, "services/scientific-worker/analysis.py"), DerivedDir: derivedDir, Timeout: 2 * time.Minute}}).Handler())
 	defer ts.Close()
 	rv := httptest.NewServer((&review.Handler{Store: bs}).Handler())
@@ -85,6 +87,52 @@ func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
 		return d
 	}
 	cubeDS, coarse := reg("hi_cube.fits"), reg("hi_cube_coarser.fits")
+
+	// registration preview: what registering would mean, recorded nowhere
+	_, pv := get(t, api("/api/preview?path="+filepath.Join(localRoot, "hi_cube.fits")))
+	var prev struct {
+		Planes       int
+		PlaneBytes   int64
+		CelestialWcs bool
+		SpectralAxis bool
+		SizeBytes    int64
+	}
+	json.Unmarshal(pv, &prev)
+	if prev.Planes != 64 || prev.PlaneBytes != 32*24*4 || !prev.CelestialWcs || !prev.SpectralAxis || prev.SizeBytes != int64(len(cube)) {
+		t.Errorf("preview: %s", pv)
+	}
+	_, pn := get(t, api("/api/preview?path="+filepath.Join(localRoot, "hi_cube_no_celestial_wcs.fits")))
+	if !strings.Contains(string(pn), `"celestialWcs":false`) && !strings.Contains(string(pn), `"celestialWcs": false`) {
+		t.Errorf("a missing sky WCS must be visible before registering: %s", pn)
+	}
+	if r, _ := get(t, api("/api/preview?path=/etc/passwd")); r.StatusCode != 403 {
+		t.Errorf("preview outside the roots: %d", r.StatusCode)
+	}
+
+	// managed copy: byte for byte, identified by its hash, read-only, original untouched
+	r, cb := postJSON(t, api("/api/datasets/"+itoa(int(cubeDS.ID))+"/copy"), map[string]any{})
+	if r.StatusCode != 201 {
+		t.Fatalf("copy: %d %s", r.StatusCode, cb)
+	}
+	var cp struct {
+		Dataset catalog.Dataset
+		Sha256  string
+	}
+	json.Unmarshal(cb, &cp)
+	sum := sha256.Sum256(cube)
+	if cp.Sha256 != hex.EncodeToString(sum[:]) || !strings.HasPrefix(cp.Dataset.Path, managedDir) {
+		t.Errorf("copy identity: %+v", cp)
+	}
+	if got, _ := os.ReadFile(cp.Dataset.Path); string(got) != string(cube) {
+		t.Error("the managed copy is not byte for byte the original")
+	}
+	if fi, _ := os.Stat(cp.Dataset.Path); fi.Mode().Perm()&0o222 != 0 {
+		t.Error("a managed copy must be read-only")
+	}
+	_, cd := get(t, api("/api/datasets/"+itoa(int(cp.Dataset.ID))+"/derived"))
+	if !strings.Contains(string(cd), "managed-copy") || !strings.Contains(string(cd), cp.Sha256) {
+		t.Errorf("copy record: %s", cd)
+	}
 
 	// refusals first: options are numbers or known words, nothing else
 	for name, in := range map[string]map[string]any{
@@ -135,6 +183,21 @@ func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
 	json.Unmarshal(adb, &rec)
 	if len(rec.Sources) != 2 || rec.Op != "align" {
 		t.Errorf("align record: %s", adb)
+	}
+
+	// axial difference of two declared orientation maps: modulo 180, on a shared grid, refused otherwise
+	psi, psiR := reg("vgt_psi_deg.fits"), reg("vgt_psi_rad.fits")
+	if r, _ := postJSON(t, api("/api/analysis"), map[string]any{"op": "axial_diff", "datasetId": psi.ID, "referenceId": psiR.ID}); r.StatusCode != 422 {
+		t.Errorf("undeclared maps: %d, want 422", r.StatusCode)
+	}
+	postJSON(t, api("/api/datasets/"+itoa(int(psi.ID))+"/interpretation"), map[string]any{"kind": "axial_orientation", "unit": "deg"})
+	postJSON(t, api("/api/datasets/"+itoa(int(psiR.ID))+"/interpretation"), map[string]any{"kind": "axial_orientation", "unit": "rad"})
+	r, xb := postJSON(t, api("/api/analysis"), map[string]any{"op": "axial_diff", "datasetId": psi.ID, "referenceId": psiR.ID})
+	if r.StatusCode != 201 || !strings.Contains(string(xb), `"mean_defined":true`) && !strings.Contains(string(xb), `"mean_defined": true`) {
+		t.Fatalf("axial_diff: %d %s", r.StatusCode, xb)
+	}
+	if r, _ := postJSON(t, api("/api/analysis"), map[string]any{"op": "axial_diff", "datasetId": psi.ID, "referenceId": cubeDS.ID}); r.StatusCode < 400 {
+		t.Errorf("an axial difference against a cube was accepted: %d", r.StatusCode)
 	}
 
 	// the reviewer learns how a figure's data was made, by file name only

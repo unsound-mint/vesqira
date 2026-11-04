@@ -1,6 +1,9 @@
 import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
-import { Button, Pill } from "../ui";
+import { useState } from "react";
+import { Button, Pill, Select } from "../ui";
+import { setRunReview } from "../api/runs";
+import type { RunReview } from "../api/runs";
 import { bytes, EM } from "./format";
 import s from "./RunPanel.module.css";
 
@@ -71,6 +74,7 @@ export function RunPanel({ run, role, datasets, job, onOpen, onCompare }: { run:
           ))}
         </ul>
       </div>
+      <Assessment run={run} />
       <details className={s.det}>
         <summary>Parameters ({run.params.length})</summary>
         <table className={s.table}>
@@ -85,6 +89,41 @@ export function RunPanel({ run, role, datasets, job, onOpen, onCompare }: { run:
         </table>
         <p className={s.note}>As written by the pipeline. Paths and host names are not kept.</p>
       </details>
+    </div>
+  );
+}
+
+const QC = { not_assessed: "Not assessed", passed: "Passed my checks", failed: "Failed my checks", inconclusive: "Inconclusive" } as const;
+const INTERP = { not_interpreted: "Not interpreted", supports: "Supports the hypothesis", challenges: "Challenges the hypothesis", inconclusive: "Inconclusive" } as const;
+
+/** Your assessment of the science, kept apart from the fact that the computation finished. */
+function Assessment({ run }: { run: Run }) {
+  const [rv, setRv] = useState<RunReview>(run.review);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function save(next: RunReview) {
+    setRv(next);
+    try {
+      await setRunReview(run.id, next);
+      setMsg("Saved.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Could not save.");
+    }
+  }
+  return (
+    <div className={s.block}>
+      <h3 className={s.h}>Your assessment</h3>
+      <p className={s.note}>The run finished; whether the science holds is a separate question that only you can answer.</p>
+      <Select label="Scientific QC" value={rv.qc} onChange={(e) => save({ ...rv, qc: e.target.value as RunReview["qc"] })}>
+        {Object.entries(QC).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </Select>
+      <Select label="Interpretation" value={rv.interpretation} onChange={(e) => save({ ...rv, interpretation: e.target.value as RunReview["interpretation"] })}>
+        {Object.entries(INTERP).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </Select>
+      <label className={s.note}>
+        Note (limitations, coverage)
+        <textarea className={s.area} rows={2} maxLength={500} defaultValue={rv.note} onBlur={(e) => { if (e.target.value !== rv.note) void save({ ...rv, note: e.target.value }); }} />
+      </label>
+      {msg ? <p className={s.note} role="status">{msg}</p> : null}
     </div>
   );
 }

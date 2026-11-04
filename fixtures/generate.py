@@ -36,6 +36,7 @@ def hi_cube() -> fits.HDUList:
     h = fits.PrimaryHDU(data).header
     h["BUNIT"] = "K"
     h["BTYPE"] = "Tb"
+    h["BMAJ"], h["BMIN"], h["BPA"] = 0.03, 0.02, 45.0   # a beam larger than the 0.01 deg pixel: pixel scale and resolution differ
     for i, (ct, cv, cd, cp, cu) in enumerate([
         ("RA---TAN", CRVAL_RA, -CDELT_DEG, CRPIX[0], "deg"),
         ("DEC--TAN", CRVAL_DEC, CDELT_DEG, CRPIX[1], "deg"),
@@ -75,6 +76,26 @@ def cube_missing_spectral_reference() -> fits.HDUList:
     hdul = hi_cube()
     for key in ("CRVAL3", "CDELT3", "CUNIT3", "SPECSYS", "RESTFRQ"):
         del hdul[0].header[key]
+    return hdul
+
+
+def cube_reverse_spectral() -> fits.HDUList:
+    """Velocity decreases with channel number (CDELT3 < 0), as in many real cubes: velocity must follow the header, not the index."""
+    hdul = hi_cube()
+    h = hdul[0].header
+    h["CRVAL3"], h["CDELT3"] = V0_MS + (NC - 1) * DV_MS, -DV_MS     # channel 1 is now the highest velocity
+    return hdul
+
+
+ROT_DEG = 30.0
+
+
+def cube_rotated_wcs() -> fits.HDUList:
+    """Celestial axes rotated by 30 degrees through a PC matrix: a coordinate readout that ignores PC is wrong here."""
+    hdul = hi_cube()
+    h = hdul[0].header
+    c, s_ = math.cos(math.radians(ROT_DEG)), math.sin(math.radians(ROT_DEG))
+    h["PC1_1"], h["PC1_2"], h["PC2_1"], h["PC2_2"] = c, -s_, s_, c
     return hdul
 
 
@@ -307,6 +328,8 @@ def write_all(directory: Path) -> dict[str, Path]:
         "hi_cube_no_celestial_wcs.fits": cube_unlabelled_pixels(),
         "hi_cube_galactic.fits": cube_other_frame(),
         "hi_cube_coarser.fits": cube_coarser_pixels(),
+        "hi_cube_reverse_spectral.fits": cube_reverse_spectral(),
+        "hi_cube_rotated.fits": cube_rotated_wcs(),
         "cube_int16_scaled.fits": cube_int16_scaled(),
         "cube_stokes_freq.fits": cube_stokes_freq(),
         "vgt_result.fits": vgt_hdul(),

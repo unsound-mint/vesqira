@@ -2,7 +2,7 @@ import { ApiError } from "./catalog";
 import type { Dataset } from "./catalog";
 import type { Job } from "./jobs";
 
-export type AnalysisOp = "stats" | "moment" | "cutout" | "slab" | "align";
+export type AnalysisOp = "axial_diff" | "stats" | "moment" | "cutout" | "slab" | "align";
 export type AnalysisRequest = { op: AnalysisOp; datasetId: number; referenceId?: number; params?: Record<string, string>; cpus?: number; mem?: string; time?: string };
 
 export type StatsSummary = {

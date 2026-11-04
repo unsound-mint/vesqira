@@ -47,7 +47,7 @@ export function FigurePanel({ v, dataset }: { v: Viewer; dataset: Dataset }) {
       const axial = v.interp !== null;
       const lim = limits(plane.head.stats, v.range);
       const facts = { dataset: dataset.name, kind: axial ? ("orientation" as const) : kind, channelLine: "", displayLine: "", limits: lim, limitsUnit: view.bunit };
-      const captions = captionLines(facts, view, plane, { colormap: v.colormap, stretch: v.stretch, range: v.range, axial, region: v.region });
+      const captions = captionLines(facts, view, plane, { colormap: v.colormap, stretch: v.stretch, range: v.range, axial, region: v.region, nature: dataset.nature });
       const heading = title.trim() || defaultTitle;
       let blob: Blob;
       if (kind === "spectrum" && v.spectrum) {

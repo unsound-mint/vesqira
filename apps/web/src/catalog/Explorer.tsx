@@ -4,6 +4,8 @@ import { Database } from "lucide-react";
 import type { Dataset } from "../api/catalog";
 import { Button, Input, TreeRow } from "../ui";
 import { bytes } from "./format";
+import { previewFile } from "../api/catalog";
+import type { Preview } from "../api/catalog";
 import s from "./Explorer.module.css";
 
 type Props = {
@@ -20,6 +22,17 @@ export function Explorer({ hosts = [], datasets, selectedId, loading, error, onS
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
+
+  async function doPreview() {
+    try {
+      setPreview(await previewFile(path.trim()));
+      setFormError(null);
+    } catch (e) {
+      setPreview(null);
+      setFormError(e instanceof Error ? e.message : "Could not preview the file.");
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -36,6 +49,14 @@ export function Explorer({ hosts = [], datasets, selectedId, loading, error, onS
       <form className={s.form} onSubmit={submit}>
         <Input label="Register a FITS file" placeholder="/absolute/path/to/cube.fits" value={path} onChange={(e) => setPath(e.target.value)} spellCheck={false} />
         <Button type="submit" variant="primary" disabled={busy || !path.trim()}>{busy ? "Reading header…" : "Register"}</Button>
+        <Button type="button" disabled={busy || !path.trim()} onClick={doPreview}>Preview before registering</Button>
+        {preview ? (
+          <div className={s.note} role="status">
+            <p style={{ margin: 0 }}><span className="mono">{preview.name}</span>: {bytes(preview.sizeBytes)}, {preview.planes.toLocaleString("en-US")} plane{preview.planes === 1 ? "" : "s"} of about {bytes(preview.planeBytes)} each.</p>
+            <p style={{ margin: 0 }}>Sky coordinates: {preview.celestialWcs ? "declared" : "not declared (positions will be image pixels only)"}. Spectral axis: {preview.spectralAxis ? "declared" : preview.axes > 2 ? "not fully declared (no velocities will be shown)" : "none"}.</p>
+            <p style={{ margin: 0 }}>{preview.access}</p>
+          </div>
+        ) : null}
         {formError ? <p role="alert" className={s.err}>{formError}</p> : null}
       </form>
       {error ? <p role="alert" className={s.err}>{error}</p> : null}

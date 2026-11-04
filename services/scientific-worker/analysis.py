@@ -302,7 +302,47 @@ def op_align(args) -> dict:
                       "pixels outside the input's footprint are NaN, never 0"}}
 
 
-OPS = {"stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
+def op_axial_diff(args) -> dict:
+    """Signed difference between two axial orientation maps on the same grid, in degrees in (-90, 90].
+
+    0 and 180 degrees are the same orientation, so the difference is taken modulo 180: 1 and 179 degrees differ by
+    2 degrees, not 178. Pixels where either map has no value are NaN, never 0. Statistics use the doubled-angle method.
+    """
+    from astropy.stats import circmean, circvar
+    a = open_cube(args.input)
+    b = open_cube(args.reference)
+    if a.channels != 1 or b.channels != 1 or (a.shape[a.y], a.shape[a.x]) != (b.shape[b.y], b.shape[b.x]):
+        fail("both maps must be single planes of the same shape")
+    fa = 1.0 if args.unit == "deg" else 180.0 / math.pi
+    fb = 1.0 if args.unit_ref == "deg" else 180.0 / math.pi
+    _, pa = next(planes(a, 0, 0))
+    _, pb = next(planes(b, 0, 0))
+    with np.errstate(all="ignore"):
+        d = (((pa * fa - pb * fb) + 90.0) % 180.0) - 90.0
+        d = np.where(d == -90.0, 90.0, d)                         # the interval is (-90, 90]
+    ok = np.isfinite(d)
+    n = int(ok.sum())
+    summary = {"pixels_compared": n, "pixels_without_data": int((~ok).sum()), "mean_difference_deg": None, "resultant": None,
+               "rms_deg": None, "within_10_deg": None, "mean_defined": False}
+    if n:
+        v = d[ok]
+        summary["rms_deg"] = float(np.sqrt((v ** 2).mean()))
+        summary["within_10_deg"] = float((np.abs(v) <= 10.0).mean())
+        two = np.radians(2.0 * v)
+        r = float(1.0 - circvar(two))
+        summary["resultant"] = r
+        if r >= 1e-6:                                              # below this the offsets cancel: no mean exists
+            summary["mean_difference_deg"] = float((np.degrees(circmean(two)) / 2.0 + 90.0) % 180.0 - 90.0)
+            summary["mean_defined"] = True
+    h = image_header(a, {"BUNIT": "deg", "VESQOP": "axial_diff"})
+    h["HISTORY"] = "Vesqira axial difference (input minus reference), modulo 180 degrees, in (-90, 90]"
+    write_fits(args.out, d.astype("<f4"), h)
+    summary["policy"] = ("Difference modulo 180 degrees: 1 and 179 degrees differ by 2, not 178. A pixel without a value in either map is NaN, never 0. "
+                         "Mean and spread use the doubled-angle method; a mean is undefined when the offsets cancel.")
+    return {"ok": True, "op": "axial_diff", "summary": summary}
+
+
+OPS = {"axial_diff": op_axial_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
 
 
 def main(argv: list[str]) -> int:
@@ -319,12 +359,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--x1", type=int)
     ap.add_argument("--y0", type=int)
     ap.add_argument("--y1", type=int)
+    ap.add_argument("--unit", choices=["deg", "rad"], default="deg")
+    ap.add_argument("--unit-ref", choices=["deg", "rad"], default="deg")
     ap.add_argument("--method", choices=["interp", "nearest", "exact"], default="interp")
     args = ap.parse_args(argv)
     try:
         if args.op != "stats" and not args.out:
             fail("--out is required")
-        if args.op == "align" and not args.reference:
+        if args.op in ("align", "axial_diff") and not args.reference:
             fail("--reference is required")
         result = OPS[args.op](args)
         import astropy

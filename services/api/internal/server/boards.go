@@ -110,6 +110,7 @@ type Provenance struct {
 		Header     safeHeader `json:"headerDeclaredByFile"`
 	} `json:"source"`
 	Interpretation *safeInterpretation `json:"interpretation,omitempty"`
+	Nature         string              `json:"nature,omitempty"` // observed | simulated | constructed_control, as declared by the author
 	Run            *runs.Summary       `json:"run,omitempty"`
 	Derived        *derived.Summary    `json:"derived,omitempty"`
 	View           ViewParams          `json:"view"`
@@ -146,6 +147,7 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 	}
 	pr.View = p
 	pr.Run = run
+	pr.Nature = d.Nature
 	pr.Derived = der
 	pr.Statements = []string{
 		"Header values are declared by the file and are not verified.",
@@ -159,6 +161,12 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		}
 		pr.Interpretation = &safeInterpretation{Kind: d.Interpretation.Kind, Unit: d.Interpretation.Unit, DeclaredBy: by, HasReliability: d.Interpretation.ReliabilityID != nil}
 		pr.Statements = append(pr.Statements, "The orientation unit and meaning were declared by "+by+", not by the file. Angles are axial (0° and 180° are the same orientation) and statistics use the doubled-angle method.")
+	}
+	switch d.Nature {
+	case "constructed_control":
+		pr.Statements = append(pr.Statements, "This is a constructed control (synthetic data built for a test), declared by the author. It is not an observation.")
+	case "simulated":
+		pr.Statements = append(pr.Statements, "This is simulated data, declared by the author. Results on a simulation are not validation on observations.")
 	}
 	if p.Region != nil {
 		pr.Statements = append(pr.Statements, "Region values are means of the finite pixels inside the region; flagged channels keep their data; pixel scale is taken at the reference pixel.")

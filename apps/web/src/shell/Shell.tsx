@@ -6,6 +6,8 @@ import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { Explorer } from "../catalog/Explorer";
 import { AnalysisPanel, DerivedPanel } from "../catalog/AnalysisPanel";
+import { NatureControl } from "../catalog/NatureControl";
+import { StorageControl } from "../catalog/StorageControl";
 import { UsedIn } from "../catalog/UsedIn";
 import { HostsPanel } from "../catalog/HostsPanel";
 import { RunPanel, runFor } from "../catalog/RunPanel";
@@ -14,6 +16,7 @@ import { getCompat } from "../api/catalog";
 import type { Compat } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
 import { CompareBar, linkState } from "../viewer/CompareBar";
+import { CompareInspector } from "../viewer/CompareInspector";
 import { EM } from "../catalog/format";
 import { ChannelTimeline } from "../viewer/ChannelTimeline";
 import { CoordinateReadout, DisplayControls } from "../viewer/Panels";
@@ -145,6 +148,11 @@ export function Shell() {
       <aside className={s.insp} aria-label="Inspector" hidden={!L.inspOpen}>
         <ResizeHandle orientation="vertical" direction={-1} label="Resize inspector" value={L.insp} min={LIMITS.insp.min} max={LIMITS.insp.max} onChange={(v) => set("insp", v)} />
         <div className={s.scroll}>
+          {compareDs && cat.selected ? (
+            <Section title="Comparison">
+              <CompareInspector a={cat.selected} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
+            </Section>
+          ) : null}
           {actDs && runFor(cat.runs, actDs.id) ? (
             <Section title="Run">
               <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} job={jobFor(cat.jobs, runFor(cat.runs, actDs.id)!.run.id)} datasets={cat.datasets} onOpen={cat.select} onCompare={(id) => { if (id !== cat.selected?.id) setCompareId(id); }} />
@@ -175,6 +183,16 @@ export function Shell() {
           {actDs ? (
             <Section title="Made from" defaultOpen={false}>
               <DerivedPanel dataset={actDs} datasets={cat.datasets} />
+            </Section>
+          ) : null}
+          {actDs ? (
+            <Section title="Nature of the data">
+              <NatureControl dataset={actDs} onChange={cat.declareNature} />
+            </Section>
+          ) : null}
+          {actDs ? (
+            <Section title="Storage" defaultOpen={false}>
+              <StorageControl dataset={actDs} onCopied={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} />
             </Section>
           ) : null}
           {actDs ? (

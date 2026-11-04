@@ -623,6 +623,17 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 		t.Errorf("a re-import overwrote the user's declaration: %+v", psi.Interpretation)
 	}
 
+	// computation finishing is not a scientific assessment: the review starts as not assessed and is the researcher's to set
+	if !strings.Contains(string(out), `"qc":"not_assessed"`) || !strings.Contains(string(out), `"interpretation":"not_interpreted"`) {
+		t.Errorf("a fresh run must be not assessed and not interpreted: %s", out)
+	}
+	if r, _ := postJSON(t, ts.URL+"/api/runs/"+itoa(int(run.ID))+"/review", map[string]any{"qc": "valid", "interpretation": "supports"}); r.StatusCode != 422 {
+		t.Errorf("an unknown assessment word: %d, want 422", r.StatusCode)
+	}
+	if r, _ := postJSON(t, ts.URL+"/api/runs/"+itoa(int(run.ID))+"/review", map[string]any{"qc": "inconclusive", "interpretation": "challenges", "note": "low coverage at the edge"}); r.StatusCode != 200 {
+		t.Errorf("set review: %d", r.StatusCode)
+	}
+
 	// a figure of a run output carries the run's parameters and commit, and nothing that names a place or a person
 	_, fb := postJSON(t, ts.URL+"/api/figures", map[string]any{"datasetId": ids["psi"], "title": "Psi", "view": map[string]any{"kind": "plane", "channel": 0}, "previewPng": testPNG(t)})
 	var f boards.Figure
@@ -636,7 +647,7 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 	json.Unmarshal(pub, &p)
 	_, rbody := get(t, rv.URL+"/review-api/"+p.Token)
 	body := string(rbody)
-	for _, want := range []string{"axial_vonmises", "-dirty", `"reproducibleFromCommit":false`, "vgt_run_demo"} {
+	for _, want := range []string{"axial_vonmises", "-dirty", `"reproducibleFromCommit":false`, "vgt_run_demo", `"qc":"inconclusive"`, "low coverage at the edge"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the reviewer should see %q: %s", want, body)
 		}

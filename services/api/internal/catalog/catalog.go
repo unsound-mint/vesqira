@@ -23,6 +23,8 @@ type Dataset struct {
 	Header     json.RawMessage `json:"header"`
 	// HostID is 0 for a file on this machine, otherwise the remote host the file lives on (see package hosts).
 	HostID int64 `json:"hostId"`
+	// Nature is what the user says the data is: observed, simulated or a constructed control. Empty means not declared.
+	Nature string `json:"nature"`
 	// Interpretation is what the user declared about the data. The file itself declares none of it.
 	Interpretation *Interpretation `json:"interpretation"`
 }
@@ -71,6 +73,7 @@ func Open(dsn string) (*Store, error) {
 		// older catalogs lack the column that records who made a declaration; adding it twice is harmless
 		_, _ = db.Exec(`ALTER TABLE interpretations ADD COLUMN declared_by TEXT NOT NULL DEFAULT 'user'`)
 		_, _ = db.Exec(`ALTER TABLE datasets ADD COLUMN host_id INTEGER NOT NULL DEFAULT 0`)
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS dataset_nature(dataset_id INTEGER PRIMARY KEY, nature TEXT NOT NULL, declared_at INTEGER NOT NULL)`)
 	}
 	if err != nil {
 		db.Close()
@@ -138,6 +141,9 @@ func (s *Store) Get(id int64) (Dataset, error) {
 		return d, err
 	}
 	d.Interpretation, err = s.interpretation(id, d)
+	if err == nil {
+		d.Nature, err = s.nature(id)
+	}
 	return d, err
 }
 
@@ -158,6 +164,25 @@ func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
 	in.DeclaredAt = time.Unix(at, 0).UTC()
 	in.Stale = size != d.SizeBytes || mod != d.ModifiedAt.UnixNano()
 	return &in, nil
+}
+
+func (s *Store) nature(id int64) (string, error) {
+	var n string
+	err := s.db.QueryRow(`SELECT nature FROM dataset_nature WHERE dataset_id=?`, id).Scan(&n)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return n, err
+}
+
+// SetNature records what the user says the data is ("" clears it).
+func (s *Store) SetNature(id int64, nature string) error {
+	if nature == "" {
+		_, err := s.db.Exec(`DELETE FROM dataset_nature WHERE dataset_id=?`, id)
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO dataset_nature(dataset_id,nature,declared_at) VALUES(?,?,?) ON CONFLICT(dataset_id) DO UPDATE SET nature=excluded.nature,declared_at=excluded.declared_at`, id, nature, time.Now().Unix())
+	return err
 }
 
 // SetInterpretation records what the user declared. Callers validate the kind, unit and companion first.
@@ -203,6 +228,9 @@ func (s *Store) List() ([]Dataset, error) {
 	rows.Close()
 	for i := range out {
 		if out[i].Interpretation, err = s.interpretation(out[i].ID, out[i]); err != nil {
+			return nil, err
+		}
+		if out[i].Nature, err = s.nature(out[i].ID); err != nil {
 			return nil, err
 		}
 	}

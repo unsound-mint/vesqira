@@ -10,6 +10,11 @@ export function RunLine({ run }: { run: RunInfo }) {
         Run <span className="mono">{run.name}</span> ({run.kind}), code <span className="mono">{run.gitCommit || "unknown"}</span>
         {run.reproducibleFromCommit ? "" : run.dirty ? ": uncommitted changes, so not reproducible from the commit" : ": no commit recorded"}.
       </p>
+      {run.review ? (
+        <p style={{ margin: 0 }}>
+          Author’s assessment: scientific QC {run.review.qc.replace(/_/g, " ")}; interpretation {run.review.interpretation.replace(/_/g, " ")}.{run.review.note ? ` ${run.review.note}` : ""} (The run having finished is not an assessment.)
+        </p>
+      ) : null}
       <details>
         <summary>Run parameters ({run.params.length})</summary>
         <ul style={{ margin: "4px 0", paddingLeft: 16 }}>

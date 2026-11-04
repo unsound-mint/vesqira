@@ -9,6 +9,7 @@ const unresolved = { crval: null, crval_status: "unresolved", crpix: null, crpix
 
 const ds: Dataset = {
   interpretation: null,
+  nature: "",
   hostId: 0,
   id: 1, path: "/data/a.fits", name: "a.fits", sizeBytes: 1536, modifiedAt: "", addedAt: "",
   header: {

@@ -15,7 +15,7 @@ export type FigureFacts = {
 };
 
 /** The caption lines printed on a figure. Pure, so what a figure claims can be tested. */
-export function captionLines(f: FigureFacts, view: View | null, plane: Plane | null, opts: { colormap: string; stretch: string; range: string; axial: boolean; region: RegionShape | null }): string[] {
+export function captionLines(f: FigureFacts, view: View | null, plane: Plane | null, opts: { colormap: string; stretch: string; range: string; axial: boolean; region: RegionShape | null; nature?: string }): string[] {
   const out = [f.dataset];
   if (plane && view) {
     const s = view.spectral;
@@ -23,6 +23,8 @@ export function captionLines(f: FigureFacts, view: View | null, plane: Plane | n
     const v = s && s.resolved && plane.head.spectral_value !== null ? `, ${s.ctype ?? s.name} ${spectralText(plane.head.spectral_value, s.unit)}` : s && !s.resolved ? ", spectral axis unresolved" : "";
     out.push(`${ch}${v}`);
   }
+  if (opts.nature === "constructed_control") out.push("Constructed control (synthetic data built for a test), not an observation.");
+  else if (opts.nature === "simulated") out.push("Simulated data, not an observation.");
   if (opts.axial) out.push("Axial orientation (0° = 180°); unit declared by the author. Lines from the +x pixel axis, counter-clockwise (the VGT convention, assumed; the file does not declare it).");
   else if (f.kind === "plane") out.push(`${opts.colormap}, ${opts.stretch} stretch, ${opts.range === "percentile" ? "1st to 99th percentile" : "minimum to maximum"} of finite pixels${f.limitsUnit ? ` in ${f.limitsUnit}` : ""}`);
   if (opts.region) out.push(`Region: ${opts.region.shape} (mean of finite pixels; NaN, BLANK and infinite values excluded)`);

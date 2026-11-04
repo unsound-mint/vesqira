@@ -89,6 +89,19 @@ class Analysis(unittest.TestCase):
         c = fits.getdata(self.out("m1.fits"))[g.SOURCE_PIX[1], g.SOURCE_PIX[0]]
         self.assertAlmostEqual(float(c), g.V0_MS + g.SOURCE_CHANNEL * g.DV_MS, delta=200.0)
 
+    def test_moment_one_on_a_reversed_axis_still_finds_the_line_centre(self):
+        out = self.out("rev_m1.fits")
+        code, r = run("moment", "--input", self.f["hi_cube_reverse_spectral.fits"], "--order", 1, "--threshold", 1.0, "--out", out)
+        self.assertEqual(code, 0, r)
+        centre = float(fits.getdata(out)[g.SOURCE_PIX[1], g.SOURCE_PIX[0]])
+        self.assertAlmostEqual(centre, g.V0_MS + (g.NC - 1 - g.SOURCE_CHANNEL) * g.DV_MS, delta=200.0)   # channel 40 now sits at the velocity the header gives it
+        m0 = self.out("rev_m0.fits")
+        run("moment", "--input", self.f["hi_cube_reverse_spectral.fits"], "--order", 0, "--out", m0)
+        ref = self.out("fwd_m0.fits")
+        run("moment", "--input", self.f["hi_cube.fits"], "--order", 0, "--out", ref)
+        a, b = fits.getdata(m0), fits.getdata(ref)
+        np.testing.assert_allclose(np.nan_to_num(a), np.nan_to_num(b), rtol=1e-4)           # moment 0 is positive either way round
+
     def test_moment_refuses_when_the_spectral_axis_is_not_declared(self):
         code, r = run("moment", "--input", self.f["hi_cube_no_spectral_ref.fits"], "--out", self.out("bad.fits"))
         self.assertEqual(code, 2)
@@ -146,6 +159,30 @@ class Analysis(unittest.TestCase):
         self.assertEqual(r["summary"]["source_frame"], "ICRS")
         self.assertEqual(r["summary"]["reference_frame"], "Galactic")
         self.assertTrue(np.isnan(a).all())                                 # the fixtures do not overlap on the sky: all NaN, not zeros
+
+    def test_axial_difference_is_modulo_180_and_keeps_missing_missing(self):
+        a, b = self.f["vgt_psi_deg.fits"], self.f["vgt_psi_rad.fits"]
+        out = self.out("diff.fits")
+        code, r = run("axial_diff", "--input", a, "--unit", "deg", "--reference", b, "--unit-ref", "rad", "--out", out)
+        self.assertEqual(code, 0, r)
+        self.assertTrue(np.allclose(np.nan_to_num(fits.getdata(out), nan=0.0), 0.0, atol=1e-4))   # same map in two units: no difference
+        # a shifted copy: 1 deg vs 179 deg must differ by 2 deg, and 0 vs 90 by 90 (the cancelling case is checked on the mean)
+        base = g.vgt_angle_map()["angle_deg"]
+        shifted = (base + 178.0) % 180.0
+        hd = fits.PrimaryHDU(shifted, header=g._map_header(base.shape))
+        sp = self.dir / "shifted.fits"
+        fits.HDUList([hd]).writeto(sp)
+        out2 = self.out("diff2.fits")
+        code, r = run("axial_diff", "--input", sp, "--reference", a, "--out", out2)
+        self.assertEqual(code, 0, r)
+        d = fits.getdata(out2).astype(float)
+        self.assertTrue(np.allclose(d[np.isfinite(d)], -2.0, atol=1e-4))   # 178 degrees more is 2 degrees less, axially
+        self.assertEqual(int(np.isnan(d).sum()), 1)                          # the NaN pixel stays NaN
+        self.assertAlmostEqual(r["summary"]["mean_difference_deg"], -2.0, places=4)
+        self.assertGreater(r["summary"]["resultant"], 0.999)
+        self.assertIn("1 and 179", r["summary"]["policy"])
+        code, r = run("axial_diff", "--input", a, "--reference", self.f["hi_cube.fits"], "--out", self.out("bad.fits"))
+        self.assertEqual(code, 2)
 
     def test_inputs_are_never_modified_and_failures_leave_no_output(self):
         before = sha(self.f["hi_cube.fits"])

@@ -22,12 +22,13 @@ export type Header = {
   bunit: string | null;
   bunit_status: Status;
   specsys: string | null;
+  beam?: { bmaj?: number; bmin?: number; bpa?: number; status: "declared" | "unresolved" };
   radesys: string | null;
 };
 
 export type Interpretation = { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null; declaredBy: string; declaredAt: string; stale: boolean };
 
-export type Dataset = { hostId: number; interpretation: Interpretation | null; id: number; path: string; name: string; sizeBytes: number; modifiedAt: string; addedAt: string; header: Header };
+export type Dataset = { nature: "" | "observed" | "simulated" | "constructed_control"; hostId: number; interpretation: Interpretation | null; id: number; path: string; name: string; sizeBytes: number; modifiedAt: string; addedAt: string; header: Header };
 
 export class ApiError extends Error {
   constructor(message: string, readonly reasons: string[] = []) {
@@ -58,3 +59,12 @@ export const getCompat = (a: number, b: number) => call<Compat>(`/api/compat?a=$
 export type InterpretationRequest = { kind: "none" } | { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null };
 export const setInterpretation = (id: number, body: InterpretationRequest) =>
   call<Dataset>(`/api/datasets/${id}/interpretation`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+export type Nature = Dataset["nature"] | "none";
+export const setNature = (id: number, nature: Nature) =>
+  call<Dataset>(`/api/datasets/${id}/nature`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nature }) });
+
+export type Preview = { name: string; sizeBytes: number; axes: number; planes: number; planeBytes: number; celestialWcs: boolean; spectralAxis: boolean; access: string };
+export const previewFile = (path: string) => call<Preview>(`/api/preview?path=${encodeURIComponent(path)}`);
+export const copyDataset = (id: number) =>
+  call<{ dataset: Dataset; sha256: string }>(`/api/datasets/${id}/copy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });

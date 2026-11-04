@@ -37,6 +37,15 @@ class Worker(unittest.TestCase):
         self.assertEqual(r["axes"][2]["cdelt_status"], "declared")
         self.assertEqual(r["bunit"], "K")
 
+    def test_beam_is_reported_separately_from_the_pixel_scale(self):
+        _, r = run(self.f["hi_cube.fits"])
+        self.assertEqual(r["beam"]["status"], "declared")
+        self.assertEqual((r["beam"]["bmaj"], r["beam"]["bmin"], r["beam"]["bpa"]), (0.03, 0.02, 45.0))
+        _, r2 = run(self.f["hi_cube_coarser.fits"])
+        self.assertEqual(r2["beam"]["status"], "declared")
+        _, r3 = run(self.f["vgt_psi_deg.fits"])
+        self.assertEqual(r3["beam"]["status"], "unresolved")            # absent stays unresolved, never a default
+
     def test_missing_spectral_reference_is_unresolved_not_zero(self):
         _, r = run(self.f["hi_cube_no_spectral_ref.fits"])
         spec = r["axes"][2]

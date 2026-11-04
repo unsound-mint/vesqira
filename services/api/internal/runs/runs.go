@@ -53,7 +53,19 @@ type Run struct {
 	InputName      string            `json:"inputName"`
 	InputSizeBytes int64             `json:"inputSizeBytes"`
 	Outputs        []Output          `json:"outputs"`
+	// Review is the researcher's own assessment, kept apart from whether the computation finished.
+	Review Review `json:"review"`
 }
+
+// Review separates three different things: the computation finishing (the run exists), scientific QC, and interpretation.
+type Review struct {
+	QC             string `json:"qc"`             // not_assessed | passed | failed | inconclusive
+	Interpretation string `json:"interpretation"` // not_interpreted | supports | challenges | inconclusive
+	Note           string `json:"note"`
+}
+
+var qcValues = map[string]bool{"not_assessed": true, "passed": true, "failed": true, "inconclusive": true}
+var interpValues = map[string]bool{"not_interpreted": true, "supports": true, "challenges": true, "inconclusive": true}
 
 // Summary is what leaves the machine with a figure: no paths, ids or locations.
 type Summary struct {
@@ -65,6 +77,7 @@ type Summary struct {
 	Reproducible bool    `json:"reproducibleFromCommit"`
 	GeneratedAt  string  `json:"generatedAt"`
 	Params       []Param `json:"params"`
+	Review       Review  `json:"review"`
 }
 
 // ---- parsing ----
@@ -189,6 +202,7 @@ func Open(db *sql.DB) (*Store, error) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT, dir TEXT NOT NULL UNIQUE, name TEXT NOT NULL, kind TEXT NOT NULL,
 			imported_at INTEGER NOT NULL, generated_at TEXT NOT NULL, git_commit TEXT NOT NULL, elapsed REAL,
 			input_name TEXT NOT NULL, input_size INTEGER NOT NULL, params TEXT NOT NULL, diagnostics TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS run_review(run_id INTEGER PRIMARY KEY, qc TEXT NOT NULL, interpretation TEXT NOT NULL, note TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS run_outputs(
 			run_id INTEGER NOT NULL, role TEXT NOT NULL, dataset_id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(run_id, role))`,
 	} {
@@ -284,8 +298,35 @@ func (s *Store) Get(id int64) (Run, error) {
 	if err != nil {
 		return Run{}, err
 	}
-	r.Outputs, err = s.outputs(id)
-	return r, err
+	if r.Outputs, err = s.outputs(id); err != nil {
+		return r, err
+	}
+	r.Review = s.review(id)
+	return r, nil
+}
+
+func (s *Store) review(id int64) Review {
+	rv := Review{QC: "not_assessed", Interpretation: "not_interpreted"}
+	var qc, in, note string
+	if s.db.QueryRow(`SELECT qc,interpretation,note FROM run_review WHERE run_id=?`, id).Scan(&qc, &in, &note) == nil {
+		rv = Review{QC: qc, Interpretation: in, Note: note}
+	}
+	return rv
+}
+
+// SetReview records the researcher's assessment. Completion of the computation is not an assessment of the science.
+func (s *Store) SetReview(id int64, rv Review) error {
+	if !qcValues[rv.QC] || !interpValues[rv.Interpretation] {
+		return errors.New("unknown assessment value")
+	}
+	if len(rv.Note) > 500 {
+		rv.Note = rv.Note[:500]
+	}
+	if _, err := s.Get(id); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO run_review(run_id,qc,interpretation,note) VALUES(?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET qc=excluded.qc,interpretation=excluded.interpretation,note=excluded.note`, id, rv.QC, rv.Interpretation, rv.Note)
+	return err
 }
 
 func (s *Store) List() ([]Run, error) {
@@ -308,6 +349,7 @@ func (s *Store) List() ([]Run, error) {
 		if r.Outputs, err = s.outputs(r.ID); err != nil {
 			return nil, err
 		}
+		r.Review = s.review(r.ID)
 		out = append(out, r)
 	}
 	return out, nil
@@ -334,7 +376,7 @@ func (s *Store) ForDataset(datasetID int64) (*Summary, error) {
 	} else if len(commit) > 12 && i < 0 {
 		commit = commit[:12]
 	}
-	return &Summary{Name: r.Name, Kind: r.Kind, Role: role, GitCommit: commit, Dirty: r.Dirty, Reproducible: r.Reproducible, GeneratedAt: r.GeneratedAt, Params: r.Params}, nil
+	return &Summary{Name: r.Name, Kind: r.Kind, Role: role, GitCommit: commit, Dirty: r.Dirty, Reproducible: r.Reproducible, GeneratedAt: r.GeneratedAt, Params: r.Params, Review: r.Review}, nil
 }
 
 // mergeParams keeps one row for a setting recorded identically in both sections, and both rows when they disagree.

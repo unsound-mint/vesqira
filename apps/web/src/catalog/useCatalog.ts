@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, listDatasets, registerDataset, setInterpretation } from "../api/catalog";
-import type { Dataset, InterpretationRequest } from "../api/catalog";
+import { ApiError, listDatasets, registerDataset, setInterpretation, setNature } from "../api/catalog";
+import type { Dataset, InterpretationRequest, Nature } from "../api/catalog";
 import { listHosts } from "../api/hosts";
 import { listJobs } from "../api/jobs";
 import type { Job } from "../api/jobs";
@@ -79,5 +79,15 @@ export function useCatalog() {
     setJobs(await listJobs());
   }, []);
 
-  return { jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
+  const declareNature = useCallback(async (id: number, nature: Nature): Promise<string | null> => {
+    try {
+      const d = await setNature(id, nature);
+      setDatasets((cur) => cur.map((x) => (x.id === d.id ? d : x)));
+      return null;
+    } catch (e) {
+      return e instanceof ApiError ? e.message : "Could not save.";
+    }
+  }, []);
+
+  return { declareNature, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
 }

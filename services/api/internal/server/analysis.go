@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/compat"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 )
@@ -32,7 +33,7 @@ type AnalysisConfig struct {
 	Timeout    time.Duration
 }
 
-var analysisOps = map[string]bool{"stats": true, "moment": true, "cutout": true, "slab": true, "align": true}
+var analysisOps = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true}
 
 // analysisArgs turns the request's options into command-line options, each validated by the same patterns the job
 // template uses, so a value can never become anything but a number or a known word.
@@ -100,11 +101,24 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	}
 	args := []string{"-P", s.Analysis.Script, in.Op, "--input", real}
 	sources := []int64{d.ID}
-	if in.Op == "align" {
+	if in.Op == "align" || in.Op == "axial_diff" {
 		ref, code, msg := s.dataset(in.ReferenceID)
 		if code != 0 {
 			fail(w, 422, "reference: "+msg)
 			return
+		}
+		if in.Op == "axial_diff" {
+			// both maps must be declared axial (unit known) and share the grid: a difference is only meaningful then
+			ia, ib := d.Interpretation, ref.Interpretation
+			if ia == nil || ib == nil || ia.Kind != "axial_orientation" || ib.Kind != "axial_orientation" {
+				fail(w, 422, "both maps must be declared as axial orientation maps (with a unit) before they can be differenced")
+				return
+			}
+			if why, err := compat.Grids(d.Header, ref.Header); err != nil || len(why) > 0 {
+				writeJSON(w, 409, map[string]any{"error": "the maps are not known to share a grid, so a pixel-by-pixel difference is not meaningful", "reasons": why})
+				return
+			}
+			args = append(args, "--unit", ia.Unit, "--unit-ref", ib.Unit)
 		}
 		if ref.HostID != 0 {
 			fail(w, 409, "the reference lives on another host; both files must be on the same machine to be aligned")
@@ -207,6 +221,10 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	d, code, msg := s.dataset(in.DatasetID)
 	if code != 0 {
 		fail(w, code, msg)
+		return
+	}
+	if in.Op == "axial_diff" {
+		fail(w, 409, "an axial difference is computed on this computer, from two maps registered here")
 		return
 	}
 	if d.HostID == 0 {

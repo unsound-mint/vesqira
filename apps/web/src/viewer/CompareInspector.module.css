@@ -1,0 +1,48 @@
+.wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  table-layout: fixed;
+}
+
+.table th,
+.table td {
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) 0;
+  border-bottom: var(--bw) solid var(--line);
+  overflow-wrap: anywhere;
+  text-align: left;
+  font-weight: var(--w-regular);
+  vertical-align: top;
+}
+
+.table thead th {
+  color: var(--text-2);
+  font-family: var(--font-data);
+}
+
+.table tbody th {
+  color: var(--text-2);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.next {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}

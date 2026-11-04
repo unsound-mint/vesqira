@@ -7,7 +7,7 @@ const run = (over: Partial<Run> = {}): Run => ({
   id: 1, name: "s1_ker8", kind: "vgt", importedAt: "", generatedAt: "2026-06-25T09:21:44Z", gitCommit: "bcbaed4ec9800ef95c561cfb4ad45c344743e469-dirty",
   dirty: true, reproducibleFromCommit: false, elapsedSeconds: 106.2, params: [{ key: "ker", value: "8", source: "config" }], diagnostics: {},
   inputName: "hnv1.fits", inputSizeBytes: 4007885760, inputHint: null,
-  outputs: [{ role: "psi", datasetId: 5, name: "psi.fits" }, { role: "reliability", datasetId: 6, name: "rel.fits" }], ...over,
+  outputs: [{ role: "psi", datasetId: 5, name: "psi.fits" }, { role: "reliability", datasetId: 6, name: "rel.fits" }], review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, ...over,
 });
 const none: Dataset[] = [];
 
@@ -31,5 +31,15 @@ describe("run panel", () => {
     expect(screen.getByText("Commit recorded")).toBeInTheDocument();
     expect(screen.getByText(/not proof of identity/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open it" })).toBeInTheDocument();
+  });
+});
+
+describe("assessment", () => {
+  it("starts as not assessed and says finishing is not a scientific verdict", () => {
+    render(<RunPanel run={run()} role="psi" datasets={[]} onOpen={() => {}} onCompare={() => {}} />);
+    expect(screen.getByLabelText("Scientific QC")).toHaveValue("not_assessed");
+    expect(screen.getByLabelText("Interpretation")).toHaveValue("not_interpreted");
+    expect(screen.getByText(/whether the science holds is a separate question/)).toBeInTheDocument();
+    expect(screen.queryByText(/\bvalid\b/i)).toBeNull();
   });
 });

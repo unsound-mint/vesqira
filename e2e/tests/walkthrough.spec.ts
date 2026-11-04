@@ -408,3 +408,42 @@ test("analysis makes new files with their provenance, and keeps missing data mis
   await expect(page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^align-/ })).toBeVisible();
   await expect(insp.getByText(/does not match angular resolution/).first()).toBeVisible();
 });
+
+test("the context-supplement gaps: preview, managed copy, nature, assessment, axial difference, beam", async ({ page }) => {
+  await page.goto("/");
+  // preview before registering: sky WCS, spectral axis and the cost of reading
+  await page.getByLabel("Register a FITS file").fill(path.join(data, "hi_cube.fits"));
+  await page.getByRole("button", { name: "Preview before registering" }).click();
+  await expect(page.getByText(/64 planes of about 3\.00 KiB each/)).toBeVisible();
+  await expect(page.getByText(/Sky coordinates: declared/)).toBeVisible();
+  await page.getByLabel("Register a FITS file").fill("");
+  await register(page, "hi_cube.fits");
+  await open(page, "hi_cube.fits");
+  const insp = inspector(page);
+  // pixel scale and beam are different things
+  await expect(insp.getByText("36.00 × 36.00 arcsec")).toBeVisible();
+  await expect(insp.getByText("108.00 × 72.00 arcsec, position angle 45°")).toBeVisible();
+  // what the data is, and a managed copy that says it is a byte-for-byte copy
+  await insp.getByLabel("What this data is").selectOption("constructed_control");
+  await expect(insp.getByText(/must not be read as an observation/)).toBeVisible();
+  await page.getByRole("button", { name: "Storage", exact: true }).click();
+  await insp.getByRole("button", { name: /Make a managed copy/ }).click();
+  await expect(insp.getByText(/Copied\. SHA-256/)).toBeVisible();
+
+  // two declared orientation maps: compare, see what differs, and make the axial difference
+  await register(page, "vgt_psi_deg.fits");
+  await register(page, "vgt_psi_rad.fits");
+  for (const [file, unit] of [["vgt_psi_deg.fits", "deg"], ["vgt_psi_rad.fits", "rad"]] as const) {
+    await page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}`) }).click();
+    await expect(insp.getByLabel("Treat this map as")).toBeVisible();
+    await insp.getByLabel("Treat this map as").selectOption("axial");
+    await insp.getByLabel("Angle unit (required)").selectOption(unit);
+    await insp.getByRole("button", { name: "Declare axial" }).click();
+    await expect(insp.getByText(/Declared by you as axial orientation/)).toBeVisible();
+  }
+  await page.getByLabel("Compare with").selectOption({ label: "vgt_psi_deg.fits" });
+  await expect(page.getByText("Same grid: cursor and channel are linked")).toBeVisible();
+  await expect(insp.getByText(/not better agreement/)).toBeVisible();
+  await insp.getByRole("button", { name: /Axial difference map/ }).click();
+  await expect(page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^axial_diff-/ })).toBeVisible();
+});

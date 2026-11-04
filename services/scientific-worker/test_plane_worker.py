@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import subprocess
 import sys
@@ -353,6 +354,32 @@ class PlaneWorker(unittest.TestCase):
         self.assertTrue(v["ok"], v)
         self.assertEqual((v["channels"], v["fits_axes"]["channel"]), (1, None))
         self.assertIsNone(v["spectral"])
+
+    def test_a_reversed_spectral_axis_follows_the_header_not_the_channel_index(self):
+        path = self.f["hi_cube_reverse_spectral.fits"]
+        v, _ = self.c.ask(op="view", path=str(path))
+        self.assertTrue(v["spectral"]["resolved"])
+        first = self.c.plane(path, 0)[0]["spectral_value"]
+        last = self.c.plane(path, g.NC - 1)[0]["spectral_value"]
+        self.assertAlmostEqual(first, g.V0_MS + (g.NC - 1) * g.DV_MS, places=6)
+        self.assertAlmostEqual(last, g.V0_MS, places=6)
+        self.assertGreater(first, last)                                    # velocity falls as the channel number rises
+
+    def test_a_rotated_wcs_is_read_with_its_pc_matrix(self):
+        x, y = g.SOURCE_PIX
+        r, _ = self.c.ask(op="coord", path=str(self.f["hi_cube_rotated.fits"]), x=x, y=y, channel=0)
+        dx, dy = x + 1 - g.CRPIX[0], y + 1 - g.CRPIX[1]                    # 1-based pixel minus reference pixel
+        c, s = math.cos(math.radians(g.ROT_DEG)), math.sin(math.radians(g.ROT_DEG))
+        xi = math.radians(-g.CDELT_DEG * (c * dx - s * dy))                # independent TAN with the PC matrix applied
+        eta = math.radians(g.CDELT_DEG * (s * dx + c * dy))
+        a0, d0 = math.radians(g.CRVAL_RA), math.radians(g.CRVAL_DEC)
+        den = math.cos(d0) - eta * math.sin(d0)
+        ra = math.degrees(a0 + math.atan2(xi, den)) % 360.0
+        dec = math.degrees(math.atan2(math.sin(d0) + eta * math.cos(d0), math.hypot(xi, den)))
+        self.assertAlmostEqual(r["sky"]["lon"], ra, places=8)
+        self.assertAlmostEqual(r["sky"]["lat"], dec, places=8)
+        plain, _ = self.c.ask(op="coord", path=str(self.f["hi_cube.fits"]), x=x, y=y, channel=0)
+        self.assertGreater(abs(plain["sky"]["lon"] - r["sky"]["lon"]), 1e-3)  # and it differs from the unrotated readout
 
     def test_no_celestial_wcs_falls_back_to_pixels(self):
         path = self.f["hi_cube_no_celestial_wcs.fits"]

@@ -3,7 +3,10 @@ import { ApiError } from "./catalog";
 export type RunParam = { key: string; value: string; source: "config" | "run_parameters" };
 export type RunOutput = { role: "psi" | "reliability" | "support" | "fit_rbar2"; datasetId: number; name: string };
 
+export type RunReview = { qc: "not_assessed" | "passed" | "failed" | "inconclusive"; interpretation: "not_interpreted" | "supports" | "challenges" | "inconclusive"; note: string };
+
 export type Run = {
+  review: RunReview;
   id: number;
   name: string;
   kind: string;
@@ -36,3 +39,6 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 export const listRuns = () => call<{ runs: Run[] }>("/api/runs").then((r) => r.runs);
 export const importRun = (path: string) =>
   call<Run>("/api/runs/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
+
+export const setRunReview = (id: number, rv: RunReview) =>
+  call<Run>(`/api/runs/${id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rv) });

@@ -1,5 +1,6 @@
 import type { Dataset } from "../api/catalog";
 import { bytes, show } from "./format";
+import { beamText, pixelScale } from "./resolution";
 import s from "./DatasetInspector.module.css";
 
 /** What the file header declares, in native FITS axis order. Nothing here is verified. */
@@ -14,6 +15,10 @@ export function DatasetInspector({ d }: { d: Dataset }) {
         <dd className="mono">{bytes(d.sizeBytes)}</dd>
         <dt>Brightness unit</dt>
         <dd className="mono">{show(h.bunit)}{h.bunit_status === "unresolved" ? " (unresolved)" : ""}</dd>
+        <dt>Pixel scale</dt>
+        <dd className="mono">{pixelScale(d)}</dd>
+        <dt>Beam</dt>
+        <dd className="mono">{beamText(d)}</dd>
         <dt>Frame</dt>
         <dd className="mono">{show(h.radesys)}</dd>
         <dt>Spectral frame</dt>
@@ -46,7 +51,7 @@ export function DatasetInspector({ d }: { d: Dataset }) {
         </tbody>
       </table>
       </div>
-      <p className={s.note}>Declared by the file, not verified. Unresolved means the header does not say; Vesqira does not guess.</p>
+      <p className={s.note}>Pixel scale (sampling) and beam (resolution) are different things. Declared by the file, not verified. Unresolved means the header does not say; Vesqira does not guess.</p>
     </div>
   );
 }

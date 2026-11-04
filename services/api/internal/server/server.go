@@ -24,18 +24,19 @@ type HeaderReader interface {
 }
 
 type Server struct {
-	Roots    sourceroot.Roots
-	Store    *catalog.Store
-	Worker   HeaderReader
-	Planes   PlaneService // persistent plane worker; nil answers 503
-	Cache    *PlaneCache  // optional; nil disables caching
-	Boards   *boards.Store
-	Runs     *runs.Store
-	HostDB   *hosts.Store // remote hosts; nil disables them
-	Remote   *hosts.Manager
-	Jobs     *jobs.Store
-	Derived  *derived.Store
-	Analysis *AnalysisConfig
+	Roots      sourceroot.Roots
+	Store      *catalog.Store
+	Worker     HeaderReader
+	Planes     PlaneService // persistent plane worker; nil answers 503
+	Cache      *PlaneCache  // optional; nil disables caching
+	Boards     *boards.Store
+	Runs       *runs.Store
+	HostDB     *hosts.Store // remote hosts; nil disables them
+	Remote     *hosts.Manager
+	Jobs       *jobs.Store
+	Derived    *derived.Store
+	ManagedDir string
+	Analysis   *AnalysisConfig
 }
 
 func (s *Server) Handler() http.Handler {
@@ -76,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/runs/import", s.importRun)
 		mux.HandleFunc("GET /api/runs", s.listRuns)
 		mux.HandleFunc("GET /api/runs/{id}", s.getRun)
+		mux.HandleFunc("POST /api/runs/{id}/review", s.setRunReview)
 	}
 	if s.Boards != nil {
 		mux.HandleFunc("POST /api/figures", s.createFigure)
@@ -100,6 +102,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/{id}/spectrum", s.spectrum)
 	mux.HandleFunc("GET /api/datasets/{id}/axial", s.axial)
 	mux.HandleFunc("GET /api/compat", s.compatibility)
+	mux.HandleFunc("GET /api/preview", s.previewFile)
+	mux.HandleFunc("POST /api/datasets/{id}/copy", s.copyDataset)
+	mux.HandleFunc("POST /api/datasets/{id}/nature", s.setNature)
 	mux.HandleFunc("POST /api/datasets/{id}/interpretation", s.interpret)
 	return localOnly(mux)
 }

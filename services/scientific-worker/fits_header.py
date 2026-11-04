@@ -87,7 +87,10 @@ def describe(path: str) -> dict:
             v = clean(h[key])
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 extra[key] = v
+    beam = {k.lower(): clean(h[k]) for k in ("BMAJ", "BMIN", "BPA") if k in h and isinstance(clean(h[k]), (int, float))}
     return {
+        "beam": {**beam, "status": "declared" if "bmaj" in beam and "bmin" in beam else "unresolved",
+                 "note": "FITS gives BMAJ, BMIN and BPA in degrees; the beam is the resolution and is not the pixel scale"},
         "wcs_extra": extra,
         "ok": True,
         "naxis": naxis,
