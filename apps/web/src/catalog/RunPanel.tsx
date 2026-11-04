@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button, Pill, Select } from "../ui";
 import { runReviewHistory, setRunReview } from "../api/runs";
 import type { RunReview, RunReviewRevision } from "../api/runs";
+import { metricText } from "../api/metrics";
 import { bytes, EM } from "./format";
 import s from "./RunPanel.module.css";
 
@@ -86,6 +87,25 @@ export function RunPanel({ run, role, datasets, job, onOpen, onCompare }: { run:
               </li>
             ))}
           </ul>
+        </details>
+      ) : null}
+      {run.metrics.length > 0 ? (
+        <details className={s.det} open>
+          <summary>Results ({run.metrics.length})</summary>
+          <table className={s.table}>
+            <tbody>
+              {run.metrics.map((m) => (
+                <tr key={m.key}>
+                  <th scope="row" title={m.definition || undefined}>{m.key}</th>
+                  <td className="mono">
+                    {metricText(m)}
+                    {m.definition ? <span className={s.note} style={{ display: "block" }}>{m.definition}</span> : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className={s.note}>As declared by the run; Vesqira did not compute or check them. “Not recorded” means unknown.</p>
         </details>
       ) : null}
       <details className={s.det}>

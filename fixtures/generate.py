@@ -256,7 +256,23 @@ def vgt_tangential_deg() -> fits.HDUList:
     return fits.HDUList([fits.PrimaryHDU(theta.astype(np.float64), header=_map_header((n, n)))])
 
 
-def write_vgt_run(directory: Path, dirty: bool = True) -> Path:
+# An optional section that a pipeline (or the researcher) may add: the measured results of the run and what they mean.
+METRICS_BLOCK = """
+[metrics.alignment_measure]
+value = 0.344
+unit = ""
+uncertainty = 0.02
+uncertainty_kind = "standard_error"
+n = 2695
+definition = "Axial agreement with the reference field, within the reliable-pixel mask (synthetic demo value)"
+
+[metrics.fit_failure_fraction]
+value = 0.0
+definition = "Fraction of fit attempts that failed (a real zero, not a missing value)"
+"""
+
+
+def write_vgt_run(directory: Path, dirty: bool = True, metrics: bool = False) -> Path:
     """A VGT-style run folder: the four output maps and a run_metadata.toml shaped like the real pipeline's.
 
     The metadata keeps the pipeline's habit of recording output paths relative to the machine it ran on, an input
@@ -315,7 +331,7 @@ input = "demo_cube"
 ker = 8
 label = "vgt"
 noise = 0.37
-""")
+""" + (METRICS_BLOCK if metrics else ""))
     return directory / "run_metadata.toml"
 
 
@@ -341,7 +357,7 @@ def write_all(directory: Path) -> dict[str, Path]:
         path = directory / name
         hdul.writeto(path, overwrite=True)
         out[name] = path
-    write_vgt_run(directory / "vgt_run_demo")
+    write_vgt_run(directory / "vgt_run_demo", metrics=True)
     return out
 
 

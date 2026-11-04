@@ -1,3 +1,4 @@
+import type { Metric } from "./metrics";
 import { ApiError } from "./catalog";
 
 export type Figure = {
@@ -18,7 +19,7 @@ export type Provenance = {
   source: { name: string; sizeBytes: number; modifiedAt: string; identity: string };
   interpretation?: { kind: string; unit: string; declaredBy: string; hasReliabilityMap: boolean };
   view: { kind: string; channel?: number; spectralValue?: number; spectralUnit?: string; colormap?: string; stretch?: string; range?: string; limits?: number[]; limitsUnit?: string };
-  run?: { name: string; kind: string; role: string; gitCommit: string; dirty: boolean; reproducibleFromCommit: boolean; generatedAt: string; params: { key: string; value: string }[]; review?: { qc: string; interpretation: string; note: string } };
+  run?: { name: string; kind: string; role: string; gitCommit: string; dirty: boolean; reproducibleFromCommit: boolean; generatedAt: string; params: { key: string; value: string }[]; metrics?: Metric[]; review?: { qc: string; interpretation: string; note: string } };
   statements: string[];
 };
 

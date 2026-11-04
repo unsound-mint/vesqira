@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Button } from "../ui";
 import type { Dataset, Compat } from "../api/catalog";
 import type { Run, RunParam } from "../api/runs";
+import { metricText } from "../api/metrics";
+import type { Metric } from "../api/metrics";
 import { runAnalysis } from "../api/analysis";
 import type { Viewer } from "./useViewer";
 import { runFor } from "../catalog/RunPanel";
@@ -19,6 +21,29 @@ export function paramDiff(a: RunParam[], b: RunParam[]): ParamDiff[] {
   return keys.filter((k) => ma.get(k) !== mb.get(k)).map((k) => ({ key: k, a: ma.get(k) ?? EM, b: mb.get(k) ?? EM }));
 }
 
+export type MetricRow = { key: string; a: string; b: string; basis: string };
+
+/**
+ * The results two runs report, side by side. Whether two numbers may be compared depends on what they measure, so each row
+ * says if both runs gave the same definition; the same name with different or missing definitions is not offered as comparable.
+ */
+export function metricRows(a: Metric[], b: Metric[]): MetricRow[] {
+  const ma = new Map(a.map((m) => [m.key, m]));
+  const mb = new Map(b.map((m) => [m.key, m]));
+  return [...new Set([...ma.keys(), ...mb.keys()])].sort().map((key) => {
+    const x = ma.get(key);
+    const y = mb.get(key);
+    let basis = "only one run reports it";
+    if (x && y) {
+      if (!x.definition || !y.definition) basis = "definition not stated by both: not shown as comparable";
+      else if (x.definition !== y.definition) basis = "definitions differ: not directly comparable";
+      else if (x.unit !== y.unit) basis = "units differ: not directly comparable";
+      else basis = "same definition and unit";
+    }
+    return { key, a: x ? metricText(x) : EM, b: y ? metricText(y) : EM, basis };
+  });
+}
+
 const kind = (d: Dataset) => (d.interpretation ? `axial orientation, ${d.interpretation.unit === "deg" ? "degrees" : "radians"} (${d.interpretation.declaredBy === "user" ? "declared by you" : "proposed by the run import"})` : "scalar");
 const commit = (r: Run | undefined) => (r ? (r.gitCommit ? r.gitCommit.slice(0, 12) + (r.dirty ? " -dirty (not reproducible)" : "") : "no commit recorded") : "not from an imported run");
 
@@ -29,6 +54,7 @@ export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a:
   const ra = runFor(runs, a.id)?.run;
   const rb = runFor(runs, b.id)?.run;
   const diffs = ra && rb ? paramDiff(ra.params, rb.params) : [];
+  const results = ra && rb ? metricRows(ra.metrics, rb.metrics) : [];
   const pct = (v: Viewer) => (v.plane ? `${v.plane.head.stats.finite_count.toLocaleString("en-US")} of ${(v.plane.head.stats.finite_count + v.plane.head.stats.nonfinite_count).toLocaleString("en-US")}` : EM);
   const bothAxial = a.interpretation !== null && b.interpretation !== null;
   const sameMachine = a.hostId === 0 && b.hostId === 0;
@@ -77,6 +103,15 @@ export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a:
       ) : (
         <p className={s.note}>Run settings are compared when both maps come from imported runs.</p>
       )}
+      {results.length > 0 ? (
+        <details open>
+          <summary>Run results ({results.length})</summary>
+          <table className={s.table}>
+            <tbody>{results.map((r) => <tr key={r.key}><th scope="row">{r.key}</th><td className="mono">{r.a}</td><td className="mono">{r.b}</td><td>{r.basis}</td></tr>)}</tbody>
+          </table>
+          <p className={s.note}>Results are as declared by each run; a difference between them is not explained by this table.</p>
+        </details>
+      ) : null}
       <p className={s.note}>Grids: {compat ? (compat.compatible ? "the same, so pixels correspond one to one." : `not confirmed the same (${compat.reasons.length} reason${compat.reasons.length === 1 ? "" : "s"}); see the list above.`) : "checking…"}</p>
       {bothAxial && compat?.compatible && sameMachine ? (
         <div className={s.next}>

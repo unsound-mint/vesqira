@@ -7,6 +7,8 @@ export type RunReview = { qc: "not_assessed" | "passed" | "failed" | "inconclusi
 
 export type RunFact = { key: string; label: string; status: "declared" | "inferred" | "unresolved"; detail: string };
 
+import type { Metric } from "./metrics";
+
 export type Run = {
   review: RunReview;
   reproducibility?: RunFact[];
@@ -24,6 +26,7 @@ export type Run = {
   inputName: string;
   inputSizeBytes: number;
   outputs: RunOutput[];
+  metrics: Metric[];
   inputHint: { datasetId: number; basis: string } | null;
 };
 

@@ -1,11 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
-import { CompareInspector, paramDiff } from "./CompareInspector";
+import type { Metric } from "../api/metrics";
+import { metricRows, CompareInspector, paramDiff } from "./CompareInspector";
 import type { Viewer } from "./useViewer";
 
 const ds = (id: number, name: string, axial = false): Dataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", hostId: 0, nature: "", header: {} as Dataset["header"], interpretation: axial ? { kind: "axial_orientation", unit: "rad", reliabilityId: null, declaredBy: "vgt-run-adapter", declaredAt: "", stale: false } : null });
-const run = (id: number, name: string, ker: string, commit: string, dirty: boolean, out: number): Run => ({ id, name, kind: "vgt", importedAt: "", generatedAt: "", gitCommit: commit, dirty, reproducibleFromCommit: !dirty, elapsedSeconds: null, params: [{ key: "ker", value: ker, source: "config" }, { key: "dn", value: "10", source: "config" }], diagnostics: {}, inputName: "", inputSizeBytes: 0, inputHint: null, review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, outputs: [{ role: "psi", datasetId: out, name: "p" }] });
+const run = (id: number, name: string, ker: string, commit: string, dirty: boolean, out: number): Run => ({ id, name, kind: "vgt", importedAt: "", generatedAt: "", gitCommit: commit, dirty, reproducibleFromCommit: !dirty, elapsedSeconds: null, metrics: [], params: [{ key: "ker", value: ker, source: "config" }, { key: "dn", value: "10", source: "config" }], diagnostics: {}, inputName: "", inputSizeBytes: 0, inputHint: null, review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, outputs: [{ role: "psi", datasetId: out, name: "p" }] });
 const viewer = (finite: number, nan: number) => ({ view: { bunit: null }, plane: { head: { channel: 0, channels: 1, stats: { finite_count: finite, nonfinite_count: nan } } } }) as unknown as Viewer;
 
 describe("comparison inspector", () => {
@@ -39,5 +40,22 @@ describe("resolution", () => {
     const none = { header: { axes: [{ cdelt: -0.01, cunit: null }, { cdelt: 0.01, cunit: null }], beam: { status: "unresolved" } } } as unknown as Dataset;
     expect(pixelScale(none)).toBe("—");
     expect(beamText(none)).toBe("not declared");
+  });
+});
+
+describe("run results side by side", () => {
+  const m = (over: Partial<Metric>): Metric => ({ key: "am", value: 0.3, unit: "", uncertainty: null, uncertaintyKind: "", n: null, definition: "vs Planck", status: "declared", ...over });
+  it("offers a comparison only when both runs state the same definition and unit", () => {
+    const rows = metricRows([m({}), m({ key: "only_a" }), m({ key: "d" }), m({ key: "u", unit: "deg" })], [m({ value: 0.01 }), m({ key: "d", definition: "vs HI" }), m({ key: "u" }), m({ key: "nodef", definition: "" })]);
+    const by = Object.fromEntries(rows.map((r) => [r.key, r]));
+    expect(by.am?.basis).toBe("same definition and unit");
+    expect(by.d?.basis).toBe("definitions differ: not directly comparable");
+    expect(by.u?.basis).toBe("units differ: not directly comparable");
+    expect(by.only_a?.basis).toBe("only one run reports it");
+    expect(by.nodef?.b).toBe("0.3");
+    expect(rows.find((r) => r.key === "am")?.b).toBe("0.01");
+  });
+  it("a metric a run did not record reads as unknown, not zero", () => {
+    expect(metricRows([m({ value: null })], [m({ value: 0 })])[0]).toMatchObject({ a: "not recorded", b: "0" });
   });
 });

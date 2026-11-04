@@ -6,7 +6,7 @@ import { RunPanel, runFor } from "./RunPanel";
 const run = (over: Partial<Run> = {}): Run => ({
   id: 1, name: "s1_ker8", kind: "vgt", importedAt: "", generatedAt: "2026-06-25T09:21:44Z", gitCommit: "bcbaed4ec9800ef95c561cfb4ad45c344743e469-dirty",
   dirty: true, reproducibleFromCommit: false, elapsedSeconds: 106.2, params: [{ key: "ker", value: "8", source: "config" }], diagnostics: {},
-  inputName: "hnv1.fits", inputSizeBytes: 4007885760, inputHint: null,
+  inputName: "hnv1.fits", inputSizeBytes: 4007885760, inputHint: null, metrics: [],
   outputs: [{ role: "psi", datasetId: 5, name: "psi.fits" }, { role: "reliability", datasetId: 6, name: "rel.fits" }], review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, ...over,
 });
 const none: Dataset[] = [];

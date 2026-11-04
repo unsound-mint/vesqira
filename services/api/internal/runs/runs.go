@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 )
 
 const (
@@ -53,6 +55,7 @@ type Run struct {
 	InputName      string            `json:"inputName"`
 	InputSizeBytes int64             `json:"inputSizeBytes"`
 	Outputs        []Output          `json:"outputs"`
+	Metrics        []Metric          `json:"metrics"`
 	// Review is the researcher's own assessment, kept apart from whether the computation finished.
 	Review Review `json:"review"`
 }
@@ -69,15 +72,16 @@ var interpValues = map[string]bool{"not_interpreted": true, "supports": true, "c
 
 // Summary is what leaves the machine with a figure: no paths, ids or locations.
 type Summary struct {
-	Name         string  `json:"name"`
-	Kind         string  `json:"kind"`
-	Role         string  `json:"role"`
-	GitCommit    string  `json:"gitCommit"`
-	Dirty        bool    `json:"dirty"`
-	Reproducible bool    `json:"reproducibleFromCommit"`
-	GeneratedAt  string  `json:"generatedAt"`
-	Params       []Param `json:"params"`
-	Review       Review  `json:"review"`
+	Name         string   `json:"name"`
+	Kind         string   `json:"kind"`
+	Role         string   `json:"role"`
+	GitCommit    string   `json:"gitCommit"`
+	Dirty        bool     `json:"dirty"`
+	Reproducible bool     `json:"reproducibleFromCommit"`
+	GeneratedAt  string   `json:"generatedAt"`
+	Params       []Param  `json:"params"`
+	Metrics      []Metric `json:"metrics"`
+	Review       Review   `json:"review"`
 }
 
 // ---- parsing ----
@@ -97,6 +101,7 @@ type vgtMeta struct {
 		Elapsed *float64 `toml:"elapsed_seconds"`
 	} `toml:"performance"`
 	RunParams map[string]any `toml:"run_parameters"`
+	Metrics   map[string]any `toml:"metrics"`
 }
 
 // Parsed is a run read from metadata, before it is linked to datasets.
@@ -176,6 +181,7 @@ func ParseVGT(data []byte, dirName string) (Parsed, error) {
 	if len(p.Params) > maxParams {
 		p.Params = p.Params[:maxParams]
 	}
+	p.Metrics = parseMetrics(m.Metrics)
 	p.Diagnostics = map[string]string{}
 	for k, v := range m.Diag {
 		if s, ok := scalar(v); ok && len(k) <= 60 {
@@ -211,24 +217,35 @@ func Open(db *sql.DB) (*Store, error) {
 			return nil, err
 		}
 	}
+	if err := schema.AddColumn(db, "runs", "metrics", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		return nil, err
+	}
 	return &Store{db}, nil
+}
+
+func nonNil(m []Metric) []Metric {
+	if m == nil {
+		return []Metric{}
+	}
+	return m
 }
 
 // Save records a run (or refreshes it when the same directory is imported again) with its linked outputs.
 func (s *Store) Save(dir string, p Parsed, outs []Output) (Run, error) {
 	pj, _ := jsonMarshal(p.Params)
 	dj, _ := jsonMarshal(p.Diagnostics)
+	mj, _ := jsonMarshal(nonNil(p.Metrics))
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Run{}, err
 	}
 	defer tx.Rollback()
-	_, err = tx.Exec(`INSERT INTO runs(dir,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?)
+	_, err = tx.Exec(`INSERT INTO runs(dir,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(dir) DO UPDATE SET name=excluded.name,imported_at=excluded.imported_at,generated_at=excluded.generated_at,
 			git_commit=excluded.git_commit,elapsed=excluded.elapsed,input_name=excluded.input_name,input_size=excluded.input_size,
-			params=excluded.params,diagnostics=excluded.diagnostics`,
-		dir, p.Name, p.Kind, time.Now().Unix(), p.GeneratedAt, p.GitCommit, p.ElapsedSeconds, p.InputName, p.InputSizeBytes, pj, dj)
+			params=excluded.params,diagnostics=excluded.diagnostics,metrics=excluded.metrics`,
+		dir, p.Name, p.Kind, time.Now().Unix(), p.GeneratedAt, p.GitCommit, p.ElapsedSeconds, p.InputName, p.InputSizeBytes, pj, dj, mj)
 	if err != nil {
 		return Run{}, err
 	}
@@ -250,14 +267,14 @@ func (s *Store) Save(dir string, p Parsed, outs []Output) (Run, error) {
 	return s.Get(id)
 }
 
-const runCols = `id,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics`
+const runCols = `id,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics`
 
 func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	var r Run
 	var at int64
 	var el sql.NullFloat64
-	var pj, dj string
-	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj); err != nil {
+	var pj, dj, mj string
+	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj, &mj); err != nil {
 		return Run{}, err
 	}
 	r.ImportedAt = time.Unix(at, 0).UTC()
@@ -268,6 +285,8 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	r.Reproducible = r.GitCommit != "" && !r.Dirty
 	_ = jsonUnmarshal(pj, &r.Params)
 	_ = jsonUnmarshal(dj, &r.Diagnostics)
+	_ = jsonUnmarshal(mj, &r.Metrics)
+	r.Metrics = nonNil(r.Metrics)
 	if r.Params == nil {
 		r.Params = []Param{}
 	}
@@ -419,7 +438,7 @@ func (s *Store) ForDataset(datasetID int64) (*Summary, error) {
 	} else if len(commit) > 12 && i < 0 {
 		commit = commit[:12]
 	}
-	return &Summary{Name: r.Name, Kind: r.Kind, Role: role, GitCommit: commit, Dirty: r.Dirty, Reproducible: r.Reproducible, GeneratedAt: r.GeneratedAt, Params: r.Params, Review: r.Review}, nil
+	return &Summary{Name: r.Name, Kind: r.Kind, Role: role, GitCommit: commit, Dirty: r.Dirty, Reproducible: r.Reproducible, GeneratedAt: r.GeneratedAt, Params: r.Params, Metrics: r.Metrics, Review: r.Review}, nil
 }
 
 // mergeParams keeps one row for a setting recorded identically in both sections, and both rows when they disagree.

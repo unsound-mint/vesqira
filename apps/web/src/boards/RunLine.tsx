@@ -1,4 +1,5 @@
 import type { Provenance } from "../api/boards";
+import { metricText } from "../api/metrics";
 
 type RunInfo = NonNullable<Provenance["run"]>;
 
@@ -14,6 +15,19 @@ export function RunLine({ run }: { run: RunInfo }) {
         <p style={{ margin: 0 }}>
           Author’s assessment: scientific QC {run.review.qc.replace(/_/g, " ")}; interpretation {run.review.interpretation.replace(/_/g, " ")}.{run.review.note ? ` ${run.review.note}` : ""} (The run having finished is not an assessment.)
         </p>
+      ) : null}
+      {run.metrics && run.metrics.length > 0 ? (
+        <details open>
+          <summary>Run results ({run.metrics.length}), as declared by the run</summary>
+          <ul style={{ margin: "4px 0", paddingLeft: 16 }}>
+            {run.metrics.map((m) => (
+              <li key={m.key}>
+                <span className="mono">{m.key}</span> = <span className="mono">{metricText(m)}</span>
+                {m.definition ? <span style={{ display: "block", opacity: 0.8 }}>{m.definition}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </details>
       ) : null}
       <details>
         <summary>Run parameters ({run.params.length})</summary>

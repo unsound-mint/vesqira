@@ -453,7 +453,7 @@ test("a Slurm job: render, read, submit exactly that text, follow it, import its
   await expect(page.getByLabel("Job log")).toContainText("fake slurm log for job 4242");
 
   // it finishes and writes its run where the config said; the results come back as a run linked to the job
-  execFileSync("python3", ["-c", "import sys, pathlib, generate; generate.write_vgt_run(pathlib.Path(sys.argv[1]))", outDir], { cwd: path.resolve(here, "../../fixtures") });
+  execFileSync("python3", ["-c", "import sys, pathlib, generate; generate.write_vgt_run(pathlib.Path(sys.argv[1]), metrics=True)", outDir], { cwd: path.resolve(here, "../../fixtures") });
   writeFileSync(state, "COMPLETED\n");
   await page.getByRole("button", { name: "Refresh status" }).click();
   await expect(page.locator("body")).toContainText("exit 0:0");
@@ -462,6 +462,8 @@ test("a Slurm job: render, read, submit exactly that text, follow it, import its
   await page.getByRole("button", { name: "Open the run" }).click();
   const insp = inspector(page);
   await expect(insp.getByText(/vgt-ker8 · 4242 · completed/)).toBeVisible(); // the run knows its job
+  await expect(insp.getByText("0.344 ± 0.02 (standard error), n = 2695")).toBeVisible(); // its declared results, with their kind of uncertainty
+  await expect(insp.getByText(/As declared by the run; Vesqira did not compute or check them/)).toBeVisible();
   await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
 });
 
