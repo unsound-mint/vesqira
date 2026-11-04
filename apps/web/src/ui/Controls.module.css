@@ -199,3 +199,18 @@
   border-radius: 50%;
   background: var(--accent);
 }
+
+/* focus belongs on the thumb, not on a box around the whole track */
+.range:focus-visible {
+  outline: none;
+}
+
+.range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

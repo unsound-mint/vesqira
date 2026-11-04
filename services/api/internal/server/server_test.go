@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -24,7 +25,21 @@ func (f *fakeWorker) Header(context.Context, string) (json.RawMessage, error) {
 	return json.RawMessage(`{"ok":true,"axes":[]}`), nil
 }
 
+func itoa(n int) string { return strconv.Itoa(n) }
+
 func newServer(t *testing.T, w HeaderReader) (*httptest.Server, string, string) {
+	return newServerWith(t, w, nil)
+}
+
+func newPlaneServer(t *testing.T, p PlaneService) (*httptest.Server, string, string) {
+	return newServerWith(t, &fakeWorker{}, p)
+}
+
+func newPlaneServerWith(t *testing.T, w HeaderReader, p PlaneService) (*httptest.Server, string, string) {
+	return newServerWith(t, w, p)
+}
+
+func newServerWith(t *testing.T, w HeaderReader, p PlaneService) (*httptest.Server, string, string) {
 	t.Helper()
 	base := t.TempDir()
 	root, sibling := filepath.Join(base, "data"), filepath.Join(base, "data2")
@@ -42,7 +57,7 @@ func newServer(t *testing.T, w HeaderReader) (*httptest.Server, string, string) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	ts := httptest.NewServer((&Server{Roots: rs, Store: st, Worker: w}).Handler())
+	ts := httptest.NewServer((&Server{Roots: rs, Store: st, Worker: w, Planes: p, Cache: NewPlaneCache(8 << 20)}).Handler())
 	t.Cleanup(ts.Close)
 	return ts, root, sibling
 }

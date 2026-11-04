@@ -36,7 +36,7 @@ func Open(dsn string) (*Store, error) {
 		path TEXT NOT NULL UNIQUE,
 		name TEXT NOT NULL,
 		size_bytes INTEGER NOT NULL,
-		modified_at INTEGER NOT NULL,
+		modified_at INTEGER NOT NULL, -- Unix nanoseconds
 		added_at INTEGER NOT NULL,
 		header TEXT NOT NULL)`)
 	if err != nil {
@@ -53,7 +53,7 @@ func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Upsert(d Dataset) (Dataset, error) {
 	_, err := s.db.Exec(`INSERT INTO datasets(path,name,size_bytes,modified_at,added_at,header) VALUES(?,?,?,?,?,?)
 		ON CONFLICT(path) DO UPDATE SET name=excluded.name,size_bytes=excluded.size_bytes,modified_at=excluded.modified_at,header=excluded.header`,
-		d.Path, d.Name, d.SizeBytes, d.ModifiedAt.Unix(), time.Now().Unix(), string(d.Header))
+		d.Path, d.Name, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix(), string(d.Header))
 	if err != nil {
 		return Dataset{}, err
 	}
@@ -67,7 +67,7 @@ func scan(row interface{ Scan(...any) error }) (Dataset, error) {
 	if err := row.Scan(&d.ID, &d.Path, &d.Name, &d.SizeBytes, &mod, &add, &hdr); err != nil {
 		return Dataset{}, err
 	}
-	d.ModifiedAt, d.AddedAt, d.Header = time.Unix(mod, 0).UTC(), time.Unix(add, 0).UTC(), json.RawMessage(hdr)
+	d.ModifiedAt, d.AddedAt, d.Header = time.Unix(0, mod).UTC(), time.Unix(add, 0).UTC(), json.RawMessage(hdr)
 	return d, nil
 }
 

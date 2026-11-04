@@ -50,8 +50,8 @@ def declared(header: fits.Header, key: str):
     return None, "unresolved"
 
 
-def describe(path: str) -> dict:
-    h = read_header(path)
+def axes_shape(h: fits.Header) -> list[int]:
+    """Validated NAXISn list in native FITS order; rejects absurd sizes before anything allocates."""
     if h.get("SIMPLE") is not True:
         raise ValueError("not a FITS primary header")
     naxis = int(h.get("NAXIS", 0))
@@ -66,6 +66,13 @@ def describe(path: str) -> dict:
         elements *= max(n, 1)
         if elements > MAX_ELEMENTS:
             raise ValueError("data size exceeds the supported limit")
+    return shape
+
+
+def describe(path: str) -> dict:
+    h = read_header(path)
+    shape = axes_shape(h)
+    naxis = len(shape)
     axes = []
     for i in range(1, naxis + 1):   # native FITS order: axis 1 is the fastest-varying
         ax = {"axis": i, "length": shape[i - 1]}

@@ -2,6 +2,12 @@ import { FolderOpen, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { Explorer } from "../catalog/Explorer";
 import { useCatalog } from "../catalog/useCatalog";
+import { EM } from "../catalog/format";
+import { ChannelTimeline } from "../viewer/ChannelTimeline";
+import { CoordinateReadout, DisplayControls } from "../viewer/Panels";
+import { PlaneViewer } from "../viewer/PlaneViewer";
+import { flagState } from "../viewer/format";
+import { useViewer } from "../viewer/useViewer";
 import { IconButton, Pill, ResizeHandle, Section } from "../ui";
 import { LIMITS, useLayout } from "./useLayout";
 import s from "./Shell.module.css";
@@ -10,6 +16,8 @@ import s from "./Shell.module.css";
 export function Shell() {
   const { layout: L, set, toggle } = useLayout();
   const cat = useCatalog();
+  const viewer = useViewer(cat.selectedId !== null && cat.selected ? cat.selected.id : null);
+  const flag = flagState(viewer.view, viewer.plane);
   const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", L.inspOpen ? `${L.insp}px` : "0px"].join(" ");
   const rows = ["var(--h-title)", "minmax(0,1fr)", L.timelineOpen ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
 
@@ -34,20 +42,27 @@ export function Shell() {
       </aside>
 
       <main className={s.canvas} aria-label="Viewer">
-        <div className={s.stage}>
-          <p className={s.stageTitle}>{cat.selected ? cat.selected.name : "No dataset open"}</p>
-          <p className={s.empty}>{cat.selected ? "Header registered. The plane viewer is not built yet." : "Planes and maps appear here. The image keeps its native shape and never stretches."}</p>
-        </div>
+        {cat.selected ? (
+          <PlaneViewer v={viewer} />
+        ) : (
+          <div className={s.stage}>
+            <p className={s.stageTitle}>No dataset open</p>
+            <p className={s.empty}>Planes and maps appear here. The image keeps its native shape and never stretches.</p>
+          </div>
+        )}
       </main>
 
       <aside className={s.insp} aria-label="Inspector" hidden={!L.inspOpen}>
         <ResizeHandle orientation="vertical" direction={-1} label="Resize inspector" value={L.insp} min={LIMITS.insp.min} max={LIMITS.insp.max} onChange={(v) => set("insp", v)} />
         <div className={s.scroll}>
+          <Section title="Coordinates">
+            {cat.selected ? <CoordinateReadout v={viewer} /> : <p className={s.empty}>{EM}</p>}
+          </Section>
+          <Section title="Display">
+            {cat.selected ? <DisplayControls v={viewer} /> : <p className={s.empty}>{EM}</p>}
+          </Section>
           <Section title="Dataset">
             {cat.selected ? <DatasetInspector d={cat.selected} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
-          </Section>
-          <Section title="Coordinates" defaultOpen={false}>
-            <p className={s.empty}>—</p>
           </Section>
           <Section title="Region" defaultOpen={false}>
             <p className={s.empty}>—</p>
@@ -58,7 +73,7 @@ export function Shell() {
       <section className={s.timeline} aria-label="Channels" hidden={!L.timelineOpen}>
         <ResizeHandle orientation="horizontal" direction={-1} label="Resize timeline" value={L.timeline} min={LIMITS.timeline.min} max={LIMITS.timeline.max} onChange={(v) => set("timeline", v)} />
         <div className={s.scroll}>
-          <p className={s.empty}>No spectral axis. Channels appear here once a cube is open.</p>
+          {cat.selected ? <ChannelTimeline v={viewer} /> : <p className={s.empty}>No spectral axis. Channels appear here once a cube is open.</p>}
         </div>
       </section>
 
@@ -67,7 +82,7 @@ export function Shell() {
         <IconButton icon={PanelBottom} label="Toggle timeline" pressed={L.timelineOpen} onClick={() => toggle("timelineOpen")} />
         <IconButton icon={PanelRight} label="Toggle inspector" pressed={L.inspOpen} onClick={() => toggle("inspOpen")} />
         <span className={s.grow} />
-        <Pill>{cat.selected ? "Header only" : "No dataset"}</Pill>
+        <Pill tone={cat.selected ? flag.tone : "neutral"}>{cat.selected ? (viewer.view ? flag.text : "Reading layout") : "No dataset"}</Pill>
       </footer>
     </div>
   );

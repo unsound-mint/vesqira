@@ -1,0 +1,64 @@
+.wrap {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.facts dt {
+  color: var(--text-2);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.legend {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.bar {
+  display: block;
+  width: 100%;
+  height: var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  image-rendering: pixelated;
+}
+
+.ends {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.nodata {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.swatch {
+  flex: none;
+  width: var(--sp-4);
+  height: var(--sp-4);
+  border: var(--bw) solid var(--line-strong);
+  background: var(--nodata-hatch);
+}

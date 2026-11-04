@@ -8,7 +8,7 @@ export const LIMITS = {
   timeline: { min: 88, max: 320 },
 } as const;
 
-const BASE: Layout = { side: 280, insp: 360, timeline: 132, sideOpen: true, inspOpen: true, timelineOpen: true };
+const BASE: Layout = { side: 280, insp: 360, timeline: 164, sideOpen: true, inspOpen: true, timelineOpen: true };
 // On narrow screens panels start closed: they open over the canvas on demand.
 const narrow = () => typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches;
 const defaults = (): Layout => (narrow() ? { ...BASE, sideOpen: false, inspOpen: false } : BASE);

@@ -22,6 +22,8 @@ type Server struct {
 	Roots  sourceroot.Roots
 	Store  *catalog.Store
 	Worker HeaderReader
+	Planes PlaneService // persistent plane worker; nil answers 503
+	Cache  *PlaneCache  // optional; nil disables caching
 }
 
 func (s *Server) Handler() http.Handler {
@@ -30,6 +32,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets", s.list)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
 	mux.HandleFunc("POST /api/datasets", s.register)
+	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
+	mux.HandleFunc("GET /api/datasets/{id}/plane", s.plane)
+	mux.HandleFunc("GET /api/datasets/{id}/coord", s.coord)
 	return localOnly(mux)
 }
 
@@ -45,11 +50,12 @@ func localOnly(next http.Handler) http.Handler {
 			http.Error(w, "forbidden host", http.StatusForbidden)
 			return
 		}
+		// A page on another site must not make the API read files or run the worker, even by GET.
+		if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+			http.Error(w, "cross-site request refused", http.StatusForbidden)
+			return
+		}
 		if r.Method == http.MethodPost {
-			if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-				http.Error(w, "cross-site request refused", http.StatusForbidden)
-				return
-			}
 			if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 				http.Error(w, "content type must be application/json", http.StatusUnsupportedMediaType)
 				return

@@ -28,6 +28,8 @@ func main() {
 	db := flag.String("db", "vesqira.db", "SQLite database path")
 	script := flag.String("worker", "services/scientific-worker/fits_header.py", "header worker script")
 	python := flag.String("python", "python3", "interpreter for the worker")
+	planeScript := flag.String("plane-worker", "services/scientific-worker/plane_worker.py", "persistent plane worker script")
+	cacheMiB := flag.Int("plane-cache-mib", 256, "plane cache size in MiB (0 disables)")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
 
@@ -49,7 +51,12 @@ func main() {
 	}
 	defer store.Close()
 
-	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}}
+	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
+	defer planes.Close()
+	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes}
+	if *cacheMiB > 0 {
+		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
+	}
 	log.Printf("listening on http://%s, roots: %v", *addr, []string(rs))
 	log.Fatal((&http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second}).ListenAndServe())
 }

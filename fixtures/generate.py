@@ -88,6 +88,62 @@ def cube_unlabelled_pixels() -> fits.HDUList:
     return hdul
 
 
+FREQ0_HZ, DFREQ_HZ = 1.4204e9, 5000.0   # FREQ axis of cube_stokes_freq (channel 1 = FREQ0)
+SCALED_SHAPE = (4, 6, 8)                  # numpy (channels, y, x) of cube_int16_scaled
+SCALED_BSCALE, SCALED_BZERO, SCALED_BLANK = 0.01, 5.0, -32768
+SCALED_BLANK_PIX = (1, 1, 2)              # (x, y, channel) holds the BLANK sentinel
+SCALED_ZERO_PIX = (4, 3, 2)               # (x, y, channel) is a real physical 0.0 (raw -500)
+
+
+def scaled_raw() -> np.ndarray:
+    c, y, x = np.mgrid[0:SCALED_SHAPE[0], 0:SCALED_SHAPE[1], 0:SCALED_SHAPE[2]]
+    raw = ((x + 3 * y + 7 * c) % 2000 - 1000).astype(np.int16)
+    raw[SCALED_ZERO_PIX[2], SCALED_ZERO_PIX[1], SCALED_ZERO_PIX[0]] = -500
+    raw[SCALED_BLANK_PIX[2], SCALED_BLANK_PIX[1], SCALED_BLANK_PIX[0]] = SCALED_BLANK
+    return raw
+
+
+def cube_int16_scaled() -> fits.HDUList:
+    """16-bit integer cube with BSCALE/BZERO/BLANK: physical = raw*BSCALE+BZERO, BLANK is missing (never 0)."""
+    hdu = fits.PrimaryHDU(scaled_raw())
+    h = hdu.header
+    h["BSCALE"], h["BZERO"], h["BLANK"] = SCALED_BSCALE, SCALED_BZERO, SCALED_BLANK
+    h["BUNIT"] = "Jy/beam"
+    for i, (ct, cv, cd, cp, cu) in enumerate([
+        ("RA---TAN", CRVAL_RA, -CDELT_DEG, 4.0, "deg"),
+        ("DEC--TAN", CRVAL_DEC, CDELT_DEG, 3.0, "deg"),
+        ("VRAD", V0_MS, DV_MS, 1.0, "m/s"),
+    ], start=1):
+        h[f"CTYPE{i}"], h[f"CRVAL{i}"], h[f"CDELT{i}"], h[f"CRPIX{i}"], h[f"CUNIT{i}"] = ct, cv, cd, cp, cu
+    h["RADESYS"] = "ICRS"
+    return fits.HDUList([hdu])
+
+
+def cube_stokes_freq() -> fits.HDUList:
+    """4D cube, FITS axes RA, DEC, STOKES (length 1), FREQ: the spectral axis is axis 4, not 3.
+
+    Same numbers as hi_cube, so a plane must equal the hi_cube plane. FREQ has no velocity convention
+    declared, so velocity must stay unresolved.
+    """
+    src = hi_cube()
+    data = src[0].data[:, None, :, :]      # numpy (FREQ, STOKES, DEC, RA)
+    h = fits.PrimaryHDU(data).header
+    h["BUNIT"] = "K"
+    for i, (ct, cv, cd, cp, cu) in enumerate([
+        ("RA---TAN", CRVAL_RA, -CDELT_DEG, CRPIX[0], "deg"),
+        ("DEC--TAN", CRVAL_DEC, CDELT_DEG, CRPIX[1], "deg"),
+        ("STOKES", 1.0, 1.0, 1.0, ""),
+        ("FREQ", FREQ0_HZ, DFREQ_HZ, 1.0, "Hz"),
+    ], start=1):
+        h[f"CTYPE{i}"], h[f"CRVAL{i}"], h[f"CDELT{i}"], h[f"CRPIX{i}"] = ct, cv, cd, cp
+        if cu:
+            h[f"CUNIT{i}"] = cu
+    h["RADESYS"] = "ICRS"
+    h["SPECSYS"] = "LSRK"
+    h["RESTFRQ"] = 1.420405751768e9
+    return fits.HDUList([fits.PrimaryHDU(data, header=h)])
+
+
 # ----- VGT-style orientation maps (axial angles, degrees, axis 0 and 180 identical) -----
 
 def vgt_angle_map() -> dict[str, np.ndarray]:
@@ -144,6 +200,8 @@ def write_all(directory: Path) -> dict[str, Path]:
         "hi_cube_no_celestial_wcs.fits": cube_unlabelled_pixels(),
         "hi_cube_galactic.fits": cube_other_frame(),
         "hi_cube_coarser.fits": cube_coarser_pixels(),
+        "cube_int16_scaled.fits": cube_int16_scaled(),
+        "cube_stokes_freq.fits": cube_stokes_freq(),
         "vgt_result.fits": vgt_hdul(),
     }.items():
         path = directory / name

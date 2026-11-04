@@ -1,10 +1,12 @@
 .wrap {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-2);
 }
 
 .form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-2);
   padding: var(--sp-1) 0 var(--sp-2);
 }
