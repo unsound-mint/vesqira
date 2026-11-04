@@ -102,7 +102,7 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 ## Stage 6 — Structure, contracts and operations
 
 - [x] Contract layer, first part: an OpenAPI route list generated from the Go routes, with `make docs` failing on drift or on a web call to a route that does not exist (Q170, Q181). Bodies and generated TypeScript types are still to do.
-- [~] `packages/contracts` now exists. `packages/science-types` and `extensions/astronomy` are named in AGENTS.md but not created: the semantic code lives in the worker and the Go packages. Decide whether to create or retire them.
+- [x] `packages/contracts` exists. `packages/science-types`, `extensions/astronomy` and `integrations` are retired from AGENTS.md as structure to create now: the semantic code lives in the worker and the Go packages, and is split out when a second discipline or connector makes the seam real.
 - [ ] Capability and version endpoint (Q155).
 - [ ] Workload classes: reserved interactive capacity, queue reasons shown to the user (Q169).
 - [ ] Structured logs with correlation ids (Q158).

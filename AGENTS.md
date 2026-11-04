@@ -32,9 +32,7 @@ The intended baseline is a modular Go control plane, React/TypeScript web applic
 - `services/api`: auth, project access, dataset catalog, provenance, lifecycle, durable operations, review and audit.
 - `services/scientific-worker`: bounded scientific data decoding and specialized numerical operations. Do not burden the API with bulk arrays.
 - `packages/contracts`: shared types, schemas, OpenAPI and generated clients. Keep transport contracts versioned and independently testable.
-- `packages/science-types`: scientific descriptors; *small, semantic, format-neutral* core only.
-- `extensions/astronomy`: FITS/WCS, spectral coordinates and appropriate orientation-field semantics.
-- `integrations`: external connectors. Providers are outside the domain model.
+- Not created yet, on purpose: `packages/science-types`, `extensions/astronomy` and `integrations`. Today the astronomy semantics (FITS/WCS, spectral axes, orientation fields) live in `services/scientific-worker` and `services/api/internal/compat`, and SSH/Slurm lives in `internal/hosts` and `internal/jobs`. Split them out when a second discipline or a second connector makes the seam real, keeping them *small, semantic and format-neutral*; do not create empty structure.
 
 **Discipline-specific behavior lives in extensions.** Don't scatter per-discipline conditionals through core code.
 
