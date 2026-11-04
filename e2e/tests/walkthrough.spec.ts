@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -277,6 +278,7 @@ test("a cube on another machine is read in place and agrees with the same cube h
   await expect(page.getByText(/Keys and passwords are never read by Vesqira/)).toBeVisible();
   await page.getByLabel("Host name").fill("Second laptop");
   await page.getByLabel("SSH destination").fill("laptop2");
+  await page.getByLabel("Python on the host").fill(readFileSync(path.resolve(here, "../.run/python"), "utf8").trim());
   await page.getByLabel(/Source folders/).fill(remoteRoot);
   await page.getByRole("button", { name: "Add host" }).click();
   const host = page.getByRole("region", { name: "Host Second laptop" });

@@ -109,7 +109,12 @@ func TestRemoteHostEndToEndWithFakeSSH(t *testing.T) {
 			t.Errorf("%s: %d, want 422", name, r.StatusCode)
 		}
 	}
-	r, hb := postJSON(t, api("/api/hosts"), map[string]any{"name": "Second laptop", "dest": "laptop2", "roots": []string{remoteRoot}})
+	// the remote command runs with a minimal PATH, so name the interpreter that has astropy (as a user would for a host)
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, hb := postJSON(t, api("/api/hosts"), map[string]any{"name": "Second laptop", "dest": "laptop2", "python": py, "roots": []string{remoteRoot}})
 	if r.StatusCode != 201 {
 		t.Fatalf("create host: %d %s", r.StatusCode, hb)
 	}

@@ -10,6 +10,7 @@ mkdir -p "$run/data"
 (cd "$root/services/api" && go build -buildvcs=false -o "$run/api" .)
 # A stand-in for the second laptop: a fake ssh that runs the remote command on this machine with $HOME redirected,
 # so the walk-through covers hosts without a real second machine.
+command -v python3 > "$run/python" # the remote command runs with a minimal PATH, so tests name the interpreter explicitly
 mkdir -p "$run/remote_data" "$run/remote-home"
 cp "$run/data/hi_cube.fits" "$run/remote_data/remote_cube.fits"
 cat > "$run/fake-ssh" <<FAKE
