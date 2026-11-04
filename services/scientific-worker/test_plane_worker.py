@@ -61,6 +61,31 @@ class PlaneWorker(unittest.TestCase):
         cls.c.close()
         cls.tmp.cleanup()
 
+    def test_preview_is_the_block_mean_of_finite_pixels_and_says_it_is_a_preview(self):
+        path = self.f["hi_cube.fits"]
+        _, full = self.c.plane(path, 3)
+        step = 4
+        head, payload = self.c.ask(op="plane", path=str(path), channel=3, step=step)
+        self.assertTrue(head["ok"])
+        w, h = head["width"], head["height"]
+        small = np.frombuffer(payload, "<f4").reshape(h, w)
+        self.assertEqual((w, h), (-(-full.shape[1] // step), -(-full.shape[0] // step)))
+        self.assertEqual(head["preview"]["step"], step)
+        self.assertEqual((head["preview"]["source_width"], head["preview"]["source_height"]), (full.shape[1], full.shape[0]))
+        self.assertIn("not for measurement", head["preview"]["method"])
+        for j in range(h):                                   # independent per-block oracle, including partial edge blocks
+            for i in range(w):
+                blk = full[j * step:(j + 1) * step, i * step:(i + 1) * step]
+                fin = blk[np.isfinite(blk)]
+                if fin.size:
+                    self.assertAlmostEqual(float(small[j, i]), float(fin.astype(np.float64).mean()), places=5)
+                else:
+                    self.assertTrue(np.isnan(small[j, i]))   # a block with no value is unknown, never 0
+        full_head, _ = self.c.ask(op="plane", path=str(path), channel=3)
+        self.assertIsNone(full_head["preview"])
+        for bad in (0, -1, 65, 2.5, True, "2"):
+            self.assertFalse(self.c.ask(op="plane", path=str(path), channel=3, step=bad)[0]["ok"])
+
     def test_view_locates_axes_from_the_wcs(self):
         v, _ = self.c.ask(op="view", path=str(self.f["hi_cube.fits"]))
         self.assertTrue(v["ok"])

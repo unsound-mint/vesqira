@@ -695,3 +695,30 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 		}
 	}
 }
+
+func TestPreviewStepIsValidatedPassedOnAndCachedApartFromTheFullPlane(t *testing.T) {
+	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(`{"ok":true,"nbytes":4}`), Payload: []byte("abcd")}}
+	base, _, _, _, id := planeServer(t, fp)
+	u := base + "/api/datasets/" + itoa(id) + "/plane?channel=1"
+	for _, bad := range []string{"&step=0", "&step=65", "&step=x", "&step=2.5", "&step=-3"} {
+		if r, _ := get(t, u+bad); r.StatusCode != 400 {
+			t.Errorf("%s: %d, want 400", bad, r.StatusCode)
+		}
+	}
+	if len(fp.calls) != 0 {
+		t.Fatalf("a refused step reached the worker: %v", fp.calls)
+	}
+	get(t, u)           // full resolution
+	get(t, u+"&step=4") // preview: must not be answered from the full plane's cache entry
+	get(t, u+"&step=4") // and is cached itself
+	get(t, u+"&step=1") // step 1 is the full plane
+	if len(fp.calls) != 2 {
+		t.Fatalf("worker calls=%d, want 2 (full + one preview)", len(fp.calls))
+	}
+	if _, has := fp.calls[0]["step"]; has {
+		t.Errorf("the full request carried a step: %v", fp.calls[0])
+	}
+	if fp.calls[1]["step"] != 4 {
+		t.Errorf("preview request: %v", fp.calls[1])
+	}
+}

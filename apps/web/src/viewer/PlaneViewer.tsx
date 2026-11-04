@@ -250,6 +250,7 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
         <p className={s.caption} aria-live="polite">
           {channelLabel(plane.head.channel, plane.head.channels, view?.spectral ?? null, plane.head.spectral_value)}
           {v.loading && v.channel !== plane.head.channel ? ` · loading ${v.channel + 1}…` : ""}
+          {plane.head.preview ? ` · preview, reduced ${plane.head.preview.step}× — full resolution loading` : ""}
         </p>
       ) : null}
       {plane ? (

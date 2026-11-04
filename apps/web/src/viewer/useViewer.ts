@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
-import { getAxial, getCoord, getPlane, getSpectrum, getView } from "../api/planes";
+import { expandPreview, getAxial, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
 import type { AxialStats, Coord, Plane, RegionShape, Spectrum, View } from "../api/planes";
 import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
@@ -80,24 +80,54 @@ export function useViewer(dataset: Dataset | null) {
   }, [datasetId, retry]);
 
   // The plane for the selected channel. A newer request aborts the older one, so scrubbing never queues stale reads.
+  // A large plane on a remote host shows a reduced preview first and the full plane once the channel has settled, so
+  // scrubbing over a slow link stays responsive; the preview is labelled as one. After the full plane arrives the
+  // neighbouring channels are requested quietly so the next step is already cached by the server.
+  const lastStep = useRef(1);
+  const remote = (dataset?.hostId ?? 0) !== 0;
   useEffect(() => {
     if (datasetId === null || !view) return;
     const ac = new AbortController();
     setLoading(true);
-    getPlane(datasetId, channel, ac.signal)
-      .then((p) => {
-        setPlane(p);
-        setPlaneError(null);
-        setLoading(false);
-      })
-      .catch((e: unknown) => {
-        if (isAbort(e)) return;
-        setPlane(null); // never keep showing another channel's pixels under an error
-        setPlaneError(message(e, "Could not read this plane."));
-        setLoading(false);
-      });
-    return () => ac.abort();
-  }, [datasetId, view, channel, retry]);
+    const shown = (p: Plane) => {
+      setPlane(p);
+      setPlaneError(null);
+    };
+    const failed = (e: unknown) => {
+      if (isAbort(e)) return;
+      setPlane(null); // never keep showing another channel's pixels under an error
+      setPlaneError(message(e, "Could not read this plane."));
+      setLoading(false);
+    };
+    const step = remote ? previewStep(view.width, view.height) : 1;
+    let fullShown = false;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const full = () =>
+      getPlane(datasetId, channel, ac.signal)
+        .then((p) => {
+          fullShown = true;
+          shown(p);
+          setLoading(false);
+          const dir = Math.sign(channel - lastStep.current) || 1;
+          lastStep.current = channel;
+          for (const c of [channel + dir, channel - dir]) {
+            if (c >= 0 && c < view.channels) void getPlane(datasetId, c, ac.signal).catch(() => undefined);
+          }
+        })
+        .catch(failed);
+    if (step > 1 && view.channels > 1) {
+      getPlane(datasetId, channel, ac.signal, step)
+        .then((p) => !fullShown && shown(expandPreview(p)))
+        .catch(failed);
+      settle = setTimeout(full, 150);
+    } else {
+      void full();
+    }
+    return () => {
+      clearTimeout(settle);
+      ac.abort();
+    };
+  }, [datasetId, view, channel, retry, remote]);
 
   const probe = pinned ?? hover ?? mirror;
   const shownChannel = plane?.head.channel ?? null;

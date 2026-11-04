@@ -28,6 +28,7 @@ type cacheKey struct {
 	mtime   int64
 	op      string
 	channel int
+	step    int // preview reduction (0 or 1 = full resolution)
 	x, y    int
 	q       string // canonical region description for spectra
 }
@@ -260,7 +261,18 @@ func (s *Server) plane(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	k.op, k.channel = "plane", ch
-	rep, ok := s.ask(w, r, k, map[string]any{"op": "plane", "path": real, "channel": ch})
+	req := map[string]any{"op": "plane", "path": real, "channel": ch}
+	if q := r.URL.Query().Get("step"); q != "" { // a reduced display preview; absent means full resolution
+		step, err := strconv.Atoi(q)
+		if err != nil || step < 1 || step > 64 {
+			fail(w, 400, "step must be an integer from 1 to 64")
+			return
+		}
+		if step > 1 {
+			k.step, req["step"] = step, step
+		}
+	}
+	rep, ok := s.ask(w, r, k, req)
 	if !ok {
 		return
 	}

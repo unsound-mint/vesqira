@@ -24,6 +24,7 @@ from astropy.wcs import WCS
 from fits_header import axes_shape, clean, read_header
 
 MAX_PLANE_ELEMENTS = 1 << 24      # 16.7M pixels = 64 MiB as float32
+MAX_PREVIEW_STEP = 64
 MAX_REQUEST_BYTES = 8192
 MAX_CHANNELS = 1 << 24
 MAX_TEXT_BYTES = 256 << 10
@@ -474,6 +475,21 @@ def as_int(req: dict, key: str, lo: int, hi: int) -> int:
     return v
 
 
+def block_mean(a: np.ndarray, step: int) -> np.ndarray:
+    """Float32 plane reduced by `step` in each direction: the mean of the finite pixels of each block, NaN where a block has
+    none (never 0). Edge blocks that are smaller than the rest average only the pixels they have."""
+    h, w = a.shape
+    ph, pw = -h % step, -w % step
+    x = np.pad(a.astype("<f8"), ((0, ph), (0, pw)), constant_values=np.nan)
+    blocks = x.reshape(x.shape[0] // step, step, x.shape[1] // step, step)
+    finite = np.isfinite(blocks)
+    n = finite.sum(axis=(1, 3))
+    total = np.where(finite, blocks, 0.0).sum(axis=(1, 3))
+    with np.errstate(all="ignore"):
+        out = np.where(n > 0, total / np.maximum(n, 1), np.nan)
+    return np.ascontiguousarray(out, dtype="<f4")
+
+
 def stats(a: np.ndarray) -> dict:
     finite = a[np.isfinite(a)]
     out = {"finite_count": int(finite.size), "nonfinite_count": int(a.size - finite.size),
@@ -626,6 +642,14 @@ def handle(req: dict) -> tuple[dict, bytes]:
         x, y = as_index(req, "x", c.shape[c.x]), as_index(req, "y", c.shape[c.y])
         return {**base, "nbytes": 0, **c.coord(x, y, channel)}, b""
     plane, overflow = c.read_plane(channel)
+    step = req.get("step", 1)
+    if isinstance(step, bool) or not isinstance(step, int) or not 1 <= step <= MAX_PREVIEW_STEP:
+        raise Refused("bad_request", f"step must be an integer in [1, {MAX_PREVIEW_STEP}]")
+    preview = None
+    if step > 1:
+        preview = {"step": step, "source_width": int(plane.shape[1]), "source_height": int(plane.shape[0]),
+                   "method": f"mean of the finite pixels in each {step} x {step} block (NaN where a block has none); a display preview, not for measurement"}
+        plane = block_mean(plane, step)
     fl = c.flags()
     payload = plane.tobytes()
     spectral = c.spectral_facts()
@@ -637,7 +661,7 @@ def handle(req: dict) -> tuple[dict, bytes]:
             "stats": {**stats(plane), "overflow_count": overflow},
             "spectral_value": None if value is None else float(value),
             "spectral_unit": None if spectral is None else spectral.get("unit"),
-            "flagged": (channel in fl["channels"]) if fl["declared"] else None}, payload
+            "flagged": (channel in fl["channels"]) if fl["declared"] else None, "preview": preview}, payload
 
 
 def main() -> int:

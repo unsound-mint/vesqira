@@ -49,6 +49,8 @@ export type PlaneHeader = {
   flagged: boolean | null;
   source_bitpix: number | null;
   scaled: boolean;
+  /** Present on a reduced display preview: not for measurement; the full-resolution plane follows. */
+  preview?: { step: number; source_width: number; source_height: number; method: string } | null;
 };
 
 /** Row 0 is FITS y = 1 (the bottom row when north is up). Non-finite values mean "no value", never zero. */
@@ -104,8 +106,31 @@ export function parsePlane(buf: ArrayBuffer): Plane {
   return { head, data };
 }
 
-export const getPlane = (id: number, channel: number, signal?: AbortSignal) =>
-  request(`${base(id)}/plane?channel=${channel}`, signal).then((r) => r.arrayBuffer()).then(parsePlane);
+export const getPlane = (id: number, channel: number, signal?: AbortSignal, step = 1) =>
+  request(`${base(id)}/plane?channel=${channel}${step > 1 ? `&step=${step}` : ""}`, signal).then((r) => r.arrayBuffer()).then(parsePlane);
+
+/** Reduction factor for a first look at a large plane: about a quarter of a megapixel, never below 2. */
+export function previewStep(width: number, height: number): number {
+  return Math.min(64, Math.max(2, Math.ceil(Math.sqrt((width * height) / 262144))));
+}
+
+/**
+ * A reduced preview drawn on the full grid (each block repeated over its pixels), so every pixel index, readout and region
+ * keeps meaning the same cube pixel while the full plane loads. Values stay the block means; `head.preview` stays set so the
+ * viewer can say it is a preview. NaN blocks stay NaN.
+ */
+export function expandPreview(p: Plane): Plane {
+  const pv = p.head.preview;
+  if (!pv) return p;
+  const { step, source_width: w, source_height: h } = pv;
+  const sw = p.head.width;
+  const data = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const row = Math.floor(y / step) * sw;
+    for (let x = 0; x < w; x++) data[y * w + x] = p.data[row + Math.floor(x / step)] ?? Number.NaN;
+  }
+  return { head: { ...p.head, width: w, height: h }, data };
+}
 
 export type RegionShape = { shape: "rect"; x0: number; y0: number; x1: number; y1: number } | { shape: "circle"; cx: number; cy: number; r: number };
 

@@ -21,3 +21,7 @@ The gain comes from slicing the memory-mapped file instead of astropy's section 
 ## Not yet done
 
 Two worker lanes so a heavy operation never blocks scrubbing, a downsampled preview with a full-resolution follow-up, prefetch and a browser cache, a worker memory cap, measurement over real disks and ssh. See `docs/roadmap.md` stage P.
+
+## Preview and prefetch
+
+On a remote host, a plane larger than about a quarter of a megapixel is first requested reduced (`step=N`, at most 64; the worker returns the mean of the finite pixels of each N x N block, NaN where a block has none, and marks `preview` in the header as "not for measurement"). The viewer draws it on the full grid, so pixel indices, readouts and regions keep their meaning, shows "preview, reduced N×" under the picture, and requests the full plane 150 ms after the last channel change. When the full plane arrives, the next and previous channels are requested so the server cache already holds them. Readouts of coordinates always come from the full data (`coord`), never from the preview. Local datasets skip the preview: the reduction still reads the whole plane, so it only helps when the link is the bottleneck.

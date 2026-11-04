@@ -15,7 +15,7 @@ Do first: it makes the viewer claims measurable and unblocks scrubbing on large 
 - [ ] `make bench`: sparse large cube, cold and warm plane / spectrum / coordinate timings, p50/p95 and worker memory, also while a heavy operation runs; budgets written down (Q149, Q164).
 - [x] Two worker lanes (interactive and heavy): a spectrum or orientation request never blocks channel scrubbing, and cancelling it kills only the heavy process (Q169). Analysis jobs already run in their own subprocess.
 - [ ] Spectrum read in channel blocks, vectorised, so large regions are served instead of refused (Q92).
-- [ ] Downsampled preview then full resolution on settle, marked in the reply header; browser-side plane cache; prefetch of neighbouring channels (Q182, Q185).
+- [x] Large planes on a remote host show a block-mean preview first (labelled as a preview, drawn on the full grid) and the full plane once the channel settles; neighbouring channels are prefetched into the server cache (Q182, Q185). A browser-side plane cache was not added: the server cache is on loopback and a browser copy would need its own staleness rule.
 - [ ] Worker memory cap (RLIMIT_AS) and per-request limits that bound time and memory, not only output size.
 - [ ] Not yet measured: real disk, ssh, 4D cubes, list virtualisation at scale, resumable transfers.
 
