@@ -4,7 +4,33 @@ Status of everything the product requirements ask for beyond what is shipped, in
 Each stage is one pull request (or a few small ones). A box is ticked only when the behavior is merged and covered by a test.
 "Q" numbers refer to the requirement interview questions; "(partial)" means something exists but not what was asked.
 
+The product shape (what the whole thing is meant to be, distilled from the interview) is `docs/product/shape.md`; this file tracks what is built.
+
 Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link) and v0.2 (remote hosts, Slurm jobs, runs, cube analysis, comparison inspector, managed copies). See `docs/demo.md` and ADRs 0008–0018.
+
+## Stage P — Performance contract (audit of 2026-11-05, shape.md section 15)
+
+Do first: it makes the viewer claims measurable and unblocks scrubbing on large cubes.
+
+- [ ] `make bench`: sparse large cube, cold and warm plane / spectrum / coordinate timings, p50/p95 and worker memory, also while a heavy operation runs; budgets written down (Q149, Q164).
+- [ ] Two worker lanes (interactive and heavy) so a spectrum or analysis never blocks channel scrubbing; heavy lane cancellable by restarting only that worker (Q169).
+- [ ] Spectrum read in channel blocks, vectorised, so large regions are served instead of refused (Q92).
+- [ ] Downsampled preview then full resolution on settle, marked in the reply header; browser-side plane cache; prefetch of neighbouring channels (Q182, Q185).
+- [ ] Worker memory cap (RLIMIT_AS) and per-request limits that bound time and memory, not only output size.
+- [ ] Not yet measured: real disk, ssh, 4D cubes, list virtualisation at scale, resumable transfers.
+
+## Stage L — The integrated loop (owner direction, 2026-11-05)
+
+One workspace: inspect, change parameters, run on HPC, add to a board with the supervisor, discuss, remember. New screens need an approved mock first.
+
+- [ ] Typed run metrics with definitions, shown on the run and on the reviewer page (Q130, Q131).
+- [ ] "What differs" strip for two runs or panels (Q87, Q132).
+- [ ] Runs as nested pages: default result, other results of the same run, config and logs on demand.
+- [ ] A board panel that follows a run still running and pins its result when it finishes.
+- [ ] Change parameters from the cube view and run in one click (pulls shape.md slice 2 forward).
+- [ ] Parameter grid board from a sweep.
+- [ ] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39).
+- [ ] Optional VPN companion (gpclient): needs a privilege and security decision first.
 
 ## Stage 0 — Install and launch
 
