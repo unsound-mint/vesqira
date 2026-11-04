@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"syscall"
@@ -52,8 +53,9 @@ func (r Runner) Header(ctx context.Context, path string) (json.RawMessage, error
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = time.Second
-	var out limitedBuffer
+	var out, errOut limitedBuffer
 	cmd.Stdout = &out
+	cmd.Stderr = &errOut
 	err := cmd.Run()
 	if ctx.Err() != nil {
 		return nil, errors.New("worker timed out")
@@ -66,6 +68,8 @@ func (r Runner) Header(ctx context.Context, path string) (json.RawMessage, error
 		Error string `json:"error"`
 	}
 	if jerr := json.Unmarshal(out.Bytes(), &probe); jerr != nil {
+		// The operator's own log may carry a little of the worker's output to explain why; clients never see it.
+		log.Printf("worker: no valid result (exit %v): stdout=%.200q stderr=%.300q", err, out.String(), errOut.String())
 		return nil, errors.New("worker returned no valid result")
 	}
 	if err != nil || !probe.OK {
