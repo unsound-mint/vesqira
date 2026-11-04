@@ -480,3 +480,47 @@ func TestAxialOrientationEndToEndWithRealWorker(t *testing.T) {
 		t.Errorf("scalar map spectrum after clearing: %d", r.StatusCode)
 	}
 }
+
+func TestCompatibilityEndpointLinksOnlyKnownSameGrids(t *testing.T) {
+	repo, _ := filepath.Abs("../../../..")
+	if exec.Command("python3", "-c", "import astropy").Run() != nil {
+		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
+			t.Fatal("python3 with astropy is required")
+		}
+		t.Skip("python3 with astropy not available")
+	}
+	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	ts, root, _ := newPlaneServerWith(t, hdr, nil)
+	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
+	gen.Dir = filepath.Join(repo, "fixtures")
+	if out, err := gen.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	reg := func(name string) int {
+		var d catalog.Dataset
+		json.NewDecoder(post(t, ts, filepath.Join(root, name), nil).Body).Decode(&d)
+		return int(d.ID)
+	}
+	cube, same, gal, coarse := reg("hi_cube.fits"), reg("hi_cube.fits"), reg("hi_cube_galactic.fits"), reg("hi_cube_coarser.fits")
+	check := func(a, b int) (bool, string) {
+		_, body := get(t, ts.URL+"/api/compat?a="+itoa(a)+"&b="+itoa(b))
+		var out struct {
+			Compatible bool
+			Reasons    []string
+		}
+		json.Unmarshal(body, &out)
+		return out.Compatible, strings.Join(out.Reasons, "; ")
+	}
+	if ok, why := check(cube, same); !ok {
+		t.Errorf("a file with itself must be compatible: %s", why)
+	}
+	if ok, why := check(cube, gal); ok || !strings.Contains(why, "type") {
+		t.Errorf("Galactic vs ICRS must be refused with a reason: %v %q", ok, why)
+	}
+	if ok, why := check(cube, coarse); ok || !strings.Contains(why, "step") {
+		t.Errorf("a coarser pixel scale must be refused with a reason: %v %q", ok, why)
+	}
+	if r, _ := get(t, ts.URL+"/api/compat?a=1&b=zz"); r.StatusCode != 400 {
+		t.Errorf("bad ids: %d", r.StatusCode)
+	}
+}

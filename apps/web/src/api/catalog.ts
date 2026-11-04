@@ -52,6 +52,9 @@ export const listRoots = () => call<{ roots: string[] }>("/api/roots").then((r) 
 export const registerDataset = (path: string) =>
   call<Dataset>("/api/datasets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
 
+export type Compat = { compatible: boolean; reasons: string[] };
+export const getCompat = (a: number, b: number) => call<Compat>(`/api/compat?a=${a}&b=${b}`);
+
 export type InterpretationRequest = { kind: "none" } | { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null };
 export const setInterpretation = (id: number, body: InterpretationRequest) =>
   call<Dataset>(`/api/datasets/${id}/interpretation`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

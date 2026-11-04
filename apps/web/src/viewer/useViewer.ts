@@ -31,6 +31,8 @@ export function useViewer(dataset: Dataset | null) {
   const [range, setRange] = useState<RangeMode>("percentile");
   const [hover, setHover] = useState<Pixel | null>(null);
   const [pinned, setPinned] = useState<Pixel | null>(null);
+  // the pixel under the cursor in the linked pane, when the two maps share a grid
+  const [mirror, setMirror] = useState<Pixel | null>(null);
   const [coord, setCoord] = useState<Coord | null>(null);
   const [coordError, setCoordError] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>("pointer");
@@ -84,7 +86,7 @@ export function useViewer(dataset: Dataset | null) {
     return () => ac.abort();
   }, [datasetId, view, channel, retry]);
 
-  const probe = pinned ?? hover;
+  const probe = pinned ?? hover ?? mirror;
   const shownChannel = plane?.head.channel ?? null;
 
   // World coordinates come from the worker (astropy), for the pixel under the pointer in the plane on screen.
@@ -201,7 +203,7 @@ export function useViewer(dataset: Dataset | null) {
   return {
     datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
     colormap, setColormap, stretch, setStretch, range, setRange,
-    hover, setHover, pinned, setPinned, probe, pixelValue, coord, coordError,
+    hover, setHover, mirror, setMirror, pinned, setPinned, probe, pixelValue, coord, coordError,
     interp, reliability, axial, axialError, showLines, setShowLines,
     tool, setTool, region, setRegion, spectrum, spectrumError, spectrumLoading,
     onChannelKey, retry: () => setRetry((n) => n + 1),

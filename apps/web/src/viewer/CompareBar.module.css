@@ -1,0 +1,33 @@
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: flex-end;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: var(--bw) solid var(--line);
+  background: var(--bg-1);
+  color: var(--text);
+}
+
+.state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+  min-height: var(--ctl-sm);
+}
+
+.why {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.why ul {
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-4);
+}
+
+.err {
+  color: var(--err);
+  font-size: var(--text-sm);
+}

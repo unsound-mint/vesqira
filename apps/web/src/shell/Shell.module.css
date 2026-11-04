@@ -118,6 +118,74 @@
   color: var(--canvas-text);
 }
 
+.compare {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.panes1,
+.panes2 {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  min-height: 0;
+}
+
+.pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.panes2 .pane + .pane {
+  border-left: var(--bw) solid var(--line);
+}
+
+.paneBody {
+  position: relative;
+  min-height: 0;
+}
+
+.paneHead {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: var(--sp-1) var(--sp-3);
+  background: var(--bg-1);
+  border-bottom: var(--bw) solid var(--line);
+}
+
+.paneName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paneBtn {
+  height: var(--ctl-sm);
+  padding: 0 var(--sp-2);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.paneBtn[aria-pressed="true"] {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
 .stage {
   max-width: 360px;
   padding: var(--sp-6);
@@ -159,6 +227,11 @@
       "rail canvas"
       "rail timeline"
       "status status";
+  }
+
+  .panes2 {
+    grid-auto-flow: row;
+    grid-auto-rows: minmax(0, 1fr);
   }
 
   .side,

@@ -9,8 +9,14 @@ import { EM } from "../catalog/format";
 import { axialText, degrees, precisionNote, provenanceNote, spectralText, valueText } from "./format";
 import s from "./Panels.module.css";
 
+function otherValue(o: Viewer, p: { x: number; y: number }): string {
+  if (!o.plane || p.x >= o.plane.head.width || p.y >= o.plane.head.height) return EM;
+  const v = o.plane.data[p.y * o.plane.head.width + p.x] ?? null;
+  return o.interp ? axialText(v, o.interp.unit) : valueText(v, o.view?.bunit ?? null);
+}
+
 /** Pixel, world and spectral readout for the pointer (or pinned) pixel. World values come from the worker's WCS. */
-export function CoordinateReadout({ v }: { v: Viewer }) {
+export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: string; v: Viewer } | null }) {
   const { view, probe, plane } = v;
   // a readout is shown only for the pixel and channel it was computed for; otherwise it is still loading
   const coord = v.coord && probe && plane && v.coord.x === probe.x && v.coord.y === probe.y && v.coord.channel === plane.head.channel ? v.coord : null;
@@ -28,6 +34,12 @@ export function CoordinateReadout({ v }: { v: Viewer }) {
           <>
             <dt>Reliability</dt>
             <dd className="mono">{v.interp.reliabilityId === null ? "no map declared" : probe && v.reliability ? valueText(v.reliability.data[probe.y * v.reliability.head.width + probe.x] ?? null, null) : EM}</dd>
+          </>
+        ) : null}
+        {other && probe ? (
+          <>
+            <dt title={other.name}>Other map</dt>
+            <dd className="mono">{otherValue(other.v, probe)}</dd>
           </>
         ) : null}
         {sky.kind === "celestial" ? (

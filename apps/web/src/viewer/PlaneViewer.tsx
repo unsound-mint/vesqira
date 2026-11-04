@@ -20,7 +20,7 @@ function token(name: string, fallback: Rgb): Rgb {
 }
 
 /** The plane on screen: native aspect, square pixels, sharp edges, north up, "no value" pixels hatched. */
-export function PlaneViewer({ v }: { v: Viewer }) {
+export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const cv = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -142,11 +142,13 @@ export function PlaneViewer({ v }: { v: Viewer }) {
             onMouseMove={(e) => {
               const p = pick(e);
               v.setHover(p);
+              onProbe?.(p);
               if (anchor.current && p && v.tool !== "pointer") setDraft(fromDrag(v.tool, anchor.current, p));
             }}
             onMouseUp={commit}
             onMouseLeave={() => {
               v.setHover(null);
+              onProbe?.(null);
               commit();
             }}
             onClick={(e) => {
@@ -171,7 +173,7 @@ export function PlaneViewer({ v }: { v: Viewer }) {
           </svg>
           {probe && probe.x < plane.head.width && probe.y < plane.head.height ? (
             <span
-              className={v.pinned ? s.pinned : s.marker}
+              className={v.pinned ? s.pinned : v.hover ? s.marker : s.linked}
               aria-hidden="true"
               style={{
                 width: mark,

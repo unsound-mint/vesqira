@@ -185,3 +185,33 @@ func nonDegenerateAxes(h json.RawMessage) int {
 	}
 	return n
 }
+
+// compatibility reports whether two registered datasets are known to share a grid. Comparing maps links their
+// cursors and channels only when they do; otherwise the reasons are shown and nothing is resampled or merged.
+func (s *Server) compatibility(w http.ResponseWriter, r *http.Request) {
+	a, errA := strconv.ParseInt(r.URL.Query().Get("a"), 10, 64)
+	b, errB := strconv.ParseInt(r.URL.Query().Get("b"), 10, 64)
+	if errA != nil || errB != nil {
+		fail(w, 400, "a and b must be dataset ids")
+		return
+	}
+	da, code, msg := s.dataset(a)
+	if code != 0 {
+		fail(w, code, msg)
+		return
+	}
+	db, code, msg := s.dataset(b)
+	if code != 0 {
+		fail(w, code, msg)
+		return
+	}
+	why, err := compat.Grids(da.Header, db.Header)
+	if err != nil {
+		fail(w, 500, "internal error")
+		return
+	}
+	if why == nil {
+		why = []string{}
+	}
+	writeJSON(w, 200, map[string]any{"compatible": len(why) == 0, "reasons": why})
+}

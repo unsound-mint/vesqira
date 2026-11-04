@@ -1,7 +1,11 @@
+import { useEffect, useState } from "react";
 import { FolderOpen, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { Explorer } from "../catalog/Explorer";
+import { getCompat } from "../api/catalog";
+import type { Compat } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
+import { CompareBar, linkState } from "../viewer/CompareBar";
 import { EM } from "../catalog/format";
 import { ChannelTimeline } from "../viewer/ChannelTimeline";
 import { CoordinateReadout, DisplayControls } from "../viewer/Panels";
@@ -19,8 +23,46 @@ import s from "./Shell.module.css";
 export function Shell() {
   const { layout: L, set, toggle } = useLayout();
   const cat = useCatalog();
-  const viewer = useViewer(cat.selected);
+  const viewerA = useViewer(cat.selected);
+  const [compareId, setCompareId] = useState<number | null>(null);
+  const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== cat.selected?.id) ?? null;
+  const viewerB = useViewer(compareDs);
+  const [active, setActive] = useState<"a" | "b">("a");
+  const [compat, setCompat] = useState<Compat | null>(null);
+  const [compatErr, setCompatErr] = useState<string | null>(null);
+  const [compatLoading, setCompatLoading] = useState(false);
+  const useB = active === "b" && compareDs !== null;
+  const viewer = useB ? viewerB : viewerA;
+  const actDs = useB ? compareDs : cat.selected;
+  const other = useB ? viewerA : viewerB;
+  const linked = compareDs !== null && linkState(compat, compatLoading).linked;
   const flag = flagState(viewer.view, viewer.plane);
+
+  // Is the other map known to share this one's grid? Only then are cursor and channel linked.
+  useEffect(() => {
+    setCompat(null);
+    setCompatErr(null);
+    if (!cat.selected || !compareDs) return;
+    let live = true;
+    setCompatLoading(true);
+    getCompat(cat.selected.id, compareDs.id)
+      .then((c) => live && setCompat(c))
+      .catch((e: unknown) => live && setCompatErr(e instanceof Error ? e.message : "Could not compare the grids."))
+      .finally(() => live && setCompatLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [cat.selected?.id, compareDs?.id, cat.selected?.modifiedAt, compareDs?.modifiedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!compareDs) setActive("a");
+  }, [compareDs]);
+  // the pane you are working in drives the channel of the other one
+  useEffect(() => {
+    if (linked && other.channels === viewer.channels && other.channel !== viewer.channel) other.setChannel(viewer.channel);
+  }, [linked, viewer.channel, viewer.channels, other.channels]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!linked) viewerA.setMirror(null), viewerB.setMirror(null);
+  }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
   const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", L.inspOpen ? `${L.insp}px` : "0px"].join(" ");
   const rows = ["var(--h-title)", "minmax(0,1fr)", L.timelineOpen ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
 
@@ -46,7 +88,21 @@ export function Shell() {
 
       <main className={s.canvas} aria-label="Viewer">
         {cat.selected ? (
-          <PlaneViewer v={viewer} />
+          <div className={s.compare}>
+            <CompareBar datasets={cat.datasets} selectedId={cat.selected.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} />
+            <div className={compareDs ? s.panes2 : s.panes1}>
+              <section className={s.pane} aria-label={`Map: ${cat.selected.name}`}>
+                {compareDs ? <PaneHeader name={cat.selected.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} /> : null}
+                <div className={s.paneBody}><PlaneViewer v={viewerA} onProbe={(p) => linked && viewerB.setMirror(p)} /></div>
+              </section>
+              {compareDs ? (
+                <section className={s.pane} aria-label={`Map: ${compareDs.name}`}>
+                  <PaneHeader name={compareDs.name} axial={viewerB.interp !== null} active={useB} onActivate={() => setActive("b")} />
+                  <div className={s.paneBody}><PlaneViewer v={viewerB} onProbe={(p) => linked && viewerA.setMirror(p)} /></div>
+                </section>
+              ) : null}
+            </div>
+          </div>
         ) : (
           <div className={s.stage}>
             <p className={s.stageTitle}>No dataset open</p>
@@ -59,11 +115,11 @@ export function Shell() {
         <ResizeHandle orientation="vertical" direction={-1} label="Resize inspector" value={L.insp} min={LIMITS.insp.min} max={LIMITS.insp.max} onChange={(v) => set("insp", v)} />
         <div className={s.scroll}>
           <Section title="Coordinates">
-            {cat.selected ? <CoordinateReadout v={viewer} /> : <p className={s.empty}>{EM}</p>}
+            {actDs ? <CoordinateReadout v={viewer} other={linked && other.view ? { name: (useB ? cat.selected : compareDs)?.name ?? "", v: other } : null} /> : <p className={s.empty}>{EM}</p>}
           </Section>
-          {cat.selected && viewer.view?.channels === 1 ? (
+          {actDs && viewer.view?.channels === 1 ? (
             <Section title="Interpretation">
-              <InterpretationPanel key={cat.selected.id} v={viewer} dataset={cat.selected} datasets={cat.datasets} declare={cat.declare} />
+              <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} declare={cat.declare} />
             </Section>
           ) : null}
           {viewer.interp ? (
@@ -72,16 +128,16 @@ export function Shell() {
             </Section>
           ) : null}
           <Section title="Display">
-            {cat.selected ? <DisplayControls v={viewer} /> : <p className={s.empty}>{EM}</p>}
+            {actDs ? <DisplayControls v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Region">
-            {cat.selected ? <RegionPanel v={viewer} /> : <p className={s.empty}>{EM}</p>}
+            {actDs ? <RegionPanel v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Spectrum">
-            {cat.selected ? <SpectrumPlot v={viewer} /> : <p className={s.empty}>{EM}</p>}
+            {actDs ? <SpectrumPlot v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Dataset">
-            {cat.selected ? <DatasetInspector d={cat.selected} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
+            {actDs ? <DatasetInspector d={actDs} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
           </Section>
         </div>
       </aside>
@@ -89,7 +145,7 @@ export function Shell() {
       <section className={s.timeline} aria-label="Channels" hidden={!L.timelineOpen}>
         <ResizeHandle orientation="horizontal" direction={-1} label="Resize timeline" value={L.timeline} min={LIMITS.timeline.min} max={LIMITS.timeline.max} onChange={(v) => set("timeline", v)} />
         <div className={s.scroll}>
-          {cat.selected ? <ChannelTimeline v={viewer} /> : <p className={s.empty}>No spectral axis. Channels appear here once a cube is open.</p>}
+          {actDs ? <ChannelTimeline v={viewer} /> : <p className={s.empty}>No spectral axis. Channels appear here once a cube is open.</p>}
         </div>
       </section>
 
@@ -98,8 +154,18 @@ export function Shell() {
         <IconButton icon={PanelBottom} label="Toggle timeline" pressed={L.timelineOpen} onClick={() => toggle("timelineOpen")} />
         <IconButton icon={PanelRight} label="Toggle inspector" pressed={L.inspOpen} onClick={() => toggle("inspOpen")} />
         <span className={s.grow} />
-        <Pill tone={cat.selected ? flag.tone : "neutral"}>{cat.selected ? (viewer.view ? flag.text : "Reading layout") : "No dataset"}</Pill>
+        <Pill tone={actDs ? flag.tone : "neutral"}>{actDs ? (viewer.view ? flag.text : "Reading layout") : "No dataset"}</Pill>
       </footer>
+    </div>
+  );
+}
+
+function PaneHeader({ name, axial, active, onActivate }: { name: string; axial: boolean; active: boolean; onActivate: () => void }) {
+  return (
+    <div className={s.paneHead}>
+      <span className={s.paneName} title={name}>{name}</span>
+      <Pill>{axial ? "Axial orientation" : "Scalar"}</Pill>
+      <button type="button" className={s.paneBtn} aria-pressed={active} onClick={onActivate}>{active ? "Inspector shows this map" : "Show in inspector"}</button>
     </div>
   );
 }
