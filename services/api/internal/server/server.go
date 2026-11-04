@@ -119,6 +119,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/datasets/{id}/regions", s.listRegions)
 		mux.HandleFunc("POST /api/datasets/{id}/regions", s.createRegion)
 		mux.HandleFunc("GET /api/datasets/{id}/regions.reg", s.regionsDS9)
+		mux.HandleFunc("POST /api/datasets/{id}/regions/import", s.importRegions)
 		mux.HandleFunc("POST /api/regions/{id}", s.updateRegion)
 		mux.HandleFunc("POST /api/regions/{id}/delete", s.deleteRegion)
 	}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createSavedRegion, deleteSavedRegion, listSavedRegions, toShape, updateSavedRegion } from "../api/regions";
+import { applyDs9, createSavedRegion, deleteSavedRegion, listSavedRegions, toShape, updateSavedRegion } from "../api/regions";
 import type { SavedRegion } from "../api/regions";
 import type { RegionShape } from "../api/planes";
 
@@ -71,6 +71,11 @@ export function useSavedRegions(datasetId: number | null, setRegion: (r: RegionS
     setSaved((l) => [...l, r]);
     setUndo(null);
   });
+  const importText = (text: string, includeApproximated: boolean) => run(async () => {
+    const r = await applyDs9(datasetId!, text, includeApproximated);
+    setSaved((l) => [...l, ...r.created]);
+    if (r.failed.length > 0) throw new Error(`Not saved: ${r.failed.join("; ")}`);
+  });
   const toggle = (id: number) => setHidden((h) => {
     const n = new Set(h);
     if (n.has(id)) n.delete(id);
@@ -78,5 +83,5 @@ export function useSavedRegions(datasetId: number | null, setRegion: (r: RegionS
     return n;
   });
 
-  return { saved, selectedId, hidden, error, undo, select, save, rename, reshape, duplicate, remove, undoDelete, toggle, dismissUndo: () => setUndo(null) };
+  return { saved, selectedId, hidden, error, undo, select, save, rename, reshape, duplicate, remove, undoDelete, importText, toggle, dismissUndo: () => setUndo(null) };
 }

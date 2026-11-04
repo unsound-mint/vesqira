@@ -41,7 +41,7 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 - [x] Histogram of the visible plane with draggable and typed colour limits. Of a region: not yet.
 - [ ] Scalar difference map between two compatible maps.
 - Channel animation: dropped for now.
-- [x] Saved, named regions: create, rename, change shape, duplicate, hide, delete with undo, export as DS9 (ADR 0026). Import as DS9 is still to do.
+- [x] Saved, named regions: create, rename, change shape, duplicate, hide, delete with undo, export as DS9 (ADR 0026). DS9 import in image coordinates with a preview; sky-coordinate import still to do.
 - [ ] Exploration history and "continue from here" (Q96–Q98).
 - [ ] Linked views can be grouped and unlinked by the user; linking through a validated transformation (Q174).
 - [x] Keyboard pixel cursor (Shift+arrows) and a table alternative for the spectrum plot (Q176).

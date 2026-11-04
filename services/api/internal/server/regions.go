@@ -142,3 +142,40 @@ func (s *Server) regionsDS9(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write([]byte(regions.DS9(rs)))
 }
+
+// importRegions reads a DS9 region file. Without apply it only reports what each line would become; with apply it
+// saves the exact ones, and the approximated ones only when asked.
+func (s *Server) importRegions(w http.ResponseWriter, r *http.Request) {
+	d, ok := s.datasetFor(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		Text                string `json:"text"`
+		Apply               bool   `json:"apply"`
+		IncludeApproximated bool   `json:"includeApproximated"`
+	}
+	if !body(w, r, 300<<10, &in, true) {
+		return
+	}
+	items := regions.ParseDS9(in.Text)
+	if !in.Apply {
+		writeJSON(w, 200, map[string]any{"items": items})
+		return
+	}
+	created := []regions.Region{}
+	failed := []string{}
+	for _, it := range items {
+		if it.Shape == nil || (it.Status == regions.Approximate && !in.IncludeApproximated) {
+			continue
+		}
+		reg, err := s.Regions.Create(d.ID, it.Name, *it.Shape)
+		if err != nil {
+			failed = append(failed, it.Name+": "+strings.TrimPrefix(err.Error(), "invalid: "))
+			continue
+		}
+		created = append(created, reg)
+	}
+	s.Audit.Record("regions imported", "dataset", d.ID, strconv.Itoa(len(created))+" from a DS9 file")
+	writeJSON(w, 201, map[string]any{"items": items, "created": created, "failed": failed})
+}

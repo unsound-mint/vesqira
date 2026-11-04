@@ -4,8 +4,8 @@ import type { RegionShape } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { nominalPixels, sameRegion } from "./region";
-import { ds9Url, toShape } from "../api/regions";
-import type { SavedRegion } from "../api/regions";
+import { ds9Url, previewDs9, toShape } from "../api/regions";
+import type { ImportItem, SavedRegion } from "../api/regions";
 import type { Tool } from "./region";
 import s from "./RegionPanel.module.css";
 
@@ -148,8 +148,63 @@ function SavedList({ v }: { v: Viewer }) {
         </p>
       ) : null}
       {sr.error ? <p role="alert" className={s.err}>{sr.error}</p> : null}
+      <Ds9Import v={v} />
       {sr.saved.length > 0 && v.datasetId !== null ? <a className={s.link} href={ds9Url(v.datasetId)} download>Export all as a DS9 region file (.reg)</a> : null}
       <p className={s.note}>DS9 files use the dataset’s own pixel grid (image coordinates, counted from 1), so they open in DS9 on the same file without any sky transformation.</p>
+    </section>
+  );
+}
+
+/** Reads a DS9 region file and shows what each line would become before anything is saved. */
+function Ds9Import({ v }: { v: Viewer }) {
+  const [text, setText] = useState<string | null>(null);
+  const [items, setItems] = useState<ImportItem[] | null>(null);
+  const [withApprox, setWithApprox] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (v.datasetId === null) return null;
+  const id = v.datasetId;
+  async function choose(file: File | undefined) {
+    if (!file) return;
+    try {
+      if (file.size > 250_000) throw new Error("That file is too large to be a region file.");
+      const t = await file.text();
+      setItems(await previewDs9(id, t));
+      setText(t);
+      setErr(null);
+    } catch (e) {
+      setItems(null);
+      setText(null);
+      setErr(e instanceof Error ? e.message : "Could not read that file.");
+    }
+  }
+  const exact = items?.filter((i) => i.status === "exact").length ?? 0;
+  const approx = items?.filter((i) => i.status === "approximated").length ?? 0;
+  const toAdd = exact + (withApprox ? approx : 0);
+  return (
+    <section className={s.saved} aria-label="Import DS9 regions">
+      <label className={s.note}>
+        Import a DS9 region file (image coordinates)
+        <input type="file" accept=".reg,.txt,text/plain" onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
+      </label>
+      {err ? <p role="alert" className={s.err}>{err}</p> : null}
+      {items ? (
+        <>
+          <p className={s.note} role="status">{items.length === 0 ? "No regions found in that file." : `${exact} exact, ${approx} approximated, ${items.length - exact - approx} skipped.`}</p>
+          <ul className={s.list}>
+            {items.map((i) => (
+              <li key={i.line}>
+                <span><strong>{i.name ?? `line ${i.line}`}</strong> · {i.status}</span>
+                <span className={s.note}>{i.note}</span>
+              </li>
+            ))}
+          </ul>
+          {approx > 0 ? <label className={s.pick}><input type="checkbox" checked={withApprox} onChange={(e) => setWithApprox(e.target.checked)} /> Also add the {approx} approximated {approx === 1 ? "region" : "regions"}</label> : null}
+          <div className={s.actions}>
+            <Button disabled={toAdd === 0} onClick={() => { void v.savedRegions.importText(text ?? "", withApprox); setItems(null); setText(null); }}>Add {toAdd} {toAdd === 1 ? "region" : "regions"}</Button>
+            <Button onClick={() => { setItems(null); setText(null); }}>Cancel</Button>
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }

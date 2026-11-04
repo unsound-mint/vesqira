@@ -58,6 +58,27 @@ func TestSavedRegionsCreateEditDeleteAndExportAsDS9(t *testing.T) {
 	if _, one := get(t, ts.URL+"/api/datasets/"+itoa(int(d.ID))+"/regions.reg?id="+itoa(int(reg.ID))); strings.Contains(string(one), "circle(") {
 		t.Errorf("one region only: %s", one)
 	}
+	// import: a preview changes nothing; applying saves the exact regions and leaves the approximated ones unless asked
+	file := "image\nbox(5,5,3,3,0) # text={Imp}\ncircle(8.4,8,2.5)\nellipse(1,1,2,2,0)\n"
+	imp := ts.URL + "/api/datasets/" + itoa(int(d.ID)) + "/regions/import"
+	before, _ := get(t, base)
+	_ = before
+	if r, pb := postJSON(t, imp, map[string]any{"text": file}); r.StatusCode != 200 || !strings.Contains(string(pb), `"status":"approximated"`) || !strings.Contains(string(pb), `"status":"skipped"`) {
+		t.Errorf("preview: %d %s", r.StatusCode, pb)
+	}
+	_, l1 := get(t, base)
+	if strings.Count(string(l1), `"datasetId"`) != 2 {
+		t.Errorf("a preview must not save anything: %s", l1)
+	}
+	if r, ab := postJSON(t, imp, map[string]any{"text": file, "apply": true}); r.StatusCode != 201 || strings.Count(string(ab), `"datasetId"`) != 1 {
+		t.Errorf("apply: %d %s", r.StatusCode, ab)
+	}
+	if r, ab := postJSON(t, imp, map[string]any{"text": file, "apply": true, "includeApproximated": true}); r.StatusCode != 201 || strings.Count(string(ab), `"datasetId"`) != 2 {
+		t.Errorf("apply with approximated: %d %s", r.StatusCode, ab)
+	}
+	if r, _ := postJSON(t, ts.URL+"/api/datasets/999/regions/import", map[string]any{"text": file}); r.StatusCode != 404 {
+		t.Errorf("import into an unknown dataset: %d", r.StatusCode)
+	}
 	if r, _ := postJSON(t, ts.URL+"/api/regions/"+itoa(int(reg.ID))+"/delete", map[string]any{}); r.StatusCode != 200 {
 		t.Errorf("delete: %d", r.StatusCode)
 	}

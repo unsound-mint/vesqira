@@ -156,6 +156,13 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await expect(inspector(page).getByRole("button", { name: "Source A copy" })).toHaveCount(0);
   await inspector(page).getByRole("button", { name: "Undo" }).click();
   await expect(inspector(page).getByRole("button", { name: "Source A copy" })).toBeVisible();
+  // import a DS9 file: a preview first, then only what is confirmed is saved
+  await inspector(page).getByLabel("Import a DS9 region file (image coordinates)").setInputFiles({ name: "from-ds9.reg", mimeType: "text/plain", buffer: Buffer.from("image\nbox(5,5,3,3,0) # text={Imported box}\ncircle(8.4,8,2.5)\nellipse(1,1,2,2,0)\n") });
+  await expect(inspector(page).getByText("1 exact, 1 approximated, 1 skipped.")).toBeVisible();
+  await expect(inspector(page).getByText(/not supported/)).toBeVisible();
+  await expect(inspector(page).getByRole("button", { name: "Imported box" })).toHaveCount(0);   // nothing saved yet
+  await inspector(page).getByRole("button", { name: "Add 1 region" }).click();
+  await expect(inspector(page).getByRole("button", { name: "Imported box" })).toBeVisible();
   if (process.env.VESQIRA_SHOTS) await page.screenshot({ path: `${process.env.VESQIRA_SHOTS}/regions.png` });
   await expectNoAxeViolations(page);
 

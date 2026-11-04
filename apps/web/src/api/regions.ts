@@ -32,3 +32,8 @@ export const createSavedRegion = (datasetId: number, name: string, shape: Region
 export const updateSavedRegion = (id: number, change: { name?: string; shape?: RegionShape }) => post<SavedRegion>(`/api/regions/${id}`, change);
 export const deleteSavedRegion = (id: number) => post<{ deleted: boolean }>(`/api/regions/${id}/delete`, {});
 export const ds9Url = (datasetId: number, id?: number) => `/api/datasets/${datasetId}/regions.reg${id ? `?id=${id}` : ""}`;
+
+export type ImportItem = { line: number; text: string; status: "exact" | "approximated" | "skipped"; name?: string; shape?: SavedRegion["shape"]; note?: string };
+export const previewDs9 = (datasetId: number, text: string) => post<{ items: ImportItem[] }>(`/api/datasets/${datasetId}/regions/import`, { text }).then((r) => r.items);
+export const applyDs9 = (datasetId: number, text: string, includeApproximated: boolean) =>
+  post<{ items: ImportItem[]; created: SavedRegion[]; failed: string[] }>(`/api/datasets/${datasetId}/regions/import`, { text, apply: true, includeApproximated });
