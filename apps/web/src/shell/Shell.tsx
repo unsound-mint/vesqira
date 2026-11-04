@@ -152,7 +152,7 @@ export function Shell() {
             <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
           </Section>
           <Section title="Datasets" meta={String(cat.datasets.length)}>
-            <Explorer hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedId} loading={cat.loading} error={cat.error} onSelect={cat.select} onRegister={cat.register} />
+            <Explorer hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={cat.select} onRegister={cat.register} />
           </Section>
         </div>
         <ResizeHandle orientation="vertical" label="Resize explorer" value={L.side} min={LIMITS.side.min} max={LIMITS.side.max} onChange={(v) => set("side", v)} />
@@ -251,7 +251,7 @@ export function Shell() {
             {actDs ? <FigurePanel v={viewer} dataset={actDs} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Dataset">
-            {actDs ? <DatasetInspector d={actDs} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
+            {actDs ? <DatasetInspector d={actDs} problem={cat.problems[String(actDs.id)]} onReread={() => { void cat.register(actDs.path); }} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
           </Section>
         </div>
       </aside>

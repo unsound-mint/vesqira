@@ -17,6 +17,7 @@ const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.mes
 /** Everything the viewer panels share for one open dataset. Pixel and channel indices are 0-based here. */
 export function useViewer(dataset: Dataset | null) {
   const datasetId = dataset?.id ?? null;
+  const fileTime = dataset?.modifiedAt ?? null; // a file that was read again starts the viewer over
   const interp = dataset?.interpretation ?? null;
   const relId = interp?.reliabilityId ?? null;
   const unit = interp?.unit ?? null;
@@ -77,7 +78,7 @@ export function useViewer(dataset: Dataset | null) {
       .then(setView)
       .catch((e: unknown) => !isAbort(e) && setViewError(message(e, "Could not read the dataset layout.")));
     return () => ac.abort();
-  }, [datasetId, retry]);
+  }, [datasetId, retry, fileTime]);
 
   // The plane for the selected channel. A newer request aborts the older one, so scrubbing never queues stale reads.
   // A large plane on a remote host shows a reduced preview first and the full plane once the channel has settled, so

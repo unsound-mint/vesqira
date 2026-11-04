@@ -48,6 +48,9 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/** Files on this computer that are no longer what was registered. Remote files are not checked here. */
+export type Problem = "modified" | "missing" | "not_allowed";
+export const getAvailability = () => call<{ problems: Record<string, Problem> }>("/api/datasets/availability").then((r) => r.problems ?? {});
 export const listDatasets = () => call<{ datasets: Dataset[] }>("/api/datasets").then((r) => r.datasets);
 export const headerCards = (id: number) => call<{ cards: string[]; truncated: boolean }>(`/api/datasets/${id}/header-cards`);
 export const listRoots = () => call<{ roots: string[] }>("/api/roots").then((r) => r.roots);

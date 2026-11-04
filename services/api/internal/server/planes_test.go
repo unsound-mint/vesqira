@@ -749,3 +749,33 @@ func TestCapabilitiesReportWhatThisServerWasStartedWith(t *testing.T) {
 		t.Errorf("features this test server was not started with must be reported as unavailable: %v", c.Features)
 	}
 }
+
+func TestAvailabilityFlagsChangedMissingAndForeignFilesWithoutTouchingRemoteOnes(t *testing.T) {
+	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(`{"ok":true,"nbytes":0}`)}}
+	base, root, _, file, id := planeServer(t, fp)
+	check := func() map[string]string {
+		_, b := get(t, base+"/api/datasets/availability")
+		var r struct{ Problems map[string]string }
+		if err := json.Unmarshal(b, &r); err != nil {
+			t.Fatalf("%v %s", err, b)
+		}
+		return r.Problems
+	}
+	key := itoa(id)
+	if p := check(); len(p) != 0 {
+		t.Fatalf("an untouched file is not a problem: %v", p)
+	}
+	if err := os.WriteFile(file, []byte("a different, longer content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if p := check(); p[key] != "modified" {
+		t.Errorf("a rewritten file: %v", p)
+	}
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if p := check(); p[key] != "missing" {
+		t.Errorf("a deleted file: %v", p)
+	}
+	_ = root
+}

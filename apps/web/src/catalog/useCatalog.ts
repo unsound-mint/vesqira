@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, listDatasets, registerDataset, setInterpretation, setNature } from "../api/catalog";
-import type { Dataset, InterpretationRequest, Nature } from "../api/catalog";
+import { ApiError, getAvailability, listDatasets, registerDataset, setInterpretation, setNature } from "../api/catalog";
+import type { Dataset, InterpretationRequest, Nature, Problem } from "../api/catalog";
 import { listHosts } from "../api/hosts";
 import { listJobs } from "../api/jobs";
 import type { Job } from "../api/jobs";
@@ -16,6 +16,18 @@ export function useCatalog() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [problems, setProblems] = useState<Record<string, Problem>>({});
+
+  /** Which registered files changed or vanished on disk. Checked at start, when the window comes back and after a change here. */
+  const checkFiles = useCallback(() => {
+    getAvailability().then(setProblems).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    checkFiles();
+    const onVisible = () => document.visibilityState === "visible" && checkFiles();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [checkFiles]);
 
   useEffect(() => {
     let live = true;
@@ -37,11 +49,12 @@ export function useCatalog() {
       const d = await registerDataset(path);
       setDatasets((cur) => [...cur.filter((x) => x.id !== d.id), d].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedId(d.id);
+      checkFiles();
       return null;
     } catch (e) {
       return e instanceof ApiError ? e.message : "Could not register the file.";
     }
-  }, []);
+  }, [checkFiles]);
 
   /** Declare (or clear) what the user says a dataset is. Returns an error text with reasons, or null on success. */
   const declare = useCallback(async (id: number, body: InterpretationRequest): Promise<string | null> => {
@@ -89,5 +102,5 @@ export function useCatalog() {
     }
   }, []);
 
-  return { declareNature, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
+  return { problems, declareNature, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
 }

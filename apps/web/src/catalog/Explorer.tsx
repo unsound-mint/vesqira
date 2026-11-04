@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Database } from "lucide-react";
-import type { Dataset } from "../api/catalog";
+import type { Dataset, Problem } from "../api/catalog";
 import { Button, Input, TreeRow } from "../ui";
 import { bytes } from "./format";
 import { matchDataset } from "./filter";
@@ -9,17 +9,20 @@ import { previewFile } from "../api/catalog";
 import type { Preview } from "../api/catalog";
 import s from "./Explorer.module.css";
 
+const PROBLEM_SHORT: Record<string, string> = { modified: " · changed on disk", missing: " · missing", not_allowed: " · outside the source folders" };
+
 type Props = {
   datasets: Dataset[];
   hosts?: { id: number; name: string }[];
   selectedId: number | null;
+  problems?: Record<string, Problem>;
   loading: boolean;
   error: string | null;
   onSelect: (id: number) => void;
   onRegister: (path: string) => Promise<string | null>;
 };
 
-export function Explorer({ hosts = [], datasets, selectedId, loading, error, onSelect, onRegister }: Props) {
+export function Explorer({ hosts = [], datasets, selectedId, problems = {}, loading, error, onSelect, onRegister }: Props) {
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -70,7 +73,7 @@ export function Explorer({ hosts = [], datasets, selectedId, loading, error, onS
       <div role="list" aria-label="Datasets">
         {shown.map((d) => (
           <div role="listitem" key={d.id}>
-            <TreeRow icon={Database} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.hostId ? `${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${bytes(d.sizeBytes)}`}>{d.name}</TreeRow>
+            <TreeRow icon={Database} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.hostId ? `${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${bytes(d.sizeBytes)}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
           </div>
         ))}
       </div>

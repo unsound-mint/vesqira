@@ -81,3 +81,18 @@ describe("raw header cards", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("files that changed on disk", () => {
+  const d = { id: 7, name: "cube.fits", path: "/data/cube.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", interpretation: null, header: { ok: true, naxis: 3, bitpix: -32, axes: [] } } as unknown as Dataset;
+  it("says so in the list and the inspector, and offers to read the file again only when it changed", async () => {
+    const reread = vi.fn();
+    render(<Explorer datasets={[d]} selectedId={7} problems={{ "7": "modified" }} loading={false} error={null} onSelect={() => {}} onRegister={async () => null} />);
+    expect(screen.getByText(/changed on disk/)).toBeInTheDocument();
+    render(<DatasetInspector d={d} problem="modified" onReread={reread} />);
+    await userEvent.click(screen.getByRole("button", { name: "Read it again" }));
+    expect(reread).toHaveBeenCalledTimes(1);
+    render(<DatasetInspector d={d} problem="missing" onReread={reread} />);
+    expect(screen.getByText(/not at its registered path/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Read it again" })).toHaveLength(1);
+  });
+});

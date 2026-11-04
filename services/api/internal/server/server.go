@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -52,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/capabilities", s.capabilities)
 	mux.HandleFunc("GET /api/roots", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"roots": s.Roots}) })
 	mux.HandleFunc("GET /api/datasets", s.list)
+	mux.HandleFunc("GET /api/datasets/availability", s.availability)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
 	mux.HandleFunc("POST /api/datasets", s.register)
 	if s.HostDB != nil && s.Remote != nil {
@@ -216,6 +218,39 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"datasets": ds})
+}
+
+// availability says, for each registered file on this computer, whether it is still what was registered: available, modified
+// (size or modification time differ, so the stored header may be out of date), missing, or outside the source roots. Files on
+// other hosts are not contacted here (that would wait on the network and the VPN) and are reported as unchecked. Only datasets
+// that are not simply available are listed.
+func (s *Server) availability(w http.ResponseWriter, r *http.Request) {
+	ds, err := s.Store.List()
+	if err != nil {
+		log.Printf("availability: %v", err)
+		fail(w, 500, "internal error")
+		return
+	}
+	out := map[string]string{}
+	for _, d := range ds {
+		if d.HostID != 0 {
+			continue
+		}
+		switch _, _, status, _ := s.authorize(d); status {
+		case 0:
+		case 404:
+			out[strconv.FormatInt(d.ID, 10)] = "missing"
+		case 409:
+			out[strconv.FormatInt(d.ID, 10)] = "modified"
+		default:
+			if _, err := os.Lstat(d.Path); errors.Is(err, fs.ErrNotExist) { // the roots check cannot resolve a path that is gone
+				out[strconv.FormatInt(d.ID, 10)] = "missing"
+			} else {
+				out[strconv.FormatInt(d.ID, 10)] = "not_allowed"
+			}
+		}
+	}
+	writeJSON(w, 200, map[string]any{"problems": out, "note": "remote files are not checked here"})
 }
 
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {

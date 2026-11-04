@@ -90,6 +90,7 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [ ] Typed masks: low SNR, saturated, user excluded; masks as derived resources carried by outputs (Q201).
 - [ ] Interpretation tiers: add `verified` and `inferred` with a mapping version (Q211).
 - [ ] Dataset identity independent of the path: several locations per dataset, content fingerprint, "newer result available" notice (Q83, Q84, Q136).
+  - [x] First part (Q83): a registered file on this computer that changed (size or modification time) or vanished is flagged in the list and the inspector, checked at start, when the window returns and after registering; a changed file offers "Read it again" and the viewer restarts on it. Remote files are not checked (that waits on the network). Identity, fingerprints and several locations are not built.
 - [ ] WCS and unit corrections as a layer with history, never an edit of the original (Q143).
 - [x] Filter boxes in the explorer: datasets by name, unit, host or nature; runs by parameters (key=value, <, >, <=, >=), QC and text (Q19–Q21, Q163). A sortable table is still to do.
 - [ ] Delete and archive with an impact preview (Q145).

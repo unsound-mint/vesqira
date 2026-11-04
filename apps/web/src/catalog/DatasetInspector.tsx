@@ -1,14 +1,27 @@
-import type { Dataset } from "../api/catalog";
+import type { Dataset, Problem } from "../api/catalog";
+import { Button } from "../ui";
 import { bytes, show } from "./format";
 import { beamText, pixelScale } from "./resolution";
 import { HeaderCards } from "./HeaderCards";
 import s from "./DatasetInspector.module.css";
 
 /** What the file header declares, in native FITS axis order. Nothing here is verified. */
-export function DatasetInspector({ d }: { d: Dataset }) {
+const PROBLEM_TEXT: Record<Problem, string> = {
+  modified: "This file has changed on disk since it was registered, so the header and figures made earlier may no longer describe it. Viewing is paused until it is read again.",
+  missing: "This file is not at its registered path any more. Figures and boards made from it keep their pictures; nothing here can read it until it is back.",
+  not_allowed: "This file is outside the source folders this program was started with, so it cannot be read.",
+};
+
+export function DatasetInspector({ d, problem, onReread }: { d: Dataset; problem?: Problem; onReread?: () => void }) {
   const h = d.header;
   return (
     <div className={s.wrap}>
+      {problem ? (
+        <div role="status" className={s.note}>
+          <p style={{ margin: 0 }}>{PROBLEM_TEXT[problem]}</p>
+          {problem === "modified" && onReread ? <Button type="button" onClick={onReread}>Read it again</Button> : null}
+        </div>
+      ) : null}
       <dl className={s.facts}>
         <dt>File</dt>
         <dd className="mono" title={d.path}>{d.name}</dd>

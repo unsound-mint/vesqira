@@ -124,6 +124,11 @@ paths:
       operationId: owner_s_register_post_api_datasets
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/datasets/availability:
+    get:
+      operationId: owner_s_availability_get_api_datasets_availability
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/datasets/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
