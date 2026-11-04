@@ -105,7 +105,7 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [x] `packages/contracts` exists. `packages/science-types`, `extensions/astronomy` and `integrations` are retired from AGENTS.md as structure to create now: the semantic code lives in the worker and the Go packages, and is split out when a second discipline or connector makes the seam real.
 - [x] `GET /api/capabilities`: application, protocol and schema versions reported separately, and which features this server was started with (planes, hosts, jobs, analysis, runs, boards, regions, audit), so a client shows a missing feature instead of failing on a 404 (Q155, Q158). No client uses it yet.
 - [ ] Workload classes: reserved interactive capacity, queue reasons shown to the user (Q169).
-- [ ] Structured logs with correlation ids (Q158).
+- [x] Every API request gets a correlation id (the caller's `X-Request-Id` when it is a plain token, else generated) returned in the response, and one JSON log line (method, path, status, size, duration; never the query string); quiet by default (failures and slow requests), `VESQIRA_LOG=debug` shows all. The id is not yet passed to the workers or shown in the UI; the support bundle is not built (Q158, Q163).
 - [x] Dependency boundaries enforced by tests: a layering table for the Go packages and the reviewer-reachable set (`internal/arch`), and the reviewer page's imports in the web app (`boundaries.test.ts`) (Q180).
 - [ ] Command registry with undo for board and review edits (Q175).
 - [ ] Figures stored as a re-renderable specification, with SVG export; board layout grid with snap and resize (Q186, Q187, Q10–Q13).

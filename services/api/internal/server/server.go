@@ -137,7 +137,7 @@ func (s *Server) Handler() http.Handler {
 	if s.WebDist != "" {
 		mux.Handle("GET /", staticApp(s.WebDist))
 	}
-	return localOnly(mux)
+	return logRequests(localOnly(mux))
 }
 
 // staticApp serves the built web app for the installed program, so one address is the whole application. Paths
