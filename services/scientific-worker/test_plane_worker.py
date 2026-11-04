@@ -107,6 +107,24 @@ class PlaneWorker(unittest.TestCase):
             p.stdin.close()
             p.wait(timeout=10)
 
+    def test_sky_positions_land_on_the_pixels_the_independent_projection_says(self):
+        path = self.f["hi_cube.fits"]
+        pts = [(10.0, 7.0), (3.25, 15.5), (0.0, 0.0)]
+        sky = [list(tan_world(x, y, g.CRVAL_RA, g.CRVAL_DEC, -g.CDELT_DEG, g.CDELT_DEG, g.CRPIX)) for x, y in pts]
+        head, _ = self.c.ask(op="sky2pix", path=str(path), points=sky)
+        self.assertTrue(head["ok"], head)
+        for (x, y), got in zip(pts, head["pixels"]):                       # the inverse of the independent forward formula
+            self.assertAlmostEqual(got[0], x, places=5)
+            self.assertAlmostEqual(got[1], y, places=5)
+        sx, sy = head["pixel_scale_arcsec"]
+        self.assertAlmostEqual(sx, g.CDELT_DEG * 3600, places=4)
+        self.assertAlmostEqual(sy, g.CDELT_DEG * 3600, places=4)
+        self.assertAlmostEqual(head["north_angle_deg"], 0.0, delta=0.05)    # north is up in this grid (meridians converge slightly away from the reference)
+        self.assertEqual(head["sky"]["frame"], "ICRS")
+        for bad in ([], [[1.0]], [[1.0, 95.0]], [["a", 2]], [[float("nan"), 2]], [[1, True]]):
+            self.assertFalse(self.c.ask(op="sky2pix", path=str(path), points=bad)[0]["ok"])
+        self.assertFalse(self.c.ask(op="sky2pix", path=str(path), points=[[1.0, 2.0]] * 65)[0]["ok"])
+
     def test_view_locates_axes_from_the_wcs(self):
         v, _ = self.c.ask(op="view", path=str(self.f["hi_cube.fits"]))
         self.assertTrue(v["ok"])

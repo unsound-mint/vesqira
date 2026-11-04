@@ -3,6 +3,8 @@ package server
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
+	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
 func TestSavedRegionsCreateEditDeleteAndExportAsDS9(t *testing.T) {
@@ -84,5 +88,74 @@ func TestSavedRegionsCreateEditDeleteAndExportAsDS9(t *testing.T) {
 	}
 	if r, _ := postJSON(t, ts.URL+"/api/regions/"+itoa(int(reg.ID))+"/delete", map[string]any{}); r.StatusCode != 404 {
 		t.Errorf("deleting twice: %d", r.StatusCode)
+	}
+}
+
+func TestDS9SkyRegionsAreWorkedOutWithTheDatasetsOwnWCS(t *testing.T) {
+	repo, _ := filepath.Abs("../../../..")
+	if exec.Command("python3", "-c", "import astropy").Run() != nil {
+		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
+			t.Fatal("python3 with astropy is required")
+		}
+		t.Skip("python3 with astropy not available")
+	}
+	pw := &worker.Persistent{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
+	t.Cleanup(pw.Close)
+	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	base := t.TempDir()
+	root := filepath.Join(base, "data")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
+	gen.Dir = filepath.Join(repo, "fixtures")
+	if out, err := gen.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	rs, err := sourceroot.New([]string{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	rg, _ := regions.Open(st.DB())
+	ts := httptest.NewServer((&Server{Roots: rs, Store: st, Worker: hdr, Planes: pw, Regions: rg}).Handler())
+	t.Cleanup(ts.Close)
+	var d catalog.Dataset
+	resp := post(t, ts, filepath.Join(root, "hi_cube.fits"), nil)
+	if resp.StatusCode != 201 {
+		t.Fatalf("register: %d", resp.StatusCode)
+	}
+	json.NewDecoder(resp.Body).Decode(&d)
+	imp := ts.URL + "/api/datasets/" + itoa(int(d.ID)) + "/regions/import"
+	// the reference position is pixel (16, 12) in FITS counting, which is (15, 11) here; pixels are 36 arcsec
+	file := "fk5\ncircle(150.0,2.0,72\")\nbox(150.0,2.0,360\",180\")\ngalactic\ncircle(150.0,2.0,72\")\n"
+	r, pb := postJSON(t, imp, map[string]any{"text": file})
+	if r.StatusCode != 200 {
+		t.Fatalf("%d %s", r.StatusCode, pb)
+	}
+	var out struct {
+		Items []regions.ImportItem `json:"items"`
+	}
+	json.Unmarshal(pb, &out)
+	if len(out.Items) != 3 {
+		t.Fatalf("%s", pb)
+	}
+	c, b, g := out.Items[0], out.Items[1], out.Items[2]
+	if c.Status != regions.Approximate || c.Shape == nil || *c.Shape != (regions.Shape{Shape: "circle", CX: 15, CY: 11, R: 2}) {
+		t.Errorf("sky circle: %+v", c)
+	}
+	if b.Status != regions.Approximate || b.Shape == nil || *b.Shape != (regions.Shape{Shape: "rect", X0: 10, Y0: 9, X1: 20, Y1: 13}) { // 10 x 5 pixels around (15, 11)
+		t.Errorf("sky box: %+v", b)
+	}
+	if g.Status != regions.Skipped || !strings.Contains(g.Note, "no frame transformation") {
+		t.Errorf("a galactic region on an equatorial map: %+v", g)
+	}
+	r, ab := postJSON(t, imp, map[string]any{"text": file, "apply": true, "includeApproximated": true})
+	if r.StatusCode != 201 || strings.Count(string(ab), `"datasetId"`) != 2 {
+		t.Errorf("apply: %d %s", r.StatusCode, ab)
 	}
 }

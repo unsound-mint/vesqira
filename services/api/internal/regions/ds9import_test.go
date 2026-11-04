@@ -34,10 +34,13 @@ circle(abc,2,3)
 	if c := items[2]; c.Status != Approximate || !strings.Contains(c.Note, "became") || c.Name != "Imported region 3" {
 		t.Errorf("a circle that needs rounding must say so: %+v", c)
 	}
-	for i, why := range map[int]string{3: "rotated", 4: "excluded", 5: "not supported", 6: "WCS", 8: "plain image coordinates"} {
+	for i, why := range map[int]string{3: "rotated", 4: "excluded", 5: "not supported", 8: "plain image coordinates"} {
 		if items[i].Status != Skipped || !strings.Contains(items[i].Note, why) || items[i].Shape != nil {
 			t.Errorf("item %d should be skipped for %q: %+v", i, why, items[i])
 		}
+	}
+	if sky := items[6]; sky.Status != Pending || sky.Sky == nil || sky.Shape != nil { // placed later, with the dataset's WCS
+		t.Errorf("a sky region waits for the WCS: %+v", sky)
 	}
 	// a system named on the same line applies to that shape
 	if p := items[7]; p.Status != Exact || p.Shape.X0 != 1 || p.Shape.X1 != 3 {

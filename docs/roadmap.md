@@ -67,7 +67,7 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [x] Histogram of the visible plane with draggable and typed colour limits. Of a region: not yet.
 - [x] Scalar difference map between two compatible maps with the same declared unit (ADR 0017 amendment); a map declared axial uses the axial difference.
 - Channel animation: dropped for now.
-- [x] Saved, named regions: create, rename, change shape, duplicate, hide, delete with undo, export as DS9 (ADR 0026). DS9 import in image coordinates with a preview; sky-coordinate import still to do.
+- [x] Saved, named regions: create, rename, change shape, duplicate, hide, delete with undo, export as DS9 (ADR 0026). DS9 import in image coordinates and in sky coordinates (FK5/ICRS/galactic circles and unrotated boxes, placed with the file's WCS and listed as approximated) with a preview.
 - [ ] Exploration history and "continue from here" (Q96–Q98).
 - [ ] Linked views can be grouped and unlinked by the user; linking through a validated transformation (Q174).
 - [x] Keyboard pixel cursor (Shift+arrows) and a table alternative for the spectrum plot (Q176).

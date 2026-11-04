@@ -29,6 +29,7 @@ MAX_REQUEST_BYTES = 8192
 MAX_CHANNELS = 1 << 24
 MAX_TEXT_BYTES = 256 << 10
 MAX_SPECTRUM_CHANNELS = 1 << 16
+MAX_SKY_POINTS = 64
 MAX_REGION_WORK = 1_000_000_000     # region pixels x channels read for one spectrum
 SPECTRUM_BLOCK_ELEMENTS = 4_000_000   # pixels x channels per block read (32 MB as float64)
 CUBES_KEPT = 4
@@ -220,6 +221,44 @@ class Cube:
             v = float(self._world(x, y, channel)[self.spec])
             out["spectral"] = {"value": v if math.isfinite(v) else None}
         return out
+
+    def sky_to_pixels(self, points) -> dict:
+        """0-based image pixel positions of sky positions given in the file's own celestial frame (degrees), by the file's WCS.
+
+        Also returns the pixel scale and where north points in the image, so a caller can turn an angular size into pixels and
+        know whether a box on the sky is aligned with the pixel grid. A position that does not map to a finite pixel is null.
+        """
+        if not self.celestial or self.wcs is None:
+            raise Refused("unsupported", "this file has no complete celestial WCS, so sky positions cannot be placed on it")
+        if not isinstance(points, list) or not 1 <= len(points) <= MAX_SKY_POINTS:
+            raise Refused("bad_request", f"give between 1 and {MAX_SKY_POINTS} positions")
+        for p in points:
+            if (not isinstance(p, list) or len(p) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in p)
+                    or not -360.0 <= p[0] <= 720.0 or not -90.0 <= p[1] <= 90.0):
+                raise Refused("bad_request", "each position is [longitude, latitude] in degrees")
+        base = np.asarray(self._world(0, 0, 0), dtype=float)       # the other axes stay at the first channel
+
+        def pix(lon: float, lat: float):
+            w = base.copy()
+            w[self.lng], w[self.lat] = lon, lat
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                p = np.asarray(self.wcs.all_world2pix([w], 0)[0], dtype=float)
+            x, y = float(p[self.x]), float(p[self.y])
+            return (x, y) if math.isfinite(x) and math.isfinite(y) else None
+
+        out = [pix(float(p[0]), float(p[1])) for p in points]
+        from astropy.wcs.utils import proj_plane_pixel_scales
+        sx, sy = (float(v) * 3600.0 for v in proj_plane_pixel_scales(self.wcs.celestial))
+        lon0, lat0 = float(points[0][0]), float(points[0][1])
+        step = -1.0 / 60.0 if lat0 > 89.0 else 1.0 / 60.0
+        a, b = out[0], pix(lon0, lat0 + step)
+        north = None
+        if a is not None and b is not None and (b[0] != a[0] or b[1] != a[1]):
+            north = math.degrees(math.atan2(b[0] - a[0], b[1] - a[1])) * (1.0 if step > 0 else -1.0)
+        return {"pixels": [None if q is None else [q[0], q[1]] for q in out], "pixel_scale_arcsec": [sx, sy],
+                "north_angle_deg": north, "sky": self.sky_facts(),
+                "note": "0-based image pixels, pixel centres at integers; the scale is taken at the reference pixel"}
 
     # ----- channel flags: a provider convention, never inferred -----
     def flags(self) -> dict:
@@ -613,11 +652,11 @@ def handle(req: dict) -> tuple[dict, bytes]:
         return header_cards(path), b""
     if op in ("ping", "list", "resolve", "stat", "header", "readtext"):
         return host_op(op, req)
-    if op in ("view", "plane", "coord", "spectrum", "axial"):
+    if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix"):
         authorize(path)                                          # also enforces the roots on a remote host
         if op == "axial" and req.get("weights_path") is not None:
             authorize(req.get("weights_path"))
-    if op not in ("view", "plane", "coord", "spectrum", "axial") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+    if op not in ("view", "plane", "coord", "spectrum", "axial", "sky2pix") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")
     c = cube_for(path)
     bunit = clean(c.h.get("BUNIT")) if "BUNIT" in c.h else None
@@ -634,6 +673,8 @@ def handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "bad request")
         return {**base, "nbytes": 0, "stats": c.axial_stats(req, cube_for(wp) if wp else None),
                 "method": "doubled-angle circular statistics (astropy.stats); 0 and 180 degrees are the same orientation"}, b""
+    if op == "sky2pix":
+        return {**base, "nbytes": 0, **c.sky_to_pixels(req.get("points"))}, b""
     if op == "spectrum":
         head, payload = c.spectrum(req)
         return {**base, **head}, payload

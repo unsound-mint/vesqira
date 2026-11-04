@@ -150,7 +150,7 @@ function SavedList({ v }: { v: Viewer }) {
       {sr.error ? <p role="alert" className={s.err}>{sr.error}</p> : null}
       <Ds9Import v={v} />
       {sr.saved.length > 0 && v.datasetId !== null ? <a className={s.link} href={ds9Url(v.datasetId)} download>Export all as a DS9 region file (.reg)</a> : null}
-      <p className={s.note}>DS9 files use the dataset’s own pixel grid (image coordinates, counted from 1), so they open in DS9 on the same file without any sky transformation.</p>
+      <p className={s.note}>Exported DS9 files use the dataset’s own pixel grid (image coordinates, counted from 1), so they open in DS9 on the same file without any sky transformation. Imported files may also use sky coordinates (FK5, ICRS or the dataset’s own frame, boxes and circles): they are placed with this file’s WCS and always listed as approximated.</p>
     </section>
   );
 }

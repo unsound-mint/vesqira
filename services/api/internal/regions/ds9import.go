@@ -22,6 +22,8 @@ type ImportItem struct {
 	Name   string `json:"name,omitempty"`
 	Shape  *Shape `json:"shape,omitempty"`
 	Note   string `json:"note,omitempty"`
+	// Sky is a region given on the sky, waiting for ResolveSky; it is never sent to the browser.
+	Sky *SkyShape `json:"-"`
 }
 
 const (
@@ -35,6 +37,7 @@ const (
 func ParseDS9(text string) []ImportItem {
 	var out []ImportItem
 	system := "physical" // DS9's default when no system line precedes a shape
+	frame := ""          // the sky system in force when system is "sky"
 	n := 0
 	for i, raw := range strings.Split(text, "\n") {
 		if i >= maxImportLines {
@@ -56,7 +59,7 @@ func ParseDS9(text string) []ImportItem {
 			system = low
 			continue
 		case "fk5", "icrs", "fk4", "galactic", "ecliptic", "j2000", "b1950", "wcs":
-			system = "sky"
+			system, frame = "sky", skyFrame(low)
 			continue
 		}
 		if strings.Contains(body, ";") { // "fk5; circle(...)" on one line
@@ -65,7 +68,7 @@ func ParseDS9(text string) []ImportItem {
 			if head == "image" || head == "physical" || head == "linear" {
 				system, body = head, strings.TrimSpace(parts[1])
 			} else {
-				system, body = "sky", strings.TrimSpace(parts[1])
+				system, frame, body = "sky", skyFrame(head), strings.TrimSpace(parts[1])
 			}
 		}
 		n++
@@ -88,7 +91,11 @@ func ParseDS9(text string) []ImportItem {
 		args, err := numbers(body[open+1 : close])
 		switch {
 		case system == "sky":
-			it.Status, it.Note = Skipped, "sky coordinates need the dataset's WCS; export from DS9 in image coordinates"
+			if sh, why := parseSky(frame, shape, body[open+1:close]); sh != nil {
+				it.Sky, it.Status, it.Note = sh, Pending, "waiting for the dataset's WCS"
+			} else {
+				it.Status, it.Note = Skipped, why
+			}
 		case err != nil:
 			it.Status, it.Note = Skipped, "its numbers are not plain image coordinates ("+err.Error()+")"
 		case shape == "box" && len(args) >= 4:

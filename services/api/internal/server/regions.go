@@ -1,14 +1,18 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
+	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
 func (s *Server) regionErr(w http.ResponseWriter, err error) {
@@ -159,6 +163,16 @@ func (s *Server) importRegions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items := regions.ParseDS9(in.Text)
+	for _, it := range items {
+		if it.Status == regions.Pending { // a region on the sky needs the file and its WCS
+			_, real, k, ok := s.source(w, r)
+			if !ok {
+				return
+			}
+			items = s.placeSkyRegions(r.Context(), k.id, real, items)
+			break
+		}
+	}
 	if !in.Apply {
 		writeJSON(w, 200, map[string]any{"items": items})
 		return
@@ -178,4 +192,58 @@ func (s *Server) importRegions(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Audit.Record("regions imported", "dataset", d.ID, strconv.Itoa(len(created))+" from a DS9 file")
 	writeJSON(w, 201, map[string]any{"items": items, "created": created, "failed": failed})
+}
+
+// placeSkyRegions settles the DS9 regions written on the sky using the dataset's own WCS, evaluated by the worker. A region
+// is placed only if its frame fits the dataset's declared frame; nothing is transformed between frames.
+func (s *Server) placeSkyRegions(ctx context.Context, id int64, real string, items []regions.ImportItem) []regions.ImportItem {
+	svc := s.planesFor(id)
+	if svc == nil {
+		return regions.ResolveSky(items, "", func([][2]float64) (regions.Placement, error) {
+			return regions.Placement{}, errors.New("the scientific worker is not available")
+		})
+	}
+	frame := ""
+	if rep, err := svc.Do(ctx, map[string]any{"op": "view", "path": real}); err == nil {
+		var v struct {
+			Sky struct {
+				Kind  string  `json:"kind"`
+				Frame *string `json:"frame"`
+			} `json:"sky"`
+		}
+		if json.Unmarshal(rep.Head, &v) == nil && v.Sky.Kind == "celestial" && v.Sky.Frame != nil {
+			frame = strings.ToLower(*v.Sky.Frame)
+		}
+	}
+	return regions.ResolveSky(items, frame, func(pts [][2]float64) (regions.Placement, error) {
+		list := make([][]float64, len(pts))
+		for i, p := range pts {
+			list[i] = []float64{p[0], p[1]}
+		}
+		rep, err := svc.Do(ctx, map[string]any{"op": "sky2pix", "path": real, "points": list})
+		var re *worker.RequestError
+		if errors.As(err, &re) {
+			return regions.Placement{}, errors.New(re.Message)
+		}
+		if err != nil {
+			return regions.Placement{}, errors.New("the scientific worker did not answer")
+		}
+		var out struct {
+			Pixels [][]float64 `json:"pixels"`
+			Scale  []float64   `json:"pixel_scale_arcsec"`
+			North  *float64    `json:"north_angle_deg"`
+		}
+		if json.Unmarshal(rep.Head, &out) != nil || len(out.Pixels) != len(pts) || len(out.Scale) != 2 {
+			return regions.Placement{}, errors.New("unreadable answer from the worker")
+		}
+		pl := regions.Placement{ScaleX: out.Scale[0], ScaleY: out.Scale[1], NorthAngle: out.North, Pixels: make([][2]float64, len(pts))}
+		for i, p := range out.Pixels {
+			if len(p) == 2 {
+				pl.Pixels[i] = [2]float64{p[0], p[1]}
+			} else {
+				pl.Pixels[i] = [2]float64{math.NaN(), math.NaN()}
+			}
+		}
+		return pl, nil
+	})
 }
