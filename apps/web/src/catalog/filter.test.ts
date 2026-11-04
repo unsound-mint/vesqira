@@ -3,7 +3,7 @@ import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
 
 const run = (params: Record<string, string>, over: Partial<Run> = {}): Run =>
-  ({ id: 1, name: "lmc_ker8", kind: "vgt", gitCommit: "abc123", inputName: "hnv1.fits", params: Object.entries(params).map(([key, value]) => ({ key, value, source: "config" })), review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, ...over }) as Run;
+  ({ id: 1, name: "lmc_ker8", kind: "vgt", gitCommit: "abc123", inputName: "hnv1.fits", params: Object.entries(params).map(([key, value]) => ({ key, value, source: "config" })), metrics: [], review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, ...over }) as Run;
 
 describe("run filter", () => {
   it("tests parameters as numbers when it can, as exact text otherwise, and never matches a missing parameter", () => {
@@ -26,6 +26,26 @@ describe("run filter", () => {
     expect(matchRun(r, "qc:failed")).toBe(false);
     expect(matchRun(r, "HNV1")).toBe(true);
     expect(matchRun(r, "abc123")).toBe(true);
+  });
+});
+
+describe("run filter on declared results", () => {
+  const m = (key: string, value: number | null) => ({ key, value, unit: "", uncertainty: null, uncertaintyKind: "" as const, n: null, definition: "", status: "declared" as const });
+  const r = run({ ker: "8" }, { metrics: [m("am", 0.344), m("zero", 0), m("lost", null)] });
+  it("compares a result like a parameter, keeps a recorded zero, and never matches an unrecorded one", () => {
+    expect(matchRun(r, "am>0.3")).toBe(true);
+    expect(matchRun(r, "am<0.3")).toBe(false);
+    expect(matchRun(r, "am>=0.344")).toBe(true);
+    expect(matchRun(r, "zero=0")).toBe(true);
+    expect(matchRun(r, "lost=0")).toBe(false); // unknown is not 0
+    expect(matchRun(r, "lost<5")).toBe(false);
+    expect(matchRun(r, "nothing>1")).toBe(false);
+    expect(matchRun(r, "ker=8 am>0.3")).toBe(true);
+  });
+  it("a parameter wins over a result of the same name", () => {
+    const both = run({ am: "5" }, { metrics: [m("am", 0.1)] });
+    expect(matchRun(both, "am=5")).toBe(true);
+    expect(matchRun(both, "am<1")).toBe(false);
   });
 });
 
