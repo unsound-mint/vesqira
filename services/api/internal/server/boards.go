@@ -1,0 +1,447 @@
+package server
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"regexp"
+	"strconv"
+	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/boards"
+	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+)
+
+// ---- figure provenance: built here from catalogued facts and a validated, whitelisted view description ----
+
+type regionParam struct {
+	Shape string `json:"shape"`
+	X0    *int   `json:"x0,omitempty"`
+	Y0    *int   `json:"y0,omitempty"`
+	X1    *int   `json:"x1,omitempty"`
+	Y1    *int   `json:"y1,omitempty"`
+	CX    *int   `json:"cx,omitempty"`
+	CY    *int   `json:"cy,omitempty"`
+	R     *int   `json:"r,omitempty"`
+}
+
+// ViewParams is what the figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view.
+type ViewParams struct {
+	Kind          string       `json:"kind"` // plane | spectrum | orientation
+	Channel       *int         `json:"channel,omitempty"`
+	SpectralValue *float64     `json:"spectralValue,omitempty"`
+	SpectralUnit  string       `json:"spectralUnit,omitempty"`
+	Region        *regionParam `json:"region,omitempty"`
+	Colormap      string       `json:"colormap,omitempty"`
+	Stretch       string       `json:"stretch,omitempty"`
+	Range         string       `json:"range,omitempty"`
+	Limits        []float64    `json:"limits,omitempty"`
+	LimitsUnit    string       `json:"limitsUnit,omitempty"`
+	ShowLines     *bool        `json:"showLines,omitempty"`
+}
+
+// unitText allows unit spellings such as m/s, Hz or Jy/beam and nothing that could carry markup or a path.
+var unitText = regexp.MustCompile(`^[A-Za-z0-9/*^. -]{0,16}$`)
+
+func oneOf(v string, ok ...string) bool {
+	if v == "" {
+		return true
+	}
+	for _, o := range ok {
+		if v == o {
+			return true
+		}
+	}
+	return false
+}
+
+func (p ViewParams) valid() bool {
+	if !oneOf(p.Kind, "plane", "spectrum", "orientation") || p.Kind == "" {
+		return false
+	}
+	if !oneOf(p.Colormap, "viridis", "inferno", "gray", "twilight") || !oneOf(p.Stretch, "linear", "sqrt", "asinh") || !oneOf(p.Range, "percentile", "minmax") {
+		return false
+	}
+	if !unitText.MatchString(p.SpectralUnit) || len(p.LimitsUnit) > 32 || len(p.Limits) > 2 {
+		return false
+	}
+	if p.Region != nil && !oneOf(p.Region.Shape, "rect", "circle") {
+		return false
+	}
+	return true
+}
+
+type safeAxis struct {
+	Axis   int      `json:"axis"`
+	Length int      `json:"length"`
+	CType  *string  `json:"ctype"`
+	CUnit  *string  `json:"cunit"`
+	CRVal  *float64 `json:"crval"`
+	CDelt  *float64 `json:"cdelt"`
+}
+
+type safeHeader struct {
+	Axes   []safeAxis `json:"axes"`
+	BUnit  *string    `json:"bunit"`
+	RadeSy *string    `json:"radesys"`
+	SpecSy *string    `json:"specsys"`
+	Bitpix *int       `json:"bitpix"`
+}
+
+type safeInterpretation struct {
+	Kind           string `json:"kind"`
+	Unit           string `json:"unit"`
+	DeclaredBy     string `json:"declaredBy"`
+	HasReliability bool   `json:"hasReliabilityMap"`
+}
+
+// Provenance is the reviewer-safe account of where a figure came from. It has no path and no dataset id.
+type Provenance struct {
+	Source struct {
+		Name       string     `json:"name"`
+		SizeBytes  int64      `json:"sizeBytes"`
+		ModifiedAt time.Time  `json:"modifiedAt"`
+		Identity   string     `json:"identity"`
+		Header     safeHeader `json:"headerDeclaredByFile"`
+	} `json:"source"`
+	Interpretation *safeInterpretation `json:"interpretation,omitempty"`
+	View           ViewParams          `json:"view"`
+	Statements     []string            `json:"statements"`
+}
+
+// checkAgainst validates the view against what the catalog knows about the file: a channel beyond every axis, a
+// brightness unit the header does not declare, or a region far outside the image cannot be recorded as fact.
+func (p ViewParams) checkAgainst(h safeHeader) bool {
+	maxLen := 0
+	for _, a := range h.Axes {
+		if a.Length > maxLen {
+			maxLen = a.Length
+		}
+	}
+	if p.Channel != nil && (*p.Channel < 0 || *p.Channel >= maxLen) {
+		return false
+	}
+	if p.LimitsUnit != "" && (h.BUnit == nil || *h.BUnit != p.LimitsUnit) {
+		return false
+	}
+	return true
+}
+
+func buildProvenance(d catalog.Dataset, p ViewParams) (json.RawMessage, error) {
+	var pr Provenance
+	pr.Source.Name, pr.Source.SizeBytes, pr.Source.ModifiedAt = d.Name, d.SizeBytes, d.ModifiedAt
+	pr.Source.Identity = "a reference to the file by name, size and modification time; its bytes were not hashed"
+	if err := json.Unmarshal(d.Header, &pr.Source.Header); err != nil {
+		return nil, err
+	}
+	if !p.checkAgainst(pr.Source.Header) {
+		return nil, errBadView
+	}
+	pr.View = p
+	pr.Statements = []string{
+		"Header values are declared by the file and are not verified.",
+		"The picture was drawn by the author's browser and the view settings are as reported by it; the server checked them against the catalogued header (channel range, brightness unit) but did not redraw the picture.",
+		"Pixels are shown as float32; the author's viewer treats NaN, BLANK and infinite values as no value and never draws them as zero.",
+	}
+	if d.Interpretation != nil {
+		pr.Interpretation = &safeInterpretation{Kind: d.Interpretation.Kind, Unit: d.Interpretation.Unit, DeclaredBy: "the author of this board", HasReliability: d.Interpretation.ReliabilityID != nil}
+		pr.Statements = append(pr.Statements, "The orientation unit and meaning were declared by the author, not by the file. Angles are axial (0° and 180° are the same orientation) and statistics use the doubled-angle method.")
+	}
+	if p.Region != nil {
+		pr.Statements = append(pr.Statements, "Region values are means of the finite pixels inside the region; flagged channels keep their data; pixel scale is taken at the reference pixel.")
+	}
+	return json.Marshal(pr)
+}
+
+var errBadView = errors.New("view does not match the dataset")
+
+// ---- handlers ----
+
+func (s *Server) boardErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, boards.ErrNotFound):
+		fail(w, 404, "not found")
+	case errors.Is(err, boards.ErrInvalid):
+		fail(w, 422, err.Error())
+	default:
+		log.Printf("boards: %v", err)
+		fail(w, 500, "internal error")
+	}
+}
+
+func pathInt(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
+	v, err := strconv.ParseInt(r.PathValue(name), 10, 64)
+	if err != nil || v < 0 {
+		fail(w, 400, "bad "+name)
+		return 0, false
+	}
+	return v, true
+}
+
+func body(w http.ResponseWriter, r *http.Request, limit int64, v any, strict bool) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	dec := json.NewDecoder(r.Body)
+	if strict {
+		dec.DisallowUnknownFields()
+	}
+	if err := dec.Decode(v); err != nil {
+		fail(w, 400, "invalid request body")
+		return false
+	}
+	return true
+}
+
+func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		DatasetID  int64           `json:"datasetId"`
+		Title      string          `json:"title"`
+		Caption    string          `json:"caption"`
+		View       json.RawMessage `json:"view"`
+		PreviewPNG string          `json:"previewPng"` // base64
+	}
+	if !body(w, r, 12<<20, &in, false) {
+		return
+	}
+	var vp ViewParams
+	dec := json.NewDecoder(bytes.NewReader(in.View))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&vp); err != nil || !vp.valid() {
+		fail(w, 400, "the view description is not valid")
+		return
+	}
+	png, err := base64.StdEncoding.DecodeString(in.PreviewPNG)
+	if err != nil {
+		fail(w, 400, "previewPng must be base64")
+		return
+	}
+	d, code, msg := s.dataset(in.DatasetID)
+	if code != 0 {
+		fail(w, code, msg)
+		return
+	}
+	if _, _, status, m := s.authorize(d); status != 0 { // the figure records a source that is still what was registered
+		fail(w, status, m)
+		return
+	}
+	prov, err := buildProvenance(d, vp)
+	if errors.Is(err, errBadView) {
+		fail(w, 400, "the view description does not match the dataset")
+		return
+	}
+	if err != nil {
+		fail(w, 500, "internal error")
+		return
+	}
+	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov}, png)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 201, f)
+}
+
+func (s *Server) listFigures(w http.ResponseWriter, r *http.Request) {
+	fs, err := s.Boards.Figures()
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"figures": fs})
+}
+
+func (s *Server) figurePreview(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	f, err := s.Boards.Figure(id)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	b, err := s.Boards.Preview(f.PreviewSHA)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(b)
+}
+
+func (s *Server) figureText(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct{ Title, Caption string }
+	if !body(w, r, 16<<10, &in, true) {
+		return
+	}
+	if err := s.Boards.SetText(id, in.Title, in.Caption); err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	f, _ := s.Boards.Figure(id)
+	writeJSON(w, 200, f)
+}
+
+func (s *Server) listBoards(w http.ResponseWriter, r *http.Request) {
+	bs, err := s.Boards.Boards()
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"boards": bs})
+}
+
+func (s *Server) createBoard(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Title string }
+	if !body(w, r, 4<<10, &in, true) {
+		return
+	}
+	b, err := s.Boards.CreateBoard(in.Title)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 201, b)
+}
+
+func (s *Server) getBoard(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	b, err := s.Boards.Board(id)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 200, b)
+}
+
+func (s *Server) boardAdd(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		FigureID int64 `json:"figureId"`
+	}
+	if !body(w, r, 4<<10, &in, true) {
+		return
+	}
+	if err := s.Boards.AddItem(id, in.FigureID); err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	b, _ := s.Boards.Board(id)
+	writeJSON(w, 200, b)
+}
+
+func (s *Server) boardItem(op string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathInt(w, r, "id")
+		if !ok {
+			return
+		}
+		pos, ok := pathInt(w, r, "pos")
+		if !ok {
+			return
+		}
+		var err error
+		switch op {
+		case "remove":
+			err = s.Boards.RemoveItem(id, int(pos))
+		case "move":
+			var in struct{ Delta int }
+			if !body(w, r, 4<<10, &in, true) {
+				return
+			}
+			if in.Delta != -1 && in.Delta != 1 {
+				fail(w, 400, "delta must be -1 or 1")
+				return
+			}
+			err = s.Boards.MoveItem(id, int(pos), in.Delta)
+		case "note":
+			var in struct{ Note string }
+			if !body(w, r, 16<<10, &in, true) {
+				return
+			}
+			err = s.Boards.SetNote(id, int(pos), in.Note)
+		}
+		if err != nil {
+			s.boardErr(w, err)
+			return
+		}
+		b, _ := s.Boards.Board(id)
+		writeJSON(w, 200, b)
+	}
+}
+
+// publish freezes the board and returns the review token once. Only its hash is kept.
+func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		Label string  `json:"label"`
+		Hours float64 `json:"hours"`
+	}
+	if !body(w, r, 4<<10, &in, true) {
+		return
+	}
+	if in.Hours == 0 {
+		in.Hours = 24 * 14
+	}
+	sn, tok, err := s.Boards.Publish(id, in.Label, time.Duration(in.Hours*float64(time.Hour)))
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 201, map[string]any{"snapshot": sn, "token": tok, "reviewPath": "/#/review/" + tok,
+		"note": "Shown once. Anyone with this link can read the frozen board and comment; revoke it to end access."})
+}
+
+func (s *Server) snapshots(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	sn, err := s.Boards.Snapshots(id)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"snapshots": sn})
+}
+
+func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	if err := s.Boards.Revoke(id); err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"revoked": true})
+}
+
+func (s *Server) snapshotComments(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	cs, err := s.Boards.OwnerComments(id)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"comments": cs})
+}

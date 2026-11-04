@@ -1,0 +1,28 @@
+# ADR 0011: Figures, boards and the reviewer surface
+
+- Status: accepted under delegated merge, 2026-11-04; owner review pending
+- Date: 2026-11-04
+
+## Context
+A researcher needs to keep a view as a figure that remembers where it came from, arrange figures on a board, and let a supervisor read and comment on a stable copy without gaining access to raw data, file paths, the researcher's machine or any credential (AGENTS: a reviewer's access to a preview does not grant anything else; enforced on the server).
+
+## Decision
+- **Figure = pinned evidence, working text editable.** A figure is the PNG as drawn plus a reviewer-safe provenance document; its revision identity is the SHA-256 of provenance and picture, so identical evidence is one figure and editing title or caption never changes the revision. Previews are stored content-addressed under `--data-dir/figures` (mode 0600). The PNG must decode, be at most 8 MiB and 4096 x 4096.
+- **Provenance is built on the server, but the picture is the author's.** The PNG is drawn by the author's browser and the view settings come from it: the server validates them against the catalogued header (channel range, brightness unit, short plain-text spectral units, unknown keys refused) and says so in the provenance, but it does not redraw the picture or vouch for it. From the catalogued dataset (file name, size, modification time, header values as declared by the file, the user's interpretation) and a view description whose unknown keys are refused. It states that header values are not verified, that the source is a reference by name, size and time (bytes not hashed), that no-value pixels are never zero, and the region and orientation caveats when they apply. It has no path and no dataset id.
+- **Boards are mutable drafts; sharing freezes them.** Publishing copies the board into a snapshot holding only the whitelisted `FrozenItem` fields. Later edits to the board or to figure text do not change what a reviewer sees. Publishing refuses an empty board and an expiry beyond 90 days.
+- **The reviewer surface is a separate listener built from the store alone.** `internal/review` takes a `*boards.Store` and nothing else: no catalog, source roots, worker or filesystem handle, so a reviewer token cannot become access to data or paths. `--review-addr` (off by default) may be non-loopback, with a warning to put TLS in front; the owner API stays loopback-only. It serves three routes (snapshot, preview, comment) and optionally the built web app; any `/api` path is 404.
+- **Capability tokens.** A review link holds a 256-bit random token; only its SHA-256 is stored, the token is shown once, and a lost link is replaced by revoking and publishing again. Unknown, malformed, expired and revoked tokens give the identical 404, failed lookups are rate limited per client address (30 a minute, IPv6 grouped by /64, at most 10,000 tracked addresses; the limit blocks only failed lookups, never a valid link or the app; behind a reverse proxy set `--review-client-ip-header` so clients are told apart), a token opens only its own snapshot's previews, and comments are accepted only for figures of that snapshot (4000 characters, 500 per snapshot, JSON only).
+- **Operations.** The token is part of the link path, so a proxy in front must not log `/review-api` paths. The listener has read, write and idle timeouts and a header size cap. Previews are written atomically; they and figures are not cleaned up (a follow-up).
+- **Limits.** Anyone holding the link can read the frozen board and comment as any name; there are no reviewer accounts yet. Comments are unauthenticated by design in v0.1. Browser-level isolation relies on `no-store`, `no-referrer`, `nosniff` and a restrictive CSP.
+
+## Alternatives
+Reviewer accounts and sessions (needs an auth design first); serving the owner API with a reviewer role (one bug away from exposing data); exporting a static HTML bundle (no comments, no revocation); embedding provenance written by the browser (the author, not the server, would vouch for it).
+
+## Consequences
+The reviewer sees pictures, not data, so they cannot re-stretch or inspect values; that is the intended boundary. Revocation is immediate; expiry is enforced on every request.
+
+## Validation
+Store tests: invalid, truncated and oversized PNGs refused; identical evidence is one figure; text edits do not change the evidence; ordering, notes and removal; snapshots stay frozen; the token is not in any table; tokens expire, revoke and never cross snapshots; token failures look identical; path tricks on preview names fail; a reflection test pins the reviewer-visible field set and bans path, dataset id, token and credential fields. Review-handler tests: no owner route is reachable, path traversal out of the web root fails, bad tokens are one 404 and brute force is limited, comment validation. An end-to-end Go test creates a dataset under a directory with a distinctive name, publishes, and checks on the wire that the reviewer response contains neither the path nor the root, with owner routes 404 on the reviewer listener and a cross-site read of the owner API refused. In a browser: a figure with a region, legend and caption was saved, added to a board, shared, and opened on the reviewer address; a comment was posted and the owner API answered 404 there.
+
+## Rollback / Migration
+Drop the figure, board, snapshot and comment tables and the preview directory; remove `--review-addr`. Datasets and files are untouched.

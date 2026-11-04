@@ -4,7 +4,7 @@ import { Button } from "../ui";
 import { lut } from "./colormaps";
 import { fit, pixelAt } from "./geometry";
 import { limits, outputSize, renderPlane } from "./render";
-import { glyphStride, orientationLines } from "./glyphs";
+import { orientationLinesFor } from "./glyphs";
 import type { Rgb } from "./render";
 import type { Viewer } from "./useViewer";
 import { channelLabel } from "./format";
@@ -22,7 +22,7 @@ function token(name: string, fallback: Rgb): Rgb {
 /** The plane on screen: native aspect, square pixels, sharp edges, north up, "no value" pixels hatched. */
 export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null) => void }) {
   const box = useRef<HTMLDivElement>(null);
-  const cv = useRef<HTMLCanvasElement>(null);
+  const cv = v.canvas;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [draft, setDraft] = useState<RegionShape | null>(null);
   const anchor = useRef<Pt | null>(null);
@@ -97,15 +97,7 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
     body = <p className={s.note}>Loading channel {v.channel + 1}…</p>;
   }
 
-  const lines = useMemo(() => {
-    if (!plane || !v.interp || !v.showLines || shape.scale <= 0) return [];
-    const rel = v.reliability && v.reliability.head.width === plane.head.width && v.reliability.head.height === plane.head.height ? v.reliability : null;
-    return orientationLines(plane.data, plane.head.width, plane.head.height, v.interp.unit === "deg" ? 1 : 180 / Math.PI, {
-      stride: glyphStride(shape.scale),
-      reliability: rel?.data ?? null,
-      relScale: rel ? (rel.head.stats.p99 ?? undefined) : undefined,
-    });
-  }, [plane, v.interp, v.showLines, v.reliability, shape.scale]);
+  const lines = useMemo(() => (v.showLines ? orientationLinesFor(v, shape.scale) : []), [v.plane, v.interp, v.showLines, v.reliability, shape.scale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const probe = v.probe;
   const cell = plane ? shape.width / plane.head.width : 0;

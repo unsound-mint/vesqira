@@ -72,6 +72,9 @@ func Open(dsn string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// DB exposes the shared SQLite handle so other stores (figures, boards, review) live in the same file.
+func (s *Store) DB() *sql.DB { return s.db }
+
 // Upsert registers a path or refreshes its metadata. The path is the identity of a reference;
 // it does not prove bytewise identity, so size and mtime are stored for later comparison.
 func (s *Store) Upsert(d Dataset) (Dataset, error) {

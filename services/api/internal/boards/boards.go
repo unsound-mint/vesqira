@@ -1,0 +1,633 @@
+// Package boards stores figures (pinned evidence), research boards (mutable drafts), frozen review snapshots,
+// review capability tokens and reviewer comments. It never stores or returns a source path: everything a reviewer can
+// ever see is built here from an explicit whitelist of fields.
+package boards
+
+import (
+	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"image/png"
+	"os"
+	"path/filepath"
+	"time"
+	"unicode/utf8"
+)
+
+const (
+	MaxPNGBytes   = 8 << 20
+	MaxPNGSide    = 4096
+	MaxText       = 2000
+	MaxComment    = 4000
+	MaxCommentsPS = 500 // comments per snapshot
+)
+
+var (
+	ErrNotFound = errors.New("not found")
+	ErrInvalid  = errors.New("invalid")
+)
+
+type Store struct {
+	db  *sql.DB
+	dir string // content-addressed preview files live in dir/figures
+}
+
+func Open(db *sql.DB, dataDir string) (*Store, error) {
+	if err := os.MkdirAll(filepath.Join(dataDir, "figures"), 0o700); err != nil {
+		return nil, err
+	}
+	for _, q := range []string{
+		`CREATE TABLE IF NOT EXISTS figures(
+			id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, title TEXT NOT NULL, caption TEXT NOT NULL,
+			created_at INTEGER NOT NULL, revision TEXT NOT NULL UNIQUE, preview_sha TEXT NOT NULL, width INTEGER NOT NULL,
+			height INTEGER NOT NULL, provenance TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS boards(
+			id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS board_items(
+			board_id INTEGER NOT NULL, position INTEGER NOT NULL, figure_id INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY(board_id, position))`,
+		`CREATE TABLE IF NOT EXISTS snapshots(
+			id INTEGER PRIMARY KEY AUTOINCREMENT, board_id INTEGER NOT NULL, label TEXT NOT NULL, created_at INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0, token_hash TEXT NOT NULL UNIQUE, frozen TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS comments(
+			id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, figure_revision TEXT NOT NULL, author TEXT NOT NULL,
+			body TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			return nil, err
+		}
+	}
+	return &Store{db: db, dir: dataDir}, nil
+}
+
+// clip keeps at most n characters (not bytes), so a multibyte character is never cut in half.
+func clip(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n])
+}
+
+// ---------- figures ----------
+
+// Figure is pinned scientific evidence: the picture and the facts it was made from do not change. Title and caption
+// are working text and may be edited.
+type Figure struct {
+	ID         int64           `json:"id"`
+	DatasetID  int64           `json:"datasetId"`
+	Title      string          `json:"title"`
+	Caption    string          `json:"caption"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	Revision   string          `json:"revision"`
+	PreviewSHA string          `json:"previewSha"`
+	Width      int             `json:"width"`
+	Height     int             `json:"height"`
+	Provenance json.RawMessage `json:"provenance"`
+}
+
+// NewFigure carries what the caller knows. Provenance must already be the reviewer-safe document.
+type NewFigure struct {
+	DatasetID  int64
+	Title      string
+	Caption    string
+	Provenance json.RawMessage
+}
+
+func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
+	if len(pngBytes) == 0 || len(pngBytes) > MaxPNGBytes {
+		return Figure{}, fmt.Errorf("%w: preview must be a PNG of at most %d bytes", ErrInvalid, MaxPNGBytes)
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(pngBytes))
+	if err != nil || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > MaxPNGSide || cfg.Height > MaxPNGSide {
+		return Figure{}, fmt.Errorf("%w: preview is not a PNG within %dx%d", ErrInvalid, MaxPNGSide, MaxPNGSide)
+	}
+	if _, err := png.Decode(bytes.NewReader(pngBytes)); err != nil { // full decode: a truncated image is refused
+		return Figure{}, fmt.Errorf("%w: preview PNG cannot be decoded", ErrInvalid)
+	}
+	title, caption := clip(in.Title, 200), clip(in.Caption, MaxText)
+	if title == "" {
+		return Figure{}, fmt.Errorf("%w: a figure needs a title", ErrInvalid)
+	}
+	sum := sha256.Sum256(pngBytes)
+	sha := hex.EncodeToString(sum[:])
+	rev := sha256.Sum256(append(append([]byte{}, in.Provenance...), sum[:]...))
+	revision := hex.EncodeToString(rev[:])
+	file := filepath.Join(s.dir, "figures", sha+".png")
+	if _, err := os.Stat(file); err != nil {
+		// write to a temporary file and rename, so a crash can never leave a truncated preview under its final name
+		tmp, err := os.CreateTemp(filepath.Join(s.dir, "figures"), ".tmp-*")
+		if err != nil {
+			return Figure{}, err
+		}
+		_, werr := tmp.Write(pngBytes)
+		if werr == nil {
+			werr = tmp.Sync()
+		}
+		if cerr := tmp.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr == nil {
+			werr = os.Rename(tmp.Name(), file)
+		}
+		if werr != nil {
+			os.Remove(tmp.Name())
+			return Figure{}, werr
+		}
+	}
+	now := time.Now()
+	res, err := s.db.Exec(`INSERT INTO figures(dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance) VALUES(?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(revision) DO NOTHING`, in.DatasetID, title, caption, now.Unix(), revision, sha, cfg.Width, cfg.Height, string(in.Provenance))
+	if err != nil {
+		return Figure{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 { // the same evidence again returns the existing figure
+		return s.figureByRevision(revision)
+	}
+	id, _ := res.LastInsertId()
+	return s.Figure(id)
+}
+
+const figCols = `id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance`
+
+func scanFigure(row interface{ Scan(...any) error }) (Figure, error) {
+	var f Figure
+	var at int64
+	var prov string
+	if err := row.Scan(&f.ID, &f.DatasetID, &f.Title, &f.Caption, &at, &f.Revision, &f.PreviewSHA, &f.Width, &f.Height, &prov); err != nil {
+		return Figure{}, err
+	}
+	f.CreatedAt, f.Provenance = time.Unix(at, 0).UTC(), json.RawMessage(prov)
+	return f, nil
+}
+
+func (s *Store) Figure(id int64) (Figure, error) {
+	f, err := scanFigure(s.db.QueryRow(`SELECT `+figCols+` FROM figures WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return f, ErrNotFound
+	}
+	return f, err
+}
+
+func (s *Store) figureByRevision(rev string) (Figure, error) {
+	f, err := scanFigure(s.db.QueryRow(`SELECT `+figCols+` FROM figures WHERE revision=?`, rev))
+	if errors.Is(err, sql.ErrNoRows) {
+		return f, ErrNotFound
+	}
+	return f, err
+}
+
+func (s *Store) Figures() ([]Figure, error) {
+	rows, err := s.db.Query(`SELECT ` + figCols + ` FROM figures ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Figure{}
+	for rows.Next() {
+		f, err := scanFigure(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// SetText edits the working text of a figure. The evidence (picture, provenance, revision) is unchanged.
+func (s *Store) SetText(id int64, title, caption string) error {
+	title = clip(title, 200)
+	if title == "" {
+		return fmt.Errorf("%w: a figure needs a title", ErrInvalid)
+	}
+	res, err := s.db.Exec(`UPDATE figures SET title=?, caption=? WHERE id=?`, title, clip(caption, MaxText), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) Preview(sha string) ([]byte, error) {
+	if len(sha) != 64 {
+		return nil, ErrNotFound
+	}
+	if _, err := hex.DecodeString(sha); err != nil {
+		return nil, ErrNotFound
+	}
+	b, err := os.ReadFile(filepath.Join(s.dir, "figures", sha+".png"))
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	return b, nil
+}
+
+// ---------- boards ----------
+
+type Item struct {
+	Position int    `json:"position"`
+	Figure   Figure `json:"figure"`
+	Note     string `json:"note"`
+}
+
+type Board struct {
+	ID        int64     `json:"id"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Items     []Item    `json:"items"`
+}
+
+func (s *Store) CreateBoard(title string) (Board, error) {
+	title = clip(title, 200)
+	if title == "" {
+		return Board{}, fmt.Errorf("%w: a board needs a title", ErrInvalid)
+	}
+	now := time.Now().Unix()
+	res, err := s.db.Exec(`INSERT INTO boards(title,created_at,updated_at) VALUES(?,?,?)`, title, now, now)
+	if err != nil {
+		return Board{}, err
+	}
+	id, _ := res.LastInsertId()
+	return s.Board(id)
+}
+
+func (s *Store) Boards() ([]Board, error) {
+	rows, err := s.db.Query(`SELECT id FROM boards ORDER BY updated_at DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	out := []Board{}
+	for _, id := range ids {
+		b, err := s.Board(id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, nil
+}
+
+func (s *Store) Board(id int64) (Board, error) {
+	var b Board
+	var c, u int64
+	err := s.db.QueryRow(`SELECT id,title,created_at,updated_at FROM boards WHERE id=?`, id).Scan(&b.ID, &b.Title, &c, &u)
+	if errors.Is(err, sql.ErrNoRows) {
+		return b, ErrNotFound
+	}
+	if err != nil {
+		return b, err
+	}
+	b.CreatedAt, b.UpdatedAt = time.Unix(c, 0).UTC(), time.Unix(u, 0).UTC()
+	rows, err := s.db.Query(`SELECT i.position, i.note, i.figure_id FROM board_items i WHERE i.board_id=? ORDER BY i.position`, id)
+	if err != nil {
+		return b, err
+	}
+	type row struct {
+		pos  int
+		note string
+		fid  int64
+	}
+	var rs []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.pos, &r.note, &r.fid); err != nil {
+			rows.Close()
+			return b, err
+		}
+		rs = append(rs, r)
+	}
+	rows.Close()
+	b.Items = []Item{}
+	for _, r := range rs {
+		f, err := s.Figure(r.fid)
+		if err != nil {
+			return b, err
+		}
+		b.Items = append(b.Items, Item{Position: r.pos, Figure: f, Note: r.note})
+	}
+	return b, nil
+}
+
+func (s *Store) touch(id int64) {
+	_, _ = s.db.Exec(`UPDATE boards SET updated_at=? WHERE id=?`, time.Now().Unix(), id)
+}
+
+func (s *Store) AddItem(boardID, figureID int64) error {
+	if _, err := s.Board(boardID); err != nil {
+		return err
+	}
+	if _, err := s.Figure(figureID); err != nil {
+		return err
+	}
+	var next int
+	_ = s.db.QueryRow(`SELECT COALESCE(MAX(position)+1,0) FROM board_items WHERE board_id=?`, boardID).Scan(&next)
+	if _, err := s.db.Exec(`INSERT INTO board_items(board_id,position,figure_id) VALUES(?,?,?)`, boardID, next, figureID); err != nil {
+		return err
+	}
+	s.touch(boardID)
+	return nil
+}
+
+// reorder rewrites positions 0..n-1 in the given order of the current positions.
+func (s *Store) reorder(boardID int64, order []int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE board_items SET position = position + 100000 WHERE board_id=?`, boardID); err != nil {
+		return err
+	}
+	for newPos, old := range order {
+		if _, err := tx.Exec(`UPDATE board_items SET position=? WHERE board_id=? AND position=?`, newPos, boardID, old+100000); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.touch(boardID)
+	return nil
+}
+
+func (s *Store) RemoveItem(boardID int64, pos int) error {
+	b, err := s.Board(boardID)
+	if err != nil {
+		return err
+	}
+	if pos < 0 || pos >= len(b.Items) {
+		return ErrNotFound
+	}
+	if _, err := s.db.Exec(`DELETE FROM board_items WHERE board_id=? AND position=?`, boardID, pos); err != nil {
+		return err
+	}
+	var order []int
+	for i := range b.Items {
+		if i != pos {
+			order = append(order, i)
+		}
+	}
+	return s.reorder(boardID, order)
+}
+
+// MoveItem moves the item at pos by delta places (-1 up, +1 down).
+func (s *Store) MoveItem(boardID int64, pos, delta int) error {
+	b, err := s.Board(boardID)
+	if err != nil {
+		return err
+	}
+	to := pos + delta
+	if pos < 0 || pos >= len(b.Items) || to < 0 || to >= len(b.Items) {
+		return ErrNotFound
+	}
+	order := make([]int, len(b.Items))
+	for i := range order {
+		order[i] = i
+	}
+	order[pos], order[to] = order[to], order[pos]
+	return s.reorder(boardID, order)
+}
+
+func (s *Store) SetNote(boardID int64, pos int, note string) error {
+	res, err := s.db.Exec(`UPDATE board_items SET note=? WHERE board_id=? AND position=?`, clip(note, MaxText), boardID, pos)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	s.touch(boardID)
+	return nil
+}
+
+// ---------- snapshots, tokens, review ----------
+
+// FrozenItem is everything a reviewer may see about one figure. There is deliberately no path, dataset id or
+// credential field: the type is the whitelist.
+type FrozenItem struct {
+	Revision   string          `json:"revision"`
+	Title      string          `json:"title"`
+	Caption    string          `json:"caption"`
+	Note       string          `json:"note"`
+	PreviewSHA string          `json:"previewSha"`
+	Width      int             `json:"width"`
+	Height     int             `json:"height"`
+	Provenance json.RawMessage `json:"provenance"`
+}
+
+type Frozen struct {
+	BoardTitle string       `json:"boardTitle"`
+	Label      string       `json:"label"`
+	CreatedAt  time.Time    `json:"createdAt"`
+	ExpiresAt  time.Time    `json:"expiresAt"`
+	Items      []FrozenItem `json:"items"`
+}
+
+type Snapshot struct {
+	ID        int64     `json:"id"`
+	BoardID   int64     `json:"boardId"`
+	Label     string    `json:"label"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Revoked   bool      `json:"revoked"`
+	Items     int       `json:"items"`
+}
+
+func hashToken(tok string) string { h := sha256.Sum256([]byte(tok)); return hex.EncodeToString(h[:]) }
+
+// Publish freezes the board as it is now and returns a review token. Only the token's hash is stored, so the token
+// can be shown once and never recovered; revoke and publish again to share anew.
+func (s *Store) Publish(boardID int64, label string, ttl time.Duration) (Snapshot, string, error) {
+	b, err := s.Board(boardID)
+	if err != nil {
+		return Snapshot{}, "", err
+	}
+	if len(b.Items) == 0 {
+		return Snapshot{}, "", fmt.Errorf("%w: the board has no figures", ErrInvalid)
+	}
+	if ttl <= 0 || ttl > 90*24*time.Hour {
+		return Snapshot{}, "", fmt.Errorf("%w: expiry must be between a moment and 90 days", ErrInvalid)
+	}
+	now := time.Now()
+	fr := Frozen{BoardTitle: b.Title, Label: clip(label, 200), CreatedAt: now.UTC(), ExpiresAt: now.Add(ttl).UTC(), Items: []FrozenItem{}}
+	for _, it := range b.Items {
+		fr.Items = append(fr.Items, FrozenItem{Revision: it.Figure.Revision, Title: it.Figure.Title, Caption: it.Figure.Caption, Note: it.Note,
+			PreviewSHA: it.Figure.PreviewSHA, Width: it.Figure.Width, Height: it.Figure.Height, Provenance: it.Figure.Provenance})
+	}
+	raw, err := json.Marshal(fr)
+	if err != nil {
+		return Snapshot{}, "", err
+	}
+	var buf [32]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return Snapshot{}, "", err
+	}
+	tok := base64.RawURLEncoding.EncodeToString(buf[:])
+	res, err := s.db.Exec(`INSERT INTO snapshots(board_id,label,created_at,expires_at,token_hash,frozen) VALUES(?,?,?,?,?,?)`,
+		boardID, fr.Label, now.Unix(), fr.ExpiresAt.Unix(), hashToken(tok), string(raw))
+	if err != nil {
+		return Snapshot{}, "", err
+	}
+	id, _ := res.LastInsertId()
+	return Snapshot{ID: id, BoardID: boardID, Label: fr.Label, CreatedAt: now.UTC(), ExpiresAt: fr.ExpiresAt, Items: len(fr.Items)}, tok, nil
+}
+
+func (s *Store) Snapshots(boardID int64) ([]Snapshot, error) {
+	rows, err := s.db.Query(`SELECT id,board_id,label,created_at,expires_at,revoked,frozen FROM snapshots WHERE board_id=? ORDER BY id DESC`, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Snapshot{}
+	for rows.Next() {
+		var sn Snapshot
+		var c, e, rv int64
+		var frozen string
+		if err := rows.Scan(&sn.ID, &sn.BoardID, &sn.Label, &c, &e, &rv, &frozen); err != nil {
+			return nil, err
+		}
+		var fr Frozen
+		_ = json.Unmarshal([]byte(frozen), &fr)
+		sn.CreatedAt, sn.ExpiresAt, sn.Revoked, sn.Items = time.Unix(c, 0).UTC(), time.Unix(e, 0).UTC(), rv != 0, len(fr.Items)
+		out = append(out, sn)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Revoke(snapshotID int64) error {
+	res, err := s.db.Exec(`UPDATE snapshots SET revoked=1 WHERE id=?`, snapshotID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// Review is a reviewer's view of one snapshot.
+type Review struct {
+	Snapshot Frozen    `json:"snapshot"`
+	Comments []Comment `json:"comments"`
+}
+
+type Comment struct {
+	ID             int64     `json:"id"`
+	FigureRevision string    `json:"figureRevision"`
+	Author         string    `json:"author"`
+	Body           string    `json:"body"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+// lookup resolves a token to a live snapshot. Unknown, revoked and expired tokens are indistinguishable (ErrNotFound).
+func (s *Store) lookup(token string) (id int64, fr Frozen, err error) {
+	if len(token) < 20 || len(token) > 100 {
+		return 0, fr, ErrNotFound
+	}
+	h := hashToken(token)
+	var frozen, stored string
+	var exp, rv int64
+	err = s.db.QueryRow(`SELECT id,expires_at,revoked,token_hash,frozen FROM snapshots WHERE token_hash=?`, h).Scan(&id, &exp, &rv, &stored, &frozen)
+	if err != nil || subtle.ConstantTimeCompare([]byte(stored), []byte(h)) != 1 || rv != 0 || time.Now().Unix() >= exp {
+		return 0, fr, ErrNotFound
+	}
+	if err := json.Unmarshal([]byte(frozen), &fr); err != nil {
+		return 0, fr, err
+	}
+	return id, fr, nil
+}
+
+func (s *Store) Review(token string) (Review, error) {
+	id, fr, err := s.lookup(token)
+	if err != nil {
+		return Review{}, err
+	}
+	cs, err := s.Comments(id)
+	return Review{Snapshot: fr, Comments: cs}, err
+}
+
+func (s *Store) Comments(snapshotID int64) ([]Comment, error) {
+	rows, err := s.db.Query(`SELECT id,figure_revision,author,body,created_at FROM comments WHERE snapshot_id=? ORDER BY id`, snapshotID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Comment{}
+	for rows.Next() {
+		var c Comment
+		var at int64
+		if err := rows.Scan(&c.ID, &c.FigureRevision, &c.Author, &c.Body, &at); err != nil {
+			return nil, err
+		}
+		c.CreatedAt = time.Unix(at, 0).UTC()
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ReviewPreview returns a preview only if it belongs to the token's snapshot: a valid token never opens other figures.
+func (s *Store) ReviewPreview(token, sha string) ([]byte, error) {
+	_, fr, err := s.lookup(token)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range fr.Items {
+		if it.PreviewSHA == sha {
+			return s.Preview(sha)
+		}
+	}
+	return nil, ErrNotFound
+}
+
+// AddComment records a reviewer comment on a figure revision that is part of the snapshot.
+func (s *Store) AddComment(token, figureRevision, author, body string) (Comment, error) {
+	id, fr, err := s.lookup(token)
+	if err != nil {
+		return Comment{}, err
+	}
+	found := false
+	for _, it := range fr.Items {
+		found = found || it.Revision == figureRevision
+	}
+	body, author = clip(body, MaxComment), clip(author, 80)
+	if !found || body == "" {
+		return Comment{}, fmt.Errorf("%w: comment needs text and a figure of this snapshot", ErrInvalid)
+	}
+	if author == "" {
+		author = "Reviewer"
+	}
+	now := time.Now()
+	// count and insert in one statement so concurrent comments cannot pass the limit
+	res, err := s.db.Exec(`INSERT INTO comments(snapshot_id,figure_revision,author,body,created_at)
+		SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM comments WHERE snapshot_id=?) < ?`, id, figureRevision, author, body, now.Unix(), id, MaxCommentsPS)
+	if err != nil {
+		return Comment{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Comment{}, fmt.Errorf("%w: comment limit reached", ErrInvalid)
+	}
+	cid, _ := res.LastInsertId()
+	return Comment{ID: cid, FigureRevision: figureRevision, Author: author, Body: body, CreatedAt: now.UTC()}, nil
+}
+
+// OwnerComments lists the comments on a snapshot for its owner.
+func (s *Store) OwnerComments(snapshotID int64) ([]Comment, error) { return s.Comments(snapshotID) }

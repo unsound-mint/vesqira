@@ -1,0 +1,106 @@
+.page {
+  display: grid;
+  gap: var(--sp-6);
+  max-width: 860px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-4);
+  color: var(--text);
+}
+
+.head {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--w-strong);
+  line-height: var(--lh-xl);
+}
+
+.h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--w-strong);
+}
+
+.fig {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+}
+
+.img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-md);
+  background: var(--canvas);
+}
+
+.note,
+.cap,
+.det {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.cap {
+  color: var(--text);
+}
+
+.noteBox {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--accent-bg);
+  font-size: var(--text-sm);
+}
+
+.det ul {
+  margin: var(--sp-1) 0;
+  padding-left: var(--sp-4);
+}
+
+.comments {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.comment {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+  font-size: var(--text-sm);
+}
+
+.label {
+  display: grid;
+  gap: var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.area {
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  resize: vertical;
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}

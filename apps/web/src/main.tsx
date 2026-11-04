@@ -3,9 +3,10 @@ import { createRoot } from "react-dom/client";
 import "./styles/base.css";
 import { Examples } from "./examples/Examples";
 import { Shell } from "./shell/Shell";
+import { ReviewPage } from "./review/ReviewPage";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {location.hash === "#/components" ? <Examples /> : <Shell />}
+    {location.hash === "#/components" ? <Examples /> : location.hash.startsWith("#/review/") ? <ReviewPage token={decodeURIComponent(location.hash.slice("#/review/".length))} /> : <Shell />}
   </StrictMode>,
 );

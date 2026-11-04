@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { FolderOpen, LayoutGrid, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { BoardsView } from "../boards/BoardsView";
+import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { Explorer } from "../catalog/Explorer";
 import { getCompat } from "../api/catalog";
@@ -63,6 +65,7 @@ export function Shell() {
   useEffect(() => {
     if (!linked) viewerA.setMirror(null), viewerB.setMirror(null);
   }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [mode, setMode] = useState<"viewer" | "boards">("viewer");
   const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", L.inspOpen ? `${L.insp}px` : "0px"].join(" ");
   const rows = ["var(--h-title)", "minmax(0,1fr)", L.timelineOpen ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
 
@@ -75,6 +78,7 @@ export function Shell() {
 
       <nav className={s.rail} aria-label="Workbench">
         <IconButton icon={FolderOpen} label="Explorer" size="lg" pressed={L.sideOpen} onClick={() => toggle("sideOpen")} />
+        <IconButton icon={LayoutGrid} label="Boards" size="lg" pressed={mode === "boards"} onClick={() => setMode(mode === "boards" ? "viewer" : "boards")} />
       </nav>
 
       <aside className={s.side} aria-label="Explorer" hidden={!L.sideOpen}>
@@ -87,7 +91,9 @@ export function Shell() {
       </aside>
 
       <main className={s.canvas} aria-label="Viewer">
-        {cat.selected ? (
+        {mode === "boards" ? (
+          <BoardsView />
+        ) : cat.selected ? (
           <div className={s.compare}>
             <CompareBar datasets={cat.datasets} selectedId={cat.selected.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} />
             <div className={compareDs ? s.panes2 : s.panes1}>
@@ -135,6 +141,9 @@ export function Shell() {
           </Section>
           <Section title="Spectrum">
             {actDs ? <SpectrumPlot v={viewer} /> : <p className={s.empty}>{EM}</p>}
+          </Section>
+          <Section title="Figure" defaultOpen={false}>
+            {actDs ? <FigurePanel v={viewer} dataset={actDs} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Dataset">
             {actDs ? <DatasetInspector d={actDs} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}

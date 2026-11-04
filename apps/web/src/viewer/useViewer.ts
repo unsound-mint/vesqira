@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
 import { getAxial, getCoord, getPlane, getSpectrum, getView } from "../api/planes";
 import type { AxialStats, Coord, Plane, RegionShape, Spectrum, View } from "../api/planes";
@@ -19,6 +19,7 @@ export function useViewer(dataset: Dataset | null) {
   const interp = dataset?.interpretation ?? null;
   const relId = interp?.reliabilityId ?? null;
   const unit = interp?.unit ?? null;
+  const canvas = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState<View | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
   const [channel, setChannel] = useState(0);
@@ -204,7 +205,7 @@ export function useViewer(dataset: Dataset | null) {
     datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
     colormap, setColormap, stretch, setStretch, range, setRange,
     hover, setHover, mirror, setMirror, pinned, setPinned, probe, pixelValue, coord, coordError,
-    interp, reliability, axial, axialError, showLines, setShowLines,
+    canvas, interp, reliability, axial, axialError, showLines, setShowLines,
     tool, setTool, region, setRegion, spectrum, spectrumError, spectrumLoading,
     onChannelKey, retry: () => setRetry((n) => n + 1),
   };

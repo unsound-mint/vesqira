@@ -8,10 +8,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/server"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
@@ -30,6 +33,10 @@ func main() {
 	python := flag.String("python", "python3", "interpreter for the worker")
 	planeScript := flag.String("plane-worker", "services/scientific-worker/plane_worker.py", "persistent plane worker script")
 	cacheMiB := flag.Int("plane-cache-mib", 256, "plane cache size in MiB (0 disables)")
+	dataDir := flag.String("data-dir", "", "directory for figure previews (default: next to the database)")
+	reviewAddr := flag.String("review-addr", "", "optional address for the reviewer surface (published previews only); may be non-loopback, put TLS in front")
+	clientIP := flag.String("review-client-ip-header", "", "header a trusted reverse proxy sets to the client address (for example X-Forwarded-For); without it all clients behind a proxy share one failure allowance")
+	webDist := flag.String("web-dist", "", "built web app to serve on the review address")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
 
@@ -51,9 +58,25 @@ func main() {
 	}
 	defer store.Close()
 
+	dir := *dataDir
+	if dir == "" {
+		dir = filepath.Dir(strings.TrimPrefix(*db, "file:"))
+	}
+	bs, err := boards.Open(store.DB(), dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if *reviewAddr != "" {
+		rv := &http.Server{Addr: *reviewAddr, Handler: (&review.Handler{Store: bs, WebDist: *webDist, ClientIPHeader: *clientIP}).Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+		if h, _, err := net.SplitHostPort(*reviewAddr); err != nil || (h != "127.0.0.1" && h != "localhost" && h != "::1") {
+			log.Printf("review surface on %s is not loopback: it serves published previews to anyone holding a review link, so put TLS in front", *reviewAddr)
+		}
+		go func() { log.Fatal(rv.ListenAndServe()) }()
+		log.Printf("review surface on http://%s (published previews only)", *reviewAddr)
+	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes}
+	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
 	}

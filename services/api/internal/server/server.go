@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
@@ -24,6 +25,7 @@ type Server struct {
 	Worker HeaderReader
 	Planes PlaneService // persistent plane worker; nil answers 503
 	Cache  *PlaneCache  // optional; nil disables caching
+	Boards *boards.Store
 }
 
 func (s *Server) Handler() http.Handler {
@@ -32,6 +34,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets", s.list)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
 	mux.HandleFunc("POST /api/datasets", s.register)
+	if s.Boards != nil {
+		mux.HandleFunc("POST /api/figures", s.createFigure)
+		mux.HandleFunc("GET /api/figures", s.listFigures)
+		mux.HandleFunc("GET /api/figures/{id}/preview", s.figurePreview)
+		mux.HandleFunc("POST /api/figures/{id}/text", s.figureText)
+		mux.HandleFunc("GET /api/boards", s.listBoards)
+		mux.HandleFunc("POST /api/boards", s.createBoard)
+		mux.HandleFunc("GET /api/boards/{id}", s.getBoard)
+		mux.HandleFunc("POST /api/boards/{id}/items", s.boardAdd)
+		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/remove", s.boardItem("remove"))
+		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/move", s.boardItem("move"))
+		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/note", s.boardItem("note"))
+		mux.HandleFunc("POST /api/boards/{id}/publish", s.publish)
+		mux.HandleFunc("GET /api/boards/{id}/snapshots", s.snapshots)
+		mux.HandleFunc("POST /api/snapshots/{id}/revoke", s.revoke)
+		mux.HandleFunc("GET /api/snapshots/{id}/comments", s.snapshotComments)
+	}
 	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
 	mux.HandleFunc("GET /api/datasets/{id}/plane", s.plane)
 	mux.HandleFunc("GET /api/datasets/{id}/coord", s.coord)
