@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -51,6 +53,10 @@ func Open(dsn string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
+	if err := schema.Guard(db, dsn); err != nil {
+		db.Close()
+		return nil, err
+	}
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS datasets(
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		path TEXT NOT NULL UNIQUE,
@@ -71,9 +77,13 @@ func Open(dsn string) (*Store, error) {
 	}
 	if err == nil {
 		// older catalogs lack the column that records who made a declaration; adding it twice is harmless
-		_, _ = db.Exec(`ALTER TABLE interpretations ADD COLUMN declared_by TEXT NOT NULL DEFAULT 'user'`)
-		_, _ = db.Exec(`ALTER TABLE datasets ADD COLUMN host_id INTEGER NOT NULL DEFAULT 0`)
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS dataset_nature(dataset_id INTEGER PRIMARY KEY, nature TEXT NOT NULL, declared_at INTEGER NOT NULL)`)
+		err = schema.AddColumn(db, "interpretations", "declared_by", "TEXT NOT NULL DEFAULT 'user'")
+		if err == nil {
+			err = schema.AddColumn(db, "datasets", "host_id", "INTEGER NOT NULL DEFAULT 0")
+		}
+		if err == nil {
+			_, err = db.Exec(`CREATE TABLE IF NOT EXISTS dataset_nature(dataset_id INTEGER PRIMARY KEY, nature TEXT NOT NULL, declared_at INTEGER NOT NULL)`)
+		}
 	}
 	if err != nil {
 		db.Close()

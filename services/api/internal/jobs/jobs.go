@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 )
 
 var (
@@ -366,12 +368,14 @@ func ParseStatus(out string) (state, detail string) {
 type Store struct{ db *sql.DB }
 
 func Open(db *sql.DB) (*Store, error) {
-	defer func() { _, _ = db.Exec(`ALTER TABLE jobs ADD COLUMN params TEXT NOT NULL DEFAULT ''`) }()
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS jobs(
 		id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, name TEXT NOT NULL, template TEXT NOT NULL,
 		script TEXT NOT NULL, script_hash TEXT NOT NULL, state TEXT NOT NULL, detail TEXT NOT NULL, slurm_id TEXT NOT NULL,
 		work_dir TEXT NOT NULL, output_dir TEXT NOT NULL, created_at INTEGER NOT NULL, submitted_at INTEGER,
 		finished_at INTEGER, run_id INTEGER)`)
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "params", "TEXT NOT NULL DEFAULT ''")
+	}
 	if err != nil {
 		return nil, err
 	}
