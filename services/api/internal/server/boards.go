@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -292,6 +293,42 @@ func (s *Server) figurePreview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(b)
+}
+
+// figureDownload serves the published picture of a figure as a PNG that carries its title and provenance inside the
+// file, so it stays attributed when it leaves the board.
+func (s *Server) figureDownload(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	f, err := s.Boards.Figure(id)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	b, err := s.Boards.Preview(f.PreviewSHA)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	out, err := boards.EmbedText(b, [][2]string{{"Title", f.Title}, {"Description", f.Caption}, {"Provenance", string(f.Provenance)}, {"Software", "Vesqira; the picture is as drawn in the author's browser, not a re-rendering of the data"}})
+	if err != nil {
+		out = b
+	}
+	name := strings.Map(func(r rune) rune {
+		if r < 128 && (r == '-' || r == '_' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+			return r
+		}
+		return '-'
+	}, f.Title)
+	if name == "" || strings.Trim(name, "-") == "" {
+		name = "figure"
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.png"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(out)
 }
 
 func (s *Server) figureText(w http.ResponseWriter, r *http.Request) {

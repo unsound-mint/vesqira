@@ -174,3 +174,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.link2 {
+  color: var(--accent);
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

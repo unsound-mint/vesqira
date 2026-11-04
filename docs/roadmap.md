@@ -32,8 +32,8 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 - [ ] Activity summary for the author and the reviewer: what changed since the last visit (Q101).
 - [x] Publication preflight and audience preview: what exactly a link exposes, before it is created (Q112, Q113).
 - [x] Correction notice: a snapshot can be superseded by a newer one with a reason (Q111).
-- [ ] Export a figure or a board as PNG and PDF with units, legend and provenance (Q107).
-- [ ] Presenter order and presenter mode for a board (Q105, Q106).
+- [x] Export a figure or a board as PNG and PDF with units, legend and provenance (Q107). PNG carries its provenance inside; PDF is the browser's print-to-PDF of a print layout.
+- [x] Presenter order and presenter mode for a board (Q105, Q106). Order is the board order; live viewers in a presentation are not built.
 
 ## Stage 3 — Viewer and comparison
 

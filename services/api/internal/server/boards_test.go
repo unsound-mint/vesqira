@@ -187,6 +187,13 @@ func TestFigureBoardReviewPathExposesNoSourceToTheReviewer(t *testing.T) {
 	if r, _ := get(t, rv.URL+"/review-api/"+pub.Token); r.StatusCode != 404 {
 		t.Errorf("revoked link: %d, want 404", r.StatusCode)
 	}
+	// the downloaded picture carries its own provenance, and the reviewer surface has no download route
+	if r, db := get(t, api("/api/figures/"+itoa(int(f.ID))+"/download")); r.StatusCode != 200 || !strings.Contains(r.Header.Get("Content-Disposition"), "attachment") || !strings.Contains(string(db), "iTXt") || !strings.Contains(string(db), "Provenance") || strings.Contains(string(db), root) {
+		t.Errorf("figure download: %d %v", r.StatusCode, r.Header)
+	}
+	if r, _ := get(t, rv.URL+"/api/figures/"+itoa(int(f.ID))+"/download"); r.StatusCode == 200 {
+		t.Error("the download route is reachable on the review surface")
+	}
 	if r, _ := get(t, api("/api/figures/"+itoa(int(f.ID))+"/preview")); r.StatusCode != 200 {
 		t.Errorf("owner preview after revoke: %d", r.StatusCode)
 	}

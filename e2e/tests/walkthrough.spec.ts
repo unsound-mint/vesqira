@@ -181,6 +181,11 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await page.getByLabel("Note for the reviewer").fill("Check the unit of the colour bar.");
   await page.getByLabel("Note for the reviewer").blur();
   await page.getByLabel("Label").fill("Group meeting draft");
+  await page.getByLabel("What should the reviewer look at?").fill("Is the colour stretch hiding the edge?");
+  await page.getByRole("button", { name: "Check what will be shared" }).click();
+  const region = page.getByRole("region", { name: "What the reviewer will see" });
+  await expect(region).toContainText("exactly this and nothing else");
+  await expect(region).toContainText("H I peak at 8 km/s");
   await page.getByRole("button", { name: "Freeze and create link" }).click();
   const link = await page.getByLabel("Review link").inputValue();
   expect(link.startsWith(`${REVIEW}/#/review/`)).toBe(true);
@@ -198,15 +203,44 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   for (const p of ["/api/datasets", "/api/roots", "/api/figures", "/api/boards"]) {
     expect(await sup.evaluate(async (u) => (await fetch(u)).status, p)).toBe(404); // the owner API does not exist there
   }
+  await expect(sup.getByText("Is the colour stretch hiding the edge?")).toBeVisible();
   await expectNoAxeViolations(sup);
   await sup.getByLabel(/Your name/).fill("Prof. Reviewer");
   await sup.getByRole("textbox", { name: "Comment", exact: true }).fill("Why the 1st to 99th percentile limits?");
   await sup.getByRole("button", { name: "Send comment" }).click();
   await expect(sup.getByText("Why the 1st to 99th percentile limits?")).toBeVisible();
 
+  await sup.getByLabel("Changes requested").check();
+  await sup.getByRole("button", { name: "Send outcome" }).click();
+  await expect(sup.getByText(/Currently: Changes requested/)).toBeVisible();
+
   // ---- back with the author: the comment is there; revoking ends access ----
-  await page.getByRole("button", { name: "Comments" }).click();
+  await page.getByRole("button", { name: "Comments and outcome" }).click();
   await expect(page.getByText(/Prof\. Reviewer.*Why the 1st to 99th percentile limits\?/)).toBeVisible();
+  await expect(page.getByText(/Reviewer: Changes requested \(Prof\. Reviewer\)/)).toBeVisible();
+  await page.getByLabel("Reply to Prof. Reviewer").fill("Rescaled in the next version.");
+  await page.getByRole("button", { name: "Reply", exact: true }).click();
+  await expect(page.getByText("Rescaled in the next version.")).toBeVisible();
+  await sup.reload();
+  await expect(sup.getByText("Rescaled in the next version.")).toBeVisible();
+
+  // ---- presenting, downloading and printing the board ----
+  await page.getByRole("button", { name: "Present" }).click();
+  const stage = page.getByRole("dialog", { name: /Presenting/ });
+  await expect(stage).toBeVisible();
+  await page.screenshot({ path: process.env.VESQIRA_SHOTS ? `${process.env.VESQIRA_SHOTS}/present.png` : undefined });
+  await page.keyboard.press("Escape");
+  await expect(stage).toBeHidden();
+  const href = await page.getByRole("link", { name: "Download PNG" }).first().getAttribute("href");
+  const png = await page.request.get(href!);
+  expect(png.status()).toBe(200);
+  expect(png.headers()["content-disposition"]).toContain("attachment");
+  expect((await png.body()).includes(Buffer.from("iTXt"))).toBe(true);
+  const printPage = await page.context().newPage();
+  await printPage.goto(`${new URL(page.url()).origin}/#/print/1`);
+  await expect(printPage.getByRole("button", { name: "Print or save as PDF" })).toBeVisible();
+  await expect(printPage.getByText(/bytes were not hashed/)).toBeVisible();
+  await printPage.close();
   await page.getByRole("button", { name: "Revoke link" }).click();
   await sup.reload();
   await expect(sup.getByRole("alert")).toHaveText(/not valid, has expired, or was revoked/);

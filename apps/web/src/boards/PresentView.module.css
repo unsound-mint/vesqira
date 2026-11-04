@@ -1,0 +1,69 @@
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--canvas);
+  color: var(--text);
+  outline: none;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.count {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  flex: 1;
+  font-size: var(--text-lg);
+  font-weight: var(--w-strong);
+}
+
+.picture {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+}
+
+.img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.caption,
+.note,
+.line,
+.hint {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.note,
+.prov {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+
+.prov {
+  display: grid;
+  gap: var(--sp-1);
+  max-height: 30vh;
+  overflow: auto;
+  font-size: var(--text-sm);
+}
+
+.hint {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}

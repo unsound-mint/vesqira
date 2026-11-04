@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/figures", s.createFigure)
 		mux.HandleFunc("GET /api/figures", s.listFigures)
 		mux.HandleFunc("GET /api/figures/{id}/preview", s.figurePreview)
+		mux.HandleFunc("GET /api/figures/{id}/download", s.figureDownload)
 		mux.HandleFunc("POST /api/figures/{id}/text", s.figureText)
 		mux.HandleFunc("GET /api/boards", s.listBoards)
 		mux.HandleFunc("POST /api/boards", s.createBoard)

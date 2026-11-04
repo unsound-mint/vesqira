@@ -1,0 +1,68 @@
+.page {
+  display: grid;
+  gap: var(--sp-5);
+  max-width: 820px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-4);
+  color: var(--text);
+}
+
+.head {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.meta,
+.cap,
+.prov {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.cap {
+  color: var(--text);
+}
+
+.prov {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.prov p {
+  margin: 0;
+}
+
+.fig {
+  display: grid;
+  gap: var(--sp-2);
+  break-inside: avoid;
+}
+
+.img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+@media print {
+  .page {
+    max-width: none;
+    padding: 0;
+    color: var(--text);
+  }
+
+  .noPrint {
+    display: none;
+  }
+}
