@@ -1,0 +1,10 @@
+{
+  "note": "p95 in milliseconds and worker resident memory in MB, about five times the numbers measured on a development laptop (page-cache speed, sparse cube) so that machine noise does not trip them; they exist to catch a change that makes an operation several times slower",
+  "ops": {
+    "view": {"p95_ms": 1500, "rss_mb": 400},
+    "plane": {"p95_ms": 300, "rss_mb": 400},
+    "coord": {"p95_ms": 100, "rss_mb": 400},
+    "spectrum_small": {"p95_ms": 200, "rss_mb": 400},
+    "spectrum_box": {"p95_ms": 2000, "rss_mb": 600}
+  }
+}

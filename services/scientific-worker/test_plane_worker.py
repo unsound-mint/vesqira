@@ -232,6 +232,34 @@ class PlaneWorker(unittest.TestCase):
         self.assertAlmostEqual(sx, g.CDELT_DEG * 3600, places=6)
         self.assertAlmostEqual(head["size"]["area_arcmin2"], 36 * (g.CDELT_DEG * 60) ** 2, places=6)
 
+    def test_spectrum_is_the_same_whatever_the_block_size_and_the_reader(self):
+        # blocks of 1 channel, 3 channels and all channels must agree exactly, and so must the section reader that
+        # is used when a file cannot be memory-mapped
+        sys.path.insert(0, str(HERE))
+        import plane_worker as pw
+        want = self.spectrum(self.f["hi_cube.fits"], shape="rect", x0=0, y0=0, x1=5, y1=5)[1]
+        old_block, old_array = pw.SPECTRUM_BLOCK_ELEMENTS, pw.fits_array
+        try:
+            for elements in (1, 36 * 3, 10 ** 9):
+                for reader in (old_array, lambda hdul: hdul[0].section):
+                    pw.SPECTRUM_BLOCK_ELEMENTS, pw.fits_array = elements, reader
+                    head, payload = pw.Cube(os.path.realpath(self.f["hi_cube.fits"])).spectrum(
+                        {"shape": "rect", "x0": 0, "y0": 0, "x1": 5, "y1": 5})
+                    nc = head["channels"]
+                    np.testing.assert_array_equal(np.frombuffer(payload, "<f8", nc, 8 * nc), want[1])
+                    np.testing.assert_array_equal(np.frombuffer(payload, "<u4", nc, 16 * nc), want[2])
+        finally:
+            pw.SPECTRUM_BLOCK_ELEMENTS, pw.fits_array = old_block, old_array
+
+    def test_a_map_without_a_channel_axis_has_a_one_channel_spectrum(self):
+        with fits.open(self.f["vgt_psi_deg.fits"]) as h:
+            full = h[0].data.astype(np.float64)
+        head, (axis, mean, count) = self.spectrum(self.f["vgt_psi_deg.fits"], shape="rect", x0=1, y0=1, x1=6, y1=5)
+        sub = full[1:6, 1:7]
+        self.assertEqual(head["channels"], 1)
+        np.testing.assert_allclose(mean, [np.nanmean(sub)], rtol=1e-12)
+        self.assertEqual(int(count[0]), int(np.isfinite(sub).sum()))
+
     def test_all_nan_region_is_unknown_not_zero(self):
         head, (axis, mean, count) = self.spectrum(self.f["hi_cube.fits"], shape="rect", x0=2, y0=2, x1=4, y1=4)
         self.assertTrue(np.isnan(mean).all())

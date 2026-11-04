@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from astropy.io import fits
 
-from plane_worker import Cube, Refused, authorize
+from plane_worker import Cube, Refused, authorize, fits_array
 
 MAX_OUTPUT_ELEMENTS = 1 << 28
 
@@ -47,7 +47,7 @@ def planes(c: Cube, c0: int, c1: int, ys=slice(None), xs=slice(None)):
     with fits.open(c.path, memmap=True, do_not_scale_image_data=True) as hdul:
         hdu = hdul[0]
         for ch in range(c0, c1 + 1):
-            yield ch, c._physical(np.asarray(hdu.section[c._index(ch, ys, xs)]))
+            yield ch, c._physical(np.array(fits_array(hdul)[c._index(ch, ys, xs)]))
 
 
 def spectral_axis(c: Cube):

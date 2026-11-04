@@ -1,4 +1,4 @@
-.PHONY: check docs web fixtures api e2e demo
+.PHONY: check docs web fixtures api e2e demo bench
 check: docs fixtures api web
 
 docs:
@@ -30,3 +30,7 @@ e2e:
 # Run the app on generated fixtures and follow docs/demo.md
 demo:
 	tools/demo.sh
+
+# Worker timings on a large sparse cube against tools/bench_budgets.json (page-cache speed, not a disk)
+bench:
+	python3 tools/bench.py --check

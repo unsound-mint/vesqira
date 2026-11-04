@@ -28,7 +28,7 @@ jobs:
           if git diff --name-only HEAD^1 HEAD | grep -qE '^(fixtures/|Makefile$|\.github/workflows/ci\.yml$)'; then
             echo "fixtures=true" >> "$GITHUB_OUTPUT"
           fi
-          if git diff --name-only HEAD^1 HEAD | grep -qE '^(services/|fixtures/|Makefile$|\.github/workflows/ci\.yml$)'; then
+          if git diff --name-only HEAD^1 HEAD | grep -qE '^(services/|fixtures/|tools/bench|Makefile$|\.github/workflows/ci\.yml$)'; then
             echo "api=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -66,6 +66,8 @@ jobs:
           go-version-file: services/api/go.mod
           cache-dependency-path: services/api/go.sum
       - run: make api
+      # Generous budgets: this catches a change that makes the worker several times slower, not machine noise.
+      - run: make bench
 
   web:
     needs: changes

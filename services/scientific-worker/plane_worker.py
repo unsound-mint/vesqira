@@ -28,7 +28,8 @@ MAX_REQUEST_BYTES = 8192
 MAX_CHANNELS = 1 << 24
 MAX_TEXT_BYTES = 256 << 10
 MAX_SPECTRUM_CHANNELS = 1 << 16
-MAX_REGION_WORK = 200_000_000     # region pixels x channels read for one spectrum
+MAX_REGION_WORK = 1_000_000_000     # region pixels x channels read for one spectrum
+SPECTRUM_BLOCK_ELEMENTS = 4_000_000   # pixels x channels per block read (32 MB as float64)
 CUBES_KEPT = 4
 
 # FITS standard default units, used only when CUNIT is absent and then reported as "inferred".
@@ -39,6 +40,22 @@ VELOCITY = {"VRAD", "VOPT", "VELO"}
 # Legacy AIPS spellings such as VELO-LSR. Their radio/optical meaning and reference frame depend on VELREF,
 # which many files omit; astropy would silently translate them (to VOPT and LSRK), and we do not.
 LEGACY_SUFFIX = {"-LSR", "-HEL", "-OBS"}
+
+
+def fits_array(hdul):
+    """The primary data as something sliceable that reads only what is sliced.
+
+    A memory-mapped file slices lazily and an order of magnitude faster than astropy's section reader; any file that is
+    not mapped (compressed, or mapping refused) falls back to the section reader, which also reads only what is asked for.
+    Callers copy what they slice (np.array) before the file is closed.
+    """
+    hdu = hdul[0]
+    try:
+        if getattr(hdul._file, "memmap", False) and getattr(hdul._file, "compression", None) is None:
+            return hdu.data
+    except Exception:       # private attributes moved in some astropy version: the section reader is always correct
+        pass
+    return hdu.section
 
 
 class Refused(Exception):
@@ -235,6 +252,19 @@ class Cube:
             idx.append(ys if f == self.y else xs if f == self.x else (channel if f == self.chan else 0))
         return tuple(idx)
 
+    def _channel_block(self, hdul, c0: int, c1: int, ys: slice, xs: slice) -> np.ndarray:
+        """Physical values of channels [c0, c1) over a region, as an array (channels, y, x)."""
+        raw = np.array(fits_array(hdul)[self._index(slice(c0, c1), ys, xs)])
+        if self.chan is None:                                  # a map without a channel axis is one channel
+            raw = raw[np.newaxis]
+            return self._physical(np.swapaxes(raw, 1, 2) if self.x > self.y else raw)
+        n = len(self.shape)
+        kept = [n - 1 - k for k in range(n) if n - 1 - k in (self.chan, self.y, self.x)]   # FITS axes that survive, in numpy order
+        raw = np.moveaxis(raw, kept.index(self.chan), 0)
+        if kept.index(self.x) < kept.index(self.y):                                          # file stores x before y
+            raw = np.swapaxes(raw, 1, 2)
+        return self._physical(raw)
+
     def _physical(self, raw: np.ndarray) -> np.ndarray:
         """float64 physical values: BSCALE/BZERO applied, BLANK (integer data) is NaN, never 0."""
         bscale, bzero = self.h.get("BSCALE", 1.0), self.h.get("BZERO", 0.0)
@@ -254,7 +284,7 @@ class Cube:
             hdu = hdul[0]
             if hdu.data is None:
                 raise Refused("unreadable", "the file holds no image data")
-            raw = np.asarray(hdu.section[self._index(channel, slice(None), slice(None))])
+            raw = np.array(fits_array(hdul)[self._index(channel, slice(None), slice(None))])
         if raw.shape != (self.shape[self.y], self.shape[self.x]):
             raise Refused("unreadable", "unexpected plane shape")
         phys = self._physical(raw)
@@ -321,7 +351,7 @@ class Cube:
 
         def read(cube: "Cube") -> np.ndarray:
             with fits.open(cube.path, memmap=True, do_not_scale_image_data=True) as hdul:
-                return cube._physical(np.asarray(hdul[0].section[cube._index(0, ys, xs)]))
+                return cube._physical(np.array(fits_array(hdul)[cube._index(0, ys, xs)]))
 
         values = read(self)[mask]                                    # in the declared unit
         theta = np.radians(values) if unit == "deg" else values
@@ -353,14 +383,20 @@ class Cube:
             raise Refused("unsupported", "the region is too large for a spectrum; draw a smaller one")
         mean, count = np.full(nc, np.nan), np.zeros(nc, dtype="<u4")
         ys, xs = slice(by0, by1 + 1), slice(bx0, bx1 + 1)
+        # Read a block of channels per call: one strided read of the region over K channels instead of K separate reads,
+        # with the per-channel mean taken in one vectorised step. K is bounded so a block stays a few tens of MB.
+        block = max(1, min(nc, SPECTRUM_BLOCK_ELEMENTS // ((bx1 - bx0 + 1) * (by1 - by0 + 1))))
         with fits.open(self.path, memmap=True, do_not_scale_image_data=True) as hdul:
             hdu = hdul[0]
-            for c in range(nc):
-                vals = self._physical(np.asarray(hdu.section[self._index(c, ys, xs)]))[mask]
-                finite = vals[np.isfinite(vals)]
-                count[c] = finite.size
-                if finite.size:
-                    mean[c] = finite.mean()          # a channel with no finite pixel is NaN (unknown), never 0
+            for c0 in range(0, nc, block):
+                c1 = min(nc, c0 + block)
+                vals = self._channel_block(hdul, c0, c1, ys, xs)[:, mask]          # (channels, region pixels)
+                finite = np.isfinite(vals)
+                n = finite.sum(axis=1)
+                count[c0:c1] = n
+                total = np.where(finite, vals, 0.0).sum(axis=1)
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    mean[c0:c1] = np.where(n > 0, total / np.maximum(n, 1), np.nan)   # a channel with no finite pixel is NaN (unknown), never 0
         facts = self.spectral_facts()
         resolved = facts is not None and facts["resolved"]
         if resolved:
