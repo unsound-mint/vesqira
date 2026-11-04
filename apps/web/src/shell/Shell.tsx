@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FolderOpen, LayoutGrid, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { FigurePanel } from "../viewer/FigurePanel";
@@ -55,9 +55,17 @@ export function Shell() {
       live = false;
     };
   }, [cat.selected?.id, compareDs?.id, cat.selected?.modifiedAt, compareDs?.modifiedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  const collapsedForCompare = useRef(false);
   useEffect(() => {
-    if (!compareDs) setActive("a");
-  }, [compareDs]);
+    if (!compareDs) {
+      setActive("a");
+      if (collapsedForCompare.current) toggle("sideOpen"); // give the explorer back when the comparison ends
+      collapsedForCompare.current = false;
+    } else if (L.sideOpen && !collapsedForCompare.current) {
+      collapsedForCompare.current = true; // two maps need the width
+      toggle("sideOpen");
+    }
+  }, [compareDs?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // the pane you are working in drives the channel of the other one
   useEffect(() => {
     if (linked && other.channels === viewer.channels && other.channel !== viewer.channel) other.setChannel(viewer.channel);
@@ -67,7 +75,8 @@ export function Shell() {
   }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
   const [mode, setMode] = useState<"viewer" | "boards">("viewer");
   const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", L.inspOpen ? `${L.insp}px` : "0px"].join(" ");
-  const rows = ["var(--h-title)", "minmax(0,1fr)", L.timelineOpen ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
+  const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
+  const rows = ["var(--h-title)", "minmax(0,1fr)", L.timelineOpen && !singlePlane ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
 
   return (
     <div className={s.shell} style={{ gridTemplateColumns: cols, gridTemplateRows: rows }}>
@@ -151,7 +160,7 @@ export function Shell() {
         </div>
       </aside>
 
-      <section className={s.timeline} aria-label="Channels" hidden={!L.timelineOpen}>
+      <section className={s.timeline} aria-label="Channels" hidden={!L.timelineOpen || singlePlane}>
         <ResizeHandle orientation="horizontal" direction={-1} label="Resize timeline" value={L.timeline} min={LIMITS.timeline.min} max={LIMITS.timeline.max} onChange={(v) => set("timeline", v)} />
         <div className={s.scroll}>
           {actDs ? <ChannelTimeline v={viewer} /> : <p className={s.empty}>No spectral axis. Channels appear here once a cube is open.</p>}

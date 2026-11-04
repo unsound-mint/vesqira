@@ -86,3 +86,11 @@
 .iconOnly.lg {
   width: var(--ctl-lg);
 }
+
+/* a disabled primary action stays readable: neutral fill, normal text colour */
+.primary:disabled {
+  border-color: var(--line-strong);
+  background: var(--bg-3);
+  color: var(--text-2);
+  opacity: 1;
+}
