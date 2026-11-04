@@ -8,7 +8,14 @@
 
 A researcher registers H I FITS spectral cubes and existing VGT outputs, browses spectral planes and WCS coordinates, compares scalar and axial-orientation maps with reliability information, builds source-linked figures and a research board, and shares a scoped review with a supervisor who needs no SSH/HPC credentials.
 
-Try it on generated data: `tools/demo.sh` and `docs/demo.md`.
+## Start the app
+
+One-time setup (Linux/macOS): Python 3 with astropy (`pip install -r fixtures/requirements.txt`), Go, Node, then `cd apps/web && npm ci`.
+
+- **On your own data:** `tools/start.sh --root /path/to/your/fits/folder` (repeat `--root` for more folders), then open <http://127.0.0.1:5173>. Only files inside the given folders are ever read. Your catalog and derived files live in `~/.local/share/vesqira` (`VESQIRA_DATA` changes it).
+- **Try it on generated data first:** `tools/demo.sh`, then follow `docs/demo.md`.
+- Other machines (cluster, another laptop): bring your VPN up, make sure `ssh <alias>` works without a prompt, then add the host under *Hosts* in the app.
+- Automated check of the whole workflow: `make e2e`.
 
 ## Principles
 
