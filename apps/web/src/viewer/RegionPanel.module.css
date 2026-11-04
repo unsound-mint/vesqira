@@ -46,6 +46,7 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   grid-column: 1 / -1;
   gap: var(--sp-2);
 }
@@ -86,4 +87,66 @@
 .fields input {
   width: 100%;
   min-width: 0;
+}
+
+.saved {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.h {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--sp-2);
+}
+
+.list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.name {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: var(--w-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.link {
+  align-self: center;
+  color: var(--accent);
+  font-size: var(--text-sm);
 }

@@ -11,6 +11,7 @@ import { channelLabel } from "./format";
 import { fromDrag, outline } from "./region";
 import type { Pt } from "./region";
 import type { RegionShape } from "../api/planes";
+import { toShape } from "../api/regions";
 import s from "./PlaneViewer.module.css";
 
 function token(name: string, fallback: Rgb): Rgb {
@@ -156,6 +157,11 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
                 <line className={s.lineTop} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
               </g>
             ))}
+            {v.savedRegions.saved.filter((r) => !v.savedRegions.hidden.has(r.id)).map((r) => {
+              const o = outline(toShape(r), plane.head.height);
+              const cls = r.id === v.savedRegions.selectedId ? s.region : s.saved;
+              return o.kind === "rect" ? <rect key={`s${r.id}`} className={cls} x={o.x} y={o.y} width={o.w} height={o.h} /> : <circle key={`s${r.id}`} className={cls} cx={o.cx} cy={o.cy} r={o.r} />;
+            })}
             {[v.region, draft].map((r, i) => {
               if (!r) return null;
               const o = outline(r, plane.head.height);

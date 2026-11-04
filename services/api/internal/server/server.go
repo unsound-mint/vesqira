@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
@@ -41,7 +42,8 @@ type Server struct {
 	ManagedDir string
 	Analysis   *AnalysisConfig
 	Audit      *audit.Store // nil records nothing
-	WebDist    string       // built web app served at / on this (loopback) listener; empty serves the API only
+	Regions    *regions.Store
+	WebDist    string // built web app served at / on this (loopback) listener; empty serves the API only
 }
 
 func (s *Server) Handler() http.Handler {
@@ -113,6 +115,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/{id}/coord", s.coord)
 	mux.HandleFunc("GET /api/datasets/{id}/spectrum", s.spectrum)
 	mux.HandleFunc("GET /api/datasets/{id}/axial", s.axial)
+	if s.Regions != nil {
+		mux.HandleFunc("GET /api/datasets/{id}/regions", s.listRegions)
+		mux.HandleFunc("POST /api/datasets/{id}/regions", s.createRegion)
+		mux.HandleFunc("GET /api/datasets/{id}/regions.reg", s.regionsDS9)
+		mux.HandleFunc("POST /api/regions/{id}", s.updateRegion)
+		mux.HandleFunc("POST /api/regions/{id}/delete", s.deleteRegion)
+	}
 	mux.HandleFunc("GET /api/compat", s.compatibility)
 	if s.Audit != nil {
 		mux.HandleFunc("GET /api/audit", s.listAudit)

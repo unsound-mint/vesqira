@@ -5,6 +5,7 @@ import type { AxialStats, Coord, Plane, RegionShape, Spectrum, View } from "../a
 import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
 import { channelForKey } from "./geometry";
+import { useSavedRegions } from "./useSavedRegions";
 import type { ColormapId } from "./colormaps";
 import type { RangeMode, Stretch } from "./render";
 
@@ -45,6 +46,7 @@ export function useViewer(dataset: Dataset | null) {
   const [axial, setAxial] = useState<AxialStats | null>(null);
   const [axialError, setAxialError] = useState<string | null>(null);
   const [showLines, setShowLines] = useState(true);
+  const savedRegions = useSavedRegions(datasetId, setRegion);
 
   // A different dataset: forget everything that belonged to the previous one.
   useEffect(() => {
@@ -206,7 +208,7 @@ export function useViewer(dataset: Dataset | null) {
     colormap, setColormap, stretch, setStretch, range, setRange,
     hover, setHover, mirror, setMirror, pinned, setPinned, probe, pixelValue, coord, coordError,
     canvas, interp, reliability, axial, axialError, showLines, setShowLines,
-    tool, setTool, region, setRegion, spectrum, spectrumError, spectrumLoading,
+    tool, setTool, region, setRegion, savedRegions, spectrum, spectrumError, spectrumLoading,
     onChannelKey, retry: () => setRetry((n) => n + 1),
   };
 }

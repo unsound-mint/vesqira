@@ -3,7 +3,9 @@ import { Button, Input } from "../ui";
 import type { RegionShape } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
-import { nominalPixels } from "./region";
+import { nominalPixels, sameRegion } from "./region";
+import { ds9Url, toShape } from "../api/regions";
+import type { SavedRegion } from "../api/regions";
 import type { Tool } from "./region";
 import s from "./RegionPanel.module.css";
 
@@ -84,7 +86,70 @@ export function RegionPanel({ v }: { v: Viewer }) {
           <dd className="mono">{ch === undefined || !info ? EM : `${ch.toLocaleString("en-US")} of ${info.region.pixels.toLocaleString("en-US")} pixels have a value`}</dd>
         </dl>
       ) : null}
+      <SavedList v={v} />
       {info ? <p className={s.note}>{info.mask_policy}{info.size ? ` ${info.size.note}.` : ""}</p> : null}
     </div>
+  );
+}
+
+const describe = (r: SavedRegion) =>
+  r.shape.shape === "rect"
+    ? `rectangle x ${r.shape.x0 + 1}–${r.shape.x1 + 1}, y ${r.shape.y0 + 1}–${r.shape.y1 + 1}`
+    : `circle at ${r.shape.cx + 1}, ${r.shape.cy + 1}, radius ${r.shape.r}`;
+
+/** Named regions kept with the dataset: save the current one, pick one to work with, rename, replace its shape, copy, delete. */
+function SavedList({ v }: { v: Viewer }) {
+  const sr = v.savedRegions;
+  const [name, setName] = useState("");
+  const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
+  return (
+    <section className={s.saved} aria-label="Saved regions">
+      <h3 className={s.h}>Saved regions</h3>
+      <form className={s.row} onSubmit={(e) => { e.preventDefault(); if (v.region && name.trim()) { void sr.save(name.trim(), v.region); setName(""); } }}>
+        <Input label="Save the current region as" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+        <Button type="submit" disabled={!v.region || !name.trim()}>Save</Button>
+      </form>
+      {sr.saved.length === 0 ? <p className={s.note}>{v.region ? "Give the region a name to keep it with this dataset." : "No saved regions yet. Draw one, then save it."}</p> : null}
+      <ul className={s.list}>
+        {sr.saved.map((r) => {
+          const selected = sr.selectedId === r.id;
+          const changed = selected && v.region !== null && !sameRegion(v.region, toShape(r));
+          return (
+            <li key={r.id} className={selected ? s.selected : undefined}>
+              {editing?.id === r.id ? (
+                <form className={s.row} onSubmit={(e) => { e.preventDefault(); if (editing.text.trim()) void sr.rename(r.id, editing.text.trim()); setEditing(null); }}>
+                  <Input label={`New name for ${r.name}`} value={editing.text} onChange={(e) => setEditing({ id: r.id, text: e.target.value })} maxLength={80} autoFocus />
+                  <Button type="submit">Rename</Button>
+                  <Button type="button" onClick={() => setEditing(null)}>Cancel</Button>
+                </form>
+              ) : (
+                <>
+                  <label className={s.pick}>
+                    <input type="checkbox" checked={!sr.hidden.has(r.id)} onChange={() => sr.toggle(r.id)} aria-label={`Show ${r.name} on the image`} />
+                    <button type="button" className={s.name} aria-pressed={selected} onClick={() => sr.select(selected ? null : r)}>{r.name}</button>
+                  </label>
+                  <span className={s.note}>{describe(r)}</span>
+                  <div className={s.actions}>
+                    <Button type="button" onClick={() => setEditing({ id: r.id, text: r.name })}>Rename</Button>
+                    <Button type="button" disabled={!changed} onClick={() => void sr.reshape(r.id, v.region!)}>Use current shape</Button>
+                    <Button type="button" onClick={() => void sr.duplicate(r)}>Duplicate</Button>
+                    <a className={s.link} href={ds9Url(r.datasetId, r.id)} download>DS9</a>
+                    <Button type="button" onClick={() => void sr.remove(r)}>Delete</Button>
+                  </div>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {sr.undo ? (
+        <p className={s.note} role="status">
+          Deleted “{sr.undo.name}”. <button type="button" className={s.name} onClick={() => void sr.undoDelete()}>Undo</button>
+        </p>
+      ) : null}
+      {sr.error ? <p role="alert" className={s.err}>{sr.error}</p> : null}
+      {sr.saved.length > 0 && v.datasetId !== null ? <a className={s.link} href={ds9Url(v.datasetId)} download>Export all as a DS9 region file (.reg)</a> : null}
+      <p className={s.note}>DS9 files use the dataset’s own pixel grid (image coordinates, counted from 1), so they open in DS9 on the same file without any sky transformation.</p>
+    </section>
   );
 }

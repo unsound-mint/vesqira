@@ -85,6 +85,14 @@
   pointer-events: none;
 }
 
+.saved {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1px;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
 .region,
 .draft {
   fill: var(--accent-bg);

@@ -117,6 +117,28 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await expect(inspector(page).getByText(/Mean of the finite pixels inside the region/)).toBeVisible();
   await expectNoAxeViolations(page);
 
+  // ---- saved regions: keep, rename, replace the shape, copy, delete, undo, export as DS9 ----
+  await inspector(page).getByLabel("Save the current region as").fill("Peak core");
+  await inspector(page).getByRole("button", { name: "Save", exact: true }).click();
+  await expect(inspector(page).getByRole("button", { name: "Peak core" })).toBeVisible();
+  await inspector(page).getByRole("button", { name: "Rename", exact: true }).click();
+  await inspector(page).getByLabel("New name for Peak core").fill("Source A");
+  await inspector(page).getByRole("button", { name: "Rename", exact: true }).click();
+  await expect(inspector(page).getByRole("button", { name: "Source A" })).toBeVisible();
+  await inspector(page).getByRole("button", { name: "Duplicate" }).click();
+  await expect(inspector(page).getByRole("button", { name: "Source A copy" })).toBeVisible();
+  const reg = await request.get(await inspector(page).getByRole("link", { name: "Export all as a DS9 region file (.reg)" }).getAttribute("href").then((h) => `http://127.0.0.1:8787${h}`));
+  const regText = await reg.text();
+  expect(reg.status()).toBe(200);
+  expect(regText).toContain("image\n");
+  expect(regText).toContain("circle(21,10,3) # text={Source A}");
+  await inspector(page).getByRole("button", { name: "Delete" }).last().click();
+  await expect(inspector(page).getByRole("button", { name: "Source A copy" })).toHaveCount(0);
+  await inspector(page).getByRole("button", { name: "Undo" }).click();
+  await expect(inspector(page).getByRole("button", { name: "Source A copy" })).toBeVisible();
+  if (process.env.VESQIRA_SHOTS) await page.screenshot({ path: `${process.env.VESQIRA_SHOTS}/regions.png` });
+  await expectNoAxeViolations(page);
+
   // ---- an orientation map: the unit is declared by the user, statistics are axial ----
   await register(page, "vgt_psi_deg.fits");
   await register(page, "vgt_reliability.fits");
