@@ -136,3 +136,47 @@ func TestHeaderSurvivesALargePayload(t *testing.T) {
 		t.Fatalf("head=%q payload=%d err=%v", r.Head, len(r.Payload), err)
 	}
 }
+
+func TestAHeavyRequestNeverBlocksInteractiveOnesAndCancelKillsOnlyTheHeavyLane(t *testing.T) {
+	p := newFake(t, 30*time.Second)
+	if _, err := do(p, "ok"); err != nil { // warm the interactive lane
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := p.Do(ctx, map[string]any{"op": "spectrum", "path": "hang"}) // would block a single shared worker for a minute
+		done <- err
+	}()
+	time.Sleep(300 * time.Millisecond) // let the heavy request reach the worker
+	start := time.Now()
+	for i := 0; i < 5; i++ {
+		if r, err := do(p, "ok"); err != nil || string(r.Payload) != "abcd" {
+			t.Fatalf("interactive request during a heavy one: %v", err)
+		}
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("interactive requests took %v while a heavy one was running", time.Since(start))
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled heavy request returned %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelling did not stop the heavy request")
+	}
+	if p.Starts.Load() != 2 {
+		t.Fatalf("starts=%d, want 2 (one per lane)", p.Starts.Load())
+	}
+	if r, err := p.Do(context.Background(), map[string]any{"op": "spectrum", "path": "ok"}); err != nil || string(r.Payload) != "abcd" {
+		t.Fatalf("heavy lane after a cancel: %v", err)
+	}
+	if p.Starts.Load() != 3 {
+		t.Fatalf("starts=%d, want 3 (only the heavy lane restarted)", p.Starts.Load())
+	}
+	if _, err := do(p, "ok"); err != nil || p.Starts.Load() != 3 {
+		t.Fatalf("interactive lane was restarted: err=%v starts=%d", err, p.Starts.Load())
+	}
+}

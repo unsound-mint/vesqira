@@ -37,13 +37,18 @@ func (e *RequestError) Error() string { return e.Message }
 var ErrUnavailable = errors.New("scientific worker unavailable")
 var ErrTimeout = errors.New("worker timed out")
 
-// Persistent keeps one long-lived scientific worker, so Python and astropy start once instead of per request.
-// Requests are serialized (one scientific task at a time). A request that exceeds Timeout, or any broken
-// reply, kills the whole process group and the next request starts a clean worker.
+// Persistent keeps long-lived scientific workers, so Python and astropy start once instead of per request.
 //
-// A caller that gives up (context cancelled) while queued leaves without touching the worker. One that gives
-// up while its request is running does not kill it: planes are small, the reply is drained to keep the stream
-// in step, and restarting costs a cold Python start.
+// There are two lanes, each with its own process and one task at a time. Planes, coordinates and headers use the
+// interactive lane; region spectra and orientation statistics, which read much more of the file, use the heavy
+// lane. A slow heavy request therefore never delays channel scrubbing (interactive work keeps its latency while
+// background work runs). A request that exceeds Timeout, or any broken reply, kills that lane's process group and
+// its next request starts a clean worker.
+//
+// A caller that gives up (context cancelled) while queued leaves without touching the worker. On the interactive
+// lane one that gives up while its request is running does not kill it: planes are small, the reply is drained to
+// keep the stream in step, and restarting costs a cold Python start. On the heavy lane the running read is
+// stopped by killing only the heavy process, because its work can last tens of seconds and nobody is waiting for it.
 type Persistent struct {
 	Command []string
 	Timeout time.Duration
@@ -52,10 +57,19 @@ type Persistent struct {
 
 	Starts atomic.Int64 // processes started so far (observable in tests and logs)
 
-	once sync.Once
+	once  sync.Once
+	light lane
+	heavy lane
+}
+
+// lane is one worker process with its own queue of one.
+type lane struct {
 	sem  chan struct{}
 	proc *proc
 }
+
+// heavyOps are the worker operations that read a region over many channels or a whole map.
+var heavyOps = map[string]bool{"spectrum": true, "axial": true}
 
 type proc struct {
 	cmd *exec.Cmd
@@ -63,7 +77,12 @@ type proc struct {
 	out *bufio.Reader
 }
 
-func (p *Persistent) init() { p.once.Do(func() { p.sem = make(chan struct{}, 1) }) }
+func (p *Persistent) init() {
+	p.once.Do(func() {
+		p.light.sem = make(chan struct{}, 1)
+		p.heavy.sem = make(chan struct{}, 1)
+	})
+}
 
 func (p *Persistent) start() (*proc, error) {
 	if len(p.Command) == 0 {
@@ -93,48 +112,76 @@ func (pr *proc) kill() {
 	go pr.cmd.Wait() // reap; closes the stdout pipe too
 }
 
-// Close stops the worker. Safe to call once the server has stopped taking requests.
+// Close stops the workers. Safe to call once the server has stopped taking requests.
 func (p *Persistent) Close() {
 	p.init()
-	p.sem <- struct{}{}
-	defer func() { <-p.sem }()
-	if p.proc != nil {
-		p.proc.kill()
-		p.proc = nil
+	for _, l := range []*lane{&p.light, &p.heavy} {
+		l.sem <- struct{}{}
+		if l.proc != nil {
+			l.proc.kill()
+			l.proc = nil
+		}
+		<-l.sem
 	}
 }
 
 // Do sends one request and returns the reply, or a *RequestError when the worker refused it.
 func (p *Persistent) Do(ctx context.Context, req map[string]any) (Reply, error) {
 	p.init()
+	l, killOnCancel := &p.light, false
+	if op, _ := req["op"].(string); heavyOps[op] {
+		l, killOnCancel = &p.heavy, true
+	}
 	select {
-	case p.sem <- struct{}{}:
+	case l.sem <- struct{}{}:
 	case <-ctx.Done():
 		return Reply{}, ctx.Err()
 	}
-	defer func() { <-p.sem }()
+	defer func() { <-l.sem }()
 
 	line, err := json.Marshal(req)
 	if err != nil || len(line) > maxReqBytes {
 		return Reply{}, errors.New("request too large")
 	}
-	if p.proc == nil {
-		if p.proc, err = p.start(); err != nil {
+	if l.proc == nil {
+		if l.proc, err = p.start(); err != nil {
 			return Reply{}, err
 		}
 	}
-	pr := p.proc
+	pr := l.proc
 	var timedOut atomic.Bool
 	timer := time.AfterFunc(p.Timeout, func() { timedOut.Store(true); pr.kill() })
+
+	// state: 0 running, 1 the reply arrived first, 2 the caller gave up first and the process was killed.
+	var state atomic.Int32
+	stop := make(chan struct{})
+	if killOnCancel {
+		go func() {
+			select {
+			case <-ctx.Done():
+				if state.CompareAndSwap(0, 2) {
+					pr.kill()
+				}
+			case <-stop:
+			}
+		}()
+	}
 	reply, err := exchange(pr, append(line, '\n'))
+	state.CompareAndSwap(0, 1)
+	close(stop)
+	if state.Load() == 2 {
+		timer.Stop()
+		l.proc = nil
+		return Reply{}, ctx.Err()
+	}
 	if !timer.Stop() || timedOut.Load() {
-		p.proc = nil
+		l.proc = nil
 		return Reply{}, ErrTimeout
 	}
 	var re *RequestError
 	if err != nil && !errors.As(err, &re) { // protocol break or crash: never reuse this process
 		pr.kill()
-		p.proc = nil
+		l.proc = nil
 		return Reply{}, ErrUnavailable
 	}
 	return reply, err

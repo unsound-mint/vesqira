@@ -314,8 +314,8 @@ func TestPlaneViewerEndToEndWithRealWorker(t *testing.T) {
 	if best != 40 {
 		t.Fatalf("spectrum peak at channel %d, want 40", best)
 	}
-	if pw.Starts.Load() != 1 {
-		t.Errorf("worker started %d times, want 1 for the whole session", pw.Starts.Load())
+	if pw.Starts.Load() != 2 { // one process for planes and readouts, one for the heavy spectrum and orientation work
+		t.Errorf("worker started %d times, want 2 (one per lane) for the whole session", pw.Starts.Load())
 	}
 }
 

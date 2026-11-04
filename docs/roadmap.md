@@ -13,7 +13,7 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 Do first: it makes the viewer claims measurable and unblocks scrubbing on large cubes.
 
 - [ ] `make bench`: sparse large cube, cold and warm plane / spectrum / coordinate timings, p50/p95 and worker memory, also while a heavy operation runs; budgets written down (Q149, Q164).
-- [ ] Two worker lanes (interactive and heavy) so a spectrum or analysis never blocks channel scrubbing; heavy lane cancellable by restarting only that worker (Q169).
+- [x] Two worker lanes (interactive and heavy): a spectrum or orientation request never blocks channel scrubbing, and cancelling it kills only the heavy process (Q169). Analysis jobs already run in their own subprocess.
 - [ ] Spectrum read in channel blocks, vectorised, so large regions are served instead of refused (Q92).
 - [ ] Downsampled preview then full resolution on settle, marked in the reply header; browser-side plane cache; prefetch of neighbouring channels (Q182, Q185).
 - [ ] Worker memory cap (RLIMIT_AS) and per-request limits that bound time and memory, not only output size.
