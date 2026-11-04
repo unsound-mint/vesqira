@@ -66,6 +66,14 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 			return nil, err
 		}
 	}
+	for _, c := range [][2]string{{"superseded_by", "INTEGER NOT NULL DEFAULT 0"}, {"supersede_reason", "TEXT NOT NULL DEFAULT ''"}, {"supersede_at", "INTEGER NOT NULL DEFAULT 0"}} {
+		if err := schema.AddColumn(db, "snapshots", c[0], c[1]); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS snapshot_outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, at INTEGER NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL, author TEXT NOT NULL)`); err != nil {
+		return nil, err
+	}
 	// comments grew threads, anchors, owner replies and a resolved mark; older catalogs get the columns
 	for _, c := range [][2]string{{"parent_id", "INTEGER NOT NULL DEFAULT 0"}, {"anchor", "TEXT NOT NULL DEFAULT ''"}, {"from_owner", "INTEGER NOT NULL DEFAULT 0"}, {"resolved_at", "INTEGER NOT NULL DEFAULT 0"}} {
 		if err := schema.AddColumn(db, "comments", c[0], c[1]); err != nil {
@@ -445,6 +453,7 @@ type FrozenItem struct {
 type Frozen struct {
 	BoardTitle string       `json:"boardTitle"`
 	Label      string       `json:"label"`
+	Question   string       `json:"question,omitempty"` // what the author asks the reviewer to look at
 	CreatedAt  time.Time    `json:"createdAt"`
 	ExpiresAt  time.Time    `json:"expiresAt"`
 	Items      []FrozenItem `json:"items"`
@@ -458,6 +467,14 @@ type Snapshot struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 	Revoked   bool      `json:"revoked"`
 	Items     int       `json:"items"`
+	Question  string    `json:"question,omitempty"`
+	// Outcome is what the reviewer said about this version; empty means not yet reviewed. It is not a scientific
+	// assessment of any run: that is the author's own, and kept apart.
+	Outcome      string     `json:"outcome"`
+	OutcomeNote  string     `json:"outcomeNote,omitempty"`
+	OutcomeBy    string     `json:"outcomeBy,omitempty"`
+	OutcomeAt    *time.Time `json:"outcomeAt,omitempty"`
+	SupersededBy int64      `json:"supersededBy,omitempty"`
 }
 
 func hashToken(tok string) string { h := sha256.Sum256([]byte(tok)); return hex.EncodeToString(h[:]) }
@@ -465,6 +482,22 @@ func hashToken(tok string) string { h := sha256.Sum256([]byte(tok)); return hex.
 // Publish freezes the board as it is now and returns a review token. Only the token's hash is stored, so the token
 // can be shown once and never recovered; revoke and publish again to share anew.
 func (s *Store) Publish(boardID int64, label string, ttl time.Duration) (Snapshot, string, error) {
+	return s.PublishWith(boardID, PublishOptions{Label: label, TTL: ttl})
+}
+
+// PublishOptions are what the author sets when asking for a review.
+type PublishOptions struct {
+	Label    string
+	Question string // what to look at; shown to the reviewer
+	TTL      time.Duration
+	// Supersedes names an earlier snapshot of the same board that this one replaces; Reason is shown to anyone who
+	// opens the old link.
+	Supersedes int64
+	Reason     string
+}
+
+func (s *Store) PublishWith(boardID int64, o PublishOptions) (Snapshot, string, error) {
+	label, ttl := o.Label, o.TTL
 	b, err := s.Board(boardID)
 	if err != nil {
 		return Snapshot{}, "", err
@@ -476,7 +509,7 @@ func (s *Store) Publish(boardID int64, label string, ttl time.Duration) (Snapsho
 		return Snapshot{}, "", fmt.Errorf("%w: expiry must be between a moment and 90 days", ErrInvalid)
 	}
 	now := time.Now()
-	fr := Frozen{BoardTitle: b.Title, Label: clip(label, 200), CreatedAt: now.UTC(), ExpiresAt: now.Add(ttl).UTC(), Items: []FrozenItem{}}
+	fr := Frozen{BoardTitle: b.Title, Label: clip(label, 200), Question: clip(o.Question, 1000), CreatedAt: now.UTC(), ExpiresAt: now.Add(ttl).UTC(), Items: []FrozenItem{}}
 	for _, it := range b.Items {
 		fr.Items = append(fr.Items, FrozenItem{Revision: it.Figure.Revision, Title: it.Figure.Title, Caption: it.Figure.Caption, Note: it.Note,
 			PreviewSHA: it.Figure.PreviewSHA, Width: it.Figure.Width, Height: it.Figure.Height, Provenance: it.Figure.Provenance})
@@ -496,11 +529,20 @@ func (s *Store) Publish(boardID int64, label string, ttl time.Duration) (Snapsho
 		return Snapshot{}, "", err
 	}
 	id, _ := res.LastInsertId()
-	return Snapshot{ID: id, BoardID: boardID, Label: fr.Label, CreatedAt: now.UTC(), ExpiresAt: fr.ExpiresAt, Items: len(fr.Items)}, tok, nil
+	if o.Supersedes != 0 {
+		reason := clip(o.Reason, 500)
+		if reason == "" {
+			reason = "The author has replaced this review with a newer version."
+		}
+		if _, err := s.db.Exec(`UPDATE snapshots SET superseded_by=?, supersede_reason=?, supersede_at=? WHERE id=? AND board_id=? AND superseded_by=0`, id, reason, now.Unix(), o.Supersedes, boardID); err != nil {
+			return Snapshot{}, "", err
+		}
+	}
+	return Snapshot{ID: id, BoardID: boardID, Label: fr.Label, CreatedAt: now.UTC(), ExpiresAt: fr.ExpiresAt, Items: len(fr.Items), Question: fr.Question}, tok, nil
 }
 
 func (s *Store) Snapshots(boardID int64) ([]Snapshot, error) {
-	rows, err := s.db.Query(`SELECT id,board_id,label,created_at,expires_at,revoked,frozen FROM snapshots WHERE board_id=? ORDER BY id DESC`, boardID)
+	rows, err := s.db.Query(`SELECT id,board_id,label,created_at,expires_at,revoked,frozen,superseded_by FROM snapshots WHERE board_id=? ORDER BY id DESC`, boardID)
 	if err != nil {
 		return nil, err
 	}
@@ -510,15 +552,22 @@ func (s *Store) Snapshots(boardID int64) ([]Snapshot, error) {
 		var sn Snapshot
 		var c, e, rv int64
 		var frozen string
-		if err := rows.Scan(&sn.ID, &sn.BoardID, &sn.Label, &c, &e, &rv, &frozen); err != nil {
+		if err := rows.Scan(&sn.ID, &sn.BoardID, &sn.Label, &c, &e, &rv, &frozen, &sn.SupersededBy); err != nil {
 			return nil, err
 		}
 		var fr Frozen
 		_ = json.Unmarshal([]byte(frozen), &fr)
-		sn.CreatedAt, sn.ExpiresAt, sn.Revoked, sn.Items = time.Unix(c, 0).UTC(), time.Unix(e, 0).UTC(), rv != 0, len(fr.Items)
+		sn.CreatedAt, sn.ExpiresAt, sn.Revoked, sn.Items, sn.Question = time.Unix(c, 0).UTC(), time.Unix(e, 0).UTC(), rv != 0, len(fr.Items), fr.Question
 		out = append(out, sn)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close() // the catalog uses one connection: finish this query before asking another
+	for i := range out {
+		s.fillOutcome(&out[i])
+	}
+	return out, nil
 }
 
 func (s *Store) Revoke(snapshotID int64) error {
@@ -536,6 +585,22 @@ func (s *Store) Revoke(snapshotID int64) error {
 type Review struct {
 	Snapshot Frozen    `json:"snapshot"`
 	Comments []Comment `json:"comments"`
+	// Outcome is the reviewer's latest word on this version (empty: not yet reviewed).
+	Outcome Outcome `json:"outcome"`
+	// Superseded is set when the author has replaced this version; the link keeps working so nothing disappears.
+	Superseded *Superseded `json:"superseded,omitempty"`
+}
+
+type Outcome struct {
+	Value string     `json:"value"`
+	Note  string     `json:"note,omitempty"`
+	By    string     `json:"by,omitempty"`
+	At    *time.Time `json:"at,omitempty"`
+}
+
+type Superseded struct {
+	Reason string    `json:"reason"`
+	At     time.Time `json:"at"`
 }
 
 // Anchor places a comment on the published picture, in fractions of its width and height (0,0 is the top left). It
@@ -604,7 +669,13 @@ func (s *Store) Review(token string) (Review, error) {
 		return Review{}, err
 	}
 	cs, err := s.Comments(id)
-	return Review{Snapshot: fr, Comments: cs}, err
+	rv := Review{Snapshot: fr, Comments: cs, Outcome: s.outcome(id)}
+	var by, at int64
+	var reason string
+	if s.db.QueryRow(`SELECT superseded_by,supersede_reason,supersede_at FROM snapshots WHERE id=?`, id).Scan(&by, &reason, &at) == nil && by != 0 {
+		rv.Superseded = &Superseded{Reason: reason, At: time.Unix(at, 0).UTC()}
+	}
+	return rv, err
 }
 
 func (s *Store) Comments(snapshotID int64) ([]Comment, error) {

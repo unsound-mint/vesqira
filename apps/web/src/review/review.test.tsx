@@ -7,7 +7,7 @@ import { ReviewPage } from "./ReviewPage";
 import type { Plane, View } from "../api/planes";
 
 const prov = { source: { name: "cube.fits", sizeBytes: 10, modifiedAt: "", identity: "a reference to the file by name, size and modification time; its bytes were not hashed" }, view: { kind: "plane", channel: 3 }, statements: ["Header values are declared by the file and are not verified."] };
-const review = { snapshot: { boardTitle: "Group meeting", label: "v1", createdAt: "2026-11-04T00:00:00Z", expiresAt: "2026-12-01T00:00:00Z", items: [{ revision: "r1", title: "Peak channel", caption: "H I", note: "Check the unit", previewSha: "a".repeat(64), width: 8, height: 6, provenance: prov }] }, comments: [] };
+const review = { snapshot: { boardTitle: "Group meeting", label: "v1", createdAt: "2026-11-04T00:00:00Z", expiresAt: "2026-12-01T00:00:00Z", items: [{ revision: "r1", title: "Peak channel", caption: "H I", note: "Check the unit", previewSha: "a".repeat(64), width: 8, height: 6, provenance: prov }] }, comments: [], outcome: { value: "" } };
 
 function mockFetch(routes: Record<string, (init?: RequestInit) => { status?: number; body: unknown }>) {
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -130,5 +130,30 @@ describe("threads on a review", () => {
     await waitFor(() => expect(screen.getByText("Look here")).toBeInTheDocument());
     const sent = JSON.parse(String(calls.filter((c) => c.init?.method === "POST").at(-1)!.init!.body));
     expect(sent.anchor).toEqual({ kind: "point", x: 0.52, y: 0.5 });
+  });
+});
+
+describe("review request", () => {
+  it("shows the author's question and says when a version has been replaced", async () => {
+    mockFetch({ "/review-api/tok": () => ({ body: { ...review, snapshot: { ...review.snapshot, question: "Is the edge real?" }, superseded: { reason: "Colour bar rescaled.", at: "2026-11-05T00:00:00Z" } } }) });
+    render(<ReviewPage token="tok" />);
+    expect(await screen.findByText("Is the edge real?")).toBeInTheDocument();
+    expect(screen.getByText(/The author has replaced this version/)).toBeInTheDocument();
+    expect(screen.getByText(/Colour bar rescaled/)).toBeInTheDocument();
+  });
+
+  it("sends an outcome that is about the review, not about any run", async () => {
+    const calls = mockFetch({
+      "/review-api/tok/outcome": () => ({ status: 201, body: { value: "changes_requested", note: "Rescale", by: "Prof", at: "2026-11-05T00:00:00Z" } }),
+      "/review-api/tok": () => ({ body: review }),
+    });
+    render(<ReviewPage token="tok" />);
+    await screen.findByRole("heading", { name: "Your outcome for this version" });
+    expect(screen.getByText(/not an assessment of any run/)).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Changes requested"));
+    await userEvent.type(screen.getByLabelText("Note (optional)"), "Rescale");
+    await userEvent.click(screen.getByRole("button", { name: "Send outcome" }));
+    await waitFor(() => expect(screen.getByText(/Currently: Changes requested/)).toBeInTheDocument());
+    expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init!.body))).toEqual({ outcome: "changes_requested", note: "Rescale", author: "" });
   });
 });

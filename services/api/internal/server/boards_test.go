@@ -168,6 +168,20 @@ func TestFigureBoardReviewPathExposesNoSourceToTheReviewer(t *testing.T) {
 		t.Errorf("the reviewer sees the reply and that the thread is closed: %s", rb2)
 	}
 
+	// the reviewer's outcome is accepted and validated; preflight is the author's and not on the review surface
+	if r, _ := postJSON(t, rv.URL+"/review-api/"+pub.Token+"/outcome", map[string]any{"outcome": "changes_requested", "note": "rescale", "author": "Prof"}); r.StatusCode != 201 {
+		t.Errorf("outcome: %d", r.StatusCode)
+	}
+	if r, _ := postJSON(t, rv.URL+"/review-api/"+pub.Token+"/outcome", map[string]any{"outcome": "valid"}); r.StatusCode != 422 {
+		t.Errorf("an outcome that is not one of the three: %d, want 422", r.StatusCode)
+	}
+	if r, pb := get(t, owner.URL+"/api/boards/"+itoa(int(b.ID))+"/preflight"); r.StatusCode != 200 || !strings.Contains(string(pb), "warnings") {
+		t.Errorf("preflight: %d %s", r.StatusCode, pb)
+	}
+	if r, _ := get(t, rv.URL+"/api/boards/"+itoa(int(b.ID))+"/preflight"); r.StatusCode == 200 {
+		t.Errorf("preflight reachable on the review surface")
+	}
+
 	// revoke: the link stops working, the evidence stays
 	postJSON(t, api("/api/snapshots/"+itoa(int(pub.Snapshot.ID))+"/revoke"), map[string]any{})
 	if r, _ := get(t, rv.URL+"/review-api/"+pub.Token); r.StatusCode != 404 {

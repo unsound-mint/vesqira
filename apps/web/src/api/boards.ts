@@ -24,13 +24,16 @@ export type Provenance = {
 
 export type BoardItem = { position: number; figure: Figure; note: string };
 export type Board = { id: number; title: string; createdAt: string; updatedAt: string; items: BoardItem[] };
-export type Snapshot = { id: number; boardId: number; label: string; createdAt: string; expiresAt: string; revoked: boolean; items: number };
+export type OutcomeValue = "commented" | "changes_requested" | "reviewed";
+export const OUTCOME_TEXT: Record<OutcomeValue, string> = { commented: "Commented", changes_requested: "Changes requested", reviewed: "Reviewed" };
+export type Snapshot = { id: number; boardId: number; label: string; createdAt: string; expiresAt: string; revoked: boolean; items: number; question?: string; outcome: "" | OutcomeValue; outcomeNote?: string; outcomeBy?: string; outcomeAt?: string; supersededBy?: number };
 /** A place on a published picture, in fractions of its width and height from the top left. */
 export type Anchor = { kind: "point"; x: number; y: number } | { kind: "box"; x: number; y: number; x1: number; y1: number };
 export type Comment = { id: number; figureRevision: string; parentId: number; author: string; fromOwner: boolean; body: string; anchor?: Anchor; createdAt: string; resolvedAt?: string };
 
 export type FrozenItem = { revision: string; title: string; caption: string; note: string; previewSha: string; width: number; height: number; provenance: Provenance };
-export type Review = { snapshot: { boardTitle: string; label: string; createdAt: string; expiresAt: string; items: FrozenItem[] }; comments: Comment[] };
+export type Review = { snapshot: { boardTitle: string; label: string; question?: string; createdAt: string; expiresAt: string; items: FrozenItem[] }; comments: Comment[]; outcome: { value: "" | OutcomeValue; note?: string; by?: string; at?: string }; superseded?: { reason: string; at: string } };
+export type Preflight = { frozen: Review["snapshot"]; warnings: string[] };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -57,8 +60,9 @@ export const addToBoard = (boardId: number, figureId: number) => post<Board>(`/a
 export const removeItem = (boardId: number, pos: number) => post<Board>(`/api/boards/${boardId}/items/${pos}/remove`, {});
 export const moveItem = (boardId: number, pos: number, delta: -1 | 1) => post<Board>(`/api/boards/${boardId}/items/${pos}/move`, { delta });
 export const setNote = (boardId: number, pos: number, note: string) => post<Board>(`/api/boards/${boardId}/items/${pos}/note`, { note });
-export const publish = (boardId: number, label: string, hours: number) =>
-  post<{ snapshot: Snapshot; token: string; reviewPath: string; note: string }>(`/api/boards/${boardId}/publish`, { label, hours });
+export const publish = (boardId: number, label: string, hours: number, extra: { question?: string; supersedes?: number; reason?: string } = {}) =>
+  post<{ snapshot: Snapshot; token: string; reviewPath: string; note: string }>(`/api/boards/${boardId}/publish`, { label, hours, ...extra });
+export const preflight = (boardId: number, question: string) => call<Preflight>(`/api/boards/${boardId}/preflight?question=${encodeURIComponent(question)}`);
 export const listSnapshots = (boardId: number) => call<{ snapshots: Snapshot[] }>(`/api/boards/${boardId}/snapshots`).then((r) => r.snapshots);
 export const revokeSnapshot = (id: number) => post<{ revoked: boolean }>(`/api/snapshots/${id}/revoke`, {});
 export const snapshotComments = (id: number) => call<{ comments: Comment[] }>(`/api/snapshots/${id}/comments`).then((r) => r.comments);
@@ -68,3 +72,4 @@ export const reviewPreviewUrl = (token: string, sha: string) => `/review-api/${e
 export const addReviewComment = (token: string, c: { figureRevision?: string; parentId?: number; author: string; body: string; anchor?: Anchor }) => post<Comment>(`/review-api/${encodeURIComponent(token)}/comments`, c);
 export const ownerReply = (snapshotId: number, parentId: number, body: string) => post<Comment>(`/api/snapshots/${snapshotId}/comments`, { parentId, body });
 export const resolveComment = (id: number, resolved: boolean) => post<{ resolved: boolean }>(`/api/comments/${id}/resolve`, { resolved });
+export const setOutcome = (token: string, o: { outcome: OutcomeValue; note: string; author: string }) => post<Review["outcome"]>(`/review-api/${encodeURIComponent(token)}/outcome`, o);

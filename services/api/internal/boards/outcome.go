@@ -1,0 +1,96 @@
+package boards
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
+
+// Outcomes a reviewer can give a version. None of them says a run is scientifically valid: that is a separate
+// assessment kept by the author on the run.
+var outcomes = map[string]bool{"commented": true, "changes_requested": true, "reviewed": true}
+
+func (s *Store) outcome(snapshotID int64) Outcome {
+	var o Outcome
+	var at int64
+	if s.db.QueryRow(`SELECT outcome,note,author,at FROM snapshot_outcomes WHERE snapshot_id=? ORDER BY id DESC LIMIT 1`, snapshotID).Scan(&o.Value, &o.Note, &o.By, &at) == nil {
+		t := time.Unix(at, 0).UTC()
+		o.At = &t
+	}
+	return o
+}
+
+func (s *Store) fillOutcome(sn *Snapshot) {
+	o := s.outcome(sn.ID)
+	sn.Outcome, sn.OutcomeNote, sn.OutcomeBy, sn.OutcomeAt = o.Value, o.Note, o.By, o.At
+}
+
+// SetOutcome records the reviewer's word on this version. Each call is kept, the latest counts.
+func (s *Store) SetOutcome(token, value, note, author string) (Outcome, error) {
+	id, _, err := s.lookup(token)
+	if err != nil {
+		return Outcome{}, err
+	}
+	if !outcomes[value] {
+		return Outcome{}, fmt.Errorf("%w: unknown outcome", ErrInvalid)
+	}
+	note, author = clip(note, 1000), clip(author, 80)
+	if author == "" {
+		author = "Reviewer"
+	}
+	now := time.Now()
+	if _, err := s.db.Exec(`INSERT INTO snapshot_outcomes(snapshot_id,at,outcome,note,author) VALUES(?,?,?,?,?)`, id, now.Unix(), value, note, author); err != nil {
+		return Outcome{}, err
+	}
+	t := now.UTC()
+	return Outcome{Value: value, Note: note, By: author, At: &t}, nil
+}
+
+// Preflight describes exactly what publishing the board would expose, and what a careful author would want to know
+// first. It creates nothing.
+type Preflight struct {
+	Frozen   Frozen   `json:"frozen"`
+	Warnings []string `json:"warnings"`
+}
+
+func (s *Store) Preflight(boardID int64, question string) (Preflight, error) {
+	b, err := s.Board(boardID)
+	if err != nil {
+		return Preflight{}, err
+	}
+	if len(b.Items) == 0 {
+		return Preflight{}, fmt.Errorf("%w: the board has no figures", ErrInvalid)
+	}
+	fr := Frozen{BoardTitle: b.Title, Question: clip(question, 1000), CreatedAt: time.Now().UTC(), Items: []FrozenItem{}}
+	var warns []string
+	if fr.Question == "" {
+		warns = append(warns, "No question for the reviewer: say what you want them to look at.")
+	}
+	for _, it := range b.Items {
+		fr.Items = append(fr.Items, FrozenItem{Revision: it.Figure.Revision, Title: it.Figure.Title, Caption: it.Figure.Caption, Note: it.Note,
+			PreviewSHA: it.Figure.PreviewSHA, Width: it.Figure.Width, Height: it.Figure.Height, Provenance: it.Figure.Provenance})
+		var p struct {
+			Run *struct {
+				Dirty  bool `json:"dirty"`
+				Review *struct {
+					QC string `json:"qc"`
+				} `json:"review"`
+			} `json:"run"`
+			Interpretation *struct {
+				DeclaredBy string `json:"declaredBy"`
+			} `json:"interpretation"`
+		}
+		_ = json.Unmarshal(it.Figure.Provenance, &p)
+		name := it.Figure.Title
+		if it.Figure.Caption == "" {
+			warns = append(warns, fmt.Sprintf("%q has no caption.", name))
+		}
+		if p.Run != nil && p.Run.Dirty {
+			warns = append(warns, fmt.Sprintf("%q comes from a run made from uncommitted code, so it cannot be reproduced from a commit.", name))
+		}
+		if p.Run != nil && (p.Run.Review == nil || p.Run.Review.QC == "" || p.Run.Review.QC == "not_assessed") {
+			warns = append(warns, fmt.Sprintf("The run behind %q has not been assessed: the reviewer will see \"not assessed\".", name))
+		}
+	}
+	return Preflight{Frozen: fr, Warnings: warns}, nil
+}

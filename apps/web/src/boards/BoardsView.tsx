@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
-import { Button, IconButton, Input, Select } from "../ui";
-import { addToBoard as _unused, createBoard, figurePreviewUrl, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment } from "../api/boards";
+import { Button, Checkbox, IconButton, Input, Select } from "../ui";
+import { addToBoard as _unused, createBoard, figurePreviewUrl, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
 import { Threads } from "./Threads";
-import type { Board, Comment, Snapshot } from "../api/boards";
+import type { Board, Comment, Preflight, Snapshot } from "../api/boards";
 import { EM } from "../catalog/format";
 import { RunLine } from "./RunLine";
 import s from "./BoardsView.module.css";
@@ -38,6 +38,10 @@ export function BoardsView() {
   const [link, setLink] = useState<string | null>(null);
   const [base, setBase] = useState(readBase);
   const [comments, setComments] = useState<Record<number, Comment[]>>({});
+  const [question, setQuestion] = useState("");
+  const [replaces, setReplaces] = useState(false);
+  const [reason, setReason] = useState("");
+  const [pre, setPre] = useState<Preflight | null>(null);
 
   const reload = useCallback(async (keep?: number | null) => {
     try {
@@ -71,7 +75,9 @@ export function BoardsView() {
   async function share() {
     if (!board) return;
     try {
-      const r = await publish(board.id, label, Number(hours));
+      const prev = snaps.find((x) => !x.revoked && !x.supersededBy);
+      const r = await publish(board.id, label, Number(hours), { question, ...(replaces && prev ? { supersedes: prev.id, reason } : {}) });
+      setPre(null);
       try {
         localStorage.setItem(BASE_KEY, base);
       } catch {
@@ -135,6 +141,16 @@ export function BoardsView() {
           <p className={s.note}>Sharing freezes the board as it is now. A reviewer sees the frozen pictures, captions, notes and provenance, and can comment. They never receive the data, file paths or any credential.</p>
           <div className={s.shareForm}>
             <Input label="Label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Draft for the group meeting" />
+            <label className={s.noteLabel}>
+              What should the reviewer look at?
+              <textarea className={s.area} rows={2} maxLength={1000} value={question} onChange={(e) => { setQuestion(e.target.value); setPre(null); }} placeholder="e.g. Is the stretch hiding the edge of the structure?" />
+            </label>
+            {snaps.some((x) => !x.revoked && !x.supersededBy) ? (
+              <>
+                <Checkbox label="This replaces the previous shared version" checked={replaces} onChange={(e) => setReplaces(e.target.checked)} />
+                {replaces ? <Input label="Why it was replaced (the old link will say this)" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} /> : null}
+              </>
+            ) : null}
             <Select label="Link valid for" value={hours} onChange={(e) => setHours(e.target.value)}>
               <option value="24">1 day</option>
               <option value="168">7 days</option>
@@ -142,8 +158,19 @@ export function BoardsView() {
               <option value="720">30 days</option>
             </Select>
             <Input label="Review address" value={base} onChange={(e) => setBase(e.target.value)} />
+            <Button onClick={() => void run(async () => setPre(await preflight(board.id, question)))}>Check what will be shared</Button>
             <Button variant="primary" onClick={share}>Freeze and create link</Button>
           </div>
+          {pre ? (
+            <div className={s.link} role="region" aria-label="What the reviewer will see">
+              <p className={s.note}>The reviewer will see exactly this and nothing else:</p>
+              {pre.warnings.length > 0 ? <ul className={s.comments}>{pre.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : <p className={s.note}>Nothing to flag.</p>}
+              <ol className={s.comments}>
+                {pre.frozen.items.map((it) => <li key={it.revision}><strong>{it.title}</strong>{it.caption ? ` · ${it.caption}` : ""}{it.note ? ` · note: ${it.note}` : ""}</li>)}
+              </ol>
+              {pre.frozen.question ? <p className={s.note}>Question: {pre.frozen.question}</p> : null}
+            </div>
+          ) : null}
           {link ? (
             <div role="status" className={s.link}>
               <p className={s.note}>Shown once. Anyone with this link can read this frozen board; revoke it to end access.</p>
@@ -156,7 +183,8 @@ export function BoardsView() {
           <ul className={s.snaps}>
             {snaps.map((sn) => (
               <li key={sn.id}>
-                <span>{sn.label || `Snapshot ${sn.id}`}</span> <span className={s.src}>· {sn.items} figures · {status(sn)} · expires {new Date(sn.expiresAt).toLocaleDateString()}</span>
+                <span>{sn.label || `Snapshot ${sn.id}`}</span> <span className={s.src}>· {sn.items} figures · {status(sn)}{sn.supersededBy ? " · replaced by a newer version" : ""} · expires {new Date(sn.expiresAt).toLocaleDateString()}</span>
+                <p className={s.note}>{sn.outcome ? `Reviewer: ${OUTCOME_TEXT[sn.outcome]}${sn.outcomeBy ? ` (${sn.outcomeBy})` : ""}${sn.outcomeNote ? ` · ${sn.outcomeNote}` : ""}` : "Not yet reviewed."}</p>
                 <div className={s.row}>
                   <Button onClick={() => void snapshotComments(sn.id).then((c) => setComments({ ...comments, [sn.id]: c }))}>Comments</Button>
                   <Button disabled={sn.revoked} onClick={() => run(async () => { await revokeSnapshot(sn.id); setSnaps(await listSnapshots(board.id)); })}>Revoke link</Button>

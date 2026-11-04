@@ -98,6 +98,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/remove", s.boardItem("remove"))
 		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/move", s.boardItem("move"))
 		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/note", s.boardItem("note"))
+		mux.HandleFunc("GET /api/boards/{id}/preflight", s.preflight)
 		mux.HandleFunc("POST /api/boards/{id}/publish", s.publish)
 		mux.HandleFunc("GET /api/boards/{id}/snapshots", s.snapshots)
 		mux.HandleFunc("POST /api/snapshots/{id}/revoke", s.revoke)

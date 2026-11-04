@@ -361,3 +361,69 @@ func TestThreadsAnchorsRepliesAndResolve(t *testing.T) {
 		t.Error("a thread can be reopened")
 	}
 }
+
+func TestReviewRequestOutcomeSupersedeAndPreflight(t *testing.T) {
+	s, _ := newStore(t)
+	b, _ := s.CreateBoard("one")
+	f := fig(t, s, "F1", 1)
+	s.AddItem(b.ID, f.ID)
+
+	// the preflight shows what would be exposed and what the author may have forgotten, and publishes nothing
+	pf, err := s.Preflight(b.ID, "")
+	if err != nil || len(pf.Frozen.Items) != 1 || len(pf.Warnings) < 1 || !strings.Contains(pf.Warnings[0], "No question") {
+		t.Fatalf("preflight: %+v %v", pf, err)
+	}
+	if sns, _ := s.Snapshots(b.ID); len(sns) != 0 {
+		t.Fatal("a preflight must not create a snapshot")
+	}
+
+	sn1, tok1, err := s.PublishWith(b.ID, PublishOptions{Label: "v1", Question: "Is the stretch hiding the edge?", TTL: time.Hour})
+	if err != nil || sn1.Question == "" {
+		t.Fatal(err)
+	}
+	rv, _ := s.Review(tok1)
+	if rv.Snapshot.Question != "Is the stretch hiding the edge?" || rv.Outcome.Value != "" || rv.Superseded != nil {
+		t.Fatalf("a new review is asked a question and is not yet reviewed: %+v", rv)
+	}
+
+	// the reviewer's outcome: validated, kept, and the latest counts; it never touches a run's own assessment
+	if _, err := s.SetOutcome(tok1, "valid", "", "Prof"); !errors.Is(err, ErrInvalid) {
+		t.Errorf("an outcome that is not one of the three: %v", err)
+	}
+	s.SetOutcome(tok1, "changes_requested", "Rescale the colour bar", "Prof")
+	s.SetOutcome(tok1, "reviewed", "Thanks, fine now", "Prof")
+	sns, _ := s.Snapshots(b.ID)
+	if sns[0].Outcome != "reviewed" || sns[0].OutcomeNote != "Thanks, fine now" || sns[0].OutcomeAt == nil {
+		t.Errorf("owner list outcome: %+v", sns[0])
+	}
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM snapshot_outcomes`).Scan(&n)
+	if n != 2 {
+		t.Errorf("every outcome is kept: %d", n)
+	}
+
+	// a corrected version supersedes the old one: the old link keeps working and says why it was replaced
+	sn2, tok2, err := s.PublishWith(b.ID, PublishOptions{Label: "v2", TTL: time.Hour, Supersedes: sn1.ID, Reason: "Colour bar rescaled"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := s.Review(tok1)
+	if err != nil || old.Superseded == nil || old.Superseded.Reason != "Colour bar rescaled" {
+		t.Fatalf("the old link must say it was replaced: %+v %v", old.Superseded, err)
+	}
+	if cur, _ := s.Review(tok2); cur.Superseded != nil {
+		t.Error("the new version is not superseded")
+	}
+	sns, _ = s.Snapshots(b.ID)
+	if sns[1].SupersededBy != sn2.ID {
+		t.Errorf("owner list: %+v", sns)
+	}
+	// only a snapshot of the same board can be superseded
+	b2, _ := s.CreateBoard("two")
+	f2 := fig(t, s, "F2", 2)
+	s.AddItem(b2.ID, f2.ID)
+	s.PublishWith(b2.ID, PublishOptions{TTL: time.Hour, Supersedes: sn2.ID})
+	if cur, _ := s.Review(tok2); cur.Superseded != nil {
+		t.Error("a snapshot of another board was superseded")
+	}
+}

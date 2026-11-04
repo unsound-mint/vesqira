@@ -107,6 +107,7 @@ func (h *Handler) Handler() http.Handler {
 	mux.HandleFunc("GET /review-api/{token}", h.snapshot)
 	mux.HandleFunc("GET /review-api/{token}/preview/{sha}", h.preview)
 	mux.HandleFunc("POST /review-api/{token}/comments", h.comment)
+	mux.HandleFunc("POST /review-api/{token}/outcome", h.outcome)
 	if h.WebDist != "" {
 		mux.Handle("GET /", h.static())
 	}
@@ -206,6 +207,40 @@ func (h *Handler) comment(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(c)
+}
+
+func (h *Handler) outcome(w http.ResponseWriter, r *http.Request) {
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
+		secure(w)
+		http.Error(w, "content type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+	var in struct {
+		Outcome string `json:"outcome"`
+		Note    string `json:"note"`
+		Author  string `json:"author"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		secure(w)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	o, err := h.Store.SetOutcome(r.PathValue("token"), in.Outcome, in.Note, in.Author)
+	if errors.Is(err, boards.ErrInvalid) {
+		secure(w)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "choose one of: commented, changes_requested, reviewed"})
+		return
+	}
+	if h.bad(w, r, err) {
+		return
+	}
+	secure(w)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(o)
 }
 
 // regularFilesOnly stops http.FileServer listing directories and following anything but regular files.

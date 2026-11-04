@@ -412,16 +412,19 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Label string  `json:"label"`
-		Hours float64 `json:"hours"`
+		Label      string  `json:"label"`
+		Question   string  `json:"question"`
+		Hours      float64 `json:"hours"`
+		Supersedes int64   `json:"supersedes"`
+		Reason     string  `json:"reason"`
 	}
-	if !body(w, r, 4<<10, &in, true) {
+	if !body(w, r, 8<<10, &in, true) {
 		return
 	}
 	if in.Hours == 0 {
 		in.Hours = 24 * 14
 	}
-	sn, tok, err := s.Boards.Publish(id, in.Label, time.Duration(in.Hours*float64(time.Hour)))
+	sn, tok, err := s.Boards.PublishWith(id, boards.PublishOptions{Label: in.Label, Question: in.Question, TTL: time.Duration(in.Hours * float64(time.Hour)), Supersedes: in.Supersedes, Reason: in.Reason})
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -514,4 +517,18 @@ func (s *Server) resolveComment(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Audit.Record(act, "comment", id, "")
 	writeJSON(w, 200, map[string]bool{"resolved": in.Resolved})
+}
+
+// preflight shows what publishing would expose, without publishing.
+func (s *Server) preflight(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	p, err := s.Boards.Preflight(id, r.URL.Query().Get("question"))
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	writeJSON(w, 200, p)
 }

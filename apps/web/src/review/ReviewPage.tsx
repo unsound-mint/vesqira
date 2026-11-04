@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button, Input } from "../ui";
 import { RunLine } from "../boards/RunLine";
-import { addReviewComment, getReview, reviewPreviewUrl } from "../api/boards";
+import { addReviewComment, getReview, OUTCOME_TEXT, reviewPreviewUrl, setOutcome } from "../api/boards";
+import type { OutcomeValue } from "../api/boards";
 import type { Anchor, Comment, Review } from "../api/boards";
 import { Threads, threadNumbers } from "../boards/Threads";
 import { AnchorImage } from "./AnchorImage";
@@ -14,6 +15,8 @@ export function ReviewPage({ token }: { token: string }) {
   const [author, setAuthor] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
+  const [verdict, setVerdict] = useState<OutcomeValue>("commented");
+  const [verdictNote, setVerdictNote] = useState("");
   const [marking, setMarking] = useState<string | null>(null); // the figure revision being marked
   const [draftAnchors, setDraftAnchor] = useState<Record<string, Anchor | null>>({});
 
@@ -42,6 +45,16 @@ export function ReviewPage({ token }: { token: string }) {
     setRv((cur) => (cur ? { ...cur, comments: [...cur.comments, c] } : cur));
   }
 
+  async function sendOutcome() {
+    try {
+      const o = await setOutcome(token, { outcome: verdict, note: verdictNote.trim(), author: author.trim() });
+      setRv((cur) => (cur ? { ...cur, outcome: o } : cur));
+      setMsg(null);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Could not send your outcome.");
+    }
+  }
+
   if (err) return <main className={s.page}><p role="alert" className={s.err}>{err}</p></main>;
   if (!rv) return <main className={s.page}><p className={s.note}>Loading the review…</p></main>;
   const snap = rv.snapshot;
@@ -56,6 +69,8 @@ export function ReviewPage({ token }: { token: string }) {
         </p>
         <Input label="Your name (shown with your comments)" value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={80} />
       </header>
+      {rv.superseded ? <p role="status" className={s.noteBox}><strong>The author has replaced this version.</strong> {rv.superseded.reason} Ask for the new link; this one stays readable.</p> : null}
+      {snap.question ? <p className={s.noteBox}><strong>What the author asks you to look at:</strong> {snap.question}</p> : null}
       {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
       {snap.items.map((it) => (
         <article key={it.revision} className={s.fig}>
@@ -96,6 +111,20 @@ export function ReviewPage({ token }: { token: string }) {
           </section>
         </article>
       ))}
+      <section className={s.fig} aria-label="Your outcome">
+        <h2 className={s.h2}>Your outcome for this version</h2>
+        <p className={s.note}>This says what you thought of the review itself. It is not an assessment of any run: the author keeps that separately.{rv.outcome?.value ? ` Currently: ${OUTCOME_TEXT[rv.outcome.value]}.` : " Not sent yet."}</p>
+        <div className={s.row} role="radiogroup" aria-label="Outcome">
+          {(Object.keys(OUTCOME_TEXT) as OutcomeValue[]).map((v) => (
+            <label key={v} className={s.note}><input type="radio" name="outcome" checked={verdict === v} onChange={() => setVerdict(v)} /> {OUTCOME_TEXT[v]}</label>
+          ))}
+        </div>
+        <label className={s.label}>
+          Note (optional)
+          <textarea className={s.area} rows={2} maxLength={1000} value={verdictNote} onChange={(e) => setVerdictNote(e.target.value)} />
+        </label>
+        <div className={s.row}><Button onClick={sendOutcome}>Send outcome</Button></div>
+      </section>
     </main>
   );
 }
