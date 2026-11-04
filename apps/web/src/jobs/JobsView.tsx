@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Input, Pill, Select } from "../ui";
 import { jobResult } from "../api/analysis";
-import { cancelJob, createJob, editScript, hostText, jobLog, listJobs, readSetting, refreshJob, registerOutputs, submitJob } from "../api/jobs";
+import { cancelJob, createJob, editScript, getJob, hostText, jobLog, listJobs, readSetting, refreshJob, registerOutputs, reopenJob, submitJob } from "../api/jobs";
 import type { Job, JobState } from "../api/jobs";
 import type { Host } from "../api/hosts";
 import type { Run } from "../api/runs";
 import s from "./JobsView.module.css";
 
-const TONE: Record<JobState, "neutral" | "ok" | "warn" | "err" | "accent"> = { draft: "neutral", submitted: "accent", running: "accent", completed: "ok", failed: "err", cancelled: "warn" };
+const TONE: Record<JobState, "neutral" | "ok" | "warn" | "err" | "accent"> = { draft: "neutral", submitting: "warn", submitted: "accent", running: "accent", completed: "ok", failed: "err", cancelled: "warn" };
 const ACTIVE: JobState[] = ["submitted", "running"];
 const SETTINGS: { key: string; label: string; kind: "text" | "noise_mode" }[] = [
   { key: "input_file", label: "Input cube on the host", kind: "text" },
@@ -202,13 +202,14 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; h
       {draft ? (
         <div className={s.row}>
           <Button disabled={busy || !dirty} onClick={() => act(() => editScript(job.id, script), onChange)}>Save edits</Button>
-          <Button variant="primary" disabled={busy || dirty} onClick={() => act(() => submitJob(job.id, job.scriptHash), onChange)}>Submit this script</Button>
+          <Button variant="primary" disabled={busy || dirty} onClick={() => act(() => submitJob(job.id, job.scriptHash).catch(async (e) => { const j = await getJob(job.id).catch(() => null); if (j) onChange(j); throw e; }), onChange)}>Submit this script</Button>
         </div>
       ) : null}
       {draft ? <p className={s.note}>Submitted from this computer to your own cluster account, so there is no extra approval step: the script above is what runs.{dirty ? " Save your edits before submitting." : ""}</p> : null}
       {!draft ? (
         <div className={s.row}>
-          <Button disabled={busy} onClick={() => act(() => refreshJob(job.id), onChange)}>Refresh status</Button>
+          <Button disabled={busy} onClick={() => act(() => refreshJob(job.id), onChange)}>{job.state === "submitting" ? "Check on the host" : "Refresh status"}</Button>
+          {job.state === "submitting" ? <Button disabled={busy} onClick={() => act(() => reopenJob(job.id), onChange)}>Not submitted: reopen as draft</Button> : null}
           {ACTIVE.includes(job.state) ? <Button disabled={busy} onClick={() => act(() => cancelJob(job.id), onChange)}>Cancel job</Button> : null}
           <Button disabled={busy} onClick={() => act(() => jobLog(job.id), setLog)}>Show log</Button>
           {job.template === "analysis" && job.state === "completed" ? <Button disabled={busy} onClick={() => act(() => jobResult(job.id), (r) => setLog(JSON.stringify(r.summary, null, 2)))}>Show the result</Button> : null}

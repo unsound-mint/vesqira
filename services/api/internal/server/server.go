@@ -60,6 +60,7 @@ func (s *Server) Handler() http.Handler {
 			mux.HandleFunc("POST /api/jobs/{id}/script", s.editJobScript)
 			mux.HandleFunc("POST /api/jobs/{id}/submit", s.submitJob)
 			mux.HandleFunc("POST /api/jobs/{id}/refresh", s.refreshJob)
+			mux.HandleFunc("POST /api/jobs/{id}/reopen", s.reopenJob)
 			mux.HandleFunc("POST /api/jobs/{id}/cancel", s.cancelJob)
 			mux.HandleFunc("GET /api/jobs/{id}/log", s.jobLog)
 			mux.HandleFunc("POST /api/jobs/{id}/register", s.registerJobOutputs)

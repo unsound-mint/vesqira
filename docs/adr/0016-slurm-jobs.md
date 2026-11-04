@@ -26,3 +26,7 @@ Unit tests: the rendered script is valid bash and carries the config verbatim; e
 
 ## Rollback / Migration
 Drop the `jobs` table and routes; runs and datasets are unaffected.
+
+## Amendment: an unanswered submission is never repeated
+
+A submission is recorded as `submitting` before `sbatch` runs, and `sbatch` is called with `--comment=vesqira-<job directory>`. If the answer is lost (timeout, dropped connection, host down) the record stays `submitting`; submit is refused with 409. "Check on the host" looks for the job by that comment in the queue and in the accounting records, and by the output files a started job leaves in its own directory; if found, the record becomes `submitted`. "Reopen as draft" performs the same lookup and returns the record to a draft only when the host answered and holds no such job. A host that cannot be reached changes nothing. Limits: a custom script that sets its own output paths, on a cluster that does not keep job comments in accounting, can finish and leave no trace; in that case the check finds nothing and reopening would allow a duplicate, which is why reopening is a separate, explicit action.

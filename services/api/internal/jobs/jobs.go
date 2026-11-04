@@ -23,14 +23,15 @@ var (
 )
 
 const (
-	StateDraft     = "draft"
-	StateSubmitted = "submitted" // accepted by Slurm, waiting
-	StateRunning   = "running"
-	StateCompleted = "completed"
-	StateFailed    = "failed"
-	StateCancelled = "cancelled"
-	MaxScript      = 64 << 10
-	MaxActive      = 20
+	StateDraft      = "draft"
+	StateSubmitting = "submitting" // sbatch was started and its answer was not seen; Slurm may or may not hold the job
+	StateSubmitted  = "submitted"  // accepted by Slurm, waiting
+	StateRunning    = "running"
+	StateCompleted  = "completed"
+	StateFailed     = "failed"
+	StateCancelled  = "cancelled"
+	MaxScript       = 64 << 10
+	MaxActive       = 20
 )
 
 type Job struct {
@@ -238,7 +239,52 @@ func SubmitCommand(workDir string) (string, error) {
 		return "", fmt.Errorf("%w: bad job directory", ErrInvalid)
 	}
 	d := jobDir(workDir)
-	return `mkdir -p ` + d + ` && cd ` + d + ` && cat > job.sh && chmod 700 job.sh && sbatch --parsable job.sh`, nil
+	// The comment marks the job as ours, so a submission whose answer was lost can be found again.
+	return `mkdir -p ` + d + ` && cd ` + d + ` && cat > job.sh && chmod 700 job.sh && sbatch --parsable --comment=` + Marker(workDir) + ` job.sh`, nil
+}
+
+// Marker is the Slurm comment that ties a Slurm job to one job record.
+func Marker(workDir string) string { return "vesqira-" + workDir }
+
+var outFileRe = regexp.MustCompile(`^.+-([0-9]{1,12})\.(out|err)$`)
+
+// LookupCommand asks the host whether Slurm already holds the job that was being submitted: by the comment in the
+// queue, by the accounting record, and by the output files a started job leaves in its own directory.
+func LookupCommand(workDir string) (string, error) {
+	if !workDirRe.MatchString(workDir) {
+		return "", fmt.Errorf("%w: bad job directory", ErrInvalid)
+	}
+	return `squeue -h -u "$USER" -o '%i %k' 2>/dev/null; echo '---'; sacct -n -P -X -S now-14days -o JobID,Comment 2>/dev/null; echo '---'; ls -1 ` + jobDir(workDir) + ` 2>/dev/null; true`, nil
+}
+
+// ParseLookup returns the Slurm id of the job that carries this record's marker, if the output shows one.
+func ParseLookup(out, workDir string) (string, bool) {
+	want := Marker(workDir)
+	section := 0
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "---" {
+			section++
+			continue
+		}
+		switch section {
+		case 0:
+			f := strings.Fields(line)
+			if len(f) == 2 && f[1] == want && ValidSlurmID(f[0]) {
+				return f[0], true
+			}
+		case 1:
+			f := strings.SplitN(line, "|", 2)
+			if len(f) == 2 && f[1] == want && ValidSlurmID(f[0]) {
+				return f[0], true
+			}
+		case 2:
+			if m := outFileRe.FindStringSubmatch(line); m != nil {
+				return m[1], true
+			}
+		}
+	}
+	return "", false
 }
 
 func StatusCommand(slurmID string) (string, error) {
@@ -412,8 +458,32 @@ func (s *Store) SetScript(id int64, script string) error {
 	return nil
 }
 
+// BeginSubmit moves a draft to "submitting" before sbatch runs. Only one caller can win, so a double click or a retry
+// cannot start a second submission of the same record.
+func (s *Store) BeginSubmit(id int64) (bool, error) {
+	res, err := s.db.Exec(`UPDATE jobs SET state=?, detail='submitting: waiting for sbatch to answer' WHERE id=? AND state=?`, StateSubmitting, id, StateDraft)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// MarkSubmitted records the Slurm id. It accepts a job that is submitting, or a draft from before this state existed.
 func (s *Store) MarkSubmitted(id int64, slurmID string) error {
-	_, err := s.db.Exec(`UPDATE jobs SET state=?, slurm_id=?, detail='submitted', submitted_at=? WHERE id=? AND state=?`, StateSubmitted, slurmID, time.Now().Unix(), id, StateDraft)
+	_, err := s.db.Exec(`UPDATE jobs SET state=?, slurm_id=?, detail='submitted', submitted_at=COALESCE(submitted_at, ?) WHERE id=? AND state IN (?,?)`, StateSubmitted, slurmID, time.Now().Unix(), id, StateDraft, StateSubmitting)
+	return err
+}
+
+// Reopen returns a submission that never reached Slurm to a draft. The caller must have checked the host first.
+func (s *Store) Reopen(id int64) error {
+	_, err := s.db.Exec(`UPDATE jobs SET state=?, detail='' WHERE id=? AND state=?`, StateDraft, id, StateSubmitting)
+	return err
+}
+
+// NoteSubmitting keeps the job in "submitting" and records why it is unresolved.
+func (s *Store) NoteSubmitting(id int64, detail string) error {
+	_, err := s.db.Exec(`UPDATE jobs SET detail=? WHERE id=? AND state=?`, detail, id, StateSubmitting)
 	return err
 }
 
@@ -433,7 +503,7 @@ func (s *Store) LinkRun(id, runID int64) error {
 
 func (s *Store) Active() (int, error) {
 	var n int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE state IN (?,?)`, StateSubmitted, StateRunning).Scan(&n)
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE state IN (?,?,?)`, StateSubmitting, StateSubmitted, StateRunning).Scan(&n)
 	return n, err
 }
 

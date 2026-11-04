@@ -131,3 +131,24 @@ func TestRemoteCommandsTakeOnlyValidatedIdentifiers(t *testing.T) {
 		t.Error("a non-numeric submit answer was accepted")
 	}
 }
+
+func TestParseLookupFindsOnlyThisRecordsJob(t *testing.T) {
+	wd := "job-0123456789abcdef"
+	other := "job-fedcba9876543210"
+	cases := map[string]struct {
+		out  string
+		want string
+		ok   bool
+	}{
+		"queue comment":      {"77 " + Marker(wd) + "\n88 " + Marker(other) + "\n---\n---\n", "77", true},
+		"accounting comment": {"---\n91|" + Marker(wd) + "\n92|" + Marker(other) + "\n---\n", "91", true},
+		"output file":        {"---\n---\njob.sh\nvgt-ker8-4243.out\n", "4243", true},
+		"someone else's job": {"88 " + Marker(other) + "\n---\n93|" + Marker(other) + "\n---\njob.sh\n", "", false},
+		"nothing":            {"---\n---\n", "", false},
+	}
+	for name, c := range cases {
+		if id, ok := ParseLookup(c.out, wd); id != c.want || ok != c.ok {
+			t.Errorf("%s: got %q %v, want %q %v", name, id, ok, c.want, c.ok)
+		}
+	}
+}

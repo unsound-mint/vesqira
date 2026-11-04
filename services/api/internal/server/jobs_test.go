@@ -33,10 +33,11 @@ func fakeSlurm(t *testing.T, dir string) {
 	state := filepath.Join(dir, "state")
 	os.MkdirAll(state, 0o755)
 	write("sbatch", fmt.Sprintf(`[ "$1" = "--parsable" ] || exit 2
-[ -f "$2" ] || exit 3
+for f; do :; done
+[ -f "$f" ] || exit 3
 n=$(( $(cat %[1]s/counter 2>/dev/null || echo 4241) + 1 )); echo $n > %[1]s/counter
 echo PENDING > %[1]s/$n
-echo "fake log line for job $n" > "$PWD/$(sed -n 's/^#SBATCH --job-name=//p' "$2")-$n.out"
+echo "fake log line for job $n" > "$PWD/$(sed -n 's/^#SBATCH --job-name=//p' "$f")-$n.out"
 echo $n
 `, state))
 	write("squeue", fmt.Sprintf(`id=$3; s=$(cat %[1]s/$id 2>/dev/null); case "$s" in PENDING|RUNNING) echo $s;; esac
@@ -71,8 +72,10 @@ func TestSlurmJobLifecycleOnAStandInHost(t *testing.T) {
 while [ $# -gt 0 ]; do case "$1" in -o) shift 2;; -T) shift;; *) break;; esac; done
 shift
 cmd=$(printf '%%s' "$*" | sed -e 's#\$HOME#%s#g' -e 's#bash -lc#bash -c#')
+[ -e %q ] && exit 255
+if [ -e %q ]; then PATH=%s:$PATH sh -c "$cmd" >/dev/null 2>&1; exit 255; fi
 PATH=%s:$PATH exec sh -c "$cmd"
-`, filepath.Join(remoteHome, "DOWN"), remoteHome, bin)
+`, filepath.Join(remoteHome, "DOWN"), remoteHome, filepath.Join(remoteHome, "DROP"), filepath.Join(remoteHome, "LOSE"), bin, bin)
 	sshBin := filepath.Join(base, "ssh")
 	os.WriteFile(sshBin, []byte(sshScript), 0o755)
 
@@ -173,6 +176,49 @@ PATH=%s:$PATH exec sh -c "$cmd"
 		t.Errorf("a submitted job's script must not change: %d", r.StatusCode)
 	}
 
+	// an answer that never arrives must not lead to a second submission (the command ran, the connection dropped)
+	r, lb2 := postJSON(t, api("/api/jobs"), vgt(map[string]any{}))
+	var lost jobs.Job
+	json.Unmarshal(lb2, &lost)
+	os.WriteFile(filepath.Join(remoteHome, "LOSE"), nil, 0o644)
+	if r, b := postJSON(t, jp(lost.ID, "/submit"), map[string]any{"scriptHash": lost.ScriptHash}); r.StatusCode != 502 {
+		t.Fatalf("a lost answer: %d %s", r.StatusCode, b)
+	}
+	_, lostBody := get(t, jp(lost.ID, ""))
+	var lj jobs.Job
+	json.Unmarshal(lostBody, &lj)
+	if lj.State != "submitting" {
+		t.Fatalf("a lost answer must leave the record submitting, got %s", lj.State)
+	}
+	if r, _ := postJSON(t, jp(lost.ID, "/submit"), map[string]any{"scriptHash": lost.ScriptHash}); r.StatusCode != 409 {
+		t.Errorf("a retry while unresolved: %d, want 409 (it would submit twice)", r.StatusCode)
+	}
+	if r, _ := postJSON(t, jp(lost.ID, "/reopen"), map[string]any{}); r.StatusCode != 502 {
+		t.Errorf("reopen while the host cannot be checked: %d, want 502", r.StatusCode)
+	}
+	os.Remove(filepath.Join(remoteHome, "LOSE"))
+	// the job is on the host (the command ran), and checking finds it by what it left, not by guessing
+	_, checkBody := postJSON(t, jp(lost.ID, "/refresh"), map[string]any{})
+	var cj jobs.Job
+	json.Unmarshal(checkBody, &cj)
+	if cj.State != "submitted" || cj.SlurmID == "" {
+		t.Fatalf("after checking the host: %+v", cj)
+	}
+	// a submission that never reached the host can be reopened, and only after the host confirmed it holds nothing
+	_, db := postJSON(t, api("/api/jobs"), vgt(map[string]any{}))
+	var dropped jobs.Job
+	json.Unmarshal(db, &dropped)
+	os.WriteFile(filepath.Join(remoteHome, "DROP"), nil, 0o644)
+	postJSON(t, jp(dropped.ID, "/submit"), map[string]any{"scriptHash": dropped.ScriptHash})
+	os.Remove(filepath.Join(remoteHome, "DROP"))
+	_, ob := postJSON(t, jp(dropped.ID, "/reopen"), map[string]any{})
+	var oj jobs.Job
+	json.Unmarshal(ob, &oj)
+	if oj.State != "draft" {
+		t.Errorf("a submission that never arrived must reopen as a draft: %+v", oj)
+	}
+	_ = r
+
 	// follow it through the scheduler
 	stateFile := filepath.Join(bin, "state", "4242")
 	state := func() jobs.Job {
@@ -264,7 +310,13 @@ PATH=%s:$PATH exec sh -c "$cmd"
 	if r.StatusCode != 502 || strings.Contains(string(ub), "login1") {
 		t.Errorf("host down: %d %s", r.StatusCode, ub)
 	}
+	// an unanswered submission is not assumed to have failed: it waits until the host can say so
+	if x, _ := js.Get(d3.ID); x.State != "submitting" {
+		t.Errorf("an unanswered submission must stay unresolved: %s", x.State)
+	}
+	os.Remove(filepath.Join(remoteHome, "DOWN"))
+	_, rb = postJSON(t, jp(d3.ID, "/reopen"), map[string]any{})
 	if x, _ := js.Get(d3.ID); x.State != "draft" {
-		t.Errorf("a failed submission must leave the draft a draft: %s", x.State)
+		t.Errorf("after the host confirmed nothing was submitted: %s %s", x.State, rb)
 	}
 }

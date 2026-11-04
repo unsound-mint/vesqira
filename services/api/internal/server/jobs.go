@@ -211,14 +211,23 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 		s.jobErr(w, err)
 		return
 	}
-	out, err := s.Remote.RunShell(r.Context(), h, cmd, []byte(j.Script), 45*time.Second)
-	if err != nil {
-		fail(w, 502, err.Error())
+	// Record the attempt first: from here on the record says "submitting" until Slurm's answer is seen, so a timeout
+	// or a second click cannot submit the same job twice.
+	if won, err := s.Jobs.BeginSubmit(j.ID); err != nil {
+		s.jobErr(w, err)
+		return
+	} else if !won {
+		fail(w, 409, "this job is already being submitted")
 		return
 	}
-	id, err := jobs.ParseSubmit(string(out))
+	out, err := s.Remote.RunShell(r.Context(), h, cmd, []byte(j.Script), 45*time.Second)
+	var id string
+	if err == nil {
+		id, err = jobs.ParseSubmit(string(out))
+	}
 	if err != nil {
-		fail(w, 502, err.Error())
+		_ = s.Jobs.NoteSubmitting(j.ID, "Slurm's answer was not seen ("+err.Error()+"). The job may already be queued: use Check on the host.")
+		fail(w, 502, "the host did not confirm the submission ("+err.Error()+"). The job may already be queued, so it is not submitted again: use Check on the host.")
 		return
 	}
 	if err := s.Jobs.MarkSubmitted(j.ID, id); err != nil {
@@ -229,9 +238,66 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, j)
 }
 
+// reconcile looks for the Slurm job behind a record stuck in "submitting". found is meaningful only when err is nil:
+// a failed lookup says nothing about whether the job exists.
+func (s *Server) reconcile(ctx context.Context, j jobs.Job, h hosts.Host) (id string, found bool, err error) {
+	cmd, err := jobs.LookupCommand(j.WorkDir)
+	if err != nil {
+		return "", false, err
+	}
+	out, err := s.Remote.RunShell(ctx, h, cmd, nil, 30*time.Second)
+	if err != nil {
+		return "", false, err
+	}
+	id, found = jobs.ParseLookup(string(out), j.WorkDir)
+	return id, found, nil
+}
+
+// checkSubmitting resolves an unconfirmed submission when the host can answer, and says what it found.
+func (s *Server) checkSubmitting(ctx context.Context, j jobs.Job, h hosts.Host, reopen bool) error {
+	id, found, err := s.reconcile(ctx, j, h)
+	if err != nil {
+		return err
+	}
+	switch {
+	case found:
+		return s.Jobs.MarkSubmitted(j.ID, id)
+	case reopen:
+		return s.Jobs.Reopen(j.ID)
+	default:
+		return s.Jobs.NoteSubmitting(j.ID, "Slurm does not list this job (checked "+time.Now().Format("15:04")+"). If you are sure it was not submitted, reopen it as a draft.")
+	}
+}
+
+func (s *Server) reopenJob(w http.ResponseWriter, r *http.Request) {
+	j, h, ok := s.jobFrom(w, r)
+	if !ok {
+		return
+	}
+	if j.State != jobs.StateSubmitting {
+		fail(w, 409, "only a submission without an answer can be reopened")
+		return
+	}
+	if err := s.checkSubmitting(r.Context(), j, h, true); err != nil {
+		fail(w, 502, "the host could not be checked ("+err.Error()+"); nothing was changed")
+		return
+	}
+	j, _ = s.Jobs.Get(j.ID)
+	writeJSON(w, 200, j)
+}
+
 func (s *Server) refreshJob(w http.ResponseWriter, r *http.Request) {
 	j, h, ok := s.jobFrom(w, r)
 	if !ok {
+		return
+	}
+	if j.State == jobs.StateSubmitting {
+		if err := s.checkSubmitting(r.Context(), j, h, false); err != nil {
+			fail(w, 502, "the host could not be checked ("+err.Error()+")")
+			return
+		}
+		j, _ = s.Jobs.Get(j.ID)
+		writeJSON(w, 200, j)
 		return
 	}
 	if j.SlurmID != "" && (j.State == jobs.StateSubmitted || j.State == jobs.StateRunning) {

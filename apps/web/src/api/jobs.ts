@@ -1,7 +1,7 @@
 import { ApiError } from "./catalog";
 import type { Run } from "./runs";
 
-export type JobState = "draft" | "submitted" | "running" | "completed" | "failed" | "cancelled";
+export type JobState = "draft" | "submitting" | "submitted" | "running" | "completed" | "failed" | "cancelled";
 
 export type Job = {
   id: number;
@@ -43,10 +43,12 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 export const listJobs = () => call<{ jobs: Job[] }>("/api/jobs").then((r) => r.jobs);
+export const getJob = (id: number) => call<Job>(`/api/jobs/${id}`);
 export const createJob = (r: VgtJobRequest) => post<Job>("/api/jobs", r);
 export const editScript = (id: number, script: string) => post<Job>(`/api/jobs/${id}/script`, { script });
 export const submitJob = (id: number, scriptHash: string) => post<Job>(`/api/jobs/${id}/submit`, { scriptHash });
 export const refreshJob = (id: number) => post<Job>(`/api/jobs/${id}/refresh`, {});
+export const reopenJob = (id: number) => post<Job>(`/api/jobs/${id}/reopen`, {});
 export const cancelJob = (id: number) => post<Job>(`/api/jobs/${id}/cancel`, {});
 export const jobLog = (id: number) => call<{ log: string }>(`/api/jobs/${id}/log`).then((r) => r.log);
 export const registerOutputs = (id: number) => post<Run>(`/api/jobs/${id}/register`, {});
