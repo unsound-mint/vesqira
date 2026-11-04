@@ -31,6 +31,7 @@ export function useViewer(dataset: Dataset | null) {
   const [colormap, setColormap] = useState<ColormapId>("viridis");
   const [stretch, setStretch] = useState<Stretch>("linear");
   const [range, setRange] = useState<RangeMode>("percentile");
+  const [customLimits, setCustomLimits] = useState<[number, number] | null>(null);
   const [hover, setHover] = useState<Pixel | null>(null);
   const [pinned, setPinned] = useState<Pixel | null>(null);
   // the pixel under the cursor in the linked pane, when the two maps share a grid
@@ -46,6 +47,13 @@ export function useViewer(dataset: Dataset | null) {
   const [axial, setAxial] = useState<AxialStats | null>(null);
   const [axialError, setAxialError] = useState<string | null>(null);
   const [showLines, setShowLines] = useState(true);
+  const [zoom, setZoomRaw] = useState(1);              // 1 = the picture fitted to its pane
+  const [pan, setPan] = useState({ x: 0, y: 0 });       // screen pixels
+  const setZoom = useCallback((z: number) => {
+    const c = Math.min(16, Math.max(1, z));
+    setZoomRaw(c);
+    if (c === 1) setPan({ x: 0, y: 0 });
+  }, []);
   const savedRegions = useSavedRegions(datasetId, setRegion);
 
   // A different dataset: forget everything that belonged to the previous one.
@@ -61,6 +69,8 @@ export function useViewer(dataset: Dataset | null) {
     setRegion(null);
     setSpectrum(null);
     setTool("pointer");
+    setZoomRaw(1);
+    setPan({ x: 0, y: 0 });
     if (datasetId === null) return;
     const ac = new AbortController();
     getView(datasetId, ac.signal)
@@ -205,7 +215,7 @@ export function useViewer(dataset: Dataset | null) {
 
   return {
     datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
-    colormap, setColormap, stretch, setStretch, range, setRange,
+    zoom, setZoom, pan, setPan, colormap, setColormap, stretch, setStretch, range, setRange, customLimits, setCustomLimits,
     hover, setHover, mirror, setMirror, pinned, setPinned, probe, pixelValue, coord, coordError,
     canvas, interp, reliability, axial, axialError, showLines, setShowLines,
     tool, setTool, region, setRegion, savedRegions, spectrum, spectrumError, spectrumLoading,

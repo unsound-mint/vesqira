@@ -1,7 +1,7 @@
 import type { PlaneStats } from "../api/planes";
 
 export type Stretch = "linear" | "sqrt" | "asinh";
-export type RangeMode = "percentile" | "minmax";
+export type RangeMode = "percentile" | "minmax" | "custom";
 
 export const STRETCHES: { id: Stretch; label: string }[] = [
   { id: "linear", label: "Linear" },
@@ -11,10 +11,12 @@ export const STRETCHES: { id: Stretch; label: string }[] = [
 export const RANGES: { id: RangeMode; label: string }[] = [
   { id: "percentile", label: "1st to 99th percentile" },
   { id: "minmax", label: "Minimum to maximum" },
+  { id: "custom", label: "Set by hand" },
 ];
 
 /** Display limits from the plane's finite values only. null when the plane has no finite value. */
-export function limits(stats: PlaneStats, mode: RangeMode): [number, number] | null {
+export function limits(stats: PlaneStats, mode: RangeMode, custom?: readonly [number, number] | null): [number, number] | null {
+  if (mode === "custom") return custom && Number.isFinite(custom[0]) && Number.isFinite(custom[1]) && custom[0] < custom[1] ? [custom[0], custom[1]] : null;
   const [lo, hi] = mode === "percentile" ? [stats.p01, stats.p99] : [stats.min, stats.max];
   return lo === null || hi === null ? null : [lo, hi];
 }
@@ -93,4 +95,22 @@ export function renderPlane(data: Float32Array, w: number, h: number, o: RenderO
     }
   }
   return { width: W, height: H, pixels: out };
+}
+
+/**
+ * Counts of the finite values in `bins` equal steps from `min` to `max` (the largest value falls in the last bin).
+ * NaN, BLANK and infinite values are not counted, and zero is an ordinary value.
+ */
+export function histogram(data: Float32Array, min: number, max: number, bins: number): number[] {
+  const counts = new Array<number>(bins).fill(0);
+  if (!(max > min)) {
+    for (const v of data) if (Number.isFinite(v)) counts[0]!++;
+    return counts;
+  }
+  const k = bins / (max - min);
+  for (const v of data) {
+    if (!Number.isFinite(v) || v < min || v > max) continue;
+    counts[Math.min(bins - 1, Math.floor((v - min) * k))]!++;
+  }
+  return counts;
 }

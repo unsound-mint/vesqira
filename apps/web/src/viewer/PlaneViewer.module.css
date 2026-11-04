@@ -127,3 +127,14 @@
   outline: var(--bw) solid var(--canvas);
   pointer-events: none;
 }
+
+.zoomBar {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-3);
+  display: flex;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border-radius: var(--r-md);
+  background: var(--canvas);
+}

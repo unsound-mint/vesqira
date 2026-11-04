@@ -4,6 +4,7 @@ import { COLORMAPS, lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
 import { RANGES, STRETCHES, limits, normalize } from "./render";
 import type { RangeMode, Stretch } from "./render";
+import { Histogram } from "./Histogram";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { axialText, degrees, precisionNote, provenanceNote, spectralText, valueText } from "./format";
@@ -84,7 +85,7 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
 export function DisplayControls({ v }: { v: Viewer }) {
   const bar = useRef<HTMLCanvasElement>(null);
   const stats = v.plane?.head.stats ?? null;
-  const lim = stats ? limits(stats, v.range) : null;
+  const lim = stats ? limits(stats, v.range, v.customLimits) : null;
   const unit = v.view?.bunit ?? null;
   const axial = v.interp !== null;
 
@@ -134,9 +135,14 @@ export function DisplayControls({ v }: { v: Viewer }) {
       <Select label="Stretch" value={v.stretch} onChange={(e) => v.setStretch(e.target.value as Stretch)}>
         {STRETCHES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
       </Select>
-      <Select label="Range" value={v.range} onChange={(e) => v.setRange(e.target.value as RangeMode)}>
+      <Select label="Range" value={v.range} onChange={(e) => {
+        const mode = e.target.value as RangeMode;
+        if (mode === "custom" && !v.customLimits && stats) v.setCustomLimits(limits(stats, v.range));   // start from what is shown now
+        v.setRange(mode);
+      }}>
         {RANGES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
       </Select>
+      {v.plane && stats ? <Histogram data={v.plane.data} stats={stats} limits={lim} unit={unit} onChange={(lo, hi) => { v.setCustomLimits([lo, hi]); v.setRange("custom"); }} /> : null}
       <div className={s.legend}>
         <canvas ref={bar} className={s.bar} width={256} height={1} role="img" aria-label={`${v.colormap} colour bar from low to high`} />
         <div className={s.ends}>
@@ -150,7 +156,7 @@ export function DisplayControls({ v }: { v: Viewer }) {
           </span>
         </div>
       </div>
-      <p className={s.note}>Limits come from the plane’s finite pixels only.{v.plane?.head.scaled ? " BSCALE/BZERO applied." : ""}{precisionNote(v.plane?.head.source_bitpix ?? null)}</p>
+      <p className={s.note}>{v.range === "custom" ? "Limits set by hand; values outside them are drawn at the ends of the colour bar." : "Limits come from the plane’s finite pixels only."}{v.plane?.head.scaled ? " BSCALE/BZERO applied." : ""}{precisionNote(v.plane?.head.source_bitpix ?? null)}</p>
     </div>
   );
 }

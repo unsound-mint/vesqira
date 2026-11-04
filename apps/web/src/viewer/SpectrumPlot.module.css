@@ -55,3 +55,24 @@
 .err {
   color: var(--err);
 }
+
+.table {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.scroll {
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--sp-1);
+  text-align: right;
+}

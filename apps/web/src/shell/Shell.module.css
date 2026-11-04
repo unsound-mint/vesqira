@@ -136,6 +136,7 @@
 
 .pane {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
@@ -152,6 +153,7 @@
 
 .paneBody {
   position: relative;
+  min-width: 0;
   min-height: 0;
 }
 

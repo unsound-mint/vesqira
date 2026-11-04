@@ -1,4 +1,4 @@
-import { Pill, Select } from "../ui";
+import { Checkbox, Pill, Select } from "../ui";
 import type { Compat, Dataset } from "../api/catalog";
 import s from "./CompareBar.module.css";
 
@@ -10,7 +10,7 @@ export function linkState(compat: Compat | null, loading: boolean): { linked: bo
     : { linked: false, text: "Different or unconfirmed grids: not linked, nothing is resampled", tone: "warn" };
 }
 
-export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChange, compat, loading, error }: {
+export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChange, compat, loading, error, shared = false, canShare = false, shareReason = null, onShared }: {
   hosts?: { id: number; name: string }[];
   datasets: Dataset[];
   selectedId: number;
@@ -19,6 +19,10 @@ export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChan
   compat: Compat | null;
   loading: boolean;
   error: string | null;
+  shared?: boolean;
+  canShare?: boolean;
+  shareReason?: string | null;
+  onShared?: (on: boolean) => void;
 }) {
   const others = datasets.filter((d) => d.id !== selectedId);
   const st = linkState(compat, loading);
@@ -28,6 +32,12 @@ export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChan
         <option value="">Nothing</option>
         {others.map((d) => <option key={d.id} value={d.id}>{d.name}{d.hostId ? ` (${hosts.find((h) => h.id === d.hostId)?.name ?? "host"})` : ""}</option>)}
       </Select>
+      {compareId !== null && onShared ? (
+        <div className={s.state}>
+          <Checkbox label="Same colour scale for both maps" checked={shared} disabled={!canShare && !shared} onChange={(e) => onShared(e.target.checked)} />
+          {shareReason ? <span className={s.why}>{shareReason}</span> : null}
+        </div>
+      ) : null}
       {compareId !== null ? (
         <div className={s.state}>
           {error ? <span role="alert" className={s.err}>{error}</span> : <Pill tone={st.tone}>{st.text}</Pill>}

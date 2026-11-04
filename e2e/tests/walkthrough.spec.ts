@@ -117,6 +117,26 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await expect(inspector(page).getByText(/Mean of the finite pixels inside the region/)).toBeVisible();
   await expectNoAxeViolations(page);
 
+  // ---- zoom, the cursor from the keyboard, and the colour limits on a histogram ----
+  const plane = page.getByRole("group", { name: "Plane viewer" });
+  await plane.focus();
+  const pixelReadout = inspector(page).locator("dd").filter({ hasText: /^x \d+, y \d+$/ }).first();
+  const beforePixel = await pixelReadout.innerText();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(pixelReadout).not.toHaveText(beforePixel);
+  await page.keyboard.press("+");
+  await expect(page.getByRole("button", { name: "Zoom out" })).toBeEnabled();
+  await page.keyboard.press("0");
+  await expect(page.getByRole("button", { name: "Zoom out" })).toBeDisabled();
+  await expect(page.getByRole("img", { name: /Histogram of \d+ finite pixels/ })).toBeVisible();
+  await page.getByLabel("Lower limit").fill("0.5");
+  await page.getByLabel("Lower limit").press("Enter");
+  await expect(page.getByLabel("Range")).toHaveValue("custom");
+  await expect(page.getByLabel("Lower limit")).toHaveValue("0.5");
+  await page.getByLabel("Range").selectOption("percentile");
+  await page.getByText("Spectrum values as a table").click();
+  await expect(page.getByRole("region", { name: "Spectrum table" })).toBeVisible();
+
   // ---- saved regions: keep, rename, replace the shape, copy, delete, undo, export as DS9 ----
   await inspector(page).getByLabel("Save the current region as").fill("Peak core");
   await inspector(page).getByRole("button", { name: "Save", exact: true }).click();
@@ -179,6 +199,13 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await open(page, "hi_cube.fits");
   await page.getByLabel("Compare with").selectOption({ label: "hi_cube_coarser.fits" });
   await expect(page.getByText(/not linked, nothing is resampled/)).toBeVisible();
+  const sameScale = page.getByLabel("Same colour scale for both maps");
+  await expect(sameScale).toBeEnabled();
+  await sameScale.check();
+  await expect(page.getByLabel("Range")).toHaveValue("custom");          // both maps now use one pair of limits
+  if (process.env.VESQIRA_SHOTS) await page.screenshot({ path: `${process.env.VESQIRA_SHOTS}/shared-scale.png` });
+  await sameScale.uncheck();
+  await expect(page.getByLabel("Range")).toHaveValue("percentile");
   await page.getByText(/^Why \(/).click();
   await expect(page.getByText("axis 1 step differs")).toBeVisible();
   await page.getByLabel("Compare with").selectOption("");

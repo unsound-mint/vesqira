@@ -88,6 +88,26 @@ export function SpectrumPlot({ v }: { v: Viewer }) {
       <p className={s.note}>
         Mean over the pixels with a value, in {unit}. {missing > 0 ? `${missing} of ${n} channels have no pixel with a value and are left as gaps. ` : ""}Click the plot to go to that channel.
       </p>
+      <details className={s.table}>
+        <summary>Spectrum values as a table</summary>
+        <div className={s.scroll} role="region" aria-label="Spectrum table" tabIndex={0}>
+          <table>
+            <thead>
+              <tr><th scope="col">Channel</th><th scope="col">{xName}</th><th scope="col">Mean ({unit})</th><th scope="col">Pixels with a value</th></tr>
+            </thead>
+            <tbody>
+              {ys.map((y, i) => (
+                <tr key={i}>
+                  <th scope="row">{i + 1}</th>
+                  <td className="mono">{num(xs[i]!)}</td>
+                  <td className="mono">{Number.isFinite(y) ? num(y) : EM}</td>
+                  <td className="mono">{sp.count[i]!.toLocaleString("en-US")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   );
 }

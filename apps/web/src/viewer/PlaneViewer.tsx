@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import { Button } from "../ui";
+import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { Button, IconButton } from "../ui";
 import { lut } from "./colormaps";
 import { fit, pixelAt } from "./geometry";
 import { limits, outputSize, renderPlane } from "./render";
@@ -40,7 +41,29 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
     return () => ro.disconnect();
   }, []);
 
-  const shape = plane ? fit(size.w, size.h, plane.head.width, plane.head.height) : { width: 0, height: 0, scale: 0 };
+  const fitted = plane ? fit(size.w, size.h, plane.head.width, plane.head.height) : { width: 0, height: 0, scale: 0 };
+  const shape = { width: fitted.width * v.zoom, height: fitted.height * v.zoom, scale: fitted.scale * v.zoom };
+  const moved = useRef(false);
+  const panStart = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  // the picture may be larger than its pane; keep part of it in view
+  const clampPan = (x: number, y: number) => {
+    const mx = Math.max(0, (shape.width - size.w) / 2) + 40;
+    const my = Math.max(0, (shape.height - size.h) / 2) + 40;
+    return { x: Math.min(mx, Math.max(-mx, x)), y: Math.min(my, Math.max(-my, y)) };
+  };
+
+  // the wheel zooms; it has to be a native listener to stop the page scrolling
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      if (!plane) return;
+      e.preventDefault();
+      v.setZoom(v.zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2));
+    };
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => el.removeEventListener("wheel", wheel);
+  }, [plane, v.zoom]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const canvas = cv.current;
@@ -50,7 +73,7 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
     const { outW, outH } = outputSize(plane.head.width, plane.head.height, shape.scale);
     const img = renderPlane(plane.data, plane.head.width, plane.head.height, {
       lut: lut(v.interp ? "twilight" : v.colormap),
-      range: v.interp ? null : limits(plane.head.stats, v.range),
+      range: v.interp ? null : limits(plane.head.stats, v.range, v.customLimits),
       axial: v.interp ? { toDegrees: v.interp.unit === "deg" ? 1 : 180 / Math.PI } : undefined,
       stretch: v.stretch,
       outW,
@@ -60,7 +83,7 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
     canvas.width = img.width;
     canvas.height = img.height;
     ctx.putImageData(new ImageData(img.pixels, img.width, img.height), 0, 0);
-  }, [plane, v.colormap, v.stretch, v.range, v.interp, shape.scale]);
+  }, [plane, v.colormap, v.stretch, v.range, v.customLimits, v.interp, shape.scale]);
 
   function pick(e: MouseEvent<HTMLCanvasElement>) {
     if (!plane) return null;
@@ -74,7 +97,34 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
     setDraft(null);
   }
 
+  function moveCursor(dx: number, dy: number) {
+    if (!plane) return;
+    const from = v.pinned ?? v.hover ?? { x: Math.floor(plane.head.width / 2), y: Math.floor(plane.head.height / 2) };
+    v.setPinned({ x: Math.min(plane.head.width - 1, Math.max(0, from.x + dx)), y: Math.min(plane.head.height - 1, Math.max(0, from.y + dy)) });
+  }
+
   function onKeyDown(e: KeyboardEvent) {
+    const step = e.altKey ? 10 : 1;
+    if (e.shiftKey && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+      moveCursor(e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0, e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "+" || e.key === "=") {
+      v.setZoom(v.zoom * 1.25);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "-") {
+      v.setZoom(v.zoom / 1.25);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "0") {
+      v.setZoom(1);
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Escape" && anchor.current) {
       anchor.current = null;
       setDraft(null);
@@ -112,12 +162,12 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
       tabIndex={0}
       role="group"
       aria-label="Plane viewer"
-      aria-keyshortcuts="ArrowLeft ArrowRight PageUp PageDown Home End Escape"
+      aria-keyshortcuts="ArrowLeft ArrowRight PageUp PageDown Home End Escape Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown + - 0"
       onKeyDown={onKeyDown}
     >
       {body}
       {plane && shape.width > 0 ? (
-        <div className={s.frame} style={{ width: shape.width, height: shape.height }}>
+        <div className={s.frame} style={{ width: shape.width, height: shape.height, transform: `translate(${v.pan.x}px, ${v.pan.y}px)` }}>
           <canvas
             ref={cv}
             className={s.image}
@@ -125,7 +175,11 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
             aria-label={`${channelLabel(plane.head.channel, plane.head.channels, view?.spectral ?? null, plane.head.spectral_value)}, ${plane.head.width} by ${plane.head.height} pixels`}
             style={{ width: shape.width, height: shape.height }}
             onMouseDown={(e) => {
-              if (v.tool === "pointer") return;
+              if (v.tool === "pointer") {
+                moved.current = false;
+                if (v.zoom > 1) panStart.current = { x: e.clientX, y: e.clientY, px: v.pan.x, py: v.pan.y };
+                return;
+              }
               const p = pick(e);
               if (p) {
                 anchor.current = p;
@@ -133,19 +187,28 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
               }
             }}
             onMouseMove={(e) => {
+              if (panStart.current) {
+                const dx = e.clientX - panStart.current.x;
+                const dy = e.clientY - panStart.current.y;
+                if (Math.abs(dx) + Math.abs(dy) > 3) moved.current = true;
+                if (moved.current) v.setPan(clampPan(panStart.current.px + dx, panStart.current.py + dy));
+              }
               const p = pick(e);
               v.setHover(p);
               onProbe?.(p);
               if (anchor.current && p && v.tool !== "pointer") setDraft(fromDrag(v.tool, anchor.current, p));
             }}
-            onMouseUp={commit}
+            onMouseUp={() => {
+              panStart.current = null;
+              commit();
+            }}
             onMouseLeave={() => {
               v.setHover(null);
               onProbe?.(null);
               commit();
             }}
             onClick={(e) => {
-              if (v.tool !== "pointer") return;
+              if (v.tool !== "pointer" || moved.current) return;
               const p = pick(e);
               v.setPinned(p && v.pinned && v.pinned.x === p.x && v.pinned.y === p.y ? null : p);
             }}
@@ -188,6 +251,13 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
           {channelLabel(plane.head.channel, plane.head.channels, view?.spectral ?? null, plane.head.spectral_value)}
           {v.loading && v.channel !== plane.head.channel ? ` · loading ${v.channel + 1}…` : ""}
         </p>
+      ) : null}
+      {plane ? (
+        <div className={s.zoomBar} role="group" aria-label="Zoom">
+          <IconButton icon={ZoomOut} label="Zoom out" disabled={v.zoom <= 1} onClick={() => v.setZoom(v.zoom / 1.25)} />
+          <IconButton icon={ZoomIn} label="Zoom in" disabled={v.zoom >= 16} onClick={() => v.setZoom(v.zoom * 1.25)} />
+          <IconButton icon={Maximize2} label="Fit to the pane" disabled={v.zoom === 1} onClick={() => v.setZoom(1)} />
+        </div>
       ) : null}
       {allNoValue ? <p className={s.warn} role="status">Every pixel in this plane has no value (NaN or BLANK).</p> : null}
     </div>

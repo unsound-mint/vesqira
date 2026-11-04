@@ -26,6 +26,7 @@ import { RegionPanel } from "../viewer/RegionPanel";
 import { SpectrumPlot } from "../viewer/SpectrumPlot";
 import { flagState } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
+import { limits } from "../viewer/render";
 import { IconButton, Pill, ResizeHandle, Section } from "../ui";
 import { LIMITS, useLayout } from "./useLayout";
 import s from "./Shell.module.css";
@@ -42,12 +43,53 @@ export function Shell() {
   const [compat, setCompat] = useState<Compat | null>(null);
   const [compatErr, setCompatErr] = useState<string | null>(null);
   const [compatLoading, setCompatLoading] = useState(false);
+  const [shared, setShared] = useState(false);
+  const [sharedLimits, setSharedLimits] = useState<[number, number] | null>(null);
   const useB = active === "b" && compareDs !== null;
   const viewer = useB ? viewerB : viewerA;
   const actDs = useB ? compareDs : cat.selected;
   const other = useB ? viewerA : viewerB;
   const linked = compareDs !== null && linkState(compat, compatLoading).linked;
   const flag = flagState(viewer.view, viewer.plane);
+
+  // One colour scale for both maps: only for scalar maps in the same brightness unit. The limits start from the two
+  // maps' 1st to 99th percentiles together and then follow whatever the person sets on the map they are working in.
+  const unitA = viewerA.view?.bunit ?? null;
+  const shareReason = !compareDs ? null : viewerA.interp || viewerB.interp ? "Orientation maps have no brightness scale to share." : !unitA || unitA !== (viewerB.view?.bunit ?? null) ? "The two maps do not declare the same brightness unit." : null;
+  const canShare = compareDs !== null && shareReason === null && viewerA.plane !== null && viewerB.plane !== null;
+  function toggleShared(on: boolean) {
+    setShared(on);
+    if (!on) {
+      viewerA.setRange("percentile");
+      viewerB.setRange("percentile");
+      setSharedLimits(null);
+      return;
+    }
+    const la = viewerA.plane ? limits(viewerA.plane.head.stats, "percentile") : null;
+    const lb = viewerB.plane ? limits(viewerB.plane.head.stats, "percentile") : null;
+    if (la && lb) setSharedLimits([Math.min(la[0], lb[0]), Math.max(la[1], lb[1])]);
+  }
+  useEffect(() => {
+    if (shared && (!compareDs || shareReason !== null)) {
+      setShared(false);
+      setSharedLimits(null);
+    }
+  }, [shared, compareDs, shareReason]);
+  useEffect(() => {
+    // a limit changed on the map being worked in becomes the shared one
+    if (!shared) return;
+    const c = viewer.customLimits;
+    if (viewer.range === "custom" && c && (!sharedLimits || c[0] !== sharedLimits[0] || c[1] !== sharedLimits[1])) setSharedLimits([c[0], c[1]]);
+  }, [shared, viewer.customLimits, viewer.range]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!shared || !sharedLimits) return;
+    for (const v of [viewerA, viewerB]) {
+      if (v.range !== "custom" || !v.customLimits || v.customLimits[0] !== sharedLimits[0] || v.customLimits[1] !== sharedLimits[1]) {
+        v.setCustomLimits(sharedLimits);
+        v.setRange("custom");
+      }
+    }
+  }, [shared, sharedLimits, viewerA.range, viewerA.customLimits, viewerB.range, viewerB.customLimits]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Is the other map known to share this one's grid? Only then are cursor and channel linked.
   useEffect(() => {
@@ -123,7 +165,7 @@ export function Shell() {
           <BoardsView />
         ) : cat.selected ? (
           <div className={s.compare}>
-            <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selected.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} />
+            <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selected.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} />
             <div className={compareDs ? s.panes2 : s.panes1}>
               <section className={s.pane} aria-label={`Map: ${cat.selected.name}`}>
                 {compareDs ? <PaneHeader name={cat.selected.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} /> : null}

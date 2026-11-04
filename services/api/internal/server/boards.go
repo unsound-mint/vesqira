@@ -65,7 +65,7 @@ func (p ViewParams) valid() bool {
 	if !oneOf(p.Kind, "plane", "spectrum", "orientation") || p.Kind == "" {
 		return false
 	}
-	if !oneOf(p.Colormap, "viridis", "inferno", "gray", "twilight") || !oneOf(p.Stretch, "linear", "sqrt", "asinh") || !oneOf(p.Range, "percentile", "minmax") {
+	if !oneOf(p.Colormap, "viridis", "inferno", "gray", "twilight") || !oneOf(p.Stretch, "linear", "sqrt", "asinh") || !oneOf(p.Range, "percentile", "minmax", "custom") {
 		return false
 	}
 	if !unitText.MatchString(p.SpectralUnit) || len(p.LimitsUnit) > 32 || len(p.Limits) > 2 {

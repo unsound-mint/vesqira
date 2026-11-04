@@ -37,14 +37,14 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 
 ## Stage 3 — Viewer and comparison
 
-- [ ] Pan and zoom, blink between two maps, shared colour scale across panels (Q24, Q25).
-- [ ] Histogram of the visible plane and of a region.
+- [x] Zoom and pan, shared colour scale across panels (Q24, Q25). Blink: dropped for now.
+- [x] Histogram of the visible plane with draggable and typed colour limits. Of a region: not yet.
 - [ ] Scalar difference map between two compatible maps.
-- [ ] Channel animation.
+- Channel animation: dropped for now.
 - [x] Saved, named regions: create, rename, change shape, duplicate, hide, delete with undo, export as DS9 (ADR 0026). Import as DS9 is still to do.
 - [ ] Exploration history and "continue from here" (Q96–Q98).
 - [ ] Linked views can be grouped and unlinked by the user; linking through a validated transformation (Q174).
-- [ ] Keyboard pixel cursor and a table alternative for plots (Q176).
+- [x] Keyboard pixel cursor (Shift+arrows) and a table alternative for the spectrum plot (Q176).
 - [x] Raw FITS header cards viewable and exportable (Q211).
 
 ## Stage 4 — Runs, parameters and reproducibility
