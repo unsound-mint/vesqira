@@ -6,6 +6,14 @@ Each stage is one pull request (or a few small ones). A box is ticked only when 
 
 Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link) and v0.2 (remote hosts, Slurm jobs, runs, cube analysis, comparison inspector, managed copies). See `docs/demo.md` and ADRs 0008–0018.
 
+## Stage 0 — Install and launch
+
+- [x] Server serves the web app; Fedora RPM with launcher, desktop entry, icon and metadata (ADR 0021).
+- [x] Release workflow: build the RPM in a Fedora container on a tag, run the install smoke test, attach it to the release.
+- [ ] Source RPM built in the build root, and a COPR repository so `dnf copr enable` works.
+- [ ] Flatpak (needs flatpak-builder and a decision on ssh and agent access from the sandbox).
+- [ ] Manage readable folders inside the app instead of `vesqira add-root`.
+
 ## Stage 1 — Safety and honesty of what is stored
 
 - [x] Job submission cannot run twice: record the intent before `sbatch`, look up an existing Slurm job (by job name/comment) before any retry, and show an "unknown, check the cluster" state instead of resubmitting after a timeout (Q168).

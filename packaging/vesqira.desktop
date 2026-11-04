@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Vesqira
+GenericName=Research workspace
+Comment=Browse FITS cubes, compare VGT maps, follow HPC jobs and share reviews
+Exec=vesqira
+Icon=vesqira
+Terminal=false
+Categories=Science;Astronomy;Education;
+Keywords=FITS;astronomy;VGT;Slurm;HPC;
+StartupNotify=false
+Actions=stop;
+
+[Desktop Action stop]
+Name=Stop Vesqira
+Exec=vesqira stop

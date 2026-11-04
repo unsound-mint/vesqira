@@ -1,0 +1,35 @@
+name: rpm
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+jobs:
+  rpm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - run: dnf -y -q install git golang nodejs npm rpm-build python3-astropy python3-numpy python3-reproject curl tar gzip
+      - uses: actions/checkout@v4
+      - run: tools/build-rpm.sh "${{ github.event_name == 'release' && github.event.release.tag_name || '0.0.0' }}"
+      # the installed package must work with the distribution's own Python packages
+      - run: dnf -y -q install dist/rpm/vesqira-*.rpm
+      - run: cd services/scientific-worker && python3 -m unittest discover -p 'test_*.py'
+      - name: launcher smoke test
+        run: |
+          python3 fixtures/generate.py /tmp/fx >/dev/null
+          export XDG_CONFIG_HOME=/tmp/cfg XDG_DATA_HOME=/tmp/data XDG_STATE_HOME=/tmp/state HOME=/tmp/home
+          mkdir -p /tmp/cfg/vesqira /tmp/home; echo /tmp/fx > /tmp/cfg/vesqira/roots
+          vesqira
+          curl -fsS http://127.0.0.1:8787/ | grep -q "<title>"
+          curl -fsS -X POST -H 'Content-Type: application/json' http://127.0.0.1:8787/api/datasets -d '{"path":"/tmp/fx/hi_cube.fits"}' >/dev/null
+          curl -fsS -o /tmp/plane.bin -w '%{size_download}\n' "http://127.0.0.1:8787/api/datasets/1/plane?channel=2"
+          vesqira stop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vesqira-rpm
+          path: dist/rpm/*.rpm
+      - if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/rpm/*.rpm

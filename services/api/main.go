@@ -42,7 +42,7 @@ func main() {
 	dataDir := flag.String("data-dir", "", "directory for figure previews (default: next to the database)")
 	reviewAddr := flag.String("review-addr", "", "optional address for the reviewer surface (published previews only); may be non-loopback, put TLS in front")
 	clientIP := flag.String("review-client-ip-header", "", "header a trusted reverse proxy sets to the client address (for example X-Forwarded-For); without it all clients behind a proxy share one failure allowance")
-	webDist := flag.String("web-dist", "", "built web app to serve on the review address")
+	webDist := flag.String("web-dist", "", "built web app: served on this address, and on the review address when there is one")
 	sshBin := flag.String("ssh", "ssh", "ssh client used to reach remote hosts (your own ssh config and agent are used; Vesqira never handles keys)")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
@@ -132,7 +132,7 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore,
+	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore, WebDist: *webDist,
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)

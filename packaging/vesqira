@@ -1,0 +1,76 @@
+#!/usr/bin/bash
+# Launcher for the installed Vesqira: starts the local server if it is not running and opens it in the browser.
+#   vesqira              open Vesqira (starting it when needed)
+#   vesqira add-root DIR let Vesqira read FITS files under DIR (restarts it if running)
+#   vesqira roots        list the folders Vesqira may read
+#   vesqira status|stop|logs
+# The server listens on 127.0.0.1 only and reads files only under the folders listed in
+# ${XDG_CONFIG_HOME:-~/.config}/vesqira/roots (one path per line). The first run creates ~/Vesqira.
+set -euo pipefail
+prefix="${VESQIRA_PREFIX:-/usr}"
+libexec="$prefix/libexec/vesqira"
+share="$prefix/share/vesqira"
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}/vesqira"
+data="${XDG_DATA_HOME:-$HOME/.local/share}/vesqira"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/vesqira"
+port="${VESQIRA_PORT:-8787}"
+url="http://127.0.0.1:$port/"
+pidfile="$state/api.pid"
+roots_file="$cfg/roots"
+
+say() { printf '%s\n' "$*" >&2; }
+alive() { [ -s "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null && tr '\0' ' ' < "/proc/$(cat "$pidfile")/cmdline" 2>/dev/null | grep -q vesqira-api; }
+ready() { curl -fsS -o /dev/null --max-time 1 "${url}api/roots" 2>/dev/null; }
+
+read_roots() {
+  roots=()
+  if [ ! -f "$roots_file" ]; then
+    mkdir -p "$cfg" "$HOME/Vesqira"
+    printf '%s\n' "$HOME/Vesqira" > "$roots_file"
+  fi
+  while IFS= read -r line; do
+    [ -n "$line" ] && [ "${line#\#}" = "$line" ] && [ -d "$line" ] && roots+=(--root "$line")
+  done < "$roots_file"
+  [ "${#roots[@]}" -gt 0 ] || { say "No readable folder is listed in $roots_file; add one with: vesqira add-root DIR"; exit 1; }
+}
+
+start() {
+  alive && return 0
+  if ready; then say "Port $port is already answering and it is not this Vesqira; set VESQIRA_PORT to another port."; exit 1; fi
+  read_roots
+  mkdir -p "$data" "$state"
+  setsid "$libexec/vesqira-api" --addr "127.0.0.1:$port" --db "$data/vesqira.db" --data-dir "$data" \
+    --worker "$share/worker/fits_header.py" --plane-worker "$share/worker/plane_worker.py" \
+    --python "${VESQIRA_PYTHON:-/usr/bin/python3}" --web-dist "$share/web" "${roots[@]}" \
+    >> "$state/api.log" 2>&1 < /dev/null &
+  echo $! > "$pidfile"
+  for _ in $(seq 1 50); do ready && return 0; sleep 0.2; done
+  say "Vesqira did not start; the last lines of $state/api.log:"; tail -n 8 "$state/api.log" >&2 || true
+  exit 1
+}
+
+stop() {
+  if alive; then
+    pid="$(cat "$pidfile")"; kill "$pid"
+    for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+    rm -f "$pidfile"; say "Stopped."
+  else say "Not running."; fi
+}
+
+case "${1:-open}" in
+  open|"") start
+    if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then xdg-open "$url" >/dev/null 2>&1 || say "Open $url in your browser."; else say "Open $url in your browser."; fi ;;
+  add-root)
+    [ -n "${2:-}" ] && [ -d "$2" ] || { say "usage: vesqira add-root DIR (an existing folder)"; exit 2; }
+    mkdir -p "$cfg"; dir="$(cd "$2" && pwd -P)"
+    read_roots
+    grep -qxF "$dir" "$roots_file" || printf '%s\n' "$dir" >> "$roots_file"
+    if alive; then stop; start; fi
+    say "Vesqira may now read files under $dir" ;;
+  roots) read_roots; grep -v '^#' "$roots_file" ;;
+  status) if alive; then say "Running at $url (pid $(cat "$pidfile"))"; else say "Not running"; fi ;;
+  stop) stop ;;
+  logs) exec tail -n 100 -f "$state/api.log" ;;
+  -h|--help|help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) say "unknown command: $1 (try: vesqira --help)"; exit 2 ;;
+esac

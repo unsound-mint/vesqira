@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.unsound_mint.Vesqira</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+  <name>Vesqira</name>
+  <summary>Research workspace for astronomical data</summary>
+  <description>
+    <p>Browse H I FITS spectral cubes and VGT outputs, compare maps, follow Slurm jobs on your cluster, build boards of figures and share a safe, read-only review with a supervisor.</p>
+    <p>Everything runs on your computer and is opened in your web browser. Files outside the folders you choose are never read.</p>
+  </description>
+  <launchable type="desktop-id">vesqira.desktop</launchable>
+  <url type="homepage">https://github.com/unsound-mint/vesqira</url>
+  <provides><binary>vesqira</binary></provides>
+  <content_rating type="oars-1.1"/>
+</component>

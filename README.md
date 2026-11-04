@@ -8,7 +8,15 @@
 
 A researcher registers H I FITS spectral cubes and existing VGT outputs, browses spectral planes and WCS coordinates, compares scalar and axial-orientation maps with reliability information, builds source-linked figures and a research board, and shares a scoped review with a supervisor who needs no SSH/HPC credentials.
 
-## Start the app
+## Install (Fedora)
+
+```
+sudo dnf install ./vesqira-<version>.fc44.x86_64.rpm     # from the release page, or: tools/build-rpm.sh
+```
+
+Then start **Vesqira** from the applications menu (or run `vesqira`): it starts a local server and opens it in your browser. Choose which folders it may read with `vesqira add-root /path/to/fits` (the first run creates `~/Vesqira`); `vesqira stop`, `vesqira status` and `vesqira logs` do what they say. Only files inside those folders are ever read, and the server listens on 127.0.0.1 only.
+
+## Start the app from the source tree
 
 One-time setup (Linux/macOS): Python 3 with astropy (`pip install -r fixtures/requirements.txt`), Go, Node, then `cd apps/web && npm ci`.
 

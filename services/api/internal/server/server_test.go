@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -172,5 +173,26 @@ func TestRealWorkerOnFixtures(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "bad.fits"), bytes.Repeat([]byte("junk"), 1000), 0o644)
 	if c := post(t, ts, filepath.Join(root, "bad.fits"), nil).StatusCode; c != 422 {
 		t.Errorf("non-FITS: %d", c)
+	}
+}
+
+func TestInstalledAppServesTheWebFilesAndNeverAnAPIPathFromDisk(t *testing.T) {
+	dist := t.TempDir()
+	os.WriteFile(filepath.Join(dist, "index.html"), []byte("<title>app</title>"), 0o644)
+	os.MkdirAll(filepath.Join(dist, "assets"), 0o755)
+	os.WriteFile(filepath.Join(dist, "assets", "a.js"), []byte("console.log(1)"), 0o644)
+	os.WriteFile(filepath.Join(filepath.Dir(dist), "secret.txt"), []byte("outside"), 0o644)
+	ts := httptest.NewServer((&Server{Roots: sourceroot.Roots{}, WebDist: dist}).Handler())
+	defer ts.Close()
+	for path, want := range map[string]string{"/": "<title>app</title>", "/assets/a.js": "console.log(1)", "/review/some-token": "<title>app</title>"} {
+		if r, b := get(t, ts.URL+path); r.StatusCode != 200 || string(b) != want {
+			t.Errorf("%s: %d %q", path, r.StatusCode, b)
+		}
+	}
+	if r, b := get(t, ts.URL+"/api/nothing"); r.StatusCode != 404 || strings.Contains(string(b), "app") {
+		t.Errorf("an unknown API path must be a JSON 404, not the app: %d %s", r.StatusCode, b)
+	}
+	if _, b := get(t, ts.URL+"/../secret.txt"); strings.Contains(string(b), "outside") {
+		t.Errorf("a path outside the web files was served")
 	}
 }

@@ -7,8 +7,10 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -39,6 +41,7 @@ type Server struct {
 	ManagedDir string
 	Analysis   *AnalysisConfig
 	Audit      *audit.Store // nil records nothing
+	WebDist    string       // built web app served at / on this (loopback) listener; empty serves the API only
 }
 
 func (s *Server) Handler() http.Handler {
@@ -113,7 +116,29 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/datasets/{id}/copy", s.copyDataset)
 	mux.HandleFunc("POST /api/datasets/{id}/nature", s.setNature)
 	mux.HandleFunc("POST /api/datasets/{id}/interpretation", s.interpret)
+	if s.WebDist != "" {
+		mux.Handle("GET /", staticApp(s.WebDist))
+	}
 	return localOnly(mux)
+}
+
+// staticApp serves the built web app for the installed program, so one address is the whole application. Paths
+// that are not files fall back to index.html (the app routes in the browser); /api is never answered from disk.
+func staticApp(dist string) http.Handler {
+	fs := http.FileServer(http.Dir(dist))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			fail(w, 404, "not found")
+			return
+		}
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if st, err := os.Stat(filepath.Join(dist, filepath.Clean("/"+r.URL.Path))); (err != nil || !st.Mode().IsRegular()) && r.URL.Path != "/" {
+			http.ServeFile(w, r, filepath.Join(dist, "index.html"))
+			return
+		}
+		fs.ServeHTTP(w, r)
+	})
 }
 
 // localOnly rejects requests whose Host is not a loopback name, which blocks DNS-rebinding
