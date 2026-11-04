@@ -26,7 +26,7 @@ export type BoardItem = { position: number; figure: Figure; note: string };
 export type Board = { id: number; title: string; createdAt: string; updatedAt: string; items: BoardItem[] };
 export type OutcomeValue = "commented" | "changes_requested" | "reviewed";
 export const OUTCOME_TEXT: Record<OutcomeValue, string> = { commented: "Commented", changes_requested: "Changes requested", reviewed: "Reviewed" };
-export type Snapshot = { id: number; boardId: number; label: string; createdAt: string; expiresAt: string; revoked: boolean; items: number; question?: string; outcome: "" | OutcomeValue; outcomeNote?: string; outcomeBy?: string; outcomeAt?: string; supersededBy?: number };
+export type Snapshot = { id: number; boardId: number; label: string; createdAt: string; expiresAt: string; revoked: boolean; items: number; question?: string; outcome: "" | OutcomeValue; outcomeNote?: string; outcomeBy?: string; outcomeAt?: string; supersededBy?: number; comments: number; lastActivity?: string };
 /** A place on a published picture, in fractions of its width and height from the top left. */
 export type Anchor = { kind: "point"; x: number; y: number } | { kind: "box"; x: number; y: number; x1: number; y1: number };
 export type Comment = { id: number; figureRevision: string; parentId: number; author: string; fromOwner: boolean; body: string; anchor?: Anchor; createdAt: string; resolvedAt?: string };

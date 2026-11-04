@@ -475,6 +475,10 @@ type Snapshot struct {
 	OutcomeBy    string     `json:"outcomeBy,omitempty"`
 	OutcomeAt    *time.Time `json:"outcomeAt,omitempty"`
 	SupersededBy int64      `json:"supersededBy,omitempty"`
+	// Comments counts the reviewers' comments (not the author's replies); LastActivity is the time of the latest
+	// reviewer comment or outcome, so the author can tell what is new since they last looked.
+	Comments     int        `json:"comments"`
+	LastActivity *time.Time `json:"lastActivity,omitempty"`
 }
 
 func hashToken(tok string) string { h := sha256.Sum256([]byte(tok)); return hex.EncodeToString(h[:]) }

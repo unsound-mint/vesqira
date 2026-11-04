@@ -1,6 +1,7 @@
 package boards
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -23,6 +24,18 @@ func (s *Store) outcome(snapshotID int64) Outcome {
 func (s *Store) fillOutcome(sn *Snapshot) {
 	o := s.outcome(sn.ID)
 	sn.Outcome, sn.OutcomeNote, sn.OutcomeBy, sn.OutcomeAt = o.Value, o.Note, o.By, o.At
+	var n int
+	var last sql.NullInt64
+	if s.db.QueryRow(`SELECT COUNT(*), MAX(created_at) FROM comments WHERE snapshot_id=? AND from_owner=0`, sn.ID).Scan(&n, &last) == nil {
+		sn.Comments = n
+		if last.Valid {
+			t := time.Unix(last.Int64, 0).UTC()
+			sn.LastActivity = &t
+		}
+	}
+	if o.At != nil && (sn.LastActivity == nil || o.At.After(*sn.LastActivity)) {
+		sn.LastActivity = o.At
+	}
 }
 
 // SetOutcome records the reviewer's word on this version. Each call is kept, the latest counts.

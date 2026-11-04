@@ -427,3 +427,27 @@ func TestReviewRequestOutcomeSupersedeAndPreflight(t *testing.T) {
 		t.Error("a snapshot of another board was superseded")
 	}
 }
+
+func TestOwnerSeesWhatIsNewSinceTheyLastLooked(t *testing.T) {
+	s, _ := newStore(t)
+	b, _ := s.CreateBoard("one")
+	f := fig(t, s, "F1", 1)
+	s.AddItem(b.ID, f.ID)
+	sn, tok, _ := s.Publish(b.ID, "", time.Hour)
+	if got, _ := s.Snapshots(b.ID); got[0].Comments != 0 || got[0].LastActivity != nil {
+		t.Fatalf("nothing has happened yet: %+v", got[0])
+	}
+	root, _ := s.AddComment(tok, CommentInput{FigureRevision: f.Revision, Body: "hm"})
+	s.OwnerReply(sn.ID, CommentInput{ParentID: root.ID, Body: "answer"})
+	got, _ := s.Snapshots(b.ID)
+	if got[0].Comments != 1 || got[0].LastActivity == nil {
+		t.Fatalf("the author's own reply is not reviewer activity: %+v", got[0])
+	}
+	// an outcome counts as activity too
+	time.Sleep(1100 * time.Millisecond)
+	s.SetOutcome(tok, "reviewed", "", "P")
+	got2, _ := s.Snapshots(b.ID)
+	if !got2[0].LastActivity.After(*got[0].LastActivity) {
+		t.Errorf("an outcome after the last comment is newer activity: %v vs %v", got2[0].LastActivity, got[0].LastActivity)
+	}
+}

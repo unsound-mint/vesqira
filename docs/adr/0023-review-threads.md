@@ -22,3 +22,6 @@ Store tests for validation, one-level threads, cross-snapshot isolation, resolve
 
 ## Rollback/Migration
 Columns are additive; older readers ignore them.
+
+## Amendment: what is new since the last visit
+A snapshot reports how many reviewer comments it has and when the latest reviewer comment or outcome happened (`comments`, `lastActivity`); the author's own replies do not count. Each side keeps, in its own browser only, when it last looked: the author's board screen shows "New since you last looked" and marks new reviewer comments; the review page marks the author's replies made since the reviewer's last visit and remembers the reviewer's name. These are conveniences kept in browser storage, not shared state: a browser that will not store them shows nothing as new.

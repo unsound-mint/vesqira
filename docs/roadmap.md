@@ -26,10 +26,10 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 
 - [x] Comments can be anchored to a region, channel or coordinate of a figure (Q14, Q99).
 - [x] Reply and resolve on comments; a finding that stays open until someone closes it (Q14, Q15, Q100).
-- [ ] Reviewer identity: a name asked on first comment, kept for the link, shown to the author (Q45; real accounts come in Stage 7).
+- [x] Reviewer identity: a name asked on first comment, remembered in the reviewer's browser, shown to the author (Q45). Still self-declared; real accounts come in Stage 7.
 - [x] "Ready for review" request with a scientific question (Q101, Q102). Suggested related runs: not yet.
 - [x] Reviewer outcome per snapshot (not yet reviewed, comments, changes requested, reviewed) kept separate from the run's own QC (Q103, Q104).
-- [ ] Activity summary for the author and the reviewer: what changed since the last visit (Q101).
+- [x] Activity summary for the author and the reviewer: what changed since the last visit (Q101).
 - [x] Publication preflight and audience preview: what exactly a link exposes, before it is created (Q112, Q113).
 - [x] Correction notice: a snapshot can be superseded by a newer one with a reason (Q111).
 - [x] Export a figure or a board as PNG and PDF with units, legend and provenance (Q107). PNG carries its provenance inside; PDF is the browser's print-to-PDF of a print layout.

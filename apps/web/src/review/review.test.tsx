@@ -20,6 +20,7 @@ function mockFetch(routes: Record<string, (init?: RequestInit) => { status?: num
   return calls;
 }
 
+beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
 
 describe("review page", () => {
@@ -155,5 +156,28 @@ describe("review request", () => {
     await userEvent.click(screen.getByRole("button", { name: "Send outcome" }));
     await waitFor(() => expect(screen.getByText(/Currently: Changes requested/)).toBeInTheDocument());
     expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init!.body))).toEqual({ outcome: "changes_requested", note: "Rescale", author: "" });
+  });
+});
+
+describe("what is new since the last visit", () => {
+  const reply = { id: 8, figureRevision: "r1", parentId: 7, author: "Author", fromOwner: true, body: "A sidelobe.", createdAt: "2026-11-04T12:00:00Z" };
+  const root = { id: 7, figureRevision: "r1", parentId: 0, author: "Prof", fromOwner: false, body: "What is this?", createdAt: "2026-11-04T10:00:00Z" };
+
+  it("remembers the reviewer's name and flags the author's replies made after their last visit", async () => {
+    localStorage.setItem("vesqira.seen.review.tok", String(new Date("2026-11-04T11:00:00Z").getTime()));
+    localStorage.setItem("vesqira.reviewer.name", "Prof");
+    mockFetch({ "/review-api/tok": () => ({ body: { ...review, comments: [root, reply] } }) });
+    render(<ReviewPage token="tok" />);
+    expect(await screen.findByText(/Since your last visit/)).toBeInTheDocument();
+    expect(screen.getAllByText("New")).toHaveLength(1); // the reply, not the reviewer's own earlier comment
+    expect(screen.getByLabelText(/Your name/)).toHaveValue("Prof");
+  });
+
+  it("shows nothing as new on a first visit", async () => {
+    mockFetch({ "/review-api/tok": () => ({ body: { ...review, comments: [root, reply] } }) });
+    render(<ReviewPage token="tok" />);
+    await screen.findByText("A sidelobe.");
+    expect(screen.queryByText(/Since your last visit/)).toBeNull();
+    expect(screen.queryByText("New")).toBeNull();
   });
 });

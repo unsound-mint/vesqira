@@ -6,13 +6,15 @@ import type { OutcomeValue } from "../api/boards";
 import type { Anchor, Comment, Review } from "../api/boards";
 import { Threads, threadNumbers } from "../boards/Threads";
 import { AnchorImage } from "./AnchorImage";
+import { markSeen, readName, readSeen, saveName } from "../boards/seen";
 import s from "./ReviewPage.module.css";
 
 /** What a supervisor sees: a frozen board of published previews with provenance, and a way to comment. No data, no paths. */
 export function ReviewPage({ token }: { token: string }) {
   const [rv, setRv] = useState<Review | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [author, setAuthor] = useState("");
+  const [author, setAuthor] = useState(readName);
+  const [since] = useState(() => readSeen(`review.${token.slice(0, 16)}`)); // when this reviewer last opened this link
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<OutcomeValue>("commented");
@@ -21,7 +23,7 @@ export function ReviewPage({ token }: { token: string }) {
   const [draftAnchors, setDraftAnchor] = useState<Record<string, Anchor | null>>({});
 
   useEffect(() => {
-    getReview(token).then(setRv).catch((e: Error) => setErr(e.message));
+    getReview(token).then((r) => { setRv(r); markSeen(`review.${token.slice(0, 16)}`); }).catch((e: Error) => setErr(e.message));
   }, [token]);
 
   async function send(rev: string) {
@@ -67,8 +69,9 @@ export function ReviewPage({ token }: { token: string }) {
         <p className={s.note}>
           {snap.label ? `${snap.label} · ` : ""}Frozen {new Date(snap.createdAt).toLocaleString()} · link valid until {new Date(snap.expiresAt).toLocaleDateString()}. You see published previews only: not the data, file paths or any credential.
         </p>
-        <Input label="Your name (shown with your comments)" value={author} onChange={(e) => setAuthor(e.target.value)} maxLength={80} />
+        <Input label="Your name (shown with your comments)" value={author} onChange={(e) => { setAuthor(e.target.value); saveName(e.target.value); }} maxLength={80} />
       </header>
+      {since > 0 && rv.comments.some((c) => c.fromOwner && new Date(c.createdAt).getTime() > since) ? <p role="status" className={s.noteBox}><strong>Since your last visit:</strong> the author has replied. New replies are marked.</p> : null}
       {rv.superseded ? <p role="status" className={s.noteBox}><strong>The author has replaced this version.</strong> {rv.superseded.reason} Ask for the new link; this one stays readable.</p> : null}
       {snap.question ? <p className={s.noteBox}><strong>What the author asks you to look at:</strong> {snap.question}</p> : null}
       {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
@@ -97,7 +100,7 @@ export function ReviewPage({ token }: { token: string }) {
             </ul>
           </details>
           <section aria-label={`Comments on ${it.title}`} className={s.comments}>
-            <Threads comments={byFigure(it.revision)} onReply={reply} />
+            <Threads comments={byFigure(it.revision)} onReply={reply} isNew={(c) => c.fromOwner && since > 0 && new Date(c.createdAt).getTime() > since} />
             <label className={s.label}>
               Comment
               <textarea className={s.area} rows={3} maxLength={4000} value={drafts[it.revision] ?? ""} onChange={(e) => setDrafts({ ...drafts, [it.revision]: e.target.value })} />

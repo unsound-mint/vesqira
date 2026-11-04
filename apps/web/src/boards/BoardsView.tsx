@@ -4,6 +4,7 @@ import { Button, Checkbox, IconButton, Input, Select } from "../ui";
 import { addToBoard as _unused, createBoard, figurePreviewUrl, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
 import { Threads } from "./Threads";
 import { PresentView } from "./PresentView";
+import { markSeen, readSeen } from "./seen";
 import type { Board, Comment, Preflight, Snapshot } from "../api/boards";
 import { EM } from "../catalog/format";
 import { RunLine } from "./RunLine";
@@ -44,6 +45,7 @@ export function BoardsView() {
   const [reason, setReason] = useState("");
   const [pre, setPre] = useState<Preflight | null>(null);
   const [presenting, setPresenting] = useState(false);
+  const [seenAt, setSeenAt] = useState<Record<number, number>>({}); // when each snapshot was last opened, before this visit
 
   const reload = useCallback(async (keep?: number | null) => {
     try {
@@ -193,10 +195,11 @@ export function BoardsView() {
           <ul className={s.snaps}>
             {snaps.map((sn) => (
               <li key={sn.id}>
-                <span>{sn.label || `Snapshot ${sn.id}`}</span> <span className={s.src}>· {sn.items} figures · {status(sn)}{sn.supersededBy ? " · replaced by a newer version" : ""} · expires {new Date(sn.expiresAt).toLocaleDateString()}</span>
+                <span>{sn.label || `Snapshot ${sn.id}`}</span> <span className={s.src}>· {sn.items} figures · {sn.comments} comment{sn.comments === 1 ? "" : "s"} · {status(sn)}{sn.supersededBy ? " · replaced by a newer version" : ""} · expires {new Date(sn.expiresAt).toLocaleDateString()}</span>
+                {sn.lastActivity && new Date(sn.lastActivity).getTime() > (seenAt[sn.id] ?? readSeen(`snapshot.${sn.id}`)) ? <p className={s.note} role="status"><strong>New since you last looked:</strong> {sn.outcome ? "the reviewer's outcome or " : ""}comments from the reviewer.</p> : null}
                 <p className={s.note}>{sn.outcome ? `Reviewer: ${OUTCOME_TEXT[sn.outcome]}${sn.outcomeBy ? ` (${sn.outcomeBy})` : ""}${sn.outcomeNote ? ` · ${sn.outcomeNote}` : ""}` : "Not yet reviewed."}</p>
                 <div className={s.row}>
-                  <Button onClick={() => void Promise.all([snapshotComments(sn.id), listSnapshots(board.id)]).then(([c, list]) => { setComments({ ...comments, [sn.id]: c }); setSnaps(list); })}>Comments and outcome</Button>
+                  <Button onClick={() => void Promise.all([snapshotComments(sn.id), listSnapshots(board.id)]).then(([c, list]) => { setComments({ ...comments, [sn.id]: c }); setSnaps(list); setSeenAt({ ...seenAt, [sn.id]: readSeen(`snapshot.${sn.id}`) }); markSeen(`snapshot.${sn.id}`); })}>Comments and outcome</Button>
                   <Button disabled={sn.revoked} onClick={() => run(async () => { await revokeSnapshot(sn.id); setSnaps(await listSnapshots(board.id)); })}>Revoke link</Button>
                 </div>
                 {comments[sn.id] ? (
@@ -206,6 +209,7 @@ export function BoardsView() {
                       <Threads
                         key={rev}
                         comments={comments[sn.id]!.filter((c) => c.figureRevision === rev)}
+                        isNew={(c) => !c.fromOwner && new Date(c.createdAt).getTime() > (seenAt[sn.id] ?? 0)}
                         onReply={async (parentId, body) => { await ownerReply(sn.id, parentId, body); setComments({ ...comments, [sn.id]: await snapshotComments(sn.id) }); }}
                         onResolve={async (id, resolved) => { await resolveComment(id, resolved); setComments({ ...comments, [sn.id]: await snapshotComments(sn.id) }); }}
                       />

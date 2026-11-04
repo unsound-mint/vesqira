@@ -14,9 +14,10 @@ type Props = {
   comments: Comment[]; // the comments of one figure
   onReply: (parentId: number, body: string) => Promise<void>;
   onResolve?: (id: number, resolved: boolean) => Promise<void>; // only the author can close a thread
+  isNew?: (c: Comment) => boolean; // comments to flag as new since the person last looked
 };
 
-export function Threads({ comments, onReply, onResolve }: Props) {
+export function Threads({ comments, onReply, onResolve, isNew }: Props) {
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export function Threads({ comments, onReply, onResolve }: Props) {
             <p className={s.msg}>
               {n ? <span className={s.badge} aria-label={`Marked place ${n}`}>{n}</span> : null}
               <strong>{r.author}</strong> <span className={s.when}>{new Date(r.createdAt).toLocaleString()}</span>
+              {isNew?.(r) ? <span className={s.fresh}>New</span> : null}
               {r.resolvedAt ? <span className={s.state}>Resolved by the author</span> : null}
               <br />
               {r.body}
@@ -50,6 +52,7 @@ export function Threads({ comments, onReply, onResolve }: Props) {
             {replies.map((c) => (
               <p key={c.id} className={`${s.msg} ${s.reply}`}>
                 <strong>{c.author}</strong> <span className={s.when}>{new Date(c.createdAt).toLocaleString()}</span>
+                {isNew?.(c) ? <span className={s.fresh}>New</span> : null}
                 <br />
                 {c.body}
               </p>
