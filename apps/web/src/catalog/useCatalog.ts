@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, listDatasets, registerDataset } from "../api/catalog";
-import type { Dataset } from "../api/catalog";
+import { ApiError, listDatasets, registerDataset, setInterpretation } from "../api/catalog";
+import type { Dataset, InterpretationRequest } from "../api/catalog";
 
 export function useCatalog() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -31,5 +31,16 @@ export function useCatalog() {
     }
   }, []);
 
-  return { datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
+  /** Declare (or clear) what the user says a dataset is. Returns an error text with reasons, or null on success. */
+  const declare = useCallback(async (id: number, body: InterpretationRequest): Promise<string | null> => {
+    try {
+      const d = await setInterpretation(id, body);
+      setDatasets((cur) => cur.map((x) => (x.id === d.id ? d : x)));
+      return null;
+    } catch (e) {
+      return e instanceof ApiError ? [e.message, ...e.reasons].join(" · ") : "Could not save the interpretation.";
+    }
+  }, []);
+
+  return { declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
 }

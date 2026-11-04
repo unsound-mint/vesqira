@@ -19,6 +19,20 @@ type Dataset struct {
 	ModifiedAt time.Time       `json:"modifiedAt"`
 	AddedAt    time.Time       `json:"addedAt"`
 	Header     json.RawMessage `json:"header"`
+	// Interpretation is what the user declared about the data. The file itself declares none of it.
+	Interpretation *Interpretation `json:"interpretation"`
+}
+
+// Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).
+type Interpretation struct {
+	Kind          string    `json:"kind"` // "axial_orientation"
+	Unit          string    `json:"unit"` // "deg" or "rad", required
+	ReliabilityID *int64    `json:"reliabilityId"`
+	DeclaredBy    string    `json:"declaredBy"`
+	DeclaredAt    time.Time `json:"declaredAt"`
+	// Stale is true when the file's registered size or modification time differs from what it was when the user
+	// made the declaration: the declaration may no longer describe these bytes.
+	Stale bool `json:"stale"`
 }
 
 type Store struct{ db *sql.DB }
@@ -39,6 +53,16 @@ func Open(dsn string) (*Store, error) {
 		modified_at INTEGER NOT NULL, -- Unix nanoseconds
 		added_at INTEGER NOT NULL,
 		header TEXT NOT NULL)`)
+	if err == nil {
+		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS interpretations(
+			dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id) ON DELETE CASCADE,
+			kind TEXT NOT NULL,
+			unit TEXT NOT NULL,
+			reliability_id INTEGER,
+			declared_at INTEGER NOT NULL,
+			size_bytes INTEGER NOT NULL DEFAULT 0,
+			modified_ns INTEGER NOT NULL DEFAULT 0)`)
+	}
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -57,7 +81,11 @@ func (s *Store) Upsert(d Dataset) (Dataset, error) {
 	if err != nil {
 		return Dataset{}, err
 	}
-	return s.byPath(d.Path)
+	got, err := s.byPath(d.Path)
+	if err != nil {
+		return Dataset{}, err
+	}
+	return s.Get(got.ID)
 }
 
 func scan(row interface{ Scan(...any) error }) (Dataset, error) {
@@ -82,7 +110,49 @@ func (s *Store) Get(id int64) (Dataset, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return Dataset{}, ErrNotFound
 	}
+	if err != nil {
+		return d, err
+	}
+	d.Interpretation, err = s.interpretation(id, d)
 	return d, err
+}
+
+func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
+	var in Interpretation
+	var rel sql.NullInt64
+	var at, size, mod int64
+	err := s.db.QueryRow(`SELECT kind,unit,reliability_id,declared_at,size_bytes,modified_ns FROM interpretations WHERE dataset_id=?`, id).Scan(&in.Kind, &in.Unit, &rel, &at, &size, &mod)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if rel.Valid {
+		in.ReliabilityID = &rel.Int64
+	}
+	in.DeclaredBy, in.DeclaredAt = "user", time.Unix(at, 0).UTC()
+	in.Stale = size != d.SizeBytes || mod != d.ModifiedAt.UnixNano()
+	return &in, nil
+}
+
+// SetInterpretation records what the user declared. Callers validate the kind, unit and companion first.
+func (s *Store) SetInterpretation(d Dataset, in Interpretation) error {
+	id := d.ID
+	var rel any
+	if in.ReliabilityID != nil {
+		rel = *in.ReliabilityID
+	}
+	_, err := s.db.Exec(`INSERT INTO interpretations(dataset_id,kind,unit,reliability_id,declared_at,size_bytes,modified_ns) VALUES(?,?,?,?,?,?,?)
+		ON CONFLICT(dataset_id) DO UPDATE SET kind=excluded.kind,unit=excluded.unit,reliability_id=excluded.reliability_id,declared_at=excluded.declared_at,
+			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns`,
+		id, in.Kind, in.Unit, rel, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano())
+	return err
+}
+
+func (s *Store) ClearInterpretation(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM interpretations WHERE dataset_id=?`, id)
+	return err
 }
 
 func (s *Store) List() ([]Dataset, error) {
@@ -99,5 +169,14 @@ func (s *Store) List() ([]Dataset, error) {
 		}
 		out = append(out, d)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for i := range out {
+		if out[i].Interpretation, err = s.interpretation(out[i].ID, out[i]); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }

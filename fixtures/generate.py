@@ -191,6 +191,50 @@ def vgt_hdul() -> fits.HDUList:
     return fits.HDUList([a, ang, rel])
 
 
+def _map_header(shape_yx: tuple[int, int]) -> fits.Header:
+    h = fits.PrimaryHDU(np.zeros(shape_yx, dtype=np.float32)).header
+    ny, nx = shape_yx
+    for i, (ct, cv, cd, cp) in enumerate([("RA---TAN", CRVAL_RA, -CDELT_DEG, (nx + 1) / 2), ("DEC--TAN", CRVAL_DEC, CDELT_DEG, (ny + 1) / 2)], start=1):
+        h[f"CTYPE{i}"], h[f"CRVAL{i}"], h[f"CDELT{i}"], h[f"CRPIX{i}"], h[f"CUNIT{i}"] = ct, cv, cd, cp, "deg"
+    h["RADESYS"] = "ICRS"
+    return h
+
+
+def vgt_psi(unit: str) -> fits.HDUList:
+    """VGT-style orientation product in a primary HDU, like the real pipeline's psi files (one product per file).
+
+    Axial angles in [0, 180) degrees or [0, pi) radians. The file declares neither the unit nor that it is axial:
+    that is an interpretation the user declares.
+    """
+    a = vgt_angle_map()["angle_deg"]
+    data = a if unit == "deg" else np.radians(a)
+    return fits.HDUList([fits.PrimaryHDU(data.astype(np.float64), header=_map_header(a.shape))])
+
+
+def vgt_reliability_map() -> fits.HDUList:
+    """Companion map on the same grid. Its range is whatever the pipeline produced, not assumed to be 0 to 1."""
+    r = vgt_angle_map()["reliability"] * 0.5   # peaks at 0.5 on purpose
+    return fits.HDUList([fits.PrimaryHDU(r.astype(np.float32), header=_map_header(r.shape))])
+
+
+TANGENTIAL_N = 33
+
+
+def vgt_tangential_deg() -> fits.HDUList:
+    """Geometric oracle: axial orientation of a field circling the centre pixel.
+
+    Angle is measured from the +x pixel axis towards +y (y = FITS row index, increasing upwards). A tangential field
+    is perpendicular to the radius, so right of the centre it is 90 deg, above it 0 deg, on the up-right diagonal
+    135 deg. A mirrored convention (theta -> 180 - theta) swaps 45 and 135 and is therefore detectable.
+    """
+    n = TANGENTIAL_N
+    yy, xx = np.mgrid[0:n, 0:n]
+    c = n // 2
+    theta = (np.degrees(np.arctan2(yy - c, xx - c)) + 90.0) % 180.0
+    theta[c, c] = np.nan                                  # no direction at the centre itself
+    return fits.HDUList([fits.PrimaryHDU(theta.astype(np.float64), header=_map_header((n, n)))])
+
+
 def write_all(directory: Path) -> dict[str, Path]:
     directory.mkdir(parents=True, exist_ok=True)
     out = {}
@@ -203,6 +247,10 @@ def write_all(directory: Path) -> dict[str, Path]:
         "cube_int16_scaled.fits": cube_int16_scaled(),
         "cube_stokes_freq.fits": cube_stokes_freq(),
         "vgt_result.fits": vgt_hdul(),
+        "vgt_psi_deg.fits": vgt_psi("deg"),
+        "vgt_psi_rad.fits": vgt_psi("rad"),
+        "vgt_reliability.fits": vgt_reliability_map(),
+        "vgt_tangential_deg.fits": vgt_tangential_deg(),
     }.items():
         path = directory / name
         hdul.writeto(path, overwrite=True)

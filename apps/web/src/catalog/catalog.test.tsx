@@ -8,6 +8,7 @@ import type { Dataset } from "../api/catalog";
 const unresolved = { crval: null, crval_status: "unresolved", crpix: null, crpix_status: "unresolved", cdelt: null, cdelt_status: "unresolved", cunit: null, cunit_status: "unresolved" } as const;
 
 const ds: Dataset = {
+  interpretation: null,
   id: 1, path: "/data/a.fits", name: "a.fits", sizeBytes: 1536, modifiedAt: "", addedAt: "",
   header: {
     naxis: 3, bitpix: -32, bunit: null, bunit_status: "unresolved", specsys: null, radesys: null,

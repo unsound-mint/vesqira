@@ -31,6 +31,7 @@ export function segments(x: number[], y: number[]): string[][] {
 
 export function SpectrumPlot({ v }: { v: Viewer }) {
   const sp: Spectrum | null = v.spectrum;
+  if (v.interp) return <p className={s.note}>A spectrum averages values over channels, which is not defined for angles of an axial map. See the orientation statistics.</p>;
   if (!v.region) return <p className={s.note}>Draw a region (Region section) to see its mean spectrum.</p>;
   if (v.spectrumError) return <p role="alert" className={s.err}>{v.spectrumError}</p>;
   if (!sp) return <p className={s.note}>{v.spectrumLoading ? "Computing the spectrum…" : EM}</p>;

@@ -266,6 +266,90 @@ class PlaneWorker(unittest.TestCase):
             self.assertEqual(head["code"], "bad_request", req)
         self.assertTrue(self.c.plane(p, 0)[0]["ok"])                    # worker still alive
 
+    def axial(self, name="vgt_psi_deg.fits", unit="deg", weights=None, **region):
+        req = {"op": "axial", "path": str(self.f[name]), "unit": unit, **region}
+        if weights:
+            req["weights_path"] = str(self.f[weights])
+        return self.c.ask(**req)[0]
+
+    @staticmethod
+    def circ_dist(a, b):
+        d = abs(a - b) % 180.0
+        return min(d, 180.0 - d)
+
+    def test_one_and_179_degrees_average_to_zero_not_ninety(self):
+        r = self.axial(shape="rect", x0=0, y0=0, x1=1, y1=0)["stats"]["unweighted"]   # row 0 starts 1 deg, 179 deg
+        self.assertTrue(r["defined"])
+        self.assertLess(self.circ_dist(r["mean_deg"], 0.0), 1e-9)
+        self.assertGreater(r["resultant"], 0.999)
+
+    def test_perpendicular_orientations_have_no_mean(self):
+        r = self.axial(shape="rect", x0=0, y0=3, x1=1, y1=3)["stats"]["unweighted"]   # 0 deg and 90 deg
+        self.assertFalse(r["defined"])
+        self.assertIsNone(r["mean_deg"])
+        self.assertLess(r["resultant"], 1e-9)
+        self.assertIn("cancel", r["reason"])
+
+    def test_whole_map_matches_the_independent_oracle_and_skips_nan(self):
+        st = self.axial()["stats"]
+        angles = [a for a in g.vgt_angle_map()["angle_deg"].ravel() if not np.isnan(a)]
+        mean, r = g.axial_mean_deg(angles)
+        self.assertEqual(st["angles_excluded"], 1)
+        self.assertEqual(st["unweighted"]["n"], len(angles))
+        self.assertLess(self.circ_dist(st["unweighted"]["mean_deg"], mean), 1e-9)
+        self.assertAlmostEqual(st["unweighted"]["resultant"], r, places=12)
+
+    def test_radians_declared_as_degrees_is_flagged_and_the_right_unit_is_not(self):
+        wrong = self.axial("vgt_psi_rad.fits", unit="deg")["stats"]
+        self.assertTrue(wrong["values_fit_radians"])                 # every value is within pi: a hint to check the unit
+        self.assertFalse(self.axial("vgt_psi_deg.fits", unit="deg")["stats"]["values_fit_radians"])
+        self.assertFalse(self.axial("vgt_psi_rad.fits", unit="rad")["stats"]["values_fit_radians"])
+
+    def test_radians_and_degrees_agree(self):
+        a = self.axial(unit="deg")["stats"]["unweighted"]
+        b = self.axial("vgt_psi_rad.fits", unit="rad")["stats"]["unweighted"]
+        self.assertLess(self.circ_dist(a["mean_deg"], b["mean_deg"]), 1e-9)
+        self.assertAlmostEqual(a["resultant"], b["resultant"], places=12)
+
+    def test_reliability_weights_unknown_excluded_zero_kept(self):
+        st = self.axial(weights="vgt_reliability.fits")["stats"]
+        ang = g.vgt_angle_map()["angle_deg"].ravel()
+        rel = (g.vgt_angle_map()["reliability"] * 0.5).astype(np.float32).astype(np.float64).ravel()
+        ok = np.isfinite(ang) & np.isfinite(rel)
+        z = (rel[ok] * np.exp(2j * np.radians(ang[ok]))).sum() / rel[ok].sum()
+        w = st["weighted"]
+        self.assertEqual(w["n"], int(ok.sum()))                       # NaN reliability or angle excluded
+        self.assertAlmostEqual(w["resultant"], abs(z), places=6)
+        self.assertLess(self.circ_dist(w["mean_deg"], (np.degrees(np.angle(z)) / 2.0) % 180.0), 1e-4)
+        zero = (rel[ok] == 0).sum()
+        self.assertGreater(zero, 0)                                   # the fixture has real zero reliabilities; they stay counted
+
+    def test_tangential_field_has_the_documented_handedness(self):
+        c = g.TANGENTIAL_N // 2
+        def at(dx, dy):
+            return self.axial("vgt_tangential_deg.fits", shape="rect", x0=c + dx, y0=c + dy, x1=c + dx, y1=c + dy)["stats"]["unweighted"]["mean_deg"]
+        self.assertLess(self.circ_dist(at(5, 0), 90.0), 1e-9)       # right of the centre: vertical
+        self.assertLess(self.circ_dist(at(0, 5), 0.0), 1e-9)        # above the centre (y up): horizontal
+        self.assertLess(self.circ_dist(at(5, 5), 135.0), 1e-9)      # up-right diagonal
+        self.assertLess(self.circ_dist(at(-5, 5), 45.0), 1e-9)      # up-left diagonal
+
+    def test_axial_requests_that_make_no_sense_are_refused(self):
+        self.assertEqual(self.axial(unit="turns")["code"], "bad_request")
+        self.assertEqual(self.axial("hi_cube.fits")["code"], "unsupported")                       # a cube is not an orientation map
+        self.assertEqual(self.axial(weights="vgt_tangential_deg.fits")["code"], "bad_request")   # different grid
+        self.assertTrue(self.c.plane(self.f["hi_cube.fits"], 0)[0]["ok"])
+
+    def test_a_2d_map_that_kept_the_cubes_third_axis_keywords_still_opens(self):
+        hdul = g.vgt_tangential_deg()
+        h = hdul[0].header
+        h["CTYPE3"], h["CRVAL3"], h["CDELT3"], h["CRPIX3"], h["CUNIT3"] = "VELO-LSR", 181689.5, 1000.0, 1.0, "m/s"   # as in real VGT psi files
+        path = Path(self.tmp.name) / "stray_axis3.fits"
+        hdul.writeto(path)
+        v, _ = self.c.ask(op="view", path=str(path))
+        self.assertTrue(v["ok"], v)
+        self.assertEqual((v["channels"], v["fits_axes"]["channel"]), (1, None))
+        self.assertIsNone(v["spectral"])
+
     def test_no_celestial_wcs_falls_back_to_pixels(self):
         path = self.f["hi_cube_no_celestial_wcs.fits"]
         v, _ = self.c.ask(op="view", path=str(path))

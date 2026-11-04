@@ -6,6 +6,7 @@ import { EM } from "../catalog/format";
 import { ChannelTimeline } from "../viewer/ChannelTimeline";
 import { CoordinateReadout, DisplayControls } from "../viewer/Panels";
 import { PlaneViewer } from "../viewer/PlaneViewer";
+import { InterpretationPanel, OrientationStats } from "../viewer/OrientationPanels";
 import { RegionPanel } from "../viewer/RegionPanel";
 import { SpectrumPlot } from "../viewer/SpectrumPlot";
 import { flagState } from "../viewer/format";
@@ -18,7 +19,7 @@ import s from "./Shell.module.css";
 export function Shell() {
   const { layout: L, set, toggle } = useLayout();
   const cat = useCatalog();
-  const viewer = useViewer(cat.selectedId !== null && cat.selected ? cat.selected.id : null);
+  const viewer = useViewer(cat.selected);
   const flag = flagState(viewer.view, viewer.plane);
   const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", L.inspOpen ? `${L.insp}px` : "0px"].join(" ");
   const rows = ["var(--h-title)", "minmax(0,1fr)", L.timelineOpen ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
@@ -60,6 +61,16 @@ export function Shell() {
           <Section title="Coordinates">
             {cat.selected ? <CoordinateReadout v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
+          {cat.selected && viewer.view?.channels === 1 ? (
+            <Section title="Interpretation">
+              <InterpretationPanel key={cat.selected.id} v={viewer} dataset={cat.selected} datasets={cat.datasets} declare={cat.declare} />
+            </Section>
+          ) : null}
+          {viewer.interp ? (
+            <Section title="Orientation">
+              <OrientationStats v={viewer} />
+            </Section>
+          ) : null}
           <Section title="Display">
             {cat.selected ? <DisplayControls v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>

@@ -96,3 +96,19 @@
 .draft {
   stroke-dasharray: 6 4;
 }
+
+.lineHalo,
+.lineTop {
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.lineHalo {
+  stroke: var(--canvas);
+  stroke-width: 4px;
+}
+
+.lineTop {
+  stroke: var(--canvas-text);
+  stroke-width: 2px;
+}

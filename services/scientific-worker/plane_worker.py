@@ -70,7 +70,8 @@ class Cube:
             warnings.simplefilter("ignore")
             self.spectral_error = False
             try:
-                self.wcs = WCS(h)
+                # Only the axes the image really has: real VGT outputs are 2D files that kept the cube's CTYPE3.
+                self.wcs = WCS(h, naxis=n)
                 self.wcs.wcs.set()
             except Exception:                         # wcslib raises many types on hostile headers
                 self.wcs = None
@@ -260,11 +261,11 @@ class Cube:
             out = np.ascontiguousarray(phys, dtype="<f4")
         return out, int(np.count_nonzero(np.isfinite(phys) & ~np.isfinite(out)))
 
-    # ----- region spectrum: mean of the finite pixels inside the region, per channel -----
-    def spectrum(self, req: dict) -> tuple[dict, bytes]:
-        nx, ny, nc = self.shape[self.x], self.shape[self.y], self.channels
-        if nc > MAX_SPECTRUM_CHANNELS:
-            raise Refused("unsupported", "too many channels for a region spectrum")
+    # ----- regions -----
+    def region_mask(self, req: dict):
+        """(shape, clipped bounding box, boolean mask over it, pixel count, unclipped pixel count). A pixel is
+        inside when its centre is inside; the region is clipped to the image."""
+        nx, ny = self.shape[self.x], self.shape[self.y]
         shape = req.get("shape")
         if shape == "rect":
             x0, y0, x1, y1 = (as_int(req, k, -(1 << 20), 1 << 20) for k in ("x0", "y0", "x1", "y1"))
@@ -277,21 +278,78 @@ class Cube:
             r = as_int(req, "r", 0, 4096)
             bx0, bx1, by0, by1 = max(cx - r, 0), min(cx + r, nx - 1), max(cy - r, 0), min(cy + r, ny - 1)
             x0, x1, y0, y1 = cx - r, cx + r, cy - r, cy + r
-            requested = None
-            inside = lambda yy, xx: (xx - cx) ** 2 + (yy - cy) ** 2 <= r * r   # pixel centres inside the circle
+            d = np.arange(-r, r + 1)
+            requested = int(np.count_nonzero(d[:, None] ** 2 + d[None, :] ** 2 <= r * r))
+            inside = lambda yy, xx: (xx - cx) ** 2 + (yy - cy) ** 2 <= r * r   # pixel centres inside the circle (broadcast, no full grids)
         else:
             raise Refused("bad_request", "shape must be rect or circle")
         if bx0 > bx1 or by0 > by1:
             raise Refused("bad_request", "the region does not overlap the image")
-        yy, xx = np.mgrid[by0 : by1 + 1, bx0 : bx1 + 1]
-        mask = np.ones(yy.shape, dtype=bool) if inside is None else inside(yy, xx)
+        if inside is None:
+            mask = np.ones((by1 - by0 + 1, bx1 - bx0 + 1), dtype=bool)
+        else:
+            yy, xx = np.ogrid[by0 : by1 + 1, bx0 : bx1 + 1]
+            mask = inside(yy, xx)
         npix = int(mask.sum())
         if npix == 0:
             raise Refused("bad_request", "the region contains no pixel centre")
+        return shape, (bx0, bx1, by0, by1), mask, npix, requested
+
+    # ----- axial orientation statistics -----
+    def axial_stats(self, req: dict, weights: "Cube | None") -> dict:
+        """Mean orientation of axial angles via the doubled-angle method (astropy.stats circular statistics on 2*theta).
+
+        theta and theta + 180 deg are the same orientation, so the ordinary mean is never used. Pixels whose angle is not
+        finite are excluded. Weights come from a companion map: NaN weight = unknown, the pixel is excluded from the
+        weighted result; weight 0 is a real value and keeps the pixel with no influence.
+        """
+        from astropy.stats import circmean, circvar
+        unit = req.get("unit")
+        if unit not in ("deg", "rad"):
+            raise Refused("bad_request", "unit must be deg or rad")
+        if self.channels != 1:
+            raise Refused("unsupported", "an orientation map must be a single plane")
+        nx, ny = self.shape[self.x], self.shape[self.y]
+        if "shape" in req:
+            shape, (bx0, bx1, by0, by1), mask, npix, requested = self.region_mask(req)
+        else:
+            shape, (bx0, bx1, by0, by1), mask, npix, requested = "map", (0, nx - 1, 0, ny - 1), np.ones((ny, nx), dtype=bool), nx * ny, nx * ny
+        if npix > MAX_PLANE_ELEMENTS:
+            raise Refused("unsupported", "the region is too large")
+        ys, xs = slice(by0, by1 + 1), slice(bx0, bx1 + 1)
+
+        def read(cube: "Cube") -> np.ndarray:
+            with fits.open(cube.path, memmap=True, do_not_scale_image_data=True) as hdul:
+                return cube._physical(np.asarray(hdul[0].section[cube._index(0, ys, xs)]))
+
+        values = read(self)[mask]                                    # in the declared unit
+        theta = np.radians(values) if unit == "deg" else values
+        out_of_range = int(np.count_nonzero(np.isfinite(theta) & ((theta < -1e-9) | (theta >= np.pi + 1e-9))))
+        ok = np.isfinite(theta)
+        two = (2.0 * theta)[ok]
+        fin = values[np.isfinite(values)]
+        fits_radians = bool(unit == "deg" and fin.size and float(np.max(np.abs(fin))) <= math.pi + 1e-9)   # degrees would use a wider range
+        result = {"values_fit_radians": fits_radians, "pixels": npix, "angles_finite": int(ok.sum()), "angles_excluded": int(npix - ok.sum()),
+                  "outside_zero_to_180": out_of_range, "unweighted": axial_summary(two, None, circmean, circvar), "weighted": None}
+        if weights is not None:
+            if (weights.shape[weights.x], weights.shape[weights.y]) != (nx, ny) or weights.channels != 1:
+                raise Refused("bad_request", "the weight map has a different shape")
+            w = read(weights)[mask]
+            if np.any(w[np.isfinite(w)] < 0):
+                raise Refused("bad_request", "the weight map has negative values")
+            both = ok & np.isfinite(w)
+            result["weighted"] = axial_summary((2.0 * theta)[both], w[both], circmean, circvar)
+            result["weighted"]["unknown_weight_excluded"] = int(np.count_nonzero(ok & ~np.isfinite(w)))
+        return result
+
+    # ----- region spectrum: mean of the finite pixels inside the region, per channel -----
+    def spectrum(self, req: dict) -> tuple[dict, bytes]:
+        nx, ny, nc = self.shape[self.x], self.shape[self.y], self.channels
+        if nc > MAX_SPECTRUM_CHANNELS:
+            raise Refused("unsupported", "too many channels for a region spectrum")
+        shape, (bx0, bx1, by0, by1), mask, npix, requested = self.region_mask(req)
         if npix * nc > MAX_REGION_WORK:
             raise Refused("unsupported", "the region is too large for a spectrum; draw a smaller one")
-        if requested is None:
-            requested = int(np.count_nonzero(inside(*np.mgrid[y0 : y1 + 1, x0 : x1 + 1])))
         mean, count = np.full(nc, np.nan), np.zeros(nc, dtype="<u4")
         ys, xs = slice(by0, by1 + 1), slice(bx0, bx1 + 1)
         with fits.open(self.path, memmap=True, do_not_scale_image_data=True) as hdul:
@@ -316,7 +374,8 @@ class Cube:
         if self.celestial and self.wcs is not None:
             from astropy.wcs.utils import proj_plane_pixel_scales
             sx, sy = (float(v) * 3600.0 for v in proj_plane_pixel_scales(self.wcs.celestial))
-            size = {"pixel_scale_arcsec": [sx, sy], "area_arcmin2": npix * sx * sy / 3600.0,
+            pixel_area = abs(float(np.linalg.det(self.wcs.celestial.pixel_scale_matrix))) * 3600.0 ** 2   # arcsec^2, valid for skewed grids
+            size = {"pixel_scale_arcsec": [sx, sy], "area_arcmin2": npix * pixel_area / 3600.0,
                     "note": "Pixel scale and area are taken at the reference pixel; projection distortion across the region is ignored"}
         payload = axis.astype("<f8").tobytes() + mean.astype("<f8").tobytes() + count.tobytes()
         head = {"ok": True, "op": "spectrum", "origin": 0, "channels": nc, "shape": shape, "nbytes": len(payload),
@@ -354,6 +413,23 @@ def as_index(req: dict, key: str, upper: int) -> int:
     return v
 
 
+DEGENERATE_RESULTANT = 1e-6   # mean resultant length of the doubled angles below which no orientation is defined
+
+
+def axial_summary(two_theta: np.ndarray, weights: "np.ndarray | None", circmean, circvar) -> dict:
+    """Mean orientation (degrees in [0, 180)), resultant length R, count and whether the mean is defined."""
+    n = int(two_theta.size)
+    if n == 0 or (weights is not None and not np.any(weights > 0)):
+        return {"n": n, "resultant": None, "mean_deg": None, "defined": False, "reason": "no angle with a usable weight"}
+    # R = 1 - circular variance of the doubled angles; the mean orientation is half the circular mean of 2*theta
+    r = float(1.0 - circvar(two_theta, weights=weights))
+    if not math.isfinite(r) or r < DEGENERATE_RESULTANT:
+        return {"n": n, "resultant": r if math.isfinite(r) else None, "mean_deg": None, "defined": False,
+                "reason": f"orientations cancel (resultant length below {DEGENERATE_RESULTANT:g})"}
+    mean = float((np.degrees(circmean(two_theta, weights=weights)) / 2.0) % 180.0)
+    return {"n": n, "resultant": r, "mean_deg": mean, "defined": True, "reason": None}
+
+
 def as_int(req: dict, key: str, lo: int, hi: int) -> int:
     v = req.get(key)
     if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
@@ -373,7 +449,7 @@ def stats(a: np.ndarray) -> dict:
 
 def handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
-    if op not in ("view", "plane", "coord", "spectrum") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+    if op not in ("view", "plane", "coord", "spectrum", "axial") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")
     c = cube_for(path)
     bunit = clean(c.h.get("BUNIT")) if "BUNIT" in c.h else None
@@ -384,6 +460,12 @@ def handle(req: dict) -> tuple[dict, bytes]:
                 "fits_axes": {"x": c.x + 1, "y": c.y + 1, "channel": None if c.chan is None else c.chan + 1},
                 "sky": c.sky_facts(), "spectral": c.spectral_facts(), "flags": fl,
                 "provenance_note": "axis roles come from the WCS; values are declared by the file, not verified"}, b""
+    if op == "axial":
+        wp = req.get("weights_path")
+        if wp is not None and (not isinstance(wp, str) or not os.path.isabs(wp) or len(wp) > 4096):
+            raise Refused("bad_request", "bad request")
+        return {**base, "nbytes": 0, "stats": c.axial_stats(req, cube_for(wp) if wp else None),
+                "method": "doubled-angle circular statistics (astropy.stats); 0 and 180 degrees are the same orientation"}, b""
     if op == "spectrum":
         head, payload = c.spectrum(req)
         return {**base, **head}, payload

@@ -75,8 +75,8 @@ export function RegionPanel({ v }: { v: Viewer }) {
       {region ? (
         <dl className={s.facts}>
           <dt>Pixels</dt>
-          <dd className="mono">{info ? info.region.pixels.toLocaleString("en-US") : nominalPixels(region).toLocaleString("en-US")}{info?.region.clipped ? ` of ${info.region.requested_pixels.toLocaleString("en-US")} (clipped at the image edge)` : ""}</dd>
-          <dt>Area</dt>
+          <dd className="mono">{info ? info.region.pixels.toLocaleString("en-US") : v.interp && v.axial ? v.axial.pixels.toLocaleString("en-US") : nominalPixels(region).toLocaleString("en-US")}{info?.region.clipped ? ` of ${info.region.requested_pixels.toLocaleString("en-US")} (clipped at the image edge)` : ""}</dd>
+          <dt>Area (reference pixel)</dt>
           <dd className="mono">{info ? (info.size ? `${info.size.area_arcmin2.toFixed(3)} arcmin²` : "unknown: no celestial WCS") : EM}</dd>
           <dt>Pixel scale</dt>
           <dd className="mono">{info?.size ? `${info.size.pixel_scale_arcsec[0].toFixed(3)} × ${info.size.pixel_scale_arcsec[1].toFixed(3)} arcsec` : EM}</dd>

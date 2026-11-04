@@ -84,9 +84,24 @@ func (c *PlaneCache) put(k cacheKey, r worker.Reply) {
 	}
 }
 
-// source resolves a dataset id to an authorized, unchanged file. Every request re-authorizes the stored
-// path against the current roots and compares size and mtime with the registration, because a path does
-// not prove the bytes are the ones whose header was catalogued.
+// authorize re-checks a stored dataset against the current source roots and its registered size and mtime.
+// A path does not prove the bytes are the ones whose header was catalogued, so a changed file is refused.
+func (s *Server) authorize(d catalog.Dataset) (real string, k cacheKey, status int, msg string) {
+	real, err := s.Roots.Resolve(d.Path)
+	if err != nil {
+		return "", k, 403, err.Error()
+	}
+	info, err := statFile(real)
+	if err != nil {
+		return "", k, 404, "file not found"
+	}
+	if info.Size() != d.SizeBytes || info.ModTime().UnixNano() != d.ModifiedAt.UnixNano() {
+		return "", k, 409, "the file changed since it was registered; register it again"
+	}
+	return real, cacheKey{id: d.ID, size: info.Size(), mtime: info.ModTime().UnixNano()}, 0, ""
+}
+
+// source resolves a dataset id to an authorized, unchanged file.
 func (s *Server) source(w http.ResponseWriter, r *http.Request) (d catalog.Dataset, real string, k cacheKey, ok bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -103,20 +118,12 @@ func (s *Server) source(w http.ResponseWriter, r *http.Request) (d catalog.Datas
 		fail(w, 500, "internal error")
 		return
 	}
-	if real, err = s.Roots.Resolve(d.Path); err != nil {
-		fail(w, 403, err.Error())
+	real, k, status, msg := s.authorize(d)
+	if status != 0 {
+		fail(w, status, msg)
 		return
 	}
-	info, err := statFile(real)
-	if err != nil {
-		fail(w, 404, "file not found")
-		return
-	}
-	if info.Size() != d.SizeBytes || info.ModTime().UnixNano() != d.ModifiedAt.UnixNano() {
-		fail(w, 409, "the file changed since it was registered; register it again")
-		return
-	}
-	return d, real, cacheKey{id: d.ID, size: info.Size(), mtime: info.ModTime().UnixNano()}, true
+	return d, real, k, true
 }
 
 // index reads a required non-negative integer query parameter.
@@ -224,8 +231,13 @@ func integer(w http.ResponseWriter, r *http.Request, name string) (int, bool) {
 
 // spectrum answers with the mean spectrum of a rectangle or circle (0-based pixel coordinates).
 func (s *Server) spectrum(w http.ResponseWriter, r *http.Request) {
-	_, real, k, ok := s.source(w, r)
+	d, real, k, ok := s.source(w, r)
 	if !ok {
+		return
+	}
+	if d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+		// Enforced here, not only in the interface: the arithmetic mean of axial angles is not a valid statistic.
+		fail(w, 409, "this dataset is declared as an axial orientation map; averaging its angles arithmetically is not valid. Use the orientation statistics")
 		return
 	}
 	shape := r.URL.Query().Get("shape")

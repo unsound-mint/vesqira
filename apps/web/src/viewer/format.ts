@@ -1,3 +1,4 @@
+import { axialDegrees } from "./render";
 import type { Plane, Provenance, SpectralFacts, View } from "../api/planes";
 import { EM } from "../catalog/format";
 
@@ -30,11 +31,13 @@ export type FlagState = { tone: "neutral" | "warn"; text: string };
 /** Channel flags exist only if the file declares them. Absent is never "valid" and never "not flagged". */
 export function flagState(view: View | null, plane: Plane | null): FlagState {
   if (!view || !plane) return { tone: "neutral", text: EM };
+  if (view.channels === 1) return { tone: "neutral", text: "Single plane" };
   if (!view.flags.declared) return { tone: "neutral", text: "No channel flags declared" };
   return plane.head.flagged ? { tone: "warn", text: "Channel flagged by provider" } : { tone: "neutral", text: "Channel not flagged" };
 }
 
 export function channelLabel(channel: number, count: number, s: SpectralFacts | null, value: number | null): string {
+  if (count === 1) return "Single plane";
   const base = `Channel ${channel + 1} of ${count}`;
   return s && s.resolved && value !== null ? `${base}, ${s.ctype ?? "spectral"} ${spectralText(value, s.unit)}` : base;
 }
@@ -42,4 +45,11 @@ export function channelLabel(channel: number, count: number, s: SpectralFacts | 
 /** Planes travel and display as float32. Say so when the file stores more precision than that. */
 export function precisionNote(bitpix: number | null): string {
   return bitpix === 32 || bitpix === 64 || bitpix === -64 ? ` Shown as float32; the file stores BITPIX ${bitpix}.` : "";
+}
+
+/** An axial angle read in degrees in [0, 180), with the reminder that 0 and 180 are one orientation. */
+export function axialText(v: number | null, unit: "deg" | "rad"): string {
+  if (v === null) return EM;
+  if (!Number.isFinite(v)) return "no value";
+  return `${axialDegrees(v, unit === "deg" ? 1 : 180 / Math.PI).toFixed(2)}° (axial: 0° = 180°)`;
 }

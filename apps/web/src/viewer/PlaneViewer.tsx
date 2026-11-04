@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button } from "../ui";
 import { lut } from "./colormaps";
 import { fit, pixelAt } from "./geometry";
 import { limits, outputSize, renderPlane } from "./render";
+import { glyphStride, orientationLines } from "./glyphs";
 import type { Rgb } from "./render";
 import type { Viewer } from "./useViewer";
 import { channelLabel } from "./format";
@@ -47,8 +48,9 @@ export function PlaneViewer({ v }: { v: Viewer }) {
     if (!ctx) return;
     const { outW, outH } = outputSize(plane.head.width, plane.head.height, shape.scale);
     const img = renderPlane(plane.data, plane.head.width, plane.head.height, {
-      lut: lut(v.colormap),
-      range: limits(plane.head.stats, v.range),
+      lut: lut(v.interp ? "twilight" : v.colormap),
+      range: v.interp ? null : limits(plane.head.stats, v.range),
+      axial: v.interp ? { toDegrees: v.interp.unit === "deg" ? 1 : 180 / Math.PI } : undefined,
       stretch: v.stretch,
       outW,
       outH,
@@ -57,7 +59,7 @@ export function PlaneViewer({ v }: { v: Viewer }) {
     canvas.width = img.width;
     canvas.height = img.height;
     ctx.putImageData(new ImageData(img.pixels, img.width, img.height), 0, 0);
-  }, [plane, v.colormap, v.stretch, v.range, shape.scale]);
+  }, [plane, v.colormap, v.stretch, v.range, v.interp, shape.scale]);
 
   function pick(e: MouseEvent<HTMLCanvasElement>) {
     if (!plane) return null;
@@ -94,6 +96,16 @@ export function PlaneViewer({ v }: { v: Viewer }) {
   } else if (!plane) {
     body = <p className={s.note}>Loading channel {v.channel + 1}…</p>;
   }
+
+  const lines = useMemo(() => {
+    if (!plane || !v.interp || !v.showLines || shape.scale <= 0) return [];
+    const rel = v.reliability && v.reliability.head.width === plane.head.width && v.reliability.head.height === plane.head.height ? v.reliability : null;
+    return orientationLines(plane.data, plane.head.width, plane.head.height, v.interp.unit === "deg" ? 1 : 180 / Math.PI, {
+      stride: glyphStride(shape.scale),
+      reliability: rel?.data ?? null,
+      relScale: rel ? (rel.head.stats.p99 ?? undefined) : undefined,
+    });
+  }, [plane, v.interp, v.showLines, v.reliability, shape.scale]);
 
   const probe = v.probe;
   const cell = plane ? shape.width / plane.head.width : 0;
@@ -144,6 +156,12 @@ export function PlaneViewer({ v }: { v: Viewer }) {
             }}
           />
           <svg className={s.overlay} viewBox={`0 0 ${plane.head.width} ${plane.head.height}`} preserveAspectRatio="none" aria-hidden="true">
+            {lines.map((l, i) => (
+              <g key={i} opacity={l.opacity}>
+                <line className={s.lineHalo} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
+                <line className={s.lineTop} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
+              </g>
+            ))}
             {[v.region, draft].map((r, i) => {
               if (!r) return null;
               const o = outline(r, plane.head.height);

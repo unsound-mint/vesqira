@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react";
-import { Select } from "../ui";
+import { Select, Switch } from "../ui";
 import { COLORMAPS, lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
 import { RANGES, STRETCHES, limits, normalize } from "./render";
 import type { RangeMode, Stretch } from "./render";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
-import { degrees, precisionNote, provenanceNote, spectralText, valueText } from "./format";
+import { axialText, degrees, precisionNote, provenanceNote, spectralText, valueText } from "./format";
 import s from "./Panels.module.css";
 
 /** Pixel, world and spectral readout for the pointer (or pinned) pixel. World values come from the worker's WCS. */
@@ -23,7 +23,13 @@ export function CoordinateReadout({ v }: { v: Viewer }) {
         <dt>Pixel</dt>
         <dd className="mono">{probe ? `x ${probe.x + 1}, y ${probe.y + 1}` : EM}</dd>
         <dt>Value</dt>
-        <dd className="mono">{plane && probe ? valueText(v.pixelValue, view.bunit) : EM}</dd>
+        <dd className="mono">{plane && probe ? (v.interp ? axialText(v.pixelValue, v.interp.unit) : valueText(v.pixelValue, view.bunit)) : EM}</dd>
+        {v.interp ? (
+          <>
+            <dt>Reliability</dt>
+            <dd className="mono">{v.interp.reliabilityId === null ? "no map declared" : probe && v.reliability ? valueText(v.reliability.data[probe.y * v.reliability.head.width + probe.x] ?? null, null) : EM}</dd>
+          </>
+        ) : null}
         {sky.kind === "celestial" ? (
           <>
             <dt>{sky.lon_name}</dt>
@@ -68,20 +74,45 @@ export function DisplayControls({ v }: { v: Viewer }) {
   const stats = v.plane?.head.stats ?? null;
   const lim = stats ? limits(stats, v.range) : null;
   const unit = v.view?.bunit ?? null;
+  const axial = v.interp !== null;
 
   useEffect(() => {
     const c = bar.current;
     const ctx = c?.getContext("2d");
     if (!c || !ctx) return;
-    const table = lut(v.colormap);
+    const table = lut(axial ? "twilight" : v.colormap);
     const img = ctx.createImageData(c.width, 1);
     for (let x = 0; x < c.width; x++) {
       // the bar shows what a value at this position on the axis looks like after the stretch
-      const i = Math.round(normalize(x / (c.width - 1), 0, 1, v.stretch) * 255) * 3;
+      const i = Math.round(normalize(x / (c.width - 1), 0, 1, axial ? "linear" : v.stretch) * 255) * 3;
       img.data.set([table[i]!, table[i + 1]!, table[i + 2]!, 255], x * 4);
     }
     ctx.putImageData(img, 0, 0);
-  }, [v.colormap, v.stretch]);
+  }, [v.colormap, v.stretch, axial]);
+
+  if (axial) {
+    return (
+      <div className={s.wrap}>
+        <div className={s.legend}>
+          <canvas ref={bar} className={s.bar} width={256} height={1} role="img" aria-label="Cyclic colour bar from 0 to 180 degrees; the ends have the same colour" />
+          <div className={s.ends}>
+            <span className="mono">0°</span>
+            <span className="mono">90°</span>
+            <span className="mono">180°</span>
+          </div>
+        </div>
+        <Switch label="Orientation lines" checked={v.showLines} onChange={(e) => v.setShowLines(e.target.checked)} />
+        <p className={s.note}>
+          Axial orientation: 0° and 180° are the same orientation, so the colours wrap. Angles run from the image +x axis towards +y (counter-clockwise on
+          screen). The file declares no angle convention; Vesqira assumes the VGT pipeline’s. Line opacity follows the reliability map relative to its own 99th percentile.
+        </p>
+        <div className={s.nodata}>
+          <span className={s.swatch} aria-hidden="true" />
+          <span>No value{stats ? `: ${stats.nonfinite_count.toLocaleString("en-US")} pixels` : ""}. Hatched, never drawn as an angle.</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={s.wrap}>

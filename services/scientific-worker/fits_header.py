@@ -80,7 +80,15 @@ def describe(path: str) -> dict:
             ax[field], ax[f"{field}_status"] = declared(h, f"{key}{i}")
         axes.append(ax)
     bunit, bunit_status = declared(h, "BUNIT")
+    # linear-transform and frame keywords that decide whether two grids are really the same grid
+    extra = {}
+    for key in h.keys():
+        if re.fullmatch(r"(PC|CD)\d{1,2}_\d{1,2}|CROTA\d|LONPOLE|LATPOLE|EQUINOX", key):
+            v = clean(h[key])
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                extra[key] = v
     return {
+        "wcs_extra": extra,
         "ok": True,
         "naxis": naxis,
         "bitpix": clean(h.get("BITPIX")),

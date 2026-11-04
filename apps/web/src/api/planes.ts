@@ -145,3 +145,17 @@ export function parseSpectrum(buf: ArrayBuffer): Spectrum {
 
 export const getSpectrum = (id: number, r: RegionShape, signal?: AbortSignal) =>
   request(`${base(id)}/spectrum?${regionQuery(r)}`, signal).then((x) => x.arrayBuffer()).then(parseSpectrum);
+
+export type AxialSummary = { n: number; resultant: number | null; mean_deg: number | null; defined: boolean; reason: string | null };
+export type AxialStats = {
+  values_fit_radians: boolean;
+  pixels: number;
+  angles_finite: number;
+  angles_excluded: number;
+  outside_zero_to_180: number;
+  unweighted: AxialSummary;
+  weighted: (AxialSummary & { unknown_weight_excluded: number }) | null;
+};
+
+export const getAxial = (id: number, r: RegionShape | null, signal?: AbortSignal) =>
+  request(`${base(id)}/axial${r ? `?${regionQuery(r)}` : ""}`, signal).then((x) => x.json() as Promise<{ stats: AxialStats; method: string }>);

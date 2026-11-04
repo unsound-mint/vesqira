@@ -40,7 +40,15 @@ export type RenderOptions = {
   outW: number;
   outH: number;
   nodata: readonly [Rgb, Rgb];
+  /** Axial orientation: colour by angle modulo 180 degrees on a cyclic map; `toDegrees` converts file units. */
+  axial?: { toDegrees: number };
 };
+
+/** Axial angle in [0, 180) degrees, so that 0 and 180 (and -10 and 170) are the same orientation. */
+export function axialDegrees(v: number, toDegrees: number): number {
+  const d = (v * toDegrees) % 180;
+  return d < 0 ? d + 180 : d;
+}
 
 const STRIPE = 3;
 
@@ -68,8 +76,9 @@ export function renderPlane(data: Float32Array, w: number, h: number, o: RenderO
     const row = (h - 1 - Math.floor((oy * h) / H)) * w;
     for (let ox = 0; ox < W; ox++) {
       const v = data[row + Math.floor((ox * w) / W)]!;
-      if (Number.isFinite(v) && o.range) {
-        const i = Math.round(normalize(v, o.range[0], o.range[1], o.stretch) * 255) * 3;
+      if (Number.isFinite(v) && (o.range || o.axial)) {
+        const t = o.axial ? axialDegrees(v, o.axial.toDegrees) / 180 : normalize(v, o.range![0], o.range![1], o.stretch);
+        const i = Math.round(t * 255) * 3;
         out[p] = o.lut[i]!;
         out[p + 1] = o.lut[i + 1]!;
         out[p + 2] = o.lut[i + 2]!;

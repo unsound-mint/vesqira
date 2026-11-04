@@ -351,3 +351,132 @@ func TestSpectrumQueryValidationAndFrame(t *testing.T) {
 		}
 	}
 }
+
+func postJSON(t *testing.T, url string, body any) (*http.Response, []byte) {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", url, strings.NewReader(string(b)))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	return resp, out
+}
+
+// Axial interpretation, companion compatibility, server-side refusal to average angles, and the doubled-angle
+// statistics, end to end with the real workers on generated fixtures.
+func TestAxialOrientationEndToEndWithRealWorker(t *testing.T) {
+	repo, _ := filepath.Abs("../../../..")
+	if exec.Command("python3", "-c", "import astropy").Run() != nil {
+		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
+			t.Fatal("python3 with astropy is required")
+		}
+		t.Skip("python3 with astropy not available")
+	}
+	pw := &worker.Persistent{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
+	t.Cleanup(pw.Close)
+	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	ts, root, _ := newPlaneServerWith(t, hdr, pw)
+	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
+	gen.Dir = filepath.Join(repo, "fixtures")
+	if out, err := gen.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	reg := func(name string) int {
+		var d catalog.Dataset
+		resp := post(t, ts, filepath.Join(root, name), nil)
+		if resp.StatusCode != 201 {
+			t.Fatalf("%s: %d", name, resp.StatusCode)
+		}
+		json.NewDecoder(resp.Body).Decode(&d)
+		return int(d.ID)
+	}
+	psi, rel, other := reg("vgt_psi_deg.fits"), reg("vgt_reliability.fits"), reg("vgt_tangential_deg.fits")
+	api := func(id int, p string) string { return ts.URL + "/api/datasets/" + itoa(id) + p }
+
+	// a cube cannot be declared an orientation map, even by posting the declaration directly
+	if r, _ := postJSON(t, api(reg("hi_cube.fits"), "/interpretation"), map[string]any{"kind": "axial_orientation", "unit": "deg"}); r.StatusCode != 422 {
+		t.Errorf("declaring a cube axial: %d, want 422", r.StatusCode)
+	}
+	// not declared yet: no orientation statistics, and the plain mean is still available as a scalar
+	if r, _ := get(t, api(psi, "/axial")); r.StatusCode != 409 {
+		t.Errorf("undeclared map: %d, want 409", r.StatusCode)
+	}
+	// the unit is required and is never guessed
+	if r, _ := postJSON(t, api(psi, "/interpretation"), map[string]any{"kind": "axial_orientation"}); r.StatusCode != 400 {
+		t.Errorf("missing unit: %d, want 400", r.StatusCode)
+	}
+	// a companion on another grid is refused with reasons
+	r, body := postJSON(t, api(psi, "/interpretation"), map[string]any{"kind": "axial_orientation", "unit": "deg", "reliabilityId": other})
+	if r.StatusCode != 422 || !strings.Contains(string(body), "reasons") {
+		t.Errorf("incompatible companion: %d %s", r.StatusCode, body)
+	}
+	r, body = postJSON(t, api(psi, "/interpretation"), map[string]any{"kind": "axial_orientation", "unit": "deg", "reliabilityId": rel})
+	if r.StatusCode != 200 {
+		t.Fatalf("declare: %d %s", r.StatusCode, body)
+	}
+	var d catalog.Dataset
+	json.Unmarshal(body, &d)
+	if d.Interpretation == nil || d.Interpretation.DeclaredBy != "user" || d.Interpretation.Unit != "deg" {
+		t.Fatalf("interpretation not stored as a user declaration: %+v", d.Interpretation)
+	}
+
+	// invariant 4, enforced on the server: no arithmetic region mean of angles
+	if r, _ := get(t, api(psi, "/spectrum?shape=rect&x0=0&y0=0&x1=1&y1=1")); r.StatusCode != 409 {
+		t.Errorf("spectrum of an axial map: %d, want 409", r.StatusCode)
+	}
+
+	stats := func(q string) (mean *float64, defined bool) {
+		resp, b := get(t, api(psi, "/axial"+q))
+		if resp.StatusCode != 200 {
+			t.Fatalf("axial%s: %d %s", q, resp.StatusCode, b)
+		}
+		var out struct {
+			Stats struct {
+				Unweighted struct {
+					Mean    *float64 `json:"mean_deg"`
+					Defined bool     `json:"defined"`
+				} `json:"unweighted"`
+				Weighted *struct{ N int } `json:"weighted"`
+			} `json:"stats"`
+		}
+		json.Unmarshal(b, &out)
+		if out.Stats.Weighted == nil {
+			t.Errorf("declared reliability must produce weighted statistics: %s", b)
+		}
+		return out.Stats.Unweighted.Mean, out.Stats.Unweighted.Defined
+	}
+	m, ok := stats("?shape=rect&x0=0&y0=0&x1=1&y1=0") // 1 deg and 179 deg
+	if !ok || m == nil || math.Min(*m, 180-*m) > 1e-9 {
+		t.Errorf("1 and 179 degrees must average to 0, got %v", m)
+	}
+	if m, ok := stats("?shape=rect&x0=0&y0=3&x1=1&y1=3"); ok || m != nil { // 0 and 90 degrees cancel
+		t.Errorf("perpendicular orientations must be undefined, got %v defined=%v", m, ok)
+	}
+	// the file changes after the declaration: it is flagged stale until the user declares again
+	pf := filepath.Join(root, "vgt_psi_deg.fits")
+	st, _ := os.Stat(pf)
+	if err := os.Chtimes(pf, time.Now(), st.ModTime().Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	reg("vgt_psi_deg.fits") // re-registering refreshes size and mtime
+	if r, b := get(t, api(psi, "/axial")); r.StatusCode != 409 || !strings.Contains(string(b), "declare it again") {
+		t.Errorf("stale declaration: %d %s", r.StatusCode, b)
+	}
+	if r, _ := postJSON(t, api(psi, "/interpretation"), map[string]any{"kind": "axial_orientation", "unit": "deg", "reliabilityId": rel}); r.StatusCode != 200 {
+		t.Fatalf("redeclare: %d", r.StatusCode)
+	}
+	if r, _ := get(t, api(psi, "/axial")); r.StatusCode != 200 {
+		t.Errorf("after redeclaring: %d", r.StatusCode)
+	}
+	// clearing the declaration returns the dataset to an ordinary scalar map
+	if r, _ := postJSON(t, api(psi, "/interpretation"), map[string]any{"kind": "none"}); r.StatusCode != 200 {
+		t.Errorf("clear: %d", r.StatusCode)
+	}
+	if r, _ := get(t, api(psi, "/spectrum?shape=rect&x0=0&y0=0&x1=1&y1=1")); r.StatusCode != 200 {
+		t.Errorf("scalar map spectrum after clearing: %d", r.StatusCode)
+	}
+}
