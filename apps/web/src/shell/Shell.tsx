@@ -6,6 +6,7 @@ import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { Explorer } from "../catalog/Explorer";
 import { AnalysisPanel, DerivedPanel } from "../catalog/AnalysisPanel";
+import { UsedIn } from "../catalog/UsedIn";
 import { HostsPanel } from "../catalog/HostsPanel";
 import { RunPanel, runFor } from "../catalog/RunPanel";
 import { RunsList } from "../catalog/RunsList";
@@ -119,7 +120,7 @@ export function Shell() {
           <BoardsView />
         ) : cat.selected ? (
           <div className={s.compare}>
-            <CompareBar datasets={cat.datasets} selectedId={cat.selected.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} />
+            <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selected.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} />
             <div className={compareDs ? s.panes2 : s.panes1}>
               <section className={s.pane} aria-label={`Map: ${cat.selected.name}`}>
                 {compareDs ? <PaneHeader name={cat.selected.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} /> : null}
@@ -174,6 +175,11 @@ export function Shell() {
           {actDs ? (
             <Section title="Made from" defaultOpen={false}>
               <DerivedPanel dataset={actDs} datasets={cat.datasets} />
+            </Section>
+          ) : null}
+          {actDs ? (
+            <Section title="Used in" defaultOpen={false}>
+              <UsedIn dataset={actDs} onOpenBoards={() => setMode("boards")} />
             </Section>
           ) : null}
           {actDs ? (

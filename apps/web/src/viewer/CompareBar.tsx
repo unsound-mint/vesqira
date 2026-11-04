@@ -10,7 +10,8 @@ export function linkState(compat: Compat | null, loading: boolean): { linked: bo
     : { linked: false, text: "Different or unconfirmed grids: not linked, nothing is resampled", tone: "warn" };
 }
 
-export function CompareBar({ datasets, selectedId, compareId, onChange, compat, loading, error }: {
+export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChange, compat, loading, error }: {
+  hosts?: { id: number; name: string }[];
   datasets: Dataset[];
   selectedId: number;
   compareId: number | null;
@@ -25,7 +26,7 @@ export function CompareBar({ datasets, selectedId, compareId, onChange, compat, 
     <div className={s.bar}>
       <Select label="Compare with" value={compareId ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}>
         <option value="">Nothing</option>
-        {others.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        {others.map((d) => <option key={d.id} value={d.id}>{d.name}{d.hostId ? ` (${hosts.find((h) => h.id === d.hostId)?.name ?? "host"})` : ""}</option>)}
       </Select>
       {compareId !== null ? (
         <div className={s.state}>

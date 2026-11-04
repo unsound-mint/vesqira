@@ -311,7 +311,7 @@ test("a cube on another machine is read in place and agrees with the same cube h
   await expect(inspector(page).getByText(remoteValue, { exact: true })).toBeVisible();
 
   // compare the cube on the other machine with the one here: same grid, so linked
-  await page.getByLabel("Compare with").selectOption({ label: "remote_cube.fits" });
+  await page.getByLabel("Compare with").selectOption({ label: "remote_cube.fits (Second laptop)" });
   await expect(page.getByText("Same grid: cursor and channel are linked")).toBeVisible();
 });
 

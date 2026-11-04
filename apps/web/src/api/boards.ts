@@ -2,6 +2,7 @@ import { ApiError } from "./catalog";
 
 export type Figure = {
   id: number;
+  datasetId: number;
   title: string;
   caption: string;
   createdAt: string;
