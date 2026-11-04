@@ -29,8 +29,8 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [ ] A board panel that follows a run still running and pins its result when it finishes.
 - [ ] Change parameters from the cube view and run in one click (pulls shape.md slice 2 forward).
 - [ ] Parameter grid board from a sweep.
-- [ ] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39).
-- [ ] Optional VPN companion (gpclient): needs a privilege and security decision first.
+- [ ] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39). Design in ADR 0029 (proposed): owner-only, off by default, the editor first.
+- [ ] Optional VPN companion (gpclient): a per-host connect command run through polkit, ADR 0029 (proposed); needs the owner's decision first.
 
 ## Stage 0 — Install and launch
 
