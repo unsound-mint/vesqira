@@ -426,6 +426,7 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
+	s.Audit.Record("review published", "snapshot", sn.ID, "board "+strconv.FormatInt(id, 10)+", label: "+in.Label)
 	writeJSON(w, 201, map[string]any{"snapshot": sn, "token": tok, "reviewPath": "/#/review/" + tok,
 		"note": "Shown once. Anyone with this link can read the frozen board and comment; revoke it to end access."})
 }
@@ -452,6 +453,7 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
+	s.Audit.Record("review revoked", "snapshot", id, "")
 	writeJSON(w, 200, map[string]bool{"revoked": true})
 }
 

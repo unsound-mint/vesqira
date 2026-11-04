@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -62,6 +63,39 @@ func (s *Server) setRunReview(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.Audit.Record("run assessment recorded", "run", id, "qc: "+in.QC+", interpretation: "+in.Interpretation)
 	run, _ := s.Runs.Get(id)
 	writeJSON(w, 200, s.runView(run))
+}
+
+func (s *Server) runHistory(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, 400, "bad id")
+		return
+	}
+	h, err := s.Runs.History(id)
+	if errors.Is(err, runs.ErrNotFound) {
+		fail(w, 404, "run not found")
+		return
+	}
+	if err != nil {
+		log.Printf("run history: %v", err)
+		fail(w, 500, "internal error")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"history": h})
+}
+
+// listAudit serves the owner's record of what was done. The reviewer listener never mounts it.
+func (s *Server) listAudit(w http.ResponseWriter, r *http.Request) {
+	target, _ := strconv.ParseInt(r.URL.Query().Get("target"), 10, 64)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	es, err := s.Audit.List(r.URL.Query().Get("kind"), target, limit)
+	if err != nil {
+		log.Printf("audit: %v", err)
+		fail(w, 500, "internal error")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"entries": es})
 }

@@ -1,9 +1,9 @@
 import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Pill, Select } from "../ui";
-import { setRunReview } from "../api/runs";
-import type { RunReview } from "../api/runs";
+import { runReviewHistory, setRunReview } from "../api/runs";
+import type { RunReview, RunReviewRevision } from "../api/runs";
 import { bytes, EM } from "./format";
 import s from "./RunPanel.module.css";
 
@@ -100,10 +100,17 @@ const INTERP = { not_interpreted: "Not interpreted", supports: "Supports the hyp
 function Assessment({ run }: { run: Run }) {
   const [rv, setRv] = useState<RunReview>(run.review);
   const [msg, setMsg] = useState<string | null>(null);
+  const [history, setHistory] = useState<RunReviewRevision[]>([]);
+  useEffect(() => {
+    let live = true;
+    runReviewHistory(run.id).then((h) => live && setHistory(h)).catch(() => undefined);
+    return () => { live = false; };
+  }, [run.id]);
   async function save(next: RunReview) {
     setRv(next);
     try {
       await setRunReview(run.id, next);
+      setHistory(await runReviewHistory(run.id));
       setMsg("Saved.");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Could not save.");
@@ -124,6 +131,16 @@ function Assessment({ run }: { run: Run }) {
         <textarea className={s.area} rows={2} maxLength={500} defaultValue={rv.note} onBlur={(e) => { if (e.target.value !== rv.note) void save({ ...rv, note: e.target.value }); }} />
       </label>
       {msg ? <p className={s.note} role="status">{msg}</p> : null}
+      {history.length > 1 ? (
+        <details>
+          <summary className={s.note}>Earlier assessments ({history.length - 1})</summary>
+          <ul className={s.note}>
+            {history.slice(1).map((h) => (
+              <li key={h.at + h.qc + h.interpretation + h.note}>{new Date(h.at).toLocaleString()} · {QC[h.qc]} · {INTERP[h.interpretation]}{h.note ? ` · ${h.note}` : ""}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
     </div>
   );
 }

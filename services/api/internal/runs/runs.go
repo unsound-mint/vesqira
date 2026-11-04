@@ -203,6 +203,7 @@ func Open(db *sql.DB) (*Store, error) {
 			imported_at INTEGER NOT NULL, generated_at TEXT NOT NULL, git_commit TEXT NOT NULL, elapsed REAL,
 			input_name TEXT NOT NULL, input_size INTEGER NOT NULL, params TEXT NOT NULL, diagnostics TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS run_review(run_id INTEGER PRIMARY KEY, qc TEXT NOT NULL, interpretation TEXT NOT NULL, note TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS run_review_history(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, at INTEGER NOT NULL, qc TEXT NOT NULL, interpretation TEXT NOT NULL, note TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS run_outputs(
 			run_id INTEGER NOT NULL, role TEXT NOT NULL, dataset_id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(run_id, role))`,
 	} {
@@ -325,8 +326,50 @@ func (s *Store) SetReview(id int64, rv Review) error {
 	if _, err := s.Get(id); err != nil {
 		return err
 	}
-	_, err := s.db.Exec(`INSERT INTO run_review(run_id,qc,interpretation,note) VALUES(?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET qc=excluded.qc,interpretation=excluded.interpretation,note=excluded.note`, id, rv.QC, rv.Interpretation, rv.Note)
-	return err
+	// The current assessment and its history change together: nothing is ever overwritten without a trace.
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO run_review(run_id,qc,interpretation,note) VALUES(?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET qc=excluded.qc,interpretation=excluded.interpretation,note=excluded.note`, id, rv.QC, rv.Interpretation, rv.Note); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO run_review_history(run_id,at,qc,interpretation,note) VALUES(?,?,?,?,?)`, id, time.Now().Unix(), rv.QC, rv.Interpretation, rv.Note); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ReviewRevision is one past or present state of a run's assessment.
+type ReviewRevision struct {
+	At             time.Time `json:"at"`
+	QC             string    `json:"qc"`
+	Interpretation string    `json:"interpretation"`
+	Note           string    `json:"note"`
+}
+
+// History lists the assessments of a run, newest first. A run never assessed has none.
+func (s *Store) History(id int64) ([]ReviewRevision, error) {
+	if _, err := s.Get(id); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT at,qc,interpretation,note FROM run_review_history WHERE run_id=? ORDER BY id DESC`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ReviewRevision{}
+	for rows.Next() {
+		var rv ReviewRevision
+		var at int64
+		if err := rows.Scan(&at, &rv.QC, &rv.Interpretation, &rv.Note); err != nil {
+			return nil, err
+		}
+		rv.At = time.Unix(at, 0).UTC()
+		out = append(out, rv)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) List() ([]Run, error) {

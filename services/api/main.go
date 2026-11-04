@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
@@ -111,6 +112,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	auditStore, err := audit.Open(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
 	derivedStore, err := derived.Open(store.DB())
 	if err != nil {
 		log.Fatal(err)
@@ -127,7 +132,7 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir,
+	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore,
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)

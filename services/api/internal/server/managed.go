@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 )
@@ -125,5 +126,6 @@ func (s *Server) copyDataset(w http.ResponseWriter, r *http.Request) {
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: "managed-copy", Params: json.RawMessage(`{}`), Sources: []int64{d.ID}, Summary: summary}); err != nil {
 		log.Printf("derived: %v", err)
 	}
+	s.Audit.Record("managed copy made", "dataset", nd.ID, "copy of dataset "+strconv.FormatInt(d.ID, 10)+", sha256 "+sum[:12])
 	writeJSON(w, 201, map[string]any{"dataset": nd, "sha256": sum})
 }

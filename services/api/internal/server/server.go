@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
@@ -37,6 +38,7 @@ type Server struct {
 	Derived    *derived.Store
 	ManagedDir string
 	Analysis   *AnalysisConfig
+	Audit      *audit.Store // nil records nothing
 }
 
 func (s *Server) Handler() http.Handler {
@@ -79,6 +81,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/runs", s.listRuns)
 		mux.HandleFunc("GET /api/runs/{id}", s.getRun)
 		mux.HandleFunc("POST /api/runs/{id}/review", s.setRunReview)
+		mux.HandleFunc("GET /api/runs/{id}/history", s.runHistory)
 	}
 	if s.Boards != nil {
 		mux.HandleFunc("POST /api/figures", s.createFigure)
@@ -103,6 +106,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/{id}/spectrum", s.spectrum)
 	mux.HandleFunc("GET /api/datasets/{id}/axial", s.axial)
 	mux.HandleFunc("GET /api/compat", s.compatibility)
+	if s.Audit != nil {
+		mux.HandleFunc("GET /api/audit", s.listAudit)
+	}
 	mux.HandleFunc("GET /api/preview", s.previewFile)
 	mux.HandleFunc("POST /api/datasets/{id}/copy", s.copyDataset)
 	mux.HandleFunc("POST /api/datasets/{id}/nature", s.setNature)

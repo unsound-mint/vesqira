@@ -40,5 +40,8 @@ export const listRuns = () => call<{ runs: Run[] }>("/api/runs").then((r) => r.r
 export const importRun = (path: string) =>
   call<Run>("/api/runs/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
 
+export type RunReviewRevision = RunReview & { at: string };
+export const runReviewHistory = (id: number) => call<{ history: RunReviewRevision[] }>(`/api/runs/${id}/history`).then((r) => r.history);
+
 export const setRunReview = (id: number, rv: RunReview) =>
   call<Run>(`/api/runs/${id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rv) });

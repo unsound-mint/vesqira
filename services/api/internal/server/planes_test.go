@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"io"
 	"math"
 	"net/http"
@@ -555,7 +556,8 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: hdr, Boards: bs, Runs: rn}).Handler())
+	au, _ := audit.Open(cat.DB())
+	ts := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: hdr, Boards: bs, Runs: rn, Audit: au}).Handler())
 	defer ts.Close()
 	rv := httptest.NewServer((&review.Handler{Store: bs}).Handler())
 	defer rv.Close()
@@ -633,6 +635,19 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 	if r, _ := postJSON(t, ts.URL+"/api/runs/"+itoa(int(run.ID))+"/review", map[string]any{"qc": "inconclusive", "interpretation": "challenges", "note": "low coverage at the edge"}); r.StatusCode != 200 {
 		t.Errorf("set review: %d", r.StatusCode)
 	}
+	// changing the assessment keeps the earlier one: nothing is overwritten without a trace
+	postJSON(t, ts.URL+"/api/runs/"+itoa(int(run.ID))+"/review", map[string]any{"qc": "passed", "interpretation": "supports", "note": "re-checked the edge"})
+	_, hb := get(t, ts.URL+"/api/runs/"+itoa(int(run.ID))+"/history")
+	var hist struct {
+		History []runs.ReviewRevision `json:"history"`
+	}
+	json.Unmarshal(hb, &hist)
+	if len(hist.History) != 2 || hist.History[0].QC != "passed" || hist.History[1].QC != "inconclusive" || hist.History[1].Note != "low coverage at the edge" {
+		t.Errorf("assessment history: %s", hb)
+	}
+	if r, _ := get(t, ts.URL+"/api/runs/99999/history"); r.StatusCode != 404 {
+		t.Errorf("history of an unknown run: %d", r.StatusCode)
+	}
 
 	// a figure of a run output carries the run's parameters and commit, and nothing that names a place or a person
 	_, fb := postJSON(t, ts.URL+"/api/figures", map[string]any{"datasetId": ids["psi"], "title": "Psi", "view": map[string]any{"kind": "plane", "channel": 0}, "previewPng": testPNG(t)})
@@ -647,10 +662,21 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 	json.Unmarshal(pub, &p)
 	_, rbody := get(t, rv.URL+"/review-api/"+p.Token)
 	body := string(rbody)
-	for _, want := range []string{"axial_vonmises", "-dirty", `"reproducibleFromCommit":false`, "vgt_run_demo", `"qc":"inconclusive"`, "low coverage at the edge"} {
+	for _, want := range []string{"axial_vonmises", "-dirty", `"reproducibleFromCommit":false`, "vgt_run_demo", `"qc":"passed"`, "re-checked the edge"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the reviewer should see %q: %s", want, body)
 		}
+	}
+	// the owner's record shows what happened; it is not part of what a reviewer can reach
+	_, ab := get(t, ts.URL+"/api/audit?kind=run")
+	if !strings.Contains(string(ab), "run assessment recorded") {
+		t.Errorf("audit: %s", ab)
+	}
+	if r, _ := get(t, rv.URL+"/api/audit"); r.StatusCode != 404 {
+		t.Errorf("the review listener must not serve the audit log: %d", r.StatusCode)
+	}
+	if strings.Contains(body, "low coverage at the edge") || strings.Contains(body, "inconclusive") {
+		t.Errorf("a reviewer sees the current assessment, not the earlier ones")
 	}
 	for _, leak := range []string{"/tmp/vgt_inputs", "someone", "Projects/VGT", "validation_output", "input_file", root, base, "drwatson"} {
 		if strings.Contains(body, leak) {

@@ -234,6 +234,7 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 		s.jobErr(w, err)
 		return
 	}
+	s.Audit.Record("job submitted", "job", j.ID, "Slurm job "+id+", script sha256 "+j.ScriptHash[:12])
 	j, _ = s.Jobs.Get(j.ID)
 	writeJSON(w, 200, j)
 }
@@ -261,8 +262,10 @@ func (s *Server) checkSubmitting(ctx context.Context, j jobs.Job, h hosts.Host, 
 	}
 	switch {
 	case found:
+		s.Audit.Record("job found on the host", "job", j.ID, "Slurm job "+id)
 		return s.Jobs.MarkSubmitted(j.ID, id)
 	case reopen:
+		s.Audit.Record("job reopened as draft", "job", j.ID, "the host holds no such job")
 		return s.Jobs.Reopen(j.ID)
 	default:
 		return s.Jobs.NoteSubmitting(j.ID, "Slurm does not list this job (checked "+time.Now().Format("15:04")+"). If you are sure it was not submitted, reopen it as a draft.")
@@ -339,6 +342,7 @@ func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 502, err.Error())
 		return
 	}
+	s.Audit.Record("job cancel requested", "job", j.ID, "Slurm job "+j.SlurmID)
 	_ = s.Jobs.SetState(j.ID, j.State, "cancel requested")
 	j, _ = s.Jobs.Get(j.ID)
 	writeJSON(w, 200, j)
