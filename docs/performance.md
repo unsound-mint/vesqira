@@ -20,8 +20,16 @@ The gain comes from slicing the memory-mapped file instead of astropy's section 
 
 ## Not yet done
 
-Two worker lanes so a heavy operation never blocks scrubbing, a downsampled preview with a full-resolution follow-up, prefetch and a browser cache, a worker memory cap, measurement over real disks and ssh. See `docs/roadmap.md` stage P.
+A browser-side plane cache (the server cache is on loopback, and a browser copy would need its own staleness rule), and measurement over real disks, ssh, 4D cubes and concurrent load. See `docs/roadmap.md` stage P.
 
 ## Preview and prefetch
 
 On a remote host, a plane larger than about a quarter of a megapixel is first requested reduced (`step=N`, at most 64; the worker returns the mean of the finite pixels of each N x N block, NaN where a block has none, and marks `preview` in the header as "not for measurement"). The viewer draws it on the full grid, so pixel indices, readouts and regions keep their meaning, shows "preview, reduced N×" under the picture, and requests the full plane 150 ms after the last channel change. When the full plane arrives, the next and previous channels are requested so the server cache already holds them. Readouts of coordinates always come from the full data (`coord`), never from the preview. Local datasets skip the preview: the reduction still reads the whole plane, so it only helps when the link is the bottleneck.
+
+## Worker lanes
+
+`worker.Persistent` runs two processes: the interactive lane (header, plane, coordinate readout) and the heavy lane (region spectrum, orientation statistics). They queue independently, so a slow spectrum never delays channel scrubbing. A heavy request whose caller gives up is stopped by killing only the heavy process (a cold restart of about 0.3 s on the next heavy request); the interactive lane is never restarted for it. Covered by `TestAHeavyRequestNeverBlocksInteractiveOnesAndCancelKillsOnlyTheHeavyLane`.
+
+## Memory cap
+
+The plane worker sets `RLIMIT_DATA` to what it holds once numpy and astropy are loaded (about 2 GB of address space) plus `VESQIRA_WORKER_MEM_MB` (default 3072; 0 disables). Files are opened read-only and memory-mapped, which the limit does not count, so a 10 GB cube opens as before; an allocation over the cap (for example a 3000 x 3000 plane with a 40 MB budget) makes that request fail with "cannot read" and the worker serves the next one. Linux only; elsewhere nothing is limited. Covered by `test_a_request_over_the_memory_cap_fails_alone_and_the_worker_keeps_serving`.

@@ -44,7 +44,7 @@ def open_cube(path: str) -> Cube:
 
 def planes(c: Cube, c0: int, c1: int, ys=slice(None), xs=slice(None)):
     """Yield (channel index, float64 plane with NaN for missing) for channels c0..c1 inclusive."""
-    with fits.open(c.path, memmap=True, do_not_scale_image_data=True) as hdul:
+    with fits.open(c.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
         hdu = hdul[0]
         for ch in range(c0, c1 + 1):
             yield ch, c._physical(np.array(fits_array(hdul)[c._index(ch, ys, xs)]))

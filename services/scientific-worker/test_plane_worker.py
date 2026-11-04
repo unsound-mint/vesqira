@@ -86,6 +86,27 @@ class PlaneWorker(unittest.TestCase):
         for bad in (0, -1, 65, 2.5, True, "2"):
             self.assertFalse(self.c.ask(op="plane", path=str(path), channel=3, step=bad)[0]["ok"])
 
+    def test_a_request_over_the_memory_cap_fails_alone_and_the_worker_keeps_serving(self):
+        big = Path(self.tmp.name) / "big_plane.fits"
+        fits.PrimaryHDU(np.random.default_rng(0).random((3000, 3000), dtype=np.float32)).writeto(big)
+        env = dict(os.environ, VESQIRA_WORKER_MEM_MB="40")          # far below what a 9-megapixel plane needs to be processed
+        env.pop("VESQIRA_ROOTS", None)
+        p = subprocess.Popen([sys.executable, "-P", SCRIPT], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+
+        def ask(**req):
+            p.stdin.write(json.dumps(req).encode() + b"\n")
+            p.stdin.flush()
+            head = json.loads(p.stdout.readline())
+            p.stdout.read(head["nbytes"])
+            return head
+        try:
+            self.assertFalse(ask(op="plane", path=str(big), channel=0)["ok"])
+            small = self.f["vgt_psi_deg.fits"]
+            self.assertTrue(ask(op="plane", path=str(small), channel=0)["ok"])    # same process, next request
+        finally:
+            p.stdin.close()
+            p.wait(timeout=10)
+
     def test_view_locates_axes_from_the_wcs(self):
         v, _ = self.c.ask(op="view", path=str(self.f["hi_cube.fits"]))
         self.assertTrue(v["ok"])

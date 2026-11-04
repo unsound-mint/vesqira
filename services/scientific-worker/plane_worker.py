@@ -234,7 +234,7 @@ class Cube:
         none = {"declared": False, "channels": []}
         if self.chan is None:
             return none
-        with fits.open(self.path, memmap=True) as hdul:
+        with fits.open(self.path, memmap=True, mode="denywrite") as hdul:
             if "FLAGS" not in hdul:
                 return none
             hdu = hdul["FLAGS"]
@@ -281,7 +281,7 @@ class Cube:
 
     def read_plane(self, channel: int) -> tuple[np.ndarray, int]:
         """(float32 plane, number of finite source values too large for float32, which became infinite)."""
-        with fits.open(self.path, memmap=True, do_not_scale_image_data=True) as hdul:
+        with fits.open(self.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
             hdu = hdul[0]
             if hdu.data is None:
                 raise Refused("unreadable", "the file holds no image data")
@@ -351,7 +351,7 @@ class Cube:
         ys, xs = slice(by0, by1 + 1), slice(bx0, bx1 + 1)
 
         def read(cube: "Cube") -> np.ndarray:
-            with fits.open(cube.path, memmap=True, do_not_scale_image_data=True) as hdul:
+            with fits.open(cube.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
                 return cube._physical(np.array(fits_array(hdul)[cube._index(0, ys, xs)]))
 
         values = read(self)[mask]                                    # in the declared unit
@@ -387,7 +387,7 @@ class Cube:
         # Read a block of channels per call: one strided read of the region over K channels instead of K separate reads,
         # with the per-channel mean taken in one vectorised step. K is bounded so a block stays a few tens of MB.
         block = max(1, min(nc, SPECTRUM_BLOCK_ELEMENTS // ((bx1 - bx0 + 1) * (by1 - by0 + 1))))
-        with fits.open(self.path, memmap=True, do_not_scale_image_data=True) as hdul:
+        with fits.open(self.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
             hdu = hdul[0]
             for c0 in range(0, nc, block):
                 c1 = min(nc, c0 + block)
@@ -664,7 +664,31 @@ def handle(req: dict) -> tuple[dict, bytes]:
             "flagged": (channel in fl["channels"]) if fl["declared"] else None, "preview": preview}, payload
 
 
+def limit_memory() -> None:
+    """Cap the worker's private memory so one hostile or oversized file cannot take the machine down.
+
+    RLIMIT_DATA counts anonymous and private memory but not read-only file mappings, so memory-mapped cubes of any size
+    are unaffected. Importing numpy and astropy already reserves about 2 GB of address space (thread arenas), so the
+    budget is added to what the process holds once its libraries are loaded. VESQIRA_WORKER_MEM_MB sets it (default 3072);
+    0 disables it. Where /proc is not available nothing is limited. An allocation over the cap raises MemoryError, which
+    a request survives: the worker answers "cannot read" and serves the next request.
+    """
+    try:
+        mb = int(os.environ.get("VESQIRA_WORKER_MEM_MB", "3072"))
+        if mb <= 0:
+            return
+        with open("/proc/self/status") as f:
+            held = int(f.read().split("VmData:")[1].split()[0]) * 1024
+        import resource
+        _, hard = resource.getrlimit(resource.RLIMIT_DATA)
+        want = held + (mb << 20)
+        resource.setrlimit(resource.RLIMIT_DATA, (want if hard == resource.RLIM_INFINITY else min(want, hard), hard))
+    except (OSError, ValueError, IndexError, ImportError):
+        pass
+
+
 def main() -> int:
+    limit_memory()
     out = sys.stdout.buffer
     sys.stdout = sys.stderr                                 # stray prints must never corrupt the protocol
     for line in sys.stdin.buffer:

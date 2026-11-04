@@ -12,11 +12,11 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 
 Do first: it makes the viewer claims measurable and unblocks scrubbing on large cubes.
 
-- [ ] `make bench`: sparse large cube, cold and warm plane / spectrum / coordinate timings, p50/p95 and worker memory, also while a heavy operation runs; budgets written down (Q149, Q164).
+- [x] `make bench`: sparse large cube, plane / spectrum / coordinate timings, p95 and worker memory against written budgets, run in CI (docs/performance.md). Timings while a heavy operation runs are not part of it; the lane behaviour has its own test.
 - [x] Two worker lanes (interactive and heavy): a spectrum or orientation request never blocks channel scrubbing, and cancelling it kills only the heavy process (Q169). Analysis jobs already run in their own subprocess.
-- [ ] Spectrum read in channel blocks, vectorised, so large regions are served instead of refused (Q92).
+- [x] Spectrum read through the memory map in channel blocks, vectorised: a box spectrum 5x faster, the size cap raised from 2e8 to 1e9 pixel-channels (Q92).
 - [x] Large planes on a remote host show a block-mean preview first (labelled as a preview, drawn on the full grid) and the full plane once the channel settles; neighbouring channels are prefetched into the server cache (Q182, Q185). A browser-side plane cache was not added: the server cache is on loopback and a browser copy would need its own staleness rule.
-- [ ] Worker memory cap (RLIMIT_AS) and per-request limits that bound time and memory, not only output size.
+- [x] Worker memory cap (RLIMIT_DATA on top of what the loaded libraries hold, `VESQIRA_WORKER_MEM_MB`, default 3072; read-only file maps are not counted, so any cube size still opens). An allocation over the cap fails that request only. Per-request time is bounded by the lane timeout.
 - [ ] Not yet measured: real disk, ssh, 4D cubes, list virtualisation at scale, resumable transfers.
 
 ## Stage L — The integrated loop (owner direction, 2026-11-05)
