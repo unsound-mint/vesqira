@@ -47,6 +47,8 @@ var ErrTimeout = errors.New("worker timed out")
 type Persistent struct {
 	Command []string
 	Timeout time.Duration
+	// ExtraEnv adds variables to the worker's otherwise minimal environment (for ssh: the agent socket and HOME).
+	ExtraEnv []string
 
 	Starts atomic.Int64 // processes started so far (observable in tests and logs)
 
@@ -68,7 +70,7 @@ func (p *Persistent) start() (*proc, error) {
 		return nil, ErrUnavailable
 	}
 	cmd := exec.Command(p.Command[0], p.Command[1:]...)
-	cmd.Env = []string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C.UTF-8"}
+	cmd.Env = append([]string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C.UTF-8"}, p.ExtraEnv...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	in, err := cmd.StdinPipe()
 	if err != nil {

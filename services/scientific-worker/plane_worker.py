@@ -447,8 +447,89 @@ def stats(a: np.ndarray) -> dict:
     return out
 
 
+def _load_roots():
+    """Source roots enforced by this process itself (set by the remote launcher). None means the caller authorizes."""
+    raw = os.environ.get("VESQIRA_ROOTS")
+    if raw is None:
+        return None
+    try:
+        roots = json.loads(raw)
+        if not isinstance(roots, list) or not all(isinstance(r, str) and os.path.isabs(r) for r in roots):
+            raise ValueError
+    except ValueError:
+        sys.exit("VESQIRA_ROOTS must be a JSON list of absolute paths")
+    return [os.path.realpath(r) for r in roots]
+
+
+ROOTS = _load_roots()
+
+
+def inside_roots(real: str) -> bool:
+    if ROOTS is None:
+        return True
+    return any(real == r or real.startswith(r.rstrip(os.sep) + os.sep) for r in ROOTS)
+
+
+def authorize(path: str, want: str = "file") -> str:
+    """The real path of `path` if it lies inside the roots and is a regular file (or a directory when want="dir").
+
+    Containment is checked on the resolved path, so a symlink pointing out of the roots is refused. Every refusal is
+    the same message, whatever the reason, so callers cannot probe for files outside the roots.
+    """
+    refused = Refused("forbidden", "not available")
+    if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096 or "\0" in path:
+        raise Refused("bad_request", "bad request")
+    real = os.path.realpath(path)
+    if not inside_roots(real) or not (os.path.isdir(real) if want == "dir" else os.path.isfile(real)):
+        raise refused
+    return real
+
+
+def host_op(op: str, req: dict) -> tuple[dict, bytes]:
+    """Operations used when this worker runs on a remote host (and by the local API for registration)."""
+    if op == "ping":
+        import astropy
+        return {"ok": True, "op": op, "nbytes": 0, "python": sys.version.split()[0], "astropy": astropy.__version__,
+                "numpy": np.__version__, "roots": ROOTS, "enforces_roots": ROOTS is not None}, b""
+    path = req.get("path")
+    if op == "list":
+        real = authorize(path, "dir")
+        entries = []
+        with os.scandir(real) as it:
+            for e in sorted(it, key=lambda e: e.name)[:2000]:
+                try:
+                    target = os.path.realpath(e.path)
+                    if not inside_roots(target):
+                        continue                                 # a link out of the roots is not listed
+                    if os.path.isdir(target):
+                        entries.append({"name": e.name[:255], "kind": "dir"})
+                    elif os.path.isfile(target):
+                        entries.append({"name": e.name[:255], "kind": "file", "size": os.stat(target).st_size})
+                except OSError:
+                    continue
+                if len(entries) >= 500:
+                    break
+        return {"ok": True, "op": op, "nbytes": 0, "path": real, "entries": entries}, b""
+    real = authorize(path)
+    st = os.stat(real)
+    if op == "resolve":
+        return {"ok": True, "op": op, "nbytes": 0, "real": real, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+    if op == "stat":
+        return {"ok": True, "op": op, "nbytes": 0, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+    if op == "header":
+        from fits_header import describe
+        return {**describe(real), "nbytes": 0, "op": op, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+    raise Refused("bad_request", "bad request")
+
+
 def handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
+    if op in ("ping", "list", "resolve", "stat", "header"):
+        return host_op(op, req)
+    if op in ("view", "plane", "coord", "spectrum", "axial"):
+        authorize(path)                                          # also enforces the roots on a remote host
+        if op == "axial" and req.get("weights_path") is not None:
+            authorize(req.get("weights_path"))
     if op not in ("view", "plane", "coord", "spectrum", "axial") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")
     c = cube_for(path)

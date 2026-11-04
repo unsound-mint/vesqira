@@ -21,9 +21,13 @@ SCRIPT = str(HERE / "plane_worker.py")
 class Client:
     """Talks the line protocol to one long-lived worker process."""
 
-    def __init__(self):
+    def __init__(self, roots=None):
+        env = dict(os.environ)
+        env.pop("VESQIRA_ROOTS", None)
+        if roots is not None:
+            env["VESQIRA_ROOTS"] = json.dumps([str(r) for r in roots])
         self.p = subprocess.Popen([sys.executable, "-P", SCRIPT], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL)
+                                  stderr=subprocess.DEVNULL, env=env)
 
     def ask(self, **req):
         self.p.stdin.write(json.dumps(req).encode() + b"\n")
@@ -427,6 +431,80 @@ class PlaneWorker(unittest.TestCase):
             self.assertLess(hwm_kb, 800 * 1024, "peak RSS suggests the whole cube was read")
         finally:
             c.close()
+
+
+class RemoteRoots(unittest.TestCase):
+    """A worker started with VESQIRA_ROOTS enforces the roots itself, as it must on a host Go cannot inspect."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        base = Path(cls.tmp.name).resolve()
+        cls.root, cls.other = base / "root", base / "other"
+        (cls.root / "sub").mkdir(parents=True)
+        cls.other.mkdir()
+        g.write_all(cls.root)
+        g.hi_cube().writeto(cls.other / "secret.fits")
+        (cls.root / "link_out.fits").symlink_to(cls.other / "secret.fits")
+        (cls.root / "link_in.fits").symlink_to(cls.root / "hi_cube.fits")
+        (cls.root / "link_dir").symlink_to(cls.other)
+        cls.c = Client(roots=[cls.root])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.c.close()
+        cls.tmp.cleanup()
+
+    def ask(self, **req):
+        return self.c.ask(**req)[0]
+
+    def test_ping_reports_versions_and_that_roots_are_enforced(self):
+        r = self.ask(op="ping")
+        self.assertTrue(r["ok"] and r["enforces_roots"])
+        self.assertEqual(r["roots"], [str(self.root)])
+        self.assertTrue(r["astropy"])
+
+    def test_header_stat_and_resolve_work_inside_the_roots(self):
+        p = str(self.root / "hi_cube.fits")
+        h = self.ask(op="header", path=p)
+        self.assertTrue(h["ok"])
+        self.assertEqual([a["ctype"] for a in h["axes"]][2], "VRAD")
+        st = self.ask(op="stat", path=p)
+        self.assertEqual(st["size"], (self.root / "hi_cube.fits").stat().st_size)
+        self.assertEqual(self.ask(op="resolve", path=str(self.root / "link_in.fits"))["real"], p)   # a link inside resolves
+
+    def test_everything_outside_the_roots_is_the_same_refusal(self):
+        outside = [str(self.other / "secret.fits"), str(self.root / "link_out.fits"), str(self.root / ".." / "other" / "secret.fits"),
+                   str(self.root / "link_dir" / "secret.fits"), "/etc/passwd", str(self.other), "/nonexistent/x.fits"]
+        replies = []
+        for op in ("header", "stat", "resolve", "view", "list"):
+            for p in outside:
+                r = self.ask(op=op, path=p)
+                self.assertFalse(r["ok"], (op, p))
+                self.assertEqual(r["code"], "forbidden", (op, p))
+                replies.append(r["error"])
+        self.assertEqual(len(set(replies)), 1)                           # nothing tells existing and missing files apart
+        for op in ("plane",):
+            self.assertEqual(self.c.ask(op=op, path=str(self.root / "link_out.fits"), channel=0)[0]["code"], "forbidden")
+        self.assertEqual(self.ask(op="axial", path=str(self.root / "vgt_psi_deg.fits"), unit="deg", weights_path=str(self.other / "secret.fits"))["code"], "forbidden")
+
+    def test_relative_and_odd_paths_are_bad_requests(self):
+        for p in ("hi_cube.fits", "", "a\0b", "x" * 5000):
+            self.assertEqual(self.ask(op="resolve", path=p)["code"], "bad_request")
+
+    def test_listing_shows_only_what_is_inside_the_roots(self):
+        r = self.ask(op="list", path=str(self.root))
+        names = {e["name"]: e["kind"] for e in r["entries"]}
+        self.assertEqual(names["sub"], "dir")
+        self.assertEqual(names["hi_cube.fits"], "file")
+        self.assertIn("link_in.fits", names)
+        self.assertNotIn("link_out.fits", names)                         # links that leave the roots are not even listed
+        self.assertNotIn("link_dir", names)
+
+    def test_planes_still_work_inside_the_roots(self):
+        head, plane = Client.plane(self.c, self.root / "hi_cube.fits", 3)
+        self.assertTrue(head["ok"])
+        self.assertEqual(plane.shape, (g.NY, g.NX))
 
 
 if __name__ == "__main__":

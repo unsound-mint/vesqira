@@ -124,6 +124,10 @@ func (s *Server) axial(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "the declared reliability dataset: "+msg)
 			return
 		}
+		if rel.HostID != d.HostID {
+			fail(w, 409, "the reliability map is on another host: both maps must be on the same machine to be used together")
+			return
+		}
 		if rel.Interpretation != nil && rel.Interpretation.Kind == "axial_orientation" {
 			fail(w, 409, "the declared reliability dataset is itself declared as angles")
 			return

@@ -267,3 +267,46 @@ test("a VGT run is imported with its parameters, linked to its outputs and carri
   expect(text).not.toMatch(/\/tmp\/|\/home\/|vgt_inputs|validation_output|\.run\/data/);
   await ctx.close();
 });
+
+test("a cube on another machine is read in place and agrees with the same cube here", async ({ page }) => {
+  const remoteRoot = path.resolve(here, "../.run/remote_data");
+  await page.goto("/");
+  await register(page, "hi_cube.fits");
+  // add the host: your own ssh and agent do the connecting (a stand-in ssh here); nothing asks for keys
+  await page.getByRole("button", { name: /^Hosts/ }).click();
+  await expect(page.getByText(/Keys and passwords are never read by Vesqira/)).toBeVisible();
+  await page.getByLabel("Host name").fill("Second laptop");
+  await page.getByLabel("SSH destination").fill("laptop2");
+  await page.getByLabel(/Source folders/).fill(remoteRoot);
+  await page.getByRole("button", { name: "Add host" }).click();
+  const host = page.getByRole("region", { name: "Host Second laptop" });
+  await host.getByRole("button", { name: "Check connection" }).click();
+  await expect(host.getByText(/The host enforces its source folders itself/)).toBeVisible();
+  await host.getByRole("button", { name: "Browse" }).click();
+  await host.getByRole("button", { name: /remote_cube\.fits/ }).click();
+  await expect(page.getByRole("button", { name: /^remote_cube\.fits.*Second laptop/ })).toBeVisible();
+
+  // the remote cube opens, and the same pixel reads the same value as the local copy
+  await page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /remote_cube\.fits/ }).click();
+  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
+  const slider = page.getByRole("slider", { name: "Channel" });
+  await slider.focus();
+  await page.keyboard.press("Home");
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowRight");
+  await expect(bigChannel(page)).toHaveText("41");
+  const at = await pixelAt(page, 32, 24, 20, 9);
+  await page.mouse.move(at.x, at.y);
+  const remoteValue = await inspector(page).getByText(/^\d+\.\d+ K$/).first().innerText();
+  await page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^hi_cube\.fits/ }).click();
+  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
+  await page.getByRole("slider", { name: "Channel" }).focus();
+  await page.keyboard.press("Home");
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowRight");
+  const at2 = await pixelAt(page, 32, 24, 20, 9);
+  await page.mouse.move(at2.x, at2.y);
+  await expect(inspector(page).getByText(remoteValue, { exact: true })).toBeVisible();
+
+  // compare the cube on the other machine with the one here: same grid, so linked
+  await page.getByLabel("Compare with").selectOption({ label: "remote_cube.fits" });
+  await expect(page.getByText("Same grid: cursor and channel are linked")).toBeVisible();
+});

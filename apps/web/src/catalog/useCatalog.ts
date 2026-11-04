@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, listDatasets, registerDataset, setInterpretation } from "../api/catalog";
 import type { Dataset, InterpretationRequest } from "../api/catalog";
+import { listHosts } from "../api/hosts";
+import type { Host } from "../api/hosts";
 import { importRun, listRuns } from "../api/runs";
 import type { Run } from "../api/runs";
 
@@ -8,12 +10,14 @@ export function useCatalog() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
+  const [hosts, setHosts] = useState<Host[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
     listRuns().then((r) => live && setRuns(r)).catch(() => undefined);
+    listHosts().then((h) => live && setHosts(h)).catch(() => undefined);
     listDatasets()
       .then((d) => live && (setDatasets(d), setError(null)))
       .catch((e: unknown) => live && setError(e instanceof ApiError ? e.message : "Could not load datasets."))
@@ -60,5 +64,11 @@ export function useCatalog() {
     }
   }, []);
 
-  return { runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
+  const refreshHosts = useCallback(async () => setHosts(await listHosts()), []);
+  const refreshDatasets = useCallback(async () => {
+    const d = await listDatasets();
+    setDatasets(d);
+  }, []);
+
+  return { hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
 }

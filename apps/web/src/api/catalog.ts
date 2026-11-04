@@ -27,7 +27,7 @@ export type Header = {
 
 export type Interpretation = { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null; declaredBy: string; declaredAt: string; stale: boolean };
 
-export type Dataset = { interpretation: Interpretation | null; id: number; path: string; name: string; sizeBytes: number; modifiedAt: string; addedAt: string; header: Header };
+export type Dataset = { hostId: number; interpretation: Interpretation | null; id: number; path: string; name: string; sizeBytes: number; modifiedAt: string; addedAt: string; header: Header };
 
 export class ApiError extends Error {
   constructor(message: string, readonly reasons: string[] = []) {

@@ -4,6 +4,7 @@ import { BoardsView } from "../boards/BoardsView";
 import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { Explorer } from "../catalog/Explorer";
+import { HostsPanel } from "../catalog/HostsPanel";
 import { RunPanel, runFor } from "../catalog/RunPanel";
 import { RunsList } from "../catalog/RunsList";
 import { getCompat } from "../api/catalog";
@@ -97,8 +98,11 @@ export function Shell() {
           <Section title="Runs" meta={String(cat.runs.length)} defaultOpen={cat.runs.length > 0}>
             <RunsList runs={cat.runs} onImport={cat.importRunFolder} onOpen={(r) => { const o = r.outputs.find((x) => x.role === "psi") ?? r.outputs[0]; if (o) cat.select(o.datasetId); }} />
           </Section>
+          <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0}>
+            <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
+          </Section>
           <Section title="Datasets" meta={String(cat.datasets.length)}>
-            <Explorer datasets={cat.datasets} selectedId={cat.selectedId} loading={cat.loading} error={cat.error} onSelect={cat.select} onRegister={cat.register} />
+            <Explorer hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedId} loading={cat.loading} error={cat.error} onSelect={cat.select} onRegister={cat.register} />
           </Section>
         </div>
         <ResizeHandle orientation="vertical" label="Resize explorer" value={L.side} min={LIMITS.side.min} max={LIMITS.side.max} onChange={(v) => set("side", v)} />

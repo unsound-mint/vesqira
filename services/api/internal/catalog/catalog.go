@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -19,6 +21,8 @@ type Dataset struct {
 	ModifiedAt time.Time       `json:"modifiedAt"`
 	AddedAt    time.Time       `json:"addedAt"`
 	Header     json.RawMessage `json:"header"`
+	// HostID is 0 for a file on this machine, otherwise the remote host the file lives on (see package hosts).
+	HostID int64 `json:"hostId"`
 	// Interpretation is what the user declared about the data. The file itself declares none of it.
 	Interpretation *Interpretation `json:"interpretation"`
 }
@@ -66,6 +70,7 @@ func Open(dsn string) (*Store, error) {
 	if err == nil {
 		// older catalogs lack the column that records who made a declaration; adding it twice is harmless
 		_, _ = db.Exec(`ALTER TABLE interpretations ADD COLUMN declared_by TEXT NOT NULL DEFAULT 'user'`)
+		_, _ = db.Exec(`ALTER TABLE datasets ADD COLUMN host_id INTEGER NOT NULL DEFAULT 0`)
 	}
 	if err != nil {
 		db.Close()
@@ -82,31 +87,43 @@ func (s *Store) DB() *sql.DB { return s.db }
 // Upsert registers a path or refreshes its metadata. The path is the identity of a reference;
 // it does not prove bytewise identity, so size and mtime are stored for later comparison.
 func (s *Store) Upsert(d Dataset) (Dataset, error) {
-	_, err := s.db.Exec(`INSERT INTO datasets(path,name,size_bytes,modified_at,added_at,header) VALUES(?,?,?,?,?,?)
+	key := pathKey(d.HostID, d.Path)
+	_, err := s.db.Exec(`INSERT INTO datasets(path,name,size_bytes,modified_at,added_at,header,host_id) VALUES(?,?,?,?,?,?,?)
 		ON CONFLICT(path) DO UPDATE SET name=excluded.name,size_bytes=excluded.size_bytes,modified_at=excluded.modified_at,header=excluded.header`,
-		d.Path, d.Name, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix(), string(d.Header))
+		key, d.Name, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix(), string(d.Header), d.HostID)
 	if err != nil {
 		return Dataset{}, err
 	}
-	got, err := s.byPath(d.Path)
+	got, err := s.byPath(key)
 	if err != nil {
 		return Dataset{}, err
 	}
 	return s.Get(got.ID)
 }
 
+// pathKey keeps one unique key per (host, path): a path on another machine is not the same file as the same path here.
+func pathKey(host int64, p string) string {
+	if host == 0 {
+		return p
+	}
+	return fmt.Sprintf("h%d:%s", host, p)
+}
+
 func scan(row interface{ Scan(...any) error }) (Dataset, error) {
 	var d Dataset
 	var mod, add int64
 	var hdr string
-	if err := row.Scan(&d.ID, &d.Path, &d.Name, &d.SizeBytes, &mod, &add, &hdr); err != nil {
+	if err := row.Scan(&d.ID, &d.Path, &d.Name, &d.SizeBytes, &mod, &add, &hdr, &d.HostID); err != nil {
 		return Dataset{}, err
+	}
+	if d.HostID != 0 {
+		d.Path = strings.TrimPrefix(d.Path, fmt.Sprintf("h%d:", d.HostID))
 	}
 	d.ModifiedAt, d.AddedAt, d.Header = time.Unix(0, mod).UTC(), time.Unix(add, 0).UTC(), json.RawMessage(hdr)
 	return d, nil
 }
 
-const cols = `id,path,name,size_bytes,modified_at,added_at,header`
+const cols = `id,path,name,size_bytes,modified_at,added_at,header,host_id`
 
 func (s *Store) byPath(p string) (Dataset, error) {
 	return scan(s.db.QueryRow(`SELECT `+cols+` FROM datasets WHERE path=?`, p))

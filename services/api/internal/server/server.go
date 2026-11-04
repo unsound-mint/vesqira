@@ -12,6 +12,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
@@ -28,6 +29,8 @@ type Server struct {
 	Cache  *PlaneCache  // optional; nil disables caching
 	Boards *boards.Store
 	Runs   *runs.Store
+	HostDB *hosts.Store // remote hosts; nil disables them
+	Remote *hosts.Manager
 }
 
 func (s *Server) Handler() http.Handler {
@@ -36,6 +39,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets", s.list)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
 	mux.HandleFunc("POST /api/datasets", s.register)
+	if s.HostDB != nil && s.Remote != nil {
+		mux.HandleFunc("GET /api/hosts", s.listHosts)
+		mux.HandleFunc("POST /api/hosts", s.createHost)
+		mux.HandleFunc("POST /api/hosts/{id}/check", s.checkHost)
+		mux.HandleFunc("POST /api/hosts/{id}/delete", s.deleteHost)
+		mux.HandleFunc("GET /api/hosts/{id}/list", s.listRemote)
+		mux.HandleFunc("POST /api/hosts/{id}/register", s.registerRemote)
+	}
 	if s.Runs != nil {
 		mux.HandleFunc("POST /api/runs/import", s.importRun)
 		mux.HandleFunc("GET /api/runs", s.listRuns)
