@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { Slider } from "../ui";
+import { Pill, Slider } from "../ui";
 import type { Viewer } from "./useViewer";
 import { channelLabel, flagState, spectralText } from "./format";
 import s from "./ChannelTimeline.module.css";
@@ -24,6 +24,14 @@ export function ChannelTimeline({ v }: { v: Viewer }) {
 
   return (
     <div className={s.wrap}>
+      <div className={s.head}>
+        <strong className={s.big}>{channel + 1}</strong>
+        <span className={s.of}>/ {channels}</span>
+        <span className={s.spec}>
+          {spec.name} <span className="mono">{spec.resolved ? spectralText(here, spec.unit) : "unresolved"}</span>
+        </span>
+        <Pill tone={flag.tone}>{flag.text}</Pill>
+      </div>
       <Slider
         label="Channel"
         min={0}
@@ -31,6 +39,7 @@ export function ChannelTimeline({ v }: { v: Viewer }) {
         step={1}
         value={channel}
         valueText={channelLabel(channel, channels, spec, here)}
+        hideValue
         onChange={(e) => v.setChannel(Number(e.target.value))}
         onKeyDown={onKeyDown}
       />
@@ -41,18 +50,12 @@ export function ChannelTimeline({ v }: { v: Viewer }) {
           ))}
         </div>
       ) : null}
-      <p className={s.line}>
-        <span>
-          {spec.name} <span className="mono">{spec.resolved ? spectralText(here, spec.unit) : "unresolved"}</span>
-        </span>
-        <span>{flag.text}</span>
-        {view.flags.declared && flagged.length > 0 ? (
-          <span>
-            Provider-flagged: {flagged.slice(0, LISTED_FLAGS).map((c) => c + 1).join(", ")}
-            {flagged.length > LISTED_FLAGS ? ` and ${flagged.length - LISTED_FLAGS} more` : ""} (data kept)
-          </span>
-        ) : null}
-      </p>
+      {view.flags.declared && flagged.length > 0 ? (
+        <p className={s.line}>
+          Provider-flagged: {flagged.slice(0, LISTED_FLAGS).map((c) => c + 1).join(", ")}
+          {flagged.length > LISTED_FLAGS ? ` and ${flagged.length - LISTED_FLAGS} more` : ""} (data kept)
+        </p>
+      ) : null}
       {view.flags.note ? <p className={s.note}>{view.flags.note}</p> : null}
       <p className={s.hint}>
         <kbd>←</kbd> <kbd>→</kbd> step one channel · <kbd>Page Up</kbd> <kbd>Page Down</kbd> step ten · <kbd>Home</kbd> <kbd>End</kbd> first and last

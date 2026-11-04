@@ -47,15 +47,20 @@ export function Input({ label, ...rest }: { label: string } & InputHTMLAttribute
 }
 
 /** Native range input. Arrow keys, Home/End and PageUp/PageDown come from the browser. */
-export function Slider({ label, valueText, ...rest }: { label: string; valueText?: string } & Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+export function Slider({ label, valueText, hideValue, style, ...rest }: { label: string; valueText?: string; hideValue?: boolean } & Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
   const id = useId();
+  // the filled part of the track follows the value
+  const lo = Number(rest.min ?? 0);
+  const hi = Number(rest.max ?? 100);
+  const v = Number(rest.value ?? rest.defaultValue ?? lo);
+  const fill = hi > lo ? Math.min(100, Math.max(0, ((v - lo) / (hi - lo)) * 100)) : 0;
   return (
     <div className={s.field}>
       <div className={s.labelRow}>
         <label htmlFor={id} className={s.label}>{label}</label>
-        {valueText ? <output htmlFor={id} className={s.value}>{valueText}</output> : null}
+        {valueText && !hideValue ? <output htmlFor={id} className={s.value}>{valueText}</output> : null}
       </div>
-      <input id={id} type="range" className={s.range} aria-valuetext={valueText} {...rest} />
+      <input id={id} type="range" className={s.range} aria-valuetext={valueText} style={{ ...style, ["--p" as string]: `${fill}%` }} {...rest} />
     </div>
   );
 }

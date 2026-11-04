@@ -172,13 +172,20 @@
 .range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: var(--r-pill);
-  background: var(--line-strong);
+  /* stylelint-disable-next-line scale-unlimited/declaration-strict-value -- accent fill up to the thumb, driven by --p */
+  background: linear-gradient(to right, var(--accent) var(--p, 0%), var(--line-strong) var(--p, 0%));
 }
 
 .range::-moz-range-track {
   height: 4px;
   border-radius: var(--r-pill);
   background: var(--line-strong);
+}
+
+.range::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
 }
 
 .range::-webkit-slider-thumb {
@@ -190,6 +197,7 @@
   border: 2px solid var(--bg-2);
   border-radius: 50%;
   background: var(--accent);
+  box-shadow: var(--ring-accent);
 }
 
 .range::-moz-range-thumb {

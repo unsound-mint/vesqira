@@ -19,6 +19,31 @@
   transform: translateX(-50%);
 }
 
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  align-items: baseline;
+}
+
+.big {
+  font-family: var(--font-data);
+  font-size: var(--text-xl);
+  font-weight: var(--w-medium);
+  line-height: var(--lh-xl);
+}
+
+.of {
+  color: var(--text-3);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+}
+
+.spec {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
 .line {
   display: flex;
   flex-wrap: wrap;
