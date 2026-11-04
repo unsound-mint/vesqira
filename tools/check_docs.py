@@ -32,6 +32,11 @@ for f in tracked:
     if bad.search(f) and not f.endswith(".env.example"):
         errors.append(f"forbidden tracked file: {f}")
 
+# the HTTP contract must match the routes the server registers and the calls the web client makes
+contracts = subprocess.run([sys.executable, str(ROOT / "tools" / "contracts.py"), "--check"], capture_output=True, text=True)
+if contracts.returncode != 0:
+    errors.extend(contracts.stdout.strip().splitlines() or ["tools/contracts.py --check failed"])
+
 for e in errors:
     print("FAIL", e)
 print("ok" if not errors else f"{len(errors)} problem(s)")
