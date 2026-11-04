@@ -98,6 +98,11 @@ paths:
       operationId: owner_s_snapshots_get_api_boards_id_snapshots
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/capabilities:
+    get:
+      operationId: owner_s_capabilities_get_api_capabilities
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/comments/{id}/resolve:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}

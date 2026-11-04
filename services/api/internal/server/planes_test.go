@@ -722,3 +722,30 @@ func TestPreviewStepIsValidatedPassedOnAndCachedApartFromTheFullPlane(t *testing
 		t.Errorf("preview request: %v", fp.calls[1])
 	}
 }
+
+func TestCapabilitiesReportWhatThisServerWasStartedWith(t *testing.T) {
+	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(`{"ok":true,"nbytes":0}`)}}
+	base, _, _, _, _ := planeServer(t, fp)
+	resp, body := get(t, base+"/api/capabilities")
+	if resp.StatusCode != 200 {
+		t.Fatalf("%d %s", resp.StatusCode, body)
+	}
+	var c struct {
+		App      struct{ Name, Version string }
+		Protocol int
+		Schema   int
+		Features map[string]bool
+	}
+	if err := json.Unmarshal(body, &c); err != nil {
+		t.Fatal(err)
+	}
+	if c.App.Name != "vesqira" || c.App.Version == "" || c.Protocol != ProtocolVersion || c.Schema < 1 {
+		t.Errorf("versions: %+v", c)
+	}
+	if !c.Features["planes"] || !c.Features["preview"] {
+		t.Errorf("a server with a plane worker must say so: %v", c.Features)
+	}
+	if c.Features["hosts"] || c.Features["jobs"] || c.Features["analysis"] {
+		t.Errorf("features this test server was not started with must be reported as unavailable: %v", c.Features)
+	}
+}
