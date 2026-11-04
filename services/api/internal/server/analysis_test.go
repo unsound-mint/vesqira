@@ -214,6 +214,12 @@ func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
 	if r.StatusCode != 201 || !strings.Contains(string(xb), `"mean_defined":true`) && !strings.Contains(string(xb), `"mean_defined": true`) {
 		t.Fatalf("axial_diff: %d %s", r.StatusCode, xb)
 	}
+	if r, _ := get(t, api("/api/datasets/"+itoa(int(psi.ID))+"/plane?channel=0&step=2")); r.StatusCode != 400 {
+		t.Errorf("a reduced preview of a declared orientation map: %d, want 400", r.StatusCode)
+	}
+	if r, _ := get(t, api("/api/datasets/"+itoa(int(psi.ID))+"/plane?channel=0")); r.StatusCode != 200 {
+		t.Errorf("the full orientation map: %d", r.StatusCode)
+	}
 	if r, _ := postJSON(t, api("/api/analysis"), map[string]any{"op": "axial_diff", "datasetId": psi.ID, "referenceId": cubeDS.ID}); r.StatusCode < 400 {
 		t.Errorf("an axial difference against a cube was accepted: %d", r.StatusCode)
 	}

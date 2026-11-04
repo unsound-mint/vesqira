@@ -30,7 +30,7 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
         <dt>Pixel</dt>
         <dd className="mono">{probe ? `x ${probe.x + 1}, y ${probe.y + 1}` : EM}</dd>
         <dt>Value</dt>
-        <dd className="mono">{plane && probe ? (v.interp ? axialText(v.pixelValue, v.interp.unit) : valueText(v.pixelValue, view.bunit)) : EM}</dd>
+        <dd className="mono">{plane && probe ? (plane.head.preview ? "preview only, full plane loading" : v.interp ? axialText(v.pixelValue, v.interp.unit) : valueText(v.pixelValue, view.bunit)) : EM}</dd>
         {v.interp ? (
           <>
             <dt>Reliability</dt>
@@ -142,7 +142,7 @@ export function DisplayControls({ v }: { v: Viewer }) {
       }}>
         {RANGES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
       </Select>
-      {v.plane && stats ? <Histogram data={v.plane.data} stats={stats} limits={lim} unit={unit} onChange={(lo, hi) => { v.setCustomLimits([lo, hi]); v.setRange("custom"); }} /> : null}
+      {v.plane && stats && !v.plane.head.preview ? <Histogram data={v.plane.data} stats={stats} limits={lim} unit={unit} onChange={(lo, hi) => { v.setCustomLimits([lo, hi]); v.setRange("custom"); }} /> : null}
       <div className={s.legend}>
         <canvas ref={bar} className={s.bar} width={256} height={1} role="img" aria-label={`${v.colormap} colour bar from low to high`} />
         <div className={s.ends}>

@@ -32,7 +32,7 @@ var metricKey = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,59}$`)
 var uncertaintyKinds = map[string]bool{"standard_deviation": true, "standard_error": true, "confidence_68": true, "confidence_95": true, "other": true}
 
 // pathLike matches text that names a place on some machine ("/home/x/", "~/data", "C:\..."), which never leaves the machine.
-var pathLike = regexp.MustCompile(`(^|[\s(\[=:"'])(~|/)[\w.\-]+/|[A-Za-z]:\\|\.\./`)
+var pathLike = regexp.MustCompile(`(^|[\s(\[=:"'])(~|/)[\w.\-]+/|[A-Za-z]:\\|\.\./|^\\\\|(?i:file:)|(?i:\b(?:s3|gs|nfs|smb|sftp|ssh|scp|hdfs)://)`)
 
 func number(v any) (float64, bool) {
 	var f float64

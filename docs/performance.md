@@ -33,3 +33,7 @@ On a remote host, a plane larger than about a quarter of a megapixel is first re
 ## Memory cap
 
 The plane worker sets `RLIMIT_DATA` to what it holds once numpy and astropy are loaded (about 2 GB of address space) plus `VESQIRA_WORKER_MEM_MB` (default 3072; 0 disables). Files are opened read-only and memory-mapped, which the limit does not count, so a 10 GB cube opens as before; an allocation over the cap (for example a 3000 x 3000 plane with a 40 MB budget) makes that request fail with "cannot read" and the worker serves the next one. Linux only; elsewhere nothing is limited. Covered by `test_a_request_over_the_memory_cap_fails_alone_and_the_worker_keeps_serving`.
+
+A reduced preview is a display aid only: while it is shown the pixel readout says "preview only", the histogram and the compared pixel counts are hidden, and a figure cannot be saved. Orientation maps (declared axial) are never previewed, since a block mean of angles is wrong; the API refuses it. If the preview fails after the full plane arrived, or succeeds after the full plane failed, it changes nothing.
+
+Files read through the memory map must be as long as their header says; a shorter file (copied part way, or still being written) is read through astropy's section reader, which serves the planes that exist.

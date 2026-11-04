@@ -54,7 +54,10 @@ def fits_array(hdul):
     hdu = hdul[0]
     try:
         if getattr(hdul._file, "memmap", False) and getattr(hdul._file, "compression", None) is None:
-            return hdu.data
+            # a file shorter than its header says (copied part way, or still being written) cannot be mapped as an array;
+            # the section reader still serves the planes that are there
+            if hdul._file.size >= hdu._data_offset + hdu._data_size:
+                return hdu.data
     except Exception:       # private attributes moved in some astropy version: the section reader is always correct
         pass
     return hdu.section
@@ -255,7 +258,8 @@ class Cube:
         a, b = out[0], pix(lon0, lat0 + step)
         north = None
         if a is not None and b is not None and (b[0] != a[0] or b[1] != a[1]):
-            north = math.degrees(math.atan2(b[0] - a[0], b[1] - a[1])) * (1.0 if step > 0 else -1.0)
+            # b lies a minute north of a, or a minute south of it near the pole, where a step north would cross it
+            north = math.degrees(math.atan2(b[0] - a[0], b[1] - a[1]) if step > 0 else math.atan2(a[0] - b[0], a[1] - b[1]))
         return {"pixels": [None if q is None else [q[0], q[1]] for q in out], "pixel_scale_arcsec": [sx, sy],
                 "north_angle_deg": north, "sky": self.sky_facts(),
                 "note": "0-based image pixels, pixel centres at integers; the scale is taken at the reference pixel"}
@@ -322,7 +326,7 @@ class Cube:
         """(float32 plane, number of finite source values too large for float32, which became infinite)."""
         with fits.open(self.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
             hdu = hdul[0]
-            if hdu.data is None:
+            if hdu.header.get("NAXIS", 0) == 0:     # not hdu.data: touching it loads or maps the whole array, which a short file refuses
                 raise Refused("unreadable", "the file holds no image data")
             raw = np.array(fits_array(hdul)[self._index(channel, slice(None), slice(None))])
         if raw.shape != (self.shape[self.y], self.shape[self.x]):

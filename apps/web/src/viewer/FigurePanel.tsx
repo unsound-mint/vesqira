@@ -116,7 +116,8 @@ export function FigurePanel({ v, dataset }: { v: Viewer; dataset: Dataset }) {
         <label htmlFor="fig-caption" className={s.label}>Caption (optional)</label>
         <textarea id="fig-caption" className={s.area} rows={3} value={caption} maxLength={2000} onChange={(e) => setCaption(e.target.value)} />
       </div>
-      <Button variant="primary" onClick={save} disabled={busy || (kind === "spectrum" && !canSpectrum)}>{busy ? "Saving…" : "Save as figure"}</Button>
+      <Button variant="primary" onClick={save} disabled={busy || (kind === "spectrum" && !canSpectrum) || (kind !== "spectrum" && Boolean(v.plane?.head.preview))}>{busy ? "Saving…" : "Save as figure"}</Button>
+      {kind !== "spectrum" && v.plane?.head.preview ? <p className={s.note}>This is a reduced preview. The figure can be saved when the full plane has loaded.</p> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
       <p className={s.note}>The figure keeps the picture as drawn, the facts it came from (file name, size, time, declared header values, channel, region, display settings) and the caveats. It never contains the file path.</p>
       {saved ? (

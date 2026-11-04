@@ -2,6 +2,7 @@ package hosts
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -105,41 +106,47 @@ func splitKeyword(line string) (string, string) {
 }
 
 // LoadSSHConfig reads the user's ssh configuration at path (normally ~/.ssh/config), following Include lines that
-// resolve inside the same directory. A missing or unreadable file is not an error: it simply offers no names.
+// resolve to regular files inside the same directory. Each file is read once and closed before the next is opened, so a
+// pattern such as "Include *" cannot hold many descriptors or loop. A missing or unreadable file is not an error: it
+// simply offers no names.
 func LoadSSHConfig(path string) (hosts []SSHHost, found bool) {
 	f, err := os.Open(path)
 	if err != nil {
 		return []SSHHost{}, false
 	}
-	defer f.Close()
 	dir := filepath.Dir(path)
-	var opened []*os.File
-	defer func() {
-		for _, o := range opened {
-			o.Close()
-		}
-	}()
+	visited := map[string]bool{}
+	if abs, err := filepath.Abs(path); err == nil {
+		visited[abs] = true
+	}
 	include := func(pattern string) []io.Reader {
-		if strings.HasPrefix(pattern, "~/.ssh/") {
-			pattern = strings.TrimPrefix(pattern, "~/.ssh/")
-		}
+		pattern = strings.TrimPrefix(pattern, "~/.ssh/")
 		if filepath.IsAbs(pattern) || strings.Contains(pattern, "..") {
 			return nil
 		}
 		matches, _ := filepath.Glob(filepath.Join(dir, pattern))
 		var out []io.Reader
 		for _, m := range matches {
-			if rel, err := filepath.Rel(dir, m); err != nil || strings.HasPrefix(rel, "..") {
+			abs, err := filepath.Abs(m)
+			if err != nil || visited[abs] || len(visited) >= 64 {
 				continue
 			}
-			fh, err := os.Open(m)
+			if rel, err := filepath.Rel(dir, abs); err != nil || strings.HasPrefix(rel, "..") {
+				continue
+			}
+			if st, err := os.Stat(abs); err != nil || !st.Mode().IsRegular() || st.Size() > 1<<20 {
+				continue
+			}
+			data, err := os.ReadFile(abs) // read whole and close at once
 			if err != nil {
 				continue
 			}
-			opened = append(opened, fh)
-			out = append(out, fh)
+			visited[abs] = true
+			out = append(out, bytes.NewReader(data))
 		}
 		return out
 	}
-	return ParseSSHConfig(f, include), true
+	hosts = ParseSSHConfig(f, include)
+	f.Close()
+	return hosts, true
 }

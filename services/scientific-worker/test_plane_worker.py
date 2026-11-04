@@ -125,6 +125,27 @@ class PlaneWorker(unittest.TestCase):
             self.assertFalse(self.c.ask(op="sky2pix", path=str(path), points=bad)[0]["ok"])
         self.assertFalse(self.c.ask(op="sky2pix", path=str(path), points=[[1.0, 2.0]] * 65)[0]["ok"])
 
+    def test_a_cube_cut_short_still_serves_the_planes_that_are_there(self):
+        full = self.f["hi_cube.fits"]
+        cut = Path(self.tmp.name) / "cut_short.fits"
+        data = Path(full).read_bytes()
+        with fits.open(full) as h:
+            plane_bytes = h[0].header["NAXIS1"] * h[0].header["NAXIS2"] * 4
+            offset = h[0]._data_offset
+        cut.write_bytes(data[: offset + 5 * plane_bytes])                       # 5 of the 64 channels survive
+        head, plane = self.c.plane(cut, 1)
+        self.assertTrue(head["ok"], head)
+        with fits.open(full) as h:
+            np.testing.assert_array_equal(np.nan_to_num(plane, nan=-1), np.nan_to_num(h[0].data[1].astype(np.float32), nan=-1))
+
+    def test_north_points_the_same_way_near_the_pole_as_elsewhere(self):
+        path = self.f["hi_cube.fits"]
+        for dec in (2.0, 89.5):                                                   # the fixture grid is rotation free
+            head, _ = self.c.ask(op="sky2pix", path=str(path), points=[[150.0, dec]])
+            self.assertTrue(head["ok"], head)
+        near, _ = self.c.ask(op="sky2pix", path=str(path), points=[[150.0, 2.0]])
+        self.assertAlmostEqual(near["north_angle_deg"], 0.0, delta=0.05)
+
     def test_view_locates_axes_from_the_wcs(self):
         v, _ = self.c.ask(op="view", path=str(self.f["hi_cube.fits"]))
         self.assertTrue(v["ok"])

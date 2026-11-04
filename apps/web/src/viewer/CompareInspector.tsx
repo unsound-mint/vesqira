@@ -55,7 +55,7 @@ export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a:
   const rb = runFor(runs, b.id)?.run;
   const diffs = ra && rb ? paramDiff(ra.params, rb.params) : [];
   const results = ra && rb ? metricRows(ra.metrics, rb.metrics) : [];
-  const pct = (v: Viewer) => (v.plane ? `${v.plane.head.stats.finite_count.toLocaleString("en-US")} of ${(v.plane.head.stats.finite_count + v.plane.head.stats.nonfinite_count).toLocaleString("en-US")}` : EM);
+  const pct = (v: Viewer) => (v.plane && !v.plane.head.preview ? `${v.plane.head.stats.finite_count.toLocaleString("en-US")} of ${(v.plane.head.stats.finite_count + v.plane.head.stats.nonfinite_count).toLocaleString("en-US")}` : EM);
   const bothAxial = a.interpretation !== null && b.interpretation !== null;
   const sameMachine = a.hostId === 0 && b.hostId === 0;
 

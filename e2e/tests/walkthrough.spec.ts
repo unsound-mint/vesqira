@@ -390,6 +390,7 @@ test("a cube on another machine is read in place and agrees with the same cube h
   await expect(bigChannel(page)).toHaveText("41");
   const at = await pixelAt(page, 32, 24, 20, 9);
   await page.mouse.move(at.x, at.y);
+  await expect(inspector(page).getByText(/preview only/)).toHaveCount(0); // a reduced preview gives no pixel value; wait for the full plane
   const remoteValue = await inspector(page).getByText(/^\d+\.\d+ K$/).first().innerText();
   await page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^hi_cube\.fits/ }).click();
   await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();

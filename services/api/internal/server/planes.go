@@ -260,12 +260,21 @@ func (s *Server) plane(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	d := catalog.Dataset{}
+	if got, err := s.Store.Get(k.id); err == nil {
+		d = got
+	}
 	k.op, k.channel = "plane", ch
 	req := map[string]any{"op": "plane", "path": real, "channel": ch}
 	if q := r.URL.Query().Get("step"); q != "" { // a reduced display preview; absent means full resolution
 		step, err := strconv.Atoi(q)
 		if err != nil || step < 1 || step > 64 {
 			fail(w, 400, "step must be an integer from 1 to 64")
+			return
+		}
+		if step > 1 && d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+			// block means of angles are wrong (1 and 179 degrees would average to 90); an orientation map is always sent whole
+			fail(w, 400, "a reduced preview is not available for an orientation map")
 			return
 		}
 		if step > 1 {

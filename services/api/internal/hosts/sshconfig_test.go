@@ -110,3 +110,23 @@ func TestAnAbsurdlyLargeConfigIsCapped(t *testing.T) {
 		t.Errorf("%d hosts", n)
 	}
 }
+
+func TestIncludeEverythingNeitherLoopsNorHoldsManyFilesOpen(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config"), []byte("Include *\nHost top\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 30; i++ { // each one includes everything again, and one is a key file with no host lines
+		body := "Include *\nHost h" + strings.Repeat("a", i+1) + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "inc"+strings.Repeat("x", i+1)), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hs, found := LoadSSHConfig(filepath.Join(dir, "config"))
+	if !found || len(hs) != 31 {
+		t.Fatalf("found=%v hosts=%d (want the 30 included hosts and top)", found, len(hs))
+	}
+}

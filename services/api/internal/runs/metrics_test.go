@@ -115,3 +115,16 @@ func TestMetricsSurviveTheStoreAndTheReviewerSummaryKeepsUnknownUnknown(t *testi
 		t.Errorf("re-import must replace the metrics: %v", run2.Metrics)
 	}
 }
+
+func TestAddressesOfFilesOnOtherSystemsNeverReachTheReviewer(t *testing.T) {
+	for _, bad := range []string{`file:///home/denis/x.fits`, `\\nas\share\x`, `s3://bucket/key/x`, `see sftp://login.example.org/data`, `C:\Users\denis\x`, `FILE:///x`} {
+		m := parseMetrics(map[string]any{"a": map[string]any{"value": 1.0, "unit": bad, "definition": bad}})
+		if len(m) != 1 || m[0].Unit != "" || m[0].Definition != "" {
+			t.Errorf("%q was kept: %+v", bad, m)
+		}
+	}
+	m := parseMetrics(map[string]any{"a": map[string]any{"value": 1.0, "definition": "agreement with Planck 353 GHz, see https://arxiv.org/abs/2000.00001"}})
+	if m[0].Definition == "" {
+		t.Error("an https link in a definition is fine")
+	}
+}

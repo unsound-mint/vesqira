@@ -86,6 +86,7 @@ export function useViewer(dataset: Dataset | null) {
   // neighbouring channels are requested quietly so the next step is already cached by the server.
   const lastStep = useRef(1);
   const remote = (dataset?.hostId ?? 0) !== 0;
+  const isAxial = interp !== null;
   useEffect(() => {
     if (datasetId === null || !view) return;
     const ac = new AbortController();
@@ -100,13 +101,13 @@ export function useViewer(dataset: Dataset | null) {
       setPlaneError(message(e, "Could not read this plane."));
       setLoading(false);
     };
-    const step = remote ? previewStep(view.width, view.height) : 1;
-    let fullShown = false;
+    const step = remote && !isAxial ? previewStep(view.width, view.height) : 1; // block means of angles are wrong, so orientation maps load whole
+    let settled = false; // the full request has answered, with a plane or an error: a late preview must change nothing
     let settle: ReturnType<typeof setTimeout> | undefined;
     const full = () =>
       getPlane(datasetId, channel, ac.signal)
         .then((p) => {
-          fullShown = true;
+          settled = true;
           shown(p);
           setLoading(false);
           const dir = Math.sign(channel - lastStep.current) || 1;
@@ -115,11 +116,14 @@ export function useViewer(dataset: Dataset | null) {
             if (c >= 0 && c < view.channels) void getPlane(datasetId, c, ac.signal).catch(() => undefined);
           }
         })
-        .catch(failed);
+        .catch((e: unknown) => {
+          settled = true;
+          failed(e);
+        });
     if (step > 1 && view.channels > 1) {
       getPlane(datasetId, channel, ac.signal, step)
-        .then((p) => !fullShown && shown(expandPreview(p)))
-        .catch(failed);
+        .then((p) => !settled && shown(expandPreview(p)))
+        .catch((e: unknown) => !settled && failed(e)); // a preview that fails must not wipe a full plane or replace its error
       settle = setTimeout(full, 150);
     } else {
       void full();
@@ -128,7 +132,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(settle);
       ac.abort();
     };
-  }, [datasetId, view, channel, retry, remote]);
+  }, [datasetId, view, channel, retry, remote, isAxial]);
 
   const probe = pinned ?? hover ?? mirror;
   const shownChannel = plane?.head.channel ?? null;
@@ -238,7 +242,7 @@ export function useViewer(dataset: Dataset | null) {
   );
 
   const pixelValue = useMemo(() => {
-    if (!plane || !probe) return null;
+    if (!plane || !probe || plane.head.preview) return null; // a reduced preview holds block means, not pixel values
     const { width, height } = plane.head;
     if (probe.x >= width || probe.y >= height) return null;
     return plane.data[probe.y * width + probe.x] ?? null;
