@@ -1,0 +1,74 @@
+.threads {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.thread {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+  font-size: var(--text-sm);
+}
+
+.resolved {
+  opacity: 0.75;
+}
+
+.msg {
+  margin: 0;
+}
+
+.reply {
+  padding-left: var(--sp-3);
+  border-left: var(--bw) solid var(--line-strong);
+}
+
+.when {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.state {
+  margin-left: var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.badge {
+  display: inline-grid;
+  place-items: center;
+  width: 1.4em;
+  height: 1.4em;
+  margin-right: var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--text-xs);
+  font-weight: var(--w-strong);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-2);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.err {
+  color: var(--err);
+}

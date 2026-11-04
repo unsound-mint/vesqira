@@ -469,3 +469,49 @@ func (s *Server) snapshotComments(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"comments": cs})
 }
+
+// ownerReply records the author's reply inside a thread of their own snapshot.
+func (s *Server) ownerReply(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		ParentID int64  `json:"parentId"`
+		Body     string `json:"body"`
+	}
+	if !body(w, r, 16<<10, &in, true) {
+		return
+	}
+	c, err := s.Boards.OwnerReply(id, boards.CommentInput{ParentID: in.ParentID, Body: in.Body})
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	s.Audit.Record("reply to a reviewer", "snapshot", id, "thread "+strconv.FormatInt(in.ParentID, 10))
+	writeJSON(w, 201, c)
+}
+
+// resolveComment closes or reopens a thread. Reviewers cannot: whether a point is settled is the author's call.
+func (s *Server) resolveComment(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		Resolved bool `json:"resolved"`
+	}
+	if !body(w, r, 1<<10, &in, true) {
+		return
+	}
+	if err := s.Boards.SetResolved(id, in.Resolved); err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	act := "thread reopened"
+	if in.Resolved {
+		act = "thread resolved"
+	}
+	s.Audit.Record(act, "comment", id, "")
+	writeJSON(w, 200, map[string]bool{"resolved": in.Resolved})
+}

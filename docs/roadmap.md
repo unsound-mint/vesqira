@@ -24,8 +24,8 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 
 ## Stage 2 — Review with a supervisor
 
-- [ ] Comments can be anchored to a region, channel or coordinate of a figure (Q14, Q99).
-- [ ] Reply and resolve on comments; a finding that stays open until someone closes it (Q14, Q15, Q100).
+- [x] Comments can be anchored to a region, channel or coordinate of a figure (Q14, Q99).
+- [x] Reply and resolve on comments; a finding that stays open until someone closes it (Q14, Q15, Q100).
 - [ ] Reviewer identity: a name asked on first comment, kept for the link, shown to the author (Q45; real accounts come in Stage 7).
 - [ ] "Ready for review" request with a scientific question and suggested related runs (Q101, Q102).
 - [ ] Reviewer outcome per snapshot (not yet reviewed, comments, changes requested, reviewed) kept separate from the run's own QC (Q103, Q104).

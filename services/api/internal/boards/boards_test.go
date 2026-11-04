@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -219,10 +220,10 @@ func TestTokensExpireRevokeAndNeverCrossSnapshots(t *testing.T) {
 	if _, err := s.ReviewPreview(tok1, f2.PreviewSHA); !errors.Is(err, ErrNotFound) {
 		t.Errorf("a valid token opened a figure of another snapshot: %v", err)
 	}
-	if _, err := s.AddComment(tok1, f2.Revision, "x", "hello"); !errors.Is(err, ErrInvalid) {
+	if _, err := s.AddComment(tok1, CommentInput{FigureRevision: f2.Revision, Author: "x", Body: "hello"}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("comment on another snapshot's figure: %v", err)
 	}
-	c, err := s.AddComment(tok2, f2.Revision, "Supervisor", "Why this stretch?")
+	c, err := s.AddComment(tok2, CommentInput{FigureRevision: f2.Revision, Author: "Supervisor", Body: "Why this stretch?"})
 	if err != nil || c.Author != "Supervisor" {
 		t.Fatal(err)
 	}
@@ -274,11 +275,11 @@ func TestClipNeverSplitsACharacterAndTheCommentCapHolds(t *testing.T) {
 	s.AddItem(b.ID, f.ID)
 	_, tok, _ := s.Publish(b.ID, "", time.Hour)
 	for i := 0; i < MaxCommentsPS; i++ {
-		if _, err := s.AddComment(tok, f.Revision, "r", "c"); err != nil {
+		if _, err := s.AddComment(tok, CommentInput{FigureRevision: f.Revision, Author: "r", Body: "c"}); err != nil {
 			t.Fatalf("comment %d: %v", i, err)
 		}
 	}
-	if _, err := s.AddComment(tok, f.Revision, "r", "one too many"); !errors.Is(err, ErrInvalid) {
+	if _, err := s.AddComment(tok, CommentInput{FigureRevision: f.Revision, Author: "r", Body: "one too many"}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("limit not enforced: %v", err)
 	}
 }
@@ -291,5 +292,72 @@ func TestPreviewIsWrittenAtomically(t *testing.T) {
 		if strings.HasPrefix(e.Name(), ".tmp-") {
 			t.Errorf("temporary file left behind: %s", e.Name())
 		}
+	}
+}
+
+func TestThreadsAnchorsRepliesAndResolve(t *testing.T) {
+	s, _ := newStore(t)
+	b, _ := s.CreateBoard("one")
+	b2, _ := s.CreateBoard("two")
+	f, f2 := fig(t, s, "F1", 1), fig(t, s, "F2", 2)
+	s.AddItem(b.ID, f.ID)
+	s.AddItem(b2.ID, f2.ID)
+	sn, tok, _ := s.Publish(b.ID, "", time.Hour)
+	sn2, tok2, _ := s.Publish(b2.ID, "", time.Hour)
+
+	// a comment can be placed on the picture, with the place validated
+	for name, a := range map[string]*Anchor{
+		"outside":      {Kind: "point", X: 1.2, Y: 0.5},
+		"negative":     {Kind: "point", X: -0.1, Y: 0.5},
+		"nan":          {Kind: "point", X: math.NaN(), Y: 0.5},
+		"unknown kind": {Kind: "circle", X: 0.5, Y: 0.5},
+		"inverted box": {Kind: "box", X: 0.6, Y: 0.1, X1: 0.4, Y1: 0.3},
+	} {
+		if _, err := s.AddComment(tok, CommentInput{FigureRevision: f.Revision, Body: "here", Anchor: a}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	root, err := s.AddComment(tok, CommentInput{FigureRevision: f.Revision, Author: "Prof", Body: "What is this feature?", Anchor: &Anchor{Kind: "box", X: 0.2, Y: 0.2, X1: 0.4, Y1: 0.5}})
+	if err != nil || root.Anchor == nil || root.ParentID != 0 {
+		t.Fatalf("anchored comment: %+v %v", root, err)
+	}
+	// replies stay in the thread, take its figure, and cannot be placed again
+	if _, err := s.AddComment(tok, CommentInput{ParentID: root.ID, Author: "Prof", Body: "also the edge", Anchor: &Anchor{Kind: "point", X: .1, Y: .1}}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("a reply with its own anchor: %v", err)
+	}
+	reply, err := s.OwnerReply(sn.ID, CommentInput{ParentID: root.ID, Body: "It is the beam sidelobe."})
+	if err != nil || !reply.FromOwner || reply.FigureRevision != f.Revision || reply.Author != "Author" {
+		t.Fatalf("owner reply: %+v %v", reply, err)
+	}
+	if _, err := s.AddComment(tok, CommentInput{ParentID: reply.ID, Body: "reply to a reply"}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("threads are one level deep: %v", err)
+	}
+	// a thread of another snapshot is not reachable with this token or from this snapshot's owner view
+	other, _ := s.AddComment(tok2, CommentInput{FigureRevision: f2.Revision, Body: "elsewhere"})
+	if _, err := s.AddComment(tok, CommentInput{ParentID: other.ID, Body: "cross"}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("a reply into another snapshot's thread: %v", err)
+	}
+	if _, err := s.OwnerReply(sn.ID, CommentInput{ParentID: other.ID, Body: "cross"}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("an owner reply into another snapshot's thread: %v", err)
+	}
+	_ = sn2
+
+	// only the author resolves, and only a thread's first comment can be resolved
+	if err := s.SetResolved(reply.ID, true); !errors.Is(err, ErrNotFound) {
+		t.Errorf("resolving a reply: %v", err)
+	}
+	if err := s.SetResolved(root.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	cs, _ := s.Comments(sn.ID)
+	if len(cs) != 2 || cs[0].ResolvedAt == nil || cs[1].ResolvedAt != nil {
+		t.Fatalf("resolved mark: %+v", cs)
+	}
+	if rv, _ := s.Review(tok); rv.Comments[0].Anchor == nil || rv.Comments[0].ResolvedAt == nil || !rv.Comments[1].FromOwner {
+		t.Errorf("the reviewer sees the thread, its place and whether it is closed: %+v", rv.Comments)
+	}
+	s.SetResolved(root.ID, false)
+	if cs, _ := s.Comments(sn.ID); cs[0].ResolvedAt != nil {
+		t.Error("a thread can be reopened")
 	}
 }

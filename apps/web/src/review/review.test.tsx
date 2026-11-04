@@ -35,7 +35,7 @@ describe("review page", () => {
 
   it("sends a comment tied to the figure revision", async () => {
     const calls = mockFetch({
-      "/review-api/tok/comments": () => ({ status: 201, body: { id: 1, figureRevision: "r1", author: "Dr. X", body: "Why this stretch?", createdAt: "2026-11-04T00:00:00Z" } }),
+      "/review-api/tok/comments": () => ({ status: 201, body: { id: 1, figureRevision: "r1", parentId: 0, author: "Dr. X", fromOwner: false, body: "Why this stretch?", createdAt: "2026-11-04T00:00:00Z" } }),
       "/review-api/tok": () => ({ body: review }),
     });
     render(<ReviewPage token="tok" />);
@@ -88,5 +88,47 @@ describe("figure captions", () => {
     const t = captionLines({ ...facts, kind: "orientation" }, view, plane, { colormap: "", stretch: "", range: "", axial: true, region: null }).join("\n");
     expect(t).toMatch(/Axial orientation \(0° = 180°\); unit declared by the author/);
     expect(t).toMatch(/assumed/);
+  });
+});
+
+describe("threads on a review", () => {
+  const root = { id: 7, figureRevision: "r1", parentId: 0, author: "Prof", fromOwner: false, body: "What is this?", anchor: { kind: "point", x: 0.25, y: 0.5 }, createdAt: "2026-11-04T00:00:00Z" };
+
+  it("shows where a comment points, the author's reply and whether the thread is closed", async () => {
+    const withThread = { ...review, comments: [root, { id: 8, figureRevision: "r1", parentId: 7, author: "Author", fromOwner: true, body: "A sidelobe.", createdAt: "2026-11-04T01:00:00Z" }, { ...root, id: 9, body: "Settled?", anchor: undefined, resolvedAt: "2026-11-04T02:00:00Z" }] };
+    mockFetch({ "/review-api/tok": () => ({ body: withThread }) });
+    render(<ReviewPage token="tok" />);
+    expect(await screen.findByText("What is this?")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Marked place 1").length).toBeGreaterThan(0);
+    expect(screen.getByText("A sidelobe.")).toBeInTheDocument();
+    expect(screen.getByText("Resolved by the author")).toBeInTheDocument();
+    // a reviewer cannot close a thread
+    expect(screen.queryByRole("button", { name: /resolved|Reopen/ })).toBeNull();
+  });
+
+  it("sends a reply to the thread and a comment with a marked place", async () => {
+    const calls = mockFetch({
+      "/review-api/tok/comments": (init) => {
+        const b = JSON.parse(String(init!.body));
+        return { status: 201, body: { id: 20, figureRevision: "r1", parentId: b.parentId ?? 0, author: b.author || "Reviewer", fromOwner: false, body: b.body, anchor: b.anchor, createdAt: "2026-11-04T03:00:00Z" } };
+      },
+      "/review-api/tok": () => ({ body: { ...review, comments: [root] } }),
+    });
+    render(<ReviewPage token="tok" />);
+    await screen.findByText("What is this?");
+    await userEvent.type(screen.getByLabelText("Reply to Prof"), "Thanks");
+    await userEvent.click(screen.getByRole("button", { name: "Reply" }));
+    await waitFor(() => expect(screen.getByText("Thanks")).toBeInTheDocument());
+    expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init!.body))).toEqual({ parentId: 7, author: "", body: "Thanks" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Mark a place on the picture" }));
+    const layer = screen.getByRole("application");
+    layer.focus();
+    await userEvent.keyboard("{Enter}{ArrowRight}");
+    await userEvent.type(screen.getByLabelText("Comment"), "Look here");
+    await userEvent.click(screen.getByRole("button", { name: "Send comment" }));
+    await waitFor(() => expect(screen.getByText("Look here")).toBeInTheDocument());
+    const sent = JSON.parse(String(calls.filter((c) => c.init?.method === "POST").at(-1)!.init!.body));
+    expect(sent.anchor).toEqual({ kind: "point", x: 0.52, y: 0.5 });
   });
 });

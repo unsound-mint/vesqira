@@ -180,21 +180,23 @@ func (h *Handler) comment(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	var in struct {
-		FigureRevision string `json:"figureRevision"`
-		Author         string `json:"author"`
-		Body           string `json:"body"`
+		FigureRevision string         `json:"figureRevision"`
+		ParentID       int64          `json:"parentId"`
+		Author         string         `json:"author"`
+		Body           string         `json:"body"`
+		Anchor         *boards.Anchor `json:"anchor"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		secure(w)
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	c, err := h.Store.AddComment(r.PathValue("token"), in.FigureRevision, in.Author, in.Body)
+	c, err := h.Store.AddComment(r.PathValue("token"), boards.CommentInput{FigureRevision: in.FigureRevision, ParentID: in.ParentID, Author: in.Author, Body: in.Body, Anchor: in.Anchor})
 	if errors.Is(err, boards.ErrInvalid) {
 		secure(w)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "the comment needs text and a figure of this snapshot"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "the comment needs text, a figure of this snapshot, and a place inside the picture if one is marked"})
 		return
 	}
 	if h.bad(w, r, err) {

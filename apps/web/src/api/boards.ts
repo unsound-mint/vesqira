@@ -25,7 +25,9 @@ export type Provenance = {
 export type BoardItem = { position: number; figure: Figure; note: string };
 export type Board = { id: number; title: string; createdAt: string; updatedAt: string; items: BoardItem[] };
 export type Snapshot = { id: number; boardId: number; label: string; createdAt: string; expiresAt: string; revoked: boolean; items: number };
-export type Comment = { id: number; figureRevision: string; author: string; body: string; createdAt: string };
+/** A place on a published picture, in fractions of its width and height from the top left. */
+export type Anchor = { kind: "point"; x: number; y: number } | { kind: "box"; x: number; y: number; x1: number; y1: number };
+export type Comment = { id: number; figureRevision: string; parentId: number; author: string; fromOwner: boolean; body: string; anchor?: Anchor; createdAt: string; resolvedAt?: string };
 
 export type FrozenItem = { revision: string; title: string; caption: string; note: string; previewSha: string; width: number; height: number; provenance: Provenance };
 export type Review = { snapshot: { boardTitle: string; label: string; createdAt: string; expiresAt: string; items: FrozenItem[] }; comments: Comment[] };
@@ -63,4 +65,6 @@ export const snapshotComments = (id: number) => call<{ comments: Comment[] }>(`/
 
 export const getReview = (token: string) => call<Review>(`/review-api/${encodeURIComponent(token)}`);
 export const reviewPreviewUrl = (token: string, sha: string) => `/review-api/${encodeURIComponent(token)}/preview/${sha}`;
-export const addReviewComment = (token: string, c: { figureRevision: string; author: string; body: string }) => post<Comment>(`/review-api/${encodeURIComponent(token)}/comments`, c);
+export const addReviewComment = (token: string, c: { figureRevision?: string; parentId?: number; author: string; body: string; anchor?: Anchor }) => post<Comment>(`/review-api/${encodeURIComponent(token)}/comments`, c);
+export const ownerReply = (snapshotId: number, parentId: number, body: string) => post<Comment>(`/api/snapshots/${snapshotId}/comments`, { parentId, body });
+export const resolveComment = (id: number, resolved: boolean) => post<{ resolved: boolean }>(`/api/comments/${id}/resolve`, { resolved });

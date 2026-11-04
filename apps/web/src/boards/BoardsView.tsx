@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { Button, IconButton, Input, Select } from "../ui";
-import { addToBoard as _unused, createBoard, figurePreviewUrl, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments } from "../api/boards";
+import { addToBoard as _unused, createBoard, figurePreviewUrl, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment } from "../api/boards";
+import { Threads } from "./Threads";
 import type { Board, Comment, Snapshot } from "../api/boards";
 import { EM } from "../catalog/format";
 import { RunLine } from "./RunLine";
@@ -161,10 +162,17 @@ export function BoardsView() {
                   <Button disabled={sn.revoked} onClick={() => run(async () => { await revokeSnapshot(sn.id); setSnaps(await listSnapshots(board.id)); })}>Revoke link</Button>
                 </div>
                 {comments[sn.id] ? (
-                  <ul className={s.comments}>
-                    {comments[sn.id]!.length === 0 ? <li>No comments yet.</li> : null}
-                    {comments[sn.id]!.map((c) => <li key={c.id}><strong>{c.author}</strong>: {c.body}</li>)}
-                  </ul>
+                  <div className={s.comments}>
+                    {comments[sn.id]!.length === 0 ? <p className={s.note}>No comments yet.</p> : null}
+                    {[...new Set(comments[sn.id]!.map((c) => c.figureRevision))].map((rev) => (
+                      <Threads
+                        key={rev}
+                        comments={comments[sn.id]!.filter((c) => c.figureRevision === rev)}
+                        onReply={async (parentId, body) => { await ownerReply(sn.id, parentId, body); setComments({ ...comments, [sn.id]: await snapshotComments(sn.id) }); }}
+                        onResolve={async (id, resolved) => { await resolveComment(id, resolved); setComments({ ...comments, [sn.id]: await snapshotComments(sn.id) }); }}
+                      />
+                    ))}
+                  </div>
                 ) : null}
               </li>
             ))}

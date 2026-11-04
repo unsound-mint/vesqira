@@ -1,0 +1,57 @@
+.wrap {
+  position: relative;
+  line-height: 0;
+}
+
+.img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-md);
+  background: var(--canvas);
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+  border-radius: var(--r-md);
+  outline-offset: 2px;
+}
+
+.layer:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.mark {
+  position: absolute;
+  pointer-events: none;
+  display: grid;
+  place-items: start;
+  color: var(--accent-ink);
+  font-size: var(--text-xs);
+  font-weight: var(--w-strong);
+  line-height: 1;
+}
+
+.point {
+  width: 1.6em;
+  height: 1.6em;
+  transform: translate(-50%, -50%);
+  place-items: center;
+  border: 2px solid var(--accent-ink);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+.box {
+  border: 2px solid var(--accent);
+  background: var(--accent-bg);
+  padding: var(--sp-1);
+}
+
+.draft {
+  border-style: dashed;
+  opacity: 0.9;
+}

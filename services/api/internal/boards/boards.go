@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"time"
 	"unicode/utf8"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 )
 
 const (
@@ -61,6 +63,12 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 			body TEXT NOT NULL, created_at INTEGER NOT NULL)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
+			return nil, err
+		}
+	}
+	// comments grew threads, anchors, owner replies and a resolved mark; older catalogs get the columns
+	for _, c := range [][2]string{{"parent_id", "INTEGER NOT NULL DEFAULT 0"}, {"anchor", "TEXT NOT NULL DEFAULT ''"}, {"from_owner", "INTEGER NOT NULL DEFAULT 0"}, {"resolved_at", "INTEGER NOT NULL DEFAULT 0"}} {
+		if err := schema.AddColumn(db, "comments", c[0], c[1]); err != nil {
 			return nil, err
 		}
 	}
@@ -530,12 +538,46 @@ type Review struct {
 	Comments []Comment `json:"comments"`
 }
 
+// Anchor places a comment on the published picture, in fractions of its width and height (0,0 is the top left). It
+// refers to the picture the reviewer sees, not to a sky position: the preview is a rendering, not the data.
+type Anchor struct {
+	Kind string  `json:"kind"` // point | box
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+	X1   float64 `json:"x1,omitempty"` // box only: the opposite corner
+	Y1   float64 `json:"y1,omitempty"`
+}
+
 type Comment struct {
-	ID             int64     `json:"id"`
-	FigureRevision string    `json:"figureRevision"`
-	Author         string    `json:"author"`
-	Body           string    `json:"body"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID             int64      `json:"id"`
+	FigureRevision string     `json:"figureRevision"`
+	ParentID       int64      `json:"parentId"` // 0 for a thread's first comment
+	Author         string     `json:"author"`
+	FromOwner      bool       `json:"fromOwner"`
+	Body           string     `json:"body"`
+	Anchor         *Anchor    `json:"anchor,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"` // set on a thread's first comment when the author closes it
+}
+
+// CommentInput is what a comment is made from. A reply names its parent and inherits the figure.
+type CommentInput struct {
+	FigureRevision string
+	ParentID       int64
+	Author         string
+	Body           string
+	Anchor         *Anchor
+}
+
+func (a *Anchor) valid() bool {
+	ok := func(v float64) bool { return v >= 0 && v <= 1 } // false for NaN too
+	switch a.Kind {
+	case "point":
+		return ok(a.X) && ok(a.Y) && a.X1 == 0 && a.Y1 == 0
+	case "box":
+		return ok(a.X) && ok(a.Y) && ok(a.X1) && ok(a.Y1) && a.X < a.X1 && a.Y < a.Y1
+	}
+	return false
 }
 
 // lookup resolves a token to a live snapshot. Unknown, revoked and expired tokens are indistinguishable (ErrNotFound).
@@ -566,7 +608,7 @@ func (s *Store) Review(token string) (Review, error) {
 }
 
 func (s *Store) Comments(snapshotID int64) ([]Comment, error) {
-	rows, err := s.db.Query(`SELECT id,figure_revision,author,body,created_at FROM comments WHERE snapshot_id=? ORDER BY id`, snapshotID)
+	rows, err := s.db.Query(`SELECT id,figure_revision,parent_id,author,from_owner,body,anchor,created_at,resolved_at FROM comments WHERE snapshot_id=? ORDER BY id`, snapshotID)
 	if err != nil {
 		return nil, err
 	}
@@ -574,11 +616,23 @@ func (s *Store) Comments(snapshotID int64) ([]Comment, error) {
 	out := []Comment{}
 	for rows.Next() {
 		var c Comment
-		var at int64
-		if err := rows.Scan(&c.ID, &c.FigureRevision, &c.Author, &c.Body, &at); err != nil {
+		var at, res, own int64
+		var anchor string
+		if err := rows.Scan(&c.ID, &c.FigureRevision, &c.ParentID, &c.Author, &own, &c.Body, &anchor, &at, &res); err != nil {
 			return nil, err
 		}
+		c.FromOwner = own != 0
 		c.CreatedAt = time.Unix(at, 0).UTC()
+		if res != 0 {
+			t := time.Unix(res, 0).UTC()
+			c.ResolvedAt = &t
+		}
+		if anchor != "" {
+			var a Anchor
+			if json.Unmarshal([]byte(anchor), &a) == nil && a.valid() {
+				c.Anchor = &a
+			}
+		}
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -598,27 +652,65 @@ func (s *Store) ReviewPreview(token, sha string) ([]byte, error) {
 	return nil, ErrNotFound
 }
 
-// AddComment records a reviewer comment on a figure revision that is part of the snapshot.
-func (s *Store) AddComment(token, figureRevision, author, body string) (Comment, error) {
+// AddComment records a reviewer's comment, or reply, on a figure revision that is part of the snapshot.
+func (s *Store) AddComment(token string, in CommentInput) (Comment, error) {
 	id, fr, err := s.lookup(token)
 	if err != nil {
 		return Comment{}, err
 	}
 	found := false
 	for _, it := range fr.Items {
-		found = found || it.Revision == figureRevision
+		found = found || it.Revision == in.FigureRevision
 	}
-	body, author = clip(body, MaxComment), clip(author, 80)
-	if !found || body == "" {
+	if !found && in.ParentID == 0 {
 		return Comment{}, fmt.Errorf("%w: comment needs text and a figure of this snapshot", ErrInvalid)
 	}
-	if author == "" {
-		author = "Reviewer"
+	return s.addComment(id, in, false)
+}
+
+// OwnerReply records the author's reply inside a thread of one of their own snapshots.
+func (s *Store) OwnerReply(snapshotID int64, in CommentInput) (Comment, error) {
+	if in.ParentID == 0 {
+		return Comment{}, fmt.Errorf("%w: the author replies inside a thread", ErrInvalid)
+	}
+	in.Author = "Author"
+	return s.addComment(snapshotID, in, true)
+}
+
+func (s *Store) addComment(snapshotID int64, in CommentInput, owner bool) (Comment, error) {
+	in.Body, in.Author = clip(in.Body, MaxComment), clip(in.Author, 80)
+	if in.Body == "" {
+		return Comment{}, fmt.Errorf("%w: comment needs text and a figure of this snapshot", ErrInvalid)
+	}
+	if in.Author == "" {
+		in.Author = "Reviewer"
+	}
+	anchorJSON := ""
+	if in.ParentID != 0 {
+		if in.Anchor != nil {
+			return Comment{}, fmt.Errorf("%w: only a thread's first comment is placed on the picture", ErrInvalid)
+		}
+		// a reply belongs to a first comment of the same snapshot and takes its figure
+		err := s.db.QueryRow(`SELECT figure_revision FROM comments WHERE id=? AND snapshot_id=? AND parent_id=0`, in.ParentID, snapshotID).Scan(&in.FigureRevision)
+		if err != nil {
+			return Comment{}, fmt.Errorf("%w: no such thread in this snapshot", ErrInvalid)
+		}
+	} else if in.Anchor != nil {
+		if !in.Anchor.valid() {
+			return Comment{}, fmt.Errorf("%w: the marked place is outside the picture", ErrInvalid)
+		}
+		b, _ := json.Marshal(in.Anchor)
+		anchorJSON = string(b)
 	}
 	now := time.Now()
+	own := 0
+	if owner {
+		own = 1
+	}
 	// count and insert in one statement so concurrent comments cannot pass the limit
-	res, err := s.db.Exec(`INSERT INTO comments(snapshot_id,figure_revision,author,body,created_at)
-		SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM comments WHERE snapshot_id=?) < ?`, id, figureRevision, author, body, now.Unix(), id, MaxCommentsPS)
+	res, err := s.db.Exec(`INSERT INTO comments(snapshot_id,figure_revision,author,body,created_at,parent_id,anchor,from_owner)
+		SELECT ?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM comments WHERE snapshot_id=?) < ?`,
+		snapshotID, in.FigureRevision, in.Author, in.Body, now.Unix(), in.ParentID, anchorJSON, own, snapshotID, MaxCommentsPS)
 	if err != nil {
 		return Comment{}, err
 	}
@@ -626,7 +718,23 @@ func (s *Store) AddComment(token, figureRevision, author, body string) (Comment,
 		return Comment{}, fmt.Errorf("%w: comment limit reached", ErrInvalid)
 	}
 	cid, _ := res.LastInsertId()
-	return Comment{ID: cid, FigureRevision: figureRevision, Author: author, Body: body, CreatedAt: now.UTC()}, nil
+	return Comment{ID: cid, FigureRevision: in.FigureRevision, ParentID: in.ParentID, Author: in.Author, FromOwner: owner, Body: in.Body, Anchor: in.Anchor, CreatedAt: now.UTC()}, nil
+}
+
+// SetResolved closes or reopens a thread. Only the author does this, through the owner API.
+func (s *Store) SetResolved(commentID int64, resolved bool) error {
+	var at int64
+	if resolved {
+		at = time.Now().Unix()
+	}
+	res, err := s.db.Exec(`UPDATE comments SET resolved_at=? WHERE id=? AND parent_id=0`, at, commentID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // OwnerComments lists the comments on a snapshot for its owner.

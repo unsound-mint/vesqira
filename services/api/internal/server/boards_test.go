@@ -134,6 +134,40 @@ func TestFigureBoardReviewPathExposesNoSourceToTheReviewer(t *testing.T) {
 		t.Errorf("cross-site read of the owner API: %d", r.StatusCode)
 	}
 
+	// a thread: the reviewer marks a place, the author replies and closes it; the reviewer cannot close it, and the
+	// owner-only routes are not on the review surface
+	var fr struct {
+		Snapshot struct{ Items []struct{ Revision string } }
+	}
+	json.Unmarshal(rbody, &fr)
+	cr, cb := postJSON(t, rv.URL+"/review-api/"+pub.Token+"/comments", map[string]any{"figureRevision": fr.Snapshot.Items[0].Revision, "author": "Prof", "body": "What is this?", "anchor": map[string]any{"kind": "point", "x": 0.3, "y": 0.4}})
+	if cr.StatusCode != 201 {
+		t.Fatalf("anchored comment: %d %s", cr.StatusCode, cb)
+	}
+	var thread boards.Comment
+	json.Unmarshal(cb, &thread)
+	if r, _ := postJSON(t, rv.URL+"/review-api/"+pub.Token+"/comments", map[string]any{"figureRevision": fr.Snapshot.Items[0].Revision, "body": "x", "anchor": map[string]any{"kind": "point", "x": 3, "y": 0.4}}); r.StatusCode != 422 {
+		t.Errorf("a place outside the picture: %d, want 422", r.StatusCode)
+	}
+	sid := itoa(int(pub.Snapshot.ID))
+	if r, _ := postJSON(t, owner.URL+"/api/snapshots/"+sid+"/comments", map[string]any{"parentId": thread.ID, "body": "A sidelobe."}); r.StatusCode != 201 {
+		t.Errorf("owner reply: %d", r.StatusCode)
+	}
+	if r, _ := postJSON(t, owner.URL+"/api/comments/"+itoa(int(thread.ID))+"/resolve", map[string]any{"resolved": true}); r.StatusCode != 200 {
+		t.Errorf("resolve: %d", r.StatusCode)
+	}
+	if r, _ := postJSON(t, owner.URL+"/api/comments/99999/resolve", map[string]any{"resolved": true}); r.StatusCode != 404 {
+		t.Errorf("resolving an unknown comment: %d", r.StatusCode)
+	}
+	for _, p := range []string{"/api/comments/" + itoa(int(thread.ID)) + "/resolve", "/api/snapshots/" + sid + "/comments"} {
+		if r, _ := postJSON(t, rv.URL+p, map[string]any{"resolved": true, "parentId": thread.ID, "body": "x"}); r.StatusCode == 200 || r.StatusCode == 201 {
+			t.Errorf("owner route %s reachable on the review surface: %d", p, r.StatusCode)
+		}
+	}
+	if _, rb2 := get(t, rv.URL+"/review-api/"+pub.Token); !strings.Contains(string(rb2), "A sidelobe.") || !strings.Contains(string(rb2), "resolvedAt") {
+		t.Errorf("the reviewer sees the reply and that the thread is closed: %s", rb2)
+	}
+
 	// revoke: the link stops working, the evidence stays
 	postJSON(t, api("/api/snapshots/"+itoa(int(pub.Snapshot.ID))+"/revoke"), map[string]any{})
 	if r, _ := get(t, rv.URL+"/review-api/"+pub.Token); r.StatusCode != 404 {

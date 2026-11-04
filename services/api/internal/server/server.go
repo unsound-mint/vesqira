@@ -102,6 +102,8 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/boards/{id}/snapshots", s.snapshots)
 		mux.HandleFunc("POST /api/snapshots/{id}/revoke", s.revoke)
 		mux.HandleFunc("GET /api/snapshots/{id}/comments", s.snapshotComments)
+		mux.HandleFunc("POST /api/snapshots/{id}/comments", s.ownerReply)
+		mux.HandleFunc("POST /api/comments/{id}/resolve", s.resolveComment)
 	}
 	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
 	mux.HandleFunc("GET /api/datasets/{id}/plane", s.plane)
