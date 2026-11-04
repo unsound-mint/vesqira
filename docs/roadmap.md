@@ -55,8 +55,8 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 - [ ] Rerun modes: strict, best effort, adapted (Q123).
 - [ ] Accounting of failed, cancelled and excluded evaluations per run (Q224).
 - [ ] Structured fields for controls: smoothing, noise model, how a control was constructed (Q246).
-- [ ] ROHSA job template next to the existing VGT one.
-- [ ] Beam matching (convolution to a common beam) as an explicit derived resource; never implied by reprojection (Q205).
+- [x] ROHSA job template next to the existing VGT one (follows hpc/irgetas/rohsa.slurm; results are not imported as a run).
+- [x] Beam matching (convolution to a common beam) as an explicit derived resource; never implied by reprojection (Q205).
 - [ ] Unit conversion with dimensional checks; frame transform between declared frames (Q204, Q209).
 
 ## Stage 5 — Data model and catalog

@@ -33,7 +33,7 @@ type AnalysisConfig struct {
 	Timeout    time.Duration
 }
 
-var analysisOps = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true}
+var analysisOps = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true, "convolve": true}
 
 // analysisArgs turns the request's options into command-line options, each validated by the same patterns the job
 // template uses, so a value can never become anything but a number or a known word.
@@ -48,7 +48,7 @@ type analysisReq struct {
 	Time string `json:"time"`
 }
 
-var optionNames = map[string]string{"order": "order", "chanStart": "chan-start", "chanEnd": "chan-end", "threshold": "threshold", "x0": "x0", "x1": "x1", "y0": "y0", "y1": "y1", "method": "method"}
+var optionNames = map[string]string{"order": "order", "chanStart": "chan-start", "chanEnd": "chan-end", "threshold": "threshold", "x0": "x0", "x1": "x1", "y0": "y0", "y1": "y1", "method": "method", "targetBmaj": "target-bmaj", "targetBmin": "target-bmin", "targetBpa": "target-bpa"}
 
 func (a analysisReq) options() (map[string]string, error) {
 	out := map[string]string{}

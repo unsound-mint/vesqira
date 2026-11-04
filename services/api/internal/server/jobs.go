@@ -102,6 +102,15 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			Partition  string            `json:"partition"`
 			Account    string            `json:"account"`
 		} `json:"vgt"`
+		ROHSA struct {
+			RepoDir    string `json:"repoDir"`
+			ConfigPath string `json:"configPath"`
+			CPUs       int    `json:"cpus"`
+			Mem        string `json:"mem"`
+			Time       string `json:"time"`
+			Partition  string `json:"partition"`
+			Account    string `json:"account"`
+		} `json:"rohsa"`
 	}
 	if !body(w, r, 256<<10, &in, true) {
 		return
@@ -151,8 +160,15 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, "the output folder must be inside a source root of the host")
 			return
 		}
+	case "rohsa":
+		script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: in.Name, RepoDir: in.ROHSA.RepoDir, ConfigPath: in.ROHSA.ConfigPath, CPUs: in.ROHSA.CPUs, Mem: in.ROHSA.Mem, Time: in.ROHSA.Time, Partition: in.ROHSA.Partition, Account: in.ROHSA.Account})
+		if err != nil {
+			s.jobErr(w, err)
+			return
+		}
+		job.Script = script
 	default:
-		fail(w, 400, "template must be vgt or custom")
+		fail(w, 400, "template must be vgt, rohsa or custom")
 		return
 	}
 	created, err := s.Jobs.CreateDraft(job)

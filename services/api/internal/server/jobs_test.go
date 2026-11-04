@@ -130,6 +130,14 @@ PATH=%s:$PATH exec sh -c "$cmd"
 			t.Errorf("%s: accepted (%d)", name, r.StatusCode)
 		}
 	}
+	// the ROHSA template: a reviewed script, nothing from the request reaches a command
+	rr, rohsaBody := postJSON(t, api("/api/jobs"), map[string]any{"hostId": h.ID, "template": "rohsa", "name": "rohsa-n8", "rohsa": map[string]any{"repoDir": "/shared/home/u/vgt", "configPath": "/shared/home/u/vgt/configs/rohsa/a.toml", "cpus": 16, "mem": "12G", "time": "03:00:00"}})
+	if rr.StatusCode != 201 || !strings.Contains(string(rohsaBody), "rohsa/cli/preprocess.jl") {
+		t.Errorf("rohsa draft: %d %s", rr.StatusCode, rohsaBody)
+	}
+	if r, _ := postJSON(t, api("/api/jobs"), map[string]any{"hostId": h.ID, "template": "rohsa", "name": "x", "rohsa": map[string]any{"repoDir": "/a", "configPath": "/b/$(id).toml", "cpus": 1, "mem": "1G", "time": "01:00:00"}}); r.StatusCode < 400 {
+		t.Errorf("an injected config path was accepted: %d", r.StatusCode)
+	}
 	r, jb := postJSON(t, api("/api/jobs"), vgt(nil))
 	if r.StatusCode != 201 {
 		t.Fatalf("create job: %d %s", r.StatusCode, jb)

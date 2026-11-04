@@ -7,7 +7,7 @@ export type Job = {
   id: number;
   hostId: number;
   name: string;
-  template: "vgt" | "custom" | "analysis";
+  template: "vgt" | "rohsa" | "custom" | "analysis";
   script: string;
   scriptHash: string;
   state: JobState;
@@ -19,6 +19,13 @@ export type Job = {
   submittedAt: string | null;
   finishedAt: string | null;
   runId: number | null;
+};
+
+export type RohsaJobRequest = {
+  hostId: number;
+  template: "rohsa";
+  name: string;
+  rohsa: { repoDir: string; configPath: string; cpus: number; mem: string; time: string; partition: string; account: string };
 };
 
 export type VgtJobRequest = {
@@ -44,7 +51,7 @@ const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", 
 
 export const listJobs = () => call<{ jobs: Job[] }>("/api/jobs").then((r) => r.jobs);
 export const getJob = (id: number) => call<Job>(`/api/jobs/${id}`);
-export const createJob = (r: VgtJobRequest) => post<Job>("/api/jobs", r);
+export const createJob = (r: VgtJobRequest | RohsaJobRequest) => post<Job>("/api/jobs", r);
 export const editScript = (id: number, script: string) => post<Job>(`/api/jobs/${id}/script`, { script });
 export const submitJob = (id: number, scriptHash: string) => post<Job>(`/api/jobs/${id}/submit`, { scriptHash });
 export const refreshJob = (id: number) => post<Job>(`/api/jobs/${id}/refresh`, {});

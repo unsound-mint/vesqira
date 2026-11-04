@@ -26,3 +26,7 @@ Python tests on the fixtures: statistics equal numpy and count the NaN block as 
 
 ## Rollback / Migration
 Drop the `derived` table and the analysis routes; derived files can be deleted from the data directory.
+
+## Amendment: matching a larger beam (convolve)
+
+`convolve` smooths an image or cube to a target beam (major and minor FWHM in arcseconds, position angle from north through east). It needs a declared beam (BMAJ, BMIN, and BPA when elliptical) and a target at least as large in every direction; otherwise it refuses. The kernel is the Gaussian whose covariance is the target's minus the current beam's, built on the file's own pixel grid from its WCS (the position angle turns from north towards east, so east is to the left on a standard grid). Pixels without a value stay without a value; a neighbour is the average of the finite pixels the kernel reaches, and outside the map counts as missing, not zero. Surface-brightness units (K) are smoothed as they are; Jy/beam is multiplied by the ratio of beam areas. The output declares the target beam and says that noise becomes correlated. Validation: independent analytic oracles for circular, 90° and 45° position angles on an east-left grid, NaN preservation, the Jy/beam factor and refusals; an API test through the server. Reprojection is still not resolution matching, and this is not reprojection.

@@ -152,3 +152,34 @@ func TestParseLookupFindsOnlyThisRecordsJob(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderROHSAFollowsThePipelineScriptAndIsValidShell(t *testing.T) {
+	good := ROHSASettings{Name: "rohsa-n8", RepoDir: "/shared/home/u/vgt", ConfigPath: "/shared/home/u/vgt/configs/rohsa/lmc.toml", CPUs: 32, Mem: "100G", Time: "1-00:00:00", Partition: "ZEN4"}
+	s, err := RenderROHSA(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"#!/bin/bash -l", "#SBATCH --cpus-per-task=32", "#SBATCH --mem=100G", "#SBATCH --partition=ZEN4", "module load GCC", "flock \"$rohsa_src/.build.lock\"",
+		"OMP_NUM_THREADS=\"${SLURM_CPUS_PER_TASK:-1}\"", "ulimit -s unlimited", "rohsa/cli/preprocess.jl --config \"$config\"", "config=/shared/home/u/vgt/configs/rohsa/lmc.toml"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("script lacks %q", want)
+		}
+	}
+	// it must at least parse as shell
+	cmd := exec.Command("bash", "-n")
+	cmd.Stdin = strings.NewReader(s)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Errorf("not valid shell: %v\n%s", err, out)
+	}
+	for name, bad := range map[string]ROHSASettings{
+		"name":      {Name: "a b", RepoDir: good.RepoDir, ConfigPath: good.ConfigPath, CPUs: 1, Mem: "1G", Time: "01:00:00"},
+		"repo":      {Name: "x", RepoDir: "/a; rm -rf ~", ConfigPath: good.ConfigPath, CPUs: 1, Mem: "1G", Time: "01:00:00"},
+		"config":    {Name: "x", RepoDir: good.RepoDir, ConfigPath: "/a/$(id).toml", CPUs: 1, Mem: "1G", Time: "01:00:00"},
+		"cpus":      {Name: "x", RepoDir: good.RepoDir, ConfigPath: good.ConfigPath, CPUs: 0, Mem: "1G", Time: "01:00:00"},
+		"partition": {Name: "x", RepoDir: good.RepoDir, ConfigPath: good.ConfigPath, CPUs: 1, Mem: "1G", Time: "01:00:00", Partition: "a;b"},
+	} {
+		if _, err := RenderROHSA(bad); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

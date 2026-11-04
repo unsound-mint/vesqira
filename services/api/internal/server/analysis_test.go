@@ -185,6 +185,24 @@ func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
 		t.Errorf("align record: %s", adb)
 	}
 
+	// matching a larger beam makes a new file that declares the target beam; a smaller target and injected values are refused
+	conv := map[string]any{"op": "convolve", "datasetId": cubeDS.ID, "params": map[string]string{"targetBmaj": "144", "targetBmin": "144", "targetBpa": "0"}}
+	rc, cb := postJSON(t, api("/api/analysis"), conv)
+	if rc.StatusCode != 201 || !strings.Contains(string(cb), "Noise becomes correlated") {
+		t.Fatalf("convolve: %d %s", rc.StatusCode, cb)
+	}
+	var cv struct{ Dataset catalog.Dataset }
+	json.Unmarshal(cb, &cv)
+	if !strings.Contains(string(cv.Dataset.Header), `"bmaj":0.04`) {
+		t.Errorf("the result must declare the target beam: %s", cv.Dataset.Header)
+	}
+	if r, _ := postJSON(t, api("/api/analysis"), map[string]any{"op": "convolve", "datasetId": cubeDS.ID, "params": map[string]string{"targetBmaj": "50", "targetBmin": "50"}}); r.StatusCode != 422 {
+		t.Errorf("a target smaller than the current beam: %d, want 422", r.StatusCode)
+	}
+	if r, _ := postJSON(t, api("/api/analysis"), map[string]any{"op": "convolve", "datasetId": cubeDS.ID, "params": map[string]string{"targetBmaj": "144; id", "targetBmin": "144"}}); r.StatusCode != 422 {
+		t.Errorf("an injected beam value: %d, want 422", r.StatusCode)
+	}
+
 	// axial difference of two declared orientation maps: modulo 180, on a shared grid, refused otherwise
 	psi, psiR := reg("vgt_psi_deg.fits"), reg("vgt_psi_rad.fits")
 	if r, _ := postJSON(t, api("/api/analysis"), map[string]any{"op": "axial_diff", "datasetId": psi.ID, "referenceId": psiR.ID}); r.StatusCode != 422 {

@@ -136,6 +136,66 @@ func RenderVGT(p VGTSettings) (string, error) {
 	return b.String(), nil
 }
 
+// ROHSASettings are the fields of the ROHSA job template.
+type ROHSASettings struct {
+	Name       string
+	RepoDir    string // the VGT checkout on the host, which holds the ROHSA sources and its command line
+	ConfigPath string // an existing ROHSA run config on the host
+	CPUs       int
+	Mem        string
+	Time       string
+	Partition  string
+	Account    string
+}
+
+// RenderROHSA renders the batch script for one ROHSA run, following the pipeline's own hpc/irgetas/rohsa.slurm: build
+// the OpenMP Fortran source when it is newer than the binary, then run the preprocessing command on the given config
+// with one OpenMP thread per allocated CPU. The results go where the config's output_dir says; they are not imported
+// as a run, because there is no ROHSA run description to read.
+func RenderROHSA(p ROHSASettings) (string, error) {
+	switch {
+	case !nameRe.MatchString(p.Name):
+		return "", fmt.Errorf("%w: the job name may use letters, digits, . _ - (up to 40)", ErrInvalid)
+	case !ValidPath(p.RepoDir), !ValidPath(p.ConfigPath):
+		return "", fmt.Errorf("%w: the folder and the config must be absolute paths without spaces or quotes", ErrInvalid)
+	case p.CPUs < 1 || p.CPUs > 256:
+		return "", fmt.Errorf("%w: CPUs must be between 1 and 256", ErrInvalid)
+	case !memRe.MatchString(p.Mem):
+		return "", fmt.Errorf("%w: memory looks like 64G or 4096M", ErrInvalid)
+	case !timeRe.MatchString(p.Time):
+		return "", fmt.Errorf("%w: time looks like 1-00:00:00 or 12:00:00", ErrInvalid)
+	case p.Partition != "" && !slurmWord.MatchString(p.Partition), p.Account != "" && !slurmWord.MatchString(p.Account):
+		return "", fmt.Errorf("%w: partition and account are plain words", ErrInvalid)
+	}
+	var b strings.Builder
+	b.WriteString("#!/bin/bash -l\n")
+	fmt.Fprintf(&b, "#SBATCH --job-name=%s\n#SBATCH --nodes=1\n#SBATCH --ntasks=1\n#SBATCH --cpus-per-task=%d\n#SBATCH --mem=%s\n#SBATCH --time=%s\n", p.Name, p.CPUs, p.Mem, p.Time)
+	if p.Partition != "" {
+		fmt.Fprintf(&b, "#SBATCH --partition=%s\n", p.Partition)
+	}
+	if p.Account != "" {
+		fmt.Fprintf(&b, "#SBATCH --account=%s\n", p.Account)
+	}
+	b.WriteString("#SBATCH --output=%x-%j.out\n#SBATCH --error=%x-%j.err\n\n")
+	b.WriteString("# Rendered by Vesqira from the settings in the job record. This exact text is what is submitted.\n")
+	b.WriteString("set -euo pipefail\n")
+	fmt.Fprintf(&b, "cd %s\n", p.RepoDir)
+	fmt.Fprintf(&b, "config=%s\n", p.ConfigPath)
+	fmt.Fprintf(&b, "export JULIA_DEPOT_PATH=\"${JULIA_DEPOT_PATH:-%s/.julia-irgetas}\"\n", p.RepoDir)
+	b.WriteString("echo \"job_id=$SLURM_JOB_ID host=$(hostname) config=$config\"\ndate --iso-8601=seconds\n")
+	b.WriteString("module purge\nmodule load GCC\n")
+	b.WriteString("rohsa_src=rohsa/upstream/ROHSA/src\n")
+	b.WriteString("# rebuild only when a source is newer than the binary; jobs share this tree, so take the lock\n")
+	b.WriteString("flock \"$rohsa_src/.build.lock\" bash -c '\n")
+	b.WriteString("    if [ ! -x \"$1/ROHSA\" ] || [ -n \"$(find \"$1\" -maxdepth 1 \\( -name \"*.f\" -o -name \"*.f90\" -o -name Makefile \\) -newer \"$1/ROHSA\")\" ]; then\n")
+	b.WriteString("        make -C \"$1\" clean all\n    fi' _ \"$rohsa_src\"\n")
+	b.WriteString("command -v julia >/dev/null || { echo \"Julia is not on PATH\" >&2; exit 2; }\n")
+	b.WriteString("# the optimiser loop is OpenMP-parallel: match threads to the allocation\n")
+	b.WriteString("export OMP_NUM_THREADS=\"${SLURM_CPUS_PER_TASK:-1}\"\nulimit -s unlimited\nexport OMP_STACKSIZE=256M\n")
+	b.WriteString("srun --ntasks=1 julia --project=. rohsa/cli/preprocess.jl --config \"$config\"\ndate --iso-8601=seconds\n")
+	return b.String(), nil
+}
+
 // ---- editing a config.toml: only a small, typed set of keys ----
 
 type configKey struct {
@@ -525,10 +585,10 @@ type AnalysisSettings struct {
 var (
 	pyRe       = regexp.MustCompile(`^[A-Za-z0-9_./~-]{1,200}$`)
 	scriptDirR = regexp.MustCompile(`^\$HOME/\.cache/vesqira/[0-9a-f]{16}$`)
-	analysisOp = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true}
+	analysisOp = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true, "convolve": true}
 	argKinds   = map[string]*regexp.Regexp{
 		"order": regexp.MustCompile(`^[012]$`), "chan-start": intRe, "chan-end": intRe, "x0": intRe, "x1": intRe, "y0": intRe, "y1": intRe,
-		"threshold": numRe, "method": regexp.MustCompile(`^(interp|nearest|exact)$`),
+		"threshold": numRe, "target-bmaj": numRe, "target-bmin": numRe, "target-bpa": numRe, "method": regexp.MustCompile(`^(interp|nearest|exact)$`),
 	}
 )
 

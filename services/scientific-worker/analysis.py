@@ -342,7 +342,105 @@ def op_axial_diff(args) -> dict:
     return {"ok": True, "op": "axial_diff", "summary": summary}
 
 
-OPS = {"axial_diff": op_axial_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
+FWHM_TO_SIGMA = 1.0 / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+
+
+def _sky_cov(bmaj: float, bmin: float, bpa_deg: float) -> np.ndarray:
+    """Covariance (east, north) of an elliptical Gaussian beam; the position angle runs from north towards east."""
+    t = math.radians(bpa_deg)
+    u = np.array([math.sin(t), math.cos(t)])       # major axis direction as (east, north)
+    v = np.array([math.cos(t), -math.sin(t)])
+    return (bmaj * FWHM_TO_SIGMA) ** 2 * np.outer(u, u) + (bmin * FWHM_TO_SIGMA) ** 2 * np.outer(v, v)
+
+
+def op_convolve(args) -> dict:
+    """Smooth to a larger target beam: convolve with the Gaussian that, combined with the current beam, gives it.
+
+    Needs a declared beam (BMAJ, BMIN, BPA), a target that is at least as large in every direction, and a celestial
+    WCS. Pixels without a value stay without a value; a pixel next to missing ones is the average of the finite
+    neighbours the kernel reaches (weights renormalised), never a zero. In surface-brightness units (K) values are
+    smoothed as they are; in Jy/beam they are also rescaled by the ratio of beam areas."""
+    from astropy.convolution import convolve_fft
+    c = open_cube(args.input)
+    if not c.celestial or c.wcs is None or c.wcs.wcs.lng != c.x or c.wcs.wcs.lat != c.y:
+        fail("the file needs a fully declared celestial WCS with the sky axes as its first two")
+    h = c.h
+    try:
+        smaj, smin = float(h["BMAJ"]) * 3600.0, float(h["BMIN"]) * 3600.0
+    except (KeyError, TypeError, ValueError):
+        fail("the file does not declare its beam (BMAJ and BMIN), so the target cannot be reached by convolution")
+    if not (smaj > 0 and smin > 0):
+        fail("the declared beam is not positive")
+    spa = float(h["BPA"]) if "BPA" in h else None
+    if spa is None and abs(smaj - smin) > 1e-6 * smaj:
+        fail("the beam is elliptical but its position angle (BPA) is not declared")
+    spa = 0.0 if spa is None else spa
+    tmaj, tmin, tpa = args.target_bmaj, args.target_bmin, args.target_bpa
+    if tmaj is None or tmin is None or not (tmaj >= tmin > 0):
+        fail("give the target beam as major and minor FWHM in arcseconds, major at least minor")
+    cov_k = _sky_cov(tmaj, tmin, tpa) - _sky_cov(smaj, smin, spa)       # arcsec^2 in (east, north)
+    w, _ = np.linalg.eigh(cov_k)
+    if w[0] < -1e-9 * max(1.0, abs(w[1])):
+        fail("the target beam is smaller than the current beam in some direction; convolution can only make it larger")
+    m = c.wcs.celestial.pixel_scale_matrix * 3600.0                        # arcsec per pixel: (east, north) = m @ (dx, dy)
+    minv = np.linalg.inv(m)
+    cov_pix = minv @ cov_k @ minv.T
+    ev, evec = np.linalg.eigh(cov_pix)
+    n_pix = 0
+    kernel = None
+    if ev[1] > 1e-4:
+        ev = np.maximum(ev, 1e-3)                                           # a kernel narrower than a pixel in one direction
+        half = int(min(100, math.ceil(4.0 * math.sqrt(ev[1]))))
+        yy, xx = np.mgrid[-half:half + 1, -half:half + 1]
+        d = np.stack([xx.ravel(), yy.ravel()])
+        q = np.einsum("ij,ij->j", d, np.linalg.solve(evec @ np.diag(ev) @ evec.T, d))
+        kernel = np.exp(-0.5 * q).reshape(xx.shape)
+        kernel /= kernel.sum()
+        n_pix = half
+    area = 1.0
+    bunit = str(h.get("BUNIT", ""))
+    per_beam = "beam" in bunit.lower()
+    if per_beam:
+        area = (tmaj * tmin) / (smaj * smin)
+    n = len(c.shape)
+    if n == 3 and (c.chan, c.y, c.x) == (2, 1, 0):
+        chans = list(planes(c, 0, c.channels - 1))
+    elif n == 2 and (c.y, c.x) == (1, 0):
+        chans = [(0, np.asarray(next(planes(c, 0, 0))[1]))] if c.chan is None else None
+    else:
+        chans = None
+    if chans is None:
+        fail("convolution supports an image or a cube with axes (x, y[, channel]) in that order")
+    out = []
+    for _, p in chans:
+        p = np.asarray(p, dtype=float)
+        if kernel is None:
+            r = p.copy()
+        else:
+            padded = np.pad(p, n_pix, constant_values=np.nan)               # outside the map is missing, not zero
+            r = convolve_fft(padded, kernel, nan_treatment="interpolate", preserve_nan=True, normalize_kernel=True,
+                             boundary="fill", fill_value=0.0, allow_huge=True)[n_pix:-n_pix, n_pix:-n_pix]
+        out.append((r * area).astype("<f4"))
+    data = np.stack(out) if n == 3 else out[0]
+    nh = h.copy()
+    nh["BMAJ"], nh["BMIN"], nh["BPA"] = tmaj / 3600.0, tmin / 3600.0, tpa
+    nh["BITPIX"] = -32
+    for k in ("BSCALE", "BZERO", "BLANK"):
+        if k in nh:
+            del nh[k]
+    nh["VESQOP"] = "convolve"
+    summary = {"from_beam_arcsec": [smaj, smin, spa], "to_beam_arcsec": [tmaj, tmin, tpa], "kernel_half_width_pixels": n_pix,
+               "rescaled_by_beam_area": per_beam, "area_ratio": area}
+    nh["HISTORY"] = f"Vesqira convolve {json.dumps(summary)}"
+    write_fits(args.out, data, nh)
+    return {"ok": True, "op": "convolve", "summary": {**summary, "shape": list(data.shape),
+            "pixels_without_data": int(np.isnan(data).sum()),
+            "policy": "Smoothed with a Gaussian kernel to the target beam; pixels without a value stay without a value and neighbours are "
+                      "averaged over the finite pixels the kernel reaches. Noise becomes correlated over the new beam. "
+                      "Units in K are smoothed as they are; Jy/beam values are rescaled by the beam-area ratio."}}
+
+
+OPS = {"convolve": op_convolve, "axial_diff": op_axial_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
 
 
 def main(argv: list[str]) -> int:
@@ -361,6 +459,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--y1", type=int)
     ap.add_argument("--unit", choices=["deg", "rad"], default="deg")
     ap.add_argument("--unit-ref", choices=["deg", "rad"], default="deg")
+    ap.add_argument("--target-bmaj", type=float)
+    ap.add_argument("--target-bmin", type=float)
+    ap.add_argument("--target-bpa", type=float, default=0.0)
     ap.add_argument("--method", choices=["interp", "nearest", "exact"], default="interp")
     args = ap.parse_args(argv)
     try:

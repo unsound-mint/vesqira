@@ -5,6 +5,7 @@ import type { AnalysisOp, Derived, StatsSummary } from "../api/analysis";
 import type { Dataset } from "../api/catalog";
 import type { Job } from "../api/jobs";
 import { EM } from "./format";
+import { beamText } from "./resolution";
 import s from "./AnalysisPanel.module.css";
 
 const OPS: { id: AnalysisOp; label: string; help: string }[] = [
@@ -13,6 +14,7 @@ const OPS: { id: AnalysisOp; label: string; help: string }[] = [
   { id: "cutout", label: "Spatial cutout", help: "A new cube of a pixel box; the coordinates stay exact." },
   { id: "slab", label: "Spectral slab", help: "A new cube of a channel range; the spectral axis stays exact." },
   { id: "align", label: "Align to another map", help: "Reproject onto another file's celestial grid (astropy reproject). It interpolates the values and does not match angular resolution; outside the footprint is NaN." },
+  { id: "convolve", label: "Match to a larger beam", help: "Smooth to a target beam with the Gaussian that, with the current beam, gives it. Needs a declared beam and a target at least as large in every direction. Missing pixels stay missing; noise becomes correlated; Jy/beam is rescaled by the beam-area ratio." },
 ];
 
 const fmt = (v: number | null | undefined) => (v === null || v === undefined ? EM : Number(v.toPrecision(6)).toString());
@@ -38,6 +40,7 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
     if (op === "cutout") { p.x0 = String(Number(v.x0 ?? "1") - 1); p.x1 = String(Number(v.x1 ?? "1") - 1); p.y0 = String(Number(v.y0 ?? "1") - 1); p.y1 = String(Number(v.y1 ?? "1") - 1); }
     if (op === "stats" && v.c0?.trim()) { p.chanStart = String(Number(v.c0) - 1); if (v.c1?.trim()) p.chanEnd = String(Number(v.c1) - 1); }
     if (op === "align") p.method = v.method || "interp";
+    if (op === "convolve") { p.targetBmaj = v.tmaj ?? ""; p.targetBmin = v.tmin ?? ""; p.targetBpa = v.tpa || "0"; }
     return p;
   }
 
@@ -102,7 +105,17 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
           </Select>
         </>
       ) : null}
-      <Button variant="primary" disabled={busy || (op === "align" && !ref)} onClick={go}>
+      {op === "convolve" ? (
+        <>
+          <p className={s.note}>Current beam: {beamText(dataset)}</p>
+          <>
+            <Input label="Target major FWHM (arcsec)" value={v.tmaj ?? ""} onChange={(e) => set("tmaj", e.target.value)} inputMode="decimal" />
+            <Input label="Target minor FWHM (arcsec)" value={v.tmin ?? ""} onChange={(e) => set("tmin", e.target.value)} inputMode="decimal" />
+            <Input label="Position angle (deg, north through east)" value={v.tpa ?? "0"} onChange={(e) => set("tpa", e.target.value)} inputMode="decimal" />
+          </>
+        </>
+      ) : null}
+      <Button variant="primary" disabled={busy || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0))} onClick={go}>
         {busy ? "Working…" : remote ? "Create a job on the host" : op === "stats" ? "Compute statistics" : "Create the new file"}
       </Button>
       {remote ? <p className={s.note}>This file lives on a host. The analysis becomes a Slurm job whose script you read and submit; the result stays on the host and is registered afterwards.</p> : null}

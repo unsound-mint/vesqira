@@ -201,3 +201,108 @@ class Analysis(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+F = 2.0 * np.sqrt(2.0 * np.log(2.0))      # FWHM / sigma
+
+
+def beam_image(path, cov_pix, amp=10.0, size=101, bunit="K", beam=None, nan_box=False):
+    """A 2D image (1 arcsec pixels, north up, east left) holding a Gaussian with the given pixel covariance."""
+    y, x = np.mgrid[:size, :size] - size // 2
+    inv = np.linalg.inv(cov_pix)
+    d = np.stack([x.ravel(), y.ravel()])
+    img = amp * np.exp(-0.5 * np.einsum("ij,ij->j", d, inv @ d)).reshape(size, size)
+    if nan_box:
+        img[10:14, 20:24] = np.nan
+    h = fits.Header()
+    h["CTYPE1"], h["CTYPE2"] = "RA---TAN", "DEC--TAN"
+    h["CRVAL1"], h["CRVAL2"], h["CRPIX1"], h["CRPIX2"] = 150.0, 2.0, size // 2 + 1, size // 2 + 1
+    h["CDELT1"], h["CDELT2"] = -1.0 / 3600.0, 1.0 / 3600.0
+    h["CUNIT1"], h["CUNIT2"] = "deg", "deg"
+    h["BUNIT"] = bunit
+    if beam:
+        h["BMAJ"], h["BMIN"], h["BPA"] = beam[0] / 3600.0, beam[1] / 3600.0, beam[2]
+    fits.PrimaryHDU(img.astype("<f4"), header=h).writeto(path, overwrite=True)
+    return img
+
+
+class Convolve(unittest.TestCase):
+    """The result must be the Gaussian a beam of the target size would give: checked against the analytic answer,
+    including which way the position angle turns on a grid with east to the left."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.dir = Path(cls.tmp.name)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def convolve(self, name, cov0, beam0, target, **kw):
+        src = self.dir / f"{name}.fits"
+        beam_image(src, cov0, beam=beam0, **kw)
+        code, r = run("convolve", "--input", src, "--out", self.dir / f"{name}_out.fits", "--target-bmaj", target[0], "--target-bmin", target[1], "--target-bpa", target[2])
+        return code, r, self.dir / f"{name}_out.fits"
+
+    def expected(self, cov_t, cov0, amp=10.0, size=101):
+        y, x = np.mgrid[:size, :size] - size // 2
+        d = np.stack([x.ravel(), y.ravel()])
+        gauss = np.exp(-0.5 * np.einsum("ij,ij->j", d, np.linalg.inv(cov_t) @ d)).reshape(size, size)
+        return amp * np.sqrt(np.linalg.det(cov0) / np.linalg.det(cov_t)) * gauss
+
+    def check(self, out, want, tol=2e-3):
+        got = fits.getdata(out).astype(float)
+        c = slice(20, 81)
+        self.assertLess(np.abs(got[c, c] - want[c, c]).max() / want.max(), tol)
+
+    def test_circular_target_gives_the_analytic_gaussian(self):
+        cov0, cov_t = np.eye(2) * 4.0, np.eye(2) * 9.0
+        code, r, out = self.convolve("circ", cov0, (2 * F, 2 * F, 0.0), (3 * F, 3 * F, 0.0))
+        self.assertEqual(code, 0, r)
+        self.check(out, self.expected(cov_t, cov0))
+        h = fits.getheader(out)
+        self.assertAlmostEqual(h["BMAJ"] * 3600, 3 * F, places=6)
+        self.assertEqual(h["VESQOP"], "convolve")
+
+    def test_position_angle_zero_is_north_and_ninety_is_east_which_is_left_on_the_grid(self):
+        cov0 = np.diag([4.0, 16.0])                    # source beam: minor 2 px along x, major 4 px along y (north), PA 0
+        beam0 = (4 * F, 2 * F, 0.0)
+        cov_t = np.diag([36.0, 25.0])                  # target: major 6 px along x (east-west), minor 5 px, PA 90
+        code, r, out = self.convolve("pa90", cov0, beam0, (6 * F, 5 * F, 90.0))
+        self.assertEqual(code, 0, r)
+        self.check(out, self.expected(cov_t, cov0))
+
+    def test_a_diagonal_position_angle_leans_towards_east_which_is_negative_x(self):
+        cov0 = np.eye(2) * 4.0
+        u, v = np.array([-1.0, 1.0]) / np.sqrt(2), np.array([1.0, 1.0]) / np.sqrt(2)     # PA 45: north-east = (-x, +y)
+        cov_t = 36.0 * np.outer(u, u) + 9.0 * np.outer(v, v)
+        code, r, out = self.convolve("pa45", cov0, (2 * F, 2 * F, 0.0), (6 * F, 3 * F, 45.0))
+        self.assertEqual(code, 0, r)
+        self.check(out, self.expected(cov_t, cov0))
+
+    def test_missing_pixels_stay_missing_and_nothing_becomes_zero(self):
+        code, r, out = self.convolve("nan", np.eye(2) * 4.0, (2 * F, 2 * F, 0.0), (3 * F, 3 * F, 0.0), nan_box=True)
+        self.assertEqual(code, 0, r)
+        got = fits.getdata(out)
+        self.assertTrue(np.isnan(got[10:14, 20:24]).all())
+        self.assertEqual(int(np.isnan(got).sum()), 16)
+        self.assertEqual(r["summary"]["pixels_without_data"], 16)
+
+    def test_jy_per_beam_is_rescaled_by_the_beam_area_and_kelvin_is_not(self):
+        cov0 = np.eye(2) * 4.0
+        _, rk, ok = self.convolve("k", cov0, (2 * F, 2 * F, 0.0), (3 * F, 3 * F, 0.0), bunit="K")
+        _, rj, oj = self.convolve("jy", cov0, (2 * F, 2 * F, 0.0), (3 * F, 3 * F, 0.0), bunit="Jy/beam")
+        ratio = np.nanmax(fits.getdata(oj)) / np.nanmax(fits.getdata(ok))
+        self.assertAlmostEqual(ratio, (3 * 3) / (2 * 2), places=3)
+        self.assertFalse(rk["summary"]["rescaled_by_beam_area"])
+        self.assertTrue(rj["summary"]["rescaled_by_beam_area"])
+
+    def test_it_refuses_what_convolution_cannot_do(self):
+        cov0 = np.diag([4.0, 16.0])
+        code, r, _ = self.convolve("smaller", cov0, (4 * F, 2 * F, 0.0), (3 * F, 3 * F, 0.0))     # 3 px < the 4 px major axis
+        self.assertEqual(code, 2)
+        self.assertIn("smaller", r["error"])
+        code, r, _ = self.convolve("nobeam", cov0, None, (6 * F, 6 * F, 0.0))
+        self.assertEqual(code, 2)
+        self.assertIn("beam", r["error"])

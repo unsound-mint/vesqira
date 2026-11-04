@@ -82,6 +82,7 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { ho
 
 function NewJob({ hosts, onCreated }: { hosts: Host[]; onCreated: (j: Job) => void }) {
   const [hostId, setHostId] = useState<string>(hosts[0] ? String(hosts[0].id) : "");
+  const [kind, setKind] = useState<"vgt" | "rohsa">("vgt");
   const [name, setName] = useState("vgt-run");
   const [repoDir, setRepoDir] = useState("");
   const [configPath, setConfigPath] = useState("");
@@ -113,6 +114,11 @@ function NewJob({ hosts, onCreated }: { hosts: Host[]; onCreated: (j: Job) => vo
     try {
       const set: Record<string, string> = {};
       for (const st of SETTINGS) if (vals[st.key]) set[st.key] = vals[st.key]!;
+      if (kind === "rohsa") {
+        onCreated(await createJob({ hostId: Number(hostId), template: "rohsa", name, rohsa: { repoDir, configPath, cpus: Number(res.cpus), mem: res.mem, time: res.time, partition: res.partition, account: res.account } }));
+        setBusy(false);
+        return;
+      }
       const j = await createJob({ hostId: Number(hostId), template: "vgt", name, vgt: { repoDir, configPath, set, cpus: Number(res.cpus), mem: res.mem, time: res.time, partition: res.partition, account: res.account } });
       onCreated(j);
     } catch (e) {
@@ -123,18 +129,26 @@ function NewJob({ hosts, onCreated }: { hosts: Host[]; onCreated: (j: Job) => vo
 
   return (
     <div className={s.form}>
-      <h2 className={s.h}>New VGT job</h2>
+      <h2 className={s.h}>New {kind === "vgt" ? "VGT" : "ROHSA"} job</h2>
+      <Select label="Kind" value={kind} onChange={(e) => { const k = e.target.value as "vgt" | "rohsa"; setKind(k); setLoaded(false); setName(k === "vgt" ? "vgt-run" : "rohsa-run"); }}>
+        <option value="vgt">VGT run</option>
+        <option value="rohsa">ROHSA decomposition</option>
+      </Select>
+      {kind === "rohsa" ? <p className={s.note}>Runs the ROHSA build-and-decompose script of the pipeline on an existing ROHSA config on the host. Typical sizes from the pipeline notes: crop up to 512 → 16 CPUs, 12G, 3 h; up to 1024 → 16 CPUs, 40G, 12 h; up to 2048 → 32 CPUs, 100G, 1 day. Results go where the config&rsquo;s output folder says and are not imported as a run.</p> : null}
       <p className={s.note}>Start from a configuration that already exists on the host, adjust what you need, and read the generated script before anything is sent. The output folder is set for you inside the host’s source folders so the results can be opened here.</p>
       <Select label="Host" value={hostId} onChange={(e) => setHostId(e.target.value)}>
         {hosts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
       </Select>
       <Input label="Job name" value={name} onChange={(e) => setName(e.target.value)} />
       <Input label="VGT folder on the host" value={repoDir} onChange={(e) => setRepoDir(e.target.value)} placeholder="/shared/home/you/vgt" spellCheck={false} />
-      <div className={s.inline}>
+      {kind === "rohsa" ? (
+        <Input label="ROHSA config on the host" value={configPath} onChange={(e) => setConfigPath(e.target.value)} placeholder="/shared/home/you/vgt/configs/rohsa/run.toml" spellCheck={false} />
+      ) : null}
+      <div className={s.inline} hidden={kind === "rohsa"}>
         <Input label="Base config on the host" value={configPath} onChange={(e) => setConfigPath(e.target.value)} placeholder="/shared/home/you/vgt/configs/run.toml" spellCheck={false} />
         <Button type="button" disabled={busy || !configPath || !hostId} onClick={load}>Load settings</Button>
       </div>
-      {loaded ? (
+      {loaded && kind === "vgt" ? (
         <fieldset className={s.fields}>
           <legend>Settings (from the config; change what this run needs)</legend>
           {SETTINGS.map((st) =>
@@ -157,7 +171,7 @@ function NewJob({ hosts, onCreated }: { hosts: Host[]; onCreated: (j: Job) => vo
         <Input label="Partition (optional)" value={res.partition} onChange={(e) => setRes({ ...res, partition: e.target.value })} />
         <Input label="Account (optional)" value={res.account} onChange={(e) => setRes({ ...res, account: e.target.value })} />
       </fieldset>
-      <Button variant="primary" disabled={busy || !loaded || !repoDir || !name} onClick={create}>Create draft and show the script</Button>
+      <Button variant="primary" disabled={busy || (kind === "vgt" && !loaded) || (kind === "rohsa" && !configPath) || !repoDir || !name} onClick={create}>Create draft and show the script</Button>
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
     </div>
   );
