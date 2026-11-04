@@ -1,0 +1,148 @@
+.root {
+  width: 100%;
+  height: 100%;
+  padding: var(--sp-4);
+  overflow: auto;
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: var(--sp-4);
+}
+
+.list {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-1);
+}
+
+.item {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--ctl-md);
+  padding: 0 var(--sp-2);
+  border: var(--bw) solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--bg-3);
+}
+
+.item[aria-pressed="true"] {
+  border-color: var(--line-strong);
+  background: var(--accent-bg);
+}
+
+.nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main,
+.form,
+.detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: end;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.fields legend {
+  padding: 0 var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.h {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--w-strong);
+}
+
+.label {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.script,
+.log {
+  width: 100%;
+  min-width: 0;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--canvas);
+  color: var(--canvas-text);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+.log {
+  max-height: 320px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}
+
+@media (width <= 800px) {
+  .cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

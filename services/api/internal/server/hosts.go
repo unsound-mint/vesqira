@@ -188,7 +188,53 @@ func (s *Server) listRemote(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(rep.Head)
 }
 
-// registerRemote records a FITS file that lives on a host. Its header is read there; the data stays there.
+// registerRemoteFile records a FITS file that lives on a host. Its header is read there; the data stays there.
+// Returns the dataset, or an HTTP status and message. found=false means the path is not available (outside the
+// roots, missing, or not a regular file): the same answer for all of them.
+func (s *Server) registerRemoteFile(ctx context.Context, h hosts.Host, p string) (d catalog.Dataset, code int, msg string) {
+	if !h.InRoots(p) {
+		return d, 403, "not available"
+	}
+	res, err := s.Remote.Do(ctx, h, map[string]any{"op": "resolve", "path": p})
+	var re *worker.RequestError
+	switch {
+	case errors.As(err, &re):
+		return d, 403, "not available"
+	case err != nil:
+		return d, 502, "the host is not reachable (is the VPN up?)"
+	}
+	var rs struct {
+		Real string `json:"real"`
+	}
+	if json.Unmarshal(res.Head, &rs) != nil || !h.InRoots(rs.Real) {
+		return d, 403, "not available"
+	}
+	hdr, err := s.Remote.Do(ctx, h, map[string]any{"op": "header", "path": rs.Real})
+	if errors.As(err, &re) {
+		return d, 422, "cannot read file: " + re.Message
+	}
+	if err != nil {
+		return d, 502, "the host is not reachable (is the VPN up?)"
+	}
+	var meta map[string]json.RawMessage
+	if json.Unmarshal(hdr.Head, &meta) != nil {
+		return d, 502, "the host answered unexpectedly"
+	}
+	var size, mtime int64
+	_ = json.Unmarshal(meta["size"], &size)
+	_ = json.Unmarshal(meta["mtime_ns"], &mtime)
+	for _, k := range []string{"nbytes", "op", "size", "mtime_ns"} {
+		delete(meta, k)
+	}
+	clean, _ := json.Marshal(meta)
+	d, err = s.Store.Upsert(catalog.Dataset{HostID: h.ID, Path: rs.Real, Name: path.Base(rs.Real), SizeBytes: size, ModifiedAt: time.Unix(0, mtime), Header: clean})
+	if err != nil {
+		log.Printf("register remote: %v", err)
+		return d, 500, "internal error"
+	}
+	return d, 0, ""
+}
+
 func (s *Server) registerRemote(w http.ResponseWriter, r *http.Request) {
 	h, ok := s.hostFrom(w, r)
 	if !ok {
@@ -200,55 +246,34 @@ func (s *Server) registerRemote(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 8<<10, &in, true) {
 		return
 	}
-	if !h.InRoots(in.Path) {
-		fail(w, 403, "not available")
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	res, err := s.Remote.Do(ctx, h, map[string]any{"op": "resolve", "path": in.Path})
-	var re *worker.RequestError
-	switch {
-	case errors.As(err, &re):
-		fail(w, 403, "not available")
-		return
-	case err != nil:
-		fail(w, 502, "the host is not reachable (is the VPN up?)")
-		return
-	}
-	var rs struct {
-		Real string `json:"real"`
-	}
-	if json.Unmarshal(res.Head, &rs) != nil || !h.InRoots(rs.Real) {
-		fail(w, 403, "not available")
-		return
-	}
-	hdr, err := s.Remote.Do(ctx, h, map[string]any{"op": "header", "path": rs.Real})
-	if errors.As(err, &re) {
-		fail(w, 422, "cannot read file: "+re.Message)
-		return
-	}
-	if err != nil {
-		fail(w, 502, "the host is not reachable (is the VPN up?)")
-		return
-	}
-	var meta map[string]json.RawMessage
-	if json.Unmarshal(hdr.Head, &meta) != nil {
-		fail(w, 502, "the host answered unexpectedly")
-		return
-	}
-	var size, mtime int64
-	_ = json.Unmarshal(meta["size"], &size)
-	_ = json.Unmarshal(meta["mtime_ns"], &mtime)
-	for _, k := range []string{"nbytes", "op", "size", "mtime_ns"} {
-		delete(meta, k)
-	}
-	clean, _ := json.Marshal(meta)
-	d, err := s.Store.Upsert(catalog.Dataset{HostID: h.ID, Path: rs.Real, Name: path.Base(rs.Real), SizeBytes: size, ModifiedAt: time.Unix(0, mtime), Header: clean})
-	if err != nil {
-		log.Printf("register remote: %v", err)
-		fail(w, 500, "internal error")
+	d, code, msg := s.registerRemoteFile(ctx, h, in.Path)
+	if code != 0 {
+		fail(w, code, msg)
 		return
 	}
 	writeJSON(w, 201, d)
+}
+
+// remoteText reads a small text file on a host (inside its roots) through the host's worker.
+func (s *Server) remoteText(ctx context.Context, h hosts.Host, p string) (string, int, string) {
+	if !h.InRoots(p) {
+		return "", 403, "not available"
+	}
+	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "readtext", "path": p})
+	var re *worker.RequestError
+	switch {
+	case errors.As(err, &re):
+		return "", 403, "not available"
+	case err != nil:
+		return "", 502, "the host is not reachable (is the VPN up?)"
+	}
+	var t struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(rep.Head, &t) != nil {
+		return "", 502, "the host answered unexpectedly"
+	}
+	return t.Text, 0, ""
 }

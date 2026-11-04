@@ -26,6 +26,7 @@ from fits_header import axes_shape, clean, read_header
 MAX_PLANE_ELEMENTS = 1 << 24      # 16.7M pixels = 64 MiB as float32
 MAX_REQUEST_BYTES = 8192
 MAX_CHANNELS = 1 << 24
+MAX_TEXT_BYTES = 256 << 10
 MAX_SPECTRUM_CHANNELS = 1 << 16
 MAX_REGION_WORK = 200_000_000     # region pixels x channels read for one spectrum
 CUBES_KEPT = 4
@@ -516,6 +517,13 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         return {"ok": True, "op": op, "nbytes": 0, "real": real, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
     if op == "stat":
         return {"ok": True, "op": op, "nbytes": 0, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+    if op == "readtext":
+        # small text files only (run metadata, configs): bounded, and only inside the roots
+        if st.st_size > MAX_TEXT_BYTES:
+            raise Refused("unsupported", "the file is too large to read as text")
+        with open(real, "rb") as f:
+            data = f.read(MAX_TEXT_BYTES + 1)
+        return {"ok": True, "op": op, "nbytes": 0, "text": data.decode("utf-8", "replace"), "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
     if op == "header":
         from fits_header import describe
         return {**describe(real), "nbytes": 0, "op": op, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
@@ -524,7 +532,7 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
 
 def handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
-    if op in ("ping", "list", "resolve", "stat", "header"):
+    if op in ("ping", "list", "resolve", "stat", "header", "readtext"):
         return host_op(op, req)
     if op in ("view", "plane", "coord", "spectrum", "axial"):
         authorize(path)                                          # also enforces the roots on a remote host

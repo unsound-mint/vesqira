@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { FolderOpen, LayoutGrid, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { FolderOpen, LayoutGrid, Server, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
+import { JobsView, jobFor } from "../jobs/JobsView";
 import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { Explorer } from "../catalog/Explorer";
@@ -76,7 +77,7 @@ export function Shell() {
   useEffect(() => {
     if (!linked) viewerA.setMirror(null), viewerB.setMirror(null);
   }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [mode, setMode] = useState<"viewer" | "boards">("viewer");
+  const [mode, setMode] = useState<"viewer" | "boards" | "jobs">("viewer");
   const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", L.inspOpen ? `${L.insp}px` : "0px"].join(" ");
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
   const rows = ["var(--h-title)", "minmax(0,1fr)", L.timelineOpen && !singlePlane ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
@@ -91,6 +92,7 @@ export function Shell() {
       <nav className={s.rail} aria-label="Workbench">
         <IconButton icon={FolderOpen} label="Explorer" size="lg" pressed={L.sideOpen} onClick={() => toggle("sideOpen")} />
         <IconButton icon={LayoutGrid} label="Boards" size="lg" pressed={mode === "boards"} onClick={() => setMode(mode === "boards" ? "viewer" : "boards")} />
+        <IconButton icon={Server} label="Jobs" size="lg" pressed={mode === "jobs"} onClick={() => setMode(mode === "jobs" ? "viewer" : "jobs")} />
       </nav>
 
       <aside className={s.side} aria-label="Explorer" hidden={!L.sideOpen}>
@@ -109,7 +111,9 @@ export function Shell() {
       </aside>
 
       <main className={s.canvas} aria-label="Viewer">
-        {mode === "boards" ? (
+        {mode === "jobs" ? (
+          <JobsView hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => { const o = r.outputs.find((x) => x.role === "psi") ?? r.outputs[0]; if (o) { cat.select(o.datasetId); setMode("viewer"); } }} />
+        ) : mode === "boards" ? (
           <BoardsView />
         ) : cat.selected ? (
           <div className={s.compare}>
@@ -140,7 +144,7 @@ export function Shell() {
         <div className={s.scroll}>
           {actDs && runFor(cat.runs, actDs.id) ? (
             <Section title="Run">
-              <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} datasets={cat.datasets} onOpen={cat.select} onCompare={(id) => { if (id !== cat.selected?.id) setCompareId(id); }} />
+              <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} job={jobFor(cat.jobs, runFor(cat.runs, actDs.id)!.run.id)} datasets={cat.datasets} onOpen={cat.select} onCompare={(id) => { if (id !== cat.selected?.id) setCompareId(id); }} />
             </Section>
           ) : null}
           <Section title="Coordinates">

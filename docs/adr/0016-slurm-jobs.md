@@ -1,0 +1,28 @@
+# ADR 0016: Slurm jobs from Vesqira
+
+- Status: accepted under delegated merge, 2026-11-04; owner review pending
+- Date: 2026-11-04
+
+## Context
+The researcher runs VGT, ROHSA and related jobs on a cluster with Slurm, then examines the outputs next to cubes on other machines. Jobs act on the researcher's own cluster account and must be reproducible and inspectable.
+
+## Decision
+- **A job is a record**: host, name, template, the exact script and its SHA-256, state, Slurm id, the job directory under the host's `~/vesqira-jobs/`, the output folder and, once imported, the Run it produced. States: draft, submitted (queued), running, completed, failed, cancelled.
+- **The script is the unit of trust.** The VGT template renders a batch script from validated settings (name, VGT folder, CPUs, memory, time, partition, account) and a `config.toml` that the script writes into the job directory, modelled on the pipeline's own `vgt.slurm`. The config starts from a file that already exists on the host (read through the host's worker, inside its roots) and only a typed, whitelisted set of keys can be changed (noise, noise mode, tile size, sigma multiplier, dn, ker, min_valid, input file, output folder); the output folder is forced inside the host's source roots so results can be opened afterwards. Every value that reaches the script is validated against a strict pattern (no spaces, quotes, `$`, backticks, `..` in paths; a fixed form for memory and time). A user may also edit the script text of a draft.
+- **What is submitted is what was reviewed.** `submit` requires the hash of the script the caller saw and refuses (409) if it differs; only drafts can be edited or submitted; a failed submission leaves a draft. The script travels on stdin and is stored in the job directory as `job.sh`; it is never part of a command line.
+- **Fixed remote commands.** `sbatch --parsable`, `squeue`, `sacct`, `scancel` and a bounded log tail are fixed templates over the host's ssh channel (login shell, since `module` lives there); their only variable parts are a validated numeric Slurm id and a generated job directory name. Answers are parsed strictly (`sbatch` must return a numeric id). Heavy computation runs only through Slurm, never on the login node; Vesqira's own remote work is the bounded plane worker.
+- **Approval.** Actions from this computer's loopback API are the owner's and need no extra approval; the exact script is shown and hash-bound. The server has no other principal today. Before any other caller (a reviewer, another user, a non-loopback client) can reach these routes they must be refused or placed behind an explicit owner approval, enforced on the server against the script hash. At most 20 jobs may be queued or running from here.
+- **State follows the scheduler.** Refresh asks `squeue` then `sacct` and maps PENDING to submitted, RUNNING to running, COMPLETED, CANCELLED* and every failure state accordingly; a job Slurm does not know yet keeps its state with a plain note rather than being called failed. The interface polls every 15 s while a job is active; cancel is `scancel` followed by a refresh.
+- **Results become Runs.** Importing a finished job reads the run folder on the host (run_metadata.toml through the worker, outputs registered in place, nothing copied), links the Run to the job both ways, and proposes the axial interpretation as the adapter's, exactly as for local runs (ADR 0014).
+
+## Alternatives
+Free-form shell from the browser (a remote-execution hole); submitting a path to a script already on the host (nothing shown or hashed); polling Slurm with a daemon on the host (more to install).
+
+## Consequences
+Only the VGT template and plain custom scripts exist; ROHSA and layer-cube jobs can be added as templates. Slurm accounting differs between sites; unknown states map to failed only when Slurm reports them.
+
+## Validation
+Unit tests: the rendered script is valid bash and carries the config verbatim; every injection attempt (names, folders, memory, time, partition, a config containing the heredoc terminator) is refused; config editing is typed and whitelisted and never duplicates or leaves a key; status parsing for all Slurm states; remote commands accept only validated ids and directories. An end-to-end Go test with stand-in ssh and Slurm and the real worker covers refusal of bad settings and configs outside the roots, hash-bound submission (wrong hash, stale hash after an edit, double submit, editing a submitted job), the host receiving exactly the reviewed script, following pending, running and completed, the log, importing the results as a Run on the host linked to the job with the adapter's proposal, cancelling, and a host that is down answering 502 without naming it and leaving the draft a draft. The browser walk-through covers the same path.
+
+## Rollback / Migration
+Drop the `jobs` table and routes; runs and datasets are unaffected.

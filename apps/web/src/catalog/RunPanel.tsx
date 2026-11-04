@@ -16,7 +16,7 @@ export function runFor(runs: Run[], datasetId: number | null): { run: Run; role:
 }
 
 /** The run a dataset came from: its parameters, code version and sibling outputs, with honest labels. */
-export function RunPanel({ run, role, datasets, onOpen, onCompare }: { run: Run; role: string; datasets: Dataset[]; onOpen: (id: number) => void; onCompare: (id: number) => void }) {
+export function RunPanel({ run, role, datasets, job, onOpen, onCompare }: { run: Run; role: string; datasets: Dataset[]; job?: { name: string; slurmId: string; state: string } | null; onOpen: (id: number) => void; onCompare: (id: number) => void }) {
   const input = run.inputHint ? datasets.find((d) => d.id === run.inputHint!.datasetId) : null;
   return (
     <div className={s.wrap}>
@@ -25,6 +25,12 @@ export function RunPanel({ run, role, datasets, onOpen, onCompare }: { run: Run;
         <dd className="mono" title={run.name}>{run.name}</dd>
         <dt>This file</dt>
         <dd>{ROLE[role] ?? role}</dd>
+        {job ? (
+          <>
+            <dt>Job</dt>
+            <dd className="mono" title="This run was produced by a Slurm job submitted from Vesqira">{job.name} · {job.slurmId} · {job.state}</dd>
+          </>
+        ) : null}
         <dt>Code</dt>
         <dd className="mono">{run.gitCommit ? run.gitCommit.slice(0, 12) + (run.dirty ? " -dirty" : "") : EM}</dd>
         <dt>Finished</dt>

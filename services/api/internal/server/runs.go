@@ -1,21 +1,131 @@
 package server
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
+	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
-// importRun reads a VGT run folder (or its run_metadata.toml), registers the output maps it finds next to the
-// metadata, links them as a Run, pairs the reliability map and proposes the axial interpretation. The proposal is
-// labelled as coming from the adapter (not the file, not the user) and the user can override it.
+// runSource abstracts where a run folder lives: this machine (inside a source root) or a remote host.
+type runSource interface {
+	Key() string                                                                  // unique per folder (host-qualified for remote ones)
+	Meta(ctx context.Context) (data []byte, dirName string, code int, msg string) // run_metadata.toml and the folder's name
+	Register(ctx context.Context, name string) (d catalog.Dataset, found bool, code int, msg string)
+}
+
+type localRun struct {
+	s    *Server
+	dir  string
+	meta string
+}
+
+func (l localRun) Key() string { return l.dir }
+func (l localRun) Meta(context.Context) ([]byte, string, int, string) {
+	info, err := os.Stat(l.meta)
+	if err != nil || info.Size() > runs.MaxMetadataBytes {
+		return nil, "", 422, "the run metadata cannot be read"
+	}
+	data, err := os.ReadFile(l.meta)
+	if err != nil {
+		return nil, "", 422, "the run metadata cannot be read"
+	}
+	return data, filepath.Base(l.dir), 0, ""
+}
+func (l localRun) Register(ctx context.Context, name string) (catalog.Dataset, bool, int, string) {
+	real, err := l.s.Roots.Resolve(filepath.Join(l.dir, name)) // outputs must sit next to the metadata, inside the roots
+	if err != nil {
+		return catalog.Dataset{}, false, 0, "" // a missing output is skipped, not invented
+	}
+	d, code, msg := l.s.registerPath(ctx, real)
+	return d, code == 0, code, msg
+}
+
+type remoteRun struct {
+	s   *Server
+	h   hosts.Host
+	dir string
+}
+
+func (r remoteRun) Key() string { return fmt.Sprintf("h%d:%s", r.h.ID, r.dir) }
+func (r remoteRun) Meta(ctx context.Context) ([]byte, string, int, string) {
+	text, code, msg := r.s.remoteText(ctx, r.h, path.Join(r.dir, "run_metadata.toml"))
+	if code != 0 {
+		return nil, "", code, msg
+	}
+	return []byte(text), path.Base(r.dir), 0, ""
+}
+func (r remoteRun) Register(ctx context.Context, name string) (catalog.Dataset, bool, int, string) {
+	d, code, msg := r.s.registerRemoteFile(ctx, r.h, path.Join(r.dir, name))
+	if code == 403 {
+		return catalog.Dataset{}, false, 0, "" // not available there: skipped
+	}
+	return d, code == 0, code, msg
+}
+
+// importFrom parses the run's metadata, registers the outputs found next to it, links them as a Run, pairs the
+// reliability map and proposes the axial interpretation as the adapter's (never the user's, never overriding theirs).
+func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, string) {
+	data, name, code, msg := src.Meta(ctx)
+	if code != 0 {
+		return runs.Run{}, code, msg
+	}
+	parsed, err := runs.ParseVGT(data, name)
+	if err != nil {
+		return runs.Run{}, 422, err.Error()
+	}
+	var outs []runs.Output
+	byRole := map[string]catalog.Dataset{}
+	for _, role := range []string{"psi", "reliability", "support", "fit_rbar2"} {
+		file, ok := parsed.OutputFiles[role]
+		if !ok {
+			continue
+		}
+		d, found, code, msg := src.Register(ctx, file)
+		if code != 0 {
+			return runs.Run{}, code, file + ": " + msg
+		}
+		if !found {
+			continue
+		}
+		byRole[role] = d
+		outs = append(outs, runs.Output{Role: role, DatasetID: d.ID, Name: d.Name})
+	}
+	if len(outs) == 0 {
+		return runs.Run{}, 422, "none of the run's output files were found next to its run_metadata.toml"
+	}
+	run, err := s.Runs.Save(src.Key(), parsed, outs)
+	if err != nil {
+		log.Printf("runs: %v", err)
+		return runs.Run{}, 500, "internal error"
+	}
+	if psi, ok := byRole["psi"]; ok {
+		cur, _ := s.Store.Get(psi.ID)
+		if cur.Interpretation == nil || cur.Interpretation.DeclaredBy != "user" {
+			var rel *int64
+			if rd, ok := byRole["reliability"]; ok && rd.HostID == psi.HostID {
+				if why, err := compat.Grids(psi.Header, rd.Header); err == nil && len(why) == 0 {
+					rel = &rd.ID
+				}
+			}
+			if err := s.Store.SetInterpretation(cur, catalog.Interpretation{Kind: "axial_orientation", Unit: "rad", ReliabilityID: rel, DeclaredBy: "vgt-run-adapter"}); err != nil {
+				log.Printf("runs: %v", err)
+			}
+		}
+	}
+	return run, 0, ""
+}
+
 func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Path string `json:"path"`
@@ -32,65 +142,10 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, err.Error())
 		return
 	}
-	info, err := os.Stat(realMeta)
-	if err != nil || info.Size() > runs.MaxMetadataBytes {
-		fail(w, 422, "the run metadata cannot be read")
+	run, code, msg := s.importFrom(r.Context(), localRun{s: s, dir: filepath.Dir(realMeta), meta: realMeta})
+	if code != 0 {
+		fail(w, code, msg)
 		return
-	}
-	data, err := os.ReadFile(realMeta)
-	if err != nil {
-		fail(w, 422, "the run metadata cannot be read")
-		return
-	}
-	dir := filepath.Dir(realMeta)
-	parsed, err := runs.ParseVGT(data, filepath.Base(dir))
-	if err != nil {
-		fail(w, 422, err.Error())
-		return
-	}
-	var outs []runs.Output
-	byRole := map[string]catalog.Dataset{}
-	for _, role := range []string{"psi", "reliability", "support", "fit_rbar2"} {
-		name, ok := parsed.OutputFiles[role]
-		if !ok {
-			continue
-		}
-		real, err := s.Roots.Resolve(filepath.Join(dir, name)) // outputs must sit next to the metadata, inside the roots
-		if err != nil {
-			continue // a missing output is skipped, not invented
-		}
-		d, code, msg := s.registerPath(r.Context(), real)
-		if code != 0 {
-			fail(w, code, name+": "+msg)
-			return
-		}
-		byRole[role] = d
-		outs = append(outs, runs.Output{Role: role, DatasetID: d.ID, Name: d.Name})
-	}
-	if len(outs) == 0 {
-		fail(w, 422, "none of the run's output files were found next to its run_metadata.toml")
-		return
-	}
-	run, err := s.Runs.Save(dir, parsed, outs)
-	if err != nil {
-		log.Printf("runs: %v", err)
-		fail(w, 500, "internal error")
-		return
-	}
-	// adapter proposal: psi is an axial angle in radians (VGT writes 0.5*atan2(U,Q)+pi/2); never overrides a user's choice
-	if psi, ok := byRole["psi"]; ok {
-		cur, _ := s.Store.Get(psi.ID)
-		if cur.Interpretation == nil || cur.Interpretation.DeclaredBy != "user" {
-			var rel *int64
-			if rd, ok := byRole["reliability"]; ok {
-				if why, err := compat.Grids(psi.Header, rd.Header); err == nil && len(why) == 0 {
-					rel = &rd.ID
-				}
-			}
-			if err := s.Store.SetInterpretation(cur, catalog.Interpretation{Kind: "axial_orientation", Unit: "rad", ReliabilityID: rel, DeclaredBy: "vgt-run-adapter"}); err != nil {
-				log.Printf("runs: %v", err)
-			}
-		}
 	}
 	writeJSON(w, 201, s.runView(run))
 }

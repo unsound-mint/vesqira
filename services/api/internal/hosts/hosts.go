@@ -312,3 +312,41 @@ func (h Host) InRoots(p string) bool {
 	}
 	return false
 }
+
+// RunShell runs one fixed command on the host through a login shell (module and Slurm tools live there) and returns
+// its output, capped. The command text is built by Vesqira from validated pieces; anything caller-supplied (a job
+// script) is passed on stdin.
+func (m *Manager) RunShell(ctx context.Context, h Host, inner string, stdin []byte, timeout time.Duration) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, m.Ssh, append(m.sshArgs(h), "bash -lc "+quote(inner))...)
+	cmd.Env = append([]string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME")}, m.env()...)
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	var out capped
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return nil, errors.New("the host did not answer in time")
+		}
+		return nil, errors.New("the command failed on the host (is the VPN up, and does ssh work for it without a prompt?)")
+	}
+	return out.b.Bytes(), nil
+}
+
+const maxShellOutput = 256 << 10
+
+// capped is a writer that keeps at most maxShellOutput bytes and drops the rest.
+type capped struct{ b bytes.Buffer }
+
+func (c *capped) Write(p []byte) (int, error) {
+	if room := maxShellOutput - c.b.Len(); room > 0 {
+		if len(p) > room {
+			c.b.Write(p[:room])
+		} else {
+			c.b.Write(p)
+		}
+	}
+	return len(p), nil
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
+	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
@@ -31,6 +32,7 @@ type Server struct {
 	Runs   *runs.Store
 	HostDB *hosts.Store // remote hosts; nil disables them
 	Remote *hosts.Manager
+	Jobs   *jobs.Store
 }
 
 func (s *Server) Handler() http.Handler {
@@ -46,6 +48,18 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/hosts/{id}/delete", s.deleteHost)
 		mux.HandleFunc("GET /api/hosts/{id}/list", s.listRemote)
 		mux.HandleFunc("POST /api/hosts/{id}/register", s.registerRemote)
+		mux.HandleFunc("GET /api/hosts/{id}/text", s.hostText)
+		if s.Jobs != nil {
+			mux.HandleFunc("GET /api/jobs", s.listJobs)
+			mux.HandleFunc("POST /api/jobs", s.createJob)
+			mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
+			mux.HandleFunc("POST /api/jobs/{id}/script", s.editJobScript)
+			mux.HandleFunc("POST /api/jobs/{id}/submit", s.submitJob)
+			mux.HandleFunc("POST /api/jobs/{id}/refresh", s.refreshJob)
+			mux.HandleFunc("POST /api/jobs/{id}/cancel", s.cancelJob)
+			mux.HandleFunc("GET /api/jobs/{id}/log", s.jobLog)
+			mux.HandleFunc("POST /api/jobs/{id}/register", s.registerJobOutputs)
+		}
 	}
 	if s.Runs != nil {
 		mux.HandleFunc("POST /api/runs/import", s.importRun)

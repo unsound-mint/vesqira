@@ -501,6 +501,18 @@ class RemoteRoots(unittest.TestCase):
         self.assertNotIn("link_out.fits", names)                         # links that leave the roots are not even listed
         self.assertNotIn("link_dir", names)
 
+    def test_readtext_reads_small_text_inside_the_roots_only(self):
+        t = self.root / "run_metadata.toml"
+        t.write_text('gitcommit = "abc"\n')
+        r = self.ask(op="readtext", path=str(t))
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["text"], 'gitcommit = "abc"\n')
+        (self.other / "x.toml").write_text("secret = 1\n")
+        self.assertEqual(self.ask(op="readtext", path=str(self.other / "x.toml"))["code"], "forbidden")
+        big = self.root / "big.txt"
+        big.write_bytes(b"x" * (300 * 1024))
+        self.assertEqual(self.ask(op="readtext", path=str(big))["code"], "unsupported")
+
     def test_planes_still_work_inside_the_roots(self):
         head, plane = Client.plane(self.c, self.root / "hi_cube.fits", 3)
         self.assertTrue(head["ok"])

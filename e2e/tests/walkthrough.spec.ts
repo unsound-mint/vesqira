@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -311,4 +312,64 @@ test("a cube on another machine is read in place and agrees with the same cube h
   // compare the cube on the other machine with the one here: same grid, so linked
   await page.getByLabel("Compare with").selectOption({ label: "remote_cube.fits" });
   await expect(page.getByText("Same grid: cursor and channel are linked")).toBeVisible();
+});
+
+test("a Slurm job: render, read, submit exactly that text, follow it, import its results as a linked run", async ({ page }) => {
+  const remoteRoot = path.resolve(here, "../.run/remote_data");
+  const state = path.resolve(here, "../.run/slurm-state/4242");
+  await page.goto("/");
+  await page.getByRole("button", { name: /^Hosts/ }).click();
+  await page.getByLabel("Host name").fill("Cluster");
+  await page.getByLabel("SSH destination").fill("login1");
+  await page.getByLabel("Python on the host").fill(readFileSync(path.resolve(here, "../.run/python"), "utf8").trim());
+  await page.getByLabel(/Source folders/).fill(remoteRoot);
+  await page.getByRole("button", { name: "Add host" }).click();
+  await expect(page.getByRole("region", { name: "Host Cluster" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Jobs", exact: true }).click();
+  await page.getByLabel("Job name").fill("vgt-ker8");
+  await page.getByLabel("VGT folder on the host").fill("/shared/home/u/vgt");
+  await page.getByLabel("Base config on the host").fill(path.join(remoteRoot, "configs", "vgt.toml"));
+  await page.getByRole("button", { name: "Load settings" }).click();
+  await expect(page.getByLabel("ker (smoothing, pixels)")).toHaveValue("4"); // the form starts from the real configuration
+  await page.getByLabel("ker (smoothing, pixels)").fill("8");
+  await page.getByLabel("noise mode").selectOption("channel");
+  await page.getByRole("button", { name: "Create draft and show the script" }).click();
+
+  // the exact script is shown, and carries the changes and an output folder inside the host's roots
+  const script = page.getByRole("textbox", { name: /Script/ });
+  await expect(script).toHaveValue(/ker = 8/);
+  await expect(script).toHaveValue(/noise_mode = "channel"/);
+  const text = await script.inputValue();
+  const outDir = /output_dir = "([^"]+)"/.exec(text)![1]!;
+  expect(outDir.startsWith(remoteRoot)).toBe(true);
+  await expect(page.getByText(/no extra approval step: the script above is what runs/)).toBeVisible();
+
+  // editing makes you save before you can submit: what is sent is what you saw
+  await script.fill(text.replace('echo "job_id', 'echo "reviewed; job_id'));
+  await expect(page.getByRole("button", { name: "Submit this script" })).toBeDisabled();
+  await page.getByRole("button", { name: "Save edits" }).click();
+  await expect(page.getByRole("button", { name: "Submit this script" })).toBeEnabled();
+  await page.getByRole("button", { name: "Submit this script" }).click();
+  await expect(page.getByText(/Slurm job 4242/)).toBeVisible();
+  await expect(page.getByRole("complementary").or(page.locator("body")).getByText("submitted").first()).toBeVisible();
+
+  // the scheduler moves it on; the status follows
+  writeFileSync(state, "RUNNING\n");
+  await page.getByRole("button", { name: "Refresh status" }).click();
+  await expect(page.locator("body")).toContainText("running");
+  await page.getByRole("button", { name: "Show log" }).click();
+  await expect(page.getByLabel("Job log")).toContainText("fake slurm log for job 4242");
+
+  // it finishes and writes its run where the config said; the results come back as a run linked to the job
+  execFileSync("python3", ["-c", "import sys, pathlib, generate; generate.write_vgt_run(pathlib.Path(sys.argv[1]))", outDir], { cwd: path.resolve(here, "../../fixtures") });
+  writeFileSync(state, "COMPLETED\n");
+  await page.getByRole("button", { name: "Refresh status" }).click();
+  await expect(page.locator("body")).toContainText("exit 0:0");
+  await page.getByRole("button", { name: "Import results as a run" }).click();
+  await expect(page.getByText("Results imported.")).toBeVisible();
+  await page.getByRole("button", { name: "Open the run" }).click();
+  const insp = inspector(page);
+  await expect(insp.getByText(/vgt-ker8 · 4242 · completed/)).toBeVisible(); // the run knows its job
+  await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
 });
