@@ -106,7 +106,7 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [ ] Capability and version endpoint (Q155).
 - [ ] Workload classes: reserved interactive capacity, queue reasons shown to the user (Q169).
 - [ ] Structured logs with correlation ids (Q158).
-- [ ] CI rule that enforces dependency boundaries (Q180).
+- [x] Dependency boundaries enforced by tests: a layering table for the Go packages and the reviewer-reachable set (`internal/arch`), and the reviewer page's imports in the web app (`boundaries.test.ts`) (Q180).
 - [ ] Command registry with undo for board and review edits (Q175).
 - [ ] Figures stored as a re-renderable specification, with SVG export; board layout grid with snap and resize (Q186, Q187, Q10–Q13).
 - [ ] Map every case of the scientific acceptance pack to a test id once the pack is available (35 cases).
