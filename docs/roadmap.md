@@ -65,7 +65,7 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 - [ ] Interpretation tiers: add `verified` and `inferred` with a mapping version (Q211).
 - [ ] Dataset identity independent of the path: several locations per dataset, content fingerprint, "newer result available" notice (Q83, Q84, Q136).
 - [ ] WCS and unit corrections as a layer with history, never an edit of the original (Q143).
-- [ ] Explorer: sortable table, filter by run parameters with ranges and units, one search box (Q19–Q21, Q163).
+- [x] Filter boxes in the explorer: datasets by name, unit, host or nature; runs by parameters (key=value, <, >, <=, >=), QC and text (Q19–Q21, Q163). A sortable table is still to do.
 - [ ] Delete and archive with an impact preview (Q145).
 - [ ] Virtual subsets (a definition, not only a materialized cutout) (Q141).
 - [ ] Generic import: scan a folder, review the proposed mapping, save the rules (Q17, Q82).
