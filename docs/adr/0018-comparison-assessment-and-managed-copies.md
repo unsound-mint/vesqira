@@ -23,3 +23,7 @@ Worker and analysis tests (modulo-180 difference, NaN stays NaN, unit conversion
 
 ## Rollback / Migration
 Drop the `dataset_nature` and `run_review` tables and the new routes.
+
+## Amendment: raw header cards
+
+`GET /api/datasets/{id}/header-cards` returns the primary header as the file states it, one 80-column card per entry (the card's own image, control characters replaced, at most 3000 cards), read by the worker inside the source roots. `?format=text` serves it as `<name>.header.txt`. The dataset inspector shows it under "Raw header cards", loaded when opened. Nothing in it is interpreted; the readouts elsewhere remain declared or unresolved.

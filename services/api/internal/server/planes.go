@@ -4,10 +4,12 @@ import (
 	"container/list"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
@@ -184,6 +186,48 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(rep.Head)
+}
+
+// headerCards serves the file's own header text, one card per line, for reading in the app or saving as a text file.
+// Nothing in it is interpreted; the viewer's readouts are derived elsewhere and labelled as declared or inferred.
+func (s *Server) headerCards(w http.ResponseWriter, r *http.Request) {
+	d, real, k, ok := s.source(w, r)
+	if !ok {
+		return
+	}
+	k.op, k.channel = "cards", -1
+	rep, ok := s.ask(w, r, k, map[string]any{"op": "cards", "path": real})
+	if !ok {
+		return
+	}
+	if r.URL.Query().Get("format") != "text" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(rep.Head)
+		return
+	}
+	var h struct {
+		Cards     []string `json:"cards"`
+		Truncated bool     `json:"truncated"`
+	}
+	if json.Unmarshal(rep.Head, &h) != nil {
+		fail(w, 502, "the worker returned an unreadable header")
+		return
+	}
+	name := strings.Map(func(r rune) rune {
+		if r < 128 && (r == '-' || r == '_' || r == '.' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+			return r
+		}
+		return '_'
+	}, d.Name)
+	body := strings.Join(h.Cards, "\n") + "\n"
+	if h.Truncated {
+		body += "# truncated: only the first cards are listed\n"
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.header.txt"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write([]byte(body))
 }
 
 // writeFrame sends a binary frame: uint32 little-endian header length, the JSON header, then the payload

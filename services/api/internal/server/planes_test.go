@@ -230,6 +230,17 @@ func TestPlaneViewerEndToEndWithRealWorker(t *testing.T) {
 		t.Fatalf("view: %s", vb)
 	}
 
+	// the raw header, as the file states it, to read or to save
+	if r, cb := get(t, api+"/header-cards"); r.StatusCode != 200 || !strings.Contains(string(cb), `"CTYPE3  = 'VRAD`) || strings.Contains(string(cb), root) {
+		t.Errorf("header cards: %d %s", r.StatusCode, cb)
+	}
+	if r, tb := get(t, api+"/header-cards?format=text"); r.StatusCode != 200 || !strings.HasPrefix(string(tb), "SIMPLE  =") || !strings.Contains(r.Header.Get("Content-Disposition"), "hi_cube.fits.header.txt") {
+		t.Errorf("header text: %d %v %.60s", r.StatusCode, r.Header, tb)
+	}
+	if r, _ := get(t, ts.URL+"/api/datasets/999999/header-cards"); r.StatusCode != 404 {
+		t.Errorf("header of an unknown dataset: %d", r.StatusCode)
+	}
+
 	resp, body := get(t, api+"/plane?channel=40")
 	if resp.StatusCode != 200 {
 		t.Fatalf("plane: %d %s", resp.StatusCode, body)

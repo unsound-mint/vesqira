@@ -107,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/snapshots/{id}/comments", s.ownerReply)
 		mux.HandleFunc("POST /api/comments/{id}/resolve", s.resolveComment)
 	}
+	mux.HandleFunc("GET /api/datasets/{id}/header-cards", s.headerCards)
 	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
 	mux.HandleFunc("GET /api/datasets/{id}/plane", s.plane)
 	mux.HandleFunc("GET /api/datasets/{id}/coord", s.coord)

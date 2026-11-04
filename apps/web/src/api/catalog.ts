@@ -49,6 +49,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const listDatasets = () => call<{ datasets: Dataset[] }>("/api/datasets").then((r) => r.datasets);
+export const headerCards = (id: number) => call<{ cards: string[]; truncated: boolean }>(`/api/datasets/${id}/header-cards`);
 export const listRoots = () => call<{ roots: string[] }>("/api/roots").then((r) => r.roots);
 export const registerDataset = (path: string) =>
   call<Dataset>("/api/datasets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });

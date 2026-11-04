@@ -1,6 +1,7 @@
 import type { Dataset } from "../api/catalog";
 import { bytes, show } from "./format";
 import { beamText, pixelScale } from "./resolution";
+import { HeaderCards } from "./HeaderCards";
 import s from "./DatasetInspector.module.css";
 
 /** What the file header declares, in native FITS axis order. Nothing here is verified. */
@@ -51,6 +52,7 @@ export function DatasetInspector({ d }: { d: Dataset }) {
         </tbody>
       </table>
       </div>
+      <HeaderCards id={d.id} />
       <p className={s.note}>Pixel scale (sampling) and beam (resolution) are different things. Declared by the file, not verified. Unresolved means the header does not say; Vesqira does not guess.</p>
     </div>
   );

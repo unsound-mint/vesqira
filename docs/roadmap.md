@@ -45,7 +45,7 @@ Shipped: v0.1 workflow (register, view, compare, figures, boards, reviewer link)
 - [ ] Exploration history and "continue from here" (Q96–Q98).
 - [ ] Linked views can be grouped and unlinked by the user; linking through a validated transformation (Q174).
 - [ ] Keyboard pixel cursor and a table alternative for plots (Q176).
-- [ ] Raw FITS header cards viewable and exportable (Q211).
+- [x] Raw FITS header cards viewable and exportable (Q211).
 
 ## Stage 4 — Runs, parameters and reproducibility
 

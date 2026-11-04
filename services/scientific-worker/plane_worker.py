@@ -530,8 +530,35 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
     raise Refused("bad_request", "bad request")
 
 
+MAX_CARDS = 3000
+
+
+def header_cards(path: str) -> dict:
+    """The primary header exactly as the file states it, one 80-column card per entry, for reading and export.
+
+    Nothing is interpreted: this is the file's own text (control characters replaced, count bounded)."""
+    from fits_header import SAFE, read_header
+    h = read_header(path)
+    cards, truncated = [], False
+    for i, card in enumerate(h.cards):
+        if i >= MAX_CARDS:
+            truncated = True
+            break
+        try:
+            text = card.image
+        except Exception:
+            text = f"{card.keyword} = <unreadable card>"
+        cards.append(SAFE.sub("?", text)[:80].rstrip())
+    return {"ok": True, "op": "cards", "nbytes": 0, "cards": cards, "truncated": truncated}
+
+
 def handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
+    if op == "cards":
+        if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+            raise Refused("bad_request", "bad request")
+        authorize(path)
+        return header_cards(path), b""
     if op in ("ping", "list", "resolve", "stat", "header", "readtext"):
         return host_op(op, req)
     if op in ("view", "plane", "coord", "spectrum", "axial"):

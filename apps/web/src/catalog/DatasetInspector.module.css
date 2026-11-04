@@ -63,3 +63,20 @@
   color: var(--text-2);
   font-size: var(--text-xs);
 }
+
+.cards {
+  max-height: 14rem;
+  margin: var(--sp-1) 0;
+  padding: var(--sp-2);
+  overflow: auto;
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+}
+
+.save {
+  color: var(--accent);
+  font-size: var(--text-sm);
+}

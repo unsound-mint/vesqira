@@ -63,3 +63,21 @@ describe("Explorer", () => {
     expect(screen.getByRole("button", { name: /a\.fits/ })).toHaveAttribute("aria-current", "true");
   });
 });
+
+describe("raw header cards", () => {
+  it("loads the file's own header text when opened and offers it as a text file", async () => {
+    const { HeaderCards } = await import("./HeaderCards");
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      calls.push(url);
+      return new Response(JSON.stringify({ cards: ["SIMPLE  =                    T", "CTYPE3  = 'VRAD    '"], truncated: false }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    render(<HeaderCards id={4} />);
+    expect(calls).toEqual([]); // nothing is fetched until it is opened
+    await userEvent.click(screen.getByText("Raw header cards"));
+    expect((await screen.findByLabelText("FITS header cards")).textContent).toContain("CTYPE3  = 'VRAD    '");
+    expect(calls).toEqual(["/api/datasets/4/header-cards"]);
+    expect(screen.getByRole("link", { name: "Save as text" })).toHaveAttribute("href", "/api/datasets/4/header-cards?format=text");
+    vi.unstubAllGlobals();
+  });
+});

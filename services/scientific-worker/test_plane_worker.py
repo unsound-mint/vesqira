@@ -500,11 +500,18 @@ class RemoteRoots(unittest.TestCase):
         self.assertEqual(st["size"], (self.root / "hi_cube.fits").stat().st_size)
         self.assertEqual(self.ask(op="resolve", path=str(self.root / "link_in.fits"))["real"], p)   # a link inside resolves
 
+    def test_raw_header_cards_are_the_files_own_text_and_stay_inside_the_roots(self):
+        r = self.ask(op="cards", path=str(self.root / "hi_cube.fits"))
+        self.assertTrue(r["ok"] and not r["truncated"])
+        self.assertEqual(r["cards"][0][:30], "SIMPLE  =                    T")
+        self.assertTrue(all(len(c) <= 80 for c in r["cards"]))
+        self.assertTrue(any(c.startswith("CTYPE3") and "VRAD" in c for c in r["cards"]))
+
     def test_everything_outside_the_roots_is_the_same_refusal(self):
         outside = [str(self.other / "secret.fits"), str(self.root / "link_out.fits"), str(self.root / ".." / "other" / "secret.fits"),
                    str(self.root / "link_dir" / "secret.fits"), "/etc/passwd", str(self.other), "/nonexistent/x.fits"]
         replies = []
-        for op in ("header", "stat", "resolve", "view", "list"):
+        for op in ("header", "stat", "resolve", "view", "list", "cards"):
             for p in outside:
                 r = self.ask(op=op, path=p)
                 self.assertFalse(r["ok"], (op, p))
