@@ -32,13 +32,24 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [ ] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39). ADR 0029 (accepted): owner-only, off by default, the editor first.
 - [ ] Optional VPN companion (gpclient): a per-host connect command run through polkit, ADR 0029 (accepted); built after the editor and terminal.
 
+## Stage W — Projects as folders (owner direction, 2026-11-05)
+
+See `docs/product/shape.md` section 3. Screens need the projects mock approved first.
+
+- [ ] Open a folder on this computer or on a host as a project; recent projects; `.vesqira/project.toml` proposed, written only after confirmation, never committed.
+- [ ] Discovery by good practices (run records, data layouts, self-describing formats, configs, job scripts), runs found before the maps they own, deduplicated by real path, rescanned on open and when the window returns; files of other disciplines listed without a viewer.
+- [ ] "Needs your input": unknown units, interpretations, where the repo is on each host; answers stored as declared by the researcher; "leave unknown" is an answer.
+- [ ] Project health checklist and run records written by every run Vesqira starts.
+- [ ] Path fields with zsh-like completion (local and on hosts) and the desktop file chooser (xdg-desktop-portal), with GVFS sftp mounts mapped to hosts.
+- [ ] `/api/runs` input hints computed from one catalog read instead of one per run (148 runs, 1 350 files is the target scale); a bench case at that scale.
+
 ## Stage 0 — Install and launch
 
 - [x] Server serves the web app; Fedora RPM with launcher, desktop entry, icon and metadata (ADR 0021).
 - [x] Release workflow: build the RPM in a Fedora container on a tag, run the install smoke test, attach it to the release.
 - [ ] Source RPM built in the build root, and a COPR repository so `dnf copr enable` works.
 - [ ] Flatpak (needs flatpak-builder and a decision on ssh and agent access from the sandbox).
-- [ ] Manage readable folders inside the app instead of `vesqira add-root`.
+- [ ] Manage readable folders inside the app instead of `vesqira add-root` (covered by Stage W: opening a project folder makes it readable).
 
 ## Stage 1 — Safety and honesty of what is stored
 
