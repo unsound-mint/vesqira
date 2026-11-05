@@ -1,6 +1,6 @@
 # ADR 0028: People and access
 
-Status: **proposed**. Needs the owner's decision before any code (it changes the security boundary).
+Status: **accepted: option B** (owner decision, 2026-11-05). No code before a design ADR for B: identity provider, password or OIDC, key custody for per-user ssh, the PostgreSQL move, and an actor and permission check on every route. Until that lands the app stays single-owner on loopback.
 
 ## Context
 Today there is one principal, the owner, on a loopback address. Others reach the app only through a review link: read-only, revocable, no data, no paths, no credentials. The requirements ask for colleagues and a supervisor to take part (comment, request runs, see results per cluster) without ever being given the owner's cluster access (AGENTS.md: SSH credentials are user-scoped and never shared).
@@ -19,10 +19,10 @@ Accounts (OIDC or passwords), roles per project and per cluster, PostgreSQL, TLS
 
 **C. Accounts for review only.** Named, authenticated reviewers (email magic link) but still no shared compute. Fixes "comments are anonymous" without running a server of your own: it needs a small hosted identity step, which is an external service.
 
-## Recommendation
+## Recommendation (not taken)
 Do A now (run requests, queue, approval by reading the script). Treat C as the answer to authenticated comments only if a supervisor needs it. Defer B until a group actually wants a shared deployment; write its own ADR then.
 
-## What A would add (if approved)
+## What A would have added (kept for reference; the owner chose B)
 - `POST /review-api/{token}/requests` (reviewer): a template name, bounded typed parameters, a note; rate- and size-limited like comments.
 - `GET /api/requests`, `POST /api/requests/{id}/draft` (owner): turns a request into an ordinary draft job on a chosen host, to be read and submitted as today; `POST /api/requests/{id}/decline`.
 - A requests list in the board screen and an audit entry for each decision. Reviewers see the state (open, drafted, declined) and the owner's note, never the script, host or paths.

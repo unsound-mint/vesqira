@@ -21,7 +21,7 @@ Do first: it makes the viewer claims measurable and unblocks scrubbing on large 
 
 ## Stage L — The integrated loop (owner direction, 2026-11-05)
 
-One workspace: inspect, change parameters, run on HPC, add to a board with the supervisor, discuss, remember. New screens need an approved mock first.
+One workspace: inspect, change parameters, run on HPC, add to a board with the supervisor, discuss, remember. The integrated-loop mock (run page, live board panel, change-and-run, what differs) was approved on 2026-11-05; other new screens still need an approved mock.
 
 - [x] Typed run metrics with unit, uncertainty and its kind, sample count and definition, shown on the run, in the reviewer's run line and beside each other in the comparison inspector (ADR 0014 amendment). The run filter box tests results (`am>0.3`). Plotting a metric against a parameter still to do.
 - [ ] "What differs" strip for two runs or panels (Q87, Q132).
@@ -29,8 +29,8 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [ ] A board panel that follows a run still running and pins its result when it finishes.
 - [ ] Change parameters from the cube view and run in one click (pulls shape.md slice 2 forward).
 - [ ] Parameter grid board from a sweep.
-- [ ] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39). Design in ADR 0029 (proposed): owner-only, off by default, the editor first.
-- [ ] Optional VPN companion (gpclient): a per-host connect command run through polkit, ADR 0029 (proposed); needs the owner's decision first.
+- [ ] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39). ADR 0029 (accepted): owner-only, off by default, the editor first.
+- [ ] Optional VPN companion (gpclient): a per-host connect command run through polkit, ADR 0029 (accepted); built after the editor and terminal.
 
 ## Stage 0 — Install and launch
 
@@ -113,6 +113,8 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [ ] Map every case of the scientific acceptance pack to a test id once the pack is available (35 cases).
 
 ## Stage 7 — People and access (design first)
+
+The owner chose a shared multi-user server (ADR 0028 option B). Its design ADR comes before any code.
 
 Needs an ADR before code: it changes the security boundary.
 

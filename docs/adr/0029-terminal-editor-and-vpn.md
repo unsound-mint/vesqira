@@ -1,6 +1,6 @@
 # ADR 0029: Terminal, editor and VPN inside the app
 
-Status: **proposed**. Needs the owner's decision before any code (it adds a way to run commands from a browser page, and a privileged action).
+Status: **accepted** (owner decision, 2026-11-05): owner-only, off by default; built in the order editor, terminal, VPN.
 
 ## Context
 The owner wants a researcher never to leave the app: edit a pipeline config or Julia file, run a command, bring the cluster VPN up. The interview decided an integrated editor with external IDE hand-off (Q39) and named Monaco and xterm.js for the desktop shell (Q148); an integrated terminal appears in the workspace panels (Q9). No VPN client appears anywhere in the interview; the host form today tells the user to bring the VPN up themselves (for example `gpclient`).
