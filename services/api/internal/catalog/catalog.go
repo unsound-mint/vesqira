@@ -304,3 +304,27 @@ func (s *Store) FactsByPath(hostID int64) (map[string]PathFacts, error) {
 	}
 	return out, rows.Err()
 }
+
+// ProposedInterpretations returns the interpretations someone other than the user declared (a run import's proposal),
+// by dataset id. Until the user confirms one it stays labelled with its author.
+func (s *Store) ProposedInterpretations() (map[int64]Interpretation, error) {
+	rows, err := s.db.Query(`SELECT dataset_id,kind,unit,reliability_id,declared_by FROM interpretations WHERE declared_by<>'user'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]Interpretation{}
+	for rows.Next() {
+		var id int64
+		var in Interpretation
+		var rel sql.NullInt64
+		if err := rows.Scan(&id, &in.Kind, &in.Unit, &rel, &in.DeclaredBy); err != nil {
+			return nil, err
+		}
+		if rel.Valid {
+			in.ReliabilityID = &rel.Int64
+		}
+		out[id] = in
+	}
+	return out, rows.Err()
+}

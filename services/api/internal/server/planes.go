@@ -93,7 +93,7 @@ func (s *Server) authorize(d catalog.Dataset) (real string, k cacheKey, status i
 	if d.HostID != 0 {
 		return s.authorizeRemote(d)
 	}
-	real, err := s.Roots.Resolve(d.Path)
+	real, err := s.roots().Resolve(d.Path)
 	if err != nil {
 		return "", k, 403, err.Error()
 	}

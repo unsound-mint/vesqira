@@ -227,6 +227,24 @@ func (s *Store) ByFormat(id int64, format string) ([]Row, error) {
 	return out, rows.Err()
 }
 
+// Files lists every entry that is a file or a run (not a folder), for comparing a new scan with the last one.
+func (s *Store) Files(id int64) ([]Row, error) {
+	rows, err := s.db.Query(`SELECT `+rowCols+` FROM project_entries WHERE project_id=? AND kind<>'dir'`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Row
+	for rows.Next() {
+		r, err := scanRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // RunRows lists every run entry of the project (not its outputs).
 func (s *Store) RunRows(id int64) ([]Row, error) {
 	rows, err := s.db.Query(`SELECT `+rowCols+` FROM project_entries WHERE project_id=? AND kind='run' ORDER BY path`, id)
