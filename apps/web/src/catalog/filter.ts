@@ -1,8 +1,12 @@
 import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
 
-/** Splits a query into words; every word must match (so more words narrow the list). */
-const words = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean);
+import { tokenize, unquote } from "../ui/queryWords";
+
+export { tokenize, unquote };
+
+/** Splits a query into words (`unit:"km / s"` is one word, quotes stripped); every word must match, so more words narrow the list. */
+const words = (q: string) => tokenize(q).map((w) => unquote(w).toLowerCase());
 
 /**
  * A dataset matches when every word is found in its name, host, brightness unit or declared nature. `unit:K`, `host:name`

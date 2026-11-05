@@ -4,8 +4,8 @@ import type { Vocabulary, VocabKey } from "../ui/FilterBox";
 
 const TOP = 20;
 
-/** A value the filter can carry as one word: words are split on whitespace, so a value with a space is left to free text. */
-const wordy = (v: string) => v.trim() !== "" && !/\s/.test(v) && !/[<>=]/.test(v);
+/** A value the filter can carry: one with a space is written in quotes; one with an operator or a quote cannot be written. */
+const wordy = (v: string) => v.trim() !== "" && !/[<>="]/.test(v);
 
 type Tally = Map<string, number>;
 const bump = (t: Tally, v: string) => t.set(v, (t.get(v) ?? 0) + 1);
@@ -46,7 +46,7 @@ const rank = (a: VocabKey, b: VocabKey) => Number(a.same) - Number(b.same) || b.
 /**
  * What can be asked of a list of runs, from what actually occurs: parameter keys and values, declared result keys with
  * their recorded values only (an unrecorded result is not a value and is never offered), and the QC states in use
- * ("not assessed" is the absence of an assessment, so it is not offered). A parameter hides a result of the same name,
+ * (including "not assessed", the explicit default state, so runs nobody has assessed can be found). A parameter hides a result of the same name,
  * as the matcher tests the parameter first.
  */
 export function runVocabulary(runs: Run[]): Vocabulary {
@@ -55,7 +55,7 @@ export function runVocabulary(runs: Run[]): Vocabulary {
   const qc: Tally = new Map();
   for (const r of runs) {
     for (const p of r.params) if (wordy(p.value)) settings.add(p.key, p.value);
-    if (r.review.qc !== "not_assessed") bump(qc, r.review.qc);
+    bump(qc, r.review.qc);
   }
   for (const r of runs) {
     for (const m of r.metrics) {
@@ -67,7 +67,7 @@ export function runVocabulary(runs: Run[]): Vocabulary {
     ...settings.entries().map((e) => build(e.key.toLowerCase(), "setting", e.tally, runs.length)),
     ...results.entries().map((e) => build(e.key.toLowerCase(), "result", e.tally, runs.length)),
   ];
-  if (qc.size > 0) keys.push(build("qc", "qc", qc, runs.length, { sep: ":" }));
+  if (qc.size > 0) keys.push(build("qc", "qc", qc, runs.length, { sep: ":", labels: { not_assessed: "not assessed" } }));
   return { keys: keys.sort(rank), names: runs.map((r) => r.name) };
 }
 
