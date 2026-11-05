@@ -41,7 +41,7 @@ See `docs/product/shape.md` section 3. Projects mock approved by the owner on 20
 - [~] "Needs your input": unknown units, interpretations, where the repo is on each host; answers stored as declared by the researcher; "leave unknown" is an answer. Backend done (`/api/projects/{id}/needs` and `/answers`); a declared unit for a FITS file without BUNIT is recorded in the catalog and project.toml but not applied to the dataset (no dataset-level unit declaration exists yet); the screens are not built.
 - [~] Project health checklist and run records written by every run Vesqira starts. The checklist is computed and returned by the summary route; run records for runs Vesqira starts are not done.
 - [x] Path fields with zsh-like completion (local and on hosts) and the desktop file chooser, with GVFS sftp mounts mapped to hosts (ADR 0031). Built: names-only completion, Browse through zenity or kdialog. Not yet: xdg-desktop-portal (needed for Flatpak), an "add this host" form prefilled from a GVFS mount.
-- [ ] Interactive filters: the run and dataset filter boxes complete keys, operators and values that occur, and show conditions as chips.
+- [x] Interactive filters: the run and dataset filter boxes complete keys, operators and values that occur and show conditions as chips (`ui/FilterBox`, vocabularies from the loaded items; same query string as before).
 - [x] `/api/runs` input hints computed from one catalog read instead of one per run (148 runs, 1 350 files is the target scale); a bench case at that scale. Done: `catalog.HintIndex`, and a server test at 150 runs and 1 500 datasets that asserts one read.
 
 ## Stage R — Reports for the supervisor (owner direction, 2026-11-10)

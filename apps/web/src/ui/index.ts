@@ -1,5 +1,7 @@
 export { Button, IconButton } from "./Button";
 export { Checkbox, Switch, Select, Input, Slider } from "./Controls";
+export { FilterBox } from "./FilterBox";
+export type { Vocabulary, VocabKey } from "./FilterBox";
 export { Icon } from "./Icon";
 // Modal is not exported here on purpose: this file is imported by every screen, and Modal brings React Aria with it.
 // Import "../ui/Modal" from code that is itself loaded on demand.
