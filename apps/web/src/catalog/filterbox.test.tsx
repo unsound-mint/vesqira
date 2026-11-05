@@ -84,8 +84,8 @@ describe("FilterBox on runs", () => {
     expect(options().map((o) => o.replace(/\s/g, ""))).toEqual(["ker=", "ker<", "ker>", "ker≤", "ker≥"]);
     expect(screen.getByRole("listbox").textContent).toContain("4 … 16, 3 values");
     await u.keyboard("{Enter}"); // takes "ker ="
-    expect(options().map((o) => o.replace(/\s/g, ""))).toEqual(["41runs", "82runs", "161runs"]);
-    await u.keyboard("{ArrowDown}{ArrowDown}{Enter}"); // 8
+    expect(options().map((o) => o.replace(/\s/g, ""))).toEqual(["41run", "82runs", "161run"]);
+    await u.keyboard("{ArrowDown}{Enter}"); // the first value is highlighted; one down is 8
     expect(screen.getByRole("button", { name: "Remove filter ker = 8" })).toBeTruthy();
     expect(names()).toEqual(["lmc_2", "lmc_3"]);
     expect(screen.getByRole("status").textContent).toBe("2 of 4 runs match");
@@ -123,7 +123,7 @@ describe("FilterBox on runs", () => {
     render(<Runs />);
     const box = screen.getByRole("combobox", { name: "Filter runs" });
     await u.type(box, "am=");
-    expect(options().map((o) => o.replace(/\s+/g, " "))).toEqual(["0.31 runs"]);
+    expect(options().map((o) => o.replace(/\s+/g, " "))).toEqual(["0.31 run"]);
     await u.clear(box);
     await u.type(box, "am=0{Enter}");
     expect(names()).toEqual([]); // the run with a null result is not a run with am=0
