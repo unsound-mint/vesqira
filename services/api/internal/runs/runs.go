@@ -151,6 +151,10 @@ func params(m map[string]any, source string) []Param {
 	return out
 }
 
+// Settings keeps the scalar entries of any decoded run record that do not name a place on a machine: the rule run
+// import applies, shared so that discovery shows the same settings an import would keep.
+func Settings(m map[string]any, source string) []Param { return params(m, source) }
+
 // ParseVGT reads the VGT pipeline's run_metadata.toml. Output paths in the file are relative to the machine the run
 // happened on, so only their file names are kept and the caller looks for them next to the metadata.
 func ParseVGT(data []byte, dirName string) (Parsed, error) {
@@ -228,6 +232,16 @@ func nonNil(m []Metric) []Metric {
 		return []Metric{}
 	}
 	return m
+}
+
+// IDByDir is the id of the run imported from dir (the canonical folder, host-qualified for a remote one), or 0.
+func (s *Store) IDByDir(dir string) (int64, error) {
+	var id int64
+	err := s.db.QueryRow(`SELECT id FROM runs WHERE dir=?`, dir).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return id, err
 }
 
 // Save records a run (or refreshes it when the same directory is imported again) with its linked outputs.
