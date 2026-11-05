@@ -1,7 +1,9 @@
 name: e2e
-# The browser walk-through is slower than the checks job, so it runs on main and on demand, not on every pull request.
-# Run `make e2e` locally before merging.
+# The browser walk-through runs on every pull request that touches the app, so a change that breaks it cannot merge
+# unnoticed (it once stayed red on main for four merges when it ran only after merging).
 on:
+  pull_request:
+    paths: ['apps/**', 'services/**', 'fixtures/**', 'e2e/**', 'design/**', '.github/workflows/e2e.yml']
   push:
     branches: [main]
     paths: ['apps/**', 'services/**', 'fixtures/**', 'e2e/**', 'design/**', '.github/workflows/e2e.yml']

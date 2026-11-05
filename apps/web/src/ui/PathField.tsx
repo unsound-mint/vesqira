@@ -218,7 +218,7 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
   const showList = open && entries.length > 0;
   return (
     <div className={`${c.field} ${s.wrap}`}>
-      <label htmlFor={id} className={c.label}>{label}</label>
+      <label htmlFor={id} id={`${id}-label`} className={c.label}>{label}</label>
       <div className={s.row}>
         <input
           id={id}
@@ -239,12 +239,12 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
           onBlur={() => setOpen(false)}
         />
         {browse ? (
-          <Button type="button" icon={FolderOpen} disabled={disabled || busy || needsHost} title={needsHost ? "Choose a host first" : undefined} onClick={() => void choose()} aria-label={`Browse… ${label}`}>
+          <Button type="button" icon={FolderOpen} disabled={disabled || busy || needsHost} title={needsHost ? "Choose a host first" : undefined} onClick={() => void choose()} aria-describedby={`${id}-label`}>
             Browse…
           </Button>
         ) : null}
       </div>
-      <ul id={listId} role="listbox" aria-label={`${label}: matching names`} className={s.list} hidden={!showList}>
+      <ul id={listId} role="listbox" aria-label="Matching names" className={s.list} hidden={!showList}>
         {entries.map((e, i) => (
           <li
             key={e.path}
