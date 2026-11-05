@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Database } from "lucide-react";
 import type { Dataset, Problem } from "../api/catalog";
-import { Button, Input, PathField, TreeRow } from "../ui";
+import { Button, FilterBox, PathField, TreeRow } from "../ui";
 import { bytes } from "./format";
 import { matchDataset } from "./filter";
+import { datasetVocabulary } from "./vocabulary";
 import { previewFile } from "../api/catalog";
 import type { Preview } from "../api/catalog";
 import s from "./Explorer.module.css";
@@ -30,6 +31,7 @@ export function Explorer({ hosts = [], datasets, selectedId, problems = {}, load
   const [preview, setPreview] = useState<Preview | null>(null);
   const [q, setQ] = useState("");
   const shown = datasets.filter((d) => matchDataset(d, q, hosts.find((h) => h.id === d.hostId)?.name));
+  const vocabulary = useMemo(() => datasetVocabulary(datasets, hosts), [datasets, hosts]);
 
   async function doPreview() {
     try {
@@ -69,7 +71,7 @@ export function Explorer({ hosts = [], datasets, selectedId, problems = {}, load
       {error ? <p role="alert" className={s.err}>{error}</p> : null}
       {loading ? <p className={s.note}>Loading datasets…</p> : null}
       {!loading && !error && datasets.length === 0 ? <p className={s.note}>No datasets yet. Files are referenced where they are; nothing is copied.</p> : null}
-      {datasets.length > 5 ? <Input label="Filter datasets" placeholder="name, unit, host or nature" value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false} /> : null}
+      {datasets.length > 5 ? <FilterBox label="Filter datasets" placeholder="Filter datasets" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={datasets.length} noun="datasets" /> : null}
       {datasets.length > 0 && shown.length === 0 ? <p className={s.note}>No dataset matches.</p> : null}
       <div role="list" aria-label="Datasets">
         {shown.map((d) => (

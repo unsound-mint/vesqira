@@ -1,5 +1,7 @@
 export { Button, IconButton } from "./Button";
 export { Checkbox, Switch, Select, Input, Slider } from "./Controls";
+export { FilterBox } from "./FilterBox";
+export type { Vocabulary, VocabKey } from "./FilterBox";
 export { Icon } from "./Icon";
 export { PathField } from "./PathField";
 export { Pill } from "./Pill";
