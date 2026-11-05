@@ -14,7 +14,7 @@ import { Button, Pill, Section } from "../ui";
 import s from "./RunPage.module.css";
 
 /** A run as a page of blocks: its result, the numbers it declared, how it was set up, your assessment, and its log. */
-export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer }: {
+export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer, onRunAgain }: {
   run: Run;
   runs: Run[];
   datasets: Dataset[];
@@ -24,6 +24,8 @@ export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInV
   onOpenInViewer: (datasetId: number) => void;
   /** Opens the viewer with two maps side by side. */
   onCompareInViewer?: (a: number, b: number) => void;
+  /** Opens the draft form that repeats this run with changes. */
+  onRunAgain?: (id: number) => void;
 }) {
   const first = run.outputs.find((o) => o.role === "psi") ?? run.outputs[0] ?? null;
   const [shown, setShown] = useState<number | null>(first?.datasetId ?? null);
@@ -58,6 +60,7 @@ export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInV
             )
           ) : null}
           {run.dirty ? <Pill tone="warn">code has uncommitted changes</Pill> : null}
+          {run.kind === "vgt" && onRunAgain ? <Button type="button" onClick={() => onRunAgain(run.id)}>Run again with…</Button> : null}
         </header>
 
         <Section title={`Result${output ? ` · ${ROLE[output.role] ?? output.role}` : ""}`} meta={output && output === first ? "default" : undefined}>

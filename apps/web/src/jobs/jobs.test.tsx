@@ -6,7 +6,7 @@ import type { Host } from "../api/hosts";
 import { JobsView, jobFor } from "./JobsView";
 
 const host: Host = { id: 1, name: "Cluster", dest: "login1", python: "python3", roots: ["/data"], createdAt: "" };
-const draft: Job = { id: 7, hostId: 1, name: "vgt-ker8", template: "vgt", script: "#!/bin/bash -l\n#SBATCH --cpus-per-task=8\n", scriptHash: "a".repeat(64), state: "draft", detail: "", slurmId: "", workDir: "job-0123456789abcdef", outputDir: "/data/vesqira_runs/x", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: null };
+const draft: Job = { id: 7, hostId: 1, name: "vgt-ker8", template: "vgt", script: "#!/bin/bash -l\n#SBATCH --cpus-per-task=8\n", scriptHash: "a".repeat(64), state: "draft", detail: "", slurmId: "", workDir: "job-0123456789abcdef", outputDir: "/data/vesqira_runs/x", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: null, note: "" };
 
 function mockFetch(jobs: Job[]) {
   const calls: { url: string; init?: RequestInit }[] = [];

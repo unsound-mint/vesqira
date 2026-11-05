@@ -20,6 +20,8 @@ export type Job = {
   finishedAt: string | null;
   runId: number | null;
   parentRunId: number | null;
+  /** Why the owner made this job, or an empty string. */
+  note: string;
 };
 
 export type RohsaJobRequest = {
@@ -33,6 +35,8 @@ export type VgtJobRequest = {
   hostId: number;
   template: "vgt";
   name: string;
+  /** Why, kept with the job (at most 500 characters). */
+  note?: string;
   /** The run this draft repeats with changes. */
   parentRunId?: number;
   /** With configText the host's file is not read again: a rerun passes the config text the parent started from. */

@@ -1,0 +1,162 @@
+.root {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: var(--sp-4);
+  box-sizing: border-box;
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+.trail {
+  min-width: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--w-strong);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.fields legend {
+  padding: 0 var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.setting {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: var(--sp-1);
+  border-left: 3px solid transparent;
+}
+
+/* a changed setting is marked by the bar, the tint and the "changed · was" text, never by colour alone */
+.changed {
+  border-left-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.was {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.facts dt {
+  color: var(--text-2);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.src {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.label {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.area {
+  width: 100%;
+  min-width: 0;
+  padding: var(--sp-2);
+  box-sizing: border-box;
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.count {
+  justify-self: end;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.warn {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--warn);
+  border-radius: var(--r-md);
+  font-size: var(--text-sm);
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}

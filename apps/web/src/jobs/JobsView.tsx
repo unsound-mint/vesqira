@@ -9,7 +9,7 @@ import s from "./JobsView.module.css";
 
 export const TONE: Record<JobState, "neutral" | "ok" | "warn" | "err" | "accent"> = { draft: "neutral", submitting: "warn", submitted: "accent", running: "accent", completed: "ok", failed: "err", cancelled: "warn" };
 const ACTIVE: JobState[] = ["submitted", "running"];
-const SETTINGS: { key: string; label: string; kind: "text" | "noise_mode" }[] = [
+export const SETTINGS: { key: string; label: string; kind: "text" | "noise_mode" }[] = [
   { key: "input_file", label: "Input cube on the host", kind: "text" },
   { key: "ker", label: "ker (smoothing, pixels)", kind: "text" },
   { key: "dn", label: "dn (window, pixels)", kind: "text" },
@@ -18,7 +18,7 @@ const SETTINGS: { key: string; label: string; kind: "text" | "noise_mode" }[] = 
   { key: "noise_mode", label: "noise mode", kind: "noise_mode" },
   { key: "noise_sigma_multiplier", label: "noise sigma multiplier", kind: "text" },
 ];
-const NOISE_MODES = ["scalar", "channel", "spatial", "separable", "separable_shrinkage", "auto"];
+export const NOISE_MODES = ["scalar", "channel", "spatial", "separable", "separable_shrinkage", "auto"];
 
 export function jobFor(jobs: Job[], runId: number): Job | null {
   return jobs.find((j) => j.runId === runId) ?? null;
@@ -211,6 +211,7 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; h
         <Pill tone={TONE[job.state]}>{job.state}</Pill>
         <span className={s.note}>{host?.name ?? "host removed"}{job.slurmId ? ` · Slurm job ${job.slurmId}` : ""}{job.detail ? ` · ${job.detail}` : ""}</span>
       </div>
+      {job.note ? <p className={s.note}>Why: {job.note}</p> : null}
       <label className={s.label} htmlFor="job-script">Script{draft ? " (this exact text is what will be submitted; you can edit it)" : " as submitted"} · sha256 <span className="mono">{job.scriptHash.slice(0, 12)}</span></label>
       <textarea id="job-script" className={s.script} readOnly={!draft} rows={18} value={script} onChange={(e) => setScript(e.target.value)} spellCheck={false} />
       {draft ? (

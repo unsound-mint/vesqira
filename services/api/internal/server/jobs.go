@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"path"
 	"time"
+	"unicode/utf8"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
@@ -93,6 +95,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		Template string `json:"template"`
 		Name     string `json:"name"`
 		Script   string `json:"script"` // custom template
+		Note     string `json:"note"`   // why the owner makes this job
 		// ParentRunID names the run this draft repeats with changes ("run again with...").
 		ParentRunID *int64 `json:"parentRunId"`
 		VGT         struct {
@@ -124,7 +127,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "host not found")
 		return
 	}
-	job := jobs.Job{HostID: h.ID, Name: in.Name, Template: in.Template}
+	if utf8.RuneCountInString(in.Note) > jobs.MaxNote {
+		fail(w, 422, fmt.Sprintf("the note is at most %d characters", jobs.MaxNote))
+		return
+	}
+	job := jobs.Job{HostID: h.ID, Name: in.Name, Template: in.Template, Note: in.Note}
 	if in.ParentRunID != nil {
 		if s.Runs == nil {
 			fail(w, 422, "the run this job repeats does not exist")

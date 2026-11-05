@@ -17,7 +17,7 @@ export function runFor(runs: Run[], datasetId: number | null): { run: Run; role:
 }
 
 /** Compact summary in the inspector; the run itself opens as a page. */
-export function RunPanel({ run, role, job, onOpenPage }: { run: Run; role: string; job?: { name: string; slurmId: string; state: string } | null; onOpenPage: () => void }) {
+export function RunPanel({ run, role, job, onOpenPage, onRunAgain }: { run: Run; role: string; job?: { name: string; slurmId: string; state: string } | null; onOpenPage: () => void; onRunAgain?: () => void }) {
   return (
     <div className={s.wrap}>
       <dl className={s.facts}>
@@ -39,7 +39,27 @@ export function RunPanel({ run, role, job, onOpenPage }: { run: Run; role: strin
       )}
       <div className={s.row}>
         <Button type="button" onClick={onOpenPage}>Open run page</Button>
+        {run.kind === "vgt" && onRunAgain ? <Button type="button" onClick={onRunAgain}>Run again with…</Button> : null}
       </div>
+    </div>
+  );
+}
+
+/** Runs whose input was matched to this file. The match is by name and size only, so every candidate is listed and none is picked. */
+export function RunsUsingFile({ runs, datasetId, onRunAgain }: { runs: Run[]; datasetId: number; onRunAgain: (runId: number) => void }) {
+  const used = runs.filter((r) => r.kind === "vgt" && r.inputHint?.datasetId === datasetId);
+  if (used.length === 0) return null;
+  return (
+    <div className={s.wrap}>
+      <ul className={s.list}>
+        {used.map((r) => (
+          <li key={r.id} className={s.item}>
+            <span className="mono" title={r.name}>{r.name}</span>
+            <span className={s.note}>matched by name and size, not verified</span>
+            <Button type="button" onClick={() => onRunAgain(r.id)} aria-label={`Run again with… ${r.name}`}>Run again with…</Button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

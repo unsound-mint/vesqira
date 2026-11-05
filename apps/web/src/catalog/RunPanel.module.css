@@ -110,3 +110,19 @@
   list-style: none;
   font-size: var(--text-sm);
 }
+
+.list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  gap: var(--sp-1);
+  justify-items: start;
+  min-width: 0;
+  font-size: var(--text-sm);
+}

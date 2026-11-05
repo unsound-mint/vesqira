@@ -57,6 +57,8 @@ type Job struct {
 	Params string `json:"params"`
 	// ParentRunID is the run this job was drafted from with "run again with...", or nil.
 	ParentRunID *int64 `json:"parentRunId"`
+	// Note is why the owner made this job (at most MaxNote characters), kept with it.
+	Note string `json:"note"`
 	// Request is the JSON of the VGT request the script was rendered from (see VGTRequest). It holds the owner's config
 	// text, so it is not part of the job JSON: only the owner-only rerun route returns it, parsed.
 	Request string `json:"-"`
@@ -460,6 +462,9 @@ func ParseStatus(out string) (state, detail string) {
 
 // ---- store ----
 
+// MaxNote is the longest "why" kept with a job, in characters.
+const MaxNote = 500
+
 type Store struct{ db *sql.DB }
 
 func Open(db *sql.DB) (*Store, error) {
@@ -477,19 +482,22 @@ func Open(db *sql.DB) (*Store, error) {
 	if err == nil {
 		err = schema.AddColumn(db, "jobs", "parent_run_id", "INTEGER")
 	}
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "note", "TEXT NOT NULL DEFAULT ''")
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &Store{db}, nil
 }
 
-const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params,request,parent_run_id`
+const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params,request,parent_run_id,note`
 
 func scan(row interface{ Scan(...any) error }) (Job, error) {
 	var j Job
 	var c int64
 	var sub, fin, run, parent sql.NullInt64
-	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params, &j.Request, &parent); err != nil {
+	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params, &j.Request, &parent, &j.Note); err != nil {
 		return Job{}, err
 	}
 	j.CreatedAt = time.Unix(c, 0).UTC()
@@ -517,8 +525,8 @@ func (s *Store) CreateDraft(j Job) (Job, error) {
 	if !nameRe.MatchString(j.Name) {
 		return Job{}, fmt.Errorf("%w: bad job name", ErrInvalid)
 	}
-	res, err := s.db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,params,request,parent_run_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		j.HostID, j.Name, j.Template, j.Script, Hash(j.Script), StateDraft, "", "", NewWorkDir(), j.OutputDir, time.Now().Unix(), j.Params, j.Request, j.ParentRunID)
+	res, err := s.db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,params,request,parent_run_id,note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		j.HostID, j.Name, j.Template, j.Script, Hash(j.Script), StateDraft, "", "", NewWorkDir(), j.OutputDir, time.Now().Unix(), j.Params, j.Request, j.ParentRunID, j.Note)
 	if err != nil {
 		return Job{}, err
 	}

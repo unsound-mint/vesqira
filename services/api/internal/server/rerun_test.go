@@ -132,6 +132,20 @@ func TestRerunPrefillNeverGuessesWhatIsNotKnown(t *testing.T) {
 	if r.StatusCode != 201 || child.ParentRunID == nil || *child.ParentRunID != imported.ID {
 		t.Fatalf("draft with a parent: %d %s", r.StatusCode, b)
 	}
+	// the owner's "why" is stored with the job and returned; more than 500 characters is refused
+	withNote := body(imported.ID)
+	withNote["note"] = "wider smoothing to test the 8 px result"
+	if r, b := postJSON(t, api("/api/jobs"), withNote); r.StatusCode != 201 || !strings.Contains(string(b), `"note":"wider smoothing to test the 8 px result"`) {
+		t.Errorf("note: %d %s", r.StatusCode, b)
+	}
+	withNote["note"] = strings.Repeat("é", 501)
+	if r, b := postJSON(t, api("/api/jobs"), withNote); r.StatusCode != 422 {
+		t.Errorf("a 501-character note: %d %s, want 422", r.StatusCode, b)
+	}
+	withNote["note"] = strings.Repeat("é", 500)
+	if r, b := postJSON(t, api("/api/jobs"), withNote); r.StatusCode != 201 {
+		t.Errorf("a 500-character note: %d %s, want 201", r.StatusCode, b)
+	}
 	// once its outputs are a run, that run reports its parent and its job
 	out, _ := rn.Save("/data/vesqira_runs/again", runs.Parsed{Run: runs.Run{Name: "again", Kind: "vgt"}}, nil)
 	js.LinkRun(child.ID, out.ID)

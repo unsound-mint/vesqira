@@ -10,8 +10,9 @@ import { NatureControl } from "../catalog/NatureControl";
 import { StorageControl } from "../catalog/StorageControl";
 import { UsedIn } from "../catalog/UsedIn";
 import { HostsPanel } from "../catalog/HostsPanel";
-import { RunPanel, runFor } from "../catalog/RunPanel";
+import { RunPanel, RunsUsingFile, runFor } from "../catalog/RunPanel";
 import { RunPage } from "../runs/RunPage";
+import { RerunDraft } from "../runs/RerunDraft";
 import { RunsList } from "../catalog/RunsList";
 import { getCompat } from "../api/catalog";
 import type { Compat } from "../api/catalog";
@@ -126,23 +127,29 @@ export function Shell() {
     if (!linked) viewerA.setMirror(null), viewerB.setMirror(null);
   }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
-  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "run">("viewer");
+  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "run" | "rerun">("viewer");
   const [runId, setRunId] = useState<number | null>(null);
   const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs">("viewer");
   const openRun = (id: number) => {
-    if (mode !== "run") setRunFrom(mode);
+    if (mode !== "run" && mode !== "rerun") setRunFrom(mode);
     setRunId(id);
     setMode("run");
+  };
+  const runAgain = (id: number) => {
+    if (mode !== "run" && mode !== "rerun") setRunFrom(mode);
+    setRunId(id);
+    setMode("rerun");
   };
   const compareInViewer = (a: number, b: number) => {
     cat.select(a);
     setCompareId(b);
     setMode("viewer");
   };
+  const rerunRun = mode === "rerun" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const pageRun = mode === "run" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
   // The run page is a full page of its own: the map inspector and channel timeline describe the viewer, not the run.
-  const onPage = mode === "run";
+  const onPage = mode === "run" || mode === "rerun";
   const inspShown = L.inspOpen && !onPage;
   const timelineShown = L.timelineOpen && !singlePlane && !onPage;
   const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", inspShown ? `${L.insp}px` : "0px"].join(" ");
@@ -181,7 +188,16 @@ export function Shell() {
           <JobsView focusJob={focusJob} hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => openRun(r.id)} />
         ) : mode === "run" ? (
           pageRun ? (
-            <RunPage key={pageRun.id} run={pageRun} runs={cat.runs} datasets={cat.datasets} job={(pageRun.jobId != null ? cat.jobs.find((j) => j.id === pageRun.jobId) : undefined) ?? jobFor(cat.jobs, pageRun.id)} onBack={() => setMode(runFrom)} onOpenRun={openRun} onOpenInViewer={(id) => { cat.select(id); setMode("viewer"); }} onCompareInViewer={compareInViewer} />
+            <RunPage key={pageRun.id} run={pageRun} runs={cat.runs} datasets={cat.datasets} job={(pageRun.jobId != null ? cat.jobs.find((j) => j.id === pageRun.jobId) : undefined) ?? jobFor(cat.jobs, pageRun.id)} onBack={() => setMode(runFrom)} onOpenRun={openRun} onOpenInViewer={(id) => { cat.select(id); setMode("viewer"); }} onCompareInViewer={compareInViewer} onRunAgain={runAgain} />
+          ) : (
+            <div className={s.stage}>
+              <p className={s.stageTitle}>Run not found</p>
+              <p className={s.empty}>It may have been removed. <button type="button" onClick={() => setMode(runFrom)}>Back</button></p>
+            </div>
+          )
+        ) : mode === "rerun" ? (
+          rerunRun ? (
+            <RerunDraft key={rerunRun.id} run={rerunRun} hosts={cat.hosts} onBack={() => setMode("run")} onPrepared={(j) => { setFocusJob(j.id); setMode("jobs"); }} />
           ) : (
             <div className={s.stage}>
               <p className={s.stageTitle}>Run not found</p>
@@ -224,7 +240,12 @@ export function Shell() {
           ) : null}
           {actDs && runFor(cat.runs, actDs.id) ? (
             <Section title="Run">
-              <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} job={jobFor(cat.jobs, runFor(cat.runs, actDs.id)!.run.id)} onOpenPage={() => openRun(runFor(cat.runs, actDs.id)!.run.id)} />
+              <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} job={jobFor(cat.jobs, runFor(cat.runs, actDs.id)!.run.id)} onOpenPage={() => openRun(runFor(cat.runs, actDs.id)!.run.id)} onRunAgain={() => runAgain(runFor(cat.runs, actDs.id)!.run.id)} />
+            </Section>
+          ) : null}
+          {actDs && !runFor(cat.runs, actDs.id) && cat.runs.some((r) => r.kind === "vgt" && r.inputHint?.datasetId === actDs.id) ? (
+            <Section title="Runs that used a file like this">
+              <RunsUsingFile runs={cat.runs} datasetId={actDs.id} onRunAgain={runAgain} />
             </Section>
           ) : null}
           <Section title="Coordinates">

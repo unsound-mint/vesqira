@@ -27,7 +27,7 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [x] "What differs" strip for two runs or panels (Q87, Q132). Built: tick two panels on a board for a table of differing run settings, code, input, view and declared results with their comparability basis. Deferred: "Add this table to the board" (needs a new board item kind) and a difference-map button.
 - [x] Runs as nested pages: a run opens as a page of blocks (default result drawn with the viewer, other results shown in place or side by side, declared numbers, settings with the difference from the parent run, code, what is known about rerunning, your assessment, the job log on demand); the inspector keeps a summary. Still to do: comments from boards on the run page and blocks you add yourself (a plot of numbers, a note, a linked run).
 - [ ] A board panel that follows a run still running and pins its result when it finishes.
-- [ ] Change parameters from the cube view and run in one click (pulls shape.md slice 2 forward).
+- [x] Change parameters from the cube view and run in one click (pulls shape.md slice 2 forward). Built: "Run again with…" drafts a job from a run (or from runs matched to the open input file), owner-only; submit stays on the Jobs screen after reading the script. Not yet: region-based entry from the viewer, "add to a board when it starts".
 - [ ] Parameter grid board from a sweep.
 - [ ] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39). ADR 0029 (accepted): owner-only, off by default, the editor first.
 - [ ] Optional VPN companion (gpclient): a per-host connect command run through polkit, ADR 0029 (accepted); built after the editor and terminal.
