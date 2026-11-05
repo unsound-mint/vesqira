@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
 // Jobs act on the researcher's own cluster account. The owner's loopback API is the only principal that exists, so a
@@ -91,7 +93,9 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		Template string `json:"template"`
 		Name     string `json:"name"`
 		Script   string `json:"script"` // custom template
-		VGT      struct {
+		// ParentRunID names the run this draft repeats with changes ("run again with...").
+		ParentRunID *int64 `json:"parentRunId"`
+		VGT         struct {
 			RepoDir    string            `json:"repoDir"`
 			ConfigPath string            `json:"configPath"` // a config on the host, inside its roots
 			ConfigText string            `json:"configText"`
@@ -121,6 +125,22 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job := jobs.Job{HostID: h.ID, Name: in.Name, Template: in.Template}
+	if in.ParentRunID != nil {
+		if s.Runs == nil {
+			fail(w, 422, "the run this job repeats does not exist")
+			return
+		}
+		if _, err := s.Runs.Get(*in.ParentRunID); err != nil {
+			if errors.Is(err, runs.ErrNotFound) {
+				fail(w, 422, "the run this job repeats does not exist")
+			} else {
+				log.Printf("jobs: %v", err)
+				fail(w, 500, "internal error")
+			}
+			return
+		}
+		job.ParentRunID = in.ParentRunID
+	}
 	switch in.Template {
 	case "custom":
 		job.Script = in.Script
@@ -140,6 +160,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		_, _ = rand.Read(suffix[:])
 		// results go inside the host's source roots so Vesqira can read them afterwards
 		out := path.Join(h.Roots[0], "vesqira_runs", in.Name+"-"+hex.EncodeToString(suffix[:]))
+		baseCfg := cfg
 		vals := map[string]string{}
 		for k, v := range in.VGT.Set {
 			vals[k] = v
@@ -156,6 +177,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		job.Script, job.OutputDir = script, out
+		// The base text and the overrides are kept apart so a rerun can change one setting on the same base, without
+		// reading a file that may have changed on the host since.
+		rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.VGT.RepoDir, ConfigPath: in.VGT.ConfigPath, BaseConfigText: baseCfg, Set: in.VGT.Set,
+			CPUs: in.VGT.CPUs, Mem: in.VGT.Mem, Time: in.VGT.Time, Partition: in.VGT.Partition, Account: in.VGT.Account})
+		job.Request = string(rq)
 		if !h.InRoots(out) {
 			fail(w, 422, "the output folder must be inside a source root of the host")
 			return

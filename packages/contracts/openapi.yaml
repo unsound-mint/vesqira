@@ -430,6 +430,13 @@ paths:
       operationId: owner_s_runHistory_get_api_runs_id_history
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/runs/{id}/rerun:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_rerunRun_get_api_runs_id_rerun
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/runs/{id}/review:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}

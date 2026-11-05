@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/runs/import", s.importRun)
 		mux.HandleFunc("GET /api/runs", s.listRuns)
 		mux.HandleFunc("GET /api/runs/{id}", s.getRun)
+		mux.HandleFunc("GET /api/runs/{id}/rerun", s.rerunRun)
 		mux.HandleFunc("POST /api/runs/{id}/review", s.setRunReview)
 		mux.HandleFunc("GET /api/runs/{id}/history", s.runHistory)
 	}

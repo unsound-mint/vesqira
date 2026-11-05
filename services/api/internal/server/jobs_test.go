@@ -292,6 +292,87 @@ PATH=%s:$PATH exec sh -c "$cmd"
 		}
 	}
 
+	// rerun lineage: the run knows its job, the prefill is the stored request, and a changed config file is reported
+	_, runBody := get(t, api("/api/runs/"+itoa(int(run.ID))))
+	var runView struct {
+		JobID       *int64 `json:"jobId"`
+		ParentRunID *int64 `json:"parentRunId"`
+	}
+	json.Unmarshal(runBody, &runView)
+	if runView.JobID == nil || *runView.JobID != j.ID || runView.ParentRunID != nil {
+		t.Errorf("run lineage: %s", runBody)
+	}
+	_, rrb := get(t, api("/api/runs/"+itoa(int(run.ID))+"/rerun"))
+	var rerun struct {
+		ParentRunID int64  `json:"parentRunId"`
+		Source      string `json:"source"`
+		HostID      *int64 `json:"hostId"`
+		Name        string `json:"name"`
+		VGT         struct {
+			RepoDir        *string           `json:"repoDir"`
+			ConfigPath     *string           `json:"configPath"`
+			BaseConfigText *string           `json:"baseConfigText"`
+			Set            map[string]string `json:"set"`
+			CPUs           *int              `json:"cpus"`
+			Mem            *string           `json:"mem"`
+		} `json:"vgt"`
+		ConfigChanged *bool `json:"configChanged"`
+	}
+	json.Unmarshal(rrb, &rerun)
+	if rerun.Source != "job" || rerun.ParentRunID != run.ID || rerun.HostID == nil || *rerun.HostID != h.ID || !strings.HasPrefix(rerun.Name, "vgt-ker8-") || !strings.HasSuffix(rerun.Name, "-again") ||
+		rerun.VGT.RepoDir == nil || *rerun.VGT.RepoDir != "/shared/home/u/vgt" || rerun.VGT.BaseConfigText == nil || *rerun.VGT.BaseConfigText != baseConfig ||
+		rerun.VGT.Set["ker"] != "8" || rerun.VGT.CPUs == nil || *rerun.VGT.CPUs != 8 || rerun.VGT.Mem == nil || *rerun.VGT.Mem != "16G" ||
+		rerun.ConfigChanged == nil || *rerun.ConfigChanged {
+		t.Errorf("rerun prefill: %s", rrb)
+	}
+	if strings.Contains(string(rrb), "output_dir = \""+j.OutputDir) {
+		t.Errorf("the stored base config must be the text before output_dir was replaced: %s", rrb)
+	}
+	// the file on the host changes: it is reported, and a rerun built from the stored text does not read it
+	changedConfig := strings.Replace(baseConfig, "dn = 20", "dn = 99", 1)
+	os.WriteFile(filepath.Join(remoteRoot, "configs", "vgt.toml"), []byte(changedConfig), 0o644)
+	_, rrb2 := get(t, api("/api/runs/"+itoa(int(run.ID))+"/rerun"))
+	var rerun2 struct {
+		ConfigChanged *bool    `json:"configChanged"`
+		Notes         []string `json:"notes"`
+	}
+	json.Unmarshal(rrb2, &rerun2)
+	if rerun2.ConfigChanged == nil || !*rerun2.ConfigChanged || len(rerun2.Notes) == 0 {
+		t.Errorf("a changed config on the host must be reported: %s", rrb2)
+	}
+	again := vgt(map[string]any{"configText": *rerun.VGT.BaseConfigText, "set": map[string]string{"ker": "16"}})
+	again["name"], again["parentRunId"] = "vgt-ker16", run.ID
+	ra, ab := postJSON(t, api("/api/jobs"), again)
+	var child jobs.Job
+	json.Unmarshal(ab, &child)
+	if ra.StatusCode != 201 || child.ParentRunID == nil || *child.ParentRunID != run.ID || !strings.Contains(child.Script, "ker = 16") || !strings.Contains(child.Script, "dn = 20") || strings.Contains(child.Script, "dn = 99") {
+		t.Errorf("rerun draft: %d %s", ra.StatusCode, ab)
+	}
+	stored, _ := js.Get(child.ID)
+	if sr, ok := stored.VGTRequest(); !ok || sr.BaseConfigText != baseConfig || sr.Set["ker"] != "16" || sr.ConfigPath != filepath.Join(remoteRoot, "configs", "vgt.toml") {
+		t.Errorf("stored request: %+v", stored.Request)
+	}
+	if strings.Contains(string(ab), "baseConfigText") || strings.Contains(string(ab), "request") {
+		t.Errorf("the job JSON must not carry the stored request: %s", ab)
+	}
+	again["parentRunId"] = run.ID + 1000
+	if r, _ := postJSON(t, api("/api/jobs"), again); r.StatusCode != 422 {
+		t.Errorf("a parent run that does not exist: %d, want 422", r.StatusCode)
+	}
+	os.WriteFile(filepath.Join(remoteRoot, "configs", "vgt.toml"), []byte(baseConfig), 0o644)
+	// the runs list carries the same links
+	_, lsb := get(t, api("/api/runs"))
+	var ls struct {
+		Runs []struct {
+			ID    int64  `json:"id"`
+			JobID *int64 `json:"jobId"`
+		} `json:"runs"`
+	}
+	json.Unmarshal(lsb, &ls)
+	if len(ls.Runs) != 1 || ls.Runs[0].JobID == nil || *ls.Runs[0].JobID != j.ID {
+		t.Errorf("run list lineage: %s", lsb)
+	}
+
 	// cancelling: only queued or running jobs, and the state follows the scheduler
 	_, jb2 := postJSON(t, api("/api/jobs"), vgt(map[string]any{}))
 	var c jobs.Job

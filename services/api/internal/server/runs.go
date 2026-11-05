@@ -9,11 +9,15 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
+	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
@@ -158,10 +162,28 @@ type runJSON struct {
 		Basis     string `json:"basis"`
 	} `json:"inputHint"`
 	Reproducibility []runs.Fact `json:"reproducibility"`
+	// JobID is the Vesqira job whose outputs this run is; ParentRunID is the run that job was drafted from.
+	JobID       *int64 `json:"jobId"`
+	ParentRunID *int64 `json:"parentRunId"`
 }
 
+// runView describes one run. Lists use runViewWith and read the job links once for all runs.
 func (s *Server) runView(r runs.Run) runJSON {
+	var lin map[int64]jobs.Lineage
+	if s.Jobs != nil {
+		if j, err := s.Jobs.ForRun(r.ID); err == nil {
+			lin = map[int64]jobs.Lineage{r.ID: {JobID: j.ID, ParentRunID: j.ParentRunID}}
+		}
+	}
+	return s.runViewWith(r, lin)
+}
+
+func (s *Server) runViewWith(r runs.Run, lin map[int64]jobs.Lineage) runJSON {
 	out := runJSON{Run: r}
+	if l, ok := lin[r.ID]; ok {
+		id := l.JobID
+		out.JobID, out.ParentRunID = &id, l.ParentRunID
+	}
 	if r.InputName != "" && r.InputSizeBytes > 0 {
 		if ds, err := s.Store.List(); err == nil {
 			for _, d := range ds {
@@ -186,9 +208,17 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
+	var lin map[int64]jobs.Lineage
+	if s.Jobs != nil {
+		if lin, err = s.Jobs.Lineages(); err != nil {
+			log.Printf("runs: %v", err)
+			fail(w, 500, "internal error")
+			return
+		}
+	}
 	out := make([]runJSON, 0, len(rs))
 	for _, x := range rs {
-		out = append(out, s.runView(x))
+		out = append(out, s.runViewWith(x, lin))
 	}
 	writeJSON(w, 200, map[string]any{"runs": out})
 }
@@ -209,4 +239,113 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, s.runView(run))
+}
+
+// rerunVGT is the settings a new draft starts from. Every field is null when it is not known: an imported run does not
+// say which host, code folder or config produced it, and nothing here is guessed.
+type rerunVGT struct {
+	RepoDir        *string           `json:"repoDir"`
+	ConfigPath     *string           `json:"configPath"`
+	BaseConfigText *string           `json:"baseConfigText"`
+	Set            map[string]string `json:"set"`
+	CPUs           *int              `json:"cpus"`
+	Mem            *string           `json:"mem"`
+	Time           *string           `json:"time"`
+	Partition      *string           `json:"partition"`
+	Account        *string           `json:"account"`
+}
+
+type rerunJSON struct {
+	ParentRunID int64        `json:"parentRunId"`
+	Source      string       `json:"source"` // job | imported
+	HostID      *int64       `json:"hostId"`
+	Template    string       `json:"template"`
+	Name        string       `json:"name"`
+	VGT         rerunVGT     `json:"vgt"`
+	Params      []runs.Param `json:"params"`
+	Notes       []string     `json:"notes"`
+	// ConfigChanged compares the stored config text with the file on the host now; null when not asked or not reachable.
+	ConfigChanged *bool `json:"configChanged"`
+}
+
+var notNameChar = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+// againName suggests a job name that the job name rules accept (letters, digits, . _ -, at most 40).
+func againName(base string) string {
+	b := strings.Trim(notNameChar.ReplaceAllString(base, "-"), "-")
+	if len(b) > 40-len("-again") {
+		b = strings.TrimRight(b[:40-len("-again")], "-")
+	}
+	if b == "" {
+		return "run-again"
+	}
+	return b + "-again"
+}
+
+func strp(v string) *string { return &v }
+
+// rerunRun answers "run again with...": the exact request that produced the run, as a prefill for a new draft.
+func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, 400, "bad id")
+		return
+	}
+	run, err := s.Runs.Get(id)
+	if errors.Is(err, runs.ErrNotFound) {
+		fail(w, 404, "run not found")
+		return
+	}
+	if err != nil {
+		fail(w, 500, "internal error")
+		return
+	}
+	out := rerunJSON{ParentRunID: id, Source: "imported", Template: "vgt", Name: againName(run.Name), Params: run.Params, Notes: []string{}, VGT: rerunVGT{Set: map[string]string{}}}
+	if out.Params == nil {
+		out.Params = []runs.Param{}
+	}
+	var job jobs.Job
+	if s.Jobs != nil {
+		if job, err = s.Jobs.ForRun(id); err != nil && !errors.Is(err, jobs.ErrNotFound) {
+			log.Printf("runs: %v", err)
+			fail(w, 500, "internal error")
+			return
+		}
+	}
+	if err != nil { // no job of ours produced this run
+		out.Notes = append(out.Notes, "This run was imported, so the host, code folder and config it ran with are not known here.")
+		writeJSON(w, 200, out)
+		return
+	}
+	hid := job.HostID
+	out.HostID = &hid
+	req, ok := job.VGTRequest()
+	if !ok {
+		out.Notes = append(out.Notes, "This run came from a job recorded before its settings were kept, so the code folder, config and resources it ran with are not known here.")
+		writeJSON(w, 200, out)
+		return
+	}
+	out.Source = "job"
+	set := req.Set
+	if set == nil {
+		set = map[string]string{}
+	}
+	cpus := req.CPUs
+	out.VGT = rerunVGT{RepoDir: strp(req.RepoDir), ConfigPath: strp(req.ConfigPath), BaseConfigText: strp(req.BaseConfigText), Set: set,
+		CPUs: &cpus, Mem: strp(req.Mem), Time: strp(req.Time), Partition: strp(req.Partition), Account: strp(req.Account)}
+	if req.ConfigPath != "" && s.HostDB != nil && s.Remote != nil {
+		if h, err := s.HostDB.Get(job.HostID); err == nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+			text, code, _ := s.remoteText(ctx, h, req.ConfigPath)
+			cancel()
+			if code == 0 {
+				changed := strings.TrimRight(text, "\r\n") != strings.TrimRight(req.BaseConfigText, "\r\n")
+				out.ConfigChanged = &changed
+				if changed {
+					out.Notes = append(out.Notes, "The config file on the host has changed since this run. The draft uses the config text the run started from, not the file as it is now.")
+				}
+			}
+		}
+	}
+	writeJSON(w, 200, out)
 }

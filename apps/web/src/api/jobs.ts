@@ -19,6 +19,7 @@ export type Job = {
   submittedAt: string | null;
   finishedAt: string | null;
   runId: number | null;
+  parentRunId: number | null;
 };
 
 export type RohsaJobRequest = {
@@ -32,7 +33,10 @@ export type VgtJobRequest = {
   hostId: number;
   template: "vgt";
   name: string;
-  vgt: { repoDir: string; configPath: string; set: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string };
+  /** The run this draft repeats with changes. */
+  parentRunId?: number;
+  /** With configText the host's file is not read again: a rerun passes the config text the parent started from. */
+  vgt: { repoDir: string; configPath: string; configText?: string; set: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string };
 };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {

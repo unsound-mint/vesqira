@@ -28,6 +28,34 @@ export type Run = {
   outputs: RunOutput[];
   metrics: Metric[];
   inputHint: { datasetId: number; basis: string } | null;
+  /** The Vesqira job whose outputs this run is, or null (imported runs). */
+  jobId: number | null;
+  /** The run that job was drafted from with "run again with...", or null. */
+  parentRunId: number | null;
+};
+
+/** The settings a new VGT draft starts from. A null is unknown, never a default: imported runs do not say how they ran. */
+export type Rerun = {
+  parentRunId: number;
+  source: "job" | "imported";
+  hostId: number | null;
+  template: "vgt";
+  name: string;
+  vgt: {
+    repoDir: string | null;
+    configPath: string | null;
+    baseConfigText: string | null;
+    set: Record<string, string>;
+    cpus: number | null;
+    mem: string | null;
+    time: string | null;
+    partition: string | null;
+    account: string | null;
+  };
+  params: RunParam[];
+  notes: string[];
+  /** The stored config text compared with the file on the host now; null when unknown or the host cannot be reached. */
+  configChanged: boolean | null;
 };
 
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
@@ -51,3 +79,5 @@ export const runReviewHistory = (id: number) => call<{ history: RunReviewRevisio
 
 export const setRunReview = (id: number, rv: RunReview) =>
   call<Run>(`/api/runs/${id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rv) });
+
+export const getRerun = (id: number) => call<Rerun>(`/api/runs/${id}/rerun`);

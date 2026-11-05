@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -54,6 +55,40 @@ type Job struct {
 	RunID       *int64     `json:"runId"`
 	// Params records what an analysis job was asked to do (operation, source dataset ids) so its result can be described.
 	Params string `json:"params"`
+	// ParentRunID is the run this job was drafted from with "run again with...", or nil.
+	ParentRunID *int64 `json:"parentRunId"`
+	// Request is the JSON of the VGT request the script was rendered from (see VGTRequest). It holds the owner's config
+	// text, so it is not part of the job JSON: only the owner-only rerun route returns it, parsed.
+	Request string `json:"-"`
+}
+
+// VGTRequest is what a VGT job was asked to do, kept so a later run can start from an exact copy. BaseConfigText is
+// the config as read from the host (or as given), before the user's Set overrides and before output_dir was replaced.
+type VGTRequest struct {
+	RepoDir        string            `json:"repoDir"`
+	ConfigPath     string            `json:"configPath"`
+	BaseConfigText string            `json:"baseConfigText"`
+	Set            map[string]string `json:"set"`
+	CPUs           int               `json:"cpus"`
+	Mem            string            `json:"mem"`
+	Time           string            `json:"time"`
+	Partition      string            `json:"partition"`
+	Account        string            `json:"account"`
+}
+
+// VGTRequest returns the stored request, or false for a job that has none (not VGT, or made before it was recorded).
+func (j Job) VGTRequest() (VGTRequest, bool) {
+	var r VGTRequest
+	if j.Template != "vgt" || j.Request == "" || json.Unmarshal([]byte(j.Request), &r) != nil {
+		return VGTRequest{}, false
+	}
+	return r, true
+}
+
+// Lineage ties a run to the job that produced it.
+type Lineage struct {
+	JobID       int64
+	ParentRunID *int64
 }
 
 func Hash(script string) string { h := sha256.Sum256([]byte(script)); return hex.EncodeToString(h[:]) }
@@ -436,19 +471,25 @@ func Open(db *sql.DB) (*Store, error) {
 	if err == nil {
 		err = schema.AddColumn(db, "jobs", "params", "TEXT NOT NULL DEFAULT ''")
 	}
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "request", "TEXT NOT NULL DEFAULT ''")
+	}
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "parent_run_id", "INTEGER")
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &Store{db}, nil
 }
 
-const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params`
+const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params,request,parent_run_id`
 
 func scan(row interface{ Scan(...any) error }) (Job, error) {
 	var j Job
 	var c int64
-	var sub, fin, run sql.NullInt64
-	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params); err != nil {
+	var sub, fin, run, parent sql.NullInt64
+	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params, &j.Request, &parent); err != nil {
 		return Job{}, err
 	}
 	j.CreatedAt = time.Unix(c, 0).UTC()
@@ -463,6 +504,9 @@ func scan(row interface{ Scan(...any) error }) (Job, error) {
 	if run.Valid {
 		j.RunID = &run.Int64
 	}
+	if parent.Valid {
+		j.ParentRunID = &parent.Int64
+	}
 	return j, nil
 }
 
@@ -473,8 +517,8 @@ func (s *Store) CreateDraft(j Job) (Job, error) {
 	if !nameRe.MatchString(j.Name) {
 		return Job{}, fmt.Errorf("%w: bad job name", ErrInvalid)
 	}
-	res, err := s.db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,params) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		j.HostID, j.Name, j.Template, j.Script, Hash(j.Script), StateDraft, "", "", NewWorkDir(), j.OutputDir, time.Now().Unix(), j.Params)
+	res, err := s.db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,params,request,parent_run_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		j.HostID, j.Name, j.Template, j.Script, Hash(j.Script), StateDraft, "", "", NewWorkDir(), j.OutputDir, time.Now().Unix(), j.Params, j.Request, j.ParentRunID)
 	if err != nil {
 		return Job{}, err
 	}
@@ -563,6 +607,39 @@ func (s *Store) SetState(id int64, state, detail string) error {
 func (s *Store) LinkRun(id, runID int64) error {
 	_, err := s.db.Exec(`UPDATE jobs SET run_id=? WHERE id=?`, runID, id)
 	return err
+}
+
+// Lineages maps every run that a job's outputs became to that job (the latest one, if a run was registered twice).
+// One query for the whole run list.
+func (s *Store) Lineages() (map[int64]Lineage, error) {
+	rows, err := s.db.Query(`SELECT run_id, id, parent_run_id FROM jobs WHERE run_id IS NOT NULL ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]Lineage{}
+	for rows.Next() {
+		var run, id int64
+		var parent sql.NullInt64
+		if err := rows.Scan(&run, &id, &parent); err != nil {
+			return nil, err
+		}
+		l := Lineage{JobID: id}
+		if parent.Valid {
+			l.ParentRunID = &parent.Int64
+		}
+		out[run] = l
+	}
+	return out, rows.Err()
+}
+
+// ForRun returns the latest job whose outputs became this run.
+func (s *Store) ForRun(runID int64) (Job, error) {
+	j, err := scan(s.db.QueryRow(`SELECT `+cols+` FROM jobs WHERE run_id=? ORDER BY id DESC LIMIT 1`, runID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Job{}, ErrNotFound
+	}
+	return j, err
 }
 
 func (s *Store) Active() (int, error) {
