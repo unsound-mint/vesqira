@@ -15,13 +15,15 @@ const mod = "github.com/unsound-mint/vesqira/services/api/internal/"
 // decision: add it here on purpose, and if the importing package faces a reviewer, re-read the reviewer boundary below.
 var allowed = map[string][]string{
 	"arch": {}, "audit": {}, "backup": {}, "compat": {}, "derived": {}, "regions": {}, "sourceroot": {}, "worker": {}, "schema": {}, "vgtlog": {},
-	"boards":  {"schema"},
-	"catalog": {"schema"},
-	"jobs":    {"schema"},
-	"runs":    {"schema"},
-	"hosts":   {"worker"},
-	"review":  {"boards"},
-	"server":  {"audit", "boards", "catalog", "compat", "derived", "hosts", "jobs", "regions", "runs", "schema", "sourceroot", "vgtlog", "worker"},
+	"boards":   {"schema"},
+	"catalog":  {"schema"},
+	"jobs":     {"schema"},
+	"runs":     {"schema"},
+	"discover": {"runs"},
+	"projects": {"discover"},
+	"hosts":    {"worker"},
+	"review":   {"boards"},
+	"server":   {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "jobs", "projects", "regions", "runs", "schema", "sourceroot", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a

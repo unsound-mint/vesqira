@@ -39,6 +39,9 @@ var (
 	pythonRe = regexp.MustCompile(`^[A-Za-z0-9_./~-]{1,200}$`)
 )
 
+// MaxRoots is how many source roots a host may have. Opening a project folder on a host adds one.
+const MaxRoots = 32
+
 type Host struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
@@ -59,8 +62,8 @@ func (h Host) Validate() error {
 	if !pythonRe.MatchString(h.Python) {
 		return fmt.Errorf("%w: the Python command may only contain letters, digits and . _ / ~ -", ErrInvalid)
 	}
-	if len(h.Roots) == 0 || len(h.Roots) > 8 {
-		return fmt.Errorf("%w: give between one and eight source roots on the host", ErrInvalid)
+	if len(h.Roots) == 0 || len(h.Roots) > MaxRoots {
+		return fmt.Errorf("%w: give between one and %d source roots on the host", ErrInvalid, MaxRoots)
 	}
 	for _, r := range h.Roots {
 		if !path.IsAbs(r) || len(r) > 500 || strings.ContainsAny(r, "\x00\n\r") || path.Clean(r) != strings.TrimRight(r, "/") && r != "/" {
@@ -140,6 +143,49 @@ func (s *Store) List() ([]Host, error) {
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+// AddRoot makes one more folder on the host readable (a project folder that was opened). The caller must drop the host's
+// worker afterwards (Manager.Forget): the worker enforces the roots it was started with.
+func (s *Store) AddRoot(id int64, root string) (Host, error) {
+	h, err := s.Get(id)
+	if err != nil {
+		return Host{}, err
+	}
+	for _, r := range h.Roots {
+		if r == root {
+			return h, nil
+		}
+	}
+	h.Roots = append(h.Roots, root)
+	if err := h.Validate(); err != nil {
+		return Host{}, err
+	}
+	rj, _ := json.Marshal(h.Roots)
+	if _, err := s.db.Exec(`UPDATE hosts SET roots=? WHERE id=?`, string(rj), id); err != nil {
+		return Host{}, err
+	}
+	return h, nil
+}
+
+// RemoveRoot takes a root away again (a project folder whose worker check failed).
+func (s *Store) RemoveRoot(id int64, root string) error {
+	h, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	var keep []string
+	for _, r := range h.Roots {
+		if r != root {
+			keep = append(keep, r)
+		}
+	}
+	if len(keep) == 0 || len(keep) == len(h.Roots) {
+		return nil // never leave a host without a root; nothing to remove
+	}
+	rj, _ := json.Marshal(keep)
+	_, err = s.db.Exec(`UPDATE hosts SET roots=? WHERE id=?`, string(rj), id)
+	return err
 }
 
 func (s *Store) Delete(id int64) error {

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
@@ -20,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
@@ -45,8 +47,19 @@ type Server struct {
 	Analysis   *AnalysisConfig
 	Audit      *audit.Store // nil records nothing
 	Regions    *regions.Store
-	SSHConfig  string // the user's ssh_config, only read to offer host aliases; empty offers none
-	WebDist    string // built web app served at / on this (loopback) listener; empty serves the API only
+	SSHConfig  string     // the user's ssh_config, only read to offer host aliases; empty offers none
+	Hints      hintSource // overrides the catalog for the runs list's input hints (tests count calls)
+	WebDist    string     // built web app served at / on this (loopback) listener; empty serves the API only
+
+	Projects *projects.Store // opened project folders; nil disables the project routes
+
+	rootsOnce sync.Once // loads the opened projects' folders into projRoots on first use
+	rootsMu   sync.RWMutex
+	projRoots []string
+	projMu    sync.Mutex
+	projScans map[int64]*scanState
+	laneOnce  sync.Once
+	heavy     chan struct{} // one FITS header registration at a time, across projects
 
 	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
 
@@ -57,7 +70,7 @@ type Server struct {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/capabilities", s.capabilities)
-	mux.HandleFunc("GET /api/roots", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"roots": s.Roots}) })
+	mux.HandleFunc("GET /api/roots", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"roots": s.roots()}) })
 	mux.HandleFunc("GET /api/datasets", s.list)
 	mux.HandleFunc("GET /api/datasets/availability", s.availability)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
@@ -124,6 +137,17 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/snapshots/{id}/comments", s.snapshotComments)
 		mux.HandleFunc("POST /api/snapshots/{id}/comments", s.ownerReply)
 		mux.HandleFunc("POST /api/comments/{id}/resolve", s.resolveComment)
+	}
+	if s.Projects != nil {
+		mux.HandleFunc("POST /api/projects/open", s.openProject)
+		mux.HandleFunc("GET /api/projects", s.listProjects)
+		mux.HandleFunc("GET /api/projects/{id}", s.getProject)
+		mux.HandleFunc("POST /api/projects/{id}/scan", s.scanProject)
+		mux.HandleFunc("POST /api/projects/{id}/scan/cancel", s.cancelScan)
+		mux.HandleFunc("GET /api/projects/{id}/tree", s.projectTree)
+		mux.HandleFunc("GET /api/projects/{id}/needs", s.projectNeeds)
+		mux.HandleFunc("POST /api/projects/{id}/answers", s.answerProject)
+		mux.HandleFunc("POST /api/projects/{id}/project-file", s.writeProject)
 	}
 	mux.HandleFunc("GET /api/datasets/{id}/header-cards", s.headerCards)
 	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
@@ -310,7 +334,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid request body")
 		return
 	}
-	real, err := s.Roots.Resolve(in.Path)
+	real, err := s.roots().Resolve(in.Path)
 	if err != nil {
 		fail(w, 403, err.Error())
 		return

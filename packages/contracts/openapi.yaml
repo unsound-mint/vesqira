@@ -412,6 +412,65 @@ paths:
       operationId: owner_s_previewFile_get_api_preview
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/projects:
+    get:
+      operationId: owner_s_listProjects_get_api_projects
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/projects/open:
+    post:
+      operationId: owner_s_openProject_post_api_projects_open
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/projects/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_getProject_get_api_projects_id
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/projects/{id}/answers:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_answerProject_post_api_projects_id_answers
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/projects/{id}/needs:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_projectNeeds_get_api_projects_id_needs
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/projects/{id}/project-file:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_writeProject_post_api_projects_id_project_file
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/projects/{id}/scan:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_scanProject_post_api_projects_id_scan
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/projects/{id}/scan/cancel:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_cancelScan_post_api_projects_id_scan_cancel
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/projects/{id}/tree:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_projectTree_get_api_projects_id_tree
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/regions/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}

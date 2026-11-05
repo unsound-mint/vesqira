@@ -3,7 +3,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -19,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -62,8 +62,8 @@ func main() {
 		log.Fatalf("refusing to listen on %q: local mode binds to loopback only", *addr)
 	}
 	if len(roots) == 0 {
-		fmt.Fprintln(os.Stderr, "at least one --root is required: files outside source roots are never read")
-		os.Exit(2)
+		// opening a project folder makes it readable (ADR 0030); nothing else outside the data directory is
+		log.Printf("no --root given: only the data directory and project folders you open are readable")
 	}
 	// derived results (moment maps, cutouts, aligned cubes) are written under the data directory, which is a source root
 	ddir := *dataDir
@@ -129,6 +129,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	projectStore, err := projects.Open(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
 	remote := hosts.NewManager(*sshBin, files)
 	defer remote.Close()
 	if *reviewAddr != "" {
@@ -141,7 +145,7 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore, Regions: regionStore, WebDist: *webDist,
+	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist,
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)

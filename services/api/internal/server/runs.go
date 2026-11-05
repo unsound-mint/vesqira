@@ -47,7 +47,7 @@ func (l localRun) Meta(context.Context) ([]byte, string, int, string) {
 	return data, filepath.Base(l.dir), 0, ""
 }
 func (l localRun) Register(ctx context.Context, name string) (catalog.Dataset, bool, int, string) {
-	real, err := l.s.Roots.Resolve(filepath.Join(l.dir, name)) // outputs must sit next to the metadata, inside the roots
+	real, err := l.s.roots().Resolve(filepath.Join(l.dir, name)) // outputs must sit next to the metadata, inside the roots
 	if err != nil {
 		return catalog.Dataset{}, false, 0, "" // a missing output is skipped, not invented
 	}
@@ -141,7 +141,7 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 	if filepath.Base(meta) != "run_metadata.toml" {
 		meta = filepath.Join(meta, "run_metadata.toml")
 	}
-	realMeta, err := s.Roots.Resolve(meta) // same containment rules as any file: inside a source root, regular file
+	realMeta, err := s.roots().Resolve(meta) // same containment rules as any file: inside a source root, regular file
 	if err != nil {
 		fail(w, 403, err.Error())
 		return
@@ -167,6 +167,32 @@ type runJSON struct {
 	ParentRunID *int64 `json:"parentRunId"`
 }
 
+// hintSource is what the runs list reads the registered files' names and sizes through (the catalog; a test counts calls).
+type hintSource interface {
+	HintIndex() (map[catalog.HintKey]int64, error)
+}
+
+// hintsFor reads the name and size index once, and only when some run has an input to look for.
+func (s *Server) hintsFor(rs []runs.Run) map[catalog.HintKey]int64 {
+	want := false
+	for _, r := range rs {
+		want = want || (r.InputName != "" && r.InputSizeBytes > 0)
+	}
+	if !want {
+		return nil
+	}
+	var src hintSource = s.Store
+	if s.Hints != nil {
+		src = s.Hints
+	}
+	idx, err := src.HintIndex()
+	if err != nil {
+		log.Printf("runs: input hints: %v", err) // the hint is optional: the runs are still listed
+		return nil
+	}
+	return idx
+}
+
 // runView describes one run. Lists use runViewWith and read the job links once for all runs.
 func (s *Server) runView(r runs.Run) runJSON {
 	var lin map[int64]jobs.Lineage
@@ -175,26 +201,21 @@ func (s *Server) runView(r runs.Run) runJSON {
 			lin = map[int64]jobs.Lineage{r.ID: {JobID: j.ID, ParentRunID: j.ParentRunID}}
 		}
 	}
-	return s.runViewWith(r, lin)
+	return s.runViewWith(r, lin, s.hintsFor([]runs.Run{r}))
 }
 
-func (s *Server) runViewWith(r runs.Run, lin map[int64]jobs.Lineage) runJSON {
+func (s *Server) runViewWith(r runs.Run, lin map[int64]jobs.Lineage, hints map[catalog.HintKey]int64) runJSON {
 	out := runJSON{Run: r}
 	if l, ok := lin[r.ID]; ok {
 		id := l.JobID
 		out.JobID, out.ParentRunID = &id, l.ParentRunID
 	}
 	if r.InputName != "" && r.InputSizeBytes > 0 {
-		if ds, err := s.Store.List(); err == nil {
-			for _, d := range ds {
-				if d.Name == r.InputName && d.SizeBytes == r.InputSizeBytes {
-					out.InputHint = &struct {
-						DatasetID int64  `json:"datasetId"`
-						Basis     string `json:"basis"`
-					}{d.ID, "inferred from file name and size; not proof of identity"}
-					break
-				}
-			}
+		if id, ok := hints[catalog.HintKey{Name: r.InputName, Size: r.InputSizeBytes}]; ok {
+			out.InputHint = &struct {
+				DatasetID int64  `json:"datasetId"`
+				Basis     string `json:"basis"`
+			}{id, "inferred from file name and size; not proof of identity"}
 		}
 	}
 	out.Reproducibility = runs.Reproducibility(r, out.InputHint != nil)
@@ -216,9 +237,10 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	hints := s.hintsFor(rs) // one read of the catalog for every run, not one per run
 	out := make([]runJSON, 0, len(rs))
 	for _, x := range rs {
-		out = append(out, s.runViewWith(x, lin))
+		out = append(out, s.runViewWith(x, lin, hints))
 	}
 	writeJSON(w, 200, map[string]any{"runs": out})
 }
