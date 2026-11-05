@@ -44,8 +44,9 @@ type Server struct {
 	Analysis   *AnalysisConfig
 	Audit      *audit.Store // nil records nothing
 	Regions    *regions.Store
-	SSHConfig  string // the user's ssh_config, only read to offer host aliases; empty offers none
-	WebDist    string // built web app served at / on this (loopback) listener; empty serves the API only
+	SSHConfig  string     // the user's ssh_config, only read to offer host aliases; empty offers none
+	Hints      hintSource // overrides the catalog for the runs list's input hints (tests count calls)
+	WebDist    string     // built web app served at / on this (loopback) listener; empty serves the API only
 
 	progress progressCache // what job logs said about progress, for board panels that follow a job
 }
