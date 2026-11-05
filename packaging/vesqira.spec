@@ -53,5 +53,5 @@ install -Dm0644 THIRD_PARTY_NOTICES.md %{buildroot}%{_licensedir}/%{name}/THIRD_
 %{_metainfodir}/io.github.unsound_mint.Vesqira.metainfo.xml
 
 %changelog
-* Wed Nov 04 2026 Denis Andreyev <denis.andreyev@nu.edu.kz> - %{version}-1
+* Wed Nov 04 2026 Denis Andreyev <unsoundmint@gmail.com> - %{version}-1
 - Packaged release

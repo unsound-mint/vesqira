@@ -54,7 +54,7 @@ describe("dataset filter", () => {
   it("looks in name, unit, nature and host", () => {
     expect(matchDataset(d, "hi", undefined)).toBe(true);
     expect(matchDataset(d, "observed K", undefined)).toBe(true);
-    expect(matchDataset(d, "irgetas", "Irgetas")).toBe(true);
+    expect(matchDataset(d, "cluster", "Cluster")).toBe(true);
     expect(matchDataset(d, "simulated", undefined)).toBe(false);
   });
 });

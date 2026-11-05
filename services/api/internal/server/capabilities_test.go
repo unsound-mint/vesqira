@@ -12,7 +12,7 @@ import (
 func TestSSHConfigRouteOffersAliasesOnlyAndNothingWhenThereIsNoFile(t *testing.T) {
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "config")
-	if err := os.WriteFile(cfg, []byte("Host irgetas\n  HostName login.example.org\n  IdentityFile ~/.ssh/id_secret\n  ProxyCommand nc %h %p\n"), 0o600); err != nil {
+	if err := os.WriteFile(cfg, []byte("Host cluster\n  HostName login.example.org\n  IdentityFile ~/.ssh/id_secret\n  ProxyCommand nc %h %p\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	call := func(path string) (found bool, body string) {
@@ -28,7 +28,7 @@ func TestSSHConfigRouteOffersAliasesOnlyAndNothingWhenThereIsNoFile(t *testing.T
 		return r.Found, w.Body.String()
 	}
 	found, body := call(cfg)
-	if !found || !strings.Contains(body, `"alias":"irgetas"`) || !strings.Contains(body, "login.example.org") {
+	if !found || !strings.Contains(body, `"alias":"cluster"`) || !strings.Contains(body, "login.example.org") {
 		t.Fatalf("%v %s", found, body)
 	}
 	for _, leaked := range []string{"id_secret", "ProxyCommand", "nc %h"} {

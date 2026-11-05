@@ -14,9 +14,9 @@ Host *
     ServerAliveInterval 30
     User everyone
 
-Host irgetas irgetas-login
+Host cluster cluster-login
     HostName login.example.org
-    User denis
+    User user
     IdentityFile ~/.ssh/id_secret
     ProxyCommand ssh -W %h:%p bastion
 
@@ -27,7 +27,7 @@ Host !blocked wild* ?q -bad ok.name
 Host "quoted"
     HostName shouldnotattach
 
-Match host irgetas exec "true"
+Match host cluster exec "true"
     HostName never.example.org
 
 Host later
@@ -45,15 +45,15 @@ func names(hs []SSHHost) string {
 
 func TestSSHConfigOffersPlainAliasesAndOnlyWhatIsPlain(t *testing.T) {
 	hs := ParseSSHConfig(strings.NewReader(sample), nil)
-	if got := names(hs); got != "irgetas,irgetas-login,later,lowercase-form,ok.name" {
+	if got := names(hs); got != "cluster,cluster-login,later,lowercase-form,ok.name" {
 		t.Fatalf("aliases: %s", got)
 	}
 	by := map[string]SSHHost{}
 	for _, h := range hs {
 		by[h.Alias] = h
 	}
-	if by["irgetas"].HostName != "login.example.org" || by["irgetas"].User != "denis" || by["irgetas-login"].User != "denis" {
-		t.Errorf("irgetas: %+v %+v", by["irgetas"], by["irgetas-login"])
+	if by["cluster"].HostName != "login.example.org" || by["cluster"].User != "user" || by["cluster-login"].User != "user" {
+		t.Errorf("cluster: %+v %+v", by["cluster"], by["cluster-login"])
 	}
 	if by["lowercase-form"].HostName != "10.0.0.7" {
 		t.Errorf("Host=alias and case-insensitive keywords: %+v", by["lowercase-form"])
@@ -61,7 +61,7 @@ func TestSSHConfigOffersPlainAliasesAndOnlyWhatIsPlain(t *testing.T) {
 	if by["later"].HostName != "later.example.org" || by["later"].User != "" {
 		t.Errorf("a value with spaces must not be kept: %+v", by["later"])
 	}
-	if by["irgetas"].HostName == "never.example.org" {
+	if by["cluster"].HostName == "never.example.org" {
 		t.Error("a Match block changed a host")
 	}
 	for _, h := range hs {

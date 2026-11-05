@@ -117,7 +117,7 @@ func TestMetricsSurviveTheStoreAndTheReviewerSummaryKeepsUnknownUnknown(t *testi
 }
 
 func TestAddressesOfFilesOnOtherSystemsNeverReachTheReviewer(t *testing.T) {
-	for _, bad := range []string{`file:///home/denis/x.fits`, `\\nas\share\x`, `s3://bucket/key/x`, `see sftp://login.example.org/data`, `C:\Users\denis\x`, `FILE:///x`} {
+	for _, bad := range []string{`file:///home/user/x.fits`, `\\nas\share\x`, `s3://bucket/key/x`, `see sftp://login.example.org/data`, `C:\Users\user\x`, `FILE:///x`} {
 		m := parseMetrics(map[string]any{"a": map[string]any{"value": 1.0, "unit": bad, "definition": bad}})
 		if len(m) != 1 || m[0].Unit != "" || m[0].Definition != "" {
 			t.Errorf("%q was kept: %+v", bad, m)

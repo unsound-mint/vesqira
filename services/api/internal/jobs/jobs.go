@@ -131,7 +131,7 @@ type VGTSettings struct {
 
 const configEnd = "VESQIRA_CONFIG_END"
 
-// RenderVGT renders the batch script for one VGT run, modelled on the pipeline's own hpc/irgetas/vgt.slurm. The user
+// RenderVGT renders the batch script for one VGT run, modelled on the pipeline's own VGT cluster script. The user
 // reads and submits exactly this text.
 func RenderVGT(p VGTSettings) (string, error) {
 	switch {
@@ -165,7 +165,7 @@ func RenderVGT(p VGTSettings) (string, error) {
 	b.WriteString("jobdir=\"$SLURM_SUBMIT_DIR\"\ncfg=\"$jobdir/config.toml\"\n")
 	fmt.Fprintf(&b, "cat > \"$cfg\" <<'%s'\n%s\n%s\n\n", configEnd, strings.TrimRight(p.Config, "\n"), configEnd)
 	fmt.Fprintf(&b, "cd %s\n", p.RepoDir)
-	fmt.Fprintf(&b, "export JULIA_DEPOT_PATH=\"${JULIA_DEPOT_PATH:-%s/.julia-irgetas}\"\n", p.RepoDir)
+	fmt.Fprintf(&b, "export JULIA_DEPOT_PATH=\"${JULIA_DEPOT_PATH:-%s/.julia-vesqira}\"\n", p.RepoDir)
 	b.WriteString("threads=\"${SLURM_CPUS_PER_TASK:-1}\"\nexport JULIA_NUM_THREADS=\"$threads\"\n")
 	b.WriteString("echo \"job_id=$SLURM_JOB_ID host=$(hostname) threads=$threads\"\ndate --iso-8601=seconds\n")
 	b.WriteString("command -v julia >/dev/null || { echo \"Julia is not on PATH\" >&2; exit 2; }\n")
@@ -185,7 +185,7 @@ type ROHSASettings struct {
 	Account    string
 }
 
-// RenderROHSA renders the batch script for one ROHSA run, following the pipeline's own hpc/irgetas/rohsa.slurm: build
+// RenderROHSA renders the batch script for one ROHSA run, following the pipeline's own ROHSA cluster script: build
 // the OpenMP Fortran source when it is newer than the binary, then run the preprocessing command on the given config
 // with one OpenMP thread per allocated CPU. The results go where the config's output_dir says; they are not imported
 // as a run, because there is no ROHSA run description to read.
@@ -218,7 +218,7 @@ func RenderROHSA(p ROHSASettings) (string, error) {
 	b.WriteString("set -euo pipefail\n")
 	fmt.Fprintf(&b, "cd %s\n", p.RepoDir)
 	fmt.Fprintf(&b, "config=%s\n", p.ConfigPath)
-	fmt.Fprintf(&b, "export JULIA_DEPOT_PATH=\"${JULIA_DEPOT_PATH:-%s/.julia-irgetas}\"\n", p.RepoDir)
+	fmt.Fprintf(&b, "export JULIA_DEPOT_PATH=\"${JULIA_DEPOT_PATH:-%s/.julia-vesqira}\"\n", p.RepoDir)
 	b.WriteString("echo \"job_id=$SLURM_JOB_ID host=$(hostname) config=$config\"\ndate --iso-8601=seconds\n")
 	b.WriteString("module purge\nmodule load GCC\n")
 	b.WriteString("rohsa_src=rohsa/upstream/ROHSA/src\n")

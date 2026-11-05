@@ -92,7 +92,7 @@ See `docs/product/shape.md` section 3. Screens need the projects mock approved f
 - [ ] Rerun modes: strict, best effort, adapted (Q123).
 - [x] Accounting of failed evaluations when the run reports them; cancelled and excluded are stated as not recorded (Q224).
 - [ ] Structured fields for controls: smoothing, noise model, how a control was constructed (Q246).
-- [x] ROHSA job template next to the existing VGT one (follows hpc/irgetas/rohsa.slurm; results are not imported as a run).
+- [x] ROHSA job template next to the existing VGT one (follows the pipeline's ROHSA cluster script; results are not imported as a run).
 - [x] Beam matching (convolution to a common beam) as an explicit derived resource; never implied by reprojection (Q205).
 - [ ] Unit conversion with dimensional checks; frame transform between declared frames (Q204, Q209).
 

@@ -19,17 +19,17 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("hosts panel and your ssh config", () => {
   it("offers the aliases from your ssh config, and fills the name from a chosen alias", async () => {
-    mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: true, hosts: [{ alias: "irgetas", hostName: "login.example.org", user: "denis" }] } }) });
+    mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: true, hosts: [{ alias: "cluster", hostName: "login.example.org", user: "user" }] } }) });
     render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
     await waitFor(() => expect(document.querySelectorAll("#ssh-aliases option")).toHaveLength(1));
-    expect(document.querySelector("#ssh-aliases option")?.getAttribute("value")).toBe("irgetas");
+    expect(document.querySelector("#ssh-aliases option")?.getAttribute("value")).toBe("cluster");
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText("SSH destination"), "irgetas");
-    expect(screen.getByLabelText("Host name")).toHaveValue("irgetas");
+    await user.type(screen.getByLabelText("SSH destination"), "cluster");
+    expect(screen.getByLabelText("Host name")).toHaveValue("cluster");
     await user.clear(screen.getByLabelText("Host name"));
     await user.type(screen.getByLabelText("Host name"), "Cluster");
     await user.clear(screen.getByLabelText("SSH destination"));
-    await user.type(screen.getByLabelText("SSH destination"), "irgetas");
+    await user.type(screen.getByLabelText("SSH destination"), "cluster");
     expect(screen.getByLabelText("Host name")).toHaveValue("Cluster"); // a name you wrote is not overwritten
   });
 

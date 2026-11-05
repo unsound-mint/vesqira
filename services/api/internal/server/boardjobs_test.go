@@ -66,7 +66,7 @@ func TestABoardCanFollowAJobAndAReviewerSeesOnlyAPlaceholder(t *testing.T) {
 	defer rv.Close()
 	api := func(p string) string { return owner.URL + p }
 
-	secretDir := "/home/denis/secret-project/cube"
+	secretDir := "/home/user/secret-project/cube"
 	j, err := js.CreateDraft(jobs.Job{HostID: 1, Name: "vgt-ker16", Template: "vgt", Script: "#!/bin/bash\n# " + secretDir + "\n", OutputDir: secretDir, Params: `{"secret":"param"}`})
 	if err != nil {
 		t.Fatal(err)

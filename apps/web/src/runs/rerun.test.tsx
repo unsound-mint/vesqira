@@ -6,7 +6,7 @@ import type { Rerun, Run } from "../api/runs";
 import { RunsUsingFile } from "../catalog/RunPanel";
 import { RerunDraft, duration } from "./RerunDraft";
 
-const host: Host = { id: 1, name: "Irgetas", dest: "login1", python: "python3", roots: ["/data"], createdAt: "" };
+const host: Host = { id: 1, name: "Cluster", dest: "login1", python: "python3", roots: ["/data"], createdAt: "" };
 const run = (over: Partial<Run> = {}): Run => ({
   jobId: 7, parentRunId: null, id: 1, name: "vgt-ker8", kind: "vgt", importedAt: "", generatedAt: "", gitCommit: "bcbaed4ec9800ef9", dirty: true,
   reproducibleFromCommit: false, elapsedSeconds: 6360, params: [], diagnostics: {}, inputName: "lmc_hi_cube.fits", inputSizeBytes: 4007885760, inputHint: null,
@@ -82,7 +82,7 @@ describe("run again with…", () => {
     expect(screen.getAllByText("declared by the run")[0]).toBeInTheDocument();
     const prepare = screen.getByRole("button", { name: "Prepare the job" });
     expect(prepare).toBeDisabled();
-    await userEvent.selectOptions(screen.getByLabelText("Host"), "Irgetas");
+    await userEvent.selectOptions(screen.getByLabelText("Host"), "Cluster");
     await userEvent.type(screen.getByLabelText("VGT folder on the host"), "/shared/vgt");
     await userEvent.type(screen.getByLabelText("Config on the host"), "/data/c.toml");
     await userEvent.type(screen.getByLabelText("CPUs"), "4");
