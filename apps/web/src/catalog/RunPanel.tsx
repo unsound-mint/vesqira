@@ -1,14 +1,11 @@
-import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
 import { useEffect, useState } from "react";
 import { Button, Pill, Select } from "../ui";
 import { runReviewHistory, setRunReview } from "../api/runs";
 import type { RunReview, RunReviewRevision } from "../api/runs";
-import { metricText } from "../api/metrics";
-import { bytes, EM } from "./format";
 import s from "./RunPanel.module.css";
 
-const ROLE: Record<string, string> = { psi: "Orientation (psi)", reliability: "Reliability", support: "Support", fit_rbar2: "Fit R̄²" };
+export const ROLE: Record<string, string> = { psi: "Orientation (psi)", reliability: "Reliability", support: "Support", fit_rbar2: "Fit R̄²" };
 
 export function runFor(runs: Run[], datasetId: number | null): { run: Run; role: string } | null {
   if (datasetId === null) return null;
@@ -19,9 +16,8 @@ export function runFor(runs: Run[], datasetId: number | null): { run: Run; role:
   return null;
 }
 
-/** The run a dataset came from: its parameters, code version and sibling outputs, with honest labels. */
-export function RunPanel({ run, role, datasets, job, onOpen, onCompare }: { run: Run; role: string; datasets: Dataset[]; job?: { name: string; slurmId: string; state: string } | null; onOpen: (id: number) => void; onCompare: (id: number) => void }) {
-  const input = run.inputHint ? datasets.find((d) => d.id === run.inputHint!.datasetId) : null;
+/** Compact summary in the inspector; the run itself opens as a page. */
+export function RunPanel({ run, role, job, onOpenPage }: { run: Run; role: string; job?: { name: string; slurmId: string; state: string } | null; onOpenPage: () => void }) {
   return (
     <div className={s.wrap}>
       <dl className={s.facts}>
@@ -35,93 +31,15 @@ export function RunPanel({ run, role, datasets, job, onOpen, onCompare }: { run:
             <dd className="mono" title="This run was produced by a Slurm job submitted from Vesqira">{job.name} · {job.slurmId} · {job.state}</dd>
           </>
         ) : null}
-        <dt>Code</dt>
-        <dd className="mono">{run.gitCommit ? run.gitCommit.slice(0, 12) + (run.dirty ? " -dirty" : "") : EM}</dd>
-        <dt>Finished</dt>
-        <dd className="mono">{run.generatedAt || EM}</dd>
-        <dt>Elapsed</dt>
-        <dd className="mono">{run.elapsedSeconds === null ? EM : `${run.elapsedSeconds.toFixed(1)} s`}</dd>
       </dl>
       {run.reproducibleFromCommit ? (
         <Pill tone="ok">Commit recorded</Pill>
       ) : (
         <Pill tone="warn">{run.dirty ? "Not reproducible from the commit: uncommitted changes" : "No commit recorded"}</Pill>
       )}
-      <div className={s.block}>
-        <h3 className={s.h}>Input</h3>
-        <p className={s.note}>
-          <span className="mono">{run.inputName || EM}</span>{run.inputSizeBytes ? `, ${bytes(run.inputSizeBytes)}` : ""}.{" "}
-          {input ? (
-            <>
-              A registered file has the same name and size ({run.inputHint!.basis}).{" "}
-              <Button type="button" onClick={() => onOpen(input.id)}>Open it</Button>
-            </>
-          ) : (
-            "No registered file matches it by name and size; the path on the run’s machine is not kept."
-          )}
-        </p>
+      <div className={s.row}>
+        <Button type="button" onClick={onOpenPage}>Open run page</Button>
       </div>
-      <div className={s.block}>
-        <h3 className={s.h}>Outputs of this run</h3>
-        <ul className={s.outs}>
-          {run.outputs.map((o) => (
-            <li key={o.role}>
-              <span>{ROLE[o.role] ?? o.role}</span>
-              <span className={s.row}>
-                <Button type="button" onClick={() => onOpen(o.datasetId)}>Open</Button>
-                <Button type="button" onClick={() => onCompare(o.datasetId)}>Compare</Button>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <Assessment run={run} />
-      {run.reproducibility && run.reproducibility.length > 0 ? (
-        <details className={s.det}>
-          <summary>What is known about rerunning this ({run.reproducibility.filter((f) => f.status === "unresolved").length} unresolved)</summary>
-          <p className={s.note}>Declared means the run’s own metadata says so and it was not checked here; unresolved means nothing records it. This says nothing about whether the result is right.</p>
-          <ul className={s.known}>
-            {run.reproducibility.map((f) => (
-              <li key={f.key}>
-                <Pill tone={f.status === "unresolved" ? "warn" : "neutral"}>{f.status}</Pill> <strong>{f.label}.</strong> {f.detail}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-      {run.metrics.length > 0 ? (
-        <details className={s.det} open>
-          <summary>Results ({run.metrics.length})</summary>
-          <table className={s.table}>
-            <tbody>
-              {run.metrics.map((m) => (
-                <tr key={m.key}>
-                  <th scope="row" title={m.definition || undefined}>{m.key}</th>
-                  <td className="mono">
-                    {metricText(m)}
-                    {m.definition ? <span className={s.note} style={{ display: "block" }}>{m.definition}</span> : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className={s.note}>As declared by the run; Vesqira did not compute or check them. “Not recorded” means unknown.</p>
-        </details>
-      ) : null}
-      <details className={s.det}>
-        <summary>Parameters ({run.params.length})</summary>
-        <table className={s.table}>
-          <tbody>
-            {run.params.map((p) => (
-              <tr key={p.source + p.key}>
-                <th scope="row">{p.key}</th>
-                <td className="mono">{p.value}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className={s.note}>As written by the pipeline. Paths and host names are not kept.</p>
-      </details>
     </div>
   );
 }
@@ -130,7 +48,7 @@ const QC = { not_assessed: "Not assessed", passed: "Passed my checks", failed: "
 const INTERP = { not_interpreted: "Not interpreted", supports: "Supports the hypothesis", challenges: "Challenges the hypothesis", inconclusive: "Inconclusive" } as const;
 
 /** Your assessment of the science, kept apart from the fact that the computation finished. */
-function Assessment({ run }: { run: Run }) {
+export function Assessment({ run }: { run: Run }) {
   const [rv, setRv] = useState<RunReview>(run.review);
   const [msg, setMsg] = useState<string | null>(null);
   const [history, setHistory] = useState<RunReviewRevision[]>([]);
@@ -151,7 +69,6 @@ function Assessment({ run }: { run: Run }) {
   }
   return (
     <div className={s.block}>
-      <h3 className={s.h}>Your assessment</h3>
       <p className={s.note}>The run finished; whether the science holds is a separate question that only you can answer.</p>
       <Select label="Scientific QC" value={rv.qc} onChange={(e) => save({ ...rv, qc: e.target.value as RunReview["qc"] })}>
         {Object.entries(QC).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

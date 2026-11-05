@@ -11,6 +11,7 @@ import { StorageControl } from "../catalog/StorageControl";
 import { UsedIn } from "../catalog/UsedIn";
 import { HostsPanel } from "../catalog/HostsPanel";
 import { RunPanel, runFor } from "../catalog/RunPanel";
+import { RunPage } from "../runs/RunPage";
 import { RunsList } from "../catalog/RunsList";
 import { getCompat } from "../api/catalog";
 import type { Compat } from "../api/catalog";
@@ -125,10 +126,27 @@ export function Shell() {
     if (!linked) viewerA.setMirror(null), viewerB.setMirror(null);
   }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
-  const [mode, setMode] = useState<"viewer" | "boards" | "jobs">("viewer");
-  const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", L.inspOpen ? `${L.insp}px` : "0px"].join(" ");
+  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "run">("viewer");
+  const [runId, setRunId] = useState<number | null>(null);
+  const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs">("viewer");
+  const openRun = (id: number) => {
+    if (mode !== "run") setRunFrom(mode);
+    setRunId(id);
+    setMode("run");
+  };
+  const compareInViewer = (a: number, b: number) => {
+    cat.select(a);
+    setCompareId(b);
+    setMode("viewer");
+  };
+  const pageRun = mode === "run" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
-  const rows = ["var(--h-title)", "minmax(0,1fr)", L.timelineOpen && !singlePlane ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
+  // The run page is a full page of its own: the map inspector and channel timeline describe the viewer, not the run.
+  const onPage = mode === "run";
+  const inspShown = L.inspOpen && !onPage;
+  const timelineShown = L.timelineOpen && !singlePlane && !onPage;
+  const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", inspShown ? `${L.insp}px` : "0px"].join(" ");
+  const rows = ["var(--h-title)", "minmax(0,1fr)", timelineShown ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
 
   return (
     <div className={s.shell} style={{ gridTemplateColumns: cols, gridTemplateRows: rows }}>
@@ -146,7 +164,7 @@ export function Shell() {
       <aside className={s.side} aria-label="Explorer" hidden={!L.sideOpen}>
         <div className={s.scroll}>
           <Section title="Runs" meta={String(cat.runs.length)} defaultOpen={cat.runs.length > 0}>
-            <RunsList runs={cat.runs} onImport={cat.importRunFolder} onOpen={(r) => { const o = r.outputs.find((x) => x.role === "psi") ?? r.outputs[0]; if (o) cat.select(o.datasetId); }} />
+            <RunsList runs={cat.runs} onImport={cat.importRunFolder} onOpen={(r) => openRun(r.id)} />
           </Section>
           <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0}>
             <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
@@ -160,9 +178,18 @@ export function Shell() {
 
       <main className={s.canvas} aria-label="Viewer">
         {mode === "jobs" ? (
-          <JobsView focusJob={focusJob} hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => { const o = r.outputs.find((x) => x.role === "psi") ?? r.outputs[0]; if (o) { cat.select(o.datasetId); setMode("viewer"); } }} />
+          <JobsView focusJob={focusJob} hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => openRun(r.id)} />
+        ) : mode === "run" ? (
+          pageRun ? (
+            <RunPage key={pageRun.id} run={pageRun} runs={cat.runs} datasets={cat.datasets} job={(pageRun.jobId != null ? cat.jobs.find((j) => j.id === pageRun.jobId) : undefined) ?? jobFor(cat.jobs, pageRun.id)} onBack={() => setMode(runFrom)} onOpenRun={openRun} onOpenInViewer={(id) => { cat.select(id); setMode("viewer"); }} onCompareInViewer={compareInViewer} />
+          ) : (
+            <div className={s.stage}>
+              <p className={s.stageTitle}>Run not found</p>
+              <p className={s.empty}>It may have been removed. <button type="button" onClick={() => setMode(runFrom)}>Back</button></p>
+            </div>
+          )
         ) : mode === "boards" ? (
-          <BoardsView />
+          <BoardsView onCompare={compareInViewer} />
         ) : cat.selected ? (
           <div className={s.compare}>
             <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selected.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} />
@@ -187,7 +214,7 @@ export function Shell() {
         )}
       </main>
 
-      <aside className={s.insp} aria-label="Inspector" hidden={!L.inspOpen}>
+      <aside className={s.insp} aria-label="Inspector" hidden={!inspShown}>
         <ResizeHandle orientation="vertical" direction={-1} label="Resize inspector" value={L.insp} min={LIMITS.insp.min} max={LIMITS.insp.max} onChange={(v) => set("insp", v)} />
         <div className={s.scroll}>
           {compareDs && cat.selected ? (
@@ -197,7 +224,7 @@ export function Shell() {
           ) : null}
           {actDs && runFor(cat.runs, actDs.id) ? (
             <Section title="Run">
-              <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} job={jobFor(cat.jobs, runFor(cat.runs, actDs.id)!.run.id)} datasets={cat.datasets} onOpen={cat.select} onCompare={(id) => { if (id !== cat.selected?.id) setCompareId(id); }} />
+              <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} job={jobFor(cat.jobs, runFor(cat.runs, actDs.id)!.run.id)} onOpenPage={() => openRun(runFor(cat.runs, actDs.id)!.run.id)} />
             </Section>
           ) : null}
           <Section title="Coordinates">
@@ -256,7 +283,7 @@ export function Shell() {
         </div>
       </aside>
 
-      <section className={s.timeline} aria-label="Channels" hidden={!L.timelineOpen || singlePlane}>
+      <section className={s.timeline} aria-label="Channels" hidden={!timelineShown}>
         <ResizeHandle orientation="horizontal" direction={-1} label="Resize timeline" value={L.timeline} min={LIMITS.timeline.min} max={LIMITS.timeline.max} onChange={(v) => set("timeline", v)} />
         <div className={s.scroll}>
           {actDs ? <ChannelTimeline v={viewer} /> : <p className={s.empty}>No spectral axis. Channels appear here once a cube is open.</p>}

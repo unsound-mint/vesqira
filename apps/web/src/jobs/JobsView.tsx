@@ -7,7 +7,7 @@ import type { Host } from "../api/hosts";
 import type { Run } from "../api/runs";
 import s from "./JobsView.module.css";
 
-const TONE: Record<JobState, "neutral" | "ok" | "warn" | "err" | "accent"> = { draft: "neutral", submitting: "warn", submitted: "accent", running: "accent", completed: "ok", failed: "err", cancelled: "warn" };
+export const TONE: Record<JobState, "neutral" | "ok" | "warn" | "err" | "accent"> = { draft: "neutral", submitting: "warn", submitted: "accent", running: "accent", completed: "ok", failed: "err", cancelled: "warn" };
 const ACTIVE: JobState[] = ["submitted", "running"];
 const SETTINGS: { key: string; label: string; kind: "text" | "noise_mode" }[] = [
   { key: "input_file", label: "Input cube on the host", kind: "text" },

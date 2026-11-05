@@ -1,0 +1,188 @@
+.root {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: var(--sp-4);
+  box-sizing: border-box;
+}
+
+.page > section {
+  min-width: 0;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+.trail {
+  min-width: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: center;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--w-strong);
+  overflow-wrap: anywhere;
+}
+
+.sub {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0 var(--sp-3) var(--sp-3);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+/* bounded so the page scrolls; the viewer keeps the image's native shape inside it */
+.map {
+  position: relative;
+  height: min(60vh, 520px);
+  min-height: 240px;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--canvas);
+  color: var(--canvas-text);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.def {
+  display: block;
+  font-family: var(--font-ui);
+}
+
+.line {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.err {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.chips {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0 var(--sp-3) var(--sp-3);
+  list-style: none;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.chip {
+  min-height: var(--ctl-md);
+  padding: 0 var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--bg-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--accent-bg);
+}
+
+/* wide tables scroll inside their block, never the page */
+.scrollX {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.table th,
+.table td {
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
+  border-bottom: var(--bw) solid var(--line);
+  text-align: left;
+  font-weight: var(--w-regular);
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--text-2);
+}
+
+.known {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0 var(--sp-3) var(--sp-3);
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.log {
+  max-height: 320px;
+  margin: 0;
+  padding: var(--sp-2);
+  overflow: auto;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  white-space: pre;
+}
