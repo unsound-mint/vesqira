@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import { Button, Input, Select } from "../ui";
 import type { Dataset } from "../api/catalog";
-import { addToBoard, createBoard, createFigure, listBoards } from "../api/boards";
+import { addToBoard, createBoard, listBoards } from "../api/boards";
 import type { Board, Figure } from "../api/boards";
-import { lut } from "./colormaps";
-import { blobToBase64, captionLines, composeImageFigure, composeSpectrumFigure, FIGURE_WIDTH } from "./figure";
-import { orientationLinesFor } from "./glyphs";
-import { limits } from "./render";
+import { defaultFigureTitle, saveViewFigure } from "./saveFigure";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import s from "./FigurePanel.module.css";
@@ -36,48 +33,14 @@ export function FigurePanel({ v, dataset }: { v: Viewer; dataset: Dataset }) {
 
   if (!view || !plane) return <p className={s.note}>{EM}</p>;
   const canSpectrum = Boolean(v.region && v.spectrum && !v.interp);
-  const defaultTitle = `${dataset.name}${view.channels > 1 ? `, channel ${plane.head.channel + 1}` : ""}`;
+  const defaultTitle = defaultFigureTitle(v, dataset);
 
   async function save() {
-    if (!view || !plane) return;
     setBusy(true);
     setErr(null);
     setNote(null);
     try {
-      const axial = v.interp !== null;
-      const lim = limits(plane.head.stats, v.range, v.customLimits);
-      const facts = { dataset: dataset.name, kind: axial ? ("orientation" as const) : kind, channelLine: "", displayLine: "", limits: lim, limitsUnit: view.bunit };
-      const captions = captionLines(facts, view, plane, { colormap: v.colormap, stretch: v.stretch, range: v.range, axial, region: v.region, nature: dataset.nature });
-      const heading = title.trim() || defaultTitle;
-      let blob: Blob;
-      if (kind === "spectrum" && v.spectrum) {
-        blob = await composeSpectrumFigure({ spectrum: v.spectrum, title: heading, captions, flagged: view.flags.declared ? view.flags.channels : [], channel: plane.head.channel });
-      } else {
-        const src = v.canvas.current;
-        if (!src) throw new Error("The image is not drawn yet.");
-        const iw = FIGURE_WIDTH - 40;
-        blob = await composeImageFigure({
-          source: src,
-          planeW: plane.head.width,
-          planeH: plane.head.height,
-          lines: axial && v.showLines ? orientationLinesFor(v, iw / plane.head.width) : [],
-          region: v.region,
-          legend: axial ? { kind: "cyclic", lut: lut("twilight") } : { kind: "scalar", lut: lut(v.colormap), limits: lim, unit: view.bunit },
-          title: heading,
-          captions,
-        });
-      }
-      const r = v.region;
-      const viewParams: Record<string, unknown> = {
-        kind: axial ? "orientation" : kind,
-        channel: plane.head.channel,
-        ...(plane.head.spectral_value !== null ? { spectralValue: plane.head.spectral_value, spectralUnit: plane.head.spectral_unit ?? undefined } : {}),
-        ...(axial ? {} : { colormap: v.colormap, stretch: v.stretch, range: v.range, ...(lim ? { limits: lim, limitsUnit: view.bunit ?? undefined } : {}) }),
-        ...(axial ? { showLines: v.showLines } : {}),
-        ...(r ? { region: r.shape === "rect" ? { shape: "rect", x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 } : { shape: "circle", cx: r.cx, cy: r.cy, r: r.r } } : {}),
-      };
-      const fig = await createFigure({ datasetId: dataset.id, title: heading, caption, view: viewParams, previewPng: await blobToBase64(blob) });
-      setSaved(fig);
+      setSaved(await saveViewFigure(v, dataset, { title, caption, kind }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not save the figure.");
     } finally {

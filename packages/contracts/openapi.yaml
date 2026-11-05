@@ -69,6 +69,14 @@ paths:
       operationId: owner_s_boardItem_post_api_boards_id_items_pos_note
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/boards/{id}/items/{pos}/pin:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+      - {name: pos, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_boardPin_post_api_boards_id_items_pos_pin
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/boards/{id}/items/{pos}/remove:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}

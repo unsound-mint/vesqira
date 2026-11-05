@@ -66,7 +66,7 @@ type Preflight struct {
 	Warnings []string `json:"warnings"`
 }
 
-func (s *Store) Preflight(boardID int64, question string) (Preflight, error) {
+func (s *Store) Preflight(boardID int64, question string, jobs map[int64]JobSnapshot) (Preflight, error) {
 	b, err := s.Board(boardID)
 	if err != nil {
 		return Preflight{}, err
@@ -79,9 +79,22 @@ func (s *Store) Preflight(boardID int64, question string) (Preflight, error) {
 	if fr.Question == "" {
 		warns = append(warns, "No question for the reviewer: say what you want them to look at.")
 	}
+	fr.Items = freeze(b.Items, jobs, fr.CreatedAt)
 	for _, it := range b.Items {
-		fr.Items = append(fr.Items, FrozenItem{Revision: it.Figure.Revision, Title: it.Figure.Title, Caption: it.Figure.Caption, Note: it.Note,
-			PreviewSHA: it.Figure.PreviewSHA, Width: it.Figure.Width, Height: it.Figure.Height, Provenance: it.Figure.Provenance})
+		if it.Kind == KindJob {
+			js, ok := jobs[it.Job.ID]
+			state := "in an unknown state"
+			if ok {
+				state = js.State
+			}
+			switch state {
+			case "completed", "failed", "cancelled":
+				warns = append(warns, fmt.Sprintf("Panel %d is a run that is %s but not pinned as a figure; the snapshot shows a placeholder and will not change. Pin its result, then publish a new revision.", it.Position+1, state))
+			default:
+				warns = append(warns, fmt.Sprintf("Panel %d follows a run that has not finished; the snapshot shows it as %s and will not change. Publish a new revision when it finishes.", it.Position+1, state))
+			}
+			continue
+		}
 		var p struct {
 			Run *struct {
 				Dirty  bool `json:"dirty"`

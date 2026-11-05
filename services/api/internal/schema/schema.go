@@ -12,7 +12,8 @@ import (
 
 // Version is the schema this program writes. Version 1 is the catalog as shipped through v0.2; the tables are still
 // created idempotently by the packages that own them, so a migration is only needed when an existing table changes.
-const Version = 1
+// Version 2: a board item may follow a job instead of holding a figure.
+const Version = 2
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -21,7 +22,33 @@ type Migration struct {
 	Up   func(tx *sql.Tx) error
 }
 
-var migrations = []Migration{}
+var migrations = []Migration{
+	{To: 2, Name: "board items may follow a job", Up: boardItemsMayFollowAJob},
+}
+
+// boardItemsMayFollowAJob rebuilds board_items so figure_id is optional and job_id exists; exactly one of them is set.
+// SQLite cannot relax a NOT NULL in place, so the table is copied. Every row keeps its position and note. A catalog
+// without the table (never opened by the boards package) needs nothing.
+func boardItemsMayFollowAJob(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='board_items'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, q := range []string{
+		`DROP TABLE IF EXISTS board_items_v2`,
+		`CREATE TABLE board_items_v2(
+			board_id INTEGER NOT NULL, position INTEGER NOT NULL, figure_id INTEGER, job_id INTEGER, note TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY(board_id, position), CHECK((figure_id IS NULL) <> (job_id IS NULL)))`,
+		`INSERT INTO board_items_v2(board_id,position,figure_id,note) SELECT board_id,position,figure_id,note FROM board_items`,
+		`DROP TABLE board_items`,
+		`ALTER TABLE board_items_v2 RENAME TO board_items`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // Guard checks the catalog's version before anything else touches it. dsn is the database file, used to place the
 // backup; an in-memory database has nothing to back up.

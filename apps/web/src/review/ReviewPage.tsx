@@ -75,7 +75,13 @@ export function ReviewPage({ token }: { token: string }) {
       {rv.superseded ? <p role="status" className={s.noteBox}><strong>The author has replaced this version.</strong> {rv.superseded.reason} Ask for the new link; this one stays readable.</p> : null}
       {snap.question ? <p className={s.noteBox}><strong>What the author asks you to look at:</strong> {snap.question}</p> : null}
       {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
-      {snap.items.map((it) => (
+      {snap.items.map((it, n) => it.kind === "job" ? (
+        <article key={`job-${n}`} className={s.fig} aria-label={`Run ${it.title}`}>
+          <h2 className={s.h2}>Run {it.title}</h2>
+          <p className={s.noteBox}>Run {it.title}: {it.state} when this snapshot was published ({new Date(it.at).toLocaleString()}). Its result was not on the board then and this page will not change.</p>
+          {it.note ? <p className={s.noteBox}><strong>Note from the author:</strong> {it.note}</p> : null}
+        </article>
+      ) : (
         <article key={it.revision} className={s.fig}>
           <h2 className={s.h2}>{it.title}</h2>
           <AnchorImage

@@ -185,7 +185,7 @@ func toString(v any) string {
 }
 
 func TestWhatAReviewerCanSeeIsAWhitelist(t *testing.T) {
-	want := map[string]bool{"revision": true, "title": true, "caption": true, "note": true, "previewSha": true, "width": true, "height": true, "provenance": true}
+	want := map[string]bool{"kind": true, "state": true, "at": true, "revision": true, "title": true, "caption": true, "note": true, "previewSha": true, "width": true, "height": true, "provenance": true}
 	rt := reflect.TypeOf(FrozenItem{})
 	for i := 0; i < rt.NumField(); i++ {
 		tag := strings.Split(rt.Field(i).Tag.Get("json"), ",")[0]
@@ -369,7 +369,7 @@ func TestReviewRequestOutcomeSupersedeAndPreflight(t *testing.T) {
 	s.AddItem(b.ID, f.ID)
 
 	// the preflight shows what would be exposed and what the author may have forgotten, and publishes nothing
-	pf, err := s.Preflight(b.ID, "")
+	pf, err := s.Preflight(b.ID, "", nil)
 	if err != nil || len(pf.Frozen.Items) != 1 || len(pf.Warnings) < 1 || !strings.Contains(pf.Warnings[0], "No question") {
 		t.Fatalf("preflight: %+v %v", pf, err)
 	}

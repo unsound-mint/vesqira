@@ -15,6 +15,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
+	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
@@ -185,6 +186,8 @@ func (s *Server) boardErr(w http.ResponseWriter, err error) {
 		fail(w, 404, "not found")
 	case errors.Is(err, boards.ErrInvalid):
 		fail(w, 422, err.Error())
+	case errors.Is(err, boards.ErrConflict):
+		fail(w, 409, err.Error())
 	default:
 		log.Printf("boards: %v", err)
 		fail(w, 500, "internal error")
@@ -354,6 +357,9 @@ func (s *Server) listBoards(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
+	for i := range bs {
+		bs[i] = s.boardView(r.Context(), bs[i], false)
+	}
 	writeJSON(w, 200, map[string]any{"boards": bs})
 }
 
@@ -375,7 +381,7 @@ func (s *Server) getBoard(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	b, err := s.Boards.Board(id)
+	b, err := s.boardByID(r.Context(), id, true)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -389,16 +395,44 @@ func (s *Server) boardAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		FigureID int64 `json:"figureId"`
+		FigureID *int64 `json:"figureId"`
+		JobID    *int64 `json:"jobId"`
 	}
 	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
-	if err := s.Boards.AddItem(id, in.FigureID); err != nil {
-		s.boardErr(w, err)
+	switch {
+	case (in.FigureID == nil) == (in.JobID == nil):
+		fail(w, 422, "give either figureId or jobId")
 		return
+	case in.JobID != nil:
+		if _, err := s.Boards.Board(id); err != nil { // 404 for a missing board before judging the job
+			s.boardErr(w, err)
+			return
+		}
+		if s.Jobs == nil {
+			fail(w, 422, "the job does not exist")
+			return
+		}
+		if _, err := s.Jobs.Get(*in.JobID); err != nil {
+			if errors.Is(err, jobs.ErrNotFound) {
+				fail(w, 422, "the job does not exist")
+			} else {
+				s.jobErr(w, err)
+			}
+			return
+		}
+		if err := s.Boards.AddJobItem(id, *in.JobID); err != nil {
+			s.boardErr(w, err)
+			return
+		}
+	default:
+		if err := s.Boards.AddItem(id, *in.FigureID); err != nil {
+			s.boardErr(w, err)
+			return
+		}
 	}
-	b, _ := s.Boards.Board(id)
+	b, _ := s.boardByID(r.Context(), id, false)
 	writeJSON(w, 200, b)
 }
 
@@ -437,7 +471,7 @@ func (s *Server) boardItem(op string) http.HandlerFunc {
 			s.boardErr(w, err)
 			return
 		}
-		b, _ := s.Boards.Board(id)
+		b, _ := s.boardByID(r.Context(), id, false)
 		writeJSON(w, 200, b)
 	}
 }
@@ -461,7 +495,12 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 	if in.Hours == 0 {
 		in.Hours = 24 * 14
 	}
-	sn, tok, err := s.Boards.PublishWith(id, boards.PublishOptions{Label: in.Label, Question: in.Question, TTL: time.Duration(in.Hours * float64(time.Hour)), Supersedes: in.Supersedes, Reason: in.Reason})
+	cur, err := s.Boards.Board(id)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	sn, tok, err := s.Boards.PublishWith(id, boards.PublishOptions{Label: in.Label, Question: in.Question, TTL: time.Duration(in.Hours * float64(time.Hour)), Supersedes: in.Supersedes, Reason: in.Reason, Jobs: s.jobSnapshots(cur)})
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -562,7 +601,12 @@ func (s *Server) preflight(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	p, err := s.Boards.Preflight(id, r.URL.Query().Get("question"))
+	cur, err := s.Boards.Board(id)
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	p, err := s.Boards.Preflight(id, r.URL.Query().Get("question"), s.jobSnapshots(cur))
 	if err != nil {
 		s.boardErr(w, err)
 		return

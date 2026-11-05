@@ -26,7 +26,7 @@ export function UsedIn({ dataset, onOpenBoards }: { dataset: Dataset; onOpenBoar
     <div className={s.wrap}>
       <ul className={s.note} style={{ margin: 0, paddingLeft: 16 }}>
         {figs.map((f) => {
-          const on = boards.filter((b) => b.items.some((i) => i.figure.id === f.id)).map((b) => b.title);
+          const on = boards.filter((b) => b.items.some((i) => i.kind !== "job" && i.figure.id === f.id)).map((b) => b.title);
           return <li key={f.id}>{f.title}{on.length ? `, on board ${on.join(", ")}` : ", not on a board"}</li>;
         })}
       </ul>

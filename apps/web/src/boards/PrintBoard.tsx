@@ -40,7 +40,18 @@ export function PrintBoard({ boardId }: { boardId: number }) {
         <p className={s.meta}>Printed {new Date().toLocaleDateString()}. Pictures are as drawn in the author's browser, not re-renderings of the data.</p>
         <div className={s.noPrint}><Button variant="primary" onClick={() => window.print()}>Print or save as PDF</Button></div>
       </header>
-      {board.items.map(({ figure: f, note }, i) => (
+      {board.items.map((it, i) => {
+        if (it.kind === "job") {
+          return (
+            <section key={`job-${it.job.id}-${i}`} className={s.fig} aria-label={`Run ${it.job.name}`}>
+              <h2 className={s.h2}>{i + 1}. Run {it.job.name}</h2>
+              <p className={s.cap}>This run was {it.job.state} when this page was made; its result was not on the board yet.</p>
+              {it.note ? <p className={s.cap}>Note: {it.note}</p> : null}
+            </section>
+          );
+        }
+        const { figure: f, note } = it;
+        return (
         <section key={f.id} className={s.fig} aria-label={f.title}>
           <h2 className={s.h2}>{i + 1}. {f.title}</h2>
           <img className={s.img} src={figurePreviewUrl(f.id)} alt={`${f.title}. ${f.provenance.source.name}`} />
@@ -53,7 +64,8 @@ export function PrintBoard({ boardId }: { boardId: number }) {
             {f.provenance.statements.map((t) => <p key={t}>{t}</p>)}
           </div>
         </section>
-      ))}
+        );
+      })}
     </main>
   );
 }

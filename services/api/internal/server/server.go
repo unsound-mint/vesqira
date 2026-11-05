@@ -46,6 +46,8 @@ type Server struct {
 	Regions    *regions.Store
 	SSHConfig  string // the user's ssh_config, only read to offer host aliases; empty offers none
 	WebDist    string // built web app served at / on this (loopback) listener; empty serves the API only
+
+	progress progressCache // what job logs said about progress, for board panels that follow a job
 }
 
 func (s *Server) Handler() http.Handler {
@@ -107,6 +109,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/remove", s.boardItem("remove"))
 		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/move", s.boardItem("move"))
 		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/note", s.boardItem("note"))
+		mux.HandleFunc("POST /api/boards/{id}/items/{pos}/pin", s.boardPin)
 		mux.HandleFunc("GET /api/boards/{id}/preflight", s.preflight)
 		mux.HandleFunc("POST /api/boards/{id}/publish", s.publish)
 		mux.HandleFunc("GET /api/boards/{id}/snapshots", s.snapshots)

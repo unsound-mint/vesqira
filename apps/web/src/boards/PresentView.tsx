@@ -33,6 +33,24 @@ export function PresentView({ board, onClose }: { board: Board; onClose: () => v
     else if (e.key === "n" || e.key === "N") setNotes((v) => !v);
   }
   if (!it) return null;
+  if (it.kind === "job") {
+    // a run that has not been pinned yet: say so, never draw a stand-in picture
+    return (
+      <div ref={root} className={s.stage} role="dialog" aria-modal="true" aria-label={`Presenting ${board.title}`} tabIndex={-1} onKeyDown={key}>
+        <header className={s.bar}>
+          <span className={s.count} aria-live="polite">{i + 1} / {n}</span>
+          <span className={s.title}>Run {it.job.name}</span>
+          <Button onClick={() => setNotes((v) => !v)} aria-pressed={notes}>My notes</Button>
+          <Button onClick={onClose}>Leave</Button>
+        </header>
+        <div className={s.picture}>
+          <p className={s.caption}>Run {it.job.name} is {it.job.state}{it.job.progress ? ` (${it.job.progress.done} of ${it.job.progress.total} chunks)` : ""}. Its result is not on the board yet.</p>
+        </div>
+        {notes && it.note ? <p className={s.note}><strong>Note:</strong> {it.note}</p> : null}
+        <footer className={s.hint}>← → move · N my notes · Esc leave</footer>
+      </div>
+    );
+  }
   const f = it.figure;
   return (
     <div ref={root} className={s.stage} role="dialog" aria-modal="true" aria-label={`Presenting ${board.title}`} tabIndex={-1} onKeyDown={key}>

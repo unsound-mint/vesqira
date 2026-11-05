@@ -34,6 +34,7 @@ const (
 var (
 	ErrNotFound = errors.New("not found")
 	ErrInvalid  = errors.New("invalid")
+	ErrConflict = errors.New("conflict")
 )
 
 type Store struct {
@@ -53,8 +54,8 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS boards(
 			id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS board_items(
-			board_id INTEGER NOT NULL, position INTEGER NOT NULL, figure_id INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY(board_id, position))`,
+			board_id INTEGER NOT NULL, position INTEGER NOT NULL, figure_id INTEGER, job_id INTEGER, note TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY(board_id, position), CHECK((figure_id IS NULL) <> (job_id IS NULL)))`,
 		`CREATE TABLE IF NOT EXISTS snapshots(
 			id INTEGER PRIMARY KEY AUTOINCREMENT, board_id INTEGER NOT NULL, label TEXT NOT NULL, created_at INTEGER NOT NULL,
 			expires_at INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0, token_hash TEXT NOT NULL UNIQUE, frozen TEXT NOT NULL)`,
@@ -248,11 +249,38 @@ func (s *Store) Preview(sha string) ([]byte, error) {
 
 // ---------- boards ----------
 
+// Item is one panel of a board: a pinned figure, or a job that is still to produce one. A job item holds only the job's
+// id; the server fills in the rest from the jobs store (boards does not know jobs).
 type Item struct {
-	Position int    `json:"position"`
-	Figure   Figure `json:"figure"`
-	Note     string `json:"note"`
+	Position int      `json:"position"`
+	Kind     string   `json:"kind"` // figure | job
+	Figure   *Figure  `json:"figure,omitempty"`
+	Job      *JobInfo `json:"job,omitempty"`
+	Note     string   `json:"note"`
 }
+
+// JobInfo is what the owner's board shows about a followed job. Progress is present only when the job's log says how
+// far it is; ETASeconds is an estimate at the rate so far and is nil when there is nothing to base it on.
+type JobInfo struct {
+	ID          int64        `json:"id"`
+	Name        string       `json:"name"`
+	State       string       `json:"state"`
+	SubmittedAt *time.Time   `json:"submittedAt"`
+	FinishedAt  *time.Time   `json:"finishedAt"`
+	RunID       *int64       `json:"runId"`
+	Progress    *JobProgress `json:"progress,omitempty"`
+}
+
+type JobProgress struct {
+	Done       int    `json:"done"`
+	Total      int    `json:"total"`
+	ETASeconds *int64 `json:"etaSeconds"`
+}
+
+const (
+	KindFigure = "figure"
+	KindJob    = "job"
+)
 
 type Board struct {
 	ID        int64     `json:"id"`
@@ -313,19 +341,20 @@ func (s *Store) Board(id int64) (Board, error) {
 		return b, err
 	}
 	b.CreatedAt, b.UpdatedAt = time.Unix(c, 0).UTC(), time.Unix(u, 0).UTC()
-	rows, err := s.db.Query(`SELECT i.position, i.note, i.figure_id FROM board_items i WHERE i.board_id=? ORDER BY i.position`, id)
+	rows, err := s.db.Query(`SELECT i.position, i.note, i.figure_id, i.job_id FROM board_items i WHERE i.board_id=? ORDER BY i.position`, id)
 	if err != nil {
 		return b, err
 	}
 	type row struct {
 		pos  int
 		note string
-		fid  int64
+		fid  sql.NullInt64
+		jid  sql.NullInt64
 	}
 	var rs []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.pos, &r.note, &r.fid); err != nil {
+		if err := rows.Scan(&r.pos, &r.note, &r.fid, &r.jid); err != nil {
 			rows.Close()
 			return b, err
 		}
@@ -334,11 +363,15 @@ func (s *Store) Board(id int64) (Board, error) {
 	rows.Close()
 	b.Items = []Item{}
 	for _, r := range rs {
-		f, err := s.Figure(r.fid)
+		if r.jid.Valid {
+			b.Items = append(b.Items, Item{Position: r.pos, Kind: KindJob, Job: &JobInfo{ID: r.jid.Int64}, Note: r.note})
+			continue
+		}
+		f, err := s.Figure(r.fid.Int64)
 		if err != nil {
 			return b, err
 		}
-		b.Items = append(b.Items, Item{Position: r.pos, Figure: f, Note: r.note})
+		b.Items = append(b.Items, Item{Position: r.pos, Kind: KindFigure, Figure: &f, Note: r.note})
 	}
 	return b, nil
 }
@@ -358,6 +391,41 @@ func (s *Store) AddItem(boardID, figureID int64) error {
 	_ = s.db.QueryRow(`SELECT COALESCE(MAX(position)+1,0) FROM board_items WHERE board_id=?`, boardID).Scan(&next)
 	if _, err := s.db.Exec(`INSERT INTO board_items(board_id,position,figure_id) VALUES(?,?,?)`, boardID, next, figureID); err != nil {
 		return err
+	}
+	s.touch(boardID)
+	return nil
+}
+
+// AddJobItem puts a panel on the board that follows a job. The caller has checked that the job exists.
+func (s *Store) AddJobItem(boardID, jobID int64) error {
+	if _, err := s.Board(boardID); err != nil {
+		return err
+	}
+	var next int
+	_ = s.db.QueryRow(`SELECT COALESCE(MAX(position)+1,0) FROM board_items WHERE board_id=?`, boardID).Scan(&next)
+	if _, err := s.db.Exec(`INSERT INTO board_items(board_id,position,job_id) VALUES(?,?,?)`, boardID, next, jobID); err != nil {
+		return err
+	}
+	s.touch(boardID)
+	return nil
+}
+
+// PinItem replaces the job panel at pos with a figure at the same position, keeping its note. A panel that is not a
+// job panel is ErrConflict, so pinning twice (two open tabs) cannot swap an already pinned figure.
+func (s *Store) PinItem(boardID int64, pos int, figureID int64) error {
+	if _, err := s.Figure(figureID); err != nil {
+		return fmt.Errorf("%w: no such figure", ErrInvalid)
+	}
+	res, err := s.db.Exec(`UPDATE board_items SET figure_id=?, job_id=NULL WHERE board_id=? AND position=? AND job_id IS NOT NULL`, figureID, boardID, pos)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		var one int
+		if s.db.QueryRow(`SELECT 1 FROM board_items WHERE board_id=? AND position=?`, boardID, pos).Scan(&one) != nil {
+			return ErrNotFound
+		}
+		return fmt.Errorf("%w: that panel does not follow a job", ErrConflict)
 	}
 	s.touch(boardID)
 	return nil
@@ -439,7 +507,13 @@ func (s *Store) SetNote(boardID int64, pos int, note string) error {
 
 // FrozenItem is everything a reviewer may see about one figure. There is deliberately no path, dataset id or
 // credential field: the type is the whitelist.
+//
+// A panel that follows a job is frozen as {kind:"job", title, state, at, note} and nothing else: no host, path, work
+// directory, script, scheduler id, configuration or parameters (see MarshalJSON). Its state is as of At and never changes.
 type FrozenItem struct {
+	Kind       string          `json:"kind,omitempty"` // "" or "figure": a figure; "job": a run that had not finished
+	State      string          `json:"state,omitempty"`
+	At         *time.Time      `json:"at,omitempty"`
 	Revision   string          `json:"revision"`
 	Title      string          `json:"title"`
 	Caption    string          `json:"caption"`
@@ -448,6 +522,43 @@ type FrozenItem struct {
 	Width      int             `json:"width"`
 	Height     int             `json:"height"`
 	Provenance json.RawMessage `json:"provenance"`
+}
+
+func (f FrozenItem) MarshalJSON() ([]byte, error) {
+	if f.Kind == KindJob {
+		return json.Marshal(struct {
+			Kind  string     `json:"kind"`
+			Title string     `json:"title"`
+			State string     `json:"state"`
+			At    *time.Time `json:"at"`
+			Note  string     `json:"note"`
+		}{f.Kind, f.Title, f.State, f.At, f.Note})
+	}
+	type plain FrozenItem
+	return json.Marshal(plain(f))
+}
+
+// JobSnapshot is what the server tells the store about a followed job when a board is published or previewed. Only
+// these two facts ever reach a snapshot.
+type JobSnapshot struct{ Name, State string }
+
+// freeze turns the board's items into what a reviewer may see.
+func freeze(items []Item, jobs map[int64]JobSnapshot, at time.Time) []FrozenItem {
+	out := []FrozenItem{}
+	for _, it := range items {
+		if it.Kind == KindJob {
+			js, ok := jobs[it.Job.ID]
+			if !ok {
+				js = JobSnapshot{Name: "Run", State: "unknown"}
+			}
+			t := at.UTC()
+			out = append(out, FrozenItem{Kind: KindJob, Title: clip(js.Name, 200), State: js.State, At: &t, Note: it.Note})
+			continue
+		}
+		out = append(out, FrozenItem{Revision: it.Figure.Revision, Title: it.Figure.Title, Caption: it.Figure.Caption, Note: it.Note,
+			PreviewSHA: it.Figure.PreviewSHA, Width: it.Figure.Width, Height: it.Figure.Height, Provenance: it.Figure.Provenance})
+	}
+	return out
 }
 
 type Frozen struct {
@@ -498,6 +609,8 @@ type PublishOptions struct {
 	// opens the old link.
 	Supersedes int64
 	Reason     string
+	// Jobs describes the jobs that the board's job panels follow, by job id.
+	Jobs map[int64]JobSnapshot
 }
 
 func (s *Store) PublishWith(boardID int64, o PublishOptions) (Snapshot, string, error) {
@@ -514,10 +627,7 @@ func (s *Store) PublishWith(boardID int64, o PublishOptions) (Snapshot, string, 
 	}
 	now := time.Now()
 	fr := Frozen{BoardTitle: b.Title, Label: clip(label, 200), Question: clip(o.Question, 1000), CreatedAt: now.UTC(), ExpiresAt: now.Add(ttl).UTC(), Items: []FrozenItem{}}
-	for _, it := range b.Items {
-		fr.Items = append(fr.Items, FrozenItem{Revision: it.Figure.Revision, Title: it.Figure.Title, Caption: it.Figure.Caption, Note: it.Note,
-			PreviewSHA: it.Figure.PreviewSHA, Width: it.Figure.Width, Height: it.Figure.Height, Provenance: it.Figure.Provenance})
-	}
+	fr.Items = freeze(b.Items, o.Jobs, now)
 	raw, err := json.Marshal(fr)
 	if err != nil {
 		return Snapshot{}, "", err
@@ -720,7 +830,7 @@ func (s *Store) ReviewPreview(token, sha string) ([]byte, error) {
 		return nil, err
 	}
 	for _, it := range fr.Items {
-		if it.PreviewSHA == sha {
+		if it.PreviewSHA != "" && it.PreviewSHA == sha {
 			return s.Preview(sha)
 		}
 	}
@@ -735,7 +845,7 @@ func (s *Store) AddComment(token string, in CommentInput) (Comment, error) {
 	}
 	found := false
 	for _, it := range fr.Items {
-		found = found || it.Revision == in.FigureRevision
+		found = found || (it.Revision != "" && it.Revision == in.FigureRevision) // a job panel has no revision to comment on
 	}
 	if !found && in.ParentID == 0 {
 		return Comment{}, fmt.Errorf("%w: comment needs text and a figure of this snapshot", ErrInvalid)

@@ -22,13 +22,15 @@ function token(name: string, fallback: Rgb): Rgb {
 }
 
 /** The plane on screen: native aspect, square pixels, sharp edges, north up, "no value" pixels hatched. */
-export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null) => void }) {
+export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: Pt | null) => void; onDrawn?: (plane: NonNullable<Viewer["plane"]>) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const cv = v.canvas;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [draft, setDraft] = useState<RegionShape | null>(null);
   const anchor = useRef<Pt | null>(null);
   const { plane, view } = v;
+  const drawn = useRef(onDrawn); // told when a plane has been put on the canvas, so a caller can save exactly what is shown
+  drawn.current = onDrawn;
 
   useEffect(() => {
     const el = box.current;
@@ -83,6 +85,7 @@ export function PlaneViewer({ v, onProbe }: { v: Viewer; onProbe?: (p: Pt | null
     canvas.width = img.width;
     canvas.height = img.height;
     ctx.putImageData(new ImageData(img.pixels, img.width, img.height), 0, 0);
+    drawn.current?.(plane);
   }, [plane, v.colormap, v.stretch, v.range, v.customLimits, v.interp, shape.scale]);
 
   function pick(e: MouseEvent<HTMLCanvasElement>) {

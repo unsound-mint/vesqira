@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { Button, Checkbox, IconButton, Input, Select } from "../ui";
-import { addToBoard as _unused, createBoard, figurePreviewUrl, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
+import { addToBoard as _unused, createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
 import { Threads } from "./Threads";
 import { PresentView } from "./PresentView";
 import { markSeen, readSeen } from "./seen";
-import type { Board, Comment, Preflight, Snapshot } from "../api/boards";
+import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
+import { listDatasets } from "../api/catalog";
+import type { Dataset } from "../api/catalog";
+import { listRuns } from "../api/runs";
+import type { Run } from "../api/runs";
+import { defaultOutput, JobFrame, JobLines, jobIsActive, LiveResult } from "./JobPanel";
 import { EM } from "../catalog/format";
 import { RunLine } from "./RunLine";
 import { BoardCompare } from "./BoardCompare";
@@ -21,7 +26,7 @@ const readBase = () => {
   }
 };
 
-export function provenanceLine(p: Board["items"][number]["figure"]["provenance"]): string {
+export function provenanceLine(p: Figure["provenance"]): string {
   const v = p.view;
   const parts = [p.source.name];
   if (v.channel !== undefined) parts.push(`channel ${v.channel + 1}`);
@@ -47,12 +52,20 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
   const [pre, setPre] = useState<Preflight | null>(null);
   const [presenting, setPresenting] = useState(false);
   const [ticked, setTicked] = useState<number[]>([]); // item positions ticked for "what differs", oldest first; at most two
+  const now = Date.now(); // elapsed times are as of the last render; the 30 s poll refreshes them
   const [seenAt, setSeenAt] = useState<Record<number, number>>({}); // when each snapshot was last opened, before this visit
 
   const reload = useCallback(async (keep?: number | null) => {
     try {
       const bs = await listBoards();
-      setBoards(bs);
+      // the list says where each job is but not how far; keep the progress already read until the next poll replaces it
+      setBoards((prev) => bs.map((nb) => {
+        const old = prev.find((x) => x.id === nb.id);
+        return old ? { ...nb, items: nb.items.map((it) => {
+          const was = old.items.find((o) => o.kind === "job" && it.kind === "job" && o.job.id === it.job.id);
+          return it.kind === "job" && was?.kind === "job" && was.job.progress && jobIsActive(it.job) && !it.job.progress ? { ...it, job: { ...it.job, progress: was.job.progress } } : it;
+        }) } : nb;
+      }));
       setId((cur) => keep ?? cur ?? bs[0]?.id ?? null);
       setErr(null);
     } catch (e) {
@@ -63,7 +76,30 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
     void reload();
   }, [reload]);
   const board = boards.find((b) => b.id === id) ?? null;
-  const picked = board ? ticked.map((pos) => board.items.find((x) => x.position === pos)).filter((x): x is Board["items"][number] => x !== undefined) : [];
+  const picked = board ? ticked.map((pos) => board.items.find((x) => x.position === pos)).filter((x): x is FigureItem => x !== undefined && x.kind !== "job") : [];
+
+  // Panels that follow a job: the list carries the job's state, the single-board call also reads its log for progress.
+  const replaceBoard = useCallback((b: Board) => setBoards((cur) => cur.map((x) => (x.id === b.id ? b : x))), []);
+  const live = board?.items.some((it) => it.kind === "job" && jobIsActive(it.job)) ?? false;
+  const boardId = board?.id ?? null;
+  useEffect(() => {
+    if (!live || boardId === null) return;
+    let stopped = false;
+    const poll = () => getBoard(boardId).then((b) => { if (!stopped) replaceBoard(b); }).catch(() => undefined); // the next poll tries again
+    poll();
+    const t = setInterval(poll, 30_000);
+    return () => { stopped = true; clearInterval(t); };
+  }, [live, boardId, replaceBoard]);
+
+  // A job that became a run: the run and its dataset are needed to draw the result.
+  const [lookup, setLookup] = useState<{ runs: Run[]; datasets: Dataset[] }>({ runs: [], datasets: [] });
+  const wantRuns = board?.items.some((it) => it.kind === "job" && it.job.runId !== null && !lookup.runs.some((r) => r.id === it.job.runId)) ?? false;
+  useEffect(() => {
+    if (!wantRuns) return;
+    let stopped = false;
+    void Promise.all([listRuns(), listDatasets()]).then(([runs, datasets]) => { if (!stopped) setLookup({ runs, datasets }); }).catch((e: Error) => setErr(e.message));
+    return () => { stopped = true; };
+  }, [wantRuns, board?.items.length]); // eslint-disable-line react-hooks/exhaustive-deps
   // A third tick replaces the oldest one, so a keyboard user never meets a disabled box and has to untick first.
   const tick = (pos: number, on: boolean) => setTicked((cur) => (on ? [...cur.filter((x) => x !== pos), pos].slice(-2) : cur.filter((x) => x !== pos)));
   useEffect(() => {
@@ -128,33 +164,56 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
       {picked.length === 1 ? <p className={s.note} role="status">Tick a second panel to see what differs between the two.</p> : null}
       {picked.length === 2 ? <BoardCompare a={picked[0]!.figure} b={picked[1]!.figure} {...(onCompare ? { onCompare } : {})} /> : null}
       <ol className={s.items} aria-label="Figures on the board">
-        {board?.items.map((it, i) => (
+        {board?.items.map((it, i) => {
+          const f = it.kind === "job" ? null : it.figure;
+          const job = it.kind === "job" ? it.job : null;
+          const jobRun = job?.runId != null ? lookup.runs.find((r) => r.id === job.runId) : undefined;
+          const out = jobRun ? defaultOutput(jobRun) : undefined;
+          const outData = out ? lookup.datasets.find((d) => d.id === out.datasetId) : undefined;
+          return (
           <li key={it.position} className={s.card}>
-            <img className={s.img} src={figurePreviewUrl(it.figure.id)} alt={`${it.figure.title}. ${provenanceLine(it.figure.provenance)}`} width={it.figure.width} height={it.figure.height} />
+            {f ? <img className={s.img} src={figurePreviewUrl(f.id)} alt={`${f.title}. ${provenanceLine(f.provenance)}`} width={f.width} height={f.height} /> : null}
+            {job && jobRun && outData ? <LiveResult key={`${job.id}-${it.position}`} boardId={board.id} position={it.position} job={job} run={jobRun} dataset={outData} onPinned={replaceBoard} /> : null}
+            {job && !(jobRun && outData) ? <JobFrame job={job} /> : null}
             <div className={s.meta}>
-              <h3 className={s.title}>{it.figure.title}</h3>
-              <p className={s.src}>{provenanceLine(it.figure.provenance)}</p>
-              {it.figure.caption ? <p className={s.cap}>{it.figure.caption}</p> : null}
-              <details className={s.det}>
-                <summary>Where this came from</summary>
-                {it.figure.provenance.run ? <RunLine run={it.figure.provenance.run} /> : null}
-                <ul>{it.figure.provenance.statements.map((t) => <li key={t}>{t}</li>)}</ul>
-                <p className={s.src}>{it.figure.provenance.source.identity}. Revision <span className="mono">{it.figure.revision.slice(0, 12)}</span></p>
-              </details>
+              {f ? (
+                <>
+                  <h3 className={s.title}>{f.title}</h3>
+                  <p className={s.src}>{provenanceLine(f.provenance)}</p>
+                  {f.caption ? <p className={s.cap}>{f.caption}</p> : null}
+                  <details className={s.det}>
+                    <summary>Where this came from</summary>
+                    {f.provenance.run ? <RunLine run={f.provenance.run} /> : null}
+                    <ul>{f.provenance.statements.map((t) => <li key={t}>{t}</li>)}</ul>
+                    <p className={s.src}>{f.provenance.source.identity}. Revision <span className="mono">{f.revision.slice(0, 12)}</span></p>
+                  </details>
+                </>
+              ) : null}
+              {job ? (
+                <>
+                  <h3 className={s.title}>Run {job.name}</h3>
+                  <JobLines job={job} now={now} />
+                  {job.state === "completed" && job.runId === null ? <p className={s.cap}>Finished; import its results on the Jobs screen to pin the result.</p> : null}
+                  {job.state === "completed" && job.runId !== null && !(jobRun && outData) ? <p className={s.src}>Finished. Loading the result to pin it…</p> : null}
+                  {job.state === "failed" || job.state === "cancelled" ? <p className={s.cap}>This run {job.state === "failed" ? "failed" : "was cancelled"}; there is no result to pin. Remove the panel when you no longer need it.</p> : null}
+                  {job.state === "unknown" ? <p className={s.cap}>This job is no longer in the catalog. Remove the panel.</p> : null}
+                </>
+              ) : null}
               <label className={s.noteLabel}>
                 Note for the reviewer
                 <textarea className={s.area} rows={2} defaultValue={it.note} maxLength={2000} onBlur={(e) => { if (e.target.value !== it.note) void run(() => setNote(board.id, it.position, e.target.value)); }} />
               </label>
-              <Checkbox label="Compare" aria-label={`Compare ${it.figure.title}`} checked={ticked.includes(it.position)} onChange={(e) => tick(it.position, e.target.checked)} />
+              {f ? <Checkbox label="Compare" aria-label={`Compare ${f.title}`} checked={ticked.includes(it.position)} onChange={(e) => tick(it.position, e.target.checked)} /> : null}
               <div className={s.row}>
                 <IconButton icon={ArrowUp} label="Move up" disabled={i === 0} onClick={() => run(() => moveItem(board.id, it.position, -1))} />
                 <IconButton icon={ArrowDown} label="Move down" disabled={i === board.items.length - 1} onClick={() => run(() => moveItem(board.id, it.position, 1))} />
-                <a className={s.link2} href={`/api/figures/${it.figure.id}/download`} download>Download PNG</a>
+                {f ? <a className={s.link2} href={`/api/figures/${f.id}/download`} download>Download PNG</a> : null}
                 <IconButton icon={Trash2} label="Remove from board" onClick={() => run(() => removeItem(board.id, it.position))} />
               </div>
             </div>
           </li>
-        ))}
+          );
+        })}
       </ol>
       {board && board.items.length > 0 ? (
         <section className={s.share} aria-label="Share for review">
@@ -187,7 +246,9 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
               <p className={s.note}>The reviewer will see exactly this and nothing else:</p>
               {pre.warnings.length > 0 ? <ul className={s.comments}>{pre.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : <p className={s.note}>Nothing to flag.</p>}
               <ol className={s.comments}>
-                {pre.frozen.items.map((it) => <li key={it.revision}><strong>{it.title}</strong>{it.caption ? ` · ${it.caption}` : ""}{it.note ? ` · note: ${it.note}` : ""}</li>)}
+                {pre.frozen.items.map((it, n) => it.kind === "job"
+                  ? <li key={`job-${n}`}><strong>{it.title}</strong> · a run that is {it.state} now; shown as a placeholder that will not change{it.note ? ` · note: ${it.note}` : ""}</li>
+                  : <li key={it.revision}><strong>{it.title}</strong>{it.caption ? ` · ${it.caption}` : ""}{it.note ? ` · note: ${it.note}` : ""}</li>)}
               </ol>
               {pre.frozen.question ? <p className={s.note}>Question: {pre.frozen.question}</p> : null}
             </div>

@@ -14,14 +14,14 @@ const mod = "github.com/unsound-mint/vesqira/services/api/internal/"
 // allowed lists, for every internal package, the internal packages it may import directly. A new import is a design
 // decision: add it here on purpose, and if the importing package faces a reviewer, re-read the reviewer boundary below.
 var allowed = map[string][]string{
-	"arch": {}, "audit": {}, "backup": {}, "compat": {}, "derived": {}, "regions": {}, "sourceroot": {}, "worker": {}, "schema": {},
+	"arch": {}, "audit": {}, "backup": {}, "compat": {}, "derived": {}, "regions": {}, "sourceroot": {}, "worker": {}, "schema": {}, "vgtlog": {},
 	"boards":  {"schema"},
 	"catalog": {"schema"},
 	"jobs":    {"schema"},
 	"runs":    {"schema"},
 	"hosts":   {"worker"},
 	"review":  {"boards"},
-	"server":  {"audit", "boards", "catalog", "compat", "derived", "hosts", "jobs", "regions", "runs", "schema", "sourceroot", "worker"},
+	"server":  {"audit", "boards", "catalog", "compat", "derived", "hosts", "jobs", "regions", "runs", "schema", "sourceroot", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a

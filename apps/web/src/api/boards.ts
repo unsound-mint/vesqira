@@ -23,7 +23,20 @@ export type Provenance = {
   statements: string[];
 };
 
-export type BoardItem = { position: number; figure: Figure; note: string };
+/** A run that was still running when it was put on a board. Its fields are the owner's; a reviewer never gets them. */
+export type JobInfo = {
+  id: number;
+  name: string;
+  state: "draft" | "submitting" | "submitted" | "running" | "completed" | "failed" | "cancelled" | "unknown";
+  submittedAt: string | null;
+  finishedAt: string | null;
+  runId: number | null;
+  /** From the job's log; absent when the log says nothing. etaSeconds is an estimate at the rate so far, or null. */
+  progress?: { done: number; total: number; etaSeconds: number | null };
+};
+export type FigureItem = { position: number; kind?: "figure"; figure: Figure; note: string };
+export type JobItem = { position: number; kind: "job"; job: JobInfo; note: string };
+export type BoardItem = FigureItem | JobItem;
 export type Board = { id: number; title: string; createdAt: string; updatedAt: string; items: BoardItem[] };
 export type OutcomeValue = "commented" | "changes_requested" | "reviewed";
 export const OUTCOME_TEXT: Record<OutcomeValue, string> = { commented: "Commented", changes_requested: "Changes requested", reviewed: "Reviewed" };
@@ -32,7 +45,10 @@ export type Snapshot = { id: number; boardId: number; label: string; createdAt: 
 export type Anchor = { kind: "point"; x: number; y: number } | { kind: "box"; x: number; y: number; x1: number; y1: number };
 export type Comment = { id: number; figureRevision: string; parentId: number; author: string; fromOwner: boolean; body: string; anchor?: Anchor; createdAt: string; resolvedAt?: string };
 
-export type FrozenItem = { revision: string; title: string; caption: string; note: string; previewSha: string; width: number; height: number; provenance: Provenance };
+export type FrozenFigure = { kind?: "figure"; revision: string; title: string; caption: string; note: string; previewSha: string; width: number; height: number; provenance: Provenance };
+/** A run that had not finished when the board was published: only its name and state at that moment. */
+export type FrozenJob = { kind: "job"; title: string; state: string; at: string; note: string };
+export type FrozenItem = FrozenFigure | FrozenJob;
 export type Review = { snapshot: { boardTitle: string; label: string; question?: string; createdAt: string; expiresAt: string; items: FrozenItem[] }; comments: Comment[]; outcome: { value: "" | OutcomeValue; note?: string; by?: string; at?: string }; superseded?: { reason: string; at: string } };
 export type Preflight = { frozen: Review["snapshot"]; warnings: string[] };
 
@@ -56,8 +72,14 @@ export const createFigure = (r: FigureRequest) => post<Figure>("/api/figures", r
 export const listFigures = () => call<{ figures: Figure[] }>("/api/figures").then((r) => r.figures);
 export const figurePreviewUrl = (id: number) => `/api/figures/${id}/preview`;
 export const listBoards = () => call<{ boards: Board[] }>("/api/boards").then((r) => r.boards);
+/** One board with the live state of its job panels (this is the call that reads their logs; the list does not). */
+export const getBoard = (id: number) => call<Board>(`/api/boards/${id}`);
 export const createBoard = (title: string) => post<Board>("/api/boards", { title });
 export const addToBoard = (boardId: number, figureId: number) => post<Board>(`/api/boards/${boardId}/items`, { figureId });
+/** Puts a panel on the board that follows a job and becomes its result when it finishes. */
+export const addJobToBoard = (boardId: number, jobId: number) => post<Board>(`/api/boards/${boardId}/items`, { jobId });
+/** Replaces a job panel with the figure saved from its result, in the same place and with the same note. */
+export const pinJobItem = (boardId: number, pos: number, figureId: number) => post<Board>(`/api/boards/${boardId}/items/${pos}/pin`, { figureId });
 export const removeItem = (boardId: number, pos: number) => post<Board>(`/api/boards/${boardId}/items/${pos}/remove`, {});
 export const moveItem = (boardId: number, pos: number, delta: -1 | 1) => post<Board>(`/api/boards/${boardId}/items/${pos}/move`, { delta });
 export const setNote = (boardId: number, pos: number, note: string) => post<Board>(`/api/boards/${boardId}/items/${pos}/note`, { note });
