@@ -8,6 +8,7 @@ import { markSeen, readSeen } from "./seen";
 import type { Board, Comment, Preflight, Snapshot } from "../api/boards";
 import { EM } from "../catalog/format";
 import { RunLine } from "./RunLine";
+import { BoardCompare } from "./BoardCompare";
 import s from "./BoardsView.module.css";
 
 void _unused;
@@ -29,7 +30,7 @@ export function provenanceLine(p: Board["items"][number]["figure"]["provenance"]
 }
 
 /** Research board: a mutable draft of pinned figures. Sharing freezes it. */
-export function BoardsView() {
+export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, datasetIdB: number) => void } = {}) {
   const [boards, setBoards] = useState<Board[]>([]);
   const [id, setId] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export function BoardsView() {
   const [reason, setReason] = useState("");
   const [pre, setPre] = useState<Preflight | null>(null);
   const [presenting, setPresenting] = useState(false);
+  const [ticked, setTicked] = useState<number[]>([]); // item positions ticked for "what differs", oldest first; at most two
   const [seenAt, setSeenAt] = useState<Record<number, number>>({}); // when each snapshot was last opened, before this visit
 
   const reload = useCallback(async (keep?: number | null) => {
@@ -61,8 +63,12 @@ export function BoardsView() {
     void reload();
   }, [reload]);
   const board = boards.find((b) => b.id === id) ?? null;
+  const picked = board ? ticked.map((pos) => board.items.find((x) => x.position === pos)).filter((x): x is Board["items"][number] => x !== undefined) : [];
+  // A third tick replaces the oldest one, so a keyboard user never meets a disabled box and has to untick first.
+  const tick = (pos: number, on: boolean) => setTicked((cur) => (on ? [...cur.filter((x) => x !== pos), pos].slice(-2) : cur.filter((x) => x !== pos)));
   useEffect(() => {
     setLink(null);
+    setTicked([]);
     if (board) listSnapshots(board.id).then(setSnaps).catch(() => setSnaps([]));
     else setSnaps([]);
   }, [board?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -119,6 +125,8 @@ export function BoardsView() {
         </div>
       ) : null}
       {presenting && board ? <PresentView board={board} onClose={() => setPresenting(false)} /> : null}
+      {picked.length === 1 ? <p className={s.note} role="status">Tick a second panel to see what differs between the two.</p> : null}
+      {picked.length === 2 ? <BoardCompare a={picked[0]!.figure} b={picked[1]!.figure} {...(onCompare ? { onCompare } : {})} /> : null}
       <ol className={s.items} aria-label="Figures on the board">
         {board?.items.map((it, i) => (
           <li key={it.position} className={s.card}>
@@ -137,6 +145,7 @@ export function BoardsView() {
                 Note for the reviewer
                 <textarea className={s.area} rows={2} defaultValue={it.note} maxLength={2000} onBlur={(e) => { if (e.target.value !== it.note) void run(() => setNote(board.id, it.position, e.target.value)); }} />
               </label>
+              <Checkbox label="Compare" aria-label={`Compare ${it.figure.title}`} checked={ticked.includes(it.position)} onChange={(e) => tick(it.position, e.target.checked)} />
               <div className={s.row}>
                 <IconButton icon={ArrowUp} label="Move up" disabled={i === 0} onClick={() => run(() => moveItem(board.id, it.position, -1))} />
                 <IconButton icon={ArrowDown} label="Move down" disabled={i === board.items.length - 1} onClick={() => run(() => moveItem(board.id, it.position, 1))} />

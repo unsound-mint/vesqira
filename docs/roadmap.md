@@ -24,7 +24,7 @@ Do first: it makes the viewer claims measurable and unblocks scrubbing on large 
 One workspace: inspect, change parameters, run on HPC, add to a board with the supervisor, discuss, remember. The integrated-loop mock (run page, live board panel, change-and-run, what differs) was approved on 2026-11-05; other new screens still need an approved mock.
 
 - [x] Typed run metrics with unit, uncertainty and its kind, sample count and definition, shown on the run, in the reviewer's run line and beside each other in the comparison inspector (ADR 0014 amendment). The run filter box tests results (`am>0.3`). Plotting a metric against a parameter still to do.
-- [ ] "What differs" strip for two runs or panels (Q87, Q132).
+- [x] "What differs" strip for two runs or panels (Q87, Q132). Built: tick two panels on a board for a table of differing run settings, code, input, view and declared results with their comparability basis. Deferred: "Add this table to the board" (needs a new board item kind) and a difference-map button.
 - [ ] Runs as nested pages: default result, other results of the same run, config and logs on demand.
 - [ ] A board panel that follows a run still running and pins its result when it finishes.
 - [ ] Change parameters from the cube view and run in one click (pulls shape.md slice 2 forward).
