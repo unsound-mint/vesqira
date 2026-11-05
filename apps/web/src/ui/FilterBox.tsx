@@ -3,6 +3,7 @@ import type { ChangeEvent, KeyboardEvent } from "react";
 import { X } from "lucide-react";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
+import { inQuote, quoteValue, tokenize, unquote } from "./queryWords";
 import c from "./Controls.module.css";
 import s from "./FilterBox.module.css";
 
@@ -31,14 +32,20 @@ const ENDS_IN_OP = /[<>=:]$/;
 const SHOW: Record<string, string> = { "<=": "≤", ">=": "≥" };
 const NAMES_SHOWN = 5;
 
-const tokens = (q: string) => q.split(/\s+/).filter(Boolean);
+const tokens = tokenize;
+/** A word that is still being written: it ends in an operator, or its value is empty (ker=, unit:"). */
+const incomplete = (w: string) => {
+  const m = TOKEN.exec(w);
+  return ENDS_IN_OP.test(w) || (m !== null && unquote(m[3] ?? "") === "");
+};
 const norm = (t: string) => t.replace(/≥/g, ">=").replace(/≤/g, "<=");
 
 /** What a chip says: `ker = 8`, `noise ≥ 0.3`, `QC: passed`; a plain word is shown as typed. */
 function chipLabel(token: string, vocab: Vocabulary): string {
   const m = TOKEN.exec(token);
   if (!m) return token;
-  const [, key = "", op = "", value = ""] = m;
+  const [, key = "", op = "", raw = ""] = m;
+  const value = unquote(raw);
   const vk = vocab.keys.find((k) => k.key.toLowerCase() === key.toLowerCase());
   if (op === ":") return `${key === "qc" ? "QC" : key.charAt(0).toUpperCase() + key.slice(1)}: ${vk?.labels?.[value] ?? value}`;
   return `${key} ${SHOW[op] ?? op} ${value}`;
@@ -47,20 +54,20 @@ function chipLabel(token: string, vocab: Vocabulary): string {
 type Option = { id: string; kind: "key" | "op" | "value" | "name"; label: string; meta?: string; draft?: string; commit?: string };
 
 /** A draft that is a whole condition or a plain word may narrow the list while it is typed; a half-typed one does not. */
-const liveDraft = (d: string) => d.trim() !== "" && !/\s/.test(d) && !ENDS_IN_OP.test(d);
+const liveDraft = (d: string) => tokenize(d).length === 1 && !incomplete(d.trim());
 
 function suggest(draft: string, vocab: Vocabulary, noun: string): { options: Option[]; hint?: string } {
   const d = norm(draft.trim());
   const find = (k: string) => vocab.keys.find((v) => v.key.toLowerCase() === k.toLowerCase());
   const valueOptions = (vk: VocabKey, op: string, prefix: string): Option[] =>
     vk.values
-      .filter((v) => v.value.toLowerCase().startsWith(prefix.toLowerCase()) || (vk.labels?.[v.value] ?? "").toLowerCase().startsWith(prefix.toLowerCase()))
+      .filter((v) => v.value.toLowerCase().startsWith(unquote(prefix).toLowerCase()) || (vk.labels?.[v.value] ?? "").toLowerCase().startsWith(unquote(prefix).toLowerCase()))
       .map((v) => ({
         id: `v:${vk.key}:${v.value}`,
         kind: "value" as const,
         label: vk.labels?.[v.value] ?? v.value,
         meta: `${v.count} ${noun}`,
-        commit: vk.sep ? `${vk.key}:${v.value}` : `${vk.key}${op}${v.value}`,
+        commit: vk.sep ? `${vk.key}:${quoteValue(v.value)}` : `${vk.key}${op}${quoteValue(v.value)}`,
       }));
   const rangeHint = (vk: VocabKey) => (vk.range ? `${vk.range.min} … ${vk.range.max}, ${vk.range.n} value${vk.range.n === 1 ? "" : "s"}` : undefined);
 
@@ -154,13 +161,13 @@ export function FilterBox({ label, placeholder, value, onChange, vocabulary, sho
   // The first completion is ready for Enter or Tab, except a run name: that needs an arrow key, so a plain word stays a word.
   // After an operator, only a value typed in full is taken as is (noise>0.3 must not become 0.37).
   const typedValue = TOKEN.test(draft.trim());
-  const defaultActive = draft.trim() === "" ? -1 : typedValue ? options.findIndex((o) => o.commit?.toLowerCase() === norm(draft.trim()).toLowerCase()) : options[0] && options[0].kind !== "name" ? 0 : -1;
+  const defaultActive = draft.trim() === "" ? -1 : typedValue ? options.findIndex((o) => o.commit !== undefined && unquote(o.commit).toLowerCase() === unquote(norm(draft.trim())).toLowerCase()) : options[0] && options[0].kind !== "name" ? 0 : -1;
   const active = Math.min(moved ?? defaultActive, options.length - 1);
   const showList = open && options.length > 0;
 
   function commitToken(t: string, rest = chips): string[] {
     const w = norm(t.trim());
-    return w === "" || rest.includes(w) ? rest : [...rest, w];
+    return w === "" || incomplete(w) || rest.includes(w) ? rest : [...rest, w];
   }
 
   function accept(o: Option) {
@@ -177,14 +184,14 @@ export function FilterBox({ label, placeholder, value, onChange, vocabulary, sho
   function typed(e: ChangeEvent<HTMLInputElement>) {
     const v = e.target.value;
     setOpen(true);
-    if (!/\s/.test(v)) return update(chips, v);
-    // Space ends a word: whole conditions become chips, a half-typed one (ker=) stays in the box.
-    const parts = v.split(/\s+/);
-    const tail = parts.pop() ?? "";
+    const parts = tokenize(v);
+    const trailing = /\s$/.test(v) && !inQuote(v);
+    if (parts.length <= 1 && !trailing) return update(chips, v);
+    // Space ends a word (outside quotes): whole conditions become chips, a half-typed one (ker=) stays in the box.
+    const tail = trailing ? "" : (parts.pop() ?? "");
     let next = chips;
     for (const p of parts) {
-      if (p === "") continue;
-      if (ENDS_IN_OP.test(p)) return update(next, p + tail);
+      if (incomplete(p)) return update(next, p + tail);
       next = commitToken(p, next);
     }
     update(next, tail);
@@ -206,7 +213,7 @@ export function FilterBox({ label, placeholder, value, onChange, vocabulary, sho
       if (o) {
         ev.preventDefault();
         accept(o);
-      } else if (draft.trim() !== "" && !ENDS_IN_OP.test(draft.trim())) {
+      } else if (draft.trim() !== "" && !incomplete(draft.trim())) {
         ev.preventDefault();
         update(commitToken(draft), "");
         setOpen(false);

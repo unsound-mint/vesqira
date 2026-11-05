@@ -15,7 +15,7 @@ const PROBLEM_SHORT: Record<string, string> = { modified: " · changed on disk",
 
 type Props = {
   datasets: Dataset[];
-  hosts?: { id: number; name: string }[];
+  hosts?: Host[];
   selectedId: number | null;
   problems?: Record<string, Problem>;
   loading: boolean;
@@ -24,7 +24,10 @@ type Props = {
   onRegister: (path: string) => Promise<string | null>;
 };
 
-export function Explorer({ hosts = [], datasets, selectedId, problems = {}, loading, error, onSelect, onRegister }: Props) {
+type Host = { id: number; name: string };
+const NO_HOSTS: Host[] = [];
+
+export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}, loading, error, onSelect, onRegister }: Props) {
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
 import { FilterBox } from "../ui";
-import { matchDataset, matchRun } from "./filter";
+import { matchDataset, matchRun, tokenize, unquote } from "./filter";
 import { datasetVocabulary, runVocabulary } from "./vocabulary";
 
 const metric = (key: string, value: number | null) => ({ key, value, unit: "", uncertainty: null, uncertaintyKind: "" as const, n: null, definition: "", status: "declared" as const });
@@ -47,15 +47,15 @@ describe("runVocabulary", () => {
     expect(ker?.values).toEqual([{ value: "4", count: 1 }, { value: "8", count: 2 }, { value: "16", count: 1 }]);
     expect(ker?.range).toEqual({ min: 4, max: 16, n: 3 });
   });
-  it("offers only recorded results and only assessed QC states", () => {
+  it("offers only recorded results, and the QC states in use including not assessed", () => {
     const am = v.keys.find((k) => k.key === "am");
     expect(am?.kind).toBe("result");
     expect(am?.values).toEqual([{ value: "0.3", count: 1 }]); // the run whose result is null contributes nothing
     expect(am?.count).toBe(1);
-    expect(v.keys.find((k) => k.key === "qc")?.values).toEqual([{ value: "passed", count: 2 }]);
+    expect(v.keys.find((k) => k.key === "qc")?.values).toEqual([{ value: "not_assessed", count: 2 }, { value: "passed", count: 2 }]);
   });
   it("offers a result key only for runs that recorded it, so a result that is null everywhere is not a key", () => {
-    expect(runVocabulary([run(1, {}, { metrics: [metric("lost", null)] })]).keys).toEqual([]);
+    expect(runVocabulary([run(1, {}, { metrics: [metric("lost", null)] })]).keys.map((k) => k.key)).toEqual(["qc"]);
   });
 });
 
@@ -140,8 +140,8 @@ describe("FilterBox on runs", () => {
     await u.keyboard("{Escape}");
     expect(screen.getByRole("listbox", { hidden: true }).hidden).toBe(true);
     await u.keyboard("qc"); // a key written key:value lists its values at once
-    expect(options().map((o) => o.replace(/\s+/g, " "))).toEqual(["passed2 runs"]);
-    await u.keyboard("{Tab}");
+    expect(options().map((o) => o.replace(/\s+/g, " "))).toEqual(["not assessed2 runs", "passed2 runs"]);
+    await u.keyboard("{ArrowDown}{Tab}");
     expect(screen.getByTestId("query").textContent).toBe("qc:passed");
     expect(names()).toEqual(["lmc_1", "lmc_4"]);
     await u.click(screen.getByRole("button", { name: "Edit filter QC: passed" }));
@@ -156,5 +156,56 @@ describe("FilterBox on runs", () => {
     expect(screen.getByText("1 of 4")).toBeTruthy();
     await u.click(screen.getByRole("button", { name: "Clear" }));
     expect(names()).toHaveLength(4);
+  });
+});
+
+describe("quoted values", () => {
+  it("tokenize keeps a quoted value as one word and unquote strips the quotes", () => {
+    expect(tokenize('unit:"km / s" ker=8  lmc')).toEqual(['unit:"km / s"', "ker=8", "lmc"]);
+    expect(tokenize('label="demo run')).toEqual(['label="demo run']); // unterminated: the rest is the value
+    expect(tokenize("   ")).toEqual([]);
+    expect(unquote('unit:"km / s"')).toBe("unit:km / s");
+  });
+  it("matchRun and matchDataset use quoted values", () => {
+    const r = run(1, { label: "demo run", ker: "8" });
+    expect(matchRun(r, 'label="demo run"')).toBe(true);
+    expect(matchRun(r, 'label="demo"')).toBe(false);
+    expect(matchRun(r, 'label="demo run ker=8')).toBe(false); // unterminated quote swallows the rest
+    expect(matchRun(r, 'label="demo run" ker=8')).toBe(true);
+    const d = (bunit: string) => ({ name: "x.fits", nature: "", header: { bunit } }) as unknown as Dataset;
+    expect(matchDataset(d("km / s"), 'unit:"km / s"', undefined)).toBe(true);
+    expect(matchDataset(d("km"), 'unit:"km / s"', undefined)).toBe(false);
+    expect(matchDataset(d("K"), 'host:"my cluster"', "My Cluster")).toBe(true);
+  });
+  it("a value with a space is offered, written quoted, shown without quotes, and round-trips", async () => {
+    const u = userEvent.setup();
+    const ds = (id: number, bunit: string): Dataset => ({ id, name: `d${id}.fits`, hostId: 0, nature: "", header: { bunit } }) as unknown as Dataset;
+    const list = [ds(1, "km / s"), ds(2, "K")];
+    function Sets() {
+      const [q, setQ] = useState("");
+      const vocabulary = useMemo(() => datasetVocabulary(list, []), []);
+      const shown = list.filter((d) => matchDataset(d, q, undefined));
+      return (
+        <>
+          <FilterBox label="Filter datasets" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={list.length} noun="datasets" />
+          <p data-testid="query">{q}</p>
+          <ul aria-label="Datasets">{shown.map((d) => <li key={d.id}>{d.name}</li>)}</ul>
+        </>
+      );
+    }
+    render(<Sets />);
+    const box = screen.getByRole("combobox", { name: "Filter datasets" });
+    await u.type(box, "unit:km");
+    await u.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByTestId("query").textContent).toBe('unit:"km / s"');
+    expect(screen.getByRole("button", { name: "Remove filter Unit: km / s" })).toBeTruthy();
+    expect(screen.getAllByRole("listitem").map((l) => l.textContent)).toEqual(["d1.fits"]);
+    await u.click(screen.getByRole("button", { name: "Edit filter Unit: km / s" }));
+    expect((box as HTMLInputElement).value).toBe('unit:"km / s"');
+    await u.keyboard("{Enter}");
+    expect(screen.getByTestId("query").textContent).toBe('unit:"km / s"');
+    await u.click(screen.getByRole("button", { name: "Clear" }));
+    await u.type(box, 'unit:"K" ');
+    expect(screen.getAllByRole("listitem").map((l) => l.textContent)).toEqual(["d2.fits"]);
   });
 });
