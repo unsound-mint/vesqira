@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Input, Pill, Select } from "../ui";
+import { Button, Input, PathField, Pill, Select } from "../ui";
 import { jobResult } from "../api/analysis";
 import { cancelJob, createJob, editScript, getJob, hostText, jobLog, listJobs, readSetting, refreshJob, registerOutputs, reopenJob, submitJob } from "../api/jobs";
 import type { Job, JobState } from "../api/jobs";
@@ -84,6 +84,7 @@ function NewJob({ hosts, onCreated }: { hosts: Host[]; onCreated: (j: Job) => vo
   const [hostId, setHostId] = useState<string>(hosts[0] ? String(hosts[0].id) : "");
   const [kind, setKind] = useState<"vgt" | "rohsa">("vgt");
   const [name, setName] = useState("vgt-run");
+  const hostNum = hostId ? Number(hostId) : null; // no host chosen: the path fields do not complete
   const [repoDir, setRepoDir] = useState("");
   const [configPath, setConfigPath] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -140,12 +141,12 @@ function NewJob({ hosts, onCreated }: { hosts: Host[]; onCreated: (j: Job) => vo
         {hosts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
       </Select>
       <Input label="Job name" value={name} onChange={(e) => setName(e.target.value)} />
-      <Input label="VGT folder on the host" value={repoDir} onChange={(e) => setRepoDir(e.target.value)} placeholder="/shared/home/you/vgt" spellCheck={false} />
+      <PathField label="VGT folder on the host" kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} placeholder="/shared/home/you/vgt" />
       {kind === "rohsa" ? (
-        <Input label="ROHSA config on the host" value={configPath} onChange={(e) => setConfigPath(e.target.value)} placeholder="/shared/home/you/vgt/configs/rohsa/run.toml" spellCheck={false} />
+        <PathField label="ROHSA config on the host" kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} placeholder="/shared/home/you/vgt/configs/rohsa/run.toml" />
       ) : null}
       <div className={s.inline} hidden={kind === "rohsa"}>
-        <Input label="Base config on the host" value={configPath} onChange={(e) => setConfigPath(e.target.value)} placeholder="/shared/home/you/vgt/configs/run.toml" spellCheck={false} />
+        <PathField label="Base config on the host" kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} placeholder="/shared/home/you/vgt/configs/run.toml" />
         <Button type="button" disabled={busy || !configPath || !hostId} onClick={load}>Load settings</Button>
       </div>
       {loaded && kind === "vgt" ? (

@@ -269,6 +269,16 @@ paths:
       operationId: owner_s_figureText_post_api_figures_id_text
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/fs/choose:
+    post:
+      operationId: owner_s_choose_post_api_fs_choose
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/fs/complete:
+    get:
+      operationId: owner_s_completeLocal_get_api_fs_complete
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/hosts:
     get:
       operationId: owner_s_listHosts_get_api_hosts
@@ -288,6 +298,13 @@ paths:
       - {name: id, in: path, required: true, schema: {type: string}}
     post:
       operationId: owner_s_checkHost_post_api_hosts_id_check
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/hosts/{id}/complete:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_completeRemote_get_api_hosts_id_complete
       x-listener: owner
       responses: {'200': {description: ok}}
   /api/hosts/{id}/delete:

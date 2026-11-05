@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Input, Pill, Select } from "../ui";
+import { Button, Input, PathField, Pill, Select } from "../ui";
 import { createJob, readSetting } from "../api/jobs";
 import type { Job } from "../api/jobs";
 import type { Host } from "../api/hosts";
@@ -69,6 +69,7 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
   const [name, setName] = useState(rerun.name);
   const [why, setWhy] = useState("");
   const [hostId, setHostId] = useState(hostKnown ? String(rerun.hostId) : "");
+  const hostNum = hostId ? Number(hostId) : null; // no host chosen: the path fields do not complete
   const [repoDir, setRepoDir] = useState(rerun.vgt.repoDir ?? "");
   const [configPath, setConfigPath] = useState(rerun.vgt.configPath ?? "");
   const [res, setRes] = useState({
@@ -183,8 +184,8 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
           <option value="">{imported ? "(choose; the run does not say)" : "(choose)"}</option>
           {hosts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
         </Select>
-        <Input label="VGT folder on the host" value={repoDir} onChange={(e) => setRepoDir(e.target.value)} required spellCheck={false} placeholder="/shared/home/you/vgt" />
-        <Input label="Config on the host" value={configPath} onChange={(e) => setConfigPath(e.target.value)} required spellCheck={false} placeholder="/shared/home/you/vgt/configs/run.toml" />
+        <PathField label="VGT folder on the host" kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} required placeholder="/shared/home/you/vgt" />
+        <PathField label="Config on the host" kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} required placeholder="/shared/home/you/vgt/configs/run.toml" />
         <Input label="CPUs" value={res.cpus} onChange={(e) => setRes({ ...res, cpus: e.target.value })} inputMode="numeric" required />
         <Input label="Memory" value={res.mem} onChange={(e) => setRes({ ...res, mem: e.target.value })} required />
         <Input label="Time limit" value={res.time} onChange={(e) => setRes({ ...res, time: e.target.value })} required />
