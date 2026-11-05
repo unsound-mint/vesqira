@@ -3,7 +3,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -63,8 +62,8 @@ func main() {
 		log.Fatalf("refusing to listen on %q: local mode binds to loopback only", *addr)
 	}
 	if len(roots) == 0 {
-		fmt.Fprintln(os.Stderr, "at least one --root is required: files outside source roots are never read")
-		os.Exit(2)
+		// opening a project folder makes it readable (ADR 0030); nothing else outside the data directory is
+		log.Printf("no --root given: only the data directory and project folders you open are readable")
 	}
 	// derived results (moment maps, cutouts, aligned cubes) are written under the data directory, which is a source root
 	ddir := *dataDir
