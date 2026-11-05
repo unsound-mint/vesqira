@@ -210,14 +210,16 @@ func TestOpeningARefusesTheWholeDiskTheHomeAndCredentials(t *testing.T) {
 	e := newProjEnv(t)
 	sub := filepath.Join(e.home, "sub")
 	os.MkdirAll(filepath.Join(sub, ".ssh"), 0o755)
+	os.MkdirAll(filepath.Join(e.home, ".config", "gh"), 0o755)
 	for name, p := range map[string]string{
 		"disk": "/", "home": e.home, "ancestor of home": e.base, "ssh": filepath.Join(sub, ".ssh"),
+		"inside .config": filepath.Join(e.home, ".config", "gh"),
 	} {
 		code, b := e.call(t, "POST", "/api/projects/open", map[string]any{"path": p})
 		if code != 422 {
 			t.Fatalf("%s: %d %s", name, code, b)
 		}
-		if name != "ssh" && !strings.Contains(string(b), "pick a project folder, not the whole disk/home") {
+		if name != "ssh" && name != "inside .config" && !strings.Contains(string(b), "pick a project folder, not the whole disk/home") {
 			t.Fatalf("%s: %s", name, b)
 		}
 	}

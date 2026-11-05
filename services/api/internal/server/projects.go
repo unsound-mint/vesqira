@@ -69,6 +69,10 @@ const broadMessage = "pick a project folder, not the whole disk/home"
 // refuseBroad says why a folder must not become a project (the whole disk, the home folder or a folder that holds it,
 // credential folders), or "" when it may. Opening a folder makes everything in it readable, so the folder is the
 // authorization and a broad choice is refused rather than honoured.
+// credentialDirs hold keys, tokens or browser profiles; a project folder inside one would make them readable.
+var credentialDirs = map[string]bool{".ssh": true, ".gnupg": true, ".config": true, ".local": true, ".aws": true, ".kube": true,
+	".docker": true, ".password-store": true, ".mozilla": true, ".pki": true, ".netrc": true, ".git-credentials": true}
+
 func refuseBroad(real string, home string) string {
 	if real == "/" || real == "." || real == "" {
 		return broadMessage
@@ -79,7 +83,7 @@ func refuseBroad(real string, home string) string {
 		}
 	}
 	for _, part := range strings.Split(real, "/") {
-		if part == ".ssh" || part == ".gnupg" {
+		if credentialDirs[part] {
 			return "that folder holds credentials; pick a project folder"
 		}
 	}
