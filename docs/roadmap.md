@@ -36,13 +36,13 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 
 See `docs/product/shape.md` section 3. Projects mock approved by the owner on 2026-11-05.
 
-- [ ] Open a folder on this computer or on a host as a project; recent projects; `.vesqira/project.toml` proposed, written only after confirmation, never committed.
-- [ ] Discovery by good practices (run records, data layouts, self-describing formats, configs, job scripts), runs found before the maps they own, deduplicated by real path, rescanned on open and when the window returns; files of other disciplines listed without a viewer.
-- [ ] "Needs your input": unknown units, interpretations, where the repo is on each host; answers stored as declared by the researcher; "leave unknown" is an answer.
-- [ ] Project health checklist and run records written by every run Vesqira starts.
+- [~] Open a folder on this computer or on a host as a project; recent projects; `.vesqira/project.toml` proposed, written only after confirmation, never committed. Backend done for both (ADR 0030); the project file of a project on a host is not written yet (answers stay in the catalog); no screens yet.
+- [x] Discovery by good practices (run records, data layouts, self-describing formats, configs, job scripts), runs found before the maps they own, deduplicated by real path, rescanned on open and when the window returns; files of other disciplines listed without a viewer. Backend done and tested (ADR 0030, `internal/discover`, `/api/projects`, host walk); "when the window returns" is the UI calling the rescan route. Only VGT runs are imported as runs; `params.yaml` and `meta.yaml` are recognised but their settings are not read (no YAML reader).
+- [~] "Needs your input": unknown units, interpretations, where the repo is on each host; answers stored as declared by the researcher; "leave unknown" is an answer. Backend done (`/api/projects/{id}/needs` and `/answers`); a declared unit for a FITS file without BUNIT is recorded in the catalog and project.toml but not applied to the dataset (no dataset-level unit declaration exists yet); the screens are not built.
+- [~] Project health checklist and run records written by every run Vesqira starts. The checklist is computed and returned by the summary route; run records for runs Vesqira starts are not done.
 - [ ] Path fields with zsh-like completion (local and on hosts) and the desktop file chooser (xdg-desktop-portal), with GVFS sftp mounts mapped to hosts.
 - [ ] Interactive filters: the run and dataset filter boxes complete keys, operators and values that occur, and show conditions as chips.
-- [ ] `/api/runs` input hints computed from one catalog read instead of one per run (148 runs, 1 350 files is the target scale); a bench case at that scale.
+- [x] `/api/runs` input hints computed from one catalog read instead of one per run (148 runs, 1 350 files is the target scale); a bench case at that scale. Done: `catalog.HintIndex`, and a server test at 150 runs and 1 500 datasets that asserts one read.
 
 ## Stage 0 — Install and launch
 
