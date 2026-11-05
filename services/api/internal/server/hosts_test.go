@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -144,6 +145,16 @@ func TestRemoteHostEndToEndWithFakeSSH(t *testing.T) {
 	r, db := postJSON(t, hp("/register"), map[string]any{"path": filepath.Join(remoteRoot, "hi_cube.fits")})
 	if r.StatusCode != 201 {
 		t.Fatalf("register remote: %d %s", r.StatusCode, db)
+	}
+	// completion on the host names entries even outside the host's roots, and only names
+	rc, cb := get(t, hp("/complete?kind=file&ext=.fits&prefix="+url.QueryEscape(outside+"/sec")))
+	var comp completion
+	json.Unmarshal(cb, &comp)
+	if rc.StatusCode != 200 || len(comp.Entries) != 1 || comp.Entries[0] != (completeEntry{Name: "secret.fits", Path: filepath.Join(outside, "secret.fits")}) {
+		t.Errorf("host completion: %d %s", rc.StatusCode, cb)
+	}
+	if rc, _ := get(t, hp("/complete?prefix=relative")); rc.StatusCode != 400 {
+		t.Errorf("host completion with a relative prefix: %d", rc.StatusCode)
 	}
 	var remote catalog.Dataset
 	json.Unmarshal(db, &remote)

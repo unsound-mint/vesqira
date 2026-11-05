@@ -727,6 +727,79 @@ def canonical_dir(path: str) -> dict:
     real = os.path.realpath(path)
     return {"ok": True, "op": "canon", "nbytes": 0, "real": real, "is_dir": os.path.isdir(real),
             "home": os.path.realpath(os.path.expanduser("~"))}
+COMPLETE_MAX_ENTRIES = 50
+COMPLETE_MAX_READ = 2000
+COMPLETE_BUDGET_S = 0.2
+
+
+def complete_names(req: dict) -> dict:
+    """Names in one folder, for path completion. Same rules as the local API route.
+
+    Answers names and whether each is a folder; never contents, sizes or anything outside the one folder asked for.
+    Deliberately not limited to ROOTS (choosing a folder to open needs to see folders that are not readable yet);
+    reading file contents stays limited to ROOTS in every other op.
+    """
+    import time
+    prefix, kind, exts = req.get("prefix"), req.get("kind") or "any", req.get("ext") or []
+    if (not isinstance(prefix, str) or len(prefix) > 4096 or "\0" in prefix or kind not in ("dir", "file", "any")
+            or not isinstance(exts, list) or len(exts) > 8
+            or not all(isinstance(e, str) and 2 <= len(e) <= 16 and e.startswith(".") and "/" not in e and "\0" not in e for e in exts)):
+        raise Refused("bad_request", "bad request")
+    exts = [e.lower() for e in exts]
+    if prefix == "~" or prefix.startswith("~/"):
+        rest = prefix[1:].lstrip("/")
+        prefix = os.path.join(os.path.expanduser("~"), rest) + ("/" if not rest or prefix.endswith("/") else "")
+    if not os.path.isabs(prefix):
+        raise Refused("bad_request", "bad request")
+    if prefix.endswith("/"):
+        base, last = os.path.normpath(prefix), ""
+    else:
+        base, last = os.path.normpath(os.path.dirname(prefix)), os.path.basename(prefix)
+    if base.startswith("//"):
+        base = base[1:]                                          # normpath keeps a POSIX double slash
+    out = {"ok": True, "op": "complete", "nbytes": 0, "base": base, "entries": [], "truncated": False}
+    deadline = time.monotonic() + COMPLETE_BUDGET_S
+    names = []
+    try:
+        with os.scandir(base) as it:
+            for e in it:
+                names.append(e)
+                if len(names) >= COMPLETE_MAX_READ or time.monotonic() > deadline:
+                    out["truncated"] = True
+                    break
+    except OSError:
+        return out                                               # missing or unreadable: an empty answer, not an error
+    hidden = last.startswith(".")
+
+    def match(fold: bool):
+        for e in names:
+            n = e.name
+            if not hidden and n.startswith("."):
+                continue
+            if (n.lower().startswith(last.lower())) if fold else n.startswith(last):
+                yield e
+    m = list(match(False))
+    if not m and last:
+        m = list(match(True))
+    entries = []
+    for e in m:
+        try:
+            is_dir = e.is_dir(follow_symlinks=False)
+            if e.is_symlink():
+                if time.monotonic() > deadline:
+                    out["truncated"] = True
+                else:
+                    is_dir = os.path.isdir(e.path)               # one stat of the entry itself, never a walk into it
+        except OSError:
+            is_dir = False
+        if not is_dir and (kind == "dir" or (exts and not e.name.lower().endswith(tuple(exts)))):
+            continue
+        entries.append({"name": e.name[:255], "path": os.path.join(base, e.name)[:4096], "dir": is_dir})
+    entries.sort(key=lambda x: (not x["dir"], x["name"]))
+    if len(entries) > COMPLETE_MAX_ENTRIES:
+        entries, out["truncated"] = entries[:COMPLETE_MAX_ENTRIES], True
+    out["entries"] = entries
+    return out
 
 
 def host_op(op: str, req: dict) -> tuple[dict, bytes]:
@@ -735,6 +808,8 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         import astropy
         return {"ok": True, "op": op, "nbytes": 0, "python": sys.version.split()[0], "astropy": astropy.__version__,
                 "numpy": np.__version__, "roots": ROOTS, "enforces_roots": ROOTS is not None}, b""
+    if op == "complete":
+        return complete_names(req), b""
     path = req.get("path")
     if op == "walk":
         return walk_page(req), b""
@@ -813,7 +888,7 @@ def handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "bad request")
         authorize(path)
         return header_cards(path), b""
-    if op in ("ping", "list", "resolve", "stat", "header", "readtext", "walk", "canon"):
+    if op in ("ping", "list", "resolve", "stat", "header", "readtext", "complete", "walk", "canon"):
         return host_op(op, req)
     if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix"):
         authorize(path)                                          # also enforces the roots on a remote host

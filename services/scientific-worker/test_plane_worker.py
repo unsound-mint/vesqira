@@ -635,6 +635,48 @@ class RemoteRoots(unittest.TestCase):
             self.assertEqual(self.c.ask(op=op, path=str(self.root / "link_out.fits"), channel=0)[0]["code"], "forbidden")
         self.assertEqual(self.ask(op="axial", path=str(self.root / "vgt_psi_deg.fits"), unit="deg", weights_path=str(self.other / "secret.fits"))["code"], "forbidden")
 
+    def test_completion_lists_names_only_and_may_leave_the_roots(self):
+        # the worker enforces roots for reading; completion only names entries of the one folder asked for
+        (self.other / "alpha").mkdir(exist_ok=True)
+        (self.other / ".hidden").write_text("x")
+        r = self.ask(op="complete", prefix=str(self.other) + "/")
+        self.assertTrue(r["ok"])
+        self.assertEqual(set(r), {"ok", "op", "nbytes", "base", "entries", "truncated"})
+        self.assertEqual([e["name"] for e in r["entries"]], ["alpha", "secret.fits"])      # folders first, dot entry hidden
+        self.assertEqual(r["entries"][0], {"name": "alpha", "path": str(self.other / "alpha"), "dir": True})
+        self.assertEqual(self.ask(op="complete", prefix=str(self.other) + "/.h")["entries"][0]["name"], ".hidden")
+
+    def test_completion_filters_by_prefix_kind_and_extension(self):
+        r = self.ask(op="complete", prefix=str(self.root / "hi_cube.f"))
+        self.assertEqual([e["name"] for e in r["entries"]], ["hi_cube.fits"])
+        self.assertEqual(self.ask(op="complete", prefix=str(self.root / "HI_CUBE.F"))["entries"][0]["name"], "hi_cube.fits")  # case fallback
+        r = self.ask(op="complete", prefix=str(self.root) + "/", kind="dir")
+        self.assertTrue(r["entries"] and all(e["dir"] for e in r["entries"]))
+        self.assertTrue(any(e["name"] == "link_dir" for e in r["entries"]))                  # a link to a folder is a folder
+        r = self.ask(op="complete", prefix=str(self.root) + "/", kind="file", ext=[".FITS"])
+        self.assertTrue(any(not e["dir"] and e["name"].endswith(".fits") for e in r["entries"]))
+        self.assertTrue(all(e["dir"] or e["name"].endswith(".fits") for e in r["entries"]))  # folders stay for navigation
+        self.assertEqual(self.ask(op="complete", prefix=str(self.root / "nothing-here"))["entries"], [])
+        self.assertEqual(self.ask(op="complete", prefix="/nonexistent/dir/")["entries"], [])
+
+    def test_completion_is_limited_to_fifty_entries(self):
+        many = self.root / "many"
+        many.mkdir(exist_ok=True)
+        for i in range(60):
+            (many / f"f{i:02d}.txt").write_text("")
+        r = self.ask(op="complete", prefix=str(many) + "/")
+        self.assertEqual(len(r["entries"]), 50)
+        self.assertTrue(r["truncated"])
+        self.assertEqual(r["entries"][0]["name"], "f00.txt")
+
+    def test_completion_expands_home_and_rejects_bad_prefixes(self):
+        r = self.ask(op="complete", prefix="~/")
+        self.assertTrue(r["ok"] and r["base"] == os.path.normpath(os.path.expanduser("~")))
+        for p in ("relative/dir", "", "a\0b", "x" * 5000, "~other/x", 5):
+            self.assertEqual(self.ask(op="complete", prefix=p)["code"], "bad_request", p)
+        self.assertEqual(self.ask(op="complete", prefix="/tmp/", kind="weird")["code"], "bad_request")
+        self.assertEqual(self.ask(op="complete", prefix="/tmp/", ext=["fits"])["code"], "bad_request")
+
     def test_relative_and_odd_paths_are_bad_requests(self):
         for p in ("hi_cube.fits", "", "a\0b", "x" * 5000):
             self.assertEqual(self.ask(op="resolve", path=p)["code"], "bad_request")

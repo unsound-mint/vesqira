@@ -39,7 +39,7 @@ function closure(entry: string): Set<string> {
 
 // The reviewer page runs in a stranger's browser with a capability to one snapshot. Code reachable from it must not include
 // the clients for owner-only features, so a refactor cannot quietly give the reviewer bundle a way to call them.
-const OWNER_ONLY = ["./api/jobs", "./api/hosts", "./api/analysis", "./api/regions", "./api/runs", "./api/derived"];
+const OWNER_ONLY = ["./api/jobs", "./api/hosts", "./api/analysis", "./api/regions", "./api/runs", "./api/derived", "./api/fs"];
 
 describe("the reviewer page", () => {
   it("does not reach the clients of owner-only features", () => {

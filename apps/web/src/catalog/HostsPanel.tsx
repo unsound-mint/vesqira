@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { File, Folder } from "lucide-react";
-import { Button, Input } from "../ui";
+import { Button, Input, PathField } from "../ui";
 import { checkHost, createHost, deleteHost, listRemote, registerRemote, sshConfigHosts } from "../api/hosts";
 import type { Host, HostCheck, RemoteEntry, SshAlias } from "../api/hosts";
 import { bytes } from "./format";
@@ -73,6 +73,7 @@ function HostRow({ host, onChange, onRegistered }: { host: Host; onChange: () =>
   const [dir, setDir] = useState<string | null>(null);
   const [entries, setEntries] = useState<RemoteEntry[]>([]);
   const [busy, setBusy] = useState(false);
+  const [regPath, setRegPath] = useState("");
 
   async function run<T>(f: () => Promise<T>): Promise<T | null> {
     setBusy(true);
@@ -97,6 +98,13 @@ function HostRow({ host, onChange, onRegistered }: { host: Host; onChange: () =>
   async function register(path: string) {
     if (await run(() => registerRemote(host.id, path))) await onRegistered();
   }
+  async function registerTyped(e: FormEvent) {
+    e.preventDefault();
+    if (regPath.trim() && (await run(() => registerRemote(host.id, regPath.trim())))) {
+      setRegPath("");
+      await onRegistered();
+    }
+  }
 
   return (
     <section className={s.host} aria-label={`Host ${host.name}`}>
@@ -109,6 +117,10 @@ function HostRow({ host, onChange, onRegistered }: { host: Host; onChange: () =>
         <Button type="button" disabled={busy} onClick={() => open()}>Browse</Button>
         <Button type="button" disabled={busy} onClick={async () => { if (await run(() => deleteHost(host.id))) await onChange(); }}>Remove</Button>
       </div>
+      <form className={s.regForm} onSubmit={registerTyped}>
+        <PathField label={`FITS file path on ${host.name}`} kind="file" ext={[".fits", ".fit", ".fits.gz"]} hostId={host.id} value={regPath} onChange={setRegPath} placeholder="/shared/home/you/cubes/cube.fits" />
+        <Button type="submit" disabled={busy || !regPath.trim()}>Register</Button>
+      </form>
       {state ? <p role="alert" className={s.err}>{state}</p> : null}
       {check ? (
         <p className={s.note} role="status">
