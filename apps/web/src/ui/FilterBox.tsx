@@ -56,6 +56,8 @@ type Option = { id: string; kind: "key" | "op" | "value" | "name"; label: string
 /** A draft that is a whole condition or a plain word may narrow the list while it is typed; a half-typed one does not. */
 const liveDraft = (d: string) => tokenize(d).length === 1 && !incomplete(d.trim());
 
+const singular = (noun: string) => noun.replace(/s$/, "");
+
 function suggest(draft: string, vocab: Vocabulary, noun: string): { options: Option[]; hint?: string } {
   const d = norm(draft.trim());
   const find = (k: string) => vocab.keys.find((v) => v.key.toLowerCase() === k.toLowerCase());
@@ -66,7 +68,7 @@ function suggest(draft: string, vocab: Vocabulary, noun: string): { options: Opt
         id: `v:${vk.key}:${v.value}`,
         kind: "value" as const,
         label: vk.labels?.[v.value] ?? v.value,
-        meta: `${v.count} ${noun}`,
+        meta: `${v.count} ${v.count === 1 ? singular(noun) : noun}`,
         commit: vk.sep ? `${vk.key}:${quoteValue(v.value)}` : `${vk.key}${op}${quoteValue(v.value)}`,
       }));
   const rangeHint = (vk: VocabKey) => (vk.range ? `${vk.range.min} … ${vk.range.max}, ${vk.range.n} value${vk.range.n === 1 ? "" : "s"}` : undefined);
@@ -106,7 +108,7 @@ const keyOption = (noun: string) => (k: VocabKey): Option => ({
   id: `k:${k.key}`,
   kind: "key",
   label: k.key,
-  meta: `${KIND[k.kind]} · ${k.count} ${noun}${k.same ? " · same for all" : ""}`,
+  meta: `${KIND[k.kind]} · ${k.count} ${k.count === 1 ? singular(noun) : noun}${k.same ? " · same for all" : ""}`,
   draft: k.sep ? `${k.key}:` : k.key,
 });
 
@@ -160,7 +162,7 @@ export function FilterBox({ label, placeholder, value, onChange, vocabulary, sho
   const { options, hint } = useMemo(() => suggest(draft, vocabulary, noun), [draft, vocabulary, noun]);
   // The first completion is ready for Enter or Tab, except a run name: that needs an arrow key, so a plain word stays a word.
   // After an operator, only a value typed in full is taken as is (noise>0.3 must not become 0.37).
-  const typedValue = TOKEN.test(draft.trim());
+  const typedValue = TOKEN.test(draft.trim()) && !incomplete(norm(draft.trim())); // `unit:` or `ker=` has no value yet: offer the first one
   const defaultActive = draft.trim() === "" ? -1 : typedValue ? options.findIndex((o) => o.commit !== undefined && unquote(o.commit).toLowerCase() === unquote(norm(draft.trim())).toLowerCase()) : options[0] && options[0].kind !== "name" ? 0 : -1;
   const active = Math.min(moved ?? defaultActive, options.length - 1);
   const showList = open && options.length > 0;
