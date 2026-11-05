@@ -93,6 +93,9 @@ func dataFormat(name string) (format, bool) {
 	return format{}, false
 }
 
+// LeafDirSuffixes are folders that are one data entry, not walked (a Zarr store is a folder of chunk files).
+var LeafDirSuffixes = []string{".zarr"}
+
 func isZarrDir(name string) bool { return strings.HasSuffix(strings.ToLower(name), ".zarr") }
 
 func isArchive(name string) bool {
