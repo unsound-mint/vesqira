@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -47,6 +48,9 @@ type Server struct {
 	SSHConfig  string // the user's ssh_config, only read to offer host aliases; empty offers none
 	WebDist    string // built web app served at / on this (loopback) listener; empty serves the API only
 
+	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
+
+	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
 }
 
@@ -58,6 +62,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/availability", s.availability)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
 	mux.HandleFunc("POST /api/datasets", s.register)
+	mux.HandleFunc("GET /api/fs/complete", s.completeLocal)
+	mux.HandleFunc("POST /api/fs/choose", s.choose)
 	if s.HostDB != nil && s.Remote != nil {
 		mux.HandleFunc("GET /api/hosts", s.listHosts)
 		mux.HandleFunc("GET /api/hosts/ssh-config", s.sshConfigHosts)
@@ -65,6 +71,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/hosts/{id}/check", s.checkHost)
 		mux.HandleFunc("POST /api/hosts/{id}/delete", s.deleteHost)
 		mux.HandleFunc("GET /api/hosts/{id}/list", s.listRemote)
+		mux.HandleFunc("GET /api/hosts/{id}/complete", s.completeRemote)
 		mux.HandleFunc("POST /api/hosts/{id}/register", s.registerRemote)
 		mux.HandleFunc("GET /api/hosts/{id}/text", s.hostText)
 		if s.Jobs != nil {

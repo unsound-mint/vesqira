@@ -376,7 +376,7 @@ test("a cube on another machine is read in place and agrees with the same cube h
   const host = page.getByRole("region", { name: "Host Second laptop" });
   await host.getByRole("button", { name: "Check connection" }).click();
   await expect(host.getByText(/The host enforces its source folders itself/)).toBeVisible();
-  await host.getByRole("button", { name: "Browse" }).click();
+  await host.getByRole("button", { name: "Browse", exact: true }).click();
   await host.getByRole("button", { name: /remote_cube\.fits/ }).click();
   await expect(page.getByRole("button", { name: /^remote_cube\.fits.*Second laptop/ })).toBeVisible();
 

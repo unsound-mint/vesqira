@@ -107,3 +107,8 @@
   color: var(--text-3);
   font-size: var(--text-xs);
 }
+
+.regForm {
+  display: grid;
+  gap: var(--sp-2);
+}

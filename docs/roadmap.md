@@ -40,7 +40,7 @@ See `docs/product/shape.md` section 3. Projects mock approved by the owner on 20
 - [ ] Discovery by good practices (run records, data layouts, self-describing formats, configs, job scripts), runs found before the maps they own, deduplicated by real path, rescanned on open and when the window returns; files of other disciplines listed without a viewer.
 - [ ] "Needs your input": unknown units, interpretations, where the repo is on each host; answers stored as declared by the researcher; "leave unknown" is an answer.
 - [ ] Project health checklist and run records written by every run Vesqira starts.
-- [ ] Path fields with zsh-like completion (local and on hosts) and the desktop file chooser (xdg-desktop-portal), with GVFS sftp mounts mapped to hosts.
+- [x] Path fields with zsh-like completion (local and on hosts) and the desktop file chooser, with GVFS sftp mounts mapped to hosts (ADR 0031). Built: names-only completion, Browse through zenity or kdialog. Not yet: xdg-desktop-portal (needed for Flatpak), an "add this host" form prefilled from a GVFS mount.
 - [ ] Interactive filters: the run and dataset filter boxes complete keys, operators and values that occur, and show conditions as chips.
 - [ ] `/api/runs` input hints computed from one catalog read instead of one per run (148 runs, 1 350 files is the target scale); a bench case at that scale.
 
