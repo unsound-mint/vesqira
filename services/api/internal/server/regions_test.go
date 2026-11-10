@@ -101,7 +101,7 @@ func TestDS9SkyRegionsAreWorkedOutWithTheDatasetsOwnWCS(t *testing.T) {
 	}
 	pw := &worker.Persistent{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(pw.Close)
-	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	hdr := headerWorker(t, "python3", repo)
 	base := t.TempDir()
 	root := filepath.Join(base, "data")
 	if err := os.Mkdir(root, 0o755); err != nil {

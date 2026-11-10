@@ -90,7 +90,7 @@ func TestRemoteHostEndToEndWithFakeSSH(t *testing.T) {
 	rs, _ := sourceroot.New([]string{localRoot})
 	local := &worker.Persistent{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(local.Close)
-	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	hdr := headerWorker(t, "python3", repo)
 	ts := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: hdr, Planes: local, Cache: NewPlaneCache(8 << 20), Boards: bs, HostDB: hs, Remote: mgr}).Handler())
 	defer ts.Close()
 	rv := httptest.NewServer((&review.Handler{Store: bs}).Handler())

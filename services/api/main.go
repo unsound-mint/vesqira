@@ -43,7 +43,6 @@ func main() {
 	var roots multi
 	addr := flag.String("addr", "127.0.0.1:8787", "listen address (must be a loopback address)")
 	db := flag.String("db", "vesqira.db", "SQLite database path")
-	script := flag.String("worker", "services/scientific-worker/fits_header.py", "header worker script")
 	python := flag.String("python", "python3", "interpreter for the worker")
 	planeScript := flag.String("plane-worker", "services/scientific-worker/plane_worker.py", "persistent plane worker script")
 	cacheMiB := flag.Int("plane-cache-mib", 256, "plane cache size in MiB (0 disables)")
@@ -159,7 +158,7 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
+	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)

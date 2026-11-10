@@ -853,6 +853,14 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         if truncated:
             data = data[:limit]
         return {"ok": True, "op": op, "nbytes": 0, "text": data.decode("utf-8", "replace"), "truncated": truncated, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+    if op == "describe":
+        # Local registration: the head is exactly what `fits_header.py <path>` prints (no op/size fields), and a refusal
+        # carries the same short sanitised message, so the catalog row and the error text do not depend on the transport.
+        from fits_header import describe
+        try:
+            return describe(real), b""
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            raise Refused("unreadable", clean(str(e), 120))
     if op == "header":
         from fits_header import describe
         return {**describe(real), "nbytes": 0, "op": op, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
@@ -888,7 +896,7 @@ def handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "bad request")
         authorize(path)
         return header_cards(path), b""
-    if op in ("ping", "list", "resolve", "stat", "header", "readtext", "complete", "walk", "canon"):
+    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon"):
         return host_op(op, req)
     if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix"):
         authorize(path)                                          # also enforces the roots on a remote host

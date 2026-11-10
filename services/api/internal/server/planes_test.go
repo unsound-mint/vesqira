@@ -196,7 +196,7 @@ func TestPlaneViewerEndToEndWithRealWorker(t *testing.T) {
 	}
 	pw := &worker.Persistent{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(pw.Close)
-	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	hdr := headerWorker(t, "python3", repo)
 	ts, root, _ := newPlaneServerWith(t, hdr, pw)
 	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
 	gen.Dir = filepath.Join(repo, "fixtures")
@@ -395,7 +395,7 @@ func TestAxialOrientationEndToEndWithRealWorker(t *testing.T) {
 	}
 	pw := &worker.Persistent{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(pw.Close)
-	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	hdr := headerWorker(t, "python3", repo)
 	ts, root, _ := newPlaneServerWith(t, hdr, pw)
 	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
 	gen.Dir = filepath.Join(repo, "fixtures")
@@ -506,7 +506,7 @@ func TestCompatibilityEndpointLinksOnlyKnownSameGrids(t *testing.T) {
 		}
 		t.Skip("python3 with astropy not available")
 	}
-	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	hdr := headerWorker(t, "python3", repo)
 	ts, root, _ := newPlaneServerWith(t, hdr, nil)
 	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
 	gen.Dir = filepath.Join(repo, "fixtures")
@@ -552,7 +552,7 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 		}
 		t.Skip("python3 with astropy not available")
 	}
-	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	hdr := headerWorker(t, "python3", repo)
 	base := t.TempDir()
 	root := filepath.Join(base, "root")
 	os.MkdirAll(root, 0o755)

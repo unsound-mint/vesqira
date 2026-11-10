@@ -180,3 +180,56 @@ func TestAHeavyRequestNeverBlocksInteractiveOnesAndCancelKillsOnlyTheHeavyLane(t
 		t.Fatalf("interactive lane was restarted: err=%v starts=%d", err, p.Starts.Load())
 	}
 }
+
+// Header runs on its own lane: a header read never shares a process with an interactive request.
+func TestHeaderUsesItsOwnLaneAndMapsErrors(t *testing.T) {
+	p := newFake(t, 5*time.Second)
+	if _, err := p.Header(context.Background(), "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := do(p, "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if p.Starts.Load() != 2 {
+		t.Fatalf("header and plane share a process: %d starts, want 2 (one per lane)", p.Starts.Load())
+	}
+	_, err := p.Header(context.Background(), "refuse")
+	if err == nil || strings.Contains(err.Error(), "channel") {
+		t.Fatalf("a refusal must be generic unless it is an unreadable-file message: %v", err)
+	}
+}
+
+// A worker that dies mid-batch fails that file with a clear error; the next file gets a fresh worker.
+func TestHeaderCrashMidBatchFailsOnlyThatFile(t *testing.T) {
+	p := newFake(t, 5*time.Second)
+	var failed []int
+	for i, m := range []string{"ok", "ok", "crash", "ok", "ok"} {
+		if _, err := p.Header(context.Background(), m); err != nil {
+			failed = append(failed, i)
+			if err.Error() != "worker returned no valid result" {
+				t.Fatalf("unclear error: %v", err)
+			}
+		}
+	}
+	if len(failed) != 1 || failed[0] != 2 {
+		t.Fatalf("failed files %v, want only the third", failed)
+	}
+	if p.Starts.Load() != 2 {
+		t.Fatalf("%d starts, want 2 (one restart after the crash)", p.Starts.Load())
+	}
+}
+
+func TestHeaderTimeoutAndCancelWhileQueued(t *testing.T) {
+	p := newFake(t, 300*time.Millisecond)
+	if _, err := p.Header(context.Background(), "hang"); err == nil || err.Error() != "worker timed out" {
+		t.Fatalf("err=%v", err)
+	}
+	go p.Header(context.Background(), "slow") // occupies the lane
+	time.Sleep(50 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := p.Header(ctx, "ok"); !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 200*time.Millisecond {
+		t.Fatalf("err=%v after %v", err, time.Since(start))
+	}
+}
