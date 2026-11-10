@@ -6,6 +6,7 @@
 //   node tools/viewer_perf.mjs --check          # also fail when a budget in tools/viewer_perf_budgets.json is exceeded
 //   node tools/viewer_perf.mjs --json out.json  # keep the numbers
 //   node tools/viewer_perf.mjs --size 2048x2048x24
+//   node tools/viewer_perf.mjs --profile       # also print where the main thread spends its time while stepping channels
 //
 // Needs: python3 with numpy and astropy, Go, `cd apps/web && npm ci`, `cd e2e && npm ci && npx playwright install chromium`.
 // Uses ports 8787 (API) and 5173 (Vite; its proxy is fixed to 8787), so stop `tools/demo.sh` first.
@@ -30,7 +31,8 @@ const { chromium } = createRequire(join(root, "e2e", "package.json"))("playwrigh
 const work = mkdtempSync(join(tmpdir(), "vesqira-viewer-perf-"));
 mkdirSync(join(work, "data"));
 const procs = [];
-const cleanup = () => { for (const p of procs) p.kill(); rmSync(work, { recursive: true, force: true }); };
+// each child leads its own process group: `npx vite` starts vite as a grandchild, which a plain kill would leave running
+const cleanup = () => { for (const p of procs) { try { process.kill(-p.pid, "SIGTERM"); } catch { /* already gone */ } } rmSync(work, { recursive: true, force: true }); };
 process.on("exit", cleanup);
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(130));
 
@@ -64,9 +66,12 @@ for i, (ct, cv, cd, cp, cu) in enumerate([("RA---TAN", 150.0, -0.001, nx / 2, "d
 fits.PrimaryHDU(d, header=h).writeto(${JSON.stringify(join(work, "data", "perf_cube.fits"))})
 `]);
 sh("go", ["build", "-buildvcs=false", "-o", join(work, "api"), "."], join(root, "services/api"));
+for (const [port, what] of [[8787, "API"], [5173, "Vite"]]) {
+  if (await fetch(`http://127.0.0.1:${port}/`).then(() => true, () => false)) throw new Error(`port ${port} is already in use; stop the other ${what} (tools/demo.sh?) and run again`);
+}
 procs.push(spawn(join(work, "api"), ["--addr", "127.0.0.1:8787", "--db", join(work, "p.db"), "--data-dir", work, "--root", join(work, "data"),
-  "--worker", join(root, "services/scientific-worker/fits_header.py"), "--plane-worker", join(root, "services/scientific-worker/plane_worker.py")], { cwd: root, stdio: "ignore" }));
-procs.push(spawn("npx", ["vite", "--port", "5173", "--strictPort", "--host", "127.0.0.1"], { cwd: join(root, "apps/web"), stdio: "ignore" }));
+  "--worker", join(root, "services/scientific-worker/fits_header.py"), "--plane-worker", join(root, "services/scientific-worker/plane_worker.py")], { cwd: root, stdio: "ignore", detached: true }));
+procs.push(spawn("npx", ["vite", "--port", "5173", "--strictPort", "--host", "127.0.0.1"], { cwd: join(root, "apps/web"), stdio: "ignore", detached: true }));
 await up("http://127.0.0.1:8787/api/datasets", "API");
 await up("http://127.0.0.1:5173/", "Vite");
 const reg = await fetch("http://127.0.0.1:8787/api/datasets", { method: "POST", headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1:8787" }, body: JSON.stringify({ path: join(work, "data", "perf_cube.fits") }) });
@@ -80,6 +85,11 @@ await page.addInitScript(() => {
   CanvasRenderingContext2D.prototype.putImageData = function (...a) {
     const t = performance.now(); const r = put.apply(this, a); window.__ev.push(["put", t, performance.now() - t]); return r;
   };
+  // the GPU path draws with drawArrays instead of putImageData; either one marks "the plane is drawn"
+  const draw = WebGL2RenderingContext.prototype.drawArrays;
+  WebGL2RenderingContext.prototype.drawArrays = function (...a) {
+    const t = performance.now(); const r = draw.apply(this, a); window.__ev.push(["put", t, performance.now() - t]); return r;
+  };
   addEventListener("keydown", (e) => window.__ev.push(["key", performance.now(), e.key]), true);
   new PerformanceObserver((l) => l.getEntries().forEach((e) => window.__ev.push(["long", e.startTime, e.duration]))).observe({ type: "longtask", buffered: true });
 });
@@ -90,11 +100,19 @@ await page.waitForTimeout(1500);
 const slider = page.getByRole("slider", { name: "Channel" });
 await slider.focus();
 await page.evaluate(() => (window.__ev.length = 0));
+const cdp = flag("--profile") ? await page.context().newCDPSession(page) : null;
+if (cdp) { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }
 for (let i = 0; i < STEPS; i++) {
   const before = await page.evaluate(() => performance.now());
   await page.keyboard.press("ArrowRight");
   await page.waitForFunction((b) => window.__ev.some((e) => e[0] === "put" && e[1] > b), before, { timeout: 20000 });
   await page.waitForTimeout(400);
+}
+if (cdp) { // self time per function while stepping channels: where the main thread goes
+  const { profile } = await cdp.send("Profiler.stop");
+  const self = new Map(), byId = new Map(profile.nodes.map((n) => [n.id, n]));
+  profile.samples.forEach((id, i) => { const f = byId.get(id).callFrame; const k = `${f.functionName || "(anonymous)"} ${f.url.split("/").slice(-2).join("/")}:${f.lineNumber + 1}`; self.set(k, (self.get(k) ?? 0) + (profile.timeDeltas[i] ?? 0) / 1000); });
+  console.log("self time (ms, all steps):"); [...self].sort((a, b) => b[1] - a[1]).slice(0, 12).forEach(([k, v]) => console.log(`  ${Math.round(v).toString().padStart(6)}  ${k}`));
 }
 const ev = await page.evaluate(() => window.__ev);
 const keys = ev.filter((e) => e[0] === "key"), puts = ev.filter((e) => e[0] === "put"), longs = ev.filter((e) => e[0] === "long");
@@ -122,6 +140,24 @@ const cpu = await page.evaluate(async ([w, h]) => {
   };
 }, [NX, NY]);
 
+const gpu = await page.evaluate(async ([w, h]) => {
+  const G = await import("/src/viewer/glRenderer.ts");
+  if (!G.gpuSupported()) return {};
+  const d = new Float32Array(w * h);
+  for (let i = 0; i < d.length; i++) d[i] = Math.sin(i * 0.001) * 3 + (i % 997 === 0 ? NaN : 0);
+  const lut = new Uint8ClampedArray(256 * 3).map((_, i) => i % 256);
+  const nodata = [[27, 34, 44], [85, 98, 117]];
+  const c = document.createElement("canvas");
+  const g = G.GlPlaneRenderer.create(c, () => {});
+  const gl = c.getContext("webgl2");
+  const o = (stretch, range) => ({ lut, range, stretch, outW: w, outH: h, nodata });
+  const t = (f, n = 5) => { const xs = []; for (let i = 0; i < n; i++) { const s = performance.now(); f(); gl.finish(); xs.push(performance.now() - s); } xs.sort((a, b) => a - b); return xs[Math.floor(n / 2)]; };
+  // a new Float32Array each time, like a new channel: upload plus draw. Then the same plane with a new stretch: draw only.
+  const upload = t(() => g.draw(new Float32Array(d), w, h, o("linear", [-3, 3])));
+  let k = 0;
+  const restyle = t(() => g.draw(d, w, h, o(["linear", "sqrt", "asinh"][k++ % 3], [-3 + k * 0.01, 3])));
+  return { gpu_new_plane_ms: upload, gpu_restyle_ms: restyle };
+}, [NX, NY]);
 await page.evaluate(() => { window.__ev.length = 0; window.__raf = []; const f = (t) => { window.__raf.push(t); requestAnimationFrame(f); }; requestAnimationFrame(f); });
 for (let i = 0; i < 20; i++) { await page.keyboard.press("ArrowLeft"); await page.waitForTimeout(40); }
 await page.waitForTimeout(1500);
@@ -133,6 +169,7 @@ const result = {
   key_to_pixels_p95_ms: p95(lat),
   long_task_max_ms: Math.max(...blocked),
   ...cpu,
+  ...gpu,
   rapid_scrub_worst_frame_gap_ms: rapid,
 };
 for (const k of Object.keys(result)) if (typeof result[k] === "number") result[k] = Math.round(result[k]);
@@ -145,3 +182,4 @@ if (flag("--check")) {
   if (bad.length) process.exit(1);
   console.log("within budgets");
 }
+process.exit(0); // the exit handler stops the API and Vite; without this the running children keep the process alive

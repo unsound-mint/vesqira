@@ -1,11 +1,13 @@
 {
-  "note": "Milliseconds, set at about three times the numbers measured with the CPU renderer on a development laptop (headless Chromium, software rendering, 2048x2048 planes: key_to_pixels p95 245, long task 127, linear render 57, asinh 127, histogram 42, worst frame gap 100). They catch a change that makes the viewer several times slower. Tighten them when the GPU renderer of ADR 0034 lands.",
+  "note": "Milliseconds. Measured on a development laptop in headless Chromium with software rendering, 2048x2048 planes, GPU renderer on (ADR 0034): key_to_pixels p95 149, longest task 0 (no task over 50 ms), gpu_new_plane 21, gpu_restyle 0, worst frame gap 83. Before the GPU renderer and the histogram worker: key_to_pixels p95 250, longest task 135. Budgets are about three times the measured numbers, so they catch a change that makes the viewer several times slower. The CPU renderer and histogram rows are the fallback path and the test oracle, kept loose.",
   "ops": {
-    "key_to_pixels_p95_ms": 800,
-    "long_task_max_ms": 400,
+    "key_to_pixels_p95_ms": 450,
+    "long_task_max_ms": 60,
+    "gpu_new_plane_ms": 80,
+    "gpu_restyle_ms": 10,
     "render_linear_ms": 200,
     "render_asinh_ms": 400,
     "histogram_ms": 150,
-    "rapid_scrub_worst_frame_gap_ms": 300
+    "rapid_scrub_worst_frame_gap_ms": 250
   }
 }
