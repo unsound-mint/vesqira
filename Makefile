@@ -1,4 +1,4 @@
-.PHONY: check docs web fixtures api e2e demo bench
+.PHONY: check docs web fixtures api e2e demo bench viewer-bench
 check: docs fixtures api web
 
 docs:
@@ -34,3 +34,7 @@ demo:
 # Worker timings on a large sparse cube against tools/bench_budgets.json (page-cache speed, not a disk)
 bench:
 	python3 tools/bench.py --check
+
+# Viewer timings in a real Chromium (key to pixels, main-thread blocking, CPU renderer) against tools/viewer_perf_budgets.json
+viewer-bench:
+	node tools/viewer_perf.mjs --check
