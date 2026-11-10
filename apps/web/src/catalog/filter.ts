@@ -1,13 +1,31 @@
 import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
 
-/** Splits a query into words; every word must match (so more words narrow the list). */
-const words = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean);
+import { tokenize, unquote } from "../ui/queryWords";
 
-/** A dataset matches when every word is found in its name, host, brightness unit or declared nature. */
+export { tokenize, unquote };
+
+/** Splits a query into words (`unit:"km / s"` is one word, quotes stripped); every word must match, so more words narrow the list. */
+const words = (q: string) => tokenize(q).map((w) => unquote(w).toLowerCase());
+
+/**
+ * A dataset matches when every word is found in its name, host, brightness unit or declared nature. `unit:K`, `host:name`
+ * and `nature:observed` test that field exactly instead; `unit:none` and `nature:none` match a dataset that declares none
+ * (a missing unit is not a unit, and is not matched by any unit value).
+ */
 export function matchDataset(d: Dataset, q: string, hostName: string | undefined): boolean {
-  const hay = [d.name, hostName ?? "", String(d.header?.bunit ?? ""), d.nature ?? ""].join("\n").toLowerCase();
-  return words(q).every((w) => hay.includes(w));
+  const unit = String(d.header?.bunit ?? "").trim().toLowerCase();
+  const host = (hostName ?? "").toLowerCase();
+  const nature = (d.nature ?? "").toLowerCase();
+  const hay = [d.name, host, unit, nature].join("\n").toLowerCase();
+  return words(q).every((w) => {
+    const field = /^(unit|host|nature):(.+)$/.exec(w);
+    if (!field) return hay.includes(w);
+    const key = field[1];
+    const want = field[2];
+    const have = key === "unit" ? unit : key === "host" ? host : nature;
+    return want === "none" && key !== "host" ? have === "" : have !== "" && have === want;
+  });
 }
 
 const OPS = ["<=", ">=", "=", "<", ">"] as const;

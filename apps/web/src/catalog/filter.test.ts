@@ -58,3 +58,23 @@ describe("dataset filter", () => {
     expect(matchDataset(d, "simulated", undefined)).toBe(false);
   });
 });
+
+describe("dataset filter on declared fields", () => {
+  const mk = (bunit: string | null, nature = "") => ({ name: "x.fits", nature, header: { bunit } }) as unknown as Dataset;
+  it("unit:none matches only datasets that declare no unit, and unit:K only exact K", () => {
+    expect(matchDataset(mk(null), "unit:none", undefined)).toBe(true);
+    expect(matchDataset(mk(""), "unit:none", undefined)).toBe(true);
+    expect(matchDataset(mk("K"), "unit:none", undefined)).toBe(false);
+    expect(matchDataset(mk("K"), "unit:k", undefined)).toBe(true);
+    expect(matchDataset(mk("K km/s"), "unit:k", undefined)).toBe(false);
+    expect(matchDataset(mk(null), "unit:k", undefined)).toBe(false);
+  });
+  it("host and nature are exact; no nature declared is nature:none", () => {
+    expect(matchDataset(mk("K", "observed"), "nature:observed", undefined)).toBe(true);
+    expect(matchDataset(mk("K", ""), "nature:none", undefined)).toBe(true);
+    expect(matchDataset(mk("K", "observed"), "nature:none", undefined)).toBe(false);
+    expect(matchDataset(mk("K"), "host:cluster", "Cluster")).toBe(true);
+    expect(matchDataset(mk("K"), "host:clust", "Cluster")).toBe(false);
+    expect(matchDataset(mk("K"), "host:cluster", undefined)).toBe(false);
+  });
+});

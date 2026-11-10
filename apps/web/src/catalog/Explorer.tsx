@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Database } from "lucide-react";
 import type { Dataset, Problem } from "../api/catalog";
-import { Button, Input, PathField, TreeRow } from "../ui";
+import { Button, FilterBox, PathField, TreeRow } from "../ui";
 import { bytes } from "./format";
 import { matchDataset } from "./filter";
+import { datasetVocabulary } from "./vocabulary";
 import { previewFile } from "../api/catalog";
 import type { Preview } from "../api/catalog";
 import s from "./Explorer.module.css";
@@ -14,7 +15,7 @@ const PROBLEM_SHORT: Record<string, string> = { modified: " · changed on disk",
 
 type Props = {
   datasets: Dataset[];
-  hosts?: { id: number; name: string }[];
+  hosts?: Host[];
   selectedId: number | null;
   problems?: Record<string, Problem>;
   loading: boolean;
@@ -23,13 +24,17 @@ type Props = {
   onRegister: (path: string) => Promise<string | null>;
 };
 
-export function Explorer({ hosts = [], datasets, selectedId, problems = {}, loading, error, onSelect, onRegister }: Props) {
+type Host = { id: number; name: string };
+const NO_HOSTS: Host[] = [];
+
+export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}, loading, error, onSelect, onRegister }: Props) {
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [q, setQ] = useState("");
   const shown = datasets.filter((d) => matchDataset(d, q, hosts.find((h) => h.id === d.hostId)?.name));
+  const vocabulary = useMemo(() => datasetVocabulary(datasets, hosts), [datasets, hosts]);
 
   async function doPreview() {
     try {
@@ -69,7 +74,7 @@ export function Explorer({ hosts = [], datasets, selectedId, problems = {}, load
       {error ? <p role="alert" className={s.err}>{error}</p> : null}
       {loading ? <p className={s.note}>Loading datasets…</p> : null}
       {!loading && !error && datasets.length === 0 ? <p className={s.note}>No datasets yet. Files are referenced where they are; nothing is copied.</p> : null}
-      {datasets.length > 5 ? <Input label="Filter datasets" placeholder="name, unit, host or nature" value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false} /> : null}
+      {datasets.length > 5 ? <FilterBox label="Filter datasets" placeholder="Filter datasets" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={datasets.length} noun="datasets" /> : null}
       {datasets.length > 0 && shown.length === 0 ? <p className={s.note}>No dataset matches.</p> : null}
       <div role="list" aria-label="Datasets">
         {shown.map((d) => (
