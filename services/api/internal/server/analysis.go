@@ -186,7 +186,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Op == "stats" {
-		writeJSON(w, 200, map[string]any{"summary": res.Summary, "software": res.Software})
+		writeJSON(w, 200, map[string]any{"summary": res.Summary, "software": derived.CleanSoftware(res.Software)})
 		return
 	}
 	nd, code, msg := s.registerPath(r.Context(), outPath)

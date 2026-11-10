@@ -206,10 +206,42 @@ func (c *publishClient) revokeReader(id int64) error {
 	return c.json("POST", "/publish-api/readers/"+strconv.FormatInt(id, 10)+"/revoke", nil, nil)
 }
 
+// maxFeedStep is the most ids (or sequence numbers) one page of a feed may skip in total: an honest publish server only
+// skips rows that were deleted. The owner's copy resumes a feed from the highest id it holds, so an absurd id from a
+// compromised or broken server would put the cursor beyond every real comment for good. This bounds how far one page can
+// move it; it does not make a compromised server harmless (it can still keep inventing comments), which is why the sync
+// shows its refusals and a refused page changes nothing.
+const maxFeedStep = 100_000
+
+var errImplausibleFeed = errors.New("the publish server sent a comment feed that does not look like its own (ids out of order or absurdly large); nothing from it was kept")
+
+// checkFeed accepts a page whose numbers are strictly increasing from after (so positive) and that skips at most
+// maxFeedStep numbers in all. The page length is not checked: the response is already capped in size, and a server with a
+// larger page than this one expects must not make every sync fail.
+func checkFeed(after int64, n int, at func(i int) int64) error {
+	prev := after
+	for i := range n {
+		v := at(i)
+		if v <= prev {
+			return errImplausibleFeed
+		}
+		prev = v
+	}
+	if n > 0 && prev-after-int64(n) > maxFeedStep {
+		return errImplausibleFeed
+	}
+	return nil
+}
+
 func (c *publishClient) commentsAfter(after int64) ([]publish.Comment, error) {
 	var out []publish.Comment
-	err := c.json("GET", "/publish-api/comments?after="+strconv.FormatInt(after, 10), nil, &out)
-	return out, err
+	if err := c.json("GET", "/publish-api/comments?after="+strconv.FormatInt(after, 10), nil, &out); err != nil {
+		return nil, err
+	}
+	if err := checkFeed(after, len(out), func(i int) int64 { return out[i].ID }); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *publishClient) ownerComment(space string, in publish.Comment) (publish.Comment, error) {
@@ -232,8 +264,18 @@ func (c *publishClient) deletionsAfter(after int64) ([]publish.Deletion, error) 
 	var out struct {
 		Deletions []publish.Deletion `json:"deletions"`
 	}
-	err := c.json("GET", "/publish-api/comments/deleted?after="+strconv.FormatInt(after, 10), nil, &out)
-	return out.Deletions, err
+	if err := c.json("GET", "/publish-api/comments/deleted?after="+strconv.FormatInt(after, 10), nil, &out); err != nil {
+		return nil, err
+	}
+	if err := checkFeed(after, len(out.Deletions), func(i int) int64 { return out.Deletions[i].Seq }); err != nil {
+		return nil, err
+	}
+	for _, d := range out.Deletions {
+		if d.ID <= 0 {
+			return nil, errImplausibleFeed
+		}
+	}
+	return out.Deletions, nil
 }
 
 func (c *publishClient) withdraw(key string) error {

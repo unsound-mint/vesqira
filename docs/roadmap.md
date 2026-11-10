@@ -56,7 +56,7 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 - [x] Deployment docs for the owner's server (`docs/setup/publish-server.md`: systemd unit, Caddy with TLS, backups).
 - [x] Graph view of report, run and figure links, with a keyboard list alternative; unlinked reports hidden by default.
 - [x] Pages and presentation (ADR 0036, "Pages, front matter, changes and deletions"): page tree kept from the Notion import, front matter date and summary under the title, reader list newest first, what changed since the revision last read, comments on selected words, withdraw a report, delete a comment.
-- [ ] Follow-ups from the security review (ADR 0036, "Hardening"): strip image metadata when publishing, fixed shape for derived `software`, bounded Markdown scans, comment-cursor guard.
+- [x] Follow-ups from the security review (ADR 0036, "Hardening"): image metadata stripped when publishing (`internal/imgmeta`, pixel-checked, fuzzed), fixed shape for derived `software`, bounded Markdown scans (one was cubic), comment-cursor guard. Left: a schema for derived `summary`.
 
 ## Stage 0 — Install and launch
 
