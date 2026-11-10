@@ -45,6 +45,11 @@ type need struct {
 	Answer     *projects.Answer `json:"answer"`
 	Suggestion string           `json:"suggestion,omitempty"` // what an earlier fact suggests; never applied unless chosen
 	DatasetID  *int64           `json:"datasetId,omitempty"`
+	datasetIDs []int64          // missing_bunit: the files the question lists as open, for applying an answer
+	// missing_bunit, after an answer "declare previousUnit": the files that still have that unit. Answering again with another
+	// unit moves them too, so a change of the folder's unit is one step and the answer stays true of its files.
+	governedIDs  []int64
+	previousUnit string
 }
 
 var unknownOpt = needOption{ID: "unknown", Label: "Leave unknown"}
@@ -90,12 +95,40 @@ func (s *Server) computeNeeds(p projects.Project) ([]need, error) {
 	if err != nil {
 		return nil, err
 	}
-	// FITS files whose header has no BUNIT, by folder. Only files that are registered can be judged.
-	byFolder := map[string][]string{}
+	// FITS files whose header has no BUNIT, by folder. Only files that are registered can be judged, and an orientation map
+	// (or the reliability map of one) is never asked for a brightness unit. A unit a person declared (here or on the file's
+	// own page) settles a file for as long as it describes the file as registered; once the question has been answered
+	// "declare V", it stays settled only for files that really have V, so the answer never claims more than the files show.
+	units, err := s.Store.FreshUnits()
+	if err != nil {
+		return nil, err
+	}
+	notBrightness, err := s.Store.NoBrightnessIDs()
+	if err != nil {
+		return nil, err
+	}
+	type bunitFile struct {
+		path string
+		id   int64
+	}
+	type folderFiles struct{ all, open []bunitFile }
+	byFolder := map[string]*folderFiles{}
 	for _, r := range fits {
-		if fa, ok := facts[absFor(p, r.Path)]; ok && fa.BunitStatus != "declared" {
-			dir := path.Dir(r.Path)
-			byFolder[dir] = append(byFolder[dir], r.Path)
+		fa, ok := facts[absFor(p, r.Path)]
+		if !ok || fa.BunitStatus == "declared" || notBrightness[fa.ID] {
+			continue
+		}
+		dir := path.Dir(r.Path)
+		if byFolder[dir] == nil {
+			byFolder[dir] = &folderFiles{}
+		}
+		ff := byFolder[dir]
+		f := bunitFile{r.Path, fa.ID}
+		ff.all = append(ff.all, f)
+		ans, answered := answers["bunit:"+dir]
+		holds := units[fa.ID] != "" && (!answered || ans.Answer != "declare" || units[fa.ID] == ans.Value)
+		if !holds {
+			ff.open = append(ff.open, f)
 		}
 	}
 	folders := make([]string, 0, len(byFolder))
@@ -104,16 +137,47 @@ func (s *Server) computeNeeds(p projects.Project) ([]need, error) {
 	}
 	sort.Strings(folders)
 	for _, f := range folders {
-		files := byFolder[f]
+		ff := byFolder[f]
 		where := "the project folder"
 		if f != "." {
 			where = f
 		}
+		ans, answered := answers["bunit:"+f]
+		show, msg := ff.open, fmt.Sprintf("%d FITS file(s) in %s have no BUNIT, so their values have no declared unit.", len(ff.open), where)
+		switch {
+		case answered && ans.Answer == "declare" && len(ff.open) > 0:
+			msg = fmt.Sprintf("%d FITS file(s) in %s have no BUNIT and not the unit you declared for this folder (%s).", len(ff.open), where, ans.Value)
+		case answered && ans.Answer == "declare":
+			show, msg = ff.all, fmt.Sprintf("%d FITS file(s) in %s have no BUNIT; you declared %s for them.", len(ff.all), where, ans.Value)
+		case answered: // left unknown, or answered another way: it stays answered, the files untouched
+			show, msg = ff.all, fmt.Sprintf("%d FITS file(s) in %s have no BUNIT, so their values have no declared unit.", len(ff.all), where)
+		case len(ff.open) == 0: // every file got its unit some other way: nothing is left to ask
+			continue
+		}
+		paths := make([]string, 0, len(show))
+		for _, x := range show {
+			paths = append(paths, x.path)
+		}
+		ids := make([]int64, 0, len(ff.open))
+		for _, x := range ff.open {
+			ids = append(ids, x.id)
+		}
+		var governed []int64
+		previous := ""
+		if answered && ans.Answer == "declare" {
+			previous = ans.Value
+			for _, x := range ff.all {
+				if units[x.id] == ans.Value {
+					governed = append(governed, x.id)
+				}
+			}
+		}
 		out = append(out, need{
-			ID: "bunit:" + f, Kind: "missing_bunit", Scope: needScope{Paths: capPaths(files), Count: len(files), Folder: f},
-			Message: fmt.Sprintf("%d FITS file(s) in %s have no BUNIT, so their values have no declared unit.", len(files), where),
-			Source:  "the FITS headers: no BUNIT card",
-			Answers: []needOption{{ID: "declare", Label: "Declare a unit", Input: "text", Hint: "recorded for this project; the files and the viewer are not changed"}, unknownOpt},
+			ID: "bunit:" + f, Kind: "missing_bunit", Scope: needScope{Paths: capPaths(paths), Count: len(show), Folder: f},
+			Message:    msg,
+			Source:     "the FITS headers: no BUNIT card",
+			Answers:    []needOption{{ID: "declare", Label: "Declare a unit", Input: "text", Hint: "kept as declared by you and shown with the file's values as yours, never as the file's; the files are not changed"}, unknownOpt},
+			datasetIDs: ids, governedIDs: governed, previousUnit: previous,
 		})
 	}
 
@@ -163,6 +227,10 @@ func (s *Server) computeNeeds(p projects.Project) ([]need, error) {
 		out[i].State = "open"
 		if a, ok := answers[out[i].ID]; ok {
 			a := a
+			// a unit that was declared and later withdrawn for some files: the answer no longer holds for them
+			if out[i].Kind == "missing_bunit" && a.Answer == "declare" && len(out[i].datasetIDs) > 0 {
+				continue
+			}
 			out[i].State, out[i].Answer = "answered", &a
 		}
 	}
@@ -286,10 +354,14 @@ func health(p projects.Project, sum storedSummary, ns []need) []healthItem {
 	out = append(out, rd)
 
 	un := healthItem{ID: "units_declared", Label: "Units declared", Why: "Values without a declared unit cannot be compared honestly."}
-	open := 0
+	open, unknown := 0, 0
 	for _, n := range ns {
-		if n.Kind == "missing_bunit" && n.State == "open" {
+		switch {
+		case n.Kind != "missing_bunit":
+		case n.State == "open":
 			open += n.Scope.Count
+		case n.Answer != nil && n.Answer.Answer == "unknown":
+			unknown += n.Scope.Count
 		}
 	}
 	fitsN := sum.Counts.ByFormat["FITS"]
@@ -298,6 +370,8 @@ func health(p projects.Project, sum storedSummary, ns []need) []healthItem {
 		un.State, un.Detail = "na", "No FITS files."
 	case open > 0:
 		un.State, un.Detail = "warn", fmt.Sprintf("%d FITS file(s) have no BUNIT and no unit declared by you.", open)
+	case unknown > 0:
+		un.State, un.Detail = "ok", fmt.Sprintf("%d FITS file(s) have no unit; you chose to leave it unknown, which is a valid answer.", unknown)
 	default:
 		un.State, un.Detail = "ok", "Every registered FITS file declares a unit or one was given by you."
 	}
@@ -363,8 +437,8 @@ func (n need) validate(in answerIn) error {
 	}
 	switch {
 	case n.Kind == "missing_bunit" && in.Answer == "declare":
-		if !validText(in.Value, 40) {
-			return fmt.Errorf("%w: give the unit as text of up to 40 characters", errAnswer)
+		if !catalog.ValidUnit(in.Value) {
+			return fmt.Errorf("%w: %s", errAnswer, catalog.ErrInvalidUnit)
 		}
 	case n.Kind == "host_repo" && in.Answer == "declare":
 		if !validText(in.Value, 500) || !strings.HasPrefix(in.Value, "/") || strings.Contains(in.Value, "..") {
@@ -381,9 +455,32 @@ func (n need) validate(in answerIn) error {
 }
 
 // applyAnswer carries out what an answer means beyond recording it. Confirming an orientation map goes through the same
-// declaration the dataset page uses, as the user's (an adapter's proposal never becomes the user's by itself). A
-// declared unit for a file without BUNIT is recorded for the project only: no dataset-level unit declaration exists yet.
+// declaration the dataset page uses, as the user's (an adapter's proposal never becomes the user's by itself). A declared
+// unit becomes the unit declaration of each registered file in the question that still has none; a file that has its own
+// declaration keeps it, and a file that states its BUNIT is never changed.
 func (s *Server) applyAnswer(n need, in answerIn) error {
+	if n.Kind == "missing_bunit" && in.Answer == "declare" {
+		targets := append([]int64{}, n.datasetIDs...)
+		if n.previousUnit != "" && n.previousUnit != in.Value {
+			targets = append(targets, n.governedIDs...) // the files that followed the folder's old unit follow its new one
+		}
+		ds := make([]catalog.Dataset, 0, len(targets))
+		for _, id := range targets {
+			d, err := s.Store.Get(id)
+			if err != nil {
+				return err
+			}
+			ds = append(ds, d)
+		}
+		applied, err := s.Store.SetUnitDeclarations(ds, in.Value, "user") // all or none; files that state a unit are skipped
+		if err != nil {
+			return err
+		}
+		for _, d := range applied {
+			s.Audit.Record("unit declared", "dataset", d.ID, d.Name+": "+in.Value+" (from the project's needs list)")
+		}
+		return nil
+	}
 	if n.Kind != "axial_unconfirmed" || n.DatasetID == nil {
 		return nil
 	}

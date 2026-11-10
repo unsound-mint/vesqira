@@ -31,6 +31,7 @@ type cacheKey struct {
 	step    int // preview reduction (0 or 1 = full resolution)
 	x, y    int
 	q       string // canonical region description for spectra
+	unit    string // a unit the person declared for a file without BUNIT: it changes what every head says, so it is part of the key
 }
 
 // PlaneCache is a byte-bounded LRU of worker replies. Misses cost a worker read; hits cost nothing.
@@ -104,7 +105,7 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 	if info.Size() != d.SizeBytes || info.ModTime().UnixNano() != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}
-	return real, cacheKey{id: d.ID, size: info.Size(), mtime: info.ModTime().UnixNano()}, 0, ""
+	return real, cacheKey{id: d.ID, size: info.Size(), mtime: info.ModTime().UnixNano(), unit: declaredUnitOf(d)}, 0, ""
 }
 
 // source resolves a dataset id to an authorized, unchanged file.
@@ -145,6 +146,9 @@ func index(w http.ResponseWriter, r *http.Request, name string) (int, bool) {
 func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map[string]any) (worker.Reply, bool) {
 	if rep, hit := s.Cache.get(k); hit {
 		return rep, true
+	}
+	if k.unit != "" {
+		req["declared_bunit"] = k.unit // the worker uses it only for a file with no BUNIT, and labels it as the person's
 	}
 	svc := s.planesFor(k.id)
 	if svc == nil {

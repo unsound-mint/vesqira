@@ -2,6 +2,7 @@ import type { MouseEvent } from "react";
 import type { Spectrum } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
+import { unitLabel } from "./format";
 import s from "./SpectrumPlot.module.css";
 
 const W = 320;
@@ -55,7 +56,7 @@ export function SpectrumPlot({ v }: { v: Viewer }) {
   const cur = v.plane?.head.channel ?? v.channel;
   const flagged = v.view?.flags.declared ? v.view.flags.channels : [];
   const xName = sp.head.axis.kind === "spectral" ? `${sp.head.axis.name ?? "spectral"} (${label})` : "channel number (spectral axis unresolved)";
-  const unit = sp.head.bunit ?? "brightness unit unresolved";
+  const unit = unitLabel(sp.head.bunit, sp.head.bunit_status);
   const missing = ys.filter((y) => !Number.isFinite(y)).length;
 
   function pick(e: MouseEvent<SVGSVGElement>) {
@@ -72,7 +73,7 @@ export function SpectrumPlot({ v }: { v: Viewer }) {
         viewBox={`0 0 ${W} ${H}`}
         className={s.svg}
         role="img"
-        aria-label={`Mean spectrum of the region over ${n} channels. Peak ${num(ys[peak]!)}${sp.head.bunit ? ` ${sp.head.bunit}` : " (brightness unit unresolved)"} at channel ${peak + 1}. ${missing} channels have no value.`}
+        aria-label={`Mean spectrum of the region over ${n} channels. Peak ${num(ys[peak]!)}${sp.head.bunit ? ` ${unitLabel(sp.head.bunit, sp.head.bunit_status)}` : " (brightness unit unresolved)"} at channel ${peak + 1}. ${missing} channels have no value.`}
         onClick={pick}
       >
         {flagged.map((c) => <line key={c} className={s.flag} x1={px(xs[c]!)} x2={px(xs[c]!)} y1={H - M.b} y2={H - M.b + 6} />)}

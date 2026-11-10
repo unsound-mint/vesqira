@@ -75,6 +75,7 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
       </dl>
       <p className={s.note}>
         {view.bunit_status === "unresolved" ? "Brightness unit unresolved: the header has no BUNIT. " : ""}
+        {view.bunit_status === "user" ? `Brightness unit (${view.bunit}) declared by you: the header has no BUNIT. ` : ""}
         {v.coordError ?? "Pixel numbers follow FITS (start at 1). Click the image to pin a pixel; Esc releases it."}
       </p>
     </div>
@@ -156,6 +157,7 @@ export function DisplayControls({ v }: { v: Viewer }) {
           </span>
         </div>
       </div>
+      {v.view?.bunit_status === "user" ? <p className={s.note}>The unit ({v.view.bunit}) is the one you declared; the file has no BUNIT.</p> : null}
       <p className={s.note}>{v.range === "custom" ? "Limits set by hand; values outside them are drawn at the ends of the colour bar." : "Limits come from the plane’s finite pixels only."}{v.plane?.head.scaled ? " BSCALE/BZERO applied." : ""}{precisionNote(v.plane?.head.source_bitpix ?? null)}</p>
     </div>
   );

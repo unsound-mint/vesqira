@@ -15,7 +15,8 @@ import (
 // Version 2: a board item may follow a job instead of holding a figure.
 // Version 3: reports sit in a tree of pages (reports.parent_id); a reader's comment may quote a phrase
 // (publish_comments.quote).
-const Version = 3
+// Version 4: a person may declare the unit of a file that has no BUNIT (dataset_units; ADR 0038).
+const Version = 4
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -27,6 +28,22 @@ type Migration struct {
 var migrations = []Migration{
 	{To: 2, Name: "board items may follow a job", Up: boardItemsMayFollowAJob},
 	{To: 3, Name: "report pages and quoted comments", Up: reportPagesAndQuotes},
+	{To: 4, Name: "declared units", Up: declaredUnits},
+}
+
+// declaredUnits adds the overlay table for a unit a person declared for a dataset with no BUNIT (ADR 0038). The catalog
+// package creates it for a fresh install; creating it here keeps an upgraded catalog identical, with no row to carry
+// over. A catalog without a datasets table (never opened by the catalog package) needs nothing.
+func declaredUnits(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='datasets'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS dataset_units(
+				dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id) ON DELETE CASCADE,
+				unit TEXT NOT NULL, declared_by TEXT NOT NULL DEFAULT 'user', declared_at INTEGER NOT NULL,
+				size_bytes INTEGER NOT NULL DEFAULT 0, modified_ns INTEGER NOT NULL DEFAULT 0)`)
+	return err
 }
 
 // reportPagesAndQuotes adds two columns with defaults that keep every existing row meaning what it meant: a report at

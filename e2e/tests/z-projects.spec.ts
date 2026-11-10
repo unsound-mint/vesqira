@@ -88,6 +88,24 @@ test("open a folder, confirm the layout, answer what is unknown, open a file", a
   await expect(page.getByRole("slider", { name: "Channel" })).toBeVisible();
   await expect(page.getByText("/ 64")).toBeVisible(); // the cube has 64 channels
   await expect(page.getByText(/Loading channel/)).toBeHidden(); // and the plane arrived
+  // the unit declared on the Needs page reached the files it was about, as yours and never as the file's
+  await side.getByRole("button", { name: /hi_cube_nounit\.fits/ }).click();
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  await expect(inspector.getByText("Jy/beam (declared by you, not in the file)")).toBeVisible();
+  const unitSection = inspector.locator("section").filter({ has: page.getByRole("heading", { name: "Unit of the values" }) });
+  await expect(unitSection.getByText(/declared by you/)).toBeVisible();
+  await expectNoAxeViolations(page);
+  // withdrawing it returns to what the file said, and it can be declared again from the dataset itself
+  await unitSection.getByRole("button", { name: "Withdraw the unit" }).click();
+  await expect(inspector.getByText("— (unresolved)")).toBeVisible();
+  await expect(page.getByText(/Brightness unit unresolved: the header has no BUNIT/)).toBeVisible(); // the viewer followed, no reload
+  await unitSection.getByLabel("Declare the unit").fill("mJy/beam");
+  await unitSection.getByRole("button", { name: "Declare" }).click();
+  await expect(inspector.getByText("mJy/beam (declared by you, not in the file)")).toBeVisible();
+  await expect(page.getByText(/Brightness unit \(mJy\/beam\) declared by you: the header has no BUNIT/)).toBeVisible();
+  // a file that states its own unit offers no declaration at all
+  await side.getByRole("button", { name: /hi_cube\.fits/ }).click();
+  await expect(inspector.getByRole("heading", { name: "Unit of the values" })).toHaveCount(0);
   // the rows fit the panel: no horizontal scrollbar, the size column is not cut off
   const overflow = await side.locator(":scope > div").first().evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);

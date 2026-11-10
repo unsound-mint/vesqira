@@ -1,6 +1,7 @@
 import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
 import type { Vocabulary, VocabKey } from "../ui/FilterBox";
+import { effectiveUnit } from "./unit";
 
 const TOP = 20;
 
@@ -77,7 +78,7 @@ export function datasetVocabulary(datasets: Dataset[], hosts: { id: number; name
   const host: Tally = new Map();
   const nature: Tally = new Map();
   for (const d of datasets) {
-    const u = String(d.header?.bunit ?? "").trim();
+    const u = effectiveUnit(d);
     if (u === "") bump(unit, "none");
     else if (wordy(u)) bump(unit, u);
     const h = hosts.find((x) => x.id === d.hostId)?.name;

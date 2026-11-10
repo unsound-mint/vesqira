@@ -48,8 +48,16 @@ chmod +x "$run/fake-ssh"
 # a data layout, two run records, one config, and a git repository (a HEAD and a branch ref are all discovery reads).
 proj="$run/project/hi-vgt-study"
 mkdir -p "$proj/data/raw" "$proj/configs" "$proj/.git/refs/heads"
-# the vgt maps have no BUNIT, which gives the Needs page something to ask
-for f in hi_cube.fits cube_int16_scaled.fits hi_cube_no_spectral_ref.fits vgt_psi_deg.fits vgt_reliability.fits; do cp "$run/data/$f" "$proj/data/raw/$f"; done
+for f in hi_cube.fits cube_int16_scaled.fits hi_cube_no_spectral_ref.fits; do cp "$run/data/$f" "$proj/data/raw/$f"; done
+# two scalar cubes with their BUNIT card removed, which gives the Needs page something to ask (orientation maps are never asked
+# for a brightness unit, so the VGT maps would not do)
+for n in hi_cube_nounit.fits hi_cube_nounit_b.fits; do
+  python3 -I -c "import sys
+from astropy.io import fits
+with fits.open(sys.argv[1]) as h:
+    del h[0].header['BUNIT']
+    h.writeto(sys.argv[2])" "$run/data/hi_cube.fits" "$proj/data/raw/$n"
+done
 echo 'ref: refs/heads/main' > "$proj/.git/HEAD"
 echo 0123456789abcdef0123456789abcdef01234567 > "$proj/.git/refs/heads/main"
 echo 'lambda = 0.5' > "$proj/configs/vgt.toml"

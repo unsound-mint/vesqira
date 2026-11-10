@@ -180,6 +180,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/datasets/{id}/copy", s.copyDataset)
 	mux.HandleFunc("POST /api/datasets/{id}/nature", s.setNature)
 	mux.HandleFunc("POST /api/datasets/{id}/interpretation", s.interpret)
+	mux.HandleFunc("POST /api/datasets/{id}/unit", s.declareUnit)
 	if s.Reports != nil && s.Boards != nil {
 		s.reportRoutes(mux)
 	}

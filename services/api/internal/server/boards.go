@@ -47,8 +47,15 @@ type ViewParams struct {
 	ShowLines     *bool        `json:"showLines,omitempty"`
 }
 
-// unitText allows unit spellings such as m/s, Hz or Jy/beam and nothing that could carry markup or a path.
+// unitText allows unit spellings such as m/s, Hz or Jy/beam and nothing that could carry markup or a path. It guards the
+// spectral axis unit the browser reports; a figure's limit unit is guarded by limitsUnitOK.
 var unitText = regexp.MustCompile(`^[A-Za-z0-9/*^. -]{0,16}$`)
+
+// limitsUnitOK accepts the spelling of a figure's limit unit: what a header's BUNIT looks like, or anything a person can
+// declare (catalog.ValidUnit). That it is the file's unit, or the declared one, is checked against the catalog later.
+func limitsUnitOK(u string) bool {
+	return u == "" || unitText.MatchString(u) || catalog.ValidUnit(u)
+}
 
 func oneOf(v string, ok ...string) bool {
 	if v == "" {
@@ -69,7 +76,7 @@ func (p ViewParams) valid() bool {
 	if !oneOf(p.Colormap, "viridis", "inferno", "gray", "twilight") || !oneOf(p.Stretch, "linear", "sqrt", "asinh") || !oneOf(p.Range, "percentile", "minmax", "custom") {
 		return false
 	}
-	if !unitText.MatchString(p.SpectralUnit) || len(p.LimitsUnit) > 32 || len(p.Limits) > 2 {
+	if !unitText.MatchString(p.SpectralUnit) || !limitsUnitOK(p.LimitsUnit) || len(p.Limits) > 2 {
 		return false
 	}
 	if p.Region != nil && !oneOf(p.Region.Shape, "rect", "circle") {
@@ -102,6 +109,12 @@ type safeInterpretation struct {
 	HasReliability bool   `json:"hasReliabilityMap"`
 }
 
+// safeUnitDeclaration is the unit the author declared for a file with no BUNIT, said to be the author's.
+type safeUnitDeclaration struct {
+	Unit       string `json:"unit"`
+	DeclaredBy string `json:"declaredBy"`
+}
+
 // Provenance is the reviewer-safe account of where a figure came from. It has no path and no dataset id.
 type Provenance struct {
 	Source struct {
@@ -112,16 +125,19 @@ type Provenance struct {
 		Header     safeHeader `json:"headerDeclaredByFile"`
 	} `json:"source"`
 	Interpretation *safeInterpretation `json:"interpretation,omitempty"`
-	Nature         string              `json:"nature,omitempty"` // observed | simulated | constructed_control, as declared by the author
-	Run            *runs.Summary       `json:"run,omitempty"`
-	Derived        *derived.Summary    `json:"derived,omitempty"`
-	View           ViewParams          `json:"view"`
-	Statements     []string            `json:"statements"`
+	// UnitDeclaration is set when the brightness unit of the figure is one the author declared because the file has no BUNIT
+	// (headerDeclaredByFile.bunit stays null: the header is only what the file said).
+	UnitDeclaration *safeUnitDeclaration `json:"unitDeclaration,omitempty"`
+	Nature          string               `json:"nature,omitempty"` // observed | simulated | constructed_control, as declared by the author
+	Run             *runs.Summary        `json:"run,omitempty"`
+	Derived         *derived.Summary     `json:"derived,omitempty"`
+	View            ViewParams           `json:"view"`
+	Statements      []string             `json:"statements"`
 }
 
 // checkAgainst validates the view against what the catalog knows about the file: a channel beyond every axis, a
 // brightness unit the header does not declare, or a region far outside the image cannot be recorded as fact.
-func (p ViewParams) checkAgainst(h safeHeader) bool {
+func (p ViewParams) checkAgainst(h safeHeader, declaredUnit string) bool {
 	maxLen := 0
 	for _, a := range h.Axes {
 		if a.Length > maxLen {
@@ -131,7 +147,8 @@ func (p ViewParams) checkAgainst(h safeHeader) bool {
 	if p.Channel != nil && (*p.Channel < 0 || *p.Channel >= maxLen) {
 		return false
 	}
-	if p.LimitsUnit != "" && (h.BUnit == nil || *h.BUnit != p.LimitsUnit) {
+	// the unit of the limits is the file's BUNIT, or, when the file has none, the one the author declared for it
+	if p.LimitsUnit != "" && !(h.BUnit != nil && *h.BUnit == p.LimitsUnit) && !(h.BUnit == nil && declaredUnit != "" && declaredUnit == p.LimitsUnit) {
 		return false
 	}
 	return true
@@ -144,7 +161,11 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 	if err := json.Unmarshal(d.Header, &pr.Source.Header); err != nil {
 		return nil, err
 	}
-	if !p.checkAgainst(pr.Source.Header) {
+	declaredUnit := ""
+	if d.UnitDeclaration != nil && !d.UnitDeclaration.Stale && pr.Source.Header.BUnit == nil {
+		declaredUnit = d.UnitDeclaration.Unit
+	}
+	if !p.checkAgainst(pr.Source.Header, declaredUnit) {
 		return nil, errBadView
 	}
 	pr.View = p
@@ -155,6 +176,10 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		"Header values are declared by the file and are not verified.",
 		"The picture was drawn by the author's browser and the view settings are as reported by it; the server checked them against the catalogued header (channel range, brightness unit) but did not redraw the picture.",
 		"Pixels are shown as float32; the author's viewer treats NaN, BLANK and infinite values as no value and never draws them as zero.",
+	}
+	if declaredUnit != "" {
+		pr.UnitDeclaration = &safeUnitDeclaration{Unit: declaredUnit, DeclaredBy: "the author of this board, not the file"}
+		pr.Statements = append(pr.Statements, "The brightness unit ("+declaredUnit+") was declared by the author of this board, not by the file: the file has no BUNIT.")
 	}
 	if d.Interpretation != nil {
 		by := "the author of this board"

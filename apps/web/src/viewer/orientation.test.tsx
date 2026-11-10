@@ -82,7 +82,7 @@ describe("orientation lines", () => {
 });
 
 describe("declaring an interpretation", () => {
-  const ds = (id: number, name: string): Dataset => ({ id, name, path: `/d/${name}`, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", hostId: 0, header: {} as Dataset["header"] });
+  const ds = (id: number, name: string): Dataset => ({ id, name, path: `/d/${name}`, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: {} as Dataset["header"] });
   const viewer = { view: { channels: 1 }, plane: { head: { stats: { min: 0, max: 3.1 } } } } as unknown as Viewer;
 
   it("suggests a reliability map by file name only", () => {

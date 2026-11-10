@@ -231,7 +231,8 @@
     "header",
     "hostId",
     "nature",
-    "interpretation"
+    "interpretation",
+    "unitDeclaration"
    ],
    "properties": {
     "id": {
@@ -281,6 +282,15 @@
       }
      ],
      "nullable": true
+    },
+    "unitDeclaration": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/UnitDeclaration"
+      }
+     ],
+     "nullable": true,
+     "description": "Present when the person declared a unit for a file without BUNIT. The header's own bunit and bunit_status stay as the file gave them."
     }
    }
   },
@@ -482,8 +492,10 @@
      "type": "string",
      "enum": [
       "declared",
+      "user",
       "unresolved"
-     ]
+     ],
+     "description": "declared: the file's BUNIT; user: a unit the person declared for a file with none (never the file's); unresolved: neither"
     },
     "fits_axes": {
      "type": "object",
@@ -653,6 +665,34 @@
        "type": "string"
       }
      }
+    }
+   }
+  },
+  "UnitDeclaration": {
+   "type": "object",
+   "description": "The physical unit a person declared for a file whose header has no BUNIT. An overlay: the file and its header facts are never changed, and wherever the unit is shown it is labelled as declared by the person.",
+   "required": [
+    "unit",
+    "declaredBy",
+    "declaredAt",
+    "stale"
+   ],
+   "properties": {
+    "unit": {
+     "type": "string",
+     "description": "As typed: 1 to 40 printable characters. It is shown and compared as text and not converted."
+    },
+    "declaredBy": {
+     "type": "string",
+     "description": "\"user\""
+    },
+    "declaredAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "stale": {
+     "type": "boolean",
+     "description": "The file's size or modification time differs from when the unit was declared: it may no longer describe these bytes."
     }
    }
   }

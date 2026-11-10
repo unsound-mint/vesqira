@@ -889,6 +889,20 @@ def header_cards(path: str) -> dict:
     return {"ok": True, "op": "cards", "nbytes": 0, "cards": cards, "truncated": truncated}
 
 
+MAX_DECLARED_UNIT = 40
+
+
+def declared_unit(req: dict):
+    """The unit the person declared for a file without BUNIT, sent with the request, or None. Text only: it is shown and
+    compared as typed and never parsed or converted here."""
+    v = req.get("declared_bunit")
+    if v is None:
+        return None
+    if not isinstance(v, str) or not v or len(v) > MAX_DECLARED_UNIT or v != v.strip() or not v.isprintable():
+        raise Refused("bad_request", "bad request")
+    return v
+
+
 def handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
     if op == "cards":
@@ -905,8 +919,14 @@ def handle(req: dict) -> tuple[dict, bytes]:
     if op not in ("view", "plane", "coord", "spectrum", "axial", "sky2pix") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")
     c = cube_for(path)
-    bunit = clean(c.h.get("BUNIT")) if "BUNIT" in c.h else None
-    base = {"ok": True, "op": op, "origin": 0, "bunit": bunit, "bunit_status": "declared" if bunit is not None else "unresolved"}
+    declared = declared_unit(req)
+    if "BUNIT" in c.h:                                       # what the file says always wins; a declared unit only fills a gap
+        bunit, status = clean(c.h.get("BUNIT")), "declared"
+    elif declared is not None:
+        bunit, status = declared, "user"                     # declared by the person, not by the file
+    else:
+        bunit, status = None, "unresolved"
+    base = {"ok": True, "op": op, "origin": 0, "bunit": bunit, "bunit_status": status}
     if op == "view":
         fl = c.flags()
         return {**base, "nbytes": 0, "width": c.shape[c.x], "height": c.shape[c.y], "channels": c.channels,
@@ -923,7 +943,7 @@ def handle(req: dict) -> tuple[dict, bytes]:
         return {**base, "nbytes": 0, **c.sky_to_pixels(req.get("points"))}, b""
     if op == "spectrum":
         head, payload = c.spectrum(req)
-        return {**base, **head}, payload
+        return {**base, **head, "bunit": bunit}, payload     # the spectrum head knows only the file's unit
     channel = as_index(req, "channel", c.channels)
     if op == "coord":
         x, y = as_index(req, "x", c.shape[c.x]), as_index(req, "y", c.shape[c.y])

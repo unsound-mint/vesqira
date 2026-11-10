@@ -26,6 +26,13 @@ func (hdrWorker) Header(_ context.Context, _ string) (json.RawMessage, error) {
 	return json.RawMessage(`{"ok":true,"naxis":3,"bitpix":-32,"axes":[{"axis":1,"length":8,"ctype":"RA---TAN","cunit":"deg","crval":150,"cdelt":-0.01}],"bunit":"K","radesys":"ICRS","specsys":null}`), nil
 }
 
+// unitlessWorker is a header reader for files with no BUNIT, as the real worker reports them (null and "unresolved").
+type unitlessWorker struct{}
+
+func (unitlessWorker) Header(_ context.Context, _ string) (json.RawMessage, error) {
+	return json.RawMessage(`{"ok":true,"naxis":3,"bitpix":-32,"axes":[{"axis":1,"length":8,"ctype":"RA---TAN","cunit":"deg","crval":150,"cdelt":-0.01}],"bunit":null,"bunit_status":"unresolved","radesys":"ICRS","specsys":null}`), nil
+}
+
 func testPNG(t *testing.T) string {
 	t.Helper()
 	var b bytes.Buffer
@@ -196,5 +203,98 @@ func TestFigureBoardReviewPathExposesNoSourceToTheReviewer(t *testing.T) {
 	}
 	if r, _ := get(t, api("/api/figures/"+itoa(int(f.ID))+"/preview")); r.StatusCode != 200 {
 		t.Errorf("owner preview after revoke: %d", r.StatusCode)
+	}
+}
+
+// A figure of a map whose unit the author declared (the file has no BUNIT) can be saved with limits in that unit, and what
+// travels with it, to the board and to the reviewer, says the unit is the author's and not the file's.
+func TestAFigureOfADeclaredUnitMapSaysTheUnitWasDeclaredNotRead(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "private-research-root")
+	os.MkdirAll(root, 0o755)
+	rs, _ := sourceroot.New([]string{root})
+	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cat.Close()
+	bs, _ := boards.Open(cat.DB(), base)
+	owner := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: unitlessWorker{}, Boards: bs}).Handler())
+	defer owner.Close()
+	rv := httptest.NewServer((&review.Handler{Store: bs}).Handler())
+	defer rv.Close()
+	file := filepath.Join(root, "map.fits")
+	os.WriteFile(file, []byte("x"), 0o644)
+	var d catalog.Dataset
+	json.NewDecoder(post(t, owner, file, nil).Body).Decode(&d)
+	api := func(p string) string { return owner.URL + p }
+	fig := func(unit string) map[string]any {
+		return map[string]any{"datasetId": d.ID, "title": "Map", "view": map[string]any{"kind": "plane", "channel": 3, "limitsUnit": unit, "limits": []float64{0, 1}}, "previewPng": testPNG(t)}
+	}
+	if r, _ := postJSON(t, api("/api/figures"), fig("Jy/beam")); r.StatusCode != 400 {
+		t.Fatalf("a unit nobody declared was accepted: %d", r.StatusCode)
+	}
+	if r, out := postJSON(t, api("/api/datasets/"+itoa(int(d.ID))+"/unit"), map[string]any{"unit": "Jy/beam"}); r.StatusCode != 200 {
+		t.Fatalf("declare: %d %s", r.StatusCode, out)
+	}
+	if r, o := postJSON(t, api("/api/figures"), fig("K")); r.StatusCode != 400 {
+		t.Fatalf("a different unit than the declared one was accepted: %d %s", r.StatusCode, o)
+	}
+	r, out := postJSON(t, api("/api/figures"), fig("Jy/beam"))
+	if r.StatusCode != 201 {
+		t.Fatalf("a figure of a declared-unit map cannot be saved: %d %s", r.StatusCode, out)
+	}
+	var f boards.Figure
+	json.Unmarshal(out, &f)
+	var p struct {
+		Source struct {
+			Header struct{ Bunit *string } `json:"headerDeclaredByFile"`
+		}
+		UnitDeclaration struct{ Unit, DeclaredBy string }
+		Statements      []string
+	}
+	json.Unmarshal(f.Provenance, &p)
+	if p.Source.Header.Bunit != nil {
+		t.Fatalf("the file's header must stay what the file said: %v", *p.Source.Header.Bunit)
+	}
+	if p.UnitDeclaration.Unit != "Jy/beam" || !strings.Contains(p.UnitDeclaration.DeclaredBy, "not the file") {
+		t.Fatalf("%+v", p.UnitDeclaration)
+	}
+	if !strings.Contains(strings.Join(p.Statements, "\n"), "declared by the author of this board, not by the file: the file has no BUNIT") {
+		t.Fatalf("the statements do not say it: %v", p.Statements)
+	}
+	_, bout := postJSON(t, api("/api/boards"), map[string]any{"title": "For review"})
+	var b boards.Board
+	json.Unmarshal(bout, &b)
+	postJSON(t, api("/api/boards/"+itoa(int(b.ID))+"/items"), map[string]any{"figureId": f.ID})
+	_, pout := postJSON(t, api("/api/boards/"+itoa(int(b.ID))+"/publish"), map[string]any{"label": "v1", "hours": 24})
+	var pub struct{ Token string }
+	json.Unmarshal(pout, &pub)
+	_, rbody := get(t, rv.URL+"/review-api/"+pub.Token)
+	if !strings.Contains(string(rbody), "declared by the author of this board, not by the file") || strings.Contains(string(rbody), root) {
+		t.Fatalf("the reviewer is not told, or something leaked: %s", rbody)
+	}
+	// a long unit that is valid text (35 bytes, 35 characters) is as good as a short one as a figure's limit unit
+	long := "erg/s/cm2/Angstrom/arcsec2 (x1e-17)"
+	if r, o := postJSON(t, api("/api/datasets/"+itoa(int(d.ID))+"/unit"), map[string]any{"unit": long}); r.StatusCode != 200 {
+		t.Fatalf("%d %s", r.StatusCode, o)
+	}
+	if r, o := postJSON(t, api("/api/figures"), fig(long)); r.StatusCode != 201 {
+		t.Fatalf("a valid declared unit of %d bytes cannot be a figure's limit unit: %d %s", len(long), r.StatusCode, o)
+	}
+	// a declaration made about other bytes is not used for a figure: the file changed since
+	os.WriteFile(file, []byte("xx"), 0o644)
+	var again catalog.Dataset
+	json.NewDecoder(post(t, owner, file, nil).Body).Decode(&again)
+	if again.UnitDeclaration == nil || !again.UnitDeclaration.Stale {
+		t.Fatalf("%+v", again.UnitDeclaration)
+	}
+	if r, _ := postJSON(t, api("/api/figures"), fig(long)); r.StatusCode != 400 {
+		t.Fatalf("a stale declaration was used for a figure: %d", r.StatusCode)
+	}
+	// withdrawing the unit later does not rewrite what was already published; a new figure with that unit is refused again
+	postJSON(t, api("/api/datasets/"+itoa(int(d.ID))+"/unit"), map[string]any{"clear": true})
+	if r, _ := postJSON(t, api("/api/figures"), fig("Jy/beam")); r.StatusCode != 400 {
+		t.Fatalf("after withdrawing, the unit was still accepted: %d", r.StatusCode)
 	}
 }

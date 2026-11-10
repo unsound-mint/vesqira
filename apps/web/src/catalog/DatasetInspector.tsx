@@ -3,6 +3,7 @@ import { Button } from "../ui";
 import { bytes, show } from "./format";
 import { beamText, pixelScale } from "./resolution";
 import { HeaderCards } from "./HeaderCards";
+import { fileStatesItsUnit } from "./unit";
 import s from "./DatasetInspector.module.css";
 
 /** What the file header declares, in native FITS axis order. Nothing here is verified. */
@@ -11,6 +12,15 @@ const PROBLEM_TEXT: Record<Problem, string> = {
   missing: "This file is not at its registered path any more. Figures and boards made from it keep their pictures; nothing here can read it until it is back.",
   not_allowed: "This file is outside the source folders this program was started with, so it cannot be read.",
 };
+
+/** The unit as the file gave it, or as you declared it (said so), or unresolved: the three are never mixed up. */
+function unitText(d: Dataset): string {
+  if (fileStatesItsUnit(d)) return show(d.header.bunit);
+  if (d.interpretation) return `${show(d.header.bunit)} (orientation map: values are angles, not a brightness)`;
+  const u = d.unitDeclaration;
+  if (!u) return `${show(d.header.bunit)} (unresolved)`;
+  return u.stale ? `${show(d.header.bunit)} (unresolved; you declared ${u.unit} for an earlier version of the file, not applied)` : `${u.unit} (declared by you, not in the file)`;
+}
 
 export function DatasetInspector({ d, problem, onReread }: { d: Dataset; problem?: Problem; onReread?: () => void }) {
   const h = d.header;
@@ -28,7 +38,7 @@ export function DatasetInspector({ d, problem, onReread }: { d: Dataset; problem
         <dt>Size</dt>
         <dd className="mono">{bytes(d.sizeBytes)}</dd>
         <dt>Brightness unit</dt>
-        <dd className="mono">{show(h.bunit)}{h.bunit_status === "unresolved" ? " (unresolved)" : ""}</dd>
+        <dd className="mono">{unitText(d)}</dd>
         <dt>Pixel scale</dt>
         <dd className="mono">{pixelScale(d)}</dd>
         <dt>Beam</dt>

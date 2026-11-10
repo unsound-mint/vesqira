@@ -25,7 +25,7 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
   if (kind !== "spectrum" && plane.head.preview) throw new Error("This is a reduced preview. The figure can be saved when the full plane has loaded.");
   const axial = v.interp !== null;
   const lim = limits(plane.head.stats, v.range, v.customLimits);
-  const facts = { dataset: dataset.name, kind: axial ? ("orientation" as const) : kind, channelLine: "", displayLine: "", limits: lim, limitsUnit: view.bunit };
+  const facts = { dataset: dataset.name, kind: axial ? ("orientation" as const) : kind, channelLine: "", displayLine: "", limits: lim, limitsUnit: view.bunit, unitDeclared: view.bunit_status === "user" };
   const captions = captionLines(facts, view, plane, { colormap: v.colormap, stretch: v.stretch, range: v.range, axial, region: v.region, nature: dataset.nature });
   const heading = opts.title?.trim() || defaultFigureTitle(v, dataset);
   let blob: Blob;
