@@ -69,10 +69,16 @@ const STRETCH = { linear: 0, sqrt: 1, asinh: 2 } as const;
 /** Whether this browser can run the renderer at all (WebGL2). A stored choice "cpu" turns it off, for support and tests. */
 let probed: boolean | null = null;
 let limits = { tex: 0, vw: 0, vh: 0 };
-export function gpuSupported(): boolean {
+export function forcedCpu(): boolean {
   try {
-    if (globalThis.localStorage?.getItem("vesqira.renderer") === "cpu") return false;
-  } catch { /* storage can be blocked */ }
+    return globalThis.localStorage?.getItem("vesqira.renderer") === "cpu";
+  } catch {
+    return false; // storage can be blocked
+  }
+}
+
+export function gpuSupported(): boolean {
+  if (forcedCpu()) return false;
   if (probed === null) {
     try {
       const gl = document.createElement("canvas").getContext("webgl2");
@@ -88,6 +94,28 @@ export function gpuSupported(): boolean {
   }
   return probed;
 }
+
+/** What the status bar says when drawing is on the CPU, and why. The GPU case says nothing: it is the normal one. */
+export function cpuNote(why: { forced: boolean; supported: boolean; failed: boolean }): string {
+  if (why.forced) return "CPU drawing (set by you)";
+  if (!why.supported) return "CPU drawing: no WebGL2";
+  if (why.failed) return "CPU drawing: graphics failed";
+  return "CPU drawing: plane too large for graphics";
+}
+
+let note: string | null = null;
+const listeners = new Set<() => void>();
+/** The viewer reports how it is drawing; the shell shows it. null means the GPU is drawing. */
+export function setRendererNote(next: string | null): void {
+  if (next === note) return;
+  note = next;
+  listeners.forEach((f) => f());
+}
+export const subscribeRendererNote = (f: () => void): (() => void) => {
+  listeners.add(f);
+  return () => { listeners.delete(f); };
+};
+export const getRendererNote = (): string | null => note;
 
 export class GlPlaneRenderer {
   readonly canvas: HTMLCanvasElement;

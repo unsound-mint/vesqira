@@ -5,7 +5,7 @@ import { Button, IconButton } from "../ui";
 import { lut } from "./colormaps";
 import { fit, pixelAt } from "./geometry";
 import { limits, outputSize, renderPlane } from "./render";
-import { GlPlaneRenderer } from "./glRenderer";
+import { GlPlaneRenderer, cpuNote, forcedCpu, gpuSupported, setRendererNote } from "./glRenderer";
 import { orientationLinesFor } from "./glyphs";
 import type { Rgb } from "./render";
 import type { Viewer } from "./useViewer";
@@ -95,11 +95,13 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
         if (!gl.current) { setGpuOff(true); return; }
       }
       gl.current.draw(plane.data, plane.head.width, plane.head.height, opts);
+      setRendererNote(null);
       drawn.current?.(plane);
       return;
     }
     gl.current?.dispose();
     gl.current = null;
+    setRendererNote(cpuNote({ forced: forcedCpu(), supported: gpuSupported(), failed: gpuOff }));
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const img = renderPlane(plane.data, plane.head.width, plane.head.height, opts);
@@ -108,7 +110,7 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
     ctx.putImageData(new ImageData(img.pixels, img.width, img.height), 0, 0);
     drawn.current?.(plane);
   }, [plane, v.colormap, v.stretch, v.range, v.customLimits, v.interp, shape.scale, useGpu, canvasKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => { gl.current?.dispose(); gl.current = null; }, []);
+  useEffect(() => () => { gl.current?.dispose(); gl.current = null; setRendererNote(null); }, []);
 
   function pick(e: MouseEvent<HTMLCanvasElement>) {
     if (!plane) return null;
