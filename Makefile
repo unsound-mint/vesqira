@@ -1,4 +1,4 @@
-.PHONY: check docs web fixtures api e2e demo bench
+.PHONY: check docs web fixtures api e2e demo bench desktop
 check: docs fixtures api web
 
 docs:
@@ -12,7 +12,7 @@ web:
 	  cd apps/web && npm run typecheck && npm run lint:css && npm test && npm run build; \
 	fi
 
-# Needs numpy and astropy: pip install -r fixtures/requirements.txt
+# Needs numpy and astropy: pip install -r services/scientific-worker/requirements.txt
 fixtures:
 	cd fixtures && python3 -m unittest discover -s .
 
@@ -34,3 +34,7 @@ demo:
 # Worker timings on a large sparse cube against tools/bench_budgets.json (page-cache speed, not a disk)
 bench:
 	python3 tools/bench.py --check
+
+# Build and open the desktop window from this tree, no RPM (see docs/desktop-dev.md)
+desktop:
+	tools/dev-desktop.sh run

@@ -360,3 +360,48 @@ func (c *capped) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// ValidDest reports whether s is acceptable as an ssh destination (the same rule hosts are validated with).
+func ValidDest(s string) bool { return destRe.MatchString(s) }
+
+// DirEntry is one sub-folder shown while choosing a source folder on a host.
+type DirEntry struct {
+	Name string `json:"name"`
+}
+
+// BrowseDirs lists the sub-folders of dir on a host that is not saved yet, with the user's own ssh, so source folders can
+// be chosen instead of typed. An empty dir means the host's home directory. It lists names only and never reads files;
+// credential folders are not shown. It returns the resolved directory.
+func (m *Manager) BrowseDirs(ctx context.Context, dest, dir string) (string, []DirEntry, error) {
+	if !ValidDest(dest) {
+		return "", nil, fmt.Errorf("%w: the ssh destination must be a host name or ssh alias", ErrInvalid)
+	}
+	target := `"$HOME"`
+	if dir != "" {
+		if !path.IsAbs(dir) || len(dir) > 500 || strings.ContainsAny(dir, "\x00\n\r") || path.Clean(dir) != strings.TrimRight(dir, "/") && dir != "/" {
+			return "", nil, fmt.Errorf("%w: give a clean absolute folder", ErrInvalid)
+		}
+		target = quote(dir)
+	}
+	out, err := m.RunShell(ctx, Host{Dest: dest}, "cd -- "+target+" && pwd -P && ls -1pA", nil, 20*time.Second)
+	if err != nil {
+		return "", nil, err
+	}
+	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(lines) == 0 || !path.IsAbs(lines[0]) {
+		return "", nil, errors.New("the host did not answer with a folder")
+	}
+	dirs := []DirEntry{}
+	for _, l := range lines[1:] {
+		name, isDir := strings.CutSuffix(l, "/")
+		if !isDir || name == "" || name == ".ssh" || name == ".gnupg" {
+			continue
+		}
+		dirs = append(dirs, DirEntry{Name: name})
+		if len(dirs) >= 2000 {
+			break
+		}
+	}
+	sort.Slice(dirs, func(i, j int) bool { return strings.ToLower(dirs[i].Name) < strings.ToLower(dirs[j].Name) })
+	return lines[0], dirs, nil
+}

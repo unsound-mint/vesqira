@@ -18,26 +18,34 @@ function mockFetch(routes: Record<string, (init?: RequestInit) => { status?: num
 afterEach(() => vi.unstubAllGlobals());
 
 describe("hosts panel and your ssh config", () => {
-  it("offers the aliases from your ssh config, and fills the name from a chosen alias", async () => {
+  it("offers the aliases from your ssh config in a dropdown, and fills the name from the chosen one", async () => {
     mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: true, hosts: [{ alias: "cluster", hostName: "login.example.org", user: "user" }] } }) });
     render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
-    await waitFor(() => expect(document.querySelectorAll("#ssh-aliases option")).toHaveLength(1));
-    expect(document.querySelector("#ssh-aliases option")?.getAttribute("value")).toBe("cluster");
+    const select = await screen.findByRole("combobox", { name: "SSH destination" });
+    expect(screen.getByRole("option", { name: "cluster — user@login.example.org" })).toBeInTheDocument();
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText("SSH destination"), "cluster");
+    await user.selectOptions(select, "cluster");
     expect(screen.getByLabelText("Host name")).toHaveValue("cluster");
     await user.clear(screen.getByLabelText("Host name"));
     await user.type(screen.getByLabelText("Host name"), "Cluster");
-    await user.clear(screen.getByLabelText("SSH destination"));
-    await user.type(screen.getByLabelText("SSH destination"), "cluster");
+    await user.selectOptions(select, "cluster");
     expect(screen.getByLabelText("Host name")).toHaveValue("Cluster"); // a name you wrote is not overwritten
+  });
+
+  it("lets you type a destination that is not in the config", async () => {
+    mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: true, hosts: [{ alias: "cluster" }] } }) });
+    render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByRole("combobox", { name: "SSH destination" }), "Another destination…");
+    await user.type(screen.getByRole("textbox", { name: "SSH destination" }), "me@10.0.0.5");
+    expect(screen.getByRole("textbox", { name: "SSH destination" })).toHaveValue("me@10.0.0.5");
   });
 
   it("works without any ssh config", async () => {
     mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: false, hosts: [] } }) });
     render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
     await waitFor(() => expect(screen.getByLabelText("SSH destination")).toBeInTheDocument());
-    expect(document.querySelectorAll("#ssh-aliases option")).toHaveLength(0);
+    expect(screen.queryByRole("combobox", { name: "SSH destination" })).toBeNull();
   });
 });
 
@@ -49,18 +57,29 @@ describe("hosts panel", () => {
     expect(screen.queryByLabelText(/password|key/i)).toBeNull();
   });
 
-  it("adds a host with its source folders, one per line", async () => {
-    const calls = mockFetch({ "/api/hosts": () => ({ status: 201, body: host }) });
+  it("adds a host by choosing its source folders on the host, never typing a path or a Python", async () => {
+    const calls = mockFetch({
+      "/api/hosts/browse?dest=laptop2&path=%2Fhome%2Fu%2Fcubes": () => ({ body: { path: "/home/u/cubes", entries: [] } }),
+      "/api/hosts/browse": () => ({ body: { path: "/home/u", entries: [{ name: "cubes" }] } }),
+      "/api/hosts": () => ({ status: 201, body: host }),
+    });
     let changed = 0;
     render(<HostsPanel hosts={[]} onChange={async () => { changed++; }} onRegistered={async () => {}} />);
+    const user = userEvent.setup();
     const add = screen.getByRole("button", { name: "Add host" });
     expect(add).toBeDisabled();
-    await userEvent.type(screen.getByLabelText("Host name"), "Second laptop");
-    await userEvent.type(screen.getByLabelText("SSH destination"), "laptop2");
-    await userEvent.type(screen.getByLabelText(/Source folders/), "/data{Enter}/more");
-    await userEvent.click(add);
+    expect(screen.queryByLabelText(/Python/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Choose folder…" })).toBeDisabled(); // needs a destination first
+    await user.type(screen.getByLabelText("Host name"), "Second laptop");
+    await user.type(screen.getByLabelText("SSH destination"), "laptop2");
+    await user.click(screen.getByRole("button", { name: "Choose folder…" }));
+    await user.click(await screen.findByRole("button", { name: /cubes/ })); // starts at the host's home
+    expect(calls.some((c) => c.url.includes("path=%2Fhome%2Fu%2Fcubes"))).toBe(true);
+    await user.click(await screen.findByRole("button", { name: "Use this folder" }));
+    expect(add).toBeEnabled();
+    await user.click(add);
     await waitFor(() => expect(changed).toBe(1));
-    expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init!.body))).toEqual({ name: "Second laptop", dest: "laptop2", python: "python3", roots: ["/data", "/more"] });
+    expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init!.body))).toEqual({ name: "Second laptop", dest: "laptop2", roots: ["/home/u/cubes"] });
   });
 
   it("checks the connection, browses, and registers a FITS file that stays on the host", async () => {

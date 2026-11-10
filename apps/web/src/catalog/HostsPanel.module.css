@@ -107,3 +107,10 @@
   color: var(--text-3);
   font-size: var(--text-xs);
 }
+
+.chosen {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--text-sm);
+}

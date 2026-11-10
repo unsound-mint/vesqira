@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Vesqira",
+  "version": "0.2.0",
+  "identifier": "io.github.unsound_mint.Vesqira",
+  "build": { "frontendDist": "dist-placeholder" },
+  "app": { "windows": [], "security": { "csp": null } },
+  "bundle": { "active": false, "icon": ["icons/icon.png"] }
+}

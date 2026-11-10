@@ -9,6 +9,7 @@ Terminal=false
 Categories=Science;Astronomy;Education;
 Keywords=FITS;astronomy;VGT;Slurm;HPC;
 StartupNotify=false
+StartupWMClass=vesqira-desktop
 Actions=stop;
 
 [Desktop Action stop]
