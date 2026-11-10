@@ -29,7 +29,7 @@ type Host = { id: number; name: string };
  * Completion asks the local server, or the host's worker when `hostId` is set; it returns names only.
  * Tab completes the longest common prefix, Enter or a click takes the highlighted name, Escape closes the list.
  */
-export function PathField({ value, onChange, label, kind = "any", ext, hostId: hostProp, hosts, onHost, placeholder, required, disabled }: {
+export function PathField({ value, onChange, label, kind = "any", ext, hostId: hostProp, hosts, onHost, pick, placeholder, required, disabled }: {
   value: string;
   onChange: (v: string) => void;
   label: string;
@@ -41,6 +41,8 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
   hosts?: Host[];
   /** Called when the file chooser returns a folder of another registered host and the person agrees to switch. */
   onHost?: (hostId: number) => void;
+  /** Replaces the server-side chooser for a folder on this computer (the native window has its own dialog, ADR 0037). Resolves to a path, or null when cancelled. */
+  pick?: () => Promise<string | null>;
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
@@ -180,6 +182,11 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
     setBusy(true);
     setNotice(null);
     try {
+      if (pick) {
+        const p = await pick();
+        if (p) take({ path: p, hostId: null, remotePath: null, gvfs: null });
+        return;
+      }
       const r = await chooseFile({ mode: kind === "dir" ? "folder" : "file", title: label, ext });
       if (r.status === "unavailable") {
         noChooser = true;
@@ -238,7 +245,7 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
           onKeyDown={onKey}
           onBlur={() => setOpen(false)}
         />
-        {browse ? (
+        {browse || pick ? (
           <Button type="button" icon={FolderOpen} disabled={disabled || busy || needsHost} title={needsHost ? "Choose a host first" : undefined} onClick={() => void choose()} aria-describedby={`${id}-label`}>
             Browse…
           </Button>
