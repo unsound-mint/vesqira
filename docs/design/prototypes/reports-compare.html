@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports: three directions</title>
+<style>
+:root{--bg:#0f151c;--bg2:#141c25;--line:#222d39;--text:#e7ecf2;--t2:#a7b3c1;--acc:#3cc4e8;--warn:#f0b04c;color-scheme:dark;
+  font:14px/20px 'Geist',system-ui,sans-serif}
+@media (prefers-color-scheme:light){:root{--bg:#f3f6f9;--bg2:#fff;--line:#d8dfe7;--text:#0e1620;--t2:#455364;--acc:#0a6f8f;--warn:#8f5700;color-scheme:light}}
+body{margin:0;background:var(--bg);color:var(--text)}
+header{padding:24px 24px 8px;max-width:1500px;margin:0 auto}
+h1{font-size:20px;line-height:28px;margin:0 0 4px}
+header p{margin:4px 0;color:var(--t2);max-width:90ch}
+.flag{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--warn);border:1px solid var(--warn);border-radius:4px;padding:0 6px}
+main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:16px 24px 32px;max-width:1500px;margin:0 auto}
+@media (max-width:1100px){main{grid-template-columns:1fr}}
+section{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+h2{font-size:16px;line-height:24px;margin:0}
+.idea{color:var(--t2);margin:0}
+.shot{display:block;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.shot img{display:block;width:100%;height:auto}
+.shot:hover,.shot:focus-visible{border-color:var(--acc)}
+.cap{font-size:12px;color:var(--t2);margin:-4px 0 0}
+.links{display:flex;flex-wrap:wrap;gap:6px}
+.links a{font-size:13px;color:var(--acc);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.links a:hover{border-color:var(--acc)}
+ul{margin:0;padding-left:18px;color:var(--t2)} li{margin:2px 0}
+b.g{color:var(--text)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+footer{max-width:1500px;margin:0 auto;padding:0 24px 32px;color:var(--t2)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Reports: three directions <span class="flag">ILLUSTRATIVE MOCK DATA</span></h1>
+  <p>Click a picture to open that screen live; each screen also takes <code>?theme=light</code> or <code>?theme=dark</code>. Owner = your side (the agent drafts, you publish). Reader = what your professor sees from their link.</p>
+  <p>Recommended mix: A's workbench editor and margin comments + C's block-by-block review of the agent's changes + C's "Since your last visit" landing for the professor + B's graph later.</p>
+</header>
+<main>
+  <section>
+    <h2>A · Document in the workbench</h2>
+    <p class="idea">The report opens inside the existing workbench: source and preview side by side, publish state, backlinks and comments stacked on the right. The professor reads a calm column with comments in the margin next to their paragraphs.</p>
+    <a class="shot" href="reports-a/01-owner-editor.html"><img src="reports-a/screenshots/01-owner-editor_1440x900_dark.webp" alt="Direction A owner editor"></a>
+    <p class="cap">Owner: editor</p>
+    <a class="shot" href="reports-a/02-reader.html?theme=light"><img src="reports-a/screenshots/02-reader_1440x900_light.webp" alt="Direction A reader page"></a>
+    <p class="cap">Reader: report with margin comments</p>
+    <div class="links">
+      <a href="reports-a/01-owner-editor.html?state=preflight">Publish preview</a>
+      <a href="reports-a/02-reader.html?state=offline">Reader: laptop offline</a>
+      <a href="reports-a/02-reader.html?state=empty">Reader: nothing shared yet</a>
+      <a href="reports-a/02-reader.html?state=revoked">Reader: revoked link</a>
+    </div>
+    <ul><li><b class="g">+</b> most consistent with the app you approved</li><li><b class="g">+</b> margin comments are easy to follow</li><li><b class="g">−</b> split view is cramped on a 13" laptop</li></ul>
+  </section>
+  <section>
+    <h2>B · Linked pages</h2>
+    <p class="idea">Notion/Obsidian feel: one page that renders as you type, a tree of pages with links to and from, and a graph of reports, runs and figures (the mind map). Comments open as pop-ups from highlighted text.</p>
+    <a class="shot" href="reports-b/01-owner-editor.html"><img src="reports-b/screenshots/01-owner-editor_1440x900_dark.webp" alt="Direction B owner page editor"></a>
+    <p class="cap">Owner: page editor</p>
+    <a class="shot" href="reports-b/03-graph.html"><img src="reports-b/screenshots/03-graph_1440x900_dark.webp" alt="Direction B link graph"></a>
+    <p class="cap">Graph of reports, runs and figures</p>
+    <div class="links">
+      <a href="reports-b/02-reader.html?theme=light">Reader</a>
+      <a href="reports-b/02-reader.html?open=comments">Reader: all comments</a>
+      <a href="reports-b/01-owner-editor.html?state=preflight">Publish preview</a>
+      <a href="reports-b/02-reader.html?state=offline">Reader: laptop offline</a>
+    </div>
+    <ul><li><b class="g">+</b> the graph shows how work connects</li><li><b class="g">+</b> closest to what you used in Notion</li><li><b class="g">−</b> comment pop-ups cover the text they discuss</li></ul>
+  </section>
+  <section>
+    <h2>C · Inbox and changes first</h2>
+    <p class="idea">Built around what changed. You get a queue: agent edits to accept or reject block by block, comments waiting for you, replies the agent drafted. The professor lands on "Since your last visit" and jumps straight to changed paragraphs.</p>
+    <a class="shot" href="reports-c/01-owner-desk.html"><img src="reports-c/screenshots/01-owner-desk_1440x900_dark.webp" alt="Direction C owner desk"></a>
+    <p class="cap">Owner: desk with the agent's tracked changes</p>
+    <a class="shot" href="reports-c/02-reader-inbox.html?theme=light"><img src="reports-c/screenshots/02-reader-inbox_1440x900_light.webp" alt="Direction C reader inbox"></a>
+    <p class="cap">Reader: since your last visit</p>
+    <div class="links">
+      <a href="reports-c/03-reader-report.html">Reader: report with changes marked</a>
+      <a href="reports-c/01-owner-desk.html?state=preflight">Publish preview</a>
+      <a href="reports-c/02-reader-inbox.html?state=offline">Reader: laptop offline</a>
+    </div>
+    <ul><li><b class="g">+</b> fastest for a busy professor</li><li><b class="g">+</b> safest way to review agent edits</li><li><b class="g">−</b> less of a place to browse and think; serif fallback in its screenshots is not the intended font</li></ul>
+  </section>
+</main>
+<footer>Screenshots use a fallback font (Geist could not load while capturing); the live pages use Geist when online.</footer>
+</body>
+</html>

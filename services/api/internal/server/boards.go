@@ -244,7 +244,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	if _, _, status, m := s.authorize(d); status != 0 { // the figure records a source that is still what was registered
+	if _, _, status, m := s.authorize(r.Context(), d); status != 0 { // the figure records a source that is still what was registered
 		fail(w, status, m)
 		return
 	}

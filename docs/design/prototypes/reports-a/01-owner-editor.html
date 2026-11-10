@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Report editor</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+<script src="script.js"></script>
+</head>
+<body data-kind="owner">
+<div class="wb" data-tab="doc">
+  <nav class="rail" aria-label="Workbench">
+    <a href="#" aria-label="Datasets" title="Datasets"><i data-i="database" data-c="md"></i></a>
+    <a href="#" aria-label="Viewer" title="Viewer"><i data-i="layers" data-c="md"></i></a>
+    <a href="#" aria-label="Boards" title="Boards"><i data-i="grid" data-c="md"></i></a>
+    <a href="#" aria-label="Reports" title="Reports" aria-current="page"><i data-i="file-text" data-c="md"></i></a>
+    <a href="#" aria-label="Runs" title="Runs"><i data-i="activity" data-c="md"></i></a>
+    <span class="grow"></span>
+    <button id="themebtn" aria-label="Toggle light and dark theme" title="Theme"><i data-i="sun" data-c="md"></i></button>
+  </nav>
+
+  <aside class="side" aria-label="Explorer">
+    <div class="ph"><span>Reports</span><button class="btn sq ghost" aria-label="New draft report" title="New draft"><i data-i="plus"></i></button></div>
+    <ul class="tree" aria-label="Reports">
+      <li aria-selected="true"><i data-i="file-text"></i><button class="nm" title="Block size 32 vs 64: gradient orientation on the LMC H I cube">Block size 32 vs 64: gradient orientation on the LMC H I cube</button><span class="pill acc">draft 5</span></li>
+      <li><i data-i="file-text"></i><button class="nm">Noise masking threshold sweep</button><span class="pill ok">pub 2</span></li>
+      <li><i data-i="file-text"></i><button class="nm">Weekly notes 2026-W45</button><span class="pill un">draft</span></li>
+      <li><i data-i="file-text"></i><button class="nm">Calibrating reliability maps</button><span class="pill ok">pub 1</span></li>
+    </ul>
+    <div class="ph"><span>Runs</span><span class="t3" style="text-transform:none;letter-spacing:0;font-weight:400">insert</span></div>
+    <ul class="tree" aria-label="Runs">
+      <li><i data-i="activity"></i><span class="nm mono" style="line-height:var(--row)">2026-11-08_a1f3c</span><button class="ins" data-act="ins" data-what="run 2026-11-08_a1f3c" aria-label="Insert run 2026-11-08_a1f3c"><i data-i="plus"></i></button></li>
+      <li><i data-i="activity"></i><span class="nm mono" style="line-height:var(--row)">2026-11-08_9be20</span><button class="ins" data-act="ins" data-what="run 2026-11-08_9be20" aria-label="Insert run 2026-11-08_9be20"><i data-i="plus"></i></button></li>
+      <li><i data-i="activity"></i><span class="nm mono" style="line-height:var(--row)">2026-11-07_c40d1</span><button class="ins" data-act="ins" data-what="run 2026-11-07_c40d1" aria-label="Insert run 2026-11-07_c40d1"><i data-i="plus"></i></button></li>
+    </ul>
+    <div class="ph"><span>Pinned figures</span><span class="t3" style="text-transform:none;letter-spacing:0;font-weight:400">insert</span></div>
+    <div class="thumbrow">
+      <button data-act="ins" data-what="figure fig_7c41" aria-label="Insert figure fig_7c41, orientation fields"><img src="../_shared/assets/vgt_baseline_axial.png" alt="" width="64" height="64"></button>
+      <button data-act="ins" data-what="figure fig_7c42" aria-label="Insert figure fig_7c42, candidate orientation"><img src="../_shared/assets/vgt_candidate_axial.png" alt="" width="64" height="64"></button>
+      <button data-act="ins" data-what="figure fig_7c44" aria-label="Insert figure fig_7c44, axial difference"><img src="../_shared/assets/vgt_axial_diff.png" alt="" width="64" height="64"></button>
+      <button data-act="ins" data-what="figure fig_7c45" aria-label="Insert figure fig_7c45, moment 0"><img src="../_shared/assets/mom0.png" alt="" width="64" height="64"></button>
+    </div>
+  </aside>
+
+  <div class="mtabs" role="tablist" aria-label="Editor panels">
+    <button role="tab" data-tab="doc" aria-selected="true">Report</button>
+    <button role="tab" data-tab="inspector" aria-selected="false">Publish and comments</button>
+  </div>
+
+  <main class="main">
+    <div class="bar">
+      <div class="crumb"><span>Reports</span><span>/</span><b>Block size 32 vs 64: gradient orientation on the LMC H I cube</b></div>
+      <span class="pill acc" id="pubstate-pill">draft rev 5</span>
+      <span class="sp"></span>
+      <span class="mockflag">ILLUSTRATIVE MOCK DATA</span>
+    </div>
+    <div class="tools" role="toolbar" aria-label="Editor tools">
+      <div class="seg" role="group" aria-label="View">
+        <button data-mode="source" aria-pressed="false"><i data-i="code"></i>Source</button>
+        <button class="sbtn-split" data-mode="split" aria-pressed="true"><i data-i="split"></i>Split</button>
+        <button data-mode="preview" aria-pressed="false"><i data-i="book"></i>Preview</button>
+      </div>
+      <span class="vr"></span>
+      <button class="btn ghost" data-act="ins" data-what="figure" title="Insert pinned figure"><i data-i="image"></i>Figure</button>
+      <button class="btn ghost" data-act="ins" data-what="run" title="Insert run"><i data-i="activity"></i>Run</button>
+      <button class="btn ghost" data-act="ins" data-what="[[ ]]" title="Link to a report"><i data-i="link"></i>Link</button>
+      <button class="btn ghost" data-act="ins" data-what="$$ math $$" title="Insert equation"><i data-i="sigma"></i>Math</button>
+    </div>
+    <div class="reviewbar" role="status"><i data-i="bot"></i><span><b data-pend>2</b> agent changes in draft revision 5 are waiting for your review.</span><span class="sp"></span><button class="btn sm" data-act="accept-all">Accept all</button></div>
+    <div class="panes" data-mode="split">
+      <div class="pane srcp" id="src" role="textbox" aria-multiline="true" aria-readonly="true" aria-label="Markdown source of the report (prototype: read-only)" tabindex="0"></div>
+      <div class="pane pv" tabindex="0" role="region" aria-label="Rendered preview of draft revision 5"><article class="prose" id="report"></article></div>
+    </div>
+  </main>
+
+  <aside class="insp" aria-label="Inspector">
+    <section class="sec" aria-label="Publish state">
+      <button class="sh" aria-expanded="true" aria-controls="sec-pub"><span class="cv"><i data-i="chev"></i></span>Publish<span class="sm">draft rev 5</span></button>
+      <div class="sb" id="sec-pub">
+        <dl class="kv">
+          <dt>Draft</dt><dd>revision 5, VGT agent 14:02, you 15:31</dd>
+          <dt>Published</dt><dd id="pubstate">revision 4, 9 Nov 17:30, by you</dd>
+          <dt>Waiting</dt><dd><span data-pend>2</span> agent changes not reviewed</dd>
+        </dl>
+        <div class="t3" style="font-size:var(--text-xs);line-height:var(--lh-xs);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:4px">Readers with access</div>
+        <div class="rdr"><i data-i="user" data-c="md"></i><div class="g"><b style="font-weight:500">Prof. Okafor</b><small>named link, no account, opened yesterday 18:20</small></div><button class="btn sm ghost">Revoke</button></div>
+        <button class="btn pri lg" data-act="openpub" style="justify-content:center"><i data-i="upload"></i>Publish revision 5&hellip;</button>
+        <p class="t3" style="margin:0;font-size:var(--text-xs);line-height:var(--lh-xs)">Shows exactly what goes out before anything is pushed. The agent can save drafts; only you publish.</p>
+      </div>
+    </section>
+    <section class="sec" aria-label="Backlinks">
+      <button class="sh" aria-expanded="true" aria-controls="sec-bl"><span class="cv"><i data-i="chev"></i></span>Backlinks<span class="sm">3 reports link here</span></button>
+      <div class="sb" id="sec-bl">
+        <ul class="bl">
+          <li><a href="#">Noise masking threshold sweep</a><span class="pill ok">pub 2</span><small>in Results: &ldquo;the same mask as in the block-size comparison&rdquo;</small></li>
+          <li><a href="#">Weekly notes 2026-W45</a><span class="pill un">draft</span><small>in Monday: &ldquo;block 32 vs 64 run finished&rdquo;</small></li>
+          <li><a href="#">Calibrating reliability maps</a><span class="pill ok">pub 1</span><small>in Open questions</small></li>
+        </ul>
+      </div>
+    </section>
+    <section class="sec" aria-label="Comments">
+      <button class="sh" aria-expanded="true" aria-controls="sec-comments"><span class="cv"><i data-i="chev"></i></span>Comments<span class="sm">synced 15:38, 1 new</span></button>
+      <div class="sb" id="sec-comments">
+        <p class="note-sm" style="margin:0">Pulled from the publish server when this workspace is online. Replies you send travel back the same way.</p>
+        <div id="thr-list"></div>
+      </div>
+    </section>
+    <section class="sec" aria-label="History">
+      <button class="sh" aria-expanded="true" aria-controls="sec-hist"><span class="cv"><i data-i="chev"></i></span>History<span class="sm">5 revisions</span></button>
+      <div class="sb" id="sec-hist">
+        <ul class="hist">
+          <li class="cur"><div class="h1">Draft revision 5 <span class="pill acc">unpublished</span></div><small>today &middot; VGT agent 14:02, Denis 15:31</small><p>Agent: caveat sentence in Interpretation, new next step. Denis: wording in the Table 1 note.</p></li>
+          <li><div class="h1">Revision 4 <span class="pill ok">published</span></div><small>9 Nov 17:30 &middot; Denis</small><p>Channel range changed to &minus;12&hellip;+12 km/s.</p></li>
+          <li><div class="h1">Revision 3</div><small>6 Nov 11:12 &middot; VGT agent, edited by Denis</small><p>Added Figure 2 and Table 1.</p></li>
+          <li><div class="h1">Revision 2</div><small>4 Nov 16:40 &middot; Denis</small></li>
+          <li><div class="h1">Revision 1</div><small>3 Nov 10:05 &middot; VGT agent</small><p>First draft from runs 2026-11-03_*.</p></li>
+        </ul>
+      </div>
+    </section>
+  </aside>
+
+  <footer class="status">
+    <span><span class="dot" aria-hidden="true"></span>Publish server connected</span>
+    <span>Synced 15:38, 2 min ago</span>
+    <span class="sp"></span>
+    <span>Local workspace &middot; autosaved 15:41</span>
+  </footer>
+</div>
+
+<dialog class="pub" id="pub" aria-labelledby="pubh">
+  <header>
+    <i data-i="upload" data-c="md"></i>
+    <div style="flex:1"><h2 id="pubh">Publish revision 5 to 1 reader</h2><p>Prof. Okafor sees this the next time they open their link. Nothing leaves your machine until you confirm.</p></div>
+    <button class="btn sq ghost" data-act="closepub" aria-label="Close"><i data-i="x"></i></button>
+  </header>
+  <div class="scr">
+    <section>
+      <h3>Goes out</h3>
+      <ul class="ul">
+        <li class="ok"><i data-i="check"></i><span>Report text of revision 5, with attribution &ldquo;drafted by VGT agent, edited by Denis&rdquo;. Revision 4 stays in the reader&rsquo;s history.</span></li>
+      </ul>
+    </section>
+    <section>
+      <h3>Figures, as pictures only</h3>
+      <div class="pthumbs">
+        <div class="pthumb"><div class="im"><img src="../_shared/assets/vgt_baseline_axial.png" alt=""><img src="../_shared/assets/vgt_candidate_axial.png" alt=""></div><div><b style="font-weight:500">Figure 1</b> &middot; preview PNG<small>No data array, no file path. Provenance line shown under the picture: file name, channels, run ids, &ldquo;declared, not verified&rdquo;.</small></div></div>
+        <div class="pthumb"><div class="im"><img src="../_shared/assets/vgt_axial_diff.png" alt=""><img src="../_shared/assets/vgt_reliability.png" alt=""></div><div><b style="font-weight:500">Figure 2</b> &middot; preview PNG<small>Same provenance line. Comment pins stay on the picture.</small></div></div>
+      </div>
+    </section>
+    <section>
+      <h3>Run lines</h3>
+      <ul class="ul">
+        <li class="ok"><i data-i="activity"></i><span><span class="mono">2026-11-08_a1f3c</span> &middot; block 32 &middot; finished 8 Nov 22:10 &middot; <em>computation completed</em></span></li>
+        <li class="ok"><i data-i="activity"></i><span><span class="mono">2026-11-08_9be20</span> &middot; block 64 &middot; finished 8 Nov 23:41 &middot; <em>computation completed</em></span></li>
+      </ul>
+      <p class="note-sm" style="margin:8px 0 0">Run id, block size and finish time only. No host, job id or command line.</p>
+    </section>
+    <section>
+      <h3>Linked reports</h3>
+      <ul class="ul">
+        <li class="ok"><i data-i="link"></i><span><b style="font-weight:500">Noise masking threshold sweep</b> is shared with Prof. Okafor (revision 2). The link opens it.</span></li>
+        <li class="wr"><i data-i="eyeoff"></i><span><b style="font-weight:500">Weekly notes 2026-W45</b> is not shared. The reader sees plain text: <em>Weekly notes 2026-W45 (not shared with you)</em>. <button class="btn sm" style="margin-left:4px">Share it instead&hellip;</button></span></li>
+      </ul>
+    </section>
+    <section>
+      <h3>Does not go out</h3>
+      <ul class="ul">
+        <li class="no"><i data-i="x"></i><span>Dataset files and file paths. <span class="mono">lmc_hi_cube.fits</span> is named, never sent.</span></li>
+        <li class="no"><i data-i="x"></i><span>Host names, cluster, scheduler or job information.</span></li>
+        <li class="no"><i data-i="x"></i><span>Agent prompts and the agent&rsquo;s unsent draft replies.</span></li>
+        <li class="no"><i data-i="x"></i><span>Other drafts, and reports not shared with this reader.</span></li>
+      </ul>
+    </section>
+    <section>
+      <h3>Changes since revision 4</h3>
+      <div class="diff" role="group" aria-label="Diff from revision 4 to revision 5">
+        <div class="hd">Interpretation &middot; VGT agent</div>
+        <div class="ctx">  &hellip;does not show that block size matters for alignment on this cube.</div>
+        <div class="add">+ Both runs use the same pixels, so their uncertainties are not independent and the difference is probably less certain than the quoted &plusmn; suggests.</div>
+        <div class="hd">Next steps &middot; VGT agent</div>
+        <div class="add">+ - Compare the south-east region with the observations in [[Weekly notes 2026-W45]].</div>
+        <div class="hd">Table 1 note &middot; Denis</div>
+        <div class="del">- Excluded blocks for block 64 are not recorded.</div>
+        <div class="add">+ Excluded blocks for block 64 are not recorded in the run output; shown as unknown (&mdash;), not zero.</div>
+      </div>
+    </section>
+  </div>
+  <footer>
+    <label class="chk hint" style="flex:1;min-width:220px"><input type="checkbox" id="ack"><span>I reviewed the 2 agent changes and the plain-text link to an unshared report.</span></label>
+    <button class="btn md" data-act="closepub">Cancel</button>
+    <button class="btn pri md" data-act="dopub" disabled><i data-i="upload"></i>Publish revision 5</button>
+  </footer>
+</dialog>
+</body>
+</html>

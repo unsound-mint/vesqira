@@ -2,14 +2,18 @@
 # Scope: paths, methods and which listener serves them. Request and response bodies are not described yet.
 openapi: 3.0.3
 info:
-  title: Vesqira local and review API
+  title: Vesqira local, review and publish API
   version: 0.2.0
-  description: The owner API listens on loopback only. The review API serves published previews to anyone holding a link.
+  description: The owner API listens on loopback only. The review API serves published previews to anyone holding a link. The publish server (a separate program) serves published reports to named reader links and takes publisher requests with a key.
 paths:
   /:
     get:
       operationId: owner_staticApp(s_WebDist_get_
       x-listener: owner
+      responses: {'200': {description: ok}}
+    get:
+      operationId: publish_h_static_get_
+      x-listener: publish
       responses: {'200': {description: ok}}
     get:
       operationId: review_h_static_get_
@@ -23,6 +27,18 @@ paths:
   /api/analysis/job:
     post:
       operationId: owner_s_analysisJob_post_api_analysis_job
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/attachments:
+    post:
+      operationId: owner_s_addAttachment_post_api_attachments
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/attachments/{sha}:
+    parameters:
+      - {name: sha, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_getAttachment_get_api_attachments_sha
       x-listener: owner
       responses: {'200': {description: ok}}
   /api/audit:
@@ -269,6 +285,11 @@ paths:
       operationId: owner_s_figureText_post_api_figures_id_text
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/files/tree:
+    get:
+      operationId: owner_s_fileTree_get_api_files_tree
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/hosts:
     get:
       operationId: owner_s_listHosts_get_api_hosts
@@ -276,6 +297,11 @@ paths:
       responses: {'200': {description: ok}}
     post:
       operationId: owner_s_createHost_post_api_hosts
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/hosts/browse:
+    get:
+      operationId: owner_s_browseHost_get_api_hosts_browse
       x-listener: owner
       responses: {'200': {description: ok}}
   /api/hosts/ssh-config:
@@ -395,6 +421,42 @@ paths:
       operationId: owner_s_previewFile_get_api_preview
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/projects/open:
+    post:
+      operationId: owner_s_openProject_post_api_projects_open
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/publish:
+    get:
+      operationId: owner_s_publishStatus_get_api_publish
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/publish/readers:
+    get:
+      operationId: owner_s_listReaders_get_api_publish_readers
+      x-listener: owner
+      responses: {'200': {description: ok}}
+    post:
+      operationId: owner_s_createReader_post_api_publish_readers
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/publish/readers/{id}/revoke:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_revokeReader_post_api_publish_readers_id_revoke
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/publish/settings:
+    post:
+      operationId: owner_s_publishSettings_post_api_publish_settings
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/publish/sync:
+    post:
+      operationId: owner_s_publishSyncNow_post_api_publish_sync
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/regions/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -407,6 +469,121 @@ paths:
       - {name: id, in: path, required: true, schema: {type: string}}
     post:
       operationId: owner_s_deleteRegion_post_api_regions_id_delete
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reply-drafts/{id}/discard:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_discardReplyDraft_post_api_reply_drafts_id_discard
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reply-drafts/{id}/send:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_sendReplyDraft_post_api_reply_drafts_id_send
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/report-comments:
+    get:
+      operationId: owner_s_reportComments_get_api_report_comments
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/report-comments/{id}/draft:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_draftReportReply_post_api_report_comments_id_draft
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/report-comments/{id}/reply:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_replyReportComment_post_api_report_comments_id_reply
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/report-comments/{id}/resolve:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_resolveReportComment_post_api_report_comments_id_resolve
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports:
+    get:
+      operationId: owner_s_listReports_get_api_reports
+      x-listener: owner
+      responses: {'200': {description: ok}}
+    post:
+      operationId: owner_s_createReport_post_api_reports
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/graph:
+    get:
+      operationId: owner_s_reportGraph_get_api_reports_graph
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_getReport_get_api_reports_id
+      x-listener: owner
+      responses: {'200': {description: ok}}
+    post:
+      operationId: owner_s_updateReport_post_api_reports_id
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/{id}/changes:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_reportChanges_get_api_reports_id_changes
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/{id}/delete:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_deleteReport_post_api_reports_id_delete
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/{id}/history:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_reportHistory_get_api_reports_id_history
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/{id}/history/{rev}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+      - {name: rev, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_reportRevision_get_api_reports_id_history_rev
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/{id}/preflight:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_reportPreflight_get_api_reports_id_preflight
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/{id}/publish:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_publishReport_post_api_reports_id_publish
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/{id}/seen:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_reportSeen_post_api_reports_id_seen
       x-listener: owner
       responses: {'200': {description: ok}}
   /api/roots:
@@ -469,6 +646,95 @@ paths:
     post:
       operationId: owner_s_revoke_post_api_snapshots_id_revoke
       x-listener: owner
+      responses: {'200': {description: ok}}
+  /publish-api/assets/{sha}:
+    parameters:
+      - {name: sha, in: path, required: true, schema: {type: string}}
+    put:
+      operationId: publish_h_pub(h_putAsset_put_publish_api_assets_sha
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/comments:
+    get:
+      operationId: publish_h_pub(h_feed_get_publish_api_comments
+      x-listener: publish
+      responses: {'200': {description: ok}}
+    post:
+      operationId: publish_h_pub(h_ownerComment_post_publish_api_comments
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/comments/{id}/resolve:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: publish_h_pub(h_resolve_post_publish_api_comments_id_resolve
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/ping:
+    get:
+      operationId: publish_h_pub(h_ping_get_publish_api_ping
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/readers:
+    get:
+      operationId: publish_h_pub(h_listReaders_get_publish_api_readers
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/readers/{id}/revoke:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: publish_h_pub(h_revokeReader_post_publish_api_readers_id_revoke
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/revisions:
+    post:
+      operationId: publish_h_pub(h_pushRevision_post_publish_api_revisions
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/spaces/{slug}:
+    parameters:
+      - {name: slug, in: path, required: true, schema: {type: string}}
+    put:
+      operationId: publish_h_pub(h_putSpace_put_publish_api_spaces_slug
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/spaces/{slug}/readers:
+    parameters:
+      - {name: slug, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: publish_h_pub(h_createReader_post_publish_api_spaces_slug_readers
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /read-api/{token}:
+    parameters:
+      - {name: token, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: publish_h_readSpace_get_read_api_token
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /read-api/{token}/assets/{sha}:
+    parameters:
+      - {name: token, in: path, required: true, schema: {type: string}}
+      - {name: sha, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: publish_h_readAsset_get_read_api_token_assets_sha
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /read-api/{token}/comments:
+    parameters:
+      - {name: token, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: publish_h_readComment_post_read_api_token_comments
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /read-api/{token}/reports/{key}:
+    parameters:
+      - {name: token, in: path, required: true, schema: {type: string}}
+      - {name: key, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: publish_h_readReport_get_read_api_token_reports_key
+      x-listener: publish
       responses: {'200': {description: ok}}
   /review-api/{token}:
     parameters:

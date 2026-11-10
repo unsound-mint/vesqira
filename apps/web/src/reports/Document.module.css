@@ -1,0 +1,400 @@
+/* The reading surface of a report (reports mock B). Hierarchy comes from size, weight and space only: no rules between
+   sections, no boxes around text, no badges in the text. Uses the reading scale tokens (design-system.md). */
+
+.doc {
+  width: 100%;
+  max-width: calc(var(--doc-measure) + var(--sp-10) + var(--sp-10));
+  margin: 0 auto;
+  padding: var(--sp-10) var(--sp-4) var(--sp-10) var(--sp-10);
+  color: var(--text);
+  font-size: var(--text-doc);
+  line-height: var(--lh-doc);
+}
+
+.head {
+  display: grid;
+  gap: var(--sp-2);
+  margin-right: var(--sp-10);
+  margin-bottom: var(--sp-8);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-doc-title);
+  line-height: var(--lh-doc-title);
+  font-weight: var(--w-strong);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+}
+
+.block {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--sp-10);
+}
+
+.block[data-active="true"] .body::before {
+  content: "";
+  position: absolute;
+  inset: var(--sp-1) auto var(--sp-1) calc(-1 * var(--sp-4));
+  width: 2px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+}
+
+.body {
+  position: relative;
+  min-width: 0;
+  border-radius: var(--r-md);
+  outline-offset: var(--sp-1);
+}
+
+.block[data-editable="true"] .body {
+  cursor: text;
+}
+
+.block[data-editable="true"] .body:hover {
+  background: var(--bg-3);
+  box-shadow: 0 0 0 var(--sp-2) var(--bg-3);
+}
+
+.gutter {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--sp-1);
+}
+
+.add,
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--ctl-sm);
+  padding: 0 var(--sp-1);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  cursor: pointer;
+}
+
+.add {
+  opacity: 0;
+}
+
+.block:hover .add,
+.add:focus-visible,
+.add[aria-pressed="true"] {
+  opacity: 1;
+}
+
+.count {
+  color: var(--accent);
+}
+
+.add:hover,
+.count:hover,
+.count[aria-pressed="true"] {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.emptyDoc,
+.missing {
+  margin: var(--sp-3) 0;
+  color: var(--text-3);
+  font-size: var(--text-md);
+}
+
+.footer {
+  margin-top: var(--sp-10);
+  margin-right: var(--sp-10);
+  color: var(--text-2);
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+}
+
+/* ---- prose ---- */
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
+}
+
+.prose {
+  padding: var(--sp-2) 0;
+}
+
+.prose h1,
+.prose h2 {
+  margin: var(--sp-6) 0 0;
+  font-size: var(--text-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--w-strong);
+}
+
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  margin: var(--sp-4) 0 0;
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--w-strong);
+}
+
+.prose p,
+.prose ul,
+.prose ol,
+.prose blockquote,
+.prose table,
+.prose pre {
+  margin: 0;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: var(--sp-6);
+}
+
+.prose li + li {
+  margin-top: var(--sp-1);
+}
+
+.prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-bg);
+  text-underline-offset: 3px;
+}
+
+.prose a:hover {
+  text-decoration-color: var(--accent);
+}
+
+.prose :global(.wiki-unshared),
+.prose :global(.wiki-missing) {
+  color: var(--text-2);
+  border-bottom: var(--bw) dashed var(--line-strong);
+}
+
+.prose :global(.img-missing) {
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.prose code {
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  font-family: var(--font-data);
+  font-size: var(--text-md);
+}
+
+.prose pre {
+  overflow-x: auto;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+  font-size: var(--text-sm);
+  line-height: var(--lh-md);
+}
+
+.prose pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.codeBlock {
+  font-size: var(--text-sm);
+}
+
+.prose blockquote {
+  padding-left: var(--sp-4);
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-2);
+}
+
+.prose table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.prose th,
+.prose td {
+  padding: var(--sp-1) var(--sp-3);
+  border-bottom: var(--bw) solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose th {
+  color: var(--text-2);
+  font-weight: var(--w-medium);
+}
+
+.prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: var(--sp-2) 0;
+  border-radius: var(--r-sm);
+}
+
+.prose :global(.math-display) {
+  overflow-x: auto;
+  padding: var(--sp-2) 0;
+}
+
+/* ---- figures and runs ---- */
+
+.figure {
+  display: grid;
+  gap: var(--sp-2);
+  margin: var(--sp-4) 0;
+}
+
+.img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}
+
+.caption {
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  color: var(--text-2);
+}
+
+.figNo,
+.figTitle {
+  color: var(--text);
+  font-weight: var(--w-medium);
+}
+
+.prov {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+.prov summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.prov summary::-webkit-details-marker {
+  display: none;
+}
+
+.prov summary:hover {
+  color: var(--text-2);
+}
+
+.provNote {
+  font-style: italic;
+}
+
+.prov ul {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-4);
+}
+
+.run {
+  display: grid;
+  gap: var(--sp-1);
+  margin: var(--sp-2) 0;
+  padding: var(--sp-2) 0 var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+}
+
+.runHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.runName {
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.runMeta {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.runQc {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.runQc[data-qc="passed"] {
+  color: var(--ok);
+}
+
+.runQc[data-qc="failed"] {
+  color: var(--err);
+}
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics div {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.metrics dt {
+  color: var(--text-3);
+}
+
+.metrics dd {
+  margin: 0;
+}
+
+@media (width <= 720px) {
+  .doc {
+    padding: var(--sp-6) var(--sp-4);
+  }
+
+  .head,
+  .footer {
+    margin-right: 0;
+  }
+
+  .block {
+    grid-template-columns: minmax(0, 1fr) var(--ctl-sm);
+  }
+}

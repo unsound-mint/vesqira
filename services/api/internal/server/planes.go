@@ -89,11 +89,11 @@ func (c *PlaneCache) put(k cacheKey, r worker.Reply) {
 
 // authorize re-checks a stored dataset against the current source roots and its registered size and mtime.
 // A path does not prove the bytes are the ones whose header was catalogued, so a changed file is refused.
-func (s *Server) authorize(d catalog.Dataset) (real string, k cacheKey, status int, msg string) {
+func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string, k cacheKey, status int, msg string) {
 	if d.HostID != 0 {
-		return s.authorizeRemote(d)
+		return s.authorizeRemote(ctx, d)
 	}
-	real, err := s.Roots.Resolve(d.Path)
+	real, err := s.roots().Resolve(d.Path)
 	if err != nil {
 		return "", k, 403, err.Error()
 	}
@@ -124,7 +124,7 @@ func (s *Server) source(w http.ResponseWriter, r *http.Request) (d catalog.Datas
 		fail(w, 500, "internal error")
 		return
 	}
-	real, k, status, msg := s.authorize(d)
+	real, k, status, msg := s.authorize(r.Context(), d)
 	if status != 0 {
 		fail(w, status, msg)
 		return

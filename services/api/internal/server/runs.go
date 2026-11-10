@@ -47,7 +47,7 @@ func (l localRun) Meta(context.Context) ([]byte, string, int, string) {
 	return data, filepath.Base(l.dir), 0, ""
 }
 func (l localRun) Register(ctx context.Context, name string) (catalog.Dataset, bool, int, string) {
-	real, err := l.s.Roots.Resolve(filepath.Join(l.dir, name)) // outputs must sit next to the metadata, inside the roots
+	real, err := l.s.roots().Resolve(filepath.Join(l.dir, name)) // outputs must sit next to the metadata, inside the roots
 	if err != nil {
 		return catalog.Dataset{}, false, 0, "" // a missing output is skipped, not invented
 	}
@@ -141,7 +141,7 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 	if filepath.Base(meta) != "run_metadata.toml" {
 		meta = filepath.Join(meta, "run_metadata.toml")
 	}
-	realMeta, err := s.Roots.Resolve(meta) // same containment rules as any file: inside a source root, regular file
+	realMeta, err := s.roots().Resolve(meta) // same containment rules as any file: inside a source root, regular file
 	if err != nil {
 		fail(w, 403, err.Error())
 		return

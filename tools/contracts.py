@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The HTTP contract of the local API and the review API, kept honest by machine.
+"""The HTTP contract of the local API, the review API and the publish server, kept honest by machine.
 
   tools/contracts.py            rewrite packages/contracts/openapi.yaml from the Go routes
   tools/contracts.py --check    fail if the file is out of date, or if the web client calls a route that does not exist
@@ -14,20 +14,52 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "packages" / "contracts" / "openapi.yaml"
-SOURCES = [
-    ("owner", ROOT / "services/api/internal/server/server.go"),
-    ("review", ROOT / "services/api/internal/review/review.go"),
+# Which listener serves the routes registered under each directory. A new Go file there is read automatically.
+LISTENERS = [
+    ("owner", ROOT / "services/api/internal/server"),
+    ("review", ROOT / "services/api/internal/review"),
+    ("publish", ROOT / "services/api/internal/publish"),
 ]
 ROUTE = re.compile(r'mux\.Handle(?:Func)?\("([A-Z]+) (/[^"]*)"(?:,\s*([A-Za-z_.()]+))?')
 
 
+REGISTRATION = re.compile(r"\bmux\.Handle(?:Func)?\(")
+
+
+def sources():
+    for listener, d in LISTENERS:
+        for f in sorted(d.glob("*.go")):
+            if not f.name.endswith("_test.go"):
+                yield listener, f
+
+
 def routes():
     found = []
-    for listener, path in SOURCES:
+    for listener, path in sources():
         for m in ROUTE.finditer(path.read_text()):
             method, url, handler = m.group(1), m.group(2), (m.group(3) or "inline").strip("()")
             found.append((url, method.lower(), listener, handler))
     return sorted(set(found))
+
+
+def unread_registrations():
+    """Registrations the route pattern cannot read (a computed path, a helper), and any outside LISTENERS.
+
+    A route the contract does not know about is invisible to every check built on it, so this is an error, not a gap."""
+    known = {f for _, f in sources()}
+    bad = []
+    for f in sorted((ROOT / "services/api").rglob("*.go")):
+        if f.name.endswith("_test.go"):
+            continue
+        text = f.read_text()
+        total = len(REGISTRATION.findall(text))
+        if not total:
+            continue
+        if f not in known:
+            bad.append(f"{f.relative_to(ROOT)} registers routes but is not under a directory listed in LISTENERS")
+        elif len(ROUTE.findall(text)) != total:
+            bad.append(f"{f.relative_to(ROOT)} has a mux registration the route pattern cannot read; register it as mux.Handle(\"METHOD /path\", handler)")
+    return bad
 
 
 def render(rs):
@@ -36,9 +68,9 @@ def render(rs):
         "# Scope: paths, methods and which listener serves them. Request and response bodies are not described yet.",
         "openapi: 3.0.3",
         "info:",
-        "  title: Vesqira local and review API",
+        "  title: Vesqira local, review and publish API",
         "  version: 0.2.0",
-        "  description: The owner API listens on loopback only. The review API serves published previews to anyone holding a link.",
+        "  description: The owner API listens on loopback only. The review API serves published previews to anyone holding a link. The publish server (a separate program) serves published reports to named reader links and takes publisher requests with a key.",
         "paths:",
     ]
     by_path = {}
@@ -66,7 +98,7 @@ def client_calls():
         if f.name.endswith(".test.ts"):
             continue
         text = f.read_text()
-        for m in re.finditer(r"""[`"'](/(?:api|review-api)/[^`"'?]*)""", text):
+        for m in re.finditer(r"""[`"'](/(?:api|review-api|read-api)/[^`"'?]*)""", text):
             url = re.sub(r"\$\{[^}]*\}", "{}", m.group(1))
             url = re.sub(r"\$\{.*$", "", url)            # a template that goes on past the path (a query or suffix)
             url = re.sub(r"\.reg$", ".reg", url)
@@ -91,7 +123,7 @@ def main():
         OUT.write_text(text)
         print(f"wrote {OUT.relative_to(ROOT)} ({len(rs)} operations)")
         return 0
-    errors = []
+    errors = unread_registrations()
     if not OUT.exists() or OUT.read_text() != text:
         errors.append("packages/contracts/openapi.yaml is out of date: run tools/contracts.py")
     spec_paths = {u for u, *_ in rs}

@@ -428,6 +428,12 @@ func (s *Store) ForDataset(datasetID int64) (*Summary, error) {
 	if err != nil {
 		return nil, err
 	}
+	return s.SummaryOf(id, role)
+}
+
+// SummaryOf is the reviewer-safe account of a run (no paths, directories or hosts), as a figure's provenance and a
+// published report show it. role is the output's role when the summary is about one output, else "".
+func (s *Store) SummaryOf(id int64, role string) (*Summary, error) {
 	r, err := s.Get(id)
 	if err != nil {
 		return nil, err

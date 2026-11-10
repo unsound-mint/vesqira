@@ -23,7 +23,7 @@ const maxManagedCopy = 64 << 30 // 64 GiB: a copy larger than this is refused ra
 // what the header declares about the sky and the spectral axis, and what reading it costs. Nothing is stored.
 func (s *Server) previewFile(w http.ResponseWriter, r *http.Request) {
 	p, _ := url.QueryUnescape(r.URL.Query().Get("path"))
-	real, err := s.Roots.Resolve(p)
+	real, err := s.roots().Resolve(p)
 	if err != nil {
 		fail(w, 403, err.Error())
 		return
