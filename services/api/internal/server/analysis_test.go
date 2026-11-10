@@ -74,7 +74,7 @@ func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
 	}
 	local := &worker.Persistent{Command: []string{py, "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(local.Close)
-	hdr := worker.Runner{Command: []string{py, "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	hdr := headerWorker(t, py, repo)
 	ts := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: hdr, Planes: local, Cache: NewPlaneCache(8 << 20), Boards: bs, Runs: rn, HostDB: hs, Remote: mgr, Jobs: js, Derived: ds, ManagedDir: managedDir,
 		Analysis: &AnalysisConfig{Python: py, Script: filepath.Join(repo, "services/scientific-worker/analysis.py"), DerivedDir: derivedDir, Timeout: 2 * time.Minute}}).Handler())
 	defer ts.Close()

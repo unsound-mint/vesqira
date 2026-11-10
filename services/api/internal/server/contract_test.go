@@ -67,8 +67,7 @@ func TestResponsesMatchTheSpecForTheViewerRoutes(t *testing.T) {
 	doc := loadSpec(t)
 	pw := &worker.Persistent{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(pw.Close)
-	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
-	ts, root, _ := newPlaneServerWith(t, hdr, pw)
+	ts, root, _ := newPlaneServerWith(t, pw, pw)
 	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
 	gen.Dir = filepath.Join(repo, "fixtures")
 	if out, err := gen.CombinedOutput(); err != nil {

@@ -99,7 +99,7 @@ PATH=%s:$PATH exec sh -c "$cmd"
 	rs, _ := sourceroot.New([]string{filepath.Join(base, "localroot")})
 	local := &worker.Persistent{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(local.Close)
-	ts := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second},
+	ts := httptest.NewServer((&Server{Roots: rs, Store: cat, Worker: headerWorker(t, "python3", repo),
 		Planes: local, Cache: NewPlaneCache(8 << 20), Boards: bs, Runs: rn, HostDB: hs, Remote: mgr, Jobs: js}).Handler())
 	defer ts.Close()
 	api := func(p string) string { return ts.URL + p }

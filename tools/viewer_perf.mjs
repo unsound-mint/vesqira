@@ -70,7 +70,7 @@ for (const [port, what] of [[8787, "API"], [5173, "Vite"]]) {
   if (await fetch(`http://127.0.0.1:${port}/`).then(() => true, () => false)) throw new Error(`port ${port} is already in use; stop the other ${what} (tools/demo.sh?) and run again`);
 }
 procs.push(spawn(join(work, "api"), ["--addr", "127.0.0.1:8787", "--db", join(work, "p.db"), "--data-dir", work, "--root", join(work, "data"),
-  "--worker", join(root, "services/scientific-worker/fits_header.py"), "--plane-worker", join(root, "services/scientific-worker/plane_worker.py")], { cwd: root, stdio: "ignore", detached: true }));
+  "--plane-worker", join(root, "services/scientific-worker/plane_worker.py")], { cwd: root, stdio: "ignore", detached: true }));
 procs.push(spawn("npx", ["vite", "--port", "5173", "--strictPort", "--host", "127.0.0.1"], { cwd: join(root, "apps/web"), stdio: "ignore", detached: true }));
 await up("http://127.0.0.1:8787/api/datasets", "API");
 await up("http://127.0.0.1:5173/", "Vite");

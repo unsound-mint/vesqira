@@ -32,7 +32,9 @@ On a remote host, a plane larger than about a quarter of a megapixel is first re
 
 ## Worker lanes
 
-`worker.Persistent` runs two processes: the interactive lane (header, plane, coordinate readout) and the heavy lane (region spectrum, orientation statistics). They queue independently, so a slow spectrum never delays channel scrubbing. A heavy request whose caller gives up is stopped by killing only the heavy process (a cold restart of about 0.3 s on the next heavy request); the interactive lane is never restarted for it. Covered by `TestAHeavyRequestNeverBlocksInteractiveOnesAndCancelKillsOnlyTheHeavyLane`.
+`worker.Persistent` runs three processes: the interactive lane (plane, coordinate readout), the heavy lane (region spectrum, orientation statistics) and the registration lane (header reads that catalog a file, `describe` and `header`). They queue independently, so a slow spectrum or a project scan that queues a thousand header reads never delays channel scrubbing. A heavy request whose caller gives up is stopped by killing only the heavy process (a cold restart of about 0.3 s on the next heavy request); the other lanes are never restarted for it. Covered by `TestAHeavyRequestNeverBlocksInteractiveOnesAndCancelKillsOnlyTheHeavyLane` and `TestHeaderUsesItsOwnLaneAndMapsErrors`.
+
+Registering a file used to start one `fits_header.py` process per file (median 188 ms on the development laptop); the registration lane keeps one worker, and `tools/bench.py` reports the `register` row (300 small files per request, budget p95 50 ms). The reply is the same JSON, checked by `TestPersistentHeaderEqualsOneShotScript`; a crash on one file fails only that file (`TestHeaderCrashMidBatchFailsOnlyThatFile`).
 
 ## Memory cap
 

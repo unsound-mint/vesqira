@@ -39,10 +39,11 @@ var ErrTimeout = errors.New("worker timed out")
 
 // Persistent keeps long-lived scientific workers, so Python and astropy start once instead of per request.
 //
-// There are two lanes, each with its own process and one task at a time. Planes, coordinates and headers use the
+// There are three lanes, each with its own process and one task at a time. Planes and coordinates use the
 // interactive lane; region spectra and orientation statistics, which read much more of the file, use the heavy
-// lane. A slow heavy request therefore never delays channel scrubbing (interactive work keeps its latency while
-// background work runs). A request that exceeds Timeout, or any broken reply, kills that lane's process group and
+// lane; header reads for registering files (a project scan can queue a thousand of them) use the registration lane.
+// A slow heavy request or a long scan therefore never delays channel scrubbing (interactive work keeps its latency
+// while background work runs). A request that exceeds Timeout, or any broken reply, kills that lane's process group and
 // its next request starts a clean worker.
 //
 // A caller that gives up (context cancelled) while queued leaves without touching the worker. On the interactive
@@ -60,6 +61,7 @@ type Persistent struct {
 	once  sync.Once
 	light lane
 	heavy lane
+	reg   lane
 }
 
 // lane is one worker process with its own queue of one.
@@ -71,6 +73,9 @@ type lane struct {
 // heavyOps are the worker operations that read a region over many channels or a whole map.
 var heavyOps = map[string]bool{"spectrum": true, "axial": true}
 
+// registerOps are header reads done to catalog files, kept off the interactive lane.
+var registerOps = map[string]bool{"describe": true, "header": true}
+
 type proc struct {
 	cmd *exec.Cmd
 	in  io.WriteCloser
@@ -81,6 +86,7 @@ func (p *Persistent) init() {
 	p.once.Do(func() {
 		p.light.sem = make(chan struct{}, 1)
 		p.heavy.sem = make(chan struct{}, 1)
+		p.reg.sem = make(chan struct{}, 1)
 	})
 }
 
@@ -115,7 +121,7 @@ func (pr *proc) kill() {
 // Close stops the workers. Safe to call once the server has stopped taking requests.
 func (p *Persistent) Close() {
 	p.init()
-	for _, l := range []*lane{&p.light, &p.heavy} {
+	for _, l := range []*lane{&p.light, &p.heavy, &p.reg} {
 		l.sem <- struct{}{}
 		if l.proc != nil {
 			l.proc.kill()
@@ -131,6 +137,8 @@ func (p *Persistent) Do(ctx context.Context, req map[string]any) (Reply, error) 
 	l, killOnCancel := &p.light, false
 	if op, _ := req["op"].(string); heavyOps[op] {
 		l, killOnCancel = &p.heavy, true
+	} else if registerOps[op] {
+		l = &p.reg
 	}
 	select {
 	case l.sem <- struct{}{}:
@@ -185,6 +193,28 @@ func (p *Persistent) Do(ctx context.Context, req map[string]any) (Reply, error) 
 		return Reply{}, ErrUnavailable
 	}
 	return reply, err
+}
+
+// Header reads the declared header facts of an already-authorized local file through the registration lane. The
+// result is the JSON `fits_header.py` prints, and a refusal carries the same short sanitised message, so callers see
+// what the one-process-per-file worker used to give them. Worker diagnostics are never forwarded.
+func (p *Persistent) Header(ctx context.Context, path string) (json.RawMessage, error) {
+	r, err := p.Do(ctx, map[string]any{"op": "describe", "path": path})
+	var re *RequestError
+	switch {
+	case errors.As(err, &re):
+		if re.Code == "unreadable" && re.Message != "" && re.Message != "cannot read file" {
+			return nil, fmt.Errorf("cannot read file: %s", re.Message)
+		}
+		return nil, errors.New("cannot read file")
+	case errors.Is(err, ErrTimeout):
+		return nil, errors.New("worker timed out")
+	case errors.Is(err, ErrUnavailable):
+		return nil, errors.New("worker returned no valid result")
+	case err != nil:
+		return nil, err
+	}
+	return r.Head, nil
 }
 
 func exchange(pr *proc, line []byte) (Reply, error) {

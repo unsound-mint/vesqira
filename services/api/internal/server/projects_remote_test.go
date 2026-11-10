@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
@@ -17,7 +16,6 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
-	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
 // A project on a host: the folder is added to the host's roots, walked by the host's own worker (same skip rules, never
@@ -75,7 +73,7 @@ func TestRemoteProjectIsWalkedByTheHostWorkerWithFakeSSH(t *testing.T) {
 	rn, _ := runs.Open(cat.DB())
 	au, _ := audit.Open(cat.DB())
 	rs, _ := sourceroot.New([]string{seed})
-	hdr := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	hdr := headerWorker(t, "python3", repo)
 	srv := &Server{Roots: rs, Store: cat, Worker: hdr, Projects: ps, Runs: rn, Audit: au, HostDB: hs, Remote: mgr}
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()

@@ -149,7 +149,7 @@ func TestRealWorkerOnFixtures(t *testing.T) {
 		}
 		t.Skip("python3 with astropy not available; set VESQIRA_REQUIRE_WORKER=1 to make this fatal")
 	}
-	run := worker.Runner{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/fits_header.py")}, Timeout: 20 * time.Second}
+	run := headerWorker(t, "python3", repo)
 	ts, root, _ := newServer(t, run)
 	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
 	gen.Dir = filepath.Join(repo, "fixtures")
@@ -195,4 +195,12 @@ func TestInstalledAppServesTheWebFilesAndNeverAnAPIPathFromDisk(t *testing.T) {
 	if _, b := get(t, ts.URL+"/../secret.txt"); strings.Contains(string(b), "outside") {
 		t.Errorf("a path outside the web files was served")
 	}
+}
+
+// headerWorker is the registration worker the API uses: the persistent plane worker header lane.
+func headerWorker(t *testing.T, python, repo string) *worker.Persistent {
+	t.Helper()
+	w := &worker.Persistent{Command: []string{python, "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
+	t.Cleanup(w.Close)
+	return w
 }

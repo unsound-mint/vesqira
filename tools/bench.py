@@ -105,9 +105,46 @@ def run(path: str, nx: int, ny: int, nc: int, repeats: int) -> dict:
     return out
 
 
+HEADER_SCRIPT = os.path.join(ROOT, "services", "scientific-worker", "fits_header.py")
+
+
+def register_bench(directory: str, files: int, baseline: int) -> tuple[dict, dict]:
+    """Header registration: the persistent worker's `describe` op over many small files (what a project scan does),
+    against the previous path of one `fits_header.py` process per file, timed on a sample of the same files."""
+    import numpy as np
+    from astropy.io import fits
+    paths = []
+    for i in range(files):
+        p = os.path.join(directory, f"f{i:04d}.fits")
+        h = fits.PrimaryHDU(np.zeros((4, 4, 2 + i % 5), dtype=np.float32))
+        h.header.update({"CTYPE1": "RA---SIN", "CTYPE2": "DEC--SIN", "CTYPE3": "VRAD", "CRVAL3": float(i), "BUNIT": "K", "BMAJ": 0.01})
+        h.writeto(p)
+        paths.append(p)
+    w = Worker()
+    w.ask(op="ping")                                   # warm: Python and astropy are loaded
+    times = []
+    for p in paths:
+        ms, head = w.ask(op="describe", path=p)
+        if not head.get("ok"):
+            raise SystemExit(f"describe failed on {p}: {head}")
+        times.append(ms)
+    rss = w.rss_mb()
+    w.close()
+    old = []
+    for p in paths[:baseline]:
+        t = time.perf_counter()
+        subprocess.run([sys.executable, "-P", HEADER_SCRIPT, p], capture_output=True, check=True)
+        old.append((time.perf_counter() - t) * 1000.0)
+    new_e = {"first_ms": round(times[0], 1), "median_ms": round(statistics.median(times), 1), "p95_ms": round(p95(times), 1),
+             "n": len(times), "rss_mb": rss}
+    old_e = {"median_ms": round(statistics.median(old), 1), "n": len(old)}
+    return new_e, old_e
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="1500x1500x600", help="NXxNYxNC of the sparse cube")
+    ap.add_argument("--register-files", type=int, default=300, help="small files for the registration benchmark")
     ap.add_argument("--repeats", type=int, default=5)
     ap.add_argument("--dir", default=None, help="where to put the cube (default: a temporary directory)")
     ap.add_argument("--check", action="store_true", help="fail when a budget is exceeded")
@@ -118,6 +155,7 @@ def main() -> int:
         path = os.path.realpath(os.path.join(d, "bench.fits"))
         make_cube(path, nx, ny, nc)
         res = run(path, nx, ny, nc, a.repeats)
+        res["ops"]["register"], res["register_one_process_per_file"] = register_bench(d, a.register_files, 20)
     print(f"sparse cube {nx}x{ny}x{nc} ({res['cube']['logical_gib']:.1f} GiB logical); page-cache speed, not disk")
     print(f"{'op':18s} {'first ms':>9s} {'median':>8s} {'p95':>8s} {'rss MB':>7s}")
     for name, e in res["ops"].items():
@@ -125,6 +163,9 @@ def main() -> int:
             print(f"{name:18s} {'refused: ' + str(e['error']):>34s} {e['rss_mb']:7d}")
         else:
             print(f"{name:18s} {e['first_ms']:9.1f} {e['median_ms']:8.1f} {e['p95_ms']:8.1f} {e['rss_mb']:7d}")
+    old = res["register_one_process_per_file"]
+    print(f"register: {res['ops']['register']['n']} small files per request through the persistent worker; "
+          f"previously one process per file: median {old['median_ms']} ms (n={old['n']})")
     if a.json:
         with open(a.json, "w") as f:
             json.dump(res, f, indent=1)

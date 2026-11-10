@@ -19,6 +19,9 @@ cgo SQLite (needs a C toolchain); reading headers inside the API process (decode
 ## Consequences
 Every request starts Python, which is acceptable for header reads and will be revisited when pixel reads need a persistent worker. The API has no authentication yet; it is a single-user local service, and ADR work on auth precedes any non-loopback use or the reviewer role.
 
+## Amendment: registration lane
+Headers are no longer read by one `fits_header.py` subprocess per file. The server asks the persistent plane worker (its own registration lane, `describe` operation, same output and the same limits, see `docs/performance.md`), so a scan of many files costs one process, not one per file. `fits_header.py` stays as the shared reader and the reference the equivalence test compares against; the `--worker` flag is gone. Rollback: restore `worker.Runner` and the flag.
+
 ## Validation
 Go tests cover symlink escape, `..`, the `/data` vs `/data2` prefix case, non-regular files, foreign Host, cross-site POST, wrong content type, worker timeout, output limit and non-forwarding of stderr. Worker tests run on the generated fixtures (missing spectral reference and missing celestial WCS stay unresolved) and on malformed, truncated and oversized headers. A real-worker end-to-end test registers a fixture through the API.
 
