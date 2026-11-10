@@ -1,4 +1,4 @@
-# ADR 0030: Reports, agent drafts and a publish server
+# ADR 0036: Reports, agent drafts and a publish server
 
 - Status: accepted (owner answers of 2026-11-10 recorded below; UI: reports mock direction B approved on 2026-11-10)
 - Date: 2026-11-10

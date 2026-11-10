@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -20,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -32,7 +34,6 @@ type HeaderReader interface {
 
 type Server struct {
 	Roots      sourceroot.Roots // folders that may be read; grows when the owner opens a folder (use roots())
-	RootsFile  string           // where opened folders are remembered between runs (the launcher's roots file); empty keeps them for this run
 	Store      *catalog.Store
 	Worker     HeaderReader
 	Planes     PlaneService // persistent plane worker; nil answers 503
@@ -48,6 +49,7 @@ type Server struct {
 	Audit      *audit.Store // nil records nothing
 	Regions    *regions.Store
 	SSHConfig  string         // the user's ssh_config, only read to offer host aliases; empty offers none
+	Hints      hintSource     // overrides the catalog for the runs list's input hints (tests count calls)
 	WebDist    string         // built web app served at / on this (loopback) listener; empty serves the API only
 	Reports    *reports.Store // nil disables reports
 	// PublishKeyFile holds the publisher key for the publish server (0600, beside the catalog); never in the catalog.
@@ -55,8 +57,19 @@ type Server struct {
 
 	syncState
 
-	rootsMu sync.RWMutex
+	Projects *projects.Store // opened project folders; nil disables the project routes
 
+	rootsOnce sync.Once // loads the opened projects' folders into projRoots on first use
+	rootsMu   sync.RWMutex
+	projRoots []string
+	projMu    sync.Mutex
+	projScans map[int64]*scanState
+	laneOnce  sync.Once
+	heavy     chan struct{} // one FITS header registration at a time, across projects
+
+	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
+
+	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
 }
 
@@ -64,12 +77,13 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/capabilities", s.capabilities)
 	mux.HandleFunc("GET /api/roots", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"roots": s.roots()}) })
-	mux.HandleFunc("POST /api/projects/open", s.openProject)
 	mux.HandleFunc("GET /api/files/tree", s.fileTree)
 	mux.HandleFunc("GET /api/datasets", s.list)
 	mux.HandleFunc("GET /api/datasets/availability", s.availability)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
 	mux.HandleFunc("POST /api/datasets", s.register)
+	mux.HandleFunc("GET /api/fs/complete", s.completeLocal)
+	mux.HandleFunc("POST /api/fs/choose", s.choose)
 	if s.HostDB != nil && s.Remote != nil {
 		mux.HandleFunc("GET /api/hosts", s.listHosts)
 		mux.HandleFunc("GET /api/hosts/ssh-config", s.sshConfigHosts)
@@ -78,6 +92,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/hosts/{id}/check", s.checkHost)
 		mux.HandleFunc("POST /api/hosts/{id}/delete", s.deleteHost)
 		mux.HandleFunc("GET /api/hosts/{id}/list", s.listRemote)
+		mux.HandleFunc("GET /api/hosts/{id}/complete", s.completeRemote)
 		mux.HandleFunc("POST /api/hosts/{id}/register", s.registerRemote)
 		mux.HandleFunc("GET /api/hosts/{id}/text", s.hostText)
 		if s.Jobs != nil {
@@ -130,6 +145,17 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/snapshots/{id}/comments", s.snapshotComments)
 		mux.HandleFunc("POST /api/snapshots/{id}/comments", s.ownerReply)
 		mux.HandleFunc("POST /api/comments/{id}/resolve", s.resolveComment)
+	}
+	if s.Projects != nil {
+		mux.HandleFunc("POST /api/projects/open", s.openProject)
+		mux.HandleFunc("GET /api/projects", s.listProjects)
+		mux.HandleFunc("GET /api/projects/{id}", s.getProject)
+		mux.HandleFunc("POST /api/projects/{id}/scan", s.scanProject)
+		mux.HandleFunc("POST /api/projects/{id}/scan/cancel", s.cancelScan)
+		mux.HandleFunc("GET /api/projects/{id}/tree", s.projectTree)
+		mux.HandleFunc("GET /api/projects/{id}/needs", s.projectNeeds)
+		mux.HandleFunc("POST /api/projects/{id}/answers", s.answerProject)
+		mux.HandleFunc("POST /api/projects/{id}/project-file", s.writeProject)
 	}
 	mux.HandleFunc("GET /api/datasets/{id}/header-cards", s.headerCards)
 	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)

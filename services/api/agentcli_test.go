@@ -17,7 +17,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/server"
 )
 
-// The agent drafts and the owner publishes (ADR 0030). This holds structurally: the MCP server offers no tool that
+// The agent drafts and the owner publishes (ADR 0036). This holds structurally: the MCP server offers no tool that
 // publishes, sends a reply, resolves a thread, makes or revokes a reader link, or changes the publish server. A new
 // tool is a deliberate change to this list.
 func TestTheAgentCanDraftButNeverPublishSendOrResolve(t *testing.T) {

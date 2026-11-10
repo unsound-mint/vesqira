@@ -18,7 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
-// Reports (ADR 0030). The owner and an agent (through `vesqira mcp`, which calls these routes on loopback) write
+// Reports (ADR 0036). The owner and an agent (through `vesqira mcp`, which calls these routes on loopback) write
 // reports; only the owner's own requests publish, send replies or resolve threads. The agent's MCP tools do not
 // include those routes, and every write records its author.
 

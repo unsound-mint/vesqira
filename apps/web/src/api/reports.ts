@@ -1,6 +1,6 @@
 import { ApiError } from "./catalog";
 
-/** Owner-side reports (ADR 0030). The reader page never imports this file. */
+/** Owner-side reports (ADR 0036). The reader page never imports this file. */
 
 export type ReportSummary = { id: number; key: string; title: string; revision: number; updatedAt: string; lastAuthor: "owner" | "agent"; agentUnseen: boolean; published: number; publishedFrom: number; parent: number; date?: string; summary?: string };
 export type Report = { id: number; key: string; title: string; body: string; revision: number; seenRevision: number; createdAt: string; updatedAt: string; lastAuthor: "owner" | "agent"; parent: number };

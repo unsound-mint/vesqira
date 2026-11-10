@@ -318,7 +318,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
 });
 
 test("the workbench is usable in the light theme and at phone width", async ({ browser }) => {
-  for (const [scheme, width, height] of [["light", 1440, 900], ["dark", 390, 844]] as const) {
+  for (const [scheme, width, height] of [["light", 1440, 900], ["dark", 1280, 800], ["dark", 390, 844]] as const) {
     const ctx = await browser.newContext({ colorScheme: scheme, viewport: { width, height } });
     const page = await ctx.newPage();
     await page.goto("/");
@@ -327,6 +327,25 @@ test("the workbench is usable in the light theme and at phone width", async ({ b
     if (width <= 800) await page.getByRole("button", { name: "Toggle explorer" }).click();
     await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
     await expectNoAxeViolations(page);
+
+    // presenting the board from the first test: a modal that fits the screen, passes axe, and gives focus back
+    await page.getByRole("button", { name: "Boards", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "H I peak at 8 km/s" })).toBeVisible();
+    const opener = page.getByRole("button", { name: "Present" });
+    await opener.click();
+    const stage = page.getByRole("dialog", { name: /Presenting/ });
+    await expect(stage).toBeVisible();
+    await expectNoAxeViolations(page);
+    const hint = (await page.getByText(/← → move/).boundingBox())!;
+    expect(hint.y + hint.height, "the hint line is on screen, so the picture above it fits").toBeLessThanOrEqual(height);
+    if (process.env.VESQIRA_SHOTS) await page.screenshot({ path: `${process.env.VESQIRA_SHOTS}/present-${scheme}-${width}.png` });
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press("Tab");
+      expect(await stage.evaluate((el) => el.contains(document.activeElement)), "Tab stays inside the dialog").toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    await expect(stage).toBeHidden();
+    await expect(opener).toBeFocused();
     await ctx.close();
   }
 });
@@ -342,10 +361,13 @@ test("a VGT run is imported with its parameters, linked to its outputs and carri
   // the run, its code version, and the honest label for an uncommitted tree
   const insp = inspector(page);
   await expect(insp.getByText("Not reproducible from the commit: uncommitted changes")).toBeVisible();
-  await expect(insp.getByText(/No registered file matches it by name and size/)).toBeVisible();
-  await insp.getByText(/^Parameters \(/).click();
-  await expect(insp.getByRole("rowheader", { name: "fitter_mode" })).toBeVisible();
-  await expect(insp.getByText("input_file")).toHaveCount(0); // locations are not kept
+  // the inspector keeps a summary; the run itself is a page of blocks
+  await insp.getByRole("button", { name: "Open run page" }).click();
+  const runPage = page.getByRole("article", { name: "Run vgt_run_demo" });
+  await expect(runPage.getByText(/No registered file matches it by name and size/)).toBeVisible();
+  await expect(runPage.getByRole("rowheader", { name: "fitter_mode" })).toBeVisible();
+  await expect(runPage.getByText("input_file")).toHaveCount(0); // locations are not kept
+  await runPage.getByRole("button", { name: "Back" }).click();
 
   // the adapter proposed the orientation: shown as the run import's, not the file's and not the user's
   await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
@@ -389,7 +411,7 @@ test("a cube on another machine is read in place and agrees with the same cube h
   const host = page.getByRole("region", { name: "Host Second laptop" });
   await host.getByRole("button", { name: "Check connection" }).click();
   await expect(host.getByText(/The host enforces its source folders itself/)).toBeVisible();
-  await host.getByRole("button", { name: "Browse" }).click();
+  await host.getByRole("button", { name: "Browse", exact: true }).click();
   await host.getByRole("button", { name: /remote_cube\.fits/ }).click();
   await expect(page.getByRole("button", { name: /^remote_cube\.fits.*Second laptop/ })).toBeVisible();
 
@@ -473,10 +495,13 @@ test("a Slurm job: render, read, submit exactly that text, follow it, import its
   await page.getByRole("button", { name: "Import results as a run" }).click();
   await expect(page.getByText("Results imported.")).toBeVisible();
   await page.getByRole("button", { name: "Open the run" }).click();
+  const runPage = page.getByRole("article", { name: /^Run / });
+  await expect(runPage.getByText(/completed · job 4242/)).toBeVisible(); // the run knows its job
+  await expect(runPage.getByText("0.344 ± 0.02 (standard error), n = 2695")).toBeVisible(); // its declared results, with their kind of uncertainty
+  await expect(runPage.getByText(/As declared by the run; Vesqira did not compute or check them/)).toBeVisible();
+  await runPage.getByRole("button", { name: "Open in the viewer" }).first().click();
   const insp = inspector(page);
-  await expect(insp.getByText(/vgt-ker8 · 4242 · completed/)).toBeVisible(); // the run knows its job
-  await expect(insp.getByText("0.344 ± 0.02 (standard error), n = 2695")).toBeVisible(); // its declared results, with their kind of uncertainty
-  await expect(insp.getByText(/As declared by the run; Vesqira did not compute or check them/)).toBeVisible();
+  await expect(insp.getByText(/vgt-ker8 · 4242 · completed/)).toBeVisible();
   await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
 });
 

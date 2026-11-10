@@ -5,7 +5,7 @@ A complete path from registering a cube to a supervisor's comment, on generated 
 ## Run it
 
 ```sh
-pip install -r fixtures/requirements.txt     # numpy and astropy
+pip install -r services/scientific-worker/requirements.txt     # numpy and astropy
 (cd apps/web && npm ci)
 tools/demo.sh
 ```

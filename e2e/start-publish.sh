@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Starts a publish server for the reports walk-through (ADR 0030) on 127.0.0.1:8790 with the built web app. The
+# Starts a publish server for the reports walk-through (ADR 0036) on 127.0.0.1:8790 with the built web app. The
 # publisher key is written to .run/publish-server.key for the test to paste into the app, as a person would.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"

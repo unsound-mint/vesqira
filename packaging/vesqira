@@ -48,7 +48,7 @@ start() {
   mkdir -p "$data" "$state"
   setsid "$libexec/vesqira-api" --addr "127.0.0.1:$port" --db "$data/vesqira.db" --data-dir "$data" \
     --worker "$share/worker/fits_header.py" --plane-worker "$share/worker/plane_worker.py" \
-    --python "${VESQIRA_PYTHON:-/usr/bin/python3}" --web-dist "$share/web" --roots-file "$roots_file" "${roots[@]}" \
+    --python "${VESQIRA_PYTHON:-/usr/bin/python3}" --web-dist "$share/web" "${roots[@]}" \
     >> "$state/api.log" 2>&1 < /dev/null &
   echo $! > "$pidfile"
   for _ in $(seq 1 50); do ready && return 0; sleep 0.2; done

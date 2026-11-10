@@ -624,7 +624,7 @@ class RemoteRoots(unittest.TestCase):
         outside = [str(self.other / "secret.fits"), str(self.root / "link_out.fits"), str(self.root / ".." / "other" / "secret.fits"),
                    str(self.root / "link_dir" / "secret.fits"), "/etc/passwd", str(self.other), "/nonexistent/x.fits"]
         replies = []
-        for op in ("header", "stat", "resolve", "view", "list", "cards"):
+        for op in ("header", "stat", "resolve", "view", "list", "cards", "walk", "readtext"):
             for p in outside:
                 r = self.ask(op=op, path=p)
                 self.assertFalse(r["ok"], (op, p))
@@ -634,6 +634,48 @@ class RemoteRoots(unittest.TestCase):
         for op in ("plane",):
             self.assertEqual(self.c.ask(op=op, path=str(self.root / "link_out.fits"), channel=0)[0]["code"], "forbidden")
         self.assertEqual(self.ask(op="axial", path=str(self.root / "vgt_psi_deg.fits"), unit="deg", weights_path=str(self.other / "secret.fits"))["code"], "forbidden")
+
+    def test_completion_lists_names_only_and_may_leave_the_roots(self):
+        # the worker enforces roots for reading; completion only names entries of the one folder asked for
+        (self.other / "alpha").mkdir(exist_ok=True)
+        (self.other / ".hidden").write_text("x")
+        r = self.ask(op="complete", prefix=str(self.other) + "/")
+        self.assertTrue(r["ok"])
+        self.assertEqual(set(r), {"ok", "op", "nbytes", "base", "entries", "truncated"})
+        self.assertEqual([e["name"] for e in r["entries"]], ["alpha", "secret.fits"])      # folders first, dot entry hidden
+        self.assertEqual(r["entries"][0], {"name": "alpha", "path": str(self.other / "alpha"), "dir": True})
+        self.assertEqual(self.ask(op="complete", prefix=str(self.other) + "/.h")["entries"][0]["name"], ".hidden")
+
+    def test_completion_filters_by_prefix_kind_and_extension(self):
+        r = self.ask(op="complete", prefix=str(self.root / "hi_cube.f"))
+        self.assertEqual([e["name"] for e in r["entries"]], ["hi_cube.fits"])
+        self.assertEqual(self.ask(op="complete", prefix=str(self.root / "HI_CUBE.F"))["entries"][0]["name"], "hi_cube.fits")  # case fallback
+        r = self.ask(op="complete", prefix=str(self.root) + "/", kind="dir")
+        self.assertTrue(r["entries"] and all(e["dir"] for e in r["entries"]))
+        self.assertTrue(any(e["name"] == "link_dir" for e in r["entries"]))                  # a link to a folder is a folder
+        r = self.ask(op="complete", prefix=str(self.root) + "/", kind="file", ext=[".FITS"])
+        self.assertTrue(any(not e["dir"] and e["name"].endswith(".fits") for e in r["entries"]))
+        self.assertTrue(all(e["dir"] or e["name"].endswith(".fits") for e in r["entries"]))  # folders stay for navigation
+        self.assertEqual(self.ask(op="complete", prefix=str(self.root / "nothing-here"))["entries"], [])
+        self.assertEqual(self.ask(op="complete", prefix="/nonexistent/dir/")["entries"], [])
+
+    def test_completion_is_limited_to_fifty_entries(self):
+        many = self.root / "many"
+        many.mkdir(exist_ok=True)
+        for i in range(60):
+            (many / f"f{i:02d}.txt").write_text("")
+        r = self.ask(op="complete", prefix=str(many) + "/")
+        self.assertEqual(len(r["entries"]), 50)
+        self.assertTrue(r["truncated"])
+        self.assertEqual(r["entries"][0]["name"], "f00.txt")
+
+    def test_completion_expands_home_and_rejects_bad_prefixes(self):
+        r = self.ask(op="complete", prefix="~/")
+        self.assertTrue(r["ok"] and r["base"] == os.path.normpath(os.path.expanduser("~")))
+        for p in ("relative/dir", "", "a\0b", "x" * 5000, "~other/x", 5):
+            self.assertEqual(self.ask(op="complete", prefix=p)["code"], "bad_request", p)
+        self.assertEqual(self.ask(op="complete", prefix="/tmp/", kind="weird")["code"], "bad_request")
+        self.assertEqual(self.ask(op="complete", prefix="/tmp/", ext=["fits"])["code"], "bad_request")
 
     def test_relative_and_odd_paths_are_bad_requests(self):
         for p in ("hi_cube.fits", "", "a\0b", "x" * 5000):
@@ -664,6 +706,100 @@ class RemoteRoots(unittest.TestCase):
         head, plane = Client.plane(self.c, self.root / "hi_cube.fits", 3)
         self.assertTrue(head["ok"])
         self.assertEqual(plane.shape, (g.NY, g.NX))
+
+
+RULES = dict(skip_names=[".git", "node_modules", "__pycache__"], never_files=["*do_not_open*"], never_dirs=["*do_not_open*", "blind*key*"],
+             skip_globs=["old/**"], leaf_dir_suffixes=[".zarr"])
+
+
+class ProjectWalk(unittest.TestCase):
+    """The host side of opening a project: the same skip rules as the API's scanner, bounded pages, links never followed."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        base = Path(cls.tmp.name).resolve()
+        cls.root, cls.other = base / "proj", base / "other"
+        for d in ("data/raw", "node_modules/pkg", ".git/objects", "blind_set_key", "old/x", "cube.zarr/0", "results"):
+            (cls.root / d).mkdir(parents=True)
+        cls.other.mkdir()
+        for f in ("data/raw/a.fits", "node_modules/pkg/x.js", ".git/HEAD", "blind_set_key/key.csv", "old/x/y.fits", "cube.zarr/0/c",
+                  "results/run.json", "results/key_DO_NOT_OPEN.csv", "z.txt"):
+            (cls.root / f).write_text("x")
+        (cls.other / "secret.txt").write_text("s")
+        (cls.root / "link_out").symlink_to(cls.other)
+        (cls.root / "link_in").symlink_to(cls.root / "z.txt")
+        (cls.root / "dangling").symlink_to(cls.root / "nothing")
+        cls.c = Client(roots=[cls.root])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.c.close()
+        cls.tmp.cleanup()
+
+    def ask(self, **req):
+        return self.c.ask(**req)[0]
+
+    def full(self, **extra):
+        r = self.ask(op="walk", path=str(self.root), **RULES, **extra)
+        self.assertTrue(r["ok"], r)
+        return r
+
+    def test_rules_are_applied_before_anything_is_entered(self):
+        r = self.full()
+        by = {e["p"]: e for e in r["entries"]}
+        self.assertIsNone(r["next"])
+        for p in ("node_modules", ".git", "blind_set_key", "old", "cube.zarr"):
+            self.assertTrue(by[p].get("leaf"), p)                         # reported, not entered
+        for p in by:
+            self.assertFalse(p.startswith(("node_modules/", ".git/", "blind_set_key/", "old/", "cube.zarr/")), p)
+        self.assertIn("data/raw/a.fits", by)
+        self.assertEqual(by["data/raw/a.fits"]["size"], 1)
+        # a file marked as not to be opened is named, and nothing else about it is looked at
+        self.assertEqual(by["results/key_DO_NOT_OPEN.csv"], {"p": "results/key_DO_NOT_OPEN.csv", "never": True})
+
+    def test_links_are_classified_and_never_followed(self):
+        by = {e["p"]: e for e in self.full()["entries"]}
+        self.assertEqual(by["link_out"]["link"], "outside")
+        self.assertEqual(by["link_in"]["link"], "inside")
+        self.assertEqual(by["dangling"]["link"], "dangling")
+        self.assertFalse(any(p.startswith("link_out/") for p in by))
+
+    def test_pages_join_into_the_same_walk(self):
+        whole = [e["p"] for e in self.full()["entries"]]
+        for size in (1, 2, 3, 5):
+            got, after = [], ""
+            for _ in range(100):
+                r = self.ask(op="walk", path=str(self.root), limit=size, after=after, **RULES)
+                self.assertTrue(r["ok"] and len(r["entries"]) <= size)
+                got += [e["p"] for e in r["entries"]]
+                if r["next"] is None:
+                    break
+                after = r["next"]
+            self.assertEqual(got, whole, size)
+
+    def test_folder_must_be_inside_the_roots_and_requests_are_checked(self):
+        self.assertEqual(self.ask(op="walk", path=str(self.other), **RULES)["code"], "forbidden")
+        self.assertEqual(self.ask(op="walk", path=str(self.root / "link_out"), **RULES)["code"], "forbidden")
+        for bad in (dict(limit=0), dict(limit=10 ** 6), dict(after="../x"), dict(after="/etc"), dict(skip_names="x")):
+            self.assertEqual(self.ask(op="walk", path=str(self.root), **{**RULES, **bad})["code"], "bad_request", bad)
+
+    def test_canon_says_where_a_folder_really_is_without_a_roots_check(self):
+        r = self.ask(op="canon", path=str(self.root / "link_out"))
+        self.assertTrue(r["ok"] and r["is_dir"])
+        self.assertEqual(r["real"], str(self.other))
+        self.assertTrue(os.path.isabs(r["home"]))
+        self.assertFalse(self.ask(op="canon", path=str(self.root / "z.txt"))["is_dir"])
+        self.assertEqual(self.ask(op="canon", path="relative")["code"], "bad_request")
+
+    def test_readtext_can_return_just_the_start_of_a_file(self):
+        t = self.root / "job.sh"
+        t.write_text("#!/bin/bash\n#SBATCH -n 4\n" + "x" * 100)
+        r = self.ask(op="readtext", path=str(t), max=20)
+        self.assertTrue(r["ok"] and r["truncated"])
+        self.assertEqual(len(r["text"]), 20)
+        self.assertFalse(self.ask(op="readtext", path=str(t))["truncated"])
+        self.assertEqual(self.ask(op="readtext", path=str(t), max=0)["code"], "bad_request")
 
 
 if __name__ == "__main__":

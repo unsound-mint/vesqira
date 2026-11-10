@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Reference forms in a report body (ADR 0030):
+// Reference forms in a report body (ADR 0036):
 //
 //	![[figure:<64 hex>]]   a pinned figure revision, shown as the picture with its provenance
 //	[[run:<id>]]           a run, shown as its reviewer-safe summary

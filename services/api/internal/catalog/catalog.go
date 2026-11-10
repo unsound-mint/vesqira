@@ -266,3 +266,85 @@ func (s *Store) List() ([]Dataset, error) {
 	}
 	return out, nil
 }
+
+// HintKey is a registered file's name and size, the only facts a run record gives about its input cube.
+type HintKey struct {
+	Name string
+	Size int64
+}
+
+// HintIndex maps (name, size) to the first registered dataset (by name, then id) with that name and size, in one
+// query and without reading any header: what the runs list needs to suggest an input, for every run at once.
+func (s *Store) HintIndex() (map[HintKey]int64, error) {
+	rows, err := s.db.Query(`SELECT id,name,size_bytes FROM datasets ORDER BY name, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[HintKey]int64{}
+	for rows.Next() {
+		var id int64
+		var k HintKey
+		if err := rows.Scan(&id, &k.Name, &k.Size); err != nil {
+			return nil, err
+		}
+		if _, ok := out[k]; !ok {
+			out[k] = id
+		}
+	}
+	return out, rows.Err()
+}
+
+// PathFacts is what the project scan needs to know about a registered file without reading its whole header.
+type PathFacts struct {
+	ID          int64
+	Size        int64
+	MtimeNS     int64
+	BunitStatus string // the header's bunit_status: declared, unresolved, ...
+}
+
+// FactsByPath returns, for the datasets on one host, the facts above keyed by the file's path on that host.
+func (s *Store) FactsByPath(hostID int64) (map[string]PathFacts, error) {
+	rows, err := s.db.Query(`SELECT id,path,size_bytes,modified_at,COALESCE(json_extract(header,'$.bunit_status'),'') FROM datasets WHERE host_id=?`, hostID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]PathFacts{}
+	for rows.Next() {
+		var f PathFacts
+		var p string
+		if err := rows.Scan(&f.ID, &p, &f.Size, &f.MtimeNS, &f.BunitStatus); err != nil {
+			return nil, err
+		}
+		if hostID != 0 {
+			p = strings.TrimPrefix(p, fmt.Sprintf("h%d:", hostID))
+		}
+		out[p] = f
+	}
+	return out, rows.Err()
+}
+
+// ProposedInterpretations returns the interpretations someone other than the user declared (a run import's proposal),
+// by dataset id. Until the user confirms one it stays labelled with its author.
+func (s *Store) ProposedInterpretations() (map[int64]Interpretation, error) {
+	rows, err := s.db.Query(`SELECT dataset_id,kind,unit,reliability_id,declared_by FROM interpretations WHERE declared_by<>'user'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]Interpretation{}
+	for rows.Next() {
+		var id int64
+		var in Interpretation
+		var rel sql.NullInt64
+		if err := rows.Scan(&id, &in.Kind, &in.Unit, &rel, &in.DeclaredBy); err != nil {
+			return nil, err
+		}
+		if rel.Valid {
+			in.ReliabilityID = &rel.Int64
+		}
+		out[id] = in
+	}
+	return out, rows.Err()
+}

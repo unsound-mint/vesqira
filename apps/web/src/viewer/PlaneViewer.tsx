@@ -5,6 +5,7 @@ import { Button, IconButton } from "../ui";
 import { lut } from "./colormaps";
 import { fit, pixelAt } from "./geometry";
 import { limits, outputSize, renderPlane } from "./render";
+import { GlPlaneRenderer, cpuNote, forcedCpu, gpuSupported, setRendererNote } from "./glRenderer";
 import { orientationLinesFor } from "./glyphs";
 import type { Rgb } from "./render";
 import type { Viewer } from "./useViewer";
@@ -29,6 +30,8 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
   const [draft, setDraft] = useState<RegionShape | null>(null);
   const anchor = useRef<Pt | null>(null);
   const { plane, view } = v;
+  const [gpuOff, setGpuOff] = useState(false); // set when the GPU renderer could not start or its context was lost
+  const gl = useRef<GlPlaneRenderer | null>(null);
   const drawn = useRef(onDrawn); // told when a plane has been put on the canvas, so a caller can save exactly what is shown
   drawn.current = onDrawn;
 
@@ -67,26 +70,47 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
     return () => el.removeEventListener("wheel", wheel);
   }, [plane, v.zoom]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A canvas keeps the kind of context it first gave out, so the GPU and CPU paths draw on different canvas elements.
+  const outSize = plane && shape.scale > 0 ? outputSize(plane.head.width, plane.head.height, shape.scale) : null;
+  const useGpu = !!plane && !!outSize && !gpuOff && GlPlaneRenderer.fits(plane.head.width, plane.head.height, outSize.outW, outSize.outH);
+  const canvasKey = useGpu ? "gpu" : "cpu";
+
   useEffect(() => {
     const canvas = cv.current;
-    if (!canvas || !plane || shape.scale <= 0) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const { outW, outH } = outputSize(plane.head.width, plane.head.height, shape.scale);
-    const img = renderPlane(plane.data, plane.head.width, plane.head.height, {
+    if (!canvas || !plane || !outSize) return;
+    const { outW, outH } = outSize;
+    const opts = {
       lut: lut(v.interp ? "twilight" : v.colormap),
       range: v.interp ? null : limits(plane.head.stats, v.range, v.customLimits),
       axial: v.interp ? { toDegrees: v.interp.unit === "deg" ? 1 : 180 / Math.PI } : undefined,
       stretch: v.stretch,
       outW,
       outH,
-      nodata: [token("--nodata-a", [27, 34, 44]), token("--nodata-b", [85, 98, 117])],
-    });
+      nodata: [token("--nodata-a", [27, 34, 44]), token("--nodata-b", [85, 98, 117])] as [Rgb, Rgb],
+    };
+    if (useGpu) {
+      if (gl.current?.canvas !== canvas) {
+        gl.current?.dispose();
+        gl.current = GlPlaneRenderer.create(canvas, () => setGpuOff(true));
+        if (!gl.current) { setGpuOff(true); return; }
+      }
+      gl.current.draw(plane.data, plane.head.width, plane.head.height, opts);
+      setRendererNote(null);
+      drawn.current?.(plane);
+      return;
+    }
+    gl.current?.dispose();
+    gl.current = null;
+    setRendererNote(cpuNote({ forced: forcedCpu(), supported: gpuSupported(), failed: gpuOff }));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const img = renderPlane(plane.data, plane.head.width, plane.head.height, opts);
     canvas.width = img.width;
     canvas.height = img.height;
     ctx.putImageData(new ImageData(img.pixels, img.width, img.height), 0, 0);
     drawn.current?.(plane);
-  }, [plane, v.colormap, v.stretch, v.range, v.customLimits, v.interp, shape.scale]);
+  }, [plane, v.colormap, v.stretch, v.range, v.customLimits, v.interp, shape.scale, useGpu, canvasKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { gl.current?.dispose(); gl.current = null; setRendererNote(null); }, []);
 
   function pick(e: MouseEvent<HTMLCanvasElement>) {
     if (!plane) return null;
@@ -172,6 +196,7 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
       {plane && shape.width > 0 ? (
         <div className={s.frame} style={{ width: shape.width, height: shape.height, transform: `translate(${v.pan.x}px, ${v.pan.y}px)` }}>
           <canvas
+            key={canvasKey}
             ref={cv}
             className={s.image}
             role="img"

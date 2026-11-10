@@ -114,3 +114,8 @@
   gap: var(--sp-1);
   font-size: var(--text-sm);
 }
+
+.regForm {
+  display: grid;
+  gap: var(--sp-2);
+}

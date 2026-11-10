@@ -4,7 +4,7 @@ import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
 import katex from "katex";
 
 /**
- * Report Markdown (ADR 0030): CommonMark with GitHub tables and $…$ / $$…$$ math. Raw HTML is never rendered, KaTeX
+ * Report Markdown (ADR 0036): CommonMark with GitHub tables and $…$ / $$…$$ math. Raw HTML is never rendered, KaTeX
  * runs with trust off, images come only from what the caller resolves (attachments on the owner's side, published
  * assets on the reader's), and links only go to http, https or mailto. [[…]] references are resolved by the caller,
  * because the owner's app and the reader's page know different things about them.

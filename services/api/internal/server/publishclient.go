@@ -18,7 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/publish"
 )
 
-// publishClient talks to the owner's publish server (ADR 0030) with the publisher key. The key is read from a 0600
+// publishClient talks to the owner's publish server (ADR 0036) with the publisher key. The key is read from a 0600
 // file beside the catalog on every use and is never logged, stored in the catalog or returned by the API.
 type publishClient struct {
 	base string // https://host[:port], no trailing slash

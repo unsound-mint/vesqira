@@ -18,6 +18,8 @@ export default defineConfig({
   webServer: [
     { command: "bash ./start-api.sh", url: "http://127.0.0.1:8787/api/roots", timeout: 240_000, reuseExistingServer: false },
     { command: "bash ./start-publish.sh", url: "http://127.0.0.1:8790/publish-api/ping", timeout: 240_000, reuseExistingServer: false },
+    // the renderer equivalence test imports source modules into a real browser, which only the dev server serves
+    { command: "npx vite --port 5198 --strictPort --host 127.0.0.1", cwd: "../apps/web", url: "http://127.0.0.1:5198", timeout: 60_000, reuseExistingServer: false },
     { command: "npx vite preview --port 5199 --strictPort --host 127.0.0.1", cwd: "../apps/web", url: "http://127.0.0.1:5199", timeout: 60_000, reuseExistingServer: false },
   ],
 });

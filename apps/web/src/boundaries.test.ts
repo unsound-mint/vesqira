@@ -39,7 +39,7 @@ function closure(entry: string): Set<string> {
 
 // The reviewer page runs in a stranger's browser with a capability to one snapshot. Code reachable from it must not include
 // the clients for owner-only features, so a refactor cannot quietly give the reviewer bundle a way to call them.
-const OWNER_ONLY = ["./api/jobs", "./api/hosts", "./api/analysis", "./api/regions", "./api/runs", "./api/derived"];
+const OWNER_ONLY = ["./api/jobs", "./api/hosts", "./api/analysis", "./api/regions", "./api/runs", "./api/derived", "./api/fs"];
 
 describe("the reviewer page", () => {
   it("does not reach the clients of owner-only features", () => {
@@ -47,5 +47,17 @@ describe("the reviewer page", () => {
     expect(reached.length).toBeGreaterThan(3); // the scan found the page's real dependencies
     expect(reached).toContain("./api/boards.ts");
     expect(reached.filter((f) => OWNER_ONLY.some((o) => f.startsWith(o)))).toEqual([]);
+  });
+});
+
+// ADR 0033: interaction primitives come from React Aria, wrapped once in ui/. Feature code imports the wrapper, so a swap or an
+// upgrade touches one directory and no primitive brings its own styling into a screen.
+describe("interaction primitives", () => {
+  it("are imported only from ui/", () => {
+    const offenders = Object.entries(files)
+      .filter(([f]) => !f.startsWith("./ui/"))
+      .filter(([, text]) => /from\s+"react-aria(-components)?(\/[^"]*)?"|from\s+"@react-(aria|stately)\//.test(text))
+      .map(([f]) => f);
+    expect(offenders).toEqual([]);
   });
 });

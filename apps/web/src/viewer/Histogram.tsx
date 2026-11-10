@@ -1,7 +1,7 @@
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
 import type { PointerEvent } from "react";
 import type { PlaneStats } from "../api/planes";
-import { histogram } from "./render";
+import { useHistogram } from "./useHistogram";
 import { valueText } from "./format";
 import s from "./Histogram.module.css";
 
@@ -15,8 +15,9 @@ export function Histogram({ data, stats, limits, unit, onChange }: { data: Float
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<0 | 1 | null>(null);
   const { min, max } = stats;
-  const counts = useMemo(() => (min !== null && max !== null ? histogram(data, min, max, BINS) : []), [data, min, max]);
-  if (min === null || max === null || counts.length === 0) return <p className={s.note}>No histogram: the plane has no finite value.</p>;
+  const counted = useHistogram(data, min, max, BINS);
+  const counts = counted ?? []; // null while counting: the plot stays empty rather than show another channel's counts
+  if (min === null || max === null || (counted !== null && counted.length === 0)) return <p className={s.note}>No histogram: the plane has no finite value.</p>;
   const lo0: number = min;
   const hi0: number = max;
   const top = Math.max(...counts.map(Math.sqrt), 1);
@@ -54,6 +55,7 @@ export function Histogram({ data, stats, limits, unit, onChange }: { data: Float
         viewBox="0 0 100 40"
         preserveAspectRatio="none"
         role="img"
+        aria-busy={counted === null}
         aria-label={`Histogram of ${stats.finite_count.toLocaleString("en-US")} finite pixels from ${valueText(min, unit)} to ${valueText(max, unit)}${limits ? `; display limits ${valueText(limits[0], unit)} to ${valueText(limits[1], unit)}` : ""}`}
         onPointerDown={down}
         onPointerMove={move}

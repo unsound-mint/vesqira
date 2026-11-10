@@ -8,6 +8,10 @@ The viewer must stay responsive on cubes far larger than memory (shape.md sectio
 
 Limits of the numbers: a sparse file in the page cache measures access pattern and software overhead, not a disk or a network. No ssh, no 4D cube, no concurrent requests (contention lives in the Go worker pool, not here).
 
+## What `make viewer-bench` measures
+
+`tools/viewer_perf.mjs` runs the real app in headless Chromium on a 2048 x 2048 x 24 float32 cube (real data in every channel): key press to pixels on screen for 12 channel steps, the longest main-thread task per step, the CPU plane renderer (linear and asinh) and histogram on one plane, and the worst frame gap during 20 quick steps. Budgets are in `tools/viewer_perf_budgets.json`. Software rendering, same-machine API, page-cache reads: it measures main-thread cost, not disk, network or GPU. Not part of CI (needs Chromium and a free port 8787 and 5173). Before the GPU renderer (ADR 0034): key to pixels p95 250 ms, longest task 135 ms, worst frame gap 83 ms. After it and the histogram worker: p95 about 150 to 280 ms, no task over 50 ms, a new 4.2 MP plane drawn in about 20 ms and a stretch or range change in under one frame. The linear and asinh render and histogram rows are the CPU fallback path. `--profile` prints where the main thread spends its time while stepping.
+
 ## Reference numbers (development laptop, 2026-11-05)
 
 | operation | before | after |

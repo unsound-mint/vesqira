@@ -2,7 +2,7 @@
 # Starts Vesqira on YOUR data: the API (loopback only) and the web app.
 #   tools/start.sh --root /path/to/your/fits/folder [--root /another/folder ...]
 # Files outside the given roots are never read. Open http://127.0.0.1:5173 afterwards.
-# Needs python3 with astropy (pip install -r fixtures/requirements.txt), Go, and `npm ci` once in apps/web.
+# Needs python3 with astropy (pip install -r services/scientific-worker/requirements.txt), Go, and `npm ci` once in apps/web.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 [ "$#" -gt 0 ] || { echo "usage: tools/start.sh --root /path/to/fits/folder [--root ...] [--review-addr 127.0.0.1:8788]" >&2; exit 2; }

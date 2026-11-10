@@ -1,6 +1,6 @@
 type Internals = { invoke: (cmd: string, args?: unknown) => Promise<unknown> };
 
-/** True inside the native window; the same web app runs in a browser without it (ADR 0031). */
+/** True inside the native window; the same web app runs in a browser without it (ADR 0037). */
 export const hasNativeDialogs = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /** Opens the system folder chooser. Resolves to the chosen absolute path, or null when cancelled. */

@@ -26,7 +26,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/notionimport"
 )
 
-// The agent's way in (ADR 0030): `mcp` is a stdio MCP server and `report` / `import` are plain commands. All of them
+// The agent's way in (ADR 0036): `mcp` is a stdio MCP server and `report` / `import` are plain commands. All of them
 // are clients of the running owner API on loopback, so the app stays the only writer of the catalog and every write
 // is recorded with its author. None of them can publish, send a reply or resolve a thread: those routes are not
 // called from here.

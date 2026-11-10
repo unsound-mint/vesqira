@@ -1,0 +1,15 @@
+{
+  "name": "@vesqira/contracts",
+  "private": true,
+  "version": "0.0.0",
+  "license": "AGPL-3.0-only",
+  "description": "Generates the web client's API types from openapi.yaml. Separate from apps/web because openapi-typescript needs the TypeScript 5 compiler API, which TypeScript 7 does not provide.",
+  "scripts": {
+    "gen": "openapi-typescript openapi.yaml -o ../../apps/web/src/api/schema.d.ts",
+    "check": "node check-generated.mjs"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

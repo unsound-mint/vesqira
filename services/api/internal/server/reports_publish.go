@@ -18,7 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
-// Publishing reports (ADR 0030): the preview of what goes out, publishing, the publish server settings and reader
+// Publishing reports (ADR 0036): the preview of what goes out, publishing, the publish server settings and reader
 // links, and the readers' comments pulled back and answered.
 
 func (s *Server) spaceOf(r *http.Request) (slug, title string) {

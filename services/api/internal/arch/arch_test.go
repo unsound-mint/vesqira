@@ -19,14 +19,16 @@ const mod = "github.com/unsound-mint/vesqira/services/api/internal/"
 var allowed = map[string][]string{
 	"arch": {}, "audit": {}, "backup": {}, "compat": {}, "derived": {}, "regions": {}, "sourceroot": {}, "worker": {}, "schema": {}, "vgtlog": {},
 	"notionimport": {}, "publish": {},
-	"boards":  {"schema"},
-	"reports": {"publish"},
-	"catalog": {"schema"},
-	"jobs":    {"schema"},
-	"runs":    {"schema"},
-	"hosts":   {"worker"},
-	"review":  {"boards"},
-	"server":  {"audit", "boards", "catalog", "compat", "derived", "hosts", "jobs", "publish", "regions", "reports", "runs", "schema", "sourceroot", "vgtlog", "worker"},
+	"boards":   {"schema"},
+	"reports":  {"publish"},
+	"catalog":  {"schema"},
+	"jobs":     {"schema"},
+	"runs":     {"schema"},
+	"discover": {"runs"},
+	"projects": {"discover"},
+	"hosts":    {"worker"},
+	"review":   {"boards"},
+	"server":   {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "jobs", "projects", "publish", "regions", "reports", "runs", "schema", "sourceroot", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a
@@ -80,7 +82,7 @@ func TestTheReviewerFacingCodeReachesNothingBeyondTheSnapshotStore(t *testing.T)
 	}
 }
 
-// The publish server faces the internet and holds only what was published (ADR 0030): it must reach no other
+// The publish server faces the internet and holds only what was published (ADR 0036): it must reach no other
 // internal package at all, so a reader or a stolen publisher key never leads to the catalog, files, hosts or runs.
 func TestThePublishServerReachesNothingButItself(t *testing.T) {
 	for _, d := range internal(list(t, `{{join .Deps "\n"}}`, mod+"publish")) {

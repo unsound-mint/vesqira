@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { FileText, FolderOpen, LayoutGrid, Server, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
@@ -20,6 +20,7 @@ import { getCompat } from "../api/catalog";
 import type { Compat } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
 import { CompareBar, linkState } from "../viewer/CompareBar";
+import { getRendererNote, subscribeRendererNote } from "../viewer/glRenderer";
 import { CompareInspector } from "../viewer/CompareInspector";
 import { EM } from "../catalog/format";
 import { ChannelTimeline } from "../viewer/ChannelTimeline";
@@ -39,6 +40,7 @@ import s from "./Shell.module.css";
 export function Shell() {
   const { layout: L, set, toggle } = useLayout();
   const cat = useCatalog();
+  const rendererNote = useSyncExternalStore(subscribeRendererNote, getRendererNote); // set only when drawing fell back to the CPU
   const viewerA = useViewer(cat.selected);
   const [compareId, setCompareId] = useState<number | null>(null);
   const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== cat.selected?.id) ?? null;
@@ -325,6 +327,7 @@ export function Shell() {
         <IconButton icon={PanelBottom} label="Toggle timeline" pressed={L.timelineOpen} onClick={() => toggle("timelineOpen")} />
         <IconButton icon={PanelRight} label="Toggle inspector" pressed={L.inspOpen} onClick={() => toggle("inspOpen")} />
         <span className={s.grow} />
+        {rendererNote ? <Pill>{rendererNote}</Pill> : null}
         <Pill tone={actDs ? flag.tone : "neutral"}>{actDs ? (viewer.view ? flag.text : "Reading layout") : "No dataset"}</Pill>
       </footer>
     </div>

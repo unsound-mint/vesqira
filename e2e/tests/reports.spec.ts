@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Reports (ADR 0030): the owner writes and publishes in the app, the supervisor reads and comments on the publish
+// Reports (ADR 0036): the owner writes and publishes in the app, the supervisor reads and comments on the publish
 // server from a named link, and the comment comes back to the owner. Both sides run the real servers and the built
 // web app; the publish server is a separate process (start-publish.sh) holding only what was published.
 const here = path.dirname(fileURLToPath(import.meta.url));

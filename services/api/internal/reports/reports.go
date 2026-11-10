@@ -1,4 +1,4 @@
-// Package reports stores the owner's reports (ADR 0030): Markdown documents written by the owner or drafted by an
+// Package reports stores the owner's reports (ADR 0036): Markdown documents written by the owner or drafted by an
 // agent, with an edit history that says who wrote each save, the links between reports, figures and runs, and the
 // image attachments a report shows. Reports are mutable working state; what a reader sees is a published revision
 // built from them elsewhere and never changed afterwards.

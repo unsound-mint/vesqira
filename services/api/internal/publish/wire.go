@@ -1,4 +1,4 @@
-// Package publish is the publish server (ADR 0030): an always-on, internet-facing store of report revisions the owner
+// Package publish is the publish server (ADR 0036): an always-on, internet-facing store of report revisions the owner
 // chose to publish, the named reader links that open them, and the comments readers leave. It is built from its own
 // database and data directory and nothing else: no catalog, source roots, worker, hosts, jobs or credentials of the
 // owner's instance can be reached from here (enforced in internal/arch). This file is the wire contract shared with

@@ -1,4 +1,4 @@
-/** The reader's client for the publish server (ADR 0030). It knows only the /read-api surface, one token in the path. */
+/** The reader's client for the publish server (ADR 0036). It knows only the /read-api surface, one token in the path. */
 import type { DocFigure, RunSummary } from "../reports/Document";
 
 export type ReportSummary = { key: string; latest: number; title: string; publishedAt: string; date?: string; summary?: string };

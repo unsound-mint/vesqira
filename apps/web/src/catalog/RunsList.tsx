@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { GitBranch } from "lucide-react";
 import type { Run } from "../api/runs";
-import { Button, Input, TreeRow } from "../ui";
+import { Button, Input, PathField, TreeRow } from "../ui";
 import { matchRun } from "./filter";
 import s from "./Explorer.module.css";
 
@@ -25,7 +25,7 @@ export function RunsList({ runs, onImport, onOpen }: { runs: Run[]; onImport: (p
   return (
     <div className={s.wrap}>
       <form className={s.form} onSubmit={submit}>
-        <Input label="Import a VGT run" placeholder="/path/to/run_folder" value={path} onChange={(e) => setPath(e.target.value)} spellCheck={false} />
+        <PathField label="Import a VGT run" kind="dir" placeholder="/path/to/run_folder" value={path} onChange={setPath} />
         <Button type="submit" disabled={busy || !path.trim()}>{busy ? "Importing…" : "Import run"}</Button>
         {err ? <p role="alert" className={s.err}>{err}</p> : null}
       </form>

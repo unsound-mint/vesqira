@@ -36,17 +36,17 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 
 See `docs/product/shape.md` section 3. Projects mock approved by the owner on 2026-11-05.
 
-- [ ] Open a folder on this computer or on a host as a project; recent projects; `.vesqira/project.toml` proposed, written only after confirmation, never committed.
-- [ ] Discovery by good practices (run records, data layouts, self-describing formats, configs, job scripts), runs found before the maps they own, deduplicated by real path, rescanned on open and when the window returns; files of other disciplines listed without a viewer.
-- [ ] "Needs your input": unknown units, interpretations, where the repo is on each host; answers stored as declared by the researcher; "leave unknown" is an answer.
-- [ ] Project health checklist and run records written by every run Vesqira starts.
-- [ ] Path fields with zsh-like completion (local and on hosts) and the desktop file chooser (xdg-desktop-portal), with GVFS sftp mounts mapped to hosts.
+- [~] Open a folder on this computer or on a host as a project; recent projects; `.vesqira/project.toml` proposed, written only after confirmation, never committed. Backend done for both (ADR 0030); the project file of a project on a host is not written yet (answers stay in the catalog); no screens yet.
+- [x] Discovery by good practices (run records, data layouts, self-describing formats, configs, job scripts), runs found before the maps they own, deduplicated by real path, rescanned on open and when the window returns; files of other disciplines listed without a viewer. Backend done and tested (ADR 0030, `internal/discover`, `/api/projects`, host walk); "when the window returns" is the UI calling the rescan route. Only VGT runs are imported as runs; `params.yaml` and `meta.yaml` are recognised but their settings are not read (no YAML reader).
+- [~] "Needs your input": unknown units, interpretations, where the repo is on each host; answers stored as declared by the researcher; "leave unknown" is an answer. Backend done (`/api/projects/{id}/needs` and `/answers`); a declared unit for a FITS file without BUNIT is recorded in the catalog and project.toml but not applied to the dataset (no dataset-level unit declaration exists yet); the screens are not built.
+- [~] Project health checklist and run records written by every run Vesqira starts. The checklist is computed and returned by the summary route; run records for runs Vesqira starts are not done.
+- [x] Path fields with zsh-like completion (local and on hosts) and the desktop file chooser, with GVFS sftp mounts mapped to hosts (ADR 0031). Built: names-only completion, Browse through zenity or kdialog. Not yet: xdg-desktop-portal (needed for Flatpak), an "add this host" form prefilled from a GVFS mount.
 - [ ] Interactive filters: the run and dataset filter boxes complete keys, operators and values that occur, and show conditions as chips.
-- [ ] `/api/runs` input hints computed from one catalog read instead of one per run (148 runs, 1 350 files is the target scale); a bench case at that scale.
+- [x] `/api/runs` input hints computed from one catalog read instead of one per run (148 runs, 1 350 files is the target scale); a bench case at that scale. Done: `catalog.HintIndex`, and a server test at 150 runs and 1 500 datasets that asserts one read.
 
 ## Stage R — Reports for the supervisor (owner direction, 2026-11-10)
 
-Replaces the owner's Notion reports. ADR 0030 (proposed): reports on the owner's instance, drafted by the agent over MCP, published by the owner to an always-on publish server where named reader links read and comment. Reports mock: direction B (linked pages, with a graph) approved by the owner on 2026-11-10, with this brief: the supervisor rarely edits, presentation is what matters, so the cleanest possible hierarchy (one title, a quiet meta line, one primary action; threads in a side panel that never covers the text).
+Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's instance, drafted by the agent over MCP, published by the owner to an always-on publish server where named reader links read and comment. Reports mock: direction B (linked pages, with a graph) approved by the owner on 2026-11-10, with this brief: the supervisor rarely edits, presentation is what matters, so the cleanest possible hierarchy (one title, a quiet meta line, one primary action; threads in a side panel that never covers the text).
 
 - [x] Reports in the catalog: Markdown body, edit history with author, base-revision conflicts, figure, run and report references, backlinks (a rename rewrites links), attachments (PNG, JPEG, GIF).
 - [x] `vesqira mcp` (stdio) and `vesqira report` CLI for the agent: read and draft, no publish, send or resolve (a test pins the tool list).
@@ -55,8 +55,8 @@ Replaces the owner's Notion reports. ADR 0030 (proposed): reports on the owner's
 - [x] `vesqira import notion` for a Notion Markdown & CSV export (zip or unpacked folder), with a dry run. PDFs and images over 4096 px are not imported.
 - [x] Deployment docs for the owner's server (`docs/setup/publish-server.md`: systemd unit, Caddy with TLS, backups).
 - [x] Graph view of report, run and figure links, with a keyboard list alternative; unlinked reports hidden by default.
-- [x] Pages and presentation (ADR 0030, "Pages, front matter, changes and deletions"): page tree kept from the Notion import, front matter date and summary under the title, reader list newest first, what changed since the revision last read, comments on selected words, withdraw a report, delete a comment.
-- [ ] Follow-ups from the security review (ADR 0030, "Hardening"): strip image metadata when publishing, fixed shape for derived `software`, bounded Markdown scans, comment-cursor guard.
+- [x] Pages and presentation (ADR 0036, "Pages, front matter, changes and deletions"): page tree kept from the Notion import, front matter date and summary under the title, reader list newest first, what changed since the revision last read, comments on selected words, withdraw a report, delete a comment.
+- [ ] Follow-ups from the security review (ADR 0036, "Hardening"): strip image metadata when publishing, fixed shape for derived `software`, bounded Markdown scans, comment-cursor guard.
 
 ## Stage 0 — Install and launch
 

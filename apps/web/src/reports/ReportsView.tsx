@@ -38,7 +38,7 @@ function runSummary(r: Run): RunSummary {
 }
 
 /**
- * Reports (ADR 0030, mock B approved 2026-11-10): a tree of report pages, one page at a time drawn exactly as the
+ * Reports (ADR 0036, mock B approved 2026-11-10): a tree of report pages, one page at a time drawn exactly as the
  * supervisor will read it, edited block by block in place, and a graph of how reports, runs and figures link.
  * One primary action (Publish); comments and sharing open in a side panel that narrows the page instead of covering it.
  */

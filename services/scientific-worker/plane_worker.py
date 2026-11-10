@@ -28,6 +28,9 @@ MAX_PREVIEW_STEP = 64
 MAX_REQUEST_BYTES = 8192
 MAX_CHANNELS = 1 << 24
 MAX_TEXT_BYTES = 256 << 10
+WALK_MAX_ENTRIES = 5000           # entries in one page of a project walk
+WALK_MAX_SECONDS = 10.0           # time spent on one page
+WALK_MAX_LIST = 64                # names or patterns the caller may send per list
 MAX_SPECTRUM_CHANNELS = 1 << 16
 MAX_SKY_POINTS = 64
 MAX_REGION_WORK = 1_000_000_000     # region pixels x channels read for one spectrum
@@ -581,13 +584,237 @@ def authorize(path: str, want: str = "file") -> str:
     return real
 
 
+def _name_patterns(req: dict, key: str) -> list:
+    v = req.get(key, [])
+    if not isinstance(v, list) or len(v) > WALK_MAX_LIST or not all(isinstance(x, str) and 0 < len(x) <= 200 for x in v):
+        raise Refused("bad_request", "bad request")
+    return v
+
+
+def _match_any(patterns: list, name: str) -> bool:
+    import fnmatch
+    n = name.lower()
+    return any(fnmatch.fnmatchcase(n, p.lower()) for p in patterns)
+
+
+def _skip_glob(globs: list, rel: str) -> bool:
+    """The simple project.toml skip patterns (`dir/**`, `**/name`, a bare name pattern). Anything else is left to the
+    caller, which applies every pattern again; skipping here only saves walking."""
+    import fnmatch
+    for g in globs:
+        g = g.removeprefix("./").rstrip("/")
+        if g.endswith("/**"):
+            base = g[:-3]
+            if rel == base or rel.startswith(base + "/"):
+                return True
+        elif g.startswith("**/"):
+            if fnmatch.fnmatchcase(rel.rsplit("/", 1)[-1], g[3:]):
+                return True
+        elif "/" not in g and fnmatch.fnmatchcase(rel.rsplit("/", 1)[-1], g):
+            return True
+    return False
+
+
+def walk_page(req: dict) -> dict:
+    """One page of a depth-first, name-sorted walk of a project folder, for the caller's discovery.
+
+    The folder must lie inside the roots (the caller adds it to them when the project is opened). Symbolic links are
+    never followed: a link is reported as inside, outside the folder, or dangling. The caller's rules arrive with the
+    request and are applied before anything is statted: names in skip_names and folders matching skip_globs are
+    reported but not entered; names matching never_files / never_dirs are reported by name only (not statted, not
+    read, not entered); folders ending in a leaf_dir_suffixes entry (such as .zarr) are reported and not entered.
+    `after` is the path of the last entry of the previous page; the walk resumes right after it."""
+    root = authorize(req.get("path"), "dir")
+    skip_names = set(_name_patterns(req, "skip_names"))
+    never_files, never_dirs = _name_patterns(req, "never_files"), _name_patterns(req, "never_dirs")
+    skip_globs, leaf = _name_patterns(req, "skip_globs"), [x.lower() for x in _name_patterns(req, "leaf_dir_suffixes")]
+    after = req.get("after", "")
+    if not isinstance(after, str) or len(after) > 4096 or "\0" in after or after.startswith("/") or ".." in after.split("/"):
+        raise Refused("bad_request", "bad request")
+    limit = req.get("limit", WALK_MAX_ENTRIES)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= WALK_MAX_ENTRIES:
+        raise Refused("bad_request", f"limit must be an integer in [1, {WALK_MAX_ENTRIES}]")
+    import time
+    deadline = time.monotonic() + WALK_MAX_SECONDS
+    out: list = []
+    state = {"last": None, "stopped": False}
+
+    def emit(rel: str, rec: dict) -> bool:
+        out.append({"p": rel, **rec})
+        state["last"] = rel
+        if len(out) >= limit or time.monotonic() > deadline:
+            state["stopped"] = True
+        return state["stopped"]
+
+    def rec(dir_abs: str, rel_dir: str, resume: list) -> None:
+        try:
+            with os.scandir(dir_abs) as it:
+                entries = sorted(it, key=lambda e: e.name)
+        except OSError:
+            return
+        for e in entries:
+            name = e.name
+            if resume:
+                if name < resume[0]:
+                    continue
+                if name == resume[0]:                            # emitted on an earlier page: only look inside it
+                    below, resume = resume[1:], []
+                    if _enterable(e, rel_dir, name):
+                        rec(e.path, rel_dir + "/" + name if rel_dir else name, below)
+                        if state["stopped"]:
+                            return
+                    continue
+                resume = []
+            rel = rel_dir + "/" + name if rel_dir else name
+            try:
+                is_link = e.is_symlink()
+                is_dir = e.is_dir(follow_symlinks=False)
+            except OSError:
+                continue
+            if is_link:
+                if _match_any(never_dirs, name) or _match_any(never_files, name):
+                    stop = emit(rel, {"link": "never"})        # by name only; where it points is not looked at
+                else:
+                    real = os.path.realpath(e.path)
+                    state_ = "dangling" if not os.path.lexists(real) else ("inside" if real == root or real.startswith(root.rstrip(os.sep) + os.sep) else "outside")
+                    stop = emit(rel, {"link": state_})
+                if stop:
+                    return
+                continue
+            if is_dir:
+                never = _match_any(never_dirs, name)
+                if never or name in skip_names or _skip_glob(skip_globs, rel) or name.lower().endswith(tuple(leaf)):
+                    if emit(rel, {"dir": True, "leaf": True}):
+                        return
+                    continue
+                if emit(rel, {"dir": True}):
+                    return
+                rec(e.path, rel, [])
+                if state["stopped"]:
+                    return
+                continue
+            if _match_any(never_files, name):
+                if emit(rel, {"never": True}):                  # no stat: its size and time are not looked at
+                    return
+                continue
+            try:
+                st = e.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if emit(rel, {"size": st.st_size, "mtime_ns": st.st_mtime_ns}):
+                return
+
+    def _enterable(e, rel_dir: str, name: str) -> bool:
+        try:
+            if e.is_symlink() or not e.is_dir(follow_symlinks=False):
+                return False
+        except OSError:
+            return False
+        rel = rel_dir + "/" + name if rel_dir else name
+        return not (_match_any(never_dirs, name) or name in skip_names or _skip_glob(skip_globs, rel) or name.lower().endswith(tuple(leaf)))
+
+    rec(root, "", [x for x in after.split("/") if x])
+    return {"ok": True, "op": "walk", "nbytes": 0, "root": root, "entries": out,
+            "next": state["last"] if state["stopped"] else None}
+
+
+def canonical_dir(path: str) -> dict:
+    """The real path of a folder the owner is about to open as a project, and this account's home. It is the one
+    request that is answered outside the roots: opening a folder is what adds it to them, and the answer is only
+    whether the path is a folder and where it really is."""
+    if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096 or "\0" in path:
+        raise Refused("bad_request", "bad request")
+    real = os.path.realpath(path)
+    return {"ok": True, "op": "canon", "nbytes": 0, "real": real, "is_dir": os.path.isdir(real),
+            "home": os.path.realpath(os.path.expanduser("~"))}
+COMPLETE_MAX_ENTRIES = 50
+COMPLETE_MAX_READ = 2000
+COMPLETE_BUDGET_S = 0.2
+
+
+def complete_names(req: dict) -> dict:
+    """Names in one folder, for path completion. Same rules as the local API route.
+
+    Answers names and whether each is a folder; never contents, sizes or anything outside the one folder asked for.
+    Deliberately not limited to ROOTS (choosing a folder to open needs to see folders that are not readable yet);
+    reading file contents stays limited to ROOTS in every other op.
+    """
+    import time
+    prefix, kind, exts = req.get("prefix"), req.get("kind") or "any", req.get("ext") or []
+    if (not isinstance(prefix, str) or len(prefix) > 4096 or "\0" in prefix or kind not in ("dir", "file", "any")
+            or not isinstance(exts, list) or len(exts) > 8
+            or not all(isinstance(e, str) and 2 <= len(e) <= 16 and e.startswith(".") and "/" not in e and "\0" not in e for e in exts)):
+        raise Refused("bad_request", "bad request")
+    exts = [e.lower() for e in exts]
+    if prefix == "~" or prefix.startswith("~/"):
+        rest = prefix[1:].lstrip("/")
+        prefix = os.path.join(os.path.expanduser("~"), rest) + ("/" if not rest or prefix.endswith("/") else "")
+    if not os.path.isabs(prefix):
+        raise Refused("bad_request", "bad request")
+    if prefix.endswith("/"):
+        base, last = os.path.normpath(prefix), ""
+    else:
+        base, last = os.path.normpath(os.path.dirname(prefix)), os.path.basename(prefix)
+    if base.startswith("//"):
+        base = base[1:]                                          # normpath keeps a POSIX double slash
+    out = {"ok": True, "op": "complete", "nbytes": 0, "base": base, "entries": [], "truncated": False}
+    deadline = time.monotonic() + COMPLETE_BUDGET_S
+    names = []
+    try:
+        with os.scandir(base) as it:
+            for e in it:
+                names.append(e)
+                if len(names) >= COMPLETE_MAX_READ or time.monotonic() > deadline:
+                    out["truncated"] = True
+                    break
+    except OSError:
+        return out                                               # missing or unreadable: an empty answer, not an error
+    hidden = last.startswith(".")
+
+    def match(fold: bool):
+        for e in names:
+            n = e.name
+            if not hidden and n.startswith("."):
+                continue
+            if (n.lower().startswith(last.lower())) if fold else n.startswith(last):
+                yield e
+    m = list(match(False))
+    if not m and last:
+        m = list(match(True))
+    entries = []
+    for e in m:
+        try:
+            is_dir = e.is_dir(follow_symlinks=False)
+            if e.is_symlink():
+                if time.monotonic() > deadline:
+                    out["truncated"] = True
+                else:
+                    is_dir = os.path.isdir(e.path)               # one stat of the entry itself, never a walk into it
+        except OSError:
+            is_dir = False
+        if not is_dir and (kind == "dir" or (exts and not e.name.lower().endswith(tuple(exts)))):
+            continue
+        entries.append({"name": e.name[:255], "path": os.path.join(base, e.name)[:4096], "dir": is_dir})
+    entries.sort(key=lambda x: (not x["dir"], x["name"]))
+    if len(entries) > COMPLETE_MAX_ENTRIES:
+        entries, out["truncated"] = entries[:COMPLETE_MAX_ENTRIES], True
+    out["entries"] = entries
+    return out
+
+
 def host_op(op: str, req: dict) -> tuple[dict, bytes]:
     """Operations used when this worker runs on a remote host (and by the local API for registration)."""
     if op == "ping":
         import astropy
         return {"ok": True, "op": op, "nbytes": 0, "python": sys.version.split()[0], "astropy": astropy.__version__,
                 "numpy": np.__version__, "roots": ROOTS, "enforces_roots": ROOTS is not None}, b""
+    if op == "complete":
+        return complete_names(req), b""
     path = req.get("path")
+    if op == "walk":
+        return walk_page(req), b""
+    if op == "canon":
+        return canonical_dir(path), b""
     if op == "list":
         real = authorize(path, "dir")
         entries = []
@@ -614,11 +841,18 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         return {"ok": True, "op": op, "nbytes": 0, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
     if op == "readtext":
         # small text files only (run metadata, configs): bounded, and only inside the roots
-        if st.st_size > MAX_TEXT_BYTES:
+        # with "max" the first max bytes are returned and `truncated` says whether the file was longer (a job script's header)
+        limit = req.get("max")
+        if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_TEXT_BYTES):
+            raise Refused("bad_request", "bad request")
+        if limit is None and st.st_size > MAX_TEXT_BYTES:
             raise Refused("unsupported", "the file is too large to read as text")
         with open(real, "rb") as f:
-            data = f.read(MAX_TEXT_BYTES + 1)
-        return {"ok": True, "op": op, "nbytes": 0, "text": data.decode("utf-8", "replace"), "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+            data = f.read((limit or MAX_TEXT_BYTES) + 1)
+        truncated = limit is not None and len(data) > limit
+        if truncated:
+            data = data[:limit]
+        return {"ok": True, "op": op, "nbytes": 0, "text": data.decode("utf-8", "replace"), "truncated": truncated, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
     if op == "header":
         from fits_header import describe
         return {**describe(real), "nbytes": 0, "op": op, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
@@ -654,7 +888,7 @@ def handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "bad request")
         authorize(path)
         return header_cards(path), b""
-    if op in ("ping", "list", "resolve", "stat", "header", "readtext"):
+    if op in ("ping", "list", "resolve", "stat", "header", "readtext", "complete", "walk", "canon"):
         return host_op(op, req)
     if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix"):
         authorize(path)                                          # also enforces the roots on a remote host

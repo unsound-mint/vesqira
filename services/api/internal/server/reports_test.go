@@ -43,7 +43,7 @@ func callJSON(t *testing.T, method, url string, in any) (int, []byte) {
 	return resp.StatusCode, b
 }
 
-// The whole report path (ADR 0030): a report with a figure and a run is frozen, pushed to a publish server, read
+// The whole report path (ADR 0036): a report with a figure and a run is frozen, pushed to a publish server, read
 // through a named reader link, commented on, and the comment comes back to the owner. What the reader receives is
 // checked on the wire for the source path, the root, the run directory and the publisher key.
 func TestReportPublishReadCommentSyncExposesNoSource(t *testing.T) {

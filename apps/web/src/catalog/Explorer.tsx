@@ -2,13 +2,14 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Database } from "lucide-react";
 import type { Dataset, Problem } from "../api/catalog";
-import { Button, Input, TreeRow } from "../ui";
+import { Button, Input, PathField, TreeRow } from "../ui";
 import { bytes } from "./format";
 import { matchDataset } from "./filter";
 import { previewFile } from "../api/catalog";
 import type { Preview } from "../api/catalog";
 import s from "./Explorer.module.css";
 
+const FITS_EXT = [".fits", ".fit", ".fits.gz"];
 const PROBLEM_SHORT: Record<string, string> = { modified: " · changed on disk", missing: " · missing", not_allowed: " · outside the source folders" };
 
 type Props = {
@@ -53,7 +54,7 @@ export function Explorer({ hosts = [], datasets, selectedId, problems = {}, load
   return (
     <div className={s.wrap}>
       <form className={s.form} onSubmit={submit}>
-        <Input label="Register a FITS file" placeholder="/absolute/path/to/cube.fits" value={path} onChange={(e) => setPath(e.target.value)} spellCheck={false} />
+        <PathField label="Register a FITS file" kind="file" ext={FITS_EXT} placeholder="/absolute/path/to/cube.fits" value={path} onChange={setPath} />
         <Button type="submit" variant="primary" disabled={busy || !path.trim()}>{busy ? "Reading header…" : "Register"}</Button>
         <Button type="button" disabled={busy || !path.trim()} onClick={doPreview}>Preview before registering</Button>
         {preview ? (

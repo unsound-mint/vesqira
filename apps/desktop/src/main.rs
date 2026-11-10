@@ -1,4 +1,4 @@
-//! Native window for Vesqira. The web app and the API stay exactly as in the browser (ADR 0030);
+//! Native window for Vesqira. The web app and the API stay exactly as in the browser (ADR 0037);
 //! this shell only starts the local server through the `vesqira` launcher, shows its address in a
 //! window, and stops the server on exit if it was the one that started it.
 use std::process::Command;
@@ -24,7 +24,7 @@ fn already_running() -> bool {
 struct Started(bool);
 
 /// The system folder chooser. The page can ask for a path and nothing else: the server still decides what that path
-/// may be (ADR 0031), so this command grants no access by itself.
+/// may be (ADR 0037), so this command grants no access by itself.
 #[tauri::command]
 async fn pick_folder(app: tauri::AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
