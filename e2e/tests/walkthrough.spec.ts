@@ -304,7 +304,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
 });
 
 test("the workbench is usable in the light theme and at phone width", async ({ browser }) => {
-  for (const [scheme, width, height] of [["light", 1440, 900], ["dark", 390, 844]] as const) {
+  for (const [scheme, width, height] of [["light", 1440, 900], ["dark", 1280, 800], ["dark", 390, 844]] as const) {
     const ctx = await browser.newContext({ colorScheme: scheme, viewport: { width, height } });
     const page = await ctx.newPage();
     await page.goto("/");
@@ -313,6 +313,25 @@ test("the workbench is usable in the light theme and at phone width", async ({ b
     if (width <= 800) await page.getByRole("button", { name: "Toggle explorer" }).click();
     await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
     await expectNoAxeViolations(page);
+
+    // presenting the board from the first test: a modal that fits the screen, passes axe, and gives focus back
+    await page.getByRole("button", { name: "Boards", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "H I peak at 8 km/s" })).toBeVisible();
+    const opener = page.getByRole("button", { name: "Present" });
+    await opener.click();
+    const stage = page.getByRole("dialog", { name: /Presenting/ });
+    await expect(stage).toBeVisible();
+    await expectNoAxeViolations(page);
+    const hint = (await page.getByText(/← → move/).boundingBox())!;
+    expect(hint.y + hint.height, "the hint line is on screen, so the picture above it fits").toBeLessThanOrEqual(height);
+    if (process.env.VESQIRA_SHOTS) await page.screenshot({ path: `${process.env.VESQIRA_SHOTS}/present-${scheme}-${width}.png` });
+    for (let i = 0; i < 8; i++) {
+      await page.keyboard.press("Tab");
+      expect(await stage.evaluate((el) => el.contains(document.activeElement)), "Tab stays inside the dialog").toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    await expect(stage).toBeHidden();
+    await expect(opener).toBeFocused();
     await ctx.close();
   }
 });
