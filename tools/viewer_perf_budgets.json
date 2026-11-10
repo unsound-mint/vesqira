@@ -1,0 +1,11 @@
+{
+  "note": "Milliseconds, set at about three times the numbers measured with the CPU renderer on a development laptop (headless Chromium, software rendering, 2048x2048 planes: key_to_pixels p95 245, long task 127, linear render 57, asinh 127, histogram 42, worst frame gap 100). They catch a change that makes the viewer several times slower. Tighten them when the GPU renderer of ADR 0034 lands.",
+  "ops": {
+    "key_to_pixels_p95_ms": 800,
+    "long_task_max_ms": 400,
+    "render_linear_ms": 200,
+    "render_asinh_ms": 400,
+    "histogram_ms": 150,
+    "rapid_scrub_worst_frame_gap_ms": 300
+  }
+}
