@@ -58,6 +58,16 @@ function mathInline(state: StateInline, silent: boolean): boolean {
   return true;
 }
 
+/**
+ * Limits on what the scanners below look ahead for. A block is at most 64 KiB, so an unbounded scan that restarts at every
+ * candidate ("$$ a" on thousands of lines, "[[" repeated) is quadratic or worse; these keep each start O(limit).
+ */
+const MAX_MATH_LINES = 200;
+// A report title is at most 200 characters (up to 400 UTF-16 units), and a published link is [[report:<key>|<title>]], so
+// the target and the label are bounded separately and each with room for a full title.
+const MAX_WIKI_TARGET = 410;
+const MAX_WIKI_LABEL = 410;
+
 function mathBlock(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
   const first = state.src.slice(state.bMarks[startLine]! + state.tShift[startLine]!, state.eMarks[startLine]);
   if (!first.startsWith("$$")) return false;
@@ -66,6 +76,7 @@ function mathBlock(state: StateBlock, startLine: number, endLine: number, silent
   let closed = content.trimEnd().endsWith("$$");
   if (closed) content = content.trimEnd().slice(0, -2);
   while (!closed && ++line < endLine) {
+    if (line - startLine > MAX_MATH_LINES) return false; // an unclosed opener must not read the rest of the block
     const l = state.src.slice(state.bMarks[line]! + state.tShift[line]!, state.eMarks[line]);
     if (l.trimEnd().endsWith("$$")) {
       content += "\n" + l.trimEnd().slice(0, -2);
@@ -84,10 +95,25 @@ function mathBlock(state: StateBlock, startLine: number, endLine: number, silent
 function wiki(state: StateInline, silent: boolean): boolean {
   const src = state.src;
   if (!src.startsWith("[[", state.pos)) return false;
-  const end = src.indexOf("]]", state.pos + 2);
+  // look for the closing ]] only within a link's plausible length, stopping at anything a link cannot contain; i + 1 must
+  // stay inside this inline run (posMax), or a link's own closing bracket could be taken for ours
+  const from = state.pos + 2;
+  const limit = Math.min(state.posMax - 2, from + MAX_WIKI_TARGET + MAX_WIKI_LABEL + 1);
+  let end = -1;
+  let bar = -1;
+  for (let i = from; i <= limit; i++) {
+    const c = src[i];
+    if (c === "[" || c === "\n") return false;
+    if (c === "|" && bar < 0) bar = i;
+    else if (c === "]" && src[i + 1] === "]") {
+      end = i;
+      break;
+    }
+    if (bar < 0 ? i - from > MAX_WIKI_TARGET : i - bar > MAX_WIKI_LABEL) return false;
+  }
   if (end < 0) return false;
-  const inner = src.slice(state.pos + 2, end);
-  if (inner.includes("[") || inner.includes("\n") || inner.trim() === "") return false;
+  const inner = src.slice(from, end);
+  if (inner.trim() === "") return false;
   if (!silent) {
     const bar = inner.indexOf("|");
     const t = state.push("wiki", "", 0);
@@ -176,5 +202,7 @@ export function renderMarkdown(text: string, env: RenderEnv): string {
 
 /** Plain text of a block for summaries (comments list, change lists). */
 export function plainText(text: string): string {
-  return text.replace(/!?\[\[([^\]|]*)\|?([^\]]*)\]\]/g, (_m, a: string, b: string) => b || a.replace(/^(report|run|figure):/, "")).replace(/[#*_`>$]/g, "").replace(/\s+/g, " ").trim();
+  // The link pattern is deliberately unambiguous (the target cannot contain "|", "[" or a newline, and each part is
+  // length-bounded), so a 64 KiB run of "[[" cannot make it backtrack: it used to be cubic.
+  return text.replace(/!?\[\[([^\][|\n]{0,410})(?:\|([^\][\n]{0,410}))?\]\]/g, (_m, a: string, b: string | undefined) => b || a.replace(/^(report|run|figure):/, "")).replace(/[#*_`>$]/g, "").replace(/\s+/g, " ").trim();
 }

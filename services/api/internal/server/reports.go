@@ -1,18 +1,22 @@
 package server
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/imgmeta"
 	"github.com/unsound-mint/vesqira/services/api/internal/publish"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -555,19 +559,46 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 		}
 		return ""
 	}
+	// A picture leaves the laptop without its metadata (EXIF, XMP, comments, text chunks, trailing data: internal/imgmeta),
+	// and is published under the hash of what is actually sent, which the publish server checks. The attachment on this
+	// computer is not changed. A picture that cannot be cleaned is not published. This covers attachments and figure
+	// previews alike.
+	cleaned := map[string]cleanedPicture{} // original sha -> what is published, for this revision
+	var stripped, kept []string
+	note := func(c cleanedPicture) {
+		for _, r := range c.removed {
+			if !slices.Contains(stripped, r) {
+				stripped = append(stripped, r)
+			}
+		}
+		for _, k := range c.kept {
+			if !slices.Contains(kept, k) {
+				kept = append(kept, k)
+			}
+		}
+	}
 	addAttachment := func(sha string) string {
 		if !shaOnly.MatchString(sha) {
 			return "#"
 		}
-		if _, ok := f.Assets[sha]; !ok {
-			b, _, err := s.Reports.Attachment(sha)
-			if err != nil {
+		c, done := cleaned[sha]
+		if !done {
+			var err error
+			c, err = s.publishablePicture(sha, func() ([]byte, error) { b, _, err := s.Reports.Attachment(sha); return b, err }, withAssets, &f)
+			switch {
+			case errors.Is(err, errCannotClean):
+				f.Errors = append(f.Errors, "An image ("+sha[:12]+"…) could not be cleaned of its metadata, so it is not published; replace it with a fresh export.")
+			case err != nil:
 				f.Errors = append(f.Errors, "An image ("+sha[:12]+"…) is missing from the attachments; remove it or upload it again.")
-				return "#"
+			default:
+				note(c)
 			}
-			f.Assets[sha] = b
+			cleaned[sha] = c
 		}
-		return "asset:" + sha
+		if c.pub == "" {
+			return "#"
+		}
+		return "asset:" + c.pub
 	}
 	seen := map[string]int{}
 	add := func(b publish.Block, content string) {
@@ -623,15 +654,16 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 				f.Errors = append(f.Errors, "A figure embedded in the report ("+b.Figure[:12]+"…) no longer exists; remove the line or embed another figure.")
 				break
 			}
-			if withAssets {
-				png, err := s.Boards.Preview(fig.PreviewSHA)
-				if err != nil {
-					f.Errors = append(f.Errors, fmt.Sprintf("The picture of %q cannot be read.", fig.Title))
-					break
-				}
-				f.Assets[fig.PreviewSHA] = png
+			pic, err := s.publishablePicture(fig.PreviewSHA, func() ([]byte, error) { return s.Boards.Preview(fig.PreviewSHA) }, withAssets, &f)
+			if errors.Is(err, errCannotClean) {
+				f.Errors = append(f.Errors, fmt.Sprintf("The picture of %q could not be cleaned of its metadata, so it is not published.", fig.Title))
+				break
+			} else if err != nil {
+				f.Errors = append(f.Errors, fmt.Sprintf("The picture of %q cannot be read.", fig.Title))
+				break
 			}
-			add(publish.Block{Kind: publish.BlockFigure, Figure: &publish.Figure{Asset: fig.PreviewSHA, Width: fig.Width, Height: fig.Height, Title: fig.Title, Caption: fig.Caption, Revision: fig.Revision, Provenance: fig.Provenance}}, b.Figure)
+			note(pic)
+			add(publish.Block{Kind: publish.BlockFigure, Figure: &publish.Figure{Asset: pic.pub, Width: fig.Width, Height: fig.Height, Title: fig.Title, Caption: fig.Caption, Revision: fig.Revision, Provenance: fig.Provenance}}, b.Figure)
 			if fig.Caption == "" {
 				f.Warnings = append(f.Warnings, fmt.Sprintf("Figure %q has no caption.", fig.Title))
 			}
@@ -689,6 +721,12 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 	for t := range unshared {
 		f.Warnings = append(f.Warnings, fmt.Sprintf("Links to %q, which is not shared with this space: readers see the link text but cannot open it.", t))
 	}
+	if len(stripped) > 0 {
+		f.Warnings = append(f.Warnings, "Pictures are published without their metadata ("+strings.Join(stripped, ", ")+"). The attachments on this computer are unchanged.")
+	}
+	if len(kept) > 0 {
+		f.Warnings = append(f.Warnings, "A "+strings.Join(kept, " and a ")+" is kept in some pictures because it is needed to draw their colours; it can hold the name of the display or camera it came from.")
+	}
 	if len(rev.Blocks) == 0 {
 		f.Errors = append(f.Errors, "The report is empty.")
 	}
@@ -720,4 +758,39 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 		f.Changes = append(f.Changes, blockDiff{Block: b.ID, Kind: b.Kind, Status: st, Text: clipRunes(b.Text, 200)})
 	}
 	return f, nil
+}
+
+// errCannotClean is a picture that exists but cannot be published safely: imgmeta refused it or could not prove the cleaned
+// file draws the same picture.
+var errCannotClean = errors.New("the picture cannot be cleaned of its metadata")
+
+// cleanedPicture is what is published for one picture: the hash of the cleaned bytes, and what was removed and kept.
+type cleanedPicture struct {
+	pub           string
+	removed, kept []string
+}
+
+// publishablePicture cleans one picture (an attachment or a figure preview, found by its sha) and, when the bytes are
+// needed because the report is being published, adds them to f.Assets under the hash of what will be sent. Cleaning is
+// deterministic and a sha names fixed bytes, so the result is remembered: opening a report, which builds the same
+// revision to compare with, must not decode every image again. A cache hit never needs the bytes.
+func (s *Server) publishablePicture(sha string, load func() ([]byte, error), withBytes bool, f *frozen) (cleanedPicture, error) {
+	if v, ok := s.pictures.Load(sha); ok && !withBytes {
+		return v.(cleanedPicture), nil
+	}
+	b, err := load()
+	if err != nil {
+		return cleanedPicture{}, err
+	}
+	clean, removed, kept, err := imgmeta.CleanWithNotes(b)
+	if err != nil {
+		return cleanedPicture{}, errCannotClean
+	}
+	sum := sha256.Sum256(clean)
+	c := cleanedPicture{pub: hex.EncodeToString(sum[:]), removed: removed, kept: kept}
+	s.pictures.Store(sha, c)
+	if withBytes {
+		f.Assets[c.pub] = clean
+	}
+	return c, nil
 }

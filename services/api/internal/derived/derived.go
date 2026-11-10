@@ -50,9 +50,7 @@ func (s *Store) Save(r Record) error {
 	if r.Summary == nil {
 		r.Summary = json.RawMessage(`{}`)
 	}
-	if r.Software == nil {
-		r.Software = json.RawMessage(`{}`)
-	}
+	r.Software = CleanSoftware(r.Software)
 	src, _ := json.Marshal(r.Sources)
 	_, err := s.db.Exec(`INSERT INTO derived(dataset_id,op,params,sources,summary,software,created_at) VALUES(?,?,?,?,?,?,?)
 		ON CONFLICT(dataset_id) DO UPDATE SET op=excluded.op,params=excluded.params,sources=excluded.sources,summary=excluded.summary,software=excluded.software`,
@@ -71,7 +69,7 @@ func (s *Store) Get(datasetID int64) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
-	r.Params, r.Summary, r.Software = json.RawMessage(p), json.RawMessage(sum), json.RawMessage(sw)
+	r.Params, r.Summary, r.Software = json.RawMessage(p), json.RawMessage(sum), CleanSoftware(json.RawMessage(sw))
 	_ = json.Unmarshal([]byte(src), &r.Sources)
 	r.CreatedAt = time.Unix(at, 0).UTC()
 	return r, nil

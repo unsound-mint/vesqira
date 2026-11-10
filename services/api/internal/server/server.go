@@ -33,6 +33,7 @@ type HeaderReader interface {
 }
 
 type Server struct {
+	pictures   sync.Map         // sha of an attachment or figure preview -> cleanedPicture (reports.go); the zero value is ready
 	Roots      sourceroot.Roots // folders that may be read; grows when the owner opens a folder (use roots())
 	Store      *catalog.Store
 	Worker     HeaderReader
