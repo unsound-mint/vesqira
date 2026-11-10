@@ -9,7 +9,7 @@ const unresolved = { crval: null, crval_status: "unresolved", crpix: null, crpix
 
 const ds: Dataset = {
   interpretation: null,
-  nature: "",
+  nature: "", unitDeclaration: null,
   hostId: 0,
   id: 1, path: "/data/a.fits", name: "a.fits", sizeBytes: 1536, modifiedAt: "", addedAt: "",
   header: {
@@ -83,7 +83,7 @@ describe("raw header cards", () => {
 });
 
 describe("files that changed on disk", () => {
-  const d = { id: 7, name: "cube.fits", path: "/data/cube.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", interpretation: null, header: { ok: true, naxis: 3, bitpix: -32, axes: [] } } as unknown as Dataset;
+  const d = { id: 7, name: "cube.fits", path: "/data/cube.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", unitDeclaration: null, interpretation: null, header: { ok: true, naxis: 3, bitpix: -32, axes: [] } } as unknown as Dataset;
   it("says so in the list and the inspector, and offers to read the file again only when it changed", async () => {
     const reread = vi.fn();
     render(<Explorer datasets={[d]} selectedId={7} problems={{ "7": "modified" }} loading={false} error={null} onSelect={() => {}} onRegister={async () => null} />);

@@ -498,7 +498,8 @@ func TestFitsWithoutBUNITAreGroupedAndAnswersWriteTheProjectFileOnlyWhenAsked(t 
 		}
 	}
 	// the fake worker's header declares no BUNIT: grouped by folder with a count, never one item per file
-	if byID["bunit:data/exp_raw"] != 2 || byID["bunit:data/sims"] != 1 || byID["bunit:validation_output/a"] != 1 {
+	// the orientation maps of the VGT runs (validation_output/*) are angles: nobody asks for their brightness unit
+	if byID["bunit:data/exp_raw"] != 2 || byID["bunit:data/sims"] != 1 || byID["bunit:old"] != 1 || len(byID) != 3 {
 		t.Fatalf("%v", byID)
 	}
 	if s.NeedsCount != needs.Open {
@@ -541,7 +542,7 @@ func TestFitsWithoutBUNITAreGroupedAndAnswersWriteTheProjectFileOnlyWhenAsked(t 
 		}
 	}
 	// the file exists now, so a further answer is written without asking, and appended: the first stays
-	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/answers", s.ID), map[string]any{"need": "bunit:validation_output/b", "answer": "unknown"}, 200, &ans)
+	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/answers", s.ID), map[string]any{"need": "bunit:old", "answer": "unknown"}, 200, &ans)
 	if !ans.WrittenToProject {
 		t.Fatalf("%+v", ans)
 	}
@@ -745,5 +746,190 @@ func TestOpenedProjectRootsSurviveARestart(t *testing.T) {
 	}
 	if _, err := fresh.roots().Resolve(filepath.Join(e.base, "afile")); err == nil {
 		t.Fatal("a sibling folder became readable")
+	}
+}
+
+// An answer to "these files have no BUNIT" is not a note: each registered file in the question gets the unit as its own
+// declaration, so the viewer says it (as the person's). A declaration withdrawn later reopens the question, so the health
+// checklist never claims a unit that is not there, and a folder whose files were all declared on their own pages stops asking.
+func TestAUnitAnsweredInTheNeedsListBecomesTheDatasetsDeclarationAndWithdrawingReopensIt(t *testing.T) {
+	e := newProjEnv(t)
+	root := e.project(t, "units2")
+	vgtProject(t, root)
+	s := e.open(t, root)
+	type need struct {
+		ID, Kind, State string
+		Scope           struct{ Count int }
+	}
+	needsOf := func() (map[string]need, int) {
+		var r struct {
+			Needs []need
+			Open  int
+		}
+		e.json(t, "GET", fmt.Sprintf("/api/projects/%d/needs", s.ID), nil, 200, &r)
+		m := map[string]need{}
+		for _, n := range r.Needs {
+			if n.Kind == "missing_bunit" {
+				m[n.ID] = n
+			}
+		}
+		return m, r.Open
+	}
+	type ds struct {
+		ID              int64
+		Path            string
+		UnitDeclaration *struct{ Unit, DeclaredBy string }
+	}
+	datasetsIn := func(dir string) []ds {
+		var all struct{ Datasets []ds }
+		e.json(t, "GET", "/api/datasets", nil, 200, &all)
+		var out []ds
+		for _, d := range all.Datasets {
+			if strings.Contains(d.Path, "/"+dir+"/") {
+				out = append(out, d)
+			}
+		}
+		return out
+	}
+	before, openBefore := needsOf()
+	if before["bunit:data/exp_raw"].Scope.Count != 2 || before["bunit:data/exp_raw"].State != "open" {
+		t.Fatalf("%+v", before)
+	}
+
+	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/answers", s.ID), map[string]any{"need": "bunit:data/exp_raw", "answer": "declare", "value": "K km/s"}, 200, nil)
+	files := datasetsIn("data/exp_raw")
+	if len(files) != 2 {
+		t.Fatalf("%+v", files)
+	}
+	for _, d := range files {
+		if d.UnitDeclaration == nil || d.UnitDeclaration.Unit != "K km/s" || d.UnitDeclaration.DeclaredBy != "user" {
+			t.Fatalf("the answer did not reach %s: %+v", d.Path, d.UnitDeclaration)
+		}
+	}
+	for _, d := range datasetsIn("data/sims") {
+		if d.UnitDeclaration != nil {
+			t.Fatalf("a file in another question was declared: %+v", d)
+		}
+	}
+	after, openAfter := needsOf()
+	if after["bunit:data/exp_raw"].State != "answered" || openAfter != openBefore-1 {
+		t.Fatalf("%+v open %d -> %d", after["bunit:data/exp_raw"], openBefore, openAfter)
+	}
+
+	// withdrawing one file's unit means the answer no longer holds for it: the question is open again, for that one file
+	e.json(t, "POST", fmt.Sprintf("/api/datasets/%d/unit", files[0].ID), map[string]any{"clear": true}, 200, nil)
+	reopened, _ := needsOf()
+	if n := reopened["bunit:data/exp_raw"]; n.State != "open" || n.Scope.Count != 1 {
+		t.Fatalf("%+v", n)
+	}
+	// declaring it on its own page settles the question again, without answering it a second time
+	e.json(t, "POST", fmt.Sprintf("/api/datasets/%d/unit", files[0].ID), map[string]any{"unit": "K km/s"}, 200, nil)
+	if n, _ := needsOf(); n["bunit:data/exp_raw"].State != "answered" {
+		t.Fatalf("%+v", n["bunit:data/exp_raw"])
+	}
+
+	// a folder whose files were all declared one by one, never answered, has nothing left to ask
+	for _, d := range datasetsIn("data/sims") {
+		e.json(t, "POST", fmt.Sprintf("/api/datasets/%d/unit", d.ID), map[string]any{"unit": "K"}, 200, nil)
+	}
+	if n, _ := needsOf(); n["bunit:data/sims"].ID != "" {
+		t.Fatalf("a settled folder is still asked about: %+v", n["bunit:data/sims"])
+	}
+	// the answer's text goes through the same rule as the store's
+	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/answers", s.ID), map[string]any{"need": "bunit:old", "answer": "declare", "value": "K<b>"}, 422, nil)
+
+	// an orientation map is an angle: it is not asked about, and a brightness unit cannot be declared for it (409)
+	for _, d := range datasetsIn("validation_output") {
+		e.json(t, "POST", fmt.Sprintf("/api/datasets/%d/unit", d.ID), map[string]any{"unit": "Jy/beam"}, 409, nil)
+	}
+	if n, _ := needsOf(); n["bunit:validation_output/a"].ID != "" || n["bunit:validation_output/b"].ID != "" {
+		t.Fatalf("an orientation map is asked for a brightness unit: %+v", n)
+	}
+}
+
+// Answering "declare V" for a folder is not a claim the files can drift from: once a file there has another unit, or none, the
+// question is open again for exactly those files, and answering it again applies the new unit to them.
+func TestAFolderAnswerNeverClaimsMoreThanTheFilesShow(t *testing.T) {
+	e := newProjEnv(t)
+	root := e.project(t, "units3")
+	vgtProject(t, root)
+	s := e.open(t, root)
+	type need struct {
+		ID, Kind, State, Message string
+		Scope                    struct{ Count int }
+	}
+	exp := func() need {
+		var r struct{ Needs []need }
+		e.json(t, "GET", fmt.Sprintf("/api/projects/%d/needs", s.ID), nil, 200, &r)
+		for _, n := range r.Needs {
+			if n.ID == "bunit:data/exp_raw" {
+				return n
+			}
+		}
+		return need{}
+	}
+	var all struct {
+		Datasets []struct {
+			ID              int64
+			Path            string
+			UnitDeclaration *struct{ Unit string }
+		}
+	}
+	e.json(t, "GET", "/api/datasets", nil, 200, &all)
+	var ids []int64
+	for _, d := range all.Datasets {
+		if strings.Contains(d.Path, "/data/exp_raw/") {
+			ids = append(ids, d.ID)
+		}
+	}
+	unitOf := func(id int64) string {
+		var r struct {
+			Datasets []struct {
+				ID              int64
+				UnitDeclaration *struct{ Unit string }
+			}
+		}
+		e.json(t, "GET", "/api/datasets", nil, 200, &r)
+		for _, d := range r.Datasets {
+			if d.ID == id && d.UnitDeclaration != nil {
+				return d.UnitDeclaration.Unit
+			}
+		}
+		return ""
+	}
+	if len(ids) != 2 {
+		t.Fatalf("%v", ids)
+	}
+	answer := func(v string) {
+		e.json(t, "POST", fmt.Sprintf("/api/projects/%d/answers", s.ID), map[string]any{"need": "bunit:data/exp_raw", "answer": "declare", "value": v}, 200, nil)
+	}
+	answer("K km/s")
+	if n := exp(); n.State != "answered" || n.Scope.Count != 2 {
+		t.Fatalf("%+v", n)
+	}
+	// one file is given another unit on its own page: the folder answer no longer holds for it
+	e.json(t, "POST", fmt.Sprintf("/api/datasets/%d/unit", ids[0]), map[string]any{"unit": "Jy/beam"}, 200, nil)
+	n := exp()
+	if n.State != "open" || n.Scope.Count != 1 || !strings.Contains(n.Message, "not the unit you declared for this folder (K km/s)") {
+		t.Fatalf("the folder answer still claims what one file contradicts: %+v", n)
+	}
+	// answering again applies the new unit to the files that differ, and the folder is consistent
+	answer("Jy/beam")
+	if unitOf(ids[0]) != "Jy/beam" || unitOf(ids[1]) != "Jy/beam" {
+		t.Fatalf("%q %q", unitOf(ids[0]), unitOf(ids[1]))
+	}
+	if n := exp(); n.State != "answered" || !strings.Contains(n.Message, "you declared Jy/beam for them") {
+		t.Fatalf("%+v", n)
+	}
+	// left unknown stays answered and the files untouched; health says it is unknown, not declared
+	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/answers", s.ID), map[string]any{"need": "bunit:old", "answer": "unknown"}, 200, nil)
+	var sum struct {
+		Health []struct{ ID, State, Detail string }
+	}
+	e.json(t, "GET", fmt.Sprintf("/api/projects/%d", s.ID), nil, 200, &sum)
+	for _, h := range sum.Health {
+		if h.ID == "units_declared" && strings.Contains(h.Detail, "Every registered FITS file declares a unit") {
+			t.Fatalf("health overclaims with a file left unknown: %+v", h)
+		}
 	}
 }

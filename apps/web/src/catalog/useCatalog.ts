@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getAvailability, listDatasets, registerDataset, setInterpretation, setNature } from "../api/catalog";
+import { ApiError, getAvailability, listDatasets, registerDataset, setInterpretation, setNature, setUnit } from "../api/catalog";
 import type { Dataset, InterpretationRequest, Nature, Problem } from "../api/catalog";
 import { listHosts } from "../api/hosts";
 import { listJobs } from "../api/jobs";
@@ -92,6 +92,17 @@ export function useCatalog() {
     setJobs(await listJobs());
   }, []);
 
+  /** Declare or withdraw the unit of a file without BUNIT. Returns an error text, or null on success. */
+  const declareUnit = useCallback(async (id: number, unit: string | null): Promise<string | null> => {
+    try {
+      const d = await setUnit(id, unit === null ? { clear: true } : { unit });
+      setDatasets((cur) => cur.map((x) => (x.id === d.id ? d : x)));
+      return null;
+    } catch (e) {
+      return e instanceof ApiError ? e.message : "Could not save the unit.";
+    }
+  }, []);
+
   const declareNature = useCallback(async (id: number, nature: Nature): Promise<string | null> => {
     try {
       const d = await setNature(id, nature);
@@ -102,5 +113,5 @@ export function useCatalog() {
     }
   }, []);
 
-  return { problems, declareNature, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
+  return { problems, declareNature, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
 }

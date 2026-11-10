@@ -606,6 +606,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/unit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_declareUnit_post_api_datasets_id_unit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/view": {
         parameters: {
             query?: never;
@@ -2320,6 +2338,8 @@ export interface components {
              */
             nature: "" | "observed" | "simulated" | "constructed_control";
             interpretation: components["schemas"]["Interpretation"] | null;
+            /** @description Present when the person declared a unit for a file without BUNIT. The header's own bunit and bunit_status stay as the file gave them. */
+            unitDeclaration: components["schemas"]["UnitDeclaration"] | null;
         };
         DatasetList: {
             datasets: components["schemas"]["Dataset"][];
@@ -2375,8 +2395,11 @@ export interface components {
             height: number;
             channels: number;
             bunit: string | null;
-            /** @enum {string} */
-            bunit_status: "declared" | "unresolved";
+            /**
+             * @description declared: the file's BUNIT; user: a unit the person declared for a file with none (never the file's); unresolved: neither
+             * @enum {string}
+             */
+            bunit_status: "declared" | "user" | "unresolved";
             fits_axes: {
                 x: number;
                 y: number;
@@ -2416,6 +2439,17 @@ export interface components {
                 source_height: number;
                 method: string;
             } | null;
+        };
+        /** @description The physical unit a person declared for a file whose header has no BUNIT. An overlay: the file and its header facts are never changed, and wherever the unit is shown it is labelled as declared by the person. */
+        UnitDeclaration: {
+            /** @description As typed: 1 to 40 printable characters. It is shown and compared as text and not converted. */
+            unit: string;
+            /** @description "user" */
+            declaredBy: string;
+            /** Format: date-time */
+            declaredAt: string;
+            /** @description The file's size or modification time differs from when the unit was declared: it may no longer describe these bytes. */
+            stale: boolean;
         };
     };
     responses: never;
@@ -3166,6 +3200,26 @@ export interface operations {
         };
     };
     owner_s_spectrum_get_api_datasets_id_spectrum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    owner_s_declareUnit_post_api_datasets_id_unit: {
         parameters: {
             query?: never;
             header?: never;

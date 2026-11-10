@@ -17,6 +17,12 @@ const kind = (d: Dataset) => (d.interpretation ? `axial orientation, ${d.interpr
 const commit = (r: Run | undefined) => (r ? (r.gitCommit ? r.gitCommit.slice(0, 12) + (r.dirty ? " -dirty (not reproducible)" : "") : "no commit recorded") : "not from an imported run");
 
 /** What differs between two maps, and the explicit next steps (axial difference, alignment). Nothing is merged silently. */
+/** The unit as the file gave it, or as you declared it (said so), or unresolved. */
+function unitCell(view: { bunit: string | null; bunit_status: string } | null | undefined): string {
+  if (!view?.bunit) return "unresolved";
+  return view.bunit_status === "user" ? `${view.bunit} (declared by you)` : view.bunit;
+}
+
 export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a: Dataset; b: Dataset; va: Viewer; vb: Viewer; runs: Run[]; compat: Compat | null; onCreated: (d: Dataset) => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,7 +54,7 @@ export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a:
         </thead>
         <tbody>
           <tr><th scope="row">Treated as</th><td>{kind(a)}</td><td>{kind(b)}</td></tr>
-          <tr><th scope="row">Brightness unit</th><td className="mono">{va.view?.bunit ?? "unresolved"}</td><td className="mono">{vb.view?.bunit ?? "unresolved"}</td></tr>
+          <tr><th scope="row">Brightness unit</th><td className="mono">{unitCell(va.view)}</td><td className="mono">{unitCell(vb.view)}</td></tr>
           <tr><th scope="row">Pixel scale</th><td className="mono">{pixelScale(a)}</td><td className="mono">{pixelScale(b)}</td></tr>
           <tr><th scope="row">Beam (resolution)</th><td className="mono">{beamText(a)}</td><td className="mono">{beamText(b)}</td></tr>
           <tr><th scope="row">Run</th><td>{ra?.name ?? EM}</td><td>{rb?.name ?? EM}</td></tr>
@@ -91,7 +97,7 @@ export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a:
       {!a.interpretation && !b.interpretation && compat?.compatible && sameMachine ? (
         <div className={s.next}>
           <Button type="button" disabled={busy} onClick={() => go("scalar_diff", a, b)}>Difference map ({a.name} − {b.name})</Button>
-          <p className={s.note}>Needs the same declared brightness unit in both; nothing is converted. Pixels without a value in either map stay NaN, a real zero stays 0. The maps’ beams are not matched: if their resolutions differ, the difference mixes resolution with signal (beams: {beamText(a)}; {beamText(b)}).</p>
+          <p className={s.note}>Needs the same brightness unit stated by both files (BUNIT); a unit you declared is not used here; nothing is converted. Pixels without a value in either map stay NaN, a real zero stays 0. The maps’ beams are not matched: if their resolutions differ, the difference mixes resolution with signal (beams: {beamText(a)}; {beamText(b)}).</p>
         </div>
       ) : null}
       {compat && !compat.compatible && sameMachine ? (

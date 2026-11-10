@@ -61,6 +61,13 @@ describe("dataset filter", () => {
 
 describe("dataset filter on declared fields", () => {
   const mk = (bunit: string | null, nature = "") => ({ name: "x.fits", nature, header: { bunit } }) as unknown as Dataset;
+  it("a unit you declared for a file without BUNIT is found like any other, and the file's own wins", () => {
+    const declared = (bunit: string | null, unit: string) => ({ name: "x.fits", nature: "", header: { bunit }, unitDeclaration: { unit } }) as unknown as Dataset;
+    expect(matchDataset(declared(null, "Jy/beam"), "unit:jy/beam", undefined)).toBe(true);
+    expect(matchDataset(declared(null, "Jy/beam"), "unit:none", undefined)).toBe(false);
+    expect(matchDataset(declared("K", "Jy/beam"), "unit:K", undefined)).toBe(true);
+    expect(matchDataset(declared("K", "Jy/beam"), "unit:jy/beam", undefined)).toBe(false);
+  });
   it("unit:none matches only datasets that declare no unit, and unit:K only exact K", () => {
     expect(matchDataset(mk(null), "unit:none", undefined)).toBe(true);
     expect(matchDataset(mk(""), "unit:none", undefined)).toBe(true);

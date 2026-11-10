@@ -42,6 +42,10 @@ export type InterpretationRequest = { kind: "none" } | { kind: "axial_orientatio
 export const setInterpretation = (id: number, body: InterpretationRequest) =>
   call<Dataset>(`/api/datasets/${id}/interpretation`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+/** Declare (or withdraw) the unit of a file whose header has no BUNIT. The file and its header facts are not changed. */
+export const setUnit = (id: number, body: { unit: string } | { clear: true }) =>
+  call<Dataset>(`/api/datasets/${id}/unit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
 export type Nature = Dataset["nature"] | "none";
 export const setNature = (id: number, nature: Nature) =>
   call<Dataset>(`/api/datasets/${id}/nature`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nature }) });

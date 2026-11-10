@@ -2,6 +2,7 @@ import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
 
 import { tokenize, unquote } from "../ui/queryWords";
+import { effectiveUnit } from "./unit";
 
 export { tokenize, unquote };
 
@@ -14,7 +15,7 @@ const words = (q: string) => tokenize(q).map((w) => unquote(w).toLowerCase());
  * (a missing unit is not a unit, and is not matched by any unit value).
  */
 export function matchDataset(d: Dataset, q: string, hostName: string | undefined): boolean {
-  const unit = String(d.header?.bunit ?? "").trim().toLowerCase();
+  const unit = effectiveUnit(d).toLowerCase();
   const host = (hostName ?? "").toLowerCase();
   const nature = (d.nature ?? "").toLowerCase();
   const hay = [d.name, host, unit, nature].join("\n").toLowerCase();

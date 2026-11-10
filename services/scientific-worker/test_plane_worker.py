@@ -157,6 +157,41 @@ class PlaneWorker(unittest.TestCase):
         self.assertEqual(v["sky"]["frame"], "ICRS")
         self.assertEqual(v["bunit"], "K")
 
+    def _without_bunit(self, name):
+        src = self.f[name]
+        dst = Path(self.tmp.name) / ("nobunit_" + name)
+        with fits.open(src) as hdul:
+            del hdul[0].header["BUNIT"]
+            hdul.writeto(dst, overwrite=True)
+        return dst
+
+    def test_a_declared_unit_fills_a_missing_bunit_and_is_labelled_as_the_person_s(self):
+        p = self._without_bunit("hi_cube.fits")
+        v, _ = self.c.ask(op="view", path=str(p))
+        self.assertEqual((v["bunit"], v["bunit_status"]), (None, "unresolved"))
+        for op, extra in (("view", {}), ("plane", {"channel": 3}), ("coord", {"channel": 3, "x": 2, "y": 2}),
+                          ("spectrum", {"shape": "rect", "x0": 1, "y0": 1, "x1": 4, "y1": 4})):
+            h, _ = self.c.ask(op=op, path=str(p), declared_bunit="Jy/beam", **extra)
+            self.assertTrue(h["ok"], (op, h))
+            self.assertEqual((h["bunit"], h["bunit_status"]), ("Jy/beam", "user"), op)
+
+    def test_the_file_s_own_bunit_always_wins_over_a_declared_one(self):
+        for op, extra in (("view", {}), ("plane", {"channel": 3}), ("spectrum", {"shape": "rect", "x0": 1, "y0": 1, "x1": 4, "y1": 4})):
+            h, _ = self.c.ask(op=op, path=str(self.f["hi_cube.fits"]), declared_bunit="Jy/beam", **extra)
+            self.assertTrue(h["ok"], (op, h))
+            self.assertEqual((h["bunit"], h["bunit_status"]), ("K", "declared"), op)
+
+    def test_a_declared_unit_that_is_not_plain_short_text_is_refused_not_stored_or_echoed(self):
+        p = self._without_bunit("hi_cube.fits")
+        for bad in ("", " K", "K ", "K\nkm", "K\x00", "x" * 41, 7, ["K"], {"a": 1}, True):
+            h, _ = self.c.ask(op="view", path=str(p), declared_bunit=bad)
+            self.assertFalse(h["ok"], repr(bad))
+            self.assertEqual(h["code"], "bad_request")
+            self.assertNotIn("km", h.get("error", ""))
+        # and the worker keeps serving
+        h, _ = self.c.ask(op="view", path=str(p), declared_bunit="K")
+        self.assertTrue(h["ok"])
+
     def test_plane_matches_a_full_astropy_load_including_nan(self):
         with fits.open(self.f["hi_cube.fits"]) as h:
             full = h[0].data

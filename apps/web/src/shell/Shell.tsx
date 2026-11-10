@@ -5,6 +5,8 @@ import { ReportsView } from "../reports/ReportsView";
 import { JobsView, jobFor } from "../jobs/JobsView";
 import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
+import { UnitControl } from "../catalog/UnitControl";
+import { fileStatesItsUnit } from "../catalog/unit";
 import { Explorer } from "../catalog/Explorer";
 import { AnalysisPanel, DerivedPanel } from "../catalog/AnalysisPanel";
 import { NatureControl } from "../catalog/NatureControl";
@@ -265,7 +267,7 @@ export function Shell() {
         ) : mode === "look" && project ? (
           <FirstLook key={project.id} project={project} onWrite={writeFile} onUseWithout={() => setMode("viewer")} onCancel={() => void proj.cancel()} />
         ) : mode === "needs" && project ? (
-          <NeedsView project={project} version={proj.version} onChanged={() => void proj.refresh(project.id)} />
+          <NeedsView project={project} version={proj.version} onChanged={() => { void proj.refresh(project.id); void refreshDatasets(); /* an answer can declare a unit on the files it is about */ }} />
         ) : mode === "health" && project ? (
           <HealthView project={project} />
         ) : mode === "jobs" ? (
@@ -359,6 +361,11 @@ export function Shell() {
           {actDs ? (
             <Section title="Made from" defaultOpen={false}>
               <DerivedPanel dataset={actDs} datasets={cat.datasets} />
+            </Section>
+          ) : null}
+          {actDs && !fileStatesItsUnit(actDs) && !actDs.interpretation ? (
+            <Section title="Unit of the values">
+              <UnitControl key={actDs.id} dataset={actDs} onDeclare={cat.declareUnit} onWithdraw={(id) => cat.declareUnit(id, null)} />
             </Section>
           ) : null}
           {actDs ? (

@@ -5,7 +5,7 @@ import type { Metric } from "../api/metrics";
 import { metricRows, CompareInspector, paramDiff } from "./CompareInspector";
 import type { Viewer } from "./useViewer";
 
-const ds = (id: number, name: string, axial = false): Dataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", hostId: 0, nature: "", header: {} as Dataset["header"], interpretation: axial ? { kind: "axial_orientation", unit: "rad", reliabilityId: null, declaredBy: "vgt-run-adapter", declaredAt: "", stale: false } : null });
+const ds = (id: number, name: string, axial = false): Dataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", hostId: 0, nature: "", unitDeclaration: null, header: {} as Dataset["header"], interpretation: axial ? { kind: "axial_orientation", unit: "rad", reliabilityId: null, declaredBy: "vgt-run-adapter", declaredAt: "", stale: false } : null });
 const run = (id: number, name: string, ker: string, commit: string, dirty: boolean, out: number): Run => ({ jobId: null, parentRunId: null, id, name, kind: "vgt", importedAt: "", generatedAt: "", gitCommit: commit, dirty, reproducibleFromCommit: !dirty, elapsedSeconds: null, metrics: [], params: [{ key: "ker", value: ker, source: "config" }, { key: "dn", value: "10", source: "config" }], diagnostics: {}, inputName: "", inputSizeBytes: 0, inputHint: null, review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, outputs: [{ role: "psi", datasetId: out, name: "p" }] });
 const viewer = (finite: number, nan: number) => ({ view: { bunit: null }, plane: { head: { channel: 0, channels: 1, stats: { finite_count: finite, nonfinite_count: nan } } } }) as unknown as Viewer;
 

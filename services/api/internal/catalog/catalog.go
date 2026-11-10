@@ -29,6 +29,9 @@ type Dataset struct {
 	Nature string `json:"nature"`
 	// Interpretation is what the user declared about the data. The file itself declares none of it.
 	Interpretation *Interpretation `json:"interpretation"`
+	// UnitDeclaration is the unit the user declared for a file whose header has no BUNIT (see unit.go). The header
+	// facts themselves are never changed.
+	UnitDeclaration *UnitDeclaration `json:"unitDeclaration"`
 }
 
 // Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).
@@ -104,6 +107,12 @@ func Open(dsn string) (*Store, error) {
 		if err == nil {
 			_, err = db.Exec(`CREATE TABLE IF NOT EXISTS dataset_nature(dataset_id INTEGER PRIMARY KEY, nature TEXT NOT NULL, declared_at INTEGER NOT NULL)`)
 		}
+		if err == nil {
+			_, err = db.Exec(`CREATE TABLE IF NOT EXISTS dataset_units(
+				dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id) ON DELETE CASCADE,
+				unit TEXT NOT NULL, declared_by TEXT NOT NULL DEFAULT 'user', declared_at INTEGER NOT NULL,
+				size_bytes INTEGER NOT NULL DEFAULT 0, modified_ns INTEGER NOT NULL DEFAULT 0)`)
+		}
 	}
 	if err != nil {
 		db.Close()
@@ -130,6 +139,11 @@ func (s *Store) Upsert(d Dataset) (Dataset, error) {
 	got, err := s.byPath(key)
 	if err != nil {
 		return Dataset{}, err
+	}
+	if fileStatesItsUnit(d) { // the file says its unit now: a declaration made while it did not must not linger or come back
+		if _, err := s.db.Exec(`DELETE FROM dataset_units WHERE dataset_id=?`, got.ID); err != nil {
+			return Dataset{}, err
+		}
 	}
 	return s.Get(got.ID)
 }
@@ -173,6 +187,9 @@ func (s *Store) Get(id int64) (Dataset, error) {
 	d.Interpretation, err = s.interpretation(id, d)
 	if err == nil {
 		d.Nature, err = s.nature(id)
+	}
+	if err == nil {
+		d.UnitDeclaration, err = s.unitDeclaration(id, d)
 	}
 	return d, err
 }
@@ -261,6 +278,9 @@ func (s *Store) List() ([]Dataset, error) {
 			return nil, err
 		}
 		if out[i].Nature, err = s.nature(out[i].ID); err != nil {
+			return nil, err
+		}
+		if out[i].UnitDeclaration, err = s.unitDeclaration(out[i].ID, out[i]); err != nil {
 			return nil, err
 		}
 	}

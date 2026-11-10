@@ -72,7 +72,7 @@ func (s *Server) authorizeRemote(ctx context.Context, d catalog.Dataset) (real s
 	if st.Size != d.SizeBytes || st.MtimeNS != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}
-	return d.Path, cacheKey{id: d.ID, size: st.Size, mtime: st.MtimeNS}, 0, ""
+	return d.Path, cacheKey{id: d.ID, size: st.Size, mtime: st.MtimeNS, unit: declaredUnitOf(d)}, 0, ""
 }
 
 func (s *Server) hostFrom(w http.ResponseWriter, r *http.Request) (hosts.Host, bool) {

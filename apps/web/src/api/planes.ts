@@ -99,6 +99,8 @@ export type SpectrumHeader = {
   axis: { kind: "spectral" | "channel"; name: string | null; unit: string | null };
   mask_policy: string;
   bunit: string | null;
+  /** declared: the file's BUNIT; user: a unit you declared for a file with none; unresolved: neither */
+  bunit_status?: "declared" | "user" | "unresolved";
 };
 
 /** mean[c] is NaN when the channel has no finite pixel in the region: unknown, never zero. */

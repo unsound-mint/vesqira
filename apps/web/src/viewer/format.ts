@@ -12,6 +12,12 @@ export function spectralText(value: number | null, unit: string | null): string 
   return unit ? `${trim(value, 6)} ${unit}` : trim(value, 6);
 }
 
+/** The brightness unit as it should be read: the file's, the one you declared (said so), or unresolved. Never the second as the first. */
+export function unitLabel(bunit: string | null | undefined, status: string | undefined): string {
+  if (!bunit) return "brightness unit unresolved";
+  return status === "user" ? `${bunit} (declared by you)` : bunit;
+}
+
 /** A brightness value. NaN and infinities are "no value", zero is a number. */
 export function valueText(v: number | null, bunit: string | null): string {
   if (v === null) return EM;

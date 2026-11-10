@@ -12,6 +12,8 @@ export type FigureFacts = {
   displayLine: string;
   limits: [number, number] | null;
   limitsUnit: string | null;
+  /** The unit is one the author declared because the file has no BUNIT: the picture must say so wherever it states a unit. */
+  unitDeclared?: boolean;
 };
 
 /** The caption lines printed on a figure. Pure, so what a figure claims can be tested. */
@@ -28,6 +30,7 @@ export function captionLines(f: FigureFacts, view: View | null, plane: Plane | n
   if (opts.axial) out.push("Axial orientation (0° = 180°); unit declared by the author. Lines from the +x pixel axis, counter-clockwise (the VGT convention, assumed; the file does not declare it).");
   else if (f.kind === "plane") out.push(`${opts.colormap}, ${opts.stretch} stretch, ${opts.range === "percentile" ? "1st to 99th percentile" : opts.range === "custom" ? "limits set by the author" : "minimum to maximum"} of finite pixels${f.limitsUnit ? ` in ${f.limitsUnit}` : ""}${opts.range === "custom" && f.limits ? ` (${f.limits[0]} to ${f.limits[1]})` : ""}`);
   if (opts.region) out.push(`Region: ${opts.region.shape} (mean of finite pixels; NaN, BLANK and infinite values excluded)`);
+  if (f.unitDeclared && !opts.axial && f.limitsUnit) out.push(`Brightness unit (${f.limitsUnit}) declared by the author; the file has no BUNIT.`);
   out.push("No-value pixels (NaN, BLANK) are hatched, never drawn as zero. Header values are declared by the file, not verified.");
   return out;
 }

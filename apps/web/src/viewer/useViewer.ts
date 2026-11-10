@@ -21,6 +21,9 @@ export function useViewer(dataset: Dataset | null) {
   const interp = dataset?.interpretation ?? null;
   const relId = interp?.reliabilityId ?? null;
   const unit = interp?.unit ?? null;
+  // the unit you declared for a file without BUNIT, as the server applies it (a stale declaration is not applied)
+  const unitKey = dataset?.unitDeclaration && !dataset.unitDeclaration.stale ? dataset.unitDeclaration.unit : "";
+  const seenUnit = useRef<{ id: number | null; key: string }>({ id: datasetId, key: unitKey });
   const canvas = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState<View | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
@@ -79,6 +82,19 @@ export function useViewer(dataset: Dataset | null) {
       .catch((e: unknown) => !isAbort(e) && setViewError(message(e, "Could not read the dataset layout.")));
     return () => ac.abort();
   }, [datasetId, retry, fileTime]);
+
+  // Declaring or withdrawing a unit changes what every head says. Read the layout again (the plane and the spectrum follow the
+  // new view) without starting over: the channel and the region stay. A different dataset starts over by itself, above.
+  useEffect(() => {
+    const prev = seenUnit.current;
+    seenUnit.current = { id: datasetId, key: unitKey };
+    if (datasetId === null || prev.id !== datasetId || prev.key === unitKey) return;
+    const ac = new AbortController();
+    getView(datasetId, ac.signal)
+      .then(setView)
+      .catch((e: unknown) => !isAbort(e) && setViewError(message(e, "Could not read the dataset layout.")));
+    return () => ac.abort();
+  }, [datasetId, unitKey]);
 
   // The plane for the selected channel. A newer request aborts the older one, so scrubbing never queues stale reads.
   // A large plane on a remote host shows a reduced preview first and the full plane once the channel has settled, so
