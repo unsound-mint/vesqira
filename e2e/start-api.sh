@@ -44,6 +44,20 @@ cmd=\$(printf '%s' "\$*" | sed -e 's#\$HOME#$run/remote-home#g' -e 's#bash -lc#b
 PATH=$bin:$(dirname "$(cat "$run/python")"):\$PATH exec sh -c "\$cmd"
 FAKE
 chmod +x "$run/fake-ssh"
+# A project folder for tests/z-projects.spec.ts: outside --root, so only opening it as a project makes it readable. It has
+# a data layout, two run records, one config, and a git repository (a HEAD and a branch ref are all discovery reads).
+proj="$run/project/hi-vgt-study"
+mkdir -p "$proj/data/raw" "$proj/configs" "$proj/.git/refs/heads"
+# the vgt maps have no BUNIT, which gives the Needs page something to ask
+for f in hi_cube.fits cube_int16_scaled.fits hi_cube_no_spectral_ref.fits vgt_psi_deg.fits vgt_reliability.fits; do cp "$run/data/$f" "$proj/data/raw/$f"; done
+echo 'ref: refs/heads/main' > "$proj/.git/HEAD"
+echo 0123456789abcdef0123456789abcdef01234567 > "$proj/.git/refs/heads/main"
+echo 'lambda = 0.5' > "$proj/configs/vgt.toml"
+for r in 2026-08-01T100000Z_abc1234:0.5 2026-08-02T110000Z_abc1234:0.9; do
+  d="$proj/results/${r%%:*}"
+  mkdir -p "$d"
+  printf 'generated_at_utc = "2026-08-01T10:00:00Z"\ngitcommit = "abc1234"\n[config]\nlambda = %s\nwidth = 3\n[input]\npath = "%s/data/raw/hi_cube.fits"\nsize_bytes = 100\n[outputs]\npsi_path = "%s/psi.fits"\n' "${r##*:}" "$proj" "$d" > "$d/run_metadata.toml"
+done
 cd "$root"
 exec "$run/api" --ssh "$run/fake-ssh" --addr 127.0.0.1:8787 --db "$run/t.db" --data-dir "$run" --root "$run/data" \
   --review-addr 127.0.0.1:8788 --web-dist "$root/apps/web/dist" --ssh-config ""

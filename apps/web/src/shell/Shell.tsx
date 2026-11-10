@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FileText, FolderOpen, LayoutGrid, Server, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { FileText, FolderOpen, FolderPlus, LayoutGrid, Server, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
 import { JobsView, jobFor } from "../jobs/JobsView";
@@ -11,11 +11,18 @@ import { NatureControl } from "../catalog/NatureControl";
 import { StorageControl } from "../catalog/StorageControl";
 import { UsedIn } from "../catalog/UsedIn";
 import { HostsPanel } from "../catalog/HostsPanel";
-import { FolderTree } from "../files/FolderTree";
 import { RunPanel, RunsUsingFile, runFor } from "../catalog/RunPanel";
 import { RunPage } from "../runs/RunPage";
 import { RerunDraft } from "../runs/RerunDraft";
 import { RunsList } from "../catalog/RunsList";
+import { FirstLook } from "../projects/FirstLook";
+import { HealthView } from "../projects/HealthView";
+import { NeedsView } from "../projects/NeedsView";
+import { OpenProject } from "../projects/OpenProject";
+import { ProjectExplorer } from "../projects/ProjectExplorer";
+import { healthScore, location } from "../projects/format";
+import { useProject } from "../projects/useProject";
+import { writeProjectFile } from "../api/projects";
 import { getCompat } from "../api/catalog";
 import type { Compat } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
@@ -32,7 +39,7 @@ import { SpectrumPlot } from "../viewer/SpectrumPlot";
 import { flagState } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
 import { limits } from "../viewer/render";
-import { IconButton, Pill, ResizeHandle, Section } from "../ui";
+import { Button, IconButton, Pill, ResizeHandle, Section } from "../ui";
 import { LIMITS, useLayout } from "./useLayout";
 import s from "./Shell.module.css";
 
@@ -41,6 +48,10 @@ export function Shell() {
   const { layout: L, set, toggle } = useLayout();
   const cat = useCatalog();
   const rendererNote = useSyncExternalStore(subscribeRendererNote, getRendererNote); // set only when drawing fell back to the CPU
+  const { refreshDatasets, refreshRuns } = cat;
+  const proj = useProject(useCallback(() => { void refreshDatasets(); void refreshRuns(); }, [refreshDatasets, refreshRuns]));
+  const project = proj.project;
+  const hostName = (id: number) => cat.hosts.find((h) => h.id === id)?.name ?? "host";
   const viewerA = useViewer(cat.selected);
   const [compareId, setCompareId] = useState<number | null>(null);
   const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== cat.selected?.id) ?? null;
@@ -131,16 +142,17 @@ export function Shell() {
     if (!linked) viewerA.setMirror(null), viewerB.setMirror(null);
   }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
-  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "run" | "rerun">("viewer");
+  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "run" | "rerun" | "open" | "look" | "needs" | "health">("viewer");
   const [runId, setRunId] = useState<number | null>(null);
   const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs" | "reports">("viewer");
+  const from = mode === "boards" || mode === "jobs" || mode === "reports" ? mode : "viewer"; // the project pages go back to the viewer
   const openRun = (id: number) => {
-    if (mode !== "run" && mode !== "rerun") setRunFrom(mode);
+    if (mode !== "run" && mode !== "rerun") setRunFrom(from);
     setRunId(id);
     setMode("run");
   };
   const runAgain = (id: number) => {
-    if (mode !== "run" && mode !== "rerun") setRunFrom(mode);
+    if (mode !== "run" && mode !== "rerun") setRunFrom(from);
     setRunId(id);
     setMode("rerun");
   };
@@ -153,7 +165,48 @@ export function Shell() {
   const pageRun = mode === "run" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
   // The run page is a full page of its own: the map inspector and channel timeline describe the viewer, not the run.
-  const onPage = mode === "run" || mode === "rerun" || mode === "reports";
+  const projectPage = mode === "open" || mode === "look" || mode === "needs" || mode === "health";
+  const noProjectYet = mode === "viewer" && !project && !cat.selected; // nothing open at all: the way in is opening a folder
+  const onPage = mode === "run" || mode === "rerun" || mode === "reports" || projectPage || noProjectYet;
+  // On a narrow screen the explorer is an overlay on the canvas: choosing a project page has to uncover it.
+  useEffect(() => {
+    if (projectPage && typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches) set("sideOpen", false);
+  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  const selectDataset = (id: number) => {
+    cat.select(id);
+    if (projectPage) setMode("viewer");
+  };
+  async function openFolder(path: string, hostId: number) {
+    const p = await proj.open(path, hostId);
+    if (p) setMode(p.projectFile.exists ? "viewer" : "look");
+  }
+  async function writeFile(text: string): Promise<string | null> {
+    if (!project) return "No project is open.";
+    try {
+      await writeProjectFile(project.id, text);
+      await proj.refresh(project.id);
+      setMode("viewer");
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : "Could not write the project file.";
+    }
+  }
+  const health = project?.scanned ? healthScore(project.health) : null;
+  // The catalog's own lists (every run and dataset ever registered, hosts, one-off registration). With a project open they sit
+  // under one closed group, so the sidebar does not show two "Runs" and two "Datasets" with different counts.
+  const catalog = (
+    <>
+      <Section title="Runs" meta={String(cat.runs.length)} defaultOpen={cat.runs.length > 0}>
+        <RunsList runs={cat.runs} onImport={cat.importRunFolder} onOpen={(r) => openRun(r.id)} />
+      </Section>
+      <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0}>
+        <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
+      </Section>
+      <Section title="Datasets" meta={String(cat.datasets.length)}>
+        <Explorer hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={selectDataset} onRegister={cat.register} />
+      </Section>
+    </>
+  );
   const inspShown = L.inspOpen && !onPage;
   const timelineShown = L.timelineOpen && !singlePlane && !onPage;
   const sideShown = L.sideOpen && mode !== "reports"; // reports have their own page tree
@@ -164,10 +217,18 @@ export function Shell() {
     <div className={s.shell} style={{ gridTemplateColumns: cols, gridTemplateRows: rows }}>
       <header className={s.title}>
         <h1 className={s.name}>Vesqira</h1>
-        <span className={s.crumb}>No project open</span>
+        <span className={s.crumb} title={project?.path}>{project ? `${project.name} · ${location(project, hostName)}` : "No project open"}</span>
+        <span className={s.grow} />
+        {project && project.scanned && project.needsCount > 0 ? (
+          <button type="button" className={s.pillBtn} aria-pressed={mode === "needs"} onClick={() => setMode("needs")}><Pill tone="warn">{`${project.needsCount} to answer`}</Pill></button>
+        ) : null}
+        {health && health.of > 0 ? (
+          <button type="button" className={s.pillBtn} aria-pressed={mode === "health"} onClick={() => setMode("health")}><Pill tone={health.ok === health.of ? "ok" : "warn"}>{`health ${health.ok} of ${health.of}`}</Pill></button>
+        ) : null}
       </header>
 
       <nav className={s.rail} aria-label="Workbench">
+        <IconButton icon={FolderPlus} label="Open project…" size="lg" pressed={mode === "open"} onClick={() => setMode(mode === "open" ? "viewer" : "open")} />
         <IconButton icon={FolderOpen} label="Explorer" size="lg" pressed={L.sideOpen} onClick={() => toggle("sideOpen")} />
         <IconButton icon={LayoutGrid} label="Boards" size="lg" pressed={mode === "boards"} onClick={() => setMode(mode === "boards" ? "viewer" : "boards")} />
         <IconButton icon={Server} label="Jobs" size="lg" pressed={mode === "jobs"} onClick={() => setMode(mode === "jobs" ? "viewer" : "jobs")} />
@@ -176,24 +237,38 @@ export function Shell() {
 
       <aside className={s.side} aria-label="Explorer" hidden={!sideShown}>
         <div className={s.scroll}>
-          <Section title="Project">
-            <FolderTree onOpenFits={async (path) => { const err = await cat.register(path); if (!err) setMode("viewer"); return err; }} />
-          </Section>
-          <Section title="Runs" meta={String(cat.runs.length)} defaultOpen={cat.runs.length > 0}>
-            <RunsList runs={cat.runs} onImport={cat.importRunFolder} onOpen={(r) => openRun(r.id)} />
-          </Section>
-          <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0}>
-            <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
-          </Section>
-          <Section title="Datasets" meta={String(cat.datasets.length)}>
-            <Explorer hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={cat.select} onRegister={cat.register} />
-          </Section>
+          {project ? (
+            <ProjectExplorer
+              project={project}
+              version={proj.version}
+              hostName={hostName}
+              selectedDatasetId={cat.selectedId}
+              onOpenRun={openRun}
+              onSelectDataset={selectDataset}
+              onOverview={() => setMode("look")}
+              onCancel={() => void proj.cancel()}
+            />
+          ) : (
+            <div className={s.noProject}>
+              <p className={s.empty}>No project open.</p>
+              <Button onClick={() => setMode("open")}>Open a project…</Button>
+            </div>
+          )}
+          {project ? <Section key={project.id} title="Everything registered" meta={String(cat.datasets.length)} defaultOpen={false}>{catalog}</Section> : catalog}
         </div>
         <ResizeHandle orientation="vertical" label="Resize explorer" value={L.side} min={LIMITS.side.min} max={LIMITS.side.max} onChange={(v) => set("side", v)} />
       </aside>
 
       <main className={s.canvas} aria-label="Viewer">
-        {mode === "jobs" ? (
+        {mode === "open" || noProjectYet ? (
+          <OpenProject recent={proj.recent} hosts={cat.hosts} currentId={project?.id ?? null} busy={proj.opening} error={proj.error} onOpen={(path, hostId) => void openFolder(path, hostId)} />
+        ) : mode === "look" && project ? (
+          <FirstLook key={project.id} project={project} onWrite={writeFile} onUseWithout={() => setMode("viewer")} onCancel={() => void proj.cancel()} />
+        ) : mode === "needs" && project ? (
+          <NeedsView project={project} version={proj.version} onChanged={() => void proj.refresh(project.id)} />
+        ) : mode === "health" && project ? (
+          <HealthView project={project} />
+        ) : mode === "jobs" ? (
           <JobsView focusJob={focusJob} hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => openRun(r.id)} />
         ) : mode === "run" ? (
           pageRun ? (

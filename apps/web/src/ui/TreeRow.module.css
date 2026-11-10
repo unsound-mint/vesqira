@@ -19,6 +19,16 @@
   color: var(--text);
 }
 
+/* a row with nothing to open: text, not a control */
+.plain {
+  cursor: default;
+}
+
+.plain:hover {
+  background: transparent;
+  color: var(--text-2);
+}
+
 .row[aria-current="true"] {
   background: var(--accent-bg);
   color: var(--text);

@@ -1,0 +1,454 @@
+/* Project screens (ADR 0030). Same page frame as the run page: a scrolling surface with bordered cards. */
+.root {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--sp-3);
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--sp-4);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--w-strong);
+  overflow-wrap: anywhere;
+}
+
+.two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: var(--sp-3);
+  align-items: start;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--w-strong);
+}
+
+.form {
+  display: grid;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-3);
+  border-bottom: var(--bw) solid var(--line);
+}
+
+.note,
+.rowNote {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+}
+
+.rowNote {
+  padding: 0 var(--sp-3);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--text-3);
+}
+
+.warnNote {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--text-sm);
+}
+
+.warnText {
+  color: var(--warn);
+}
+
+.dim {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  overflow-wrap: anywhere;
+}
+
+.err,
+.rowErr {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}
+
+.rowErr {
+  padding: 0 var(--sp-3);
+  font-size: var(--text-xs);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---- recent projects ---- */
+.recent {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recentBtn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name counts" "where where";
+  gap: 0 var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-top: var(--bw) solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent li:first-child .recentBtn {
+  border-top: 0;
+}
+
+.recentBtn:hover:not(:disabled) {
+  background: var(--bg-3);
+}
+
+.recentBtn[aria-current="true"] {
+  background: var(--accent-bg);
+}
+
+.recentName {
+  grid-area: name;
+  font-size: var(--text-sm);
+  font-weight: var(--w-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentWhere {
+  grid-area: where;
+  color: var(--text-3);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentCounts {
+  grid-area: counts;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+/* ---- scan status ---- */
+.scan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* ---- first look ---- */
+.facts {
+  display: grid;
+  margin: 0;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-top: var(--bw) solid var(--line);
+  font-size: var(--text-sm);
+}
+
+.fact:first-child {
+  border-top: 0;
+}
+
+.fact dt {
+  color: var(--text-2);
+}
+
+.fact dd {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.from {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+.areaLabel {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.area {
+  width: 100%;
+  min-height: 240px;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  line-height: var(--lh-sm);
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* ---- explorer ---- */
+.explorer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.projectHead {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border-bottom: var(--bw) solid var(--line);
+}
+
+.projectName {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--w-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectWhere {
+  margin: 0;
+  color: var(--text-3);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap; /* the full path is in the title; the name above says which project */
+}
+
+/* ---- needs ---- */
+.needs {
+  display: grid;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.need {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.needMessage {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--w-medium);
+}
+
+.scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: baseline;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.paths {
+  display: grid;
+  gap: var(--sp-1);
+  max-height: 160px;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  overflow: auto;
+  list-style: none;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: flex-end;
+}
+
+.answerText {
+  display: grid;
+  gap: var(--sp-1);
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+}
+
+.text {
+  min-width: 0;
+  height: var(--ctl-sm);
+  padding: 0 var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+}
+
+.suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.answered {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+.saved {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--ok-bg);
+  color: var(--ok);
+  font-size: var(--text-sm);
+}
+
+.saved:empty {
+  display: none;
+}
+
+/* ---- health ---- */
+.checks {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: start;
+  padding: var(--sp-3);
+  border-top: var(--bw) solid var(--line);
+}
+
+.check:first-child {
+  border-top: 0;
+}
+
+.check > :first-child {
+  justify-self: start;
+}
+
+.check > div {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.checkLabel {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--w-medium);
+}
+
+.todo {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+@media (width <= 480px) {
+  .check {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-2);
+  }
+
+  .fact {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-1);
+  }
+}

@@ -1,6 +1,6 @@
 # ADR 0030: Projects open as folders; discovery by good practice
 
-Status: **accepted** (owner direction and approved mock, 2026-11-05). Backend implemented in the same change; the screens are not built yet.
+Status: **accepted** (owner direction and approved mock, 2026-11-05). Backend implemented in the same change; the screens (open, first look, explorer, needs your input, health) followed and are covered by `e2e/tests/z-projects.spec.ts`.
 
 ## Context
 Importing runs and files one by one does not match how a researcher works: they have a folder on this computer or a cluster, and want Vesqira to work in it the way an editor opens a repository (`docs/product/shape.md` section 3, Stage W of the roadmap). Today a folder becomes readable only through `vesqira add-root`, and every run is imported by hand. Projects in the wild are tidy in different ways (VGT's `validation_output/<name>/run_metadata.toml`, `results/<time>_<sha>/provenance.json`, or no convention at all), and some hold things that must never be opened (a blinding key). The app must find what it can without per-project adapters, never guess what a researcher did not say, and never widen what is readable beyond the folder they opened.

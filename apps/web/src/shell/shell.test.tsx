@@ -23,6 +23,7 @@ const explorer = () => document.querySelector('aside[aria-label="Explorer"]');
 
 describe("Shell", () => {
   beforeEach(() => localStorage.clear());
+  afterEach(() => vi.unstubAllGlobals());
 
   it("exposes the main landmarks", () => {
     render(<Shell />);
@@ -39,9 +40,16 @@ describe("Shell", () => {
     render(<Shell />);
     await user.click(screen.getAllByRole("button", { name: "Toggle explorer" })[0]!);
     await user.click(screen.getAllByRole("button", { name: "Toggle inspector" })[0]!);
+    // the layout state is what is under test; the first-run page below hides the inspector itself
+    expect(screen.getAllByRole("button", { name: "Toggle explorer" })[0]).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByRole("button", { name: "Toggle inspector" })[0]).toHaveAttribute("aria-pressed", "true");
     expect(explorer()).toHaveAttribute("hidden");
-    expect(document.querySelector('aside[aria-label="Inspector"]')).not.toHaveAttribute("hidden");
-    vi.unstubAllGlobals();
+  });
+
+  it("with nothing open the way in is opening a folder, without the viewer's inspector and timeline", async () => {
+    render(<Shell />);
+    expect(await screen.findByRole("heading", { name: "Open a project" })).toBeInTheDocument();
+    expect(document.querySelector('aside[aria-label="Inspector"]')).toHaveAttribute("hidden");
   });
 
   it("collapses and restores the explorer, and remembers it", async () => {

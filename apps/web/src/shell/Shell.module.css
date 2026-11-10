@@ -26,8 +26,37 @@
 }
 
 .crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-3);
   font-size: var(--text-sm);
+}
+
+/* a title-bar pill that opens a page: the pill is the label, the button supplies focus and the hit area */
+.pillBtn {
+  display: inline-flex;
+  align-items: center;
+  height: var(--ctl-sm);
+  padding: 0 var(--sp-1);
+  border: var(--bw) solid transparent;
+  border-radius: var(--r-pill);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pillBtn:hover,
+.pillBtn[aria-pressed="true"] {
+  border-color: var(--line-strong);
+}
+
+.noProject {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-bottom: var(--bw) solid var(--line);
 }
 
 .rail {

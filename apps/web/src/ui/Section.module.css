@@ -51,6 +51,7 @@
 
 .body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr); /* nowrap rows must shrink to the panel, not widen it */
   gap: var(--sp-2);
   padding: var(--sp-1) var(--sp-3) var(--sp-4);
 }
