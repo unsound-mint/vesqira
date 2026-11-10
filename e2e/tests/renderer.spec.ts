@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
 // ADR 0034: the GPU renderer must draw what the CPU renderer draws. "No value" pixels must be identical (they are
@@ -67,3 +69,23 @@ for (const c of cases) {
     expect(r.differing / r.pixels).toBeLessThan(0.001);
   });
 }
+
+// The status bar says so when drawing is on the CPU, and says nothing in the normal GPU case.
+test("the status bar names the CPU fallback and its reason, and is silent when the GPU draws", async ({ page, request }) => {
+  const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.run/data/hi_cube.fits");
+  const reg = await request.post("http://127.0.0.1:8787/api/datasets", { data: { path: file } });
+  expect(reg.ok()).toBe(true);
+  const status = page.getByRole("contentinfo");
+
+  await page.goto(DEV);
+  await page.getByRole("button", { name: /^hi_cube\.fits/ }).click();
+  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
+  await expect(status.getByText(/CPU drawing/)).toHaveCount(0);
+
+  await page.evaluate(() => localStorage.setItem("vesqira.renderer", "cpu"));
+  await page.reload();
+  await page.getByRole("button", { name: /^hi_cube\.fits/ }).click();
+  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
+  await expect(status.getByText("CPU drawing (set by you)")).toBeVisible();
+  await page.evaluate(() => localStorage.removeItem("vesqira.renderer"));
+});
