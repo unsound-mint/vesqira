@@ -18,7 +18,7 @@ Then start **Vesqira** from the applications menu (or run `vesqira`): it starts 
 
 ## Start the app from the source tree
 
-One-time setup (Linux/macOS): Python 3 with astropy (`pip install -r fixtures/requirements.txt`), Go, Node, then `cd apps/web && npm ci`.
+One-time setup (Linux/macOS): `make setup` (checks Go, Node and Python 3, creates `.venv`, installs the web and e2e dependencies and Chromium). New here? See "First 10 minutes" in `CONTRIBUTING.md`.
 
 - **On your own data:** `tools/start.sh --root /path/to/your/fits/folder` (repeat `--root` for more folders), then open <http://127.0.0.1:5173>. Only files inside the given folders are ever read. Your catalog and derived files live in `~/.local/share/vesqira` (`VESQIRA_DATA` changes it).
 - **Try it on generated data first:** `tools/demo.sh`, then follow `docs/demo.md`.
@@ -27,7 +27,7 @@ One-time setup (Linux/macOS): Python 3 with astropy (`pip install -r fixtures/re
 
 ## Principles
 
-Scientific honesty is a product feature: no invented calibration, units or coordinate frames; axial orientations (0° ≡ 180°) get axial statistics; missing is never zero; provenance is labelled verified, declared, inferred or unresolved. See `AGENTS.md`.
+Scientific honesty is a product feature: no invented calibration, units or coordinate frames; axial orientations (0° ≡ 180°) get axial statistics; missing is never zero; provenance is labelled verified, declared, inferred or unresolved. See `AGENTS.md`, and `docs/what-vesqira-will-never-do.md` for each promise in plain words with the test that guards it.
 
 ## Design
 
