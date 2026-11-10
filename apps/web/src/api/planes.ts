@@ -1,57 +1,15 @@
 import { ApiError } from "./catalog";
+import type { components } from "./schema";
 
-export type Provenance = "declared" | "inferred" | "unresolved";
+type Schemas = components["schemas"];
 
-export type SpectralFacts = {
-  fits_axis: number;
-  ctype: string | null;
-  name: string;
-  is_spectral: boolean;
-  resolved: boolean;
-  unit: string | null;
-  unit_status: Provenance;
-  velocity: "declared" | "unresolved";
-  note?: string;
-  specsys?: string | null;
-  restfrq?: number | null;
-};
-
-export type SkyFacts =
-  | { kind: "pixel"; note: string }
-  | { kind: "celestial"; lon_name: string; lat_name: string; projection: string | null; frame: string | null; frame_status: Provenance; unit: "deg" };
-
-export type Flags = { declared: boolean; source?: string; channels: number[]; note?: string };
-
-export type View = {
-  width: number;
-  height: number;
-  channels: number;
-  bunit: string | null;
-  bunit_status: "declared" | "unresolved";
-  fits_axes: { x: number; y: number; channel: number | null };
-  sky: SkyFacts;
-  spectral: SpectralFacts | null;
-  flags: Flags;
-};
-
-export type PlaneStats = { finite_count: number; nonfinite_count: number; min: number | null; max: number | null; p01: number | null; p99: number | null; overflow_count: number };
-
-export type PlaneHeader = {
-  width: number;
-  height: number;
-  channel: number;
-  channels: number;
-  nan_meaning: string;
-  stats: PlaneStats;
-  spectral_value: number | null;
-  spectral_unit: string | null;
-  /** null means the file declares no flags at all, which is not the same as "not flagged". */
-  flagged: boolean | null;
-  source_bitpix: number | null;
-  scaled: boolean;
-  /** Present on a reduced display preview: not for measurement; the full-resolution plane follows. */
-  preview?: { step: number; source_width: number; source_height: number; method: string } | null;
-};
+export type Provenance = Schemas["SpectralFacts"]["unit_status"];
+export type SpectralFacts = Schemas["SpectralFacts"];
+export type SkyFacts = Schemas["View"]["sky"];
+export type Flags = Schemas["Flags"];
+export type View = Schemas["View"];
+export type PlaneStats = Schemas["PlaneStats"];
+export type PlaneHeader = Schemas["PlaneHeader"];
 
 /** Row 0 is FITS y = 1 (the bottom row when north is up). Non-finite values mean "no value", never zero. */
 export type Plane = { head: PlaneHeader; data: Float32Array };
