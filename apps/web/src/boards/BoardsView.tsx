@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { Button, Checkbox, IconButton, Input, Select } from "../ui";
 import { addToBoard as _unused, createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
 import { Threads } from "./Threads";
-import { PresentView } from "./PresentView";
+// loaded when someone presents: it brings the modal primitives (ADR 0033), which the rest of the app does not need
+const PresentView = lazy(() => import("./PresentView").then((m) => ({ default: m.PresentView })));
 import { markSeen, readSeen } from "./seen";
 import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
 import { listDatasets } from "../api/catalog";
@@ -160,7 +161,7 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
           <a className={s.link2} href={`#/print/${board.id}`} target="_blank" rel="noopener noreferrer">Print or save as PDF</a>
         </div>
       ) : null}
-      {presenting && board ? <PresentView board={board} onClose={() => setPresenting(false)} /> : null}
+      {presenting && board ? <Suspense fallback={null}><PresentView board={board} onClose={() => setPresenting(false)} /></Suspense> : null}
       {picked.length === 1 ? <p className={s.note} role="status">Tick a second panel to see what differs between the two.</p> : null}
       {picked.length === 2 ? <BoardCompare a={picked[0]!.figure} b={picked[1]!.figure} {...(onCompare ? { onCompare } : {})} /> : null}
       <ol className={s.items} aria-label="Figures on the board">

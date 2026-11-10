@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PresentView } from "./PresentView";
 import type { Board } from "../api/boards";
@@ -14,7 +15,7 @@ describe("presenting a board", () => {
   it("steps through the figures in board order and leaves with Escape", async () => {
     const onClose = vi.fn();
     render(<PresentView board={board} onClose={onClose} />);
-    expect(screen.getByRole("dialog", { name: "Presenting Meeting" })).toHaveFocus();
+    expect(screen.getByRole("dialog", { name: "Presenting Meeting" }).contains(document.activeElement)).toBe(true); // focus starts inside, so the keys below work at once
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /First/ })).toHaveAttribute("src", "/api/figures/1/preview");
     await userEvent.keyboard("{ArrowRight}");
@@ -35,5 +36,34 @@ describe("presenting a board", () => {
     expect(screen.getByText(/private reminder/)).toBeInTheDocument();
     await userEvent.keyboard("p");
     expect(screen.getByText(/Header values are declared/)).toBeInTheDocument();
+  });
+});
+
+describe("presenting is a real modal", () => {
+  function Harness() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button onClick={() => setOpen(true)}>Present</button>
+        <button>Behind the dialog</button>
+        {open ? <PresentView board={board} onClose={() => setOpen(false)} /> : null}
+      </>
+    );
+  }
+
+  it("keeps Tab inside the dialog, hides the page behind it from assistive technology, and gives focus back on leaving", async () => {
+    render(<Harness />);
+    const opener = screen.getByRole("button", { name: "Present" });
+    await userEvent.click(opener);
+    const dialog = screen.getByRole("dialog", { name: /Presenting Meeting/ });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    for (let i = 0; i < 8; i++) {
+      await userEvent.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    expect(screen.queryByRole("button", { name: "Behind the dialog" })).toBeNull(); // aria-hidden outside the dialog
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(opener).toHaveFocus()); // restored on the next frame
   });
 });
