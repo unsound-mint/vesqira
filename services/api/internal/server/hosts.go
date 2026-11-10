@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
@@ -45,7 +46,7 @@ func (s *Server) planesFor(datasetID int64) PlaneService {
 
 // authorizeRemote is authorize for a file on a host: the stored path must still lie in the host's roots and the remote
 // worker (which enforces the roots on the resolved path) must report the size and modification time registered.
-func (s *Server) authorizeRemote(d catalog.Dataset) (real string, k cacheKey, status int, msg string) {
+func (s *Server) authorizeRemote(ctx context.Context, d catalog.Dataset) (real string, k cacheKey, status int, msg string) {
 	if s.HostDB == nil || s.Remote == nil {
 		return "", k, 503, "remote hosts are not configured"
 	}
@@ -53,7 +54,7 @@ func (s *Server) authorizeRemote(d catalog.Dataset) (real string, k cacheKey, st
 	if err != nil || !h.InRoots(d.Path) {
 		return "", k, 403, "not available"
 	}
-	rep, err := s.Remote.Do(context.Background(), h, map[string]any{"op": "stat", "path": d.Path})
+	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "stat", "path": d.Path})
 	var re *worker.RequestError
 	switch {
 	case errors.As(err, &re):
@@ -118,6 +119,9 @@ func (s *Server) createHost(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 8<<10, &in, true) {
 		return
 	}
+	if strings.TrimSpace(in.Python) == "" {
+		in.Python = "python3" // the app does not ask for it; the host check reports a missing astropy
+	}
 	h, err := s.HostDB.Create(hosts.Host{Name: in.Name, Dest: in.Dest, Python: in.Python, Roots: in.Roots})
 	if err != nil {
 		s.hostErr(w, err)
@@ -125,6 +129,19 @@ func (s *Server) createHost(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Audit.Record("host added", "host", h.ID, h.Name)
 	writeJSON(w, 201, h)
+}
+
+// browseHost lists folders on a host that is not saved yet, so the source folders are chosen, not typed. Owner-only.
+func (s *Server) browseHost(w http.ResponseWriter, r *http.Request) {
+	dir, dirs, err := s.Remote.BrowseDirs(r.Context(), r.URL.Query().Get("dest"), r.URL.Query().Get("path"))
+	switch {
+	case errors.Is(err, hosts.ErrInvalid):
+		fail(w, 400, err.Error())
+	case err != nil:
+		fail(w, 502, "could not list that folder on the host (is the VPN up, and does ssh work for it without a prompt?)")
+	default:
+		writeJSON(w, 200, map[string]any{"path": dir, "entries": dirs})
+	}
 }
 
 func (s *Server) deleteHost(w http.ResponseWriter, r *http.Request) {

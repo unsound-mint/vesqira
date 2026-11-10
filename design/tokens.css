@@ -5,6 +5,8 @@
   --font-ui:'Geist Variable','Geist',system-ui,-apple-system,'Segoe UI',sans-serif; --font-data:'Geist Mono Variable','Geist Mono',ui-monospace,'JetBrains Mono',monospace;
   --text-xs:12px; --text-sm:13px; --text-md:14px; --text-lg:16px; --text-xl:20px;
   --lh-xs:16px; --lh-sm:18px; --lh-md:20px; --lh-lg:24px; --lh-xl:28px;
+  /* reading scale for report documents only (reports mock B, approved 2026-11-10): the one place prose is read at length */
+  --text-doc:16px; --lh-doc:26px; --text-doc-title:28px; --lh-doc-title:36px; --doc-measure:68ch;
   --w-regular:400; --w-medium:500; --w-strong:600;
   /* space: 4px grid */
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px; --sp-10:40px;

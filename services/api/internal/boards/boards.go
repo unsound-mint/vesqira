@@ -165,7 +165,7 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 		return Figure{}, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 { // the same evidence again returns the existing figure
-		return s.figureByRevision(revision)
+		return s.FigureByRevision(revision)
 	}
 	id, _ := res.LastInsertId()
 	return s.Figure(id)
@@ -192,7 +192,8 @@ func (s *Store) Figure(id int64) (Figure, error) {
 	return f, err
 }
 
-func (s *Store) figureByRevision(rev string) (Figure, error) {
+// FigureByRevision finds a figure by its evidence revision (the identity a report embeds).
+func (s *Store) FigureByRevision(rev string) (Figure, error) {
 	f, err := scanFigure(s.db.QueryRow(`SELECT `+figCols+` FROM figures WHERE revision=?`, rev))
 	if errors.Is(err, sql.ErrNoRows) {
 		return f, ErrNotFound

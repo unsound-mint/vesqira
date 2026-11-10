@@ -22,8 +22,11 @@ const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", 
 export type SshAlias = { alias: string; hostName?: string; user?: string };
 /** Names written in your own ssh configuration. Only aliases and the plain host name and user are offered. */
 export const sshConfigHosts = () => call<{ found: boolean; hosts: SshAlias[] }>("/api/hosts/ssh-config").then((r) => (Array.isArray(r.hosts) ? r.hosts : []));
+/** Sub-folders on a host that is not saved yet (empty path = its home), so source folders are chosen, not typed. */
+export const browseHostDirs = (dest: string, path?: string) =>
+  call<{ path: string; entries: { name: string }[] }>(`/api/hosts/browse?dest=${encodeURIComponent(dest)}${path ? `&path=${encodeURIComponent(path)}` : ""}`);
 export const listHosts = () => call<{ hosts: Host[] }>("/api/hosts").then((r) => r.hosts);
-export const createHost = (h: { name: string; dest: string; python: string; roots: string[] }) => post<Host>("/api/hosts", h);
+export const createHost = (h: { name: string; dest: string; python?: string; roots: string[] }) => post<Host>("/api/hosts", h);
 export const checkHost = (id: number) => post<HostCheck>(`/api/hosts/${id}/check`, {});
 export const deleteHost = (id: number) => post<{ deleted: boolean }>(`/api/hosts/${id}/delete`, {});
 export const listRemote = (id: number, path?: string) =>

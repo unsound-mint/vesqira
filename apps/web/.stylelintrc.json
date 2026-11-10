@@ -6,6 +6,7 @@
     "selector-class-pattern": null,
     "no-descending-specificity": null,
     "custom-property-pattern": null,
+    "selector-pseudo-class-no-unknown": [true, { "ignorePseudoClasses": ["global"] }],
     "declaration-empty-line-before": null,
     "scale-unlimited/declaration-strict-value": [
       [

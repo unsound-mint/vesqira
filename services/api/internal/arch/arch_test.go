@@ -3,7 +3,10 @@
 package arch
 
 import (
+	"io/fs"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -15,7 +18,9 @@ const mod = "github.com/unsound-mint/vesqira/services/api/internal/"
 // decision: add it here on purpose, and if the importing package faces a reviewer, re-read the reviewer boundary below.
 var allowed = map[string][]string{
 	"arch": {}, "audit": {}, "backup": {}, "compat": {}, "derived": {}, "regions": {}, "sourceroot": {}, "worker": {}, "schema": {}, "vgtlog": {},
+	"notionimport": {}, "publish": {},
 	"boards":   {"schema"},
+	"reports":  {"publish"},
 	"catalog":  {"schema"},
 	"jobs":     {"schema"},
 	"runs":     {"schema"},
@@ -23,7 +28,7 @@ var allowed = map[string][]string{
 	"projects": {"discover"},
 	"hosts":    {"worker"},
 	"review":   {"boards"},
-	"server":   {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "jobs", "projects", "regions", "runs", "schema", "sourceroot", "vgtlog", "worker"},
+	"server":   {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "jobs", "projects", "publish", "regions", "reports", "runs", "schema", "sourceroot", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a
@@ -75,6 +80,54 @@ func TestTheReviewerFacingCodeReachesNothingBeyondTheSnapshotStore(t *testing.T)
 			t.Errorf("the reviewer package can now reach %s: a reviewer's capability must never lead to the catalog, files, hosts, jobs, workers or runs", d)
 		}
 	}
+}
+
+// The publish server faces the internet and holds only what was published (ADR 0036): it must reach no other
+// internal package at all, so a reader or a stolen publisher key never leads to the catalog, files, hosts or runs.
+func TestThePublishServerReachesNothingButItself(t *testing.T) {
+	for _, d := range internal(list(t, `{{join .Deps "\n"}}`, mod+"publish")) {
+		t.Errorf("the publish server can now reach %s: it must be built from its own store alone", d)
+	}
+}
+
+// Every writable SQLite connection must enable foreign keys (SQLite ignores REFERENCES and ON DELETE CASCADE
+// otherwise), and read-only ones must say so. A new sql.Open that does neither fails here: use catalog.WithPragmas.
+func TestEverySQLiteOpenSetsForeignKeysOrIsReadOnly(t *testing.T) {
+	err := filepath.WalkDir("../..", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		src := string(b)
+		if strings.Contains(src, "sql.Open(") && !strings.Contains(src, "WithPragmas(") &&
+			!strings.Contains(src, "foreign_keys(1)") && !strings.Contains(src, "mode=ro") {
+			t.Errorf("%s opens SQLite without foreign_keys(1): wrap the DSN in catalog.WithPragmas, or open it mode=ro", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A file past this size is two packages' worth of code in one place. internal/server already holds the largest files, so
+// this is a tripwire on growth, not a style rule: when it fires, move that area's logic into its own package (as
+// boards and runs are) and keep only the HTTP handlers in server.
+func TestNoGoFileGrowsWithoutBound(t *testing.T) {
+	const limit = 1300
+	_ = filepath.WalkDir("../..", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		b, _ := os.ReadFile(path)
+		if n := strings.Count(string(b), "\n"); n > limit {
+			t.Errorf("%s has %d lines (limit %d): split it by responsibility", path, n, limit)
+		}
+		return nil
+	})
 }
 
 func contains(xs []string, x string) bool {

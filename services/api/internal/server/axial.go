@@ -137,7 +137,7 @@ func (s *Server) axial(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 409, map[string]any{"error": "the reliability map no longer shares this map's grid", "reasons": why})
 			return
 		}
-		wreal, wk, status, msg := s.authorize(rel)
+		wreal, wk, status, msg := s.authorize(r.Context(), rel)
 		if status != 0 {
 			fail(w, status, "reliability map: "+msg)
 			return

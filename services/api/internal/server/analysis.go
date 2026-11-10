@@ -94,7 +94,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "this file lives on another host: create the analysis as a job there (Analyse on the host), so it runs through Slurm and not on the login node")
 		return
 	}
-	real, _, status, m := s.authorize(d)
+	real, _, status, m := s.authorize(r.Context(), d)
 	if status != 0 {
 		fail(w, status, m)
 		return
@@ -135,7 +135,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "the reference lives on another host; both files must be on the same machine to be aligned")
 			return
 		}
-		rreal, _, status, m := s.authorize(ref)
+		rreal, _, status, m := s.authorize(r.Context(), ref)
 		if status != 0 {
 			fail(w, status, "reference: "+m)
 			return

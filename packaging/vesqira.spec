@@ -17,11 +17,13 @@ Requires:       python3-numpy
 Requires:       python3-reproject
 Requires:       openssh-clients
 Requires:       curl
+Requires:       webkit2gtk4.1
+Requires:       gtk3
 Requires:       xdg-utils
 Requires:       hicolor-icon-theme
 
 %description
-Vesqira runs on your computer and opens in your web browser. Browse H I FITS
+Vesqira runs on your computer and opens in its own window. Browse H I FITS
 spectral cubes and VGT outputs, compare maps, follow Slurm jobs on your own
 cluster over your existing ssh setup, build boards of figures and share a
 read-only review with a supervisor. Files outside the folders you choose are
@@ -33,6 +35,7 @@ never read.
 %install
 install -Dm0755 vesqira %{buildroot}%{_bindir}/vesqira
 install -Dm0755 vesqira-api %{buildroot}%{_libexecdir}/vesqira/vesqira-api
+install -Dm0755 vesqira-desktop %{buildroot}%{_libexecdir}/vesqira/vesqira-desktop
 install -d %{buildroot}%{_datadir}/vesqira/worker %{buildroot}%{_datadir}/vesqira/web
 install -m0644 worker/*.py %{buildroot}%{_datadir}/vesqira/worker/
 cp -a web/. %{buildroot}%{_datadir}/vesqira/web/

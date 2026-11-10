@@ -1,7 +1,7 @@
 # `make setup` creates .venv; recipes use it when present, so python3 below has numpy and astropy without activating anything
 export PATH := $(CURDIR)/.venv/bin:$(PATH)
 
-.PHONY: setup check docs web fixtures api e2e demo bench viewer-bench
+.PHONY: setup check docs web fixtures api e2e demo bench viewer-bench desktop
 # Check tools, create .venv, install web, e2e and Playwright dependencies (tools/setup.sh); safe to repeat
 setup:
 	tools/setup.sh
@@ -19,7 +19,7 @@ web:
 	  cd apps/web && npm run check:api && npm run typecheck && npm run lint:css && npm test && npm run build; \
 	fi
 
-# Needs numpy and astropy: make setup (or pip install -r fixtures/requirements.txt)
+# Needs numpy and astropy: make setup (or pip install -r services/scientific-worker/requirements.txt)
 fixtures:
 	cd fixtures && python3 -m unittest discover -s .
 
@@ -41,6 +41,10 @@ demo:
 # Worker timings on a large sparse cube against tools/bench_budgets.json (page-cache speed, not a disk)
 bench:
 	python3 tools/bench.py --check
+
+# Build and open the desktop window from this tree, no RPM (see docs/desktop-dev.md)
+desktop:
+	tools/dev-desktop.sh run
 
 # Viewer timings in a real Chromium (key to pixels, main-thread blocking, CPU renderer) against tools/viewer_perf_budgets.json
 viewer-bench:

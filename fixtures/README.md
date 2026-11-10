@@ -9,6 +9,6 @@ Synthetic, deterministic astronomy inputs with independently known answers. Not 
 - Oracles: an independent TAN projection and a doubled-angle axial mean, used to check implementations later.
 
 ```sh
-pip install -r fixtures/requirements.txt
+pip install -r services/scientific-worker/requirements.txt
 make fixtures
 ```

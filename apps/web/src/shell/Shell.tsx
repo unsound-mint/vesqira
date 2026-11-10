@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FolderOpen, LayoutGrid, Server, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { FileText, FolderOpen, LayoutGrid, Server, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
+import { ReportsView } from "../reports/ReportsView";
 import { JobsView, jobFor } from "../jobs/JobsView";
 import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
@@ -10,6 +11,7 @@ import { NatureControl } from "../catalog/NatureControl";
 import { StorageControl } from "../catalog/StorageControl";
 import { UsedIn } from "../catalog/UsedIn";
 import { HostsPanel } from "../catalog/HostsPanel";
+import { FolderTree } from "../files/FolderTree";
 import { RunPanel, RunsUsingFile, runFor } from "../catalog/RunPanel";
 import { RunPage } from "../runs/RunPage";
 import { RerunDraft } from "../runs/RerunDraft";
@@ -129,9 +131,9 @@ export function Shell() {
     if (!linked) viewerA.setMirror(null), viewerB.setMirror(null);
   }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
-  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "run" | "rerun">("viewer");
+  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "run" | "rerun">("viewer");
   const [runId, setRunId] = useState<number | null>(null);
-  const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs">("viewer");
+  const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs" | "reports">("viewer");
   const openRun = (id: number) => {
     if (mode !== "run" && mode !== "rerun") setRunFrom(mode);
     setRunId(id);
@@ -151,10 +153,11 @@ export function Shell() {
   const pageRun = mode === "run" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
   // The run page is a full page of its own: the map inspector and channel timeline describe the viewer, not the run.
-  const onPage = mode === "run" || mode === "rerun";
+  const onPage = mode === "run" || mode === "rerun" || mode === "reports";
   const inspShown = L.inspOpen && !onPage;
   const timelineShown = L.timelineOpen && !singlePlane && !onPage;
-  const cols = [`var(--w-rail)`, L.sideOpen ? `${L.side}px` : "0px", "minmax(0,1fr)", inspShown ? `${L.insp}px` : "0px"].join(" ");
+  const sideShown = L.sideOpen && mode !== "reports"; // reports have their own page tree
+  const cols = [`var(--w-rail)`, sideShown ? `${L.side}px` : "0px", "minmax(0,1fr)", inspShown ? `${L.insp}px` : "0px"].join(" ");
   const rows = ["var(--h-title)", "minmax(0,1fr)", timelineShown ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
 
   return (
@@ -168,10 +171,14 @@ export function Shell() {
         <IconButton icon={FolderOpen} label="Explorer" size="lg" pressed={L.sideOpen} onClick={() => toggle("sideOpen")} />
         <IconButton icon={LayoutGrid} label="Boards" size="lg" pressed={mode === "boards"} onClick={() => setMode(mode === "boards" ? "viewer" : "boards")} />
         <IconButton icon={Server} label="Jobs" size="lg" pressed={mode === "jobs"} onClick={() => setMode(mode === "jobs" ? "viewer" : "jobs")} />
+        <IconButton icon={FileText} label="Reports" size="lg" pressed={mode === "reports"} onClick={() => setMode(mode === "reports" ? "viewer" : "reports")} />
       </nav>
 
-      <aside className={s.side} aria-label="Explorer" hidden={!L.sideOpen}>
+      <aside className={s.side} aria-label="Explorer" hidden={!sideShown}>
         <div className={s.scroll}>
+          <Section title="Project">
+            <FolderTree onOpenFits={async (path) => { const err = await cat.register(path); if (!err) setMode("viewer"); return err; }} />
+          </Section>
           <Section title="Runs" meta={String(cat.runs.length)} defaultOpen={cat.runs.length > 0}>
             <RunsList runs={cat.runs} onImport={cat.importRunFolder} onOpen={(r) => openRun(r.id)} />
           </Section>
@@ -206,6 +213,8 @@ export function Shell() {
               <p className={s.empty}>It may have been removed. <button type="button" onClick={() => setMode(runFrom)}>Back</button></p>
             </div>
           )
+        ) : mode === "reports" ? (
+          <ReportsView onOpenRun={openRun} />
         ) : mode === "boards" ? (
           <BoardsView onCompare={compareInViewer} />
         ) : cat.selected ? (

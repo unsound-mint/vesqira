@@ -23,6 +23,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
+	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
@@ -32,7 +33,7 @@ type HeaderReader interface {
 }
 
 type Server struct {
-	Roots      sourceroot.Roots
+	Roots      sourceroot.Roots // folders that may be read; grows when the owner opens a folder (use roots())
 	Store      *catalog.Store
 	Worker     HeaderReader
 	Planes     PlaneService // persistent plane worker; nil answers 503
@@ -47,9 +48,14 @@ type Server struct {
 	Analysis   *AnalysisConfig
 	Audit      *audit.Store // nil records nothing
 	Regions    *regions.Store
-	SSHConfig  string     // the user's ssh_config, only read to offer host aliases; empty offers none
-	Hints      hintSource // overrides the catalog for the runs list's input hints (tests count calls)
-	WebDist    string     // built web app served at / on this (loopback) listener; empty serves the API only
+	SSHConfig  string         // the user's ssh_config, only read to offer host aliases; empty offers none
+	Hints      hintSource     // overrides the catalog for the runs list's input hints (tests count calls)
+	WebDist    string         // built web app served at / on this (loopback) listener; empty serves the API only
+	Reports    *reports.Store // nil disables reports
+	// PublishKeyFile holds the publisher key for the publish server (0600, beside the catalog); never in the catalog.
+	PublishKeyFile string
+
+	syncState
 
 	Projects *projects.Store // opened project folders; nil disables the project routes
 
@@ -71,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/capabilities", s.capabilities)
 	mux.HandleFunc("GET /api/roots", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"roots": s.roots()}) })
+	mux.HandleFunc("GET /api/files/tree", s.fileTree)
 	mux.HandleFunc("GET /api/datasets", s.list)
 	mux.HandleFunc("GET /api/datasets/availability", s.availability)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
@@ -80,6 +87,7 @@ func (s *Server) Handler() http.Handler {
 	if s.HostDB != nil && s.Remote != nil {
 		mux.HandleFunc("GET /api/hosts", s.listHosts)
 		mux.HandleFunc("GET /api/hosts/ssh-config", s.sshConfigHosts)
+		mux.HandleFunc("GET /api/hosts/browse", s.browseHost)
 		mux.HandleFunc("POST /api/hosts", s.createHost)
 		mux.HandleFunc("POST /api/hosts/{id}/check", s.checkHost)
 		mux.HandleFunc("POST /api/hosts/{id}/delete", s.deleteHost)
@@ -171,6 +179,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/datasets/{id}/copy", s.copyDataset)
 	mux.HandleFunc("POST /api/datasets/{id}/nature", s.setNature)
 	mux.HandleFunc("POST /api/datasets/{id}/interpretation", s.interpret)
+	if s.Reports != nil && s.Boards != nil {
+		s.reportRoutes(mux)
+	}
 	if s.WebDist != "" {
 		mux.Handle("GET /", staticApp(s.WebDist))
 	}
@@ -271,7 +282,7 @@ func (s *Server) availability(w http.ResponseWriter, r *http.Request) {
 		if d.HostID != 0 {
 			continue
 		}
-		switch _, _, status, _ := s.authorize(d); status {
+		switch _, _, status, _ := s.authorize(r.Context(), d); status {
 		case 0:
 		case 404:
 			out[strconv.FormatInt(d.ID, 10)] = "missing"

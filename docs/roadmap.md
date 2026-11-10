@@ -44,6 +44,20 @@ See `docs/product/shape.md` section 3. Projects mock approved by the owner on 20
 - [ ] Interactive filters: the run and dataset filter boxes complete keys, operators and values that occur, and show conditions as chips.
 - [x] `/api/runs` input hints computed from one catalog read instead of one per run (148 runs, 1 350 files is the target scale); a bench case at that scale. Done: `catalog.HintIndex`, and a server test at 150 runs and 1 500 datasets that asserts one read.
 
+## Stage R — Reports for the supervisor (owner direction, 2026-11-10)
+
+Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's instance, drafted by the agent over MCP, published by the owner to an always-on publish server where named reader links read and comment. Reports mock: direction B (linked pages, with a graph) approved by the owner on 2026-11-10, with this brief: the supervisor rarely edits, presentation is what matters, so the cleanest possible hierarchy (one title, a quiet meta line, one primary action; threads in a side panel that never covers the text).
+
+- [x] Reports in the catalog: Markdown body, edit history with author, base-revision conflicts, figure, run and report references, backlinks (a rename rewrites links), attachments (PNG, JPEG, GIF).
+- [x] `vesqira mcp` (stdio) and `vesqira report` CLI for the agent: read and draft, no publish, send or resolve (a test pins the tool list).
+- [x] Owner UI for reports and the reader page (mock B): page tree, a page drawn as readers see it and edited part by part in place, Markdown source view, insert figure or run from what exists, backlinks, comments panel with agent-drafted replies to send, Share (publish server, named reader links), publish preview, block-by-block review of the agent's changes; reader page with revisions and comments beside the text. Not yet: comments on a place in a figure, a reader-side graph, a second thread on a part that has one.
+- [x] `vesqira publish-server`: publisher key, spaces, named reader links, published revisions, block-anchored comments, sync with the owner's instance (pull every minute), preflight, owner replies, agent-drafted replies sent by the owner. Reader page: with the UI.
+- [x] `vesqira import notion` for a Notion Markdown & CSV export (zip or unpacked folder), with a dry run. PDFs and images over 4096 px are not imported.
+- [x] Deployment docs for the owner's server (`docs/setup/publish-server.md`: systemd unit, Caddy with TLS, backups).
+- [x] Graph view of report, run and figure links, with a keyboard list alternative; unlinked reports hidden by default.
+- [x] Pages and presentation (ADR 0036, "Pages, front matter, changes and deletions"): page tree kept from the Notion import, front matter date and summary under the title, reader list newest first, what changed since the revision last read, comments on selected words, withdraw a report, delete a comment.
+- [ ] Follow-ups from the security review (ADR 0036, "Hardening"): strip image metadata when publishing, fixed shape for derived `software`, bounded Markdown scans, comment-cursor guard.
+
 ## Stage 0 — Install and launch
 
 - [x] Server serves the web app; Fedora RPM with launcher, desktop entry, icon and metadata (ADR 0021).

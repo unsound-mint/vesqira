@@ -61,3 +61,35 @@ func (r Roots) Resolve(p string) (string, error) {
 	}
 	return "", ErrNotAllowed
 }
+
+// ResolveDir is Resolve for a directory: the canonical path of a directory that lies inside (or is) one of the roots.
+func (r Roots) ResolveDir(p string) (string, error) {
+	if p == "" || strings.ContainsRune(p, 0) || !filepath.IsAbs(p) {
+		return "", ErrNotAllowed
+	}
+	real, err := filepath.EvalSymlinks(filepath.Clean(p))
+	if err != nil {
+		return "", ErrNotAllowed
+	}
+	if !r.contains(real) {
+		return "", ErrNotAllowed
+	}
+	if fi, err := os.Stat(real); err != nil || !fi.IsDir() {
+		return "", ErrNotAllowed
+	}
+	return real, nil
+}
+
+// contains reports whether a canonical path is a root or lies below one.
+func (r Roots) contains(real string) bool {
+	for _, root := range r {
+		rel, err := filepath.Rel(root, real)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+			return true
+		}
+	}
+	return false
+}
+
+// ResolveDirOK reports whether a canonical directory is already a root or lies below one.
+func (r Roots) ResolveDirOK(real string) bool { return r.contains(real) }

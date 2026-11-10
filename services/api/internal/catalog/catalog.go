@@ -45,10 +45,30 @@ type Interpretation struct {
 
 type Store struct{ db *sql.DB }
 
+// WithPragmas adds the connection settings every Vesqira database needs. SQLite leaves foreign keys off unless asked
+// per connection, so without them the ON DELETE CASCADE and REFERENCES clauses in the schema silently do nothing and
+// orphan rows accumulate. WAL lets the backup and export readers run beside the writer; busy_timeout turns a short
+// lock into a wait instead of an immediate "database is locked". Use it for every sql.Open of a writable database.
+func WithPragmas(dsn string) string {
+	const p = "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	memory := dsn == ":memory:" || strings.Contains(dsn, "mode=memory") || strings.HasPrefix(dsn, "file::memory:")
+	extra := p
+	if !memory { // an in-memory database has no journal to switch
+		extra += "&_pragma=journal_mode(WAL)"
+	}
+	if !strings.HasPrefix(dsn, "file:") {
+		dsn = "file:" + dsn
+	}
+	if strings.Contains(dsn, "?") {
+		return dsn + "&" + extra
+	}
+	return dsn + "?" + extra
+}
+
 var ErrNotFound = errors.New("dataset not found")
 
 func Open(dsn string) (*Store, error) {
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", WithPragmas(dsn))
 	if err != nil {
 		return nil, err
 	}

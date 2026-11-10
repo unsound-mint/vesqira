@@ -41,7 +41,7 @@ cat > "$run/fake-ssh" <<FAKE
 while [ \$# -gt 0 ]; do case "\$1" in -o) shift 2;; -T) shift;; *) break;; esac; done
 shift
 cmd=\$(printf '%s' "\$*" | sed -e 's#\$HOME#$run/remote-home#g' -e 's#bash -lc#bash -c#')
-PATH=$bin:\$PATH exec sh -c "\$cmd"
+PATH=$bin:$(dirname "$(cat "$run/python")"):\$PATH exec sh -c "\$cmd"
 FAKE
 chmod +x "$run/fake-ssh"
 cd "$root"

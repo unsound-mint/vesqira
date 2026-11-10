@@ -162,6 +162,22 @@ SOFTWARE.
 
 `github.com/BurntSushi/toml` is used to read run metadata. MIT License, Copyright (c) 2013 TOML authors.
 
+## Material Icon Theme (file and folder icons)
+
+`material-icon-theme` supplies the file-type icons in the project file tree. MIT License, Copyright (c) Material Extensions. Its full license text ships in the package (`node_modules/material-icon-theme/LICENSE`).
+
+## markdown-it (report text)
+
+`markdown-it` renders report Markdown in the web app (raw HTML disabled). MIT License, Copyright (c) 2014 Vitaly Puzrin, Alex Kocharin. Full text: `node_modules/markdown-it/LICENSE`.
+
+## KaTeX (equations in reports, including its fonts)
+
+`katex` typesets `$…$` and `$$…$$` in reports; its fonts are bundled with the web app. MIT License, Copyright (c) 2013-2020 Khan Academy and other contributors. Full text: `node_modules/katex/LICENSE`.
+
+## Model Context Protocol Go SDK (Go API)
+
+`github.com/modelcontextprotocol/go-sdk` implements `vesqira mcp`. Licensed under the MIT License and the Apache License 2.0 (the project is moving to Apache-2.0; the LICENSE file in the module states which parts are under which). Copyright (c) 2025 Go MCP SDK Authors.
+
 ## React Aria Components (Apache License 2.0)
 
 `react-aria-components` and the `@react-aria/*`, `@react-stately/*`, `@react-types/*` and `@internationalized/*` packages it depends on provide the behaviour of modal dialogs (focus containment and restore, hiding the page behind, Escape) and are delivered to the browser in the on-demand chunk loaded when a board is presented (ADR 0033). Copyright 2020 Adobe. Licensed under the Apache License, Version 2.0, reproduced from the package:
@@ -369,7 +385,6 @@ SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 ```
-||||||| ef1a3d0
 
 ## kin-openapi (Go API tests)
 

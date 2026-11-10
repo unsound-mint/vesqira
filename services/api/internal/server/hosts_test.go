@@ -220,3 +220,47 @@ func TestRemoteHostEndToEndWithFakeSSH(t *testing.T) {
 		t.Errorf("local files must keep working while a host is down: %d", r.StatusCode)
 	}
 }
+
+// Choosing source folders on a host that is not saved yet: names of folders only, from the home directory, no credentials.
+func TestBrowseHostFoldersBeforeTheHostIsSaved(t *testing.T) {
+	base := t.TempDir()
+	home := filepath.Join(base, "remote-home")
+	for _, d := range []string{"cubes/run1", ".ssh", "docs", ".cache"} {
+		os.MkdirAll(filepath.Join(home, d), 0o755)
+	}
+	os.WriteFile(filepath.Join(home, "notes.txt"), []byte("x"), 0o644)
+	mgr := hosts.NewManager(fakeSSH(t, home), map[string][]byte{})
+	mgr.ControlDir = t.TempDir()
+	srv := &Server{Remote: mgr, HostDB: &hosts.Store{}}
+	get := func(q string) (int, map[string]any) {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/api/hosts/browse?"+q, nil)
+		r.Host = "127.0.0.1:8787"
+		srv.Handler().ServeHTTP(w, r)
+		var out map[string]any
+		json.Unmarshal(w.Body.Bytes(), &out)
+		return w.Code, out
+	}
+	code, out := get("dest=cluster")
+	if code != 200 {
+		t.Fatalf("home: %d %v", code, out)
+	}
+	var names []string
+	for _, e := range out["entries"].([]any) {
+		names = append(names, e.(map[string]any)["name"].(string))
+	}
+	if got := strings.Join(names, ","); got != ".cache,cubes,docs" { // no .ssh, no files
+		t.Fatalf("entries = %s", got)
+	}
+	if code, out = get("dest=cluster&path=" + filepath.Join(home, "cubes")); code != 200 || out["entries"].([]any)[0].(map[string]any)["name"] != "run1" {
+		t.Fatalf("sub folder: %d %v", code, out)
+	}
+	if code, out = get("dest=cluster&path=" + filepath.Join(home, "docs")); code != 200 || out["entries"] == nil { // an empty folder is [], never null
+		t.Fatalf("empty folder: %d %v", code, out)
+	}
+	for _, q := range []string{"dest=-oProxyCommand=x", "dest=a;b", "dest=cluster&path=relative", "dest=cluster&path=/a/../b"} {
+		if code, _ := get(q); code != 400 {
+			t.Errorf("%s: %d, want 400", q, code)
+		}
+	}
+}

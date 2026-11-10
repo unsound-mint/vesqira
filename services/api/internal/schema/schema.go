@@ -13,7 +13,9 @@ import (
 // Version is the schema this program writes. Version 1 is the catalog as shipped through v0.2; the tables are still
 // created idempotently by the packages that own them, so a migration is only needed when an existing table changes.
 // Version 2: a board item may follow a job instead of holding a figure.
-const Version = 2
+// Version 3: reports sit in a tree of pages (reports.parent_id); a reader's comment may quote a phrase
+// (publish_comments.quote).
+const Version = 3
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -24,6 +26,28 @@ type Migration struct {
 
 var migrations = []Migration{
 	{To: 2, Name: "board items may follow a job", Up: boardItemsMayFollowAJob},
+	{To: 3, Name: "report pages and quoted comments", Up: reportPagesAndQuotes},
+}
+
+// reportPagesAndQuotes adds two columns with defaults that keep every existing row meaning what it meant: a report at
+// the top level, a comment that quotes nothing. Tables a catalog never created need nothing.
+func reportPagesAndQuotes(tx *sql.Tx) error {
+	for _, c := range []struct{ table, column, def string }{
+		{"reports", "parent_id", "INTEGER NOT NULL DEFAULT 0"},
+		{"publish_comments", "quote", "TEXT NOT NULL DEFAULT ''"},
+	} {
+		var n int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, c.table).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			continue
+		}
+		if err := AddColumn(tx, c.table, c.column, c.def); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // boardItemsMayFollowAJob rebuilds board_items so figure_id is optional and job_id exists; exactly one of them is set.

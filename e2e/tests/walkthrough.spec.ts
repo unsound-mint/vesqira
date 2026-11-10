@@ -17,6 +17,20 @@ const REVIEW = "http://127.0.0.1:8788";
 const inspector = (page: Page) => page.getByRole("complementary", { name: "Inspector" });
 const bigChannel = (page: Page) => page.getByRole("region", { name: "Channels" }).locator("strong").first();
 
+/** Picks a source folder on the host the way a person does: from the host's home, going up and into folders. */
+async function chooseHostFolder(page: Page, target: string) {
+  const home = path.resolve(here, "../.run/remote-home");
+  await page.getByRole("button", { name: /Choose folder|Add another folder/ }).click();
+  const list = page.getByRole("list", { name: /^Folders on / });
+  await expect(list).toBeVisible();
+  const up = path.relative(home, target).split(path.sep);
+  for (const step of up) {
+    await list.getByRole("button", { name: step === ".." ? ".." : new RegExp(`^${step}$`) }).click();
+    await expect(page.getByRole("button", { name: "Use this folder" })).toBeEnabled();
+  }
+  await page.getByRole("button", { name: "Use this folder" }).click();
+}
+
 async function register(page: Page, file: string) {
   await page.getByLabel("Register a FITS file").fill(path.join(data, file));
   await page.getByRole("button", { name: "Register", exact: true }).click();
@@ -392,8 +406,7 @@ test("a cube on another machine is read in place and agrees with the same cube h
   await expect(page.getByText(/Keys and passwords are never read by Vesqira/)).toBeVisible();
   await page.getByLabel("Host name").fill("Second laptop");
   await page.getByLabel("SSH destination").fill("laptop2");
-  await page.getByLabel("Python on the host").fill(readFileSync(path.resolve(here, "../.run/python"), "utf8").trim());
-  await page.getByLabel(/Source folders/).fill(remoteRoot);
+  await chooseHostFolder(page, remoteRoot);
   await page.getByRole("button", { name: "Add host" }).click();
   const host = page.getByRole("region", { name: "Host Second laptop" });
   await host.getByRole("button", { name: "Check connection" }).click();
@@ -435,8 +448,7 @@ test("a Slurm job: render, read, submit exactly that text, follow it, import its
   await page.getByRole("button", { name: /^Hosts/ }).click();
   await page.getByLabel("Host name").fill("Cluster");
   await page.getByLabel("SSH destination").fill("login1");
-  await page.getByLabel("Python on the host").fill(readFileSync(path.resolve(here, "../.run/python"), "utf8").trim());
-  await page.getByLabel(/Source folders/).fill(remoteRoot);
+  await chooseHostFolder(page, remoteRoot);
   await page.getByRole("button", { name: "Add host" }).click();
   await expect(page.getByRole("region", { name: "Host Cluster" })).toBeVisible();
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs Vesqira on generated synthetic fixtures so you can follow docs/demo.md. Nothing here is real data.
-# Needs: python3 with numpy and astropy (pip install -r fixtures/requirements.txt), Go, Node (cd apps/web && npm ci).
+# Needs: python3 with numpy and astropy (pip install -r services/scientific-worker/requirements.txt), Go, Node (cd apps/web && npm ci).
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 demo="$root/.demo"

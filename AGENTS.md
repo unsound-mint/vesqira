@@ -10,7 +10,7 @@ Build **Vesqira**, an open-source research workspace for scientific data: browse
 
 Scope is astronomy only. Do not add other disciplines, services, languages or databases without an ADR in `docs/adr/`. If a referenced command or document does not exist yet, say so; do not invent verification results.
 
-**Design gate:** the workbench direction is approved (ADR 0005); new screens still need human approval before implementation. Verify rendered UI with screenshots, keyboard testing and scientific fixtures; a screenshot or passing axe scan is not a substitute for either.
+**Design gate:** the workbench direction is approved (ADR 0005); new screens still need human approval before implementation. Verify rendered UI with screenshots, keyboard testing and scientific fixtures; a screenshot or passing axe scan is not a substitute for either. To look at the real desktop window (not only a browser), use `tools/dev-desktop.sh up` and `shot`; before touching the shell, read `docs/desktop-dev.md`.
 
 ## Governing priorities
 

@@ -1,0 +1,186 @@
+[
+  {
+    "body": "# Question\nWhy is AM lower?\nSecond line.\n\n- a\n- b\n\n```julia\nx = 1\n\ny = 2\n```\n$$\nAM = \\langle \\cos 2\\theta \\rangle\n$$\n![[figure:abababababababababababababababababababababababababababababababab]]\n[[run:42]]\nInline [[run:7]] and ![[figure:abababababababababababababababababababababababababababababababab]] stay text.",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "# Question"
+      },
+      {
+        "kind": "text",
+        "text": "Why is AM lower?\nSecond line."
+      },
+      {
+        "kind": "text",
+        "text": "- a\n- b"
+      },
+      {
+        "kind": "code",
+        "text": "```julia\nx = 1\n\ny = 2\n```"
+      },
+      {
+        "kind": "text",
+        "text": "$$\nAM = \\langle \\cos 2\\theta \\rangle\n$$"
+      },
+      {
+        "kind": "figure",
+        "figure": "abababababababababababababababababababababababababababababababab"
+      },
+      {
+        "kind": "run",
+        "run": 42
+      },
+      {
+        "kind": "text",
+        "text": "Inline [[run:7]] and ![[figure:abababababababababababababababababababababababababababababababab]] stay text."
+      }
+    ]
+  },
+  {
+    "body": "",
+    "blocks": []
+  },
+  {
+    "body": "\n\n  \n",
+    "blocks": []
+  },
+  {
+    "body": "Para one\r\nstill one\r\n\r\nPara two",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "Para one\nstill one"
+      },
+      {
+        "kind": "text",
+        "text": "Para two"
+      }
+    ]
+  },
+  {
+    "body": "## Heading\nText right after\n#not a heading\n####### seven hashes",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "## Heading"
+      },
+      {
+        "kind": "text",
+        "text": "Text right after\n#not a heading\n####### seven hashes"
+      }
+    ]
+  },
+  {
+    "body": "~~~\ncode with ``` inside\n~~~\nafter",
+    "blocks": [
+      {
+        "kind": "code",
+        "text": "~~~\ncode with ``` inside\n~~~"
+      },
+      {
+        "kind": "text",
+        "text": "after"
+      }
+    ]
+  },
+  {
+    "body": "$$ inline display $$\nsame paragraph",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "$$ inline display $$\nsame paragraph"
+      }
+    ]
+  },
+  {
+    "body": "| a | b |\n|---|---|\n| 1 | 2 |\n\n> quote\n> more",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "| a | b |\n|---|---|\n| 1 | 2 |"
+      },
+      {
+        "kind": "text",
+        "text": "> quote\n> more"
+      }
+    ]
+  },
+  {
+    "body": "```\nunclosed fence\n\nstill code",
+    "blocks": [
+      {
+        "kind": "code",
+        "text": "```\nunclosed fence\n\nstill code"
+      }
+    ]
+  },
+  {
+    "body": "text\n  ![[figure:abababababababababababababababababababababababababababababababab]]  \nmore text",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "text"
+      },
+      {
+        "kind": "figure",
+        "figure": "abababababababababababababababababababababababababababababababab"
+      },
+      {
+        "kind": "text",
+        "text": "more text"
+      }
+    ]
+  },
+  {
+    "note": "front matter: date and summary are read, other keys kept, none are blocks",
+    "body": "---\ndate: 2026-11-10\nsummary: Cold fractions are lower limits.\nstatus: Draft\n---\n\n# Results\nText.",
+    "date": "2026-11-10",
+    "summary": "Cold fractions are lower limits.",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "# Results"
+      },
+      {
+        "kind": "text",
+        "text": "Text."
+      }
+    ]
+  },
+  {
+    "note": "front matter: an invalid date is no date; an empty block is allowed",
+    "body": "---\ndate: November 10\n---\nText.",
+    "date": "",
+    "summary": "",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "Text."
+      }
+    ]
+  },
+  {
+    "note": "front: not front matter when a line is not key: value, so --- stays a rule",
+    "body": "---\nnot a key line\n---\nText.",
+    "date": "",
+    "summary": "",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "---\nnot a key line\n---\nText."
+      }
+    ]
+  },
+  {
+    "note": "front: unclosed fence is not front matter",
+    "body": "---\ndate: 2026-11-10\nText.",
+    "date": "",
+    "summary": "",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "---\ndate: 2026-11-10\nText."
+      }
+    ]
+  }
+]

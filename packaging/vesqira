@@ -1,11 +1,16 @@
 #!/usr/bin/bash
 # Launcher for the installed Vesqira: starts the local server if it is not running and opens it in the browser.
-#   vesqira              open Vesqira (starting it when needed)
+#   vesqira              open Vesqira in its own window (in the browser when VESQIRA_BROWSER=1 or there is no window program)
+#   vesqira start        start the local server without opening anything
 #   vesqira add-root DIR let Vesqira read FITS files under DIR (restarts it if running)
 #   vesqira roots        list the folders Vesqira may read
 #   vesqira export [FILE]   save the catalog, figures and derived files to one archive (default: ~/Vesqira-backup-DATE.tar.gz)
 #   vesqira restore FILE    restore an archive into an empty Vesqira (stop it first; refuses to overwrite a catalog)
 #   vesqira status|stop|logs
+#   vesqira mcp             MCP server on stdio for an agent (drafts reports; cannot publish), talks to the running app
+#   vesqira report ...      read and write report drafts from scripts (vesqira report for usage)
+#   vesqira import notion [--dry-run] EXPORT.zip|FOLDER   Notion pages become draft reports
+#   vesqira publish-server ...   the always-on publish server (run on your server, see docs/setup/publish-server.md)
 # The server listens on 127.0.0.1 only and reads files only under the folders listed in
 # ${XDG_CONFIG_HOME:-~/.config}/vesqira/roots (one path per line). The first run creates ~/Vesqira.
 set -euo pipefail
@@ -59,8 +64,16 @@ stop() {
   else say "Not running."; fi
 }
 
+desktop="$libexec/vesqira-desktop"
+[ -x "$desktop" ] || desktop="${VESQIRA_DESKTOP:-}"
 case "${1:-open}" in
-  open|"") start
+  start) start ;;
+  open|"")
+    # The native window starts the server itself and stops it when it closes; without a display or the window, use the browser.
+    if [ -n "$desktop" ] && [ -x "$desktop" ] && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && [ -z "${VESQIRA_BROWSER:-}" ]; then
+      VESQIRA_LAUNCHER="$0" exec "$desktop"
+    fi
+    start
     if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then xdg-open "$url" >/dev/null 2>&1 || say "Open $url in your browser."; else say "Open $url in your browser."; fi ;;
   add-root)
     [ -n "${2:-}" ] && [ -d "$2" ] || { say "usage: vesqira add-root DIR (an existing folder)"; exit 2; }
@@ -82,6 +95,11 @@ case "${1:-open}" in
   status) if alive; then say "Running at $url (pid $(cat "$pidfile"))"; else say "Not running"; fi ;;
   stop) stop ;;
   logs) exec tail -n 100 -f "$state/api.log" ;;
-  -h|--help|help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' ;;
+  mcp) shift; exec "$libexec/vesqira-api" mcp --api "${url%/}" "$@" ;;
+  report) shift; exec "$libexec/vesqira-api" report "$@" --api "${url%/}" ;;
+  import) [ "${2:-}" = notion ] || { say "usage: vesqira import notion [--dry-run] EXPORT.zip|FOLDER"; exit 2; }
+    shift 2; exec "$libexec/vesqira-api" import notion --api "${url%/}" "$@" ;;
+  publish-server) shift; exec "$libexec/vesqira-api" publish-server "$@" ;;
+  -h|--help|help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) say "unknown command: $1 (try: vesqira --help)"; exit 2 ;;
 esac

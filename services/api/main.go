@@ -2,14 +2,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
@@ -20,6 +23,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
+	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/server"
@@ -33,7 +37,7 @@ func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
 func main() {
-	if archiveCommand(os.Args[1:]) {
+	if archiveCommand(os.Args[1:]) || publishServerCommand(os.Args[1:]) || agentCommand(os.Args[1:]) {
 		return
 	}
 	var roots multi
@@ -129,23 +133,33 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	reportStore, err := reports.Open(store.DB(), dir)
+	if err != nil {
+		log.Fatal(err)
+	}
 	projectStore, err := projects.Open(store.DB())
 	if err != nil {
 		log.Fatal(err)
 	}
 	remote := hosts.NewManager(*sshBin, files)
 	defer remote.Close()
+	var servers []*http.Server
 	if *reviewAddr != "" {
 		rv := &http.Server{Addr: *reviewAddr, Handler: (&review.Handler{Store: bs, WebDist: *webDist, ClientIPHeader: *clientIP}).Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 		if h, _, err := net.SplitHostPort(*reviewAddr); err != nil || (h != "127.0.0.1" && h != "localhost" && h != "::1") {
 			log.Printf("review surface on %s is not loopback: it serves published previews to anyone holding a review link, so put TLS in front", *reviewAddr)
 		}
-		go func() { log.Fatal(rv.ListenAndServe()) }()
+		servers = append(servers, rv)
+		go func() {
+			if err := rv.ListenAndServe(); err != http.ErrServerClosed {
+				log.Fatal(err)
+			}
+		}()
 		log.Printf("review surface on http://%s (published previews only)", *reviewAddr)
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist,
+	srv := &server.Server{Roots: rs, Store: store, Worker: worker.Runner{Command: []string{*python, "-P", *script}, Timeout: 20 * time.Second}, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
@@ -156,6 +170,33 @@ func main() {
 		}
 		srv.SSHConfig = p
 	}
+	go func() { // comments from the publish server, while the app runs (ADR 0036)
+		for {
+			_ = srv.SyncComments()
+			time.Sleep(time.Minute)
+		}
+	}()
 	log.Printf("listening on http://%s, roots: %v", *addr, []string(rs))
-	log.Fatal((&http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second}).ListenAndServe())
+	// No WriteTimeout: a cube analysis answers one request for up to its own 30-minute budget. Reading a request is
+	// bounded, and so is an idle connection.
+	owner := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 16 << 10}
+	servers = append(servers, owner)
+	go func() {
+		if err := owner.ListenAndServe(); err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
+	// On SIGINT/SIGTERM stop taking requests and let running ones finish (bounded), so a write to the catalog or a
+	// copy in progress is not cut off mid-way. The deferred Closes above then run.
+	stop, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	<-stop.Done()
+	log.Printf("shutting down: finishing running requests")
+	done, release := context.WithTimeout(context.Background(), 15*time.Second)
+	defer release()
+	for _, s := range servers {
+		if err := s.Shutdown(done); err != nil {
+			log.Printf("shutdown: %v", err)
+		}
+	}
 }

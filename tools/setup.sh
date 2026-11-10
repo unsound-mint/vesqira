@@ -51,8 +51,8 @@ fi
 
 echo; echo "== Python packages (.venv)"
 if [ ! -x .venv/bin/python ]; then python3 -m venv .venv || { echo "could not create .venv"; exit 1; }; fi
-.venv/bin/python -m pip install --quiet --disable-pip-version-check -r fixtures/requirements.txt || exit 1
-echo "ok   fixtures/requirements.txt installed in .venv"
+.venv/bin/python -m pip install --quiet --disable-pip-version-check -r services/scientific-worker/requirements.txt || exit 1
+echo "ok   services/scientific-worker/requirements.txt installed in .venv"
 
 echo; echo "== Web app dependencies"
 (cd apps/web && npm ci --no-audit --no-fund) || exit 1
