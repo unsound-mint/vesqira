@@ -161,3 +161,7 @@ SOFTWARE.
 ## BurntSushi/toml (Go API)
 
 `github.com/BurntSushi/toml` is used to read run metadata. MIT License, Copyright (c) 2013 TOML authors.
+
+## kin-openapi (Go API tests)
+
+`github.com/getkin/kin-openapi` validates handler responses against `packages/contracts/openapi.yaml` in the Go tests. It is not linked into the shipped binary. MIT License, Copyright (c) 2017-2018 the project authors.

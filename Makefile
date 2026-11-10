@@ -16,7 +16,7 @@ docs:
 web:
 	@if [ -f apps/web/package.json ]; then \
 	  if [ ! -d apps/web/node_modules ]; then echo "apps/web: run 'npm ci' in apps/web first"; exit 1; fi; \
-	  cd apps/web && npm run typecheck && npm run lint:css && npm test && npm run build; \
+	  cd apps/web && npm run check:api && npm run typecheck && npm run lint:css && npm test && npm run build; \
 	fi
 
 # Needs numpy and astropy: make setup (or pip install -r fixtures/requirements.txt)
