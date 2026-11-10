@@ -32,6 +32,13 @@ for f in tracked:
     if bad.search(f) and not f.endswith(".env.example"):
         errors.append(f"forbidden tracked file: {f}")
 
+# A tag can be moved after review; a commit cannot. Every third-party action is pinned to a full commit SHA.
+use = re.compile(r"^\s*(?:-\s+)?uses:\s*([^\s#]+)", re.M)
+for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+    for ref in use.findall(wf.read_text()):
+        if not ref.startswith("./") and not re.search(r"@[0-9a-f]{40}$", ref):
+            errors.append(f"{wf.relative_to(ROOT)}: {ref} is not pinned to a commit SHA")
+
 # the HTTP contract must match the routes the server registers and the calls the web client makes
 contracts = subprocess.run([sys.executable, str(ROOT / "tools" / "contracts.py"), "--check"], capture_output=True, text=True)
 if contracts.returncode != 0:

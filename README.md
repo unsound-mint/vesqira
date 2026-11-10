@@ -18,7 +18,7 @@ Then start **Vesqira** from the applications menu (or run `vesqira`): it starts 
 
 ## Start the app from the source tree
 
-One-time setup (Linux/macOS): Python 3 with astropy (`pip install -r fixtures/requirements.txt`), Go, Node, then `cd apps/web && npm ci`.
+One-time setup (Linux/macOS): Python 3 with astropy (`pip install -r services/scientific-worker/requirements.txt`), Go, Node, then `cd apps/web && npm ci`.
 
 - **On your own data:** `tools/start.sh --root /path/to/your/fits/folder` (repeat `--root` for more folders), then open <http://127.0.0.1:5173>. Only files inside the given folders are ever read. Your catalog and derived files live in `~/.local/share/vesqira` (`VESQIRA_DATA` changes it).
 - **Try it on generated data first:** `tools/demo.sh`, then follow `docs/demo.md`.

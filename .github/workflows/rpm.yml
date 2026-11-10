@@ -10,7 +10,7 @@ jobs:
     container: registry.fedoraproject.org/fedora:44
     steps:
       - run: dnf -y -q install git golang nodejs npm rpm-build python3-astropy python3-numpy python3-reproject curl tar gzip
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: tools/build-rpm.sh "${{ github.event_name == 'release' && github.event.release.tag_name || '0.0.0' }}"
       # the installed package must work with the distribution's own Python packages
       - run: dnf -y -q install dist/rpm/vesqira-*.rpm
@@ -25,11 +25,11 @@ jobs:
           curl -fsS -X POST -H 'Content-Type: application/json' http://127.0.0.1:8787/api/datasets -d '{"path":"/tmp/fx/hi_cube.fits"}' >/dev/null
           curl -fsS -o /tmp/plane.bin -w '%{size_download}\n' "http://127.0.0.1:8787/api/datasets/1/plane?channel=2"
           vesqira stop
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: vesqira-rpm
           path: dist/rpm/*.rpm
       - if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: dist/rpm/*.rpm
