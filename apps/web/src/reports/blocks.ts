@@ -9,6 +9,8 @@ export type SourceBlock =
   | { kind: "figure"; figure: string }
   | { kind: "run"; run: number };
 
+import { splitFront } from "./front";
+
 const FENCE = /^\s{0,3}(```+|~~~+)/;
 const FIGURE_LINE = /^\s*!\[\[figure:([0-9a-f]{64})\]\]\s*$/;
 const RUN_LINE = /^\s*\[\[run:([0-9]{1,18})\]\]\s*$/;
@@ -19,8 +21,9 @@ function isHeading(s: string): boolean {
   return n >= 1 && n <= 6 && (n === s.length || s[n] === " ");
 }
 
+/** Front matter (see front.ts) is not a block. */
 export function splitBlocks(body: string): SourceBlock[] {
-  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const lines = splitFront(body).rest.split("\n");
   const out: SourceBlock[] = [];
   let cur: string[] = [];
   const flush = () => {

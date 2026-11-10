@@ -55,7 +55,8 @@ Replaces the owner's Notion reports. ADR 0030 (proposed): reports on the owner's
 - [x] `vesqira import notion` for a Notion Markdown & CSV export (zip or unpacked folder), with a dry run. PDFs and images over 4096 px are not imported.
 - [x] Deployment docs for the owner's server (`docs/setup/publish-server.md`: systemd unit, Caddy with TLS, backups).
 - [x] Graph view of report, run and figure links, with a keyboard list alternative; unlinked reports hidden by default.
-- [ ] Follow-ups from the security review (ADR 0030, "Hardening"): strip image metadata when publishing, withdraw a report and delete a comment on the publish server, fixed shape for derived `software`, bounded Markdown scans, comment-cursor guard.
+- [x] Pages and presentation (ADR 0030, "Pages, front matter, changes and deletions"): page tree kept from the Notion import, front matter date and summary under the title, reader list newest first, what changed since the revision last read, comments on selected words, withdraw a report, delete a comment.
+- [ ] Follow-ups from the security review (ADR 0030, "Hardening"): strip image metadata when publishing, fixed shape for derived `software`, bounded Markdown scans, comment-cursor guard.
 
 ## Stage 0 — Install and launch
 

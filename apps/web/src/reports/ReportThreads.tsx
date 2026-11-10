@@ -58,11 +58,11 @@ export function ReportThreads({ view, blocks, activeBlock, onSelectBlock, onChan
       <div className={s.panelScroll}>
         {threads.length === 0 ? <p className={s.muted}>No comments yet. When your supervisor comments on a published revision, it appears here and next to the paragraph.</p> : null}
         {current.map((t) => (
-          <Thread key={t.id} thread={t} replies={replies(t.id)} quote={excerpt(byBlock.get(t.block)?.b)} active={activeBlock === t.block} onSelect={() => onSelectBlock(t.block)} view={view} onChanged={onChanged} />
+          <Thread key={t.id} thread={t} replies={replies(t.id)} quote={t.quote ? `“${t.quote}”` : excerpt(byBlock.get(t.block)?.b)} active={activeBlock === t.block} onSelect={() => onSelectBlock(t.block)} view={view} onChanged={onChanged} />
         ))}
         {older.length ? <h3 className={s.groupHead}>On earlier revisions</h3> : null}
         {older.map((t) => (
-          <Thread key={t.id} thread={t} replies={replies(t.id)} quote="This part has changed since the comment was made." active={false} view={view} onChanged={onChanged} />
+          <Thread key={t.id} thread={t} replies={replies(t.id)} quote={t.quote ? `“${t.quote}” (this part has changed since)` : "This part has changed since the comment was made."} active={false} view={view} onChanged={onChanged} />
         ))}
       </div>
     </div>
@@ -75,6 +75,7 @@ function Thread({ thread, replies, quote, active, onSelect, view, onChanged }: {
   const [err, setErr] = useState<string | null>(null);
   const drafts = view.drafts.filter((d) => d.commentId === thread.id);
   const [edits, setEdits] = useState<Record<number, string>>({});
+  const [confirm, setConfirm] = useState<number | null>(null);
   async function run(f: () => Promise<unknown>) {
     setBusy(true);
     setErr(null);
@@ -92,8 +93,18 @@ function Thread({ thread, replies, quote, active, onSelect, view, onChanged }: {
       <button type="button" className={s.quote} onClick={onSelect} disabled={!onSelect}>{quote}</button>
       {[thread, ...replies].map((c) => (
         <div key={c.id} className={s.msg}>
-          <div className={s.msgHead}><strong>{c.author}</strong><span>{relTime(c.createdAt)}</span></div>
+          <div className={s.msgHead}>
+            <strong>{c.author}</strong><span>{relTime(c.createdAt)}</span>
+            {confirm !== c.id ? <button type="button" className={s.msgAction} disabled={busy} onClick={() => setConfirm(c.id)} aria-label={`Delete the comment by ${c.author}`}>Delete</button> : null}
+          </div>
           <p className={s.msgBody}>{c.body}</p>
+          {confirm === c.id ? (
+            <div className={s.row}>
+              <span className={s.muted}>{c.id === thread.id && replies.length ? "Delete this comment and its replies for everyone?" : "Delete this comment for everyone?"}</span>
+              <button type="button" className={s.danger} disabled={busy} onClick={() => void run(async () => { await api.deleteComment(c.id); setConfirm(null); })}>Delete</button>
+              <button type="button" className={s.ghost} onClick={() => setConfirm(null)}>Keep</button>
+            </div>
+          ) : null}
         </div>
       ))}
       {drafts.map((d) => (

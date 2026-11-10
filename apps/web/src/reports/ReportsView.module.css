@@ -9,6 +9,7 @@
   height: 100%;
   min-height: 0;
   background: var(--bg-2);
+  color: var(--text); /* the shell's canvas sets a viewer colour; reports are a light or dark page */
 }
 
 .root[data-panel="open"] {
@@ -855,4 +856,211 @@
   .status {
     display: none;
   }
+}
+
+/* the tree of pages */
+.treeRow {
+  display: flex;
+  align-items: center;
+}
+
+.treeRow .item {
+  flex: 1;
+  min-width: 0;
+}
+
+.twisty,
+.twistySpace {
+  flex: none;
+  width: var(--sp-5);
+  height: var(--row);
+}
+
+.twisty {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.twisty svg {
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.twisty[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.twisty:hover {
+  color: var(--text);
+}
+
+.addChild {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: var(--ctl-sm);
+  height: var(--ctl-sm);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.treeRow:hover .addChild,
+.addChild:focus-visible {
+  opacity: 1;
+}
+
+.addChild:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+
+.pubMark {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border: var(--bw) solid var(--text-3);
+  border-radius: var(--r-pill);
+}
+
+.itemPath {
+  color: var(--text-3);
+}
+
+/* the page menu */
+.pageMenu {
+  position: relative;
+}
+
+.pageMenu .menu {
+  right: 0;
+  left: auto;
+  width: min(340px, 80vw);
+}
+
+.field {
+  display: grid;
+  gap: var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.field select {
+  height: var(--ctl-md);
+  padding: 0 var(--sp-2);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  color: var(--text);
+  font: inherit;
+}
+
+.confirmText {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+}
+
+.primarySm,
+.danger {
+  height: var(--ctl-sm);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--w-medium);
+  cursor: pointer;
+}
+
+.primarySm {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.danger {
+  background: var(--err);
+  color: var(--bg-1);
+}
+
+.primarySm:disabled,
+.danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.msgAction {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.msgAction:hover {
+  color: var(--err);
+  text-decoration: underline;
+}
+
+/* summary and date under the title, edited in place */
+.summaryBtn,
+.metaBtn {
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+.summaryBtn:hover,
+.metaBtn:hover {
+  background: var(--bg-3);
+  box-shadow: 0 0 0 var(--sp-1) var(--bg-3);
+}
+
+.summaryBtn[data-empty="true"] {
+  color: var(--text-3);
+  font-size: var(--text-md);
+}
+
+.summaryInput {
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.dateInput {
+  height: var(--ctl-sm);
+  padding: 0 var(--sp-1);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+  color: var(--text);
+  font: inherit;
+}
+
+.itemDate {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
 }

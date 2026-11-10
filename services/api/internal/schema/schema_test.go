@@ -113,3 +113,24 @@ func TestAddColumnIsIdempotentAndReportsRealErrors(t *testing.T) {
 		t.Fatal("a failing ALTER must not be swallowed")
 	}
 }
+
+func TestReportPagesMigrationKeepsReportsAtTheTop(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "c.db")
+	db := open(t, p)
+	db.Exec(`CREATE TABLE reports(id INTEGER PRIMARY KEY, title TEXT NOT NULL)`)
+	db.Exec(`CREATE TABLE publish_comments(id INTEGER PRIMARY KEY, body TEXT NOT NULL)`)
+	db.Exec(`INSERT INTO reports VALUES (1,'a')`)
+	db.Exec(`INSERT INTO publish_comments VALUES (5,'b')`)
+	db.Exec(`PRAGMA user_version = 2`)
+	if err := Guard(db, "file:"+p); err != nil {
+		t.Fatal(err)
+	}
+	var parent int
+	var quote string
+	if err := db.QueryRow(`SELECT parent_id FROM reports WHERE id=1`).Scan(&parent); err != nil || parent != 0 {
+		t.Fatalf("parent %d %v", parent, err)
+	}
+	if err := db.QueryRow(`SELECT quote FROM publish_comments WHERE id=5`).Scan(&quote); err != nil || quote != "" {
+		t.Fatalf("quote %q %v", quote, err)
+	}
+}

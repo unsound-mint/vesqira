@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { FileText, MessageSquare, Network, Plus, Search, Share2, Upload } from "lucide-react";
+import { ChevronRight, FileText, MessageSquare, Network, Plus, Search, Share2, Upload } from "lucide-react";
 import { listFigures, figurePreviewUrl, type Figure } from "../api/boards";
 import { listRuns, type Run } from "../api/runs";
 import * as api from "../api/reports";
@@ -15,9 +15,23 @@ import { SharePanel } from "./SharePanel";
 import { ChangesReview } from "./ChangesReview";
 import { InsertMenu } from "./InsertMenu";
 import { relTime } from "./time";
+import { listTitle, longDate, shortDay, reportDate, reportSummary, setFrontValue, withFront } from "./front";
+import { ancestors, firstPage, visibleRows } from "./tree";
+import { PageMenu } from "./PageMenu";
 import s from "./ReportsView.module.css";
 
-const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const OPEN_KEY = "vesqira.reports.open";
+
+function loadOpen(): Set<number> {
+  try {
+    const v = JSON.parse(localStorage.getItem(OPEN_KEY) ?? "[]") as unknown;
+    return new Set(Array.isArray(v) ? v.filter((x): x is number => typeof x === "number") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+const date = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 function runSummary(r: Run): RunSummary {
   return { name: r.name, kind: r.kind, gitCommit: r.gitCommit, dirty: r.dirty, generatedAt: r.generatedAt, params: r.params, metrics: r.metrics, review: r.review };
@@ -48,6 +62,9 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
   const [reviewing, setReviewing] = useState(false);
   const [graph, setGraph] = useState<api.Graph | null>(null);
   const [state, setState] = useState<api.PublishState | null>(null);
+  const [open, setOpen] = useState<Set<number>>(loadOpen);
+  const [summaryDraft, setSummaryDraft] = useState<string | null>(null);
+  const [dateEdit, setDateEdit] = useState(false);
   const saving = useRef(false);
   const renameNext = useRef<number | null>(null); // a report just created opens with its title ready to type
 
@@ -69,11 +86,26 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     api.publishState().then(setState).catch(() => setState(null));
   }, [refreshList]);
   useEffect(() => {
-    if (current == null && list.length) setCurrent(list[0]!.id);
+    if (current == null && list.length) setCurrent(firstPage(list));
   }, [list, current]);
+  // The open page's parents are always expanded, so the tree shows where it is.
+  useEffect(() => {
+    if (current == null) return;
+    const up = ancestors(list, current);
+    if (up.some((id) => !open.has(id))) setOpen((o) => new Set([...o, ...up]));
+  }, [current, list, open]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPEN_KEY, JSON.stringify([...open]));
+    } catch {
+      /* storage may be unavailable */
+    }
+  }, [open]);
   useEffect(() => {
     setEditIndex(null);
     setTitleDraft(null);
+    setSummaryDraft(null);
+    setDateEdit(false);
     if (current != null && renameNext.current === current) {
       renameNext.current = null;
       setTitleDraft(list.find((r) => r.id === current)?.title ?? "");
@@ -131,6 +163,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     return m;
   }, [threads]);
   const openThreads = threads.filter((t) => !t.resolvedAt).length;
+  const quotes = useMemo(() => threads.filter((t) => t.quote && !t.resolvedAt).map((t) => ({ block: t.block, quote: t.quote as string })), [threads]);
 
   async function save(body: string | undefined, title?: string) {
     if (!view || saving.current) return;
@@ -164,7 +197,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     if (editIndex >= parts.length) parts.push(draft);
     else parts[editIndex] = draft;
     setEditIndex(null);
-    void save(joinBlocks(parts));
+    void save(withFront(view?.body ?? "", joinBlocks(parts)));
   }
   function editKeys(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Escape") {
@@ -181,15 +214,16 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     if (editIndex !== null) parts[editIndex] = draft;
     parts.splice(at, 0, markdown);
     setEditIndex(null);
-    void save(joinBlocks(parts));
+    void save(withFront(view?.body ?? "", joinBlocks(parts)));
   }
 
-  async function newReport() {
+  async function newReport(parent = 0) {
     let n = 1;
     while (titles.has(`untitled ${n}`)) n++;
     try {
-      const r = await api.createReport(`Untitled ${n}`);
+      const r = await api.createReport(`Untitled ${n}`, parent);
       renameNext.current = r.id;
+      if (parent) setOpen((o) => new Set([...o, parent]));
       await refreshList();
       setCurrent(r.id);
       setMode("page");
@@ -199,7 +233,13 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
   }
 
   const status = !summary ? "" : summary.published === 0 ? "Draft, not shared" : summary.publishedFrom === summary.revision ? `Published · revision ${summary.published}` : `Changed since revision ${summary.published}`;
-  const filtered = query ? list.filter((r) => r.title.toLowerCase().includes(query.toLowerCase())) : list;
+  const byId = useMemo(() => new Map(list.map((r) => [r.id, r])), [list]);
+  const filtered = query ? list.filter((r) => r.title.toLowerCase().includes(query.toLowerCase())) : null;
+  const rows = useMemo(() => visibleRows(list, open), [list, open]);
+  const toggle = (id: number) => setOpen((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const pick = (id: number) => { setCurrent(id); if (mode === "graph") setMode("page"); };
+  const summaryText = view ? reportSummary(view.body) : "";
+  const dateValue = view ? reportDate(view.body) : "";
   const lastPub = view?.publications[0];
 
   return (
@@ -212,17 +252,39 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
           </label>
           <button type="button" className={s.iconBtn} onClick={() => void newReport()} aria-label="New report" title="New report"><Icon icon={Plus} /></button>
         </div>
-        <ul className={s.list}>
-          {filtered.map((r) => (
-            <li key={r.id}>
-              <button type="button" className={s.item} aria-current={r.id === current && mode !== "graph" ? "page" : undefined} onClick={() => { setCurrent(r.id); if (mode === "graph") setMode("page"); }}>
-                <Icon icon={FileText} />
-                <span className={s.itemTitle}>{r.title}</span>
-                {r.agentUnseen ? <span className={s.dot} title="Changed by the agent since you looked" aria-label="changed by the agent" /> : null}
-              </button>
-            </li>
-          ))}
-        </ul>
+        {filtered ? (
+          <ul className={s.list} aria-label="Search results">
+            {filtered.map((r) => (
+              <li key={r.id}>
+                <button type="button" className={s.item} aria-current={r.id === current && mode !== "graph" ? "page" : undefined} onClick={() => pick(r.id)}>
+                  <Icon icon={FileText} />
+                  <span className={s.itemTitle}>{r.title}{r.parent && byId.get(r.parent) ? <span className={s.itemPath}> in {byId.get(r.parent)!.title}</span> : null}</span>
+                  {r.agentUnseen ? <span className={s.dot} title="Changed by the agent since you looked" aria-label="changed by the agent" /> : null}
+                </button>
+              </li>
+            ))}
+            {filtered.length === 0 ? <li className={s.treeEmpty}>No page is called that.</li> : null}
+          </ul>
+        ) : (
+          <ul className={s.list}>
+            {rows.map(({ r, depth, hasChildren }) => (
+              <li key={r.id} className={s.treeRow} style={{ paddingLeft: `calc(${depth} * var(--sp-4))` }}>
+                {hasChildren ? (
+                  <button type="button" className={s.twisty} aria-expanded={open.has(r.id)} aria-label={`${open.has(r.id) ? "Collapse" : "Expand"} ${r.title}`} onClick={() => toggle(r.id)}>
+                    <Icon icon={ChevronRight} />
+                  </button>
+                ) : <span className={s.twistySpace} />}
+                <button type="button" className={s.item} aria-current={r.id === current && mode !== "graph" ? "page" : undefined} onClick={() => pick(r.id)} title={r.title}>
+                  <span className={s.itemTitle}>{r.date ? listTitle(r.title) : r.title}</span>
+                  {r.agentUnseen ? <span className={s.dot} title="Changed by the agent since you looked" aria-label="changed by the agent" /> : null}
+                  {r.date ? <span className={s.itemDate}>{shortDay(r.date)}</span> : null}
+                  {r.published ? <span className={s.pubMark} title={`Published, revision ${r.published}`} aria-label="published" /> : null}
+                </button>
+                <button type="button" className={s.addChild} aria-label={`New page inside ${r.title}`} title="New page inside" onClick={() => void newReport(r.id)}><Icon icon={Plus} /></button>
+              </li>
+            ))}
+          </ul>
+        )}
         {list.length === 0 ? <p className={s.treeEmpty}>No reports yet. Start one, ask your agent to draft one, or import a Notion export with <code>vesqira import notion</code>.</p> : null}
         <div className={s.treeFoot}>
           {state?.url ? <span>{state.lastError ? "Publish server unreachable" : state.lastSync ? `Synced ${relTime(state.lastSync)}` : "Publish server set up"}</span> : <span>No publish server yet</span>}
@@ -243,6 +305,14 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
               <button type="button" className={s.ghost} aria-pressed={panel === "comments"} onClick={() => setPanel(panel === "comments" ? null : "comments")}><Icon icon={MessageSquare} />Comments{openThreads ? <span className={s.badge}>{openThreads}</span> : null}</button>
               <button type="button" className={s.ghost} aria-pressed={panel === "share"} onClick={() => setPanel(panel === "share" ? null : "share")}><Icon icon={Share2} />Share</button>
               <Button variant="primary" icon={Upload} onClick={() => { if (editIndex !== null) commitEdit(); setPublishing(true); }}>Publish…</Button>
+              <PageMenu
+                view={view}
+                list={list}
+                onAddChild={() => void newReport(view.id)}
+                onMove={async (parent) => { try { await api.moveReport(view.id, parent); await refreshList(); await load(view.id); } catch (e) { setError(msg(e)); } }}
+                onWithdraw={async () => { try { await api.withdrawReport(view.id); await load(view.id); await refreshList(); setNotice(`“${view.title}” was withdrawn: readers no longer see it.`); } catch (e) { setError(msg(e)); } }}
+                onDelete={async () => { try { await api.deleteReport(view.id); setCurrent(null); setView(null); await refreshList(); } catch (e) { setError(msg(e)); } }}
+              />
             </>
           ) : null}
         </div>
@@ -282,8 +352,39 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
               ) : (
                 <button type="button" className={s.titleBtn} onClick={() => setTitleDraft(view.title)} title="Rename">{view.title}</button>
               )}
+              summary={
+                summaryDraft !== null ? (
+                  <textarea
+                    className={s.summaryInput}
+                    value={summaryDraft}
+                    autoFocus
+                    rows={2}
+                    aria-label="Summary, one or two sentences under the title"
+                    onChange={(e) => setSummaryDraft(e.target.value.replace(/\n/g, " "))}
+                    onBlur={() => { const v = summaryDraft; setSummaryDraft(null); if (v.trim() !== summaryText) void save(setFrontValue(view.body, "summary", v)); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } if (e.key === "Escape") setSummaryDraft(null); }}
+                  />
+                ) : (
+                  <button type="button" className={s.summaryBtn} data-empty={summaryText ? undefined : "true"} onClick={() => setSummaryDraft(summaryText)}>
+                    {summaryText || "Add a one-line summary"}
+                  </button>
+                )
+              }
               meta={
                 <>
+                  {dateEdit ? (
+                    <input
+                      type="date"
+                      className={s.dateInput}
+                      autoFocus
+                      defaultValue={dateValue}
+                      aria-label="Date of this report"
+                      onBlur={(e) => { setDateEdit(false); if (e.target.value !== dateValue) void save(setFrontValue(view.body, "date", e.target.value)); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setDateEdit(false); }}
+                    />
+                  ) : (
+                    <button type="button" className={s.metaBtn} onClick={() => setDateEdit(true)} title="The date this report is about">{dateValue ? longDate(dateValue) : "Add a date"}</button>
+                  )}
                   <span>{lastPub ? `Revision ${lastPub.number} published ${date(lastPub.publishedAt)}` : "Not published yet"}</span>
                   <span>{view.lastAuthor === "agent" ? `Last edited by ${state?.agentName || "the agent"}` : "Last edited by you"} · {date(view.updatedAt)}</span>
                 </>
@@ -294,6 +395,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
               activeBlock={activeBlock}
               onComment={(id) => { setActiveBlock(id); setPanel("comments"); }}
               allowNew={false}
+              quotes={quotes}
               onOpenLink={(id) => setCurrent(Number(id))}
               editIndex={editIndex}
               onEditBlock={startEdit}

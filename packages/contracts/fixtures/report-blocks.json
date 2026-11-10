@@ -93,7 +93,7 @@
     ]
   },
   {
-    "body": "| a | b |\n|---|---|\n| 1 | 2 |\n\n\u003e quote\n\u003e more",
+    "body": "| a | b |\n|---|---|\n| 1 | 2 |\n\n> quote\n> more",
     "blocks": [
       {
         "kind": "text",
@@ -101,7 +101,7 @@
       },
       {
         "kind": "text",
-        "text": "\u003e quote\n\u003e more"
+        "text": "> quote\n> more"
       }
     ]
   },
@@ -128,6 +128,58 @@
       {
         "kind": "text",
         "text": "more text"
+      }
+    ]
+  },
+  {
+    "note": "front matter: date and summary are read, other keys kept, none are blocks",
+    "body": "---\ndate: 2026-11-10\nsummary: Cold fractions are lower limits.\nstatus: Draft\n---\n\n# Results\nText.",
+    "date": "2026-11-10",
+    "summary": "Cold fractions are lower limits.",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "# Results"
+      },
+      {
+        "kind": "text",
+        "text": "Text."
+      }
+    ]
+  },
+  {
+    "note": "front matter: an invalid date is no date; an empty block is allowed",
+    "body": "---\ndate: November 10\n---\nText.",
+    "date": "",
+    "summary": "",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "Text."
+      }
+    ]
+  },
+  {
+    "note": "front: not front matter when a line is not key: value, so --- stays a rule",
+    "body": "---\nnot a key line\n---\nText.",
+    "date": "",
+    "summary": "",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "---\nnot a key line\n---\nText."
+      }
+    ]
+  },
+  {
+    "note": "front: unclosed fence is not front matter",
+    "body": "---\ndate: 2026-11-10\nText.",
+    "date": "",
+    "summary": "",
+    "blocks": [
+      {
+        "kind": "text",
+        "text": "---\ndate: 2026-11-10\nText."
       }
     ]
   }

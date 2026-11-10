@@ -1,11 +1,11 @@
-import { useMemo, type MouseEvent, type ReactNode } from "react";
-import { MessageSquare, MessageSquarePlus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { MessageSquare, MessageSquarePlus, TextQuote } from "lucide-react";
 import "katex/dist/katex.min.css";
 import type { Provenance } from "../api/boards";
 import type { Metric } from "../api/metrics";
 import { metricText } from "../api/metrics";
 import { Icon } from "../ui/Icon";
-import { renderMarkdown, topHeading, type RenderEnv } from "./markdown";
+import { plainText, renderMarkdown, topHeading, type RenderEnv } from "./markdown";
 import s from "./Document.module.css";
 
 /** The reviewer-safe summary of a run, as a figure's provenance and a published report carry it. */
@@ -25,6 +25,7 @@ const QC: Record<string, string> = { not_assessed: "not assessed", passed: "QC p
  */
 export function Document({
   title,
+  summary,
   meta,
   blocks,
   env,
@@ -38,8 +39,14 @@ export function Document({
   editor,
   onEditBlock,
   footer,
+  changed,
+  changedLabel = "Changed",
+  onQuote,
+  quotes,
 }: {
   title: ReactNode;
+  /** One line under the title (front matter summary), or the owner's editor for it. */
+  summary?: ReactNode;
   meta?: ReactNode;
   blocks: DocBlock[];
   env: RenderEnv;
@@ -56,7 +63,51 @@ export function Document({
   editor?: ReactNode;
   onEditBlock?: (index: number) => void;
   footer?: ReactNode;
+  /** Blocks that are new or changed since the revision the reader compares with; marked in the margin. */
+  changed?: Set<string>;
+  changedLabel?: string;
+  /** Selecting text in a part offers "Comment on this"; called with the block and the selected words. */
+  onQuote?: (blockId: string, quote: string) => void;
+  /** Phrases open threads are about, highlighted where the browser can (CSS Custom Highlight API). */
+  quotes?: { block: string; quote: string }[];
 }) {
+  const ref = useRef<HTMLElement>(null);
+  const [sel, setSel] = useState<{ block: string; quote: string; top: number; left: number } | null>(null);
+  useEffect(() => {
+    if (!onQuote) return;
+    // Track the selection while it is inside one part's text; the button sits just above where it ends.
+    const update = () => {
+      const art = ref.current;
+      const s = window.getSelection();
+      if (!art || !s || s.isCollapsed || s.rangeCount === 0) return setSel(null);
+      const r = s.getRangeAt(0);
+      const start = (r.startContainer instanceof Element ? r.startContainer : r.startContainer.parentElement)?.closest("[data-prose]");
+      const end = (r.endContainer instanceof Element ? r.endContainer : r.endContainer.parentElement)?.closest("[data-prose]");
+      const block = start?.closest("[data-block]")?.getAttribute("data-block");
+      const quote = s.toString().replace(/\s+/g, " ").trim();
+      if (!start || start !== end || !block || !art.contains(start) || quote.length < 2) return setSel(null);
+      const rect = r.getBoundingClientRect();
+      const box = art.getBoundingClientRect();
+      setSel({ block, quote: [...quote].slice(0, 500).join(""), top: rect.top - box.top, left: Math.min(Math.max(rect.left - box.left + rect.width / 2, 48), box.width - 48) });
+    };
+    document.addEventListener("selectionchange", update);
+    return () => document.removeEventListener("selectionchange", update);
+  }, [onQuote]);
+  useEffect(() => {
+    const art = ref.current;
+    const hl = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights;
+    const HL = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
+    if (!art || !hl || !HL) return;
+    const ranges: Range[] = [];
+    for (const q of quotes ?? []) {
+      const el = art.querySelector(`[data-block="${CSS.escape(q.block)}"] [data-prose]`);
+      const r = el ? findText(el, q.quote) : null;
+      if (r) ranges.push(r);
+    }
+    if (ranges.length) hl.set("vq-quote", new HL(...ranges));
+    else hl.delete("vq-quote");
+    return () => void hl.delete("vq-quote");
+  });
   let figNo = 0;
   const html = useMemo(() => {
     const top = topHeading(blocks.flatMap((b) => (b.kind === "text" ? [b.text] : [])));
@@ -74,20 +125,33 @@ export function Document({
     if (onEditBlock && (window.getSelection()?.toString() ?? "") === "") onEditBlock(i);
   }
   return (
-    <article className={s.doc}>
+    <article className={s.doc} ref={ref}>
       <header className={s.head}>
         <h1 className={s.title}>{title}</h1>
+        {summary ? <div className={s.summary}>{summary}</div> : null}
         {meta ? <div className={s.meta}>{meta}</div> : null}
       </header>
+      {sel && onQuote ? (
+        <button
+          type="button"
+          className={s.quoteBtn}
+          style={{ top: sel.top, left: sel.left }}
+          onMouseDown={(e) => e.preventDefault() /* keep the selection */}
+          onClick={() => { onQuote(sel.block, sel.quote); setSel(null); }}
+        >
+          <Icon icon={TextQuote} />Comment on this
+        </button>
+      ) : null}
       {blocks.length === 0 && editIndex == null ? <p className={s.emptyDoc}>Nothing written yet.</p> : null}
       {blocks.map((b, i) => {
         if (b.kind === "figure" && b.figure) figNo++;
         const n = counts?.[b.id] ?? 0;
         const editing = editIndex === i;
         return (
-          <section key={b.id + ":" + i} className={s.block} data-active={activeBlock === b.id ? "true" : undefined} data-editable={onEditBlock && !editing ? "true" : undefined}>
-            <div className={s.body} onClick={editing ? undefined : (e) => click(e, i)} onKeyDown={onEditBlock && !editing ? (e) => { if (e.key === "Enter" && e.target === e.currentTarget) { e.preventDefault(); onEditBlock(i); } } : undefined} tabIndex={onEditBlock && !editing ? 0 : undefined} aria-label={onEditBlock && !editing ? `Block ${i + 1}, press Enter to edit` : undefined}>
-              {editing ? editor : b.kind === "figure" ? <FigureView fig={b.figure} n={figNo} /> : b.kind === "run" ? <RunLine run={b.run} /> : <div className={b.kind === "code" ? s.prose + " " + s.codeBlock : s.prose} dangerouslySetInnerHTML={{ __html: html[i] ?? "" }} />}
+          <section key={b.id + ":" + i} className={s.block} data-block={b.id} data-active={activeBlock === b.id ? "true" : undefined} data-changed={changed?.has(b.id) ? "true" : undefined} data-editable={onEditBlock && !editing ? "true" : undefined}>
+            {changed?.has(b.id) ? <span className={s.vh}>{changedLabel}: </span> : null}
+            <div className={s.body} onClick={editing ? undefined : (e) => click(e, i)} onKeyDown={onEditBlock && !editing ? (e) => { if (e.key === "Enter" && e.target === e.currentTarget) { e.preventDefault(); onEditBlock(i); } } : undefined} tabIndex={onEditBlock && !editing ? 0 : undefined} aria-label={onEditBlock && !editing ? `Edit: ${editLabel(b)}` : undefined}>
+              {editing ? editor : b.kind === "figure" ? <FigureView fig={b.figure} n={figNo} /> : b.kind === "run" ? <RunLine run={b.run} /> : <div className={b.kind === "code" ? s.prose + " " + s.codeBlock : s.prose} data-prose="" dangerouslySetInnerHTML={{ __html: html[i] ?? "" }} />}
             </div>
             {onComment && !editing && (allowNew || n > 0) ? (
               <div className={s.gutter}>
@@ -104,6 +168,38 @@ export function Document({
       {footer ? <footer className={s.footer}>{footer}</footer> : null}
     </article>
   );
+}
+
+function editLabel(b: DocBlock): string {
+  if (b.kind === "figure") return b.figure ? `figure “${b.figure.title}”` : "a missing figure";
+  if (b.kind === "run") return b.run ? `run ${b.run.name}` : "a missing run";
+  const t = plainText(b.text).replace(/\s+/g, " ").trim();
+  return t.length > 60 ? t.slice(0, 59) + "…" : t || "an empty part";
+}
+
+/** The first place quote occurs in el's text, whitespace-insensitive, as a Range; null if the text changed. */
+function findText(el: Element, quote: string): Range | null {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  let text = "";
+  const map: { node: Text; offset: number }[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n as Text;
+    nodes.push(t);
+    for (let i = 0; i < t.data.length; i++) {
+      const c = /\s/.test(t.data[i] as string) ? " " : (t.data[i] as string);
+      if (c === " " && text.endsWith(" ")) continue;
+      text += c;
+      map.push({ node: t, offset: i });
+    }
+  }
+  const at = text.indexOf(quote);
+  if (at < 0 || !map[at] || !map[at + quote.length - 1]) return null;
+  const r = document.createRange();
+  r.setStart(map[at]!.node, map[at]!.offset);
+  const last = map[at + quote.length - 1]!;
+  r.setEnd(last.node, last.offset + 1);
+  return r;
 }
 
 function provenanceLine(p: Provenance | null | undefined): string[] {

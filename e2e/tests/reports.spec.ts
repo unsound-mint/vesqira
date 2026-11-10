@@ -95,4 +95,49 @@ test("write, publish, read from a named link, comment, and answer", async ({ pag
   await reader.reload();
   await reader.getByRole("button", { name: /1 comment on this part/ }).click();
   await expect(reader.getByRole("complementary", { name: "Comments" }).getByText(/I will add block 48/)).toBeVisible();
+  await reader.keyboard.press("Escape");
+
+  // ---- revision 2: the supervisor sees what changed since the revision they read ----
+  await page.getByRole("button", { name: "Close comments" }).click();
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  await page.getByRole("textbox", { name: /Edit this part/ }).fill("The difference is 0.01, within the uncertainty of 0.04.");
+  await page.getByRole("textbox", { name: /Edit this part/ }).press("Control+Enter");
+  await page.getByRole("button", { name: "Add a one-line summary" }).click();
+  await page.getByRole("textbox", { name: /Summary/ }).fill("Block size does not change the alignment measurably.");
+  await page.getByRole("textbox", { name: /Summary/ }).press("Enter");
+  await page.getByRole("button", { name: "Publish…" }).click();
+  await dialog.getByRole("button", { name: "Publish revision 2" }).click();
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await reader.reload();
+  await expect(reader.getByText("Block size does not change the alignment measurably.")).toBeVisible();
+  await expect(reader.getByText(/Since revision 1: 1 part is new or changed/)).toBeVisible();
+  await expect(reader.locator('[data-changed="true"]')).toHaveCount(1);
+  await expectNoAxeViolations(reader);
+
+  // a comment on selected words, then deleted again by its writer
+  await reader.evaluate(() => {
+    const el = [...document.querySelectorAll("[data-prose] p")].find((p) => p.textContent?.startsWith("The difference is"));
+    const t = el?.firstChild as Text;
+    const r = document.createRange();
+    r.setStart(t, 4);
+    r.setEnd(t, 14);
+    getSelection()?.removeAllRanges();
+    getSelection()?.addRange(r);
+  });
+  await reader.getByRole("button", { name: "Comment on this", exact: true }).click();
+  const rpanel = reader.getByRole("complementary", { name: "Comments" });
+  await rpanel.getByLabel(/Comment on: “difference”/).fill("Which difference?");
+  await rpanel.getByRole("button", { name: "Comment", exact: true }).click();
+  await expect(rpanel.getByText("Which difference?")).toBeVisible();
+  await rpanel.getByRole("button", { name: "Delete" }).click();
+  await rpanel.getByRole("button", { name: "Delete" }).click();
+  await expect(rpanel.getByText("Which difference?")).toHaveCount(0);
+
+  // ---- withdraw: the report is gone for the supervisor; the draft stays ----
+  await page.getByRole("button", { name: "More for this page" }).click();
+  await page.getByRole("menuitem", { name: "Withdraw from readers…" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Withdraw" }).click();
+  await expect(page.getByText("Draft, not shared")).toBeVisible();
+  await reader.reload();
+  await expect(reader.getByText("Nothing has been shared here yet.")).toBeVisible();
 });

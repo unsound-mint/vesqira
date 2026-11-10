@@ -101,6 +101,7 @@ func (h *Handler) Handler() http.Handler {
 	mux.HandleFunc("GET /read-api/{token}/reports/{key}", h.readReport)
 	mux.HandleFunc("GET /read-api/{token}/assets/{sha}", h.readAsset)
 	mux.HandleFunc("POST /read-api/{token}/comments", h.readComment)
+	mux.HandleFunc("DELETE /read-api/{token}/comments/{id}", h.readDeleteComment)
 
 	mux.HandleFunc("GET /publish-api/ping", h.pub(h.ping))
 	mux.HandleFunc("PUT /publish-api/assets/{sha}", h.pub(h.putAsset))
@@ -112,6 +113,9 @@ func (h *Handler) Handler() http.Handler {
 	mux.HandleFunc("GET /publish-api/comments", h.pub(h.feed))
 	mux.HandleFunc("POST /publish-api/comments", h.pub(h.ownerComment))
 	mux.HandleFunc("POST /publish-api/comments/{id}/resolve", h.pub(h.resolve))
+	mux.HandleFunc("DELETE /publish-api/comments/{id}", h.pub(h.deleteComment))
+	mux.HandleFunc("GET /publish-api/comments/deleted", h.pub(h.deletedFeed))
+	mux.HandleFunc("DELETE /publish-api/reports/{key}", h.pub(h.withdraw))
 	if h.WebDist != "" {
 		mux.Handle("GET /", h.static())
 	}
@@ -216,11 +220,12 @@ type commentBody struct {
 	ParentID int64   `json:"parentId"`
 	Body     string  `json:"body"`
 	Anchor   *Anchor `json:"anchor"`
+	Quote    string  `json:"quote"`
 	Author   string  `json:"author"`
 }
 
 func (b commentBody) input() CommentInput {
-	return CommentInput{Report: b.Report, Revision: b.Revision, Block: b.Block, ParentID: b.ParentID, Body: b.Body, Anchor: b.Anchor, Author: b.Author}
+	return CommentInput{Report: b.Report, Revision: b.Revision, Block: b.Block, ParentID: b.ParentID, Body: b.Body, Anchor: b.Anchor, Quote: b.Quote, Author: b.Author}
 }
 
 // decode reads a JSON body of at most limit bytes; it reports false after answering the client.
@@ -250,6 +255,17 @@ func (h *Handler) readComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, c)
+}
+
+func (h *Handler) readDeleteComment(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		id = -1 // answered like any other unknown comment
+	}
+	if h.bad(w, r, h.Store.DeleteOwnComment(r.PathValue("token"), id)) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ---- publisher routes ----
@@ -406,6 +422,46 @@ func (h *Handler) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, c)
+}
+
+func (h *Handler) deleteComment(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		notFound(w)
+		return
+	}
+	ids, err := h.Store.DeleteComment(id)
+	if err != nil {
+		h.storeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]int64{"deleted": ids})
+}
+
+func (h *Handler) deletedFeed(w http.ResponseWriter, r *http.Request) {
+	after := int64(0)
+	if s := r.URL.Query().Get("after"); s != "" {
+		var err error
+		if after, err = strconv.ParseInt(s, 10, 64); err != nil || after < 0 {
+			http.Error(w, "after must be a deletion sequence number", http.StatusBadRequest)
+			return
+		}
+	}
+	ds, err := h.Store.DeletedAfter(after)
+	if err != nil {
+		h.storeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]Deletion{"deletions": ds})
+}
+
+func (h *Handler) withdraw(w http.ResponseWriter, r *http.Request) {
+	ids, err := h.Store.WithdrawReport(r.PathValue("key"))
+	if err != nil {
+		h.storeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]int64{"deletedComments": ids})
 }
 
 // regularFilesOnly stops http.FileServer listing directories and following anything but regular files.

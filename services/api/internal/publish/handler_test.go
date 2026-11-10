@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -301,5 +302,67 @@ func checkKeys(t *testing.T, v any, forbidden []string) {
 		for _, vv := range x {
 			checkKeys(t, vv, forbidden)
 		}
+	}
+}
+
+func TestDeleteAndWithdrawRoutes(t *testing.T) {
+	x := newH(t, "")
+	for _, rt := range [][2]string{{"DELETE", "/publish-api/comments/1"}, {"GET", "/publish-api/comments/deleted"}, {"DELETE", "/publish-api/reports/" + keyA}} {
+		if rec := x.do(rt[0], rt[1], "", ""); rec.Code != 401 {
+			t.Fatalf("%v without key: %d", rt, rec.Code)
+		}
+	}
+	body := `{"report":"` + keyA + `","revision":"` + x.revA.ID + `","block":"t1","body":"hi","quote":"  a   phrase "}`
+	rec := x.do("POST", "/read-api/"+x.token+"/comments", "", body)
+	var c Comment
+	if rec.Code != 201 || json.Unmarshal(rec.Body.Bytes(), &c) != nil || c.Quote != "a phrase" {
+		t.Fatalf("quoted comment: %d %s", rec.Code, rec.Body)
+	}
+	id := strconv.FormatInt(c.ID, 10)
+	if rec := x.do("DELETE", "/read-api/"+x.token+"/comments/abc", "", ""); rec.Code != 404 {
+		t.Errorf("bad id: %d", rec.Code)
+	}
+	if rec := x.do("DELETE", "/read-api/short/comments/"+id, "", ""); rec.Code != 404 {
+		t.Errorf("bad token: %d", rec.Code)
+	}
+	if rec := x.do("DELETE", "/read-api/"+x.token+"/comments/"+id, "", ""); rec.Code != 204 || rec.Body.Len() != 0 {
+		t.Fatalf("reader delete: %d %s", rec.Code, rec.Body)
+	}
+	if rec := x.do("DELETE", "/read-api/"+x.token+"/comments/"+id, "", ""); rec.Code != 404 {
+		t.Errorf("again: %d", rec.Code)
+	}
+	rec = x.do("GET", "/publish-api/comments/deleted?after=0", x.key, "")
+	var del struct{ Deletions []Deletion }
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &del) != nil || len(del.Deletions) != 1 || del.Deletions[0].ID != c.ID {
+		t.Fatalf("deleted feed: %d %s", rec.Code, rec.Body)
+	}
+	if rec := x.do("GET", "/publish-api/comments/deleted?after=-1", x.key, ""); rec.Code != 400 {
+		t.Errorf("bad cursor: %d", rec.Code)
+	}
+	if rec := x.do("GET", "/publish-api/comments?after=0", x.key, ""); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Errorf("plain feed must still work: %d %s", rec.Code, rec.Body)
+	}
+	rec = x.do("POST", "/read-api/"+x.token+"/comments", "", `{"report":"`+keyA+`","revision":"`+x.revA.ID+`","block":"t1","body":"again"}`)
+	_ = json.Unmarshal(rec.Body.Bytes(), &c)
+	rec = x.do("DELETE", "/publish-api/comments/"+strconv.FormatInt(c.ID, 10), x.key, "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"deleted":[`+strconv.FormatInt(c.ID, 10)+`]`) {
+		t.Errorf("owner delete: %d %s", rec.Code, rec.Body)
+	}
+	if rec := x.do("DELETE", "/publish-api/comments/9999", x.key, ""); rec.Code != 404 {
+		t.Errorf("unknown: %d", rec.Code)
+	}
+	rec = x.do("POST", "/read-api/"+x.token+"/comments", "", `{"report":"`+keyA+`","revision":"`+x.revA.ID+`","block":"t1","body":"w"}`)
+	_ = json.Unmarshal(rec.Body.Bytes(), &c)
+	rec = x.do("DELETE", "/publish-api/reports/"+keyA, x.key, "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"deletedComments":[`+strconv.FormatInt(c.ID, 10)+`]`) {
+		t.Fatalf("withdraw: %d %s", rec.Code, rec.Body)
+	}
+	for _, p := range []string{"/reports/" + keyA, "/reports/" + keyA + "?rev=1", "/assets/" + x.asset} {
+		if rec := x.do("GET", "/read-api/"+x.token+p, "", ""); rec.Code != 404 {
+			t.Errorf("%s after withdraw: %d", p, rec.Code)
+		}
+	}
+	if rec := x.do("DELETE", "/publish-api/reports/"+keyA, x.key, ""); rec.Code != 404 {
+		t.Errorf("withdraw twice: %d", rec.Code)
 	}
 }

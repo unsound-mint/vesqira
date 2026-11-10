@@ -355,13 +355,104 @@ func TestNotAZip(t *testing.T) {
 	}
 }
 
-func TestPagePropertiesBecomeAList(t *testing.T) {
-	got := propertiesAsList(strings.Split("Date: November 10, 2026\nPresenter: Denis\nStatus: Draft\n\nBody text: not a property.", "\n"))
-	want := "- **Date:** November 10, 2026\n- **Presenter:** Denis\n- **Status:** Draft\n\nBody text: not a property."
+func onePage(t *testing.T, md string) string {
+	t.Helper()
+	res := mustRun(t, buildZip(t, s("P "+id('a')+".md", md)), Options{})
+	if len(res.Pages) != 1 {
+		t.Fatalf("pages = %d", len(res.Pages))
+	}
+	return res.Pages[0].Markdown
+}
+
+func TestPagePropertiesBecomeFrontMatter(t *testing.T) {
+	got := onePage(t, "# P\n\nDate: November 10, 2026\nPresenter: Denis\nStatus: Draft\nTL;DR: Lower limits\n\nBody text: not a property.")
+	want := "---\ndate: 2026-11-10\npresenter: Denis\nstatus: Draft\nsummary: Lower limits\n---\n\nBody text: not a property."
 	if got != want {
 		t.Fatalf("got %q", got)
 	}
-	if got := propertiesAsList([]string{"Note: a sentence that happens to start like a property", "and continues."}); !strings.HasPrefix(got, "Note:") {
+	if got := onePage(t, "# P\n\nNote: a sentence that happens to start like a property\nand continues."); strings.HasPrefix(got, "---") {
 		t.Fatalf("a single line followed by text is prose, not a property: %q", got)
+	}
+}
+
+func TestFrontMatterDates(t *testing.T) {
+	for in, want := range map[string]string{
+		"January 2, 2006":               "date: 2006-01-02",
+		"January 2, 2006 3:04 PM":       "date: 2006-01-02",
+		"2006/01/02":                    "date: 2006-01-02",
+		"2006-01-02":                    "date: 2006-01-02",
+		"March 3, 2026 → March 9, 2026": "date: 2026-03-03",
+		"next Tuesday":                  "date-notion: next Tuesday",
+	} {
+		got := onePage(t, "# P\n\nDate: "+in+"\nStatus: x\n\nbody")
+		if !strings.HasPrefix(got, "---\n"+want+"\nstatus: x\n---\n\nbody") {
+			t.Errorf("%q: got %q", in, got)
+		}
+	}
+}
+
+func TestFrontMatterKeys(t *testing.T) {
+	got := onePage(t, "# P\n\nHeadline: First\nSummary: Second\nNext steps & (open) questions: q\nStatus: a\nSTATUS: b\n\nbody")
+	want := "---\nsummary: First\nnext-steps-open-questions: q\nstatus: a\n---\n\nbody"
+	if got != want {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestCalloutIconInlined(t *testing.T) {
+	got := onePage(t, "# P\n\n<aside>\n\U0001F9ED\n\n**Goal** is this\n\nmore\n\n</aside>\n\n<aside>\n\u26a0\ufe0f\n</aside>\n\nafter")
+	if !strings.Contains(got, "> \U0001F9ED **Goal** is this") || !strings.Contains(got, "> more") {
+		t.Errorf("icon not inlined: %q", got)
+	}
+	if strings.Contains(got, "\u26a0") || strings.Contains(got, "> \U0001F9ED\n") {
+		t.Errorf("lone icon kept: %q", got)
+	}
+}
+
+func viewExport(t *testing.T) []byte {
+	return buildZip(t,
+		s("People "+id('a')+".md", "# People\n\n[People](People%20"+id('a')+"_all.csv)\n\nsort: \nName: ascending\n"),
+		s("People "+id('a')+"_all.csv", "Name,About\nAnn,x\nBob,y\n"),
+		s("People/Ann "+id('b')+".md", "# Ann\n\nhi"),
+		s("Home "+id('c')+".md", "# Home\n\n[Untitled](People%20"+id('a')+".md) and [Folks](People%20"+id('a')+".md)\n\nsort: \nDate: descending\n\nend\n"),
+	)
+}
+
+func TestDatabaseViewPageMerged(t *testing.T) {
+	res := mustRun(t, viewExport(t), Options{})
+	if len(res.Pages) != 3 {
+		t.Fatalf("pages: %+v", res.Pages)
+	}
+	people := page(res, "People")
+	if people == nil || page(res, "People (2)") != nil {
+		t.Fatalf("view page not merged: %+v", res.Pages)
+	}
+	if !strings.Contains(people.Markdown, "| Name | About |") || !strings.Contains(people.Markdown, "[[Ann]]") || strings.Contains(people.Markdown, "sort:") {
+		t.Errorf("table: %q", people.Markdown)
+	}
+	if ann := page(res, "Ann"); ann == nil || ann.Parent != people.Source {
+		t.Errorf("child parent: %+v", ann)
+	}
+}
+
+func TestViewSettingsRemovedAndUntitledLinkRelabelled(t *testing.T) {
+	home := page(mustRun(t, viewExport(t), Options{}), "Home")
+	if strings.Contains(home.Markdown, "sort:") || strings.Contains(home.Markdown, "descending") || strings.Contains(home.Markdown, "\n\n\n") {
+		t.Errorf("view settings left: %q", home.Markdown)
+	}
+	if !strings.Contains(home.Markdown, "[[People]] and [[People]] (Folks)") || strings.Contains(home.Markdown, "Untitled") {
+		t.Errorf("links: %q", home.Markdown)
+	}
+}
+
+func TestFolderWithoutIDIsParent(t *testing.T) {
+	res := mustRun(t, buildZip(t,
+		s("Top "+id('a')+".md", "# Top"),
+		s("Top/Reports "+id('b')+"_all.csv", "Name\nOne\n"),
+		s("Top/Reports/One "+id('c')+".md", "# One"),
+	), Options{})
+	top, reports, one := page(res, "Top"), page(res, "Reports"), page(res, "One")
+	if reports.Parent != top.Source || one.Parent != reports.Source {
+		t.Errorf("parents: %+v", res.Pages)
 	}
 }

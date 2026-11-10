@@ -215,13 +215,39 @@ func (c *publishClient) commentsAfter(after int64) ([]publish.Comment, error) {
 func (c *publishClient) ownerComment(space string, in publish.Comment) (publish.Comment, error) {
 	var out publish.Comment
 	err := c.json("POST", "/publish-api/comments", map[string]any{
-		"space": space, "report": in.Report, "revision": in.Revision, "block": in.Block, "parentId": in.ParentID, "body": in.Body, "author": in.Author,
+		"space": space, "report": in.Report, "revision": in.Revision, "block": in.Block, "parentId": in.ParentID, "body": in.Body, "author": in.Author, "quote": in.Quote,
 	}, &out)
 	return out, err
+}
+
+func (c *publishClient) deleteComment(id int64) ([]int64, error) {
+	var out struct {
+		Deleted []int64 `json:"deleted"`
+	}
+	err := c.json("DELETE", "/publish-api/comments/"+strconv.FormatInt(id, 10), nil, &out)
+	return out.Deleted, err
+}
+
+func (c *publishClient) deletionsAfter(after int64) ([]publish.Deletion, error) {
+	var out struct {
+		Deletions []publish.Deletion `json:"deletions"`
+	}
+	err := c.json("GET", "/publish-api/comments/deleted?after="+strconv.FormatInt(after, 10), nil, &out)
+	return out.Deletions, err
+}
+
+func (c *publishClient) withdraw(key string) error {
+	return c.json("DELETE", "/publish-api/reports/"+url.PathEscape(key), nil, nil)
 }
 
 func (c *publishClient) resolve(id int64, resolved bool) (publish.Comment, error) {
 	var out publish.Comment
 	err := c.json("POST", "/publish-api/comments/"+strconv.FormatInt(id, 10)+"/resolve", map[string]bool{"resolved": resolved}, &out)
 	return out, err
+}
+
+// isNotFound is true when the publish server answered 404: what was to be deleted is already gone there.
+func isNotFound(err error) bool {
+	var re *remoteError
+	return errors.As(err, &re) && re.Status == 404
 }

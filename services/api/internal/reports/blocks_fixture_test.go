@@ -16,8 +16,10 @@ func TestBlocksMatchTheSharedFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cases []struct {
-		Body   string  `json:"body"`
-		Blocks []Block `json:"blocks"`
+		Body    string  `json:"body"`
+		Blocks  []Block `json:"blocks"`
+		Date    *string `json:"date"`
+		Summary *string `json:"summary"`
 	}
 	if err := json.Unmarshal(raw, &cases); err != nil {
 		t.Fatal(err)
@@ -29,6 +31,12 @@ func TestBlocksMatchTheSharedFixture(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got, c.Blocks) {
 			t.Errorf("body %q:\n got %#v\nwant %#v", c.Body, got, c.Blocks)
+		}
+		if c.Date != nil && ReportDate(c.Body) != *c.Date {
+			t.Errorf("body %q: date %q, want %q", c.Body, ReportDate(c.Body), *c.Date)
+		}
+		if c.Summary != nil && ReportSummary(c.Body) != *c.Summary {
+			t.Errorf("body %q: summary %q, want %q", c.Body, ReportSummary(c.Body), *c.Summary)
 		}
 	}
 }

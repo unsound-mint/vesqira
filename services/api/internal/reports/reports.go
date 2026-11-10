@@ -53,7 +53,7 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS reports(
 			id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, title TEXT NOT NULL UNIQUE COLLATE NOCASE,
 			body TEXT NOT NULL, revision INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-			seen_revision INTEGER NOT NULL DEFAULT 0)`,
+			seen_revision INTEGER NOT NULL DEFAULT 0, parent_id INTEGER NOT NULL DEFAULT 0)`, // parent_id: schema 3
 		`CREATE TABLE IF NOT EXISTS report_history(
 			report_id INTEGER NOT NULL, revision INTEGER NOT NULL, author TEXT NOT NULL, at INTEGER NOT NULL,
 			title TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(report_id, revision))`,
@@ -83,6 +83,7 @@ type Report struct {
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 	LastAuthor   string    `json:"lastAuthor"`
+	Parent       int64     `json:"parent"` // the page this one sits under, 0 at the top
 }
 
 // Summary is a list row: no body.
@@ -90,6 +91,9 @@ type Summary struct {
 	ID         int64     `json:"id"`
 	Key        string    `json:"key"`
 	Title      string    `json:"title"`
+	Parent     int64     `json:"parent"`
+	Date       string    `json:"date,omitempty"`    // front matter date, YYYY-MM-DD
+	Summary    string    `json:"summary,omitempty"` // front matter summary
 	Revision   int       `json:"revision"`
 	UpdatedAt  time.Time `json:"updatedAt"`
 	LastAuthor string    `json:"lastAuthor"`
@@ -142,6 +146,11 @@ func newKey() string {
 func isUnique(err error) bool { return err != nil && strings.Contains(err.Error(), "UNIQUE") }
 
 func (s *Store) Create(title, body, author string) (Report, error) {
+	return s.CreateUnder(title, body, author, 0)
+}
+
+// CreateUnder creates a report as a child page of parent (0 for the top level).
+func (s *Store) CreateUnder(title, body, author string, parent int64) (Report, error) {
 	t, err := cleanTitle(title)
 	if err != nil {
 		return Report{}, err
@@ -158,11 +167,17 @@ func (s *Store) Create(title, body, author string) (Report, error) {
 		return Report{}, err
 	}
 	defer tx.Rollback()
+	if parent != 0 {
+		var one int
+		if tx.QueryRow(`SELECT 1 FROM reports WHERE id=?`, parent).Scan(&one) != nil {
+			return Report{}, fmt.Errorf("%w: the parent page does not exist", ErrInvalid)
+		}
+	}
 	seen := 0
 	if author == AuthorOwner {
 		seen = 1
 	}
-	res, err := tx.Exec(`INSERT INTO reports(key,title,body,revision,created_at,updated_at,seen_revision) VALUES(?,?,?,1,?,?,?)`, newKey(), t, body, now.UnixMilli(), now.UnixMilli(), seen)
+	res, err := tx.Exec(`INSERT INTO reports(key,title,body,revision,created_at,updated_at,seen_revision,parent_id) VALUES(?,?,?,1,?,?,?,?)`, newKey(), t, body, now.UnixMilli(), now.UnixMilli(), seen, parent)
 	if isUnique(err) {
 		return Report{}, fmt.Errorf("%w: a report called %q exists already", ErrConflict, t)
 	}
@@ -197,7 +212,7 @@ func saveRevision(tx *sql.Tx, id int64, rev int, author string, at time.Time, ti
 func scanReport(row interface{ Scan(...any) error }) (Report, error) {
 	var r Report
 	var c, u int64
-	err := row.Scan(&r.ID, &r.Key, &r.Title, &r.Body, &r.Revision, &r.SeenRevision, &c, &u, &r.LastAuthor)
+	err := row.Scan(&r.ID, &r.Key, &r.Title, &r.Body, &r.Revision, &r.SeenRevision, &c, &u, &r.LastAuthor, &r.Parent)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Report{}, ErrNotFound
 	}
@@ -206,7 +221,7 @@ func scanReport(row interface{ Scan(...any) error }) (Report, error) {
 }
 
 const reportCols = `r.id,r.key,r.title,r.body,r.revision,r.seen_revision,r.created_at,r.updated_at,
-	(SELECT author FROM report_history h WHERE h.report_id=r.id AND h.revision=r.revision)`
+	(SELECT author FROM report_history h WHERE h.report_id=r.id AND h.revision=r.revision), r.parent_id`
 
 func (s *Store) Get(id int64) (Report, error) {
 	return scanReport(s.db.QueryRow(`SELECT `+reportCols+` FROM reports r WHERE r.id=?`, id))
@@ -218,7 +233,7 @@ func (s *Store) ByTitle(title string) (Report, error) {
 }
 
 func (s *Store) List() ([]Summary, error) {
-	rows, err := s.db.Query(`SELECT r.id,r.key,r.title,r.revision,r.updated_at,
+	rows, err := s.db.Query(`SELECT r.id,r.key,r.title,r.revision,r.updated_at,r.parent_id,substr(r.body,1,8192),
 		(SELECT author FROM report_history h WHERE h.report_id=r.id AND h.revision=r.revision),
 		EXISTS(SELECT 1 FROM report_history h WHERE h.report_id=r.id AND h.revision>r.seen_revision AND h.author='agent'),
 		COALESCE((SELECT MAX(number) FROM report_publications p WHERE p.report_id=r.id),0),
@@ -232,9 +247,11 @@ func (s *Store) List() ([]Summary, error) {
 	for rows.Next() {
 		var x Summary
 		var u int64
-		if err := rows.Scan(&x.ID, &x.Key, &x.Title, &x.Revision, &u, &x.LastAuthor, &x.AgentUnseen, &x.Published, &x.PublishedFrom); err != nil {
+		var head string
+		if err := rows.Scan(&x.ID, &x.Key, &x.Title, &x.Revision, &u, &x.Parent, &head, &x.LastAuthor, &x.AgentUnseen, &x.Published, &x.PublishedFrom); err != nil {
 			return nil, err
 		}
+		x.Date, x.Summary = ReportDate(head), ReportSummary(head)
 		x.UpdatedAt = time.UnixMilli(u).UTC()
 		out = append(out, x)
 	}
@@ -345,6 +362,31 @@ func relink(tx *sql.Tx, oldTitle, newTitle, author string, now time.Time) error 
 	return nil
 }
 
+// Move puts a report under another page (0 for the top level). A page cannot move under itself or its own children.
+func (s *Store) Move(id, parent int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var one int
+	if tx.QueryRow(`SELECT 1 FROM reports WHERE id=?`, id).Scan(&one) != nil {
+		return ErrNotFound
+	}
+	for p, steps := parent, 0; p != 0; steps++ {
+		if p == id || steps > 10000 {
+			return fmt.Errorf("%w: a page cannot go under itself or a page inside it", ErrInvalid)
+		}
+		if err := tx.QueryRow(`SELECT parent_id FROM reports WHERE id=?`, p).Scan(&p); err != nil {
+			return fmt.Errorf("%w: the parent page does not exist", ErrInvalid)
+		}
+	}
+	if _, err := tx.Exec(`UPDATE reports SET parent_id=? WHERE id=?`, parent, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // MarkSeen records that the owner opened the report at a revision, so agent saves up to it are no longer new.
 func (s *Store) MarkSeen(id int64, revision int) error {
 	res, err := s.db.Exec(`UPDATE reports SET seen_revision=MAX(seen_revision, MIN(?, revision)) WHERE id=?`, revision, id)
@@ -372,12 +414,18 @@ func (s *Store) Delete(id int64) error {
 		return err
 	}
 	defer tx.Rollback()
+	var parent int64
+	_ = tx.QueryRow(`SELECT parent_id FROM reports WHERE id=?`, id).Scan(&parent)
 	res, err := tx.Exec(`DELETE FROM reports WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
 	if k, _ := res.RowsAffected(); k == 0 {
 		return ErrNotFound
+	}
+	// its child pages move up to where it was
+	if _, err := tx.Exec(`UPDATE reports SET parent_id=? WHERE parent_id=?`, parent, id); err != nil {
+		return err
 	}
 	for _, q := range []string{`DELETE FROM report_history WHERE report_id=?`, `DELETE FROM report_links WHERE report_id=?`} {
 		if _, err := tx.Exec(q, id); err != nil {

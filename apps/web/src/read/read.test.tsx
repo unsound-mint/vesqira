@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ReaderPage } from "./ReaderPage";
+import { listTitle } from "../reports/front";
 
 const TOKEN = "t".repeat(43);
 const iso = (minAgo: number) => new Date(Date.now() - minAgo * 60000).toISOString();
@@ -8,14 +9,22 @@ const iso = (minAgo: number) => new Date(Date.now() - minAgo * 60000).toISOStrin
 type Opts = { lastSync?: string; latest?: number; comments?: unknown[]; notFound?: "space" | "report" };
 let posts: { url: string; body: Record<string, unknown> }[] = [];
 let comments: Record<string, unknown>[] = [];
+let deletes: number[] = [];
 
 function mock(o: Opts = {}) {
   const latest = o.latest ?? 1;
   comments = (o.comments ?? []) as Record<string, unknown>[];
   posts = [];
+  deletes = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
     const path = new URL(url, "http://x").pathname;
+    if (init?.method === "DELETE") {
+      const id = Number(path.split("/").pop());
+      deletes.push(id);
+      comments = comments.filter((c) => c.id !== id);
+      return new Response(null, { status: 204 });
+    }
     if (init?.method === "POST") {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>;
       posts.push({ url: path, body });
@@ -35,7 +44,7 @@ function mock(o: Opts = {}) {
         revision: {
           id: `rev-${m[1]}-${rev}`, report: m[1], number: rev, title: m[1] === "aaaa" ? "Weekly results" : "Methods", publishedAt: "2026-11-09T10:00:00Z", authors: "Denis",
           blocks: m[1] === "aaaa"
-            ? [{ id: "b1", kind: "text", text: "Compare with [[report:bbbb|the methods]] and [[report:cccc|a private note]].", shared: ["bbbb"] }, { id: "b2", kind: "text", text: "Second paragraph." }]
+            ? [{ id: "b1", kind: "text", text: "Compare with [[report:bbbb|the methods]] and [[report:cccc|a private note]].", shared: ["bbbb"] }, rev === 1 ? { id: "b2", kind: "text", text: "Second paragraph." } : { id: "b3", kind: "text", text: "Second paragraph, revised." }]
             : [{ id: "m1", kind: "text", text: "How we did it." }],
         },
         revisions: Array.from({ length: latest }, (_, i) => ({ number: i + 1, publishedAt: iso(0) })),
@@ -46,7 +55,7 @@ function mock(o: Opts = {}) {
   }));
 }
 
-beforeEach(() => { location.hash = ""; });
+beforeEach(() => { location.hash = ""; localStorage.clear(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("the reader page", () => {
@@ -178,5 +187,41 @@ describe("the reader page boundary", () => {
     expect(seen.size).toBeGreaterThan(3);
     // ../api/metrics.ts is a pure formatter the shared Document uses; every other client in api/ is an owner call
     expect([...seen].filter((f) => f.startsWith("../api/") && f !== "../api/metrics.ts")).toEqual([]);
+  });
+
+  it("marks what changed since the revision this browser last read, and can hide the marks", async () => {
+    localStorage.setItem("vesqira.read.seen", JSON.stringify({ aaaa: 1, bbbb: 1 }));
+    mock({ latest: 2 });
+    const { container } = render(<ReaderPage token={TOKEN} />);
+    expect(await screen.findByText(/Since revision 1: 1 part is new or changed, 1 removed/)).toBeTruthy();
+    expect(container.querySelector('[data-block="b3"]')?.getAttribute("data-changed")).toBe("true");
+    expect(container.querySelector('[data-block="b1"]')?.getAttribute("data-changed")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("vesqira.read.seen") ?? "{}")).toMatchObject({ aaaa: 2 });
+    fireEvent.click(screen.getByRole("button", { name: "Hide marks" }));
+    expect(container.querySelector('[data-changed="true"]')).toBeNull();
+    expect(screen.getByRole("button", { name: "Show what changed since revision 1" })).toBeTruthy();
+  });
+
+  it("lets a reader delete their own unanswered comment, and nobody else's", async () => {
+    mock({ comments: [
+      { id: 7, report: "aaaa", revision: "rev-aaaa-1", block: "b1", parentId: 0, author: "Supervisor", fromOwner: false, body: "Mine", createdAt: iso(5), mine: true },
+      { id: 8, report: "aaaa", revision: "rev-aaaa-1", block: "b2", parentId: 0, author: "Co-supervisor", fromOwner: false, body: "Theirs", createdAt: iso(5) },
+    ] });
+    render(<ReaderPage token={TOKEN} />);
+    await screen.findByRole("heading", { level: 1, name: "Weekly results" });
+    fireEvent.click(screen.getByRole("button", { name: "Comments 2" }));
+    const panel = screen.getByRole("complementary", { name: "Comments" });
+    const del = within(panel).getAllByRole("button", { name: "Delete" });
+    expect(del.length).toBe(1);
+    fireEvent.click(del[0]!);
+    fireEvent.click(within(panel).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(deletes).toEqual([7]));
+    await waitFor(() => expect(within(panel).queryByText("Mine")).toBeNull());
+  });
+
+  it("drops the date prefix a dated list already shows", () => {
+    expect(listTitle("Report 10.11.2026 — What our cold-gas result means")).toBe("What our cold-gas result means");
+    expect(listTitle("Methods")).toBe("Methods");
+    expect(listTitle("Report 10.11.2026")).toBe("Report 10.11.2026");
   });
 });

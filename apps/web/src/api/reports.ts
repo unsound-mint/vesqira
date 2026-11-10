@@ -2,10 +2,10 @@ import { ApiError } from "./catalog";
 
 /** Owner-side reports (ADR 0030). The reader page never imports this file. */
 
-export type ReportSummary = { id: number; key: string; title: string; revision: number; updatedAt: string; lastAuthor: "owner" | "agent"; agentUnseen: boolean; published: number; publishedFrom: number };
-export type Report = { id: number; key: string; title: string; body: string; revision: number; seenRevision: number; createdAt: string; updatedAt: string; lastAuthor: "owner" | "agent" };
+export type ReportSummary = { id: number; key: string; title: string; revision: number; updatedAt: string; lastAuthor: "owner" | "agent"; agentUnseen: boolean; published: number; publishedFrom: number; parent: number; date?: string; summary?: string };
+export type Report = { id: number; key: string; title: string; body: string; revision: number; seenRevision: number; createdAt: string; updatedAt: string; lastAuthor: "owner" | "agent"; parent: number };
 export type Publication = { number: number; revisionId: string; workingRevision: number; publishedAt: string; space: string };
-export type ThreadComment = { id: number; space?: string; report: string; revision: string; block: string; parentId: number; author: string; fromOwner: boolean; body: string; createdAt: string; resolvedAt?: string };
+export type ThreadComment = { id: number; space?: string; report: string; revision: string; block: string; parentId: number; author: string; fromOwner: boolean; body: string; createdAt: string; resolvedAt?: string; quote?: string };
 export type ReplyDraft = { id: number; commentId: number; body: string; author: "owner" | "agent"; createdAt: string };
 export type ReportView = Report & { backlinks: ReportSummary[]; publications: Publication[]; comments: ThreadComment[]; drafts: ReplyDraft[]; unresolvedLinks: string[] | null; blockIds: string[] };
 export type Change = { status: "same" | "added" | "removed" | "changed"; before?: string; after?: string };
@@ -42,7 +42,9 @@ const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", 
 
 export const listReports = () => call<ReportSummary[]>("/api/reports");
 export const getReport = (id: number) => call<ReportView>(`/api/reports/${id}`);
-export const createReport = (title: string, body = "") => post<Report>("/api/reports", { title, body, author: "owner" });
+export const createReport = (title: string, parent = 0, body = "") => post<Report>("/api/reports", { title, body, author: "owner", parent });
+export const moveReport = (id: number, parent: number) => post<{ ok: boolean }>(`/api/reports/${id}/move`, { parent });
+export const withdrawReport = (id: number) => post<{ ok: boolean }>(`/api/reports/${id}/withdraw`, {});
 export const saveReport = (id: number, base: number, change: { title?: string; body?: string }) => post<Report>(`/api/reports/${id}`, { ...change, base, author: "owner" });
 export const markSeen = (id: number, revision: number) => post<{ ok: boolean }>(`/api/reports/${id}/seen`, { revision });
 export const deleteReport = (id: number) => post<{ ok: boolean }>(`/api/reports/${id}/delete`, {});
@@ -63,4 +65,5 @@ export const revokeReader = (id: number) => post<{ ok: boolean }>(`/api/publish/
 export const replyTo = (commentId: number, body: string) => post<ThreadComment>(`/api/report-comments/${commentId}/reply`, { body });
 export const resolveThread = (commentId: number, resolved: boolean) => post<ThreadComment>(`/api/report-comments/${commentId}/resolve`, { resolved });
 export const sendDraft = (id: number, body?: string) => post<ThreadComment>(`/api/reply-drafts/${id}/send`, body === undefined ? {} : { body });
+export const deleteComment = (commentId: number) => post<{ deleted: number[] }>(`/api/report-comments/${commentId}/delete`, {});
 export const discardDraft = (id: number) => post<{ ok: boolean }>(`/api/reply-drafts/${id}/discard`, {});

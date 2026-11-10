@@ -35,7 +35,9 @@ type Revision struct {
 	Number      int       `json:"number"` // 1, 2, 3 ... per report, assigned by the owner
 	Title       string    `json:"title"`
 	PublishedAt time.Time `json:"publishedAt"`
-	Authors     string    `json:"authors"` // plain attribution, for example "Drafted by VGT agent, edited by Denis"
+	Authors     string    `json:"authors"`           // plain attribution, for example "Drafted by VGT agent, edited by Denis"
+	Summary     string    `json:"summary,omitempty"` // one plain line shown in the reader's list; omitted when empty so older revisions keep their ID
+	Date        string    `json:"date,omitempty"`    // the report's own date, YYYY-MM-DD; omitted when empty
 	Blocks      []Block   `json:"blocks"`
 }
 
@@ -92,12 +94,22 @@ type Comment struct {
 	Revision   string     `json:"revision"`
 	Block      string     `json:"block"`
 	Anchor     *Anchor    `json:"anchor,omitempty"` // only on a figure block's first comment
+	Quote      string     `json:"quote,omitempty"`  // the phrase of a text block a thread's first comment is about; untrusted plain text
 	ParentID   int64      `json:"parentId"`
 	Author     string     `json:"author"` // the reader link's name, or the owner's name
 	FromOwner  bool       `json:"fromOwner"`
 	Body       string     `json:"body"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
+	Mine       bool       `json:"mine,omitempty"` // reader view only: posted through the requesting link, so it may be deleted by it
+
+	readerID int64 // the link it came through; never serialised, so readers cannot learn each other's link ids
+}
+
+// Deletion is a tombstone: comment ID was deleted, so the owner's mirror of the feed can drop it.
+type Deletion struct {
+	Seq int64 `json:"seq"`
+	ID  int64 `json:"id"`
 }
 
 // Space is what the owner publishes to a group of readers: a title and the reports it contains.

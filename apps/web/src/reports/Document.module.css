@@ -2,6 +2,7 @@
    sections, no boxes around text, no badges in the text. Uses the reading scale tokens (design-system.md). */
 
 .doc {
+  position: relative;
   width: 100%;
   max-width: calc(var(--doc-measure) + var(--sp-10) + var(--sp-10));
   margin: 0 auto;
@@ -25,6 +26,14 @@
   font-weight: var(--w-strong);
   letter-spacing: -0.01em;
   text-wrap: balance;
+}
+
+.summary {
+  max-width: var(--doc-measure);
+  color: var(--text-2);
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  text-wrap: pretty;
 }
 
 .meta {
@@ -397,4 +406,50 @@
   .block {
     grid-template-columns: minmax(0, 1fr) var(--ctl-sm);
   }
+}
+
+/* New or changed since the revision the reader compares with: a bar in the left margin, and a word for screen readers. */
+.block[data-changed="true"] .body::after {
+  content: "";
+  position: absolute;
+  inset: var(--sp-1) auto var(--sp-1) calc(-1 * var(--sp-6));
+  width: 3px;
+  border-radius: var(--r-sm);
+  background: var(--warn);
+}
+
+.vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.quoteBtn {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--ctl-md);
+  padding: 0 var(--sp-3);
+  transform: translate(-50%, calc(-100% - var(--sp-2)));
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.quoteBtn:hover {
+  background: var(--bg-3);
+}
+
+:global(::highlight(vq-quote)) {
+  background-color: var(--warn-bg);
 }

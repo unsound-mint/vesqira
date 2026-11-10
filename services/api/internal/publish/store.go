@@ -37,6 +37,7 @@ const (
 	maxTextBytes          = 64 << 10
 	maxJSONObject         = 64 << 10
 	maxCommentRunes       = 4000
+	maxQuoteRunes         = 500
 	maxCommentsSpace      = 2000
 	maxCommentsPerLinkDay = 100
 	maxReportsSpace       = 1000
@@ -70,8 +71,10 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS revisions(id TEXT PRIMARY KEY, report TEXT NOT NULL, number INTEGER NOT NULL, title TEXT NOT NULL, published_at INTEGER NOT NULL, doc TEXT NOT NULL, UNIQUE(report, number))`,
 		`CREATE TABLE IF NOT EXISTS assets(sha TEXT PRIMARY KEY, mime TEXT NOT NULL, size INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS readers(id INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, expires_at INTEGER, revoked INTEGER NOT NULL DEFAULT 0)`,
-		`CREATE TABLE IF NOT EXISTS comments(id INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, report TEXT NOT NULL, revision TEXT NOT NULL, block TEXT NOT NULL, anchor TEXT NOT NULL DEFAULT '', parent_id INTEGER NOT NULL DEFAULT 0, author TEXT NOT NULL, from_owner INTEGER NOT NULL DEFAULT 0, body TEXT NOT NULL, created_at INTEGER NOT NULL, resolved_at INTEGER, reader_id INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE TABLE IF NOT EXISTS comments(id INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, report TEXT NOT NULL, revision TEXT NOT NULL, block TEXT NOT NULL, anchor TEXT NOT NULL DEFAULT '', quote TEXT NOT NULL DEFAULT '', parent_id INTEGER NOT NULL DEFAULT 0, author TEXT NOT NULL, from_owner INTEGER NOT NULL DEFAULT 0, body TEXT NOT NULL, created_at INTEGER NOT NULL, resolved_at INTEGER, reader_id INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE INDEX IF NOT EXISTS comments_space ON comments(space)`,
+		// tombstones of deleted comments, so the owner's mirror (which pulls by id cursor) can follow deletions
+		`CREATE TABLE IF NOT EXISTS comment_deletions(seq INTEGER PRIMARY KEY AUTOINCREMENT, comment_id INTEGER NOT NULL, space TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
 		// which assets a revision shows, so a reader's picture request is one indexed lookup, not a scan of documents
 		`CREATE TABLE IF NOT EXISTS revision_assets(revision TEXT NOT NULL, sha TEXT NOT NULL, PRIMARY KEY(sha, revision))`,
@@ -278,6 +281,14 @@ func (s *Store) validateRevision(r *Revision) error {
 	}
 	if utf8.RuneCountInString(r.Authors) > 500 {
 		return invalid("authors is too long")
+	}
+	if !utf8.ValidString(r.Summary) || strings.ContainsAny(r.Summary, "\r\n") || utf8.RuneCountInString(r.Summary) > 600 {
+		return invalid("summary must be one line of at most 600 characters")
+	}
+	if r.Date != "" {
+		if _, err := time.Parse("2006-01-02", r.Date); err != nil || len(r.Date) != 10 {
+			return invalid("date must be YYYY-MM-DD")
+		}
 	}
 	if len(r.Blocks) > maxBlocks {
 		return invalid("at most %d blocks", maxBlocks)
@@ -522,6 +533,8 @@ type ReportSummary struct {
 	Latest      int       `json:"latest"`
 	Title       string    `json:"title"`
 	PublishedAt time.Time `json:"publishedAt"`
+	Date        string    `json:"date,omitempty"`    // the latest revision's own date
+	Summary     string    `json:"summary,omitempty"` // the latest revision's one-line summary
 }
 
 type SpaceView struct {
@@ -542,7 +555,7 @@ func (s *Store) Space(token string) (SpaceView, error) {
 	if err := s.db.QueryRow(`SELECT title FROM spaces WHERE slug=?`, rd.space).Scan(&v.Title); err != nil {
 		return SpaceView{}, ErrNotFound
 	}
-	rows, err := s.db.Query(`SELECT r.report,r.number,r.title,r.published_at FROM space_reports sr JOIN revisions r ON r.report=sr.report
+	rows, err := s.db.Query(`SELECT r.report,r.number,r.title,r.published_at,COALESCE(json_extract(r.doc,'$.date'),''),COALESCE(json_extract(r.doc,'$.summary'),'') FROM space_reports sr JOIN revisions r ON r.report=sr.report
 		WHERE sr.space=? AND r.number=(SELECT MAX(number) FROM revisions WHERE report=r.report) ORDER BY sr.position`, rd.space)
 	if err != nil {
 		return SpaceView{}, err
@@ -550,7 +563,7 @@ func (s *Store) Space(token string) (SpaceView, error) {
 	for rows.Next() {
 		var rs ReportSummary
 		var at int64
-		if err := rows.Scan(&rs.Key, &rs.Latest, &rs.Title, &at); err != nil {
+		if err := rows.Scan(&rs.Key, &rs.Latest, &rs.Title, &at, &rs.Date, &rs.Summary); err != nil {
 			rows.Close()
 			return SpaceView{}, err
 		}
@@ -578,6 +591,8 @@ type ReaderRevision struct {
 	Title       string        `json:"title"`
 	PublishedAt time.Time     `json:"publishedAt"`
 	Authors     string        `json:"authors"`
+	Summary     string        `json:"summary,omitempty"`
+	Date        string        `json:"date,omitempty"`
 	Blocks      []ReaderBlock `json:"blocks"`
 }
 
@@ -632,7 +647,7 @@ func (s *Store) Report(token, key string, number int) (ReportView, error) {
 		shared[k] = true
 	}
 	rows.Close()
-	v := ReportView{Revision: ReaderRevision{ID: rev.ID, Report: rev.Report, Number: rev.Number, Title: rev.Title, PublishedAt: rev.PublishedAt, Authors: rev.Authors, Blocks: []ReaderBlock{}}}
+	v := ReportView{Revision: ReaderRevision{ID: rev.ID, Report: rev.Report, Number: rev.Number, Title: rev.Title, PublishedAt: rev.PublishedAt, Authors: rev.Authors, Summary: rev.Summary, Date: rev.Date, Blocks: []ReaderBlock{}}}
 	for _, b := range rev.Blocks {
 		rb := ReaderBlock{Block: b}
 		if b.Kind == BlockText {
@@ -668,6 +683,7 @@ func (s *Store) Report(token, key string, number int) (ReportView, error) {
 	}
 	for i := range v.Comments {
 		v.Comments[i].Space = ""
+		v.Comments[i].Mine = v.Comments[i].readerID == rd.id
 	}
 	return v, nil
 }
@@ -682,8 +698,12 @@ type CommentInput struct {
 	ParentID int64
 	Body     string
 	Anchor   *Anchor
+	Quote    string // the phrase of a text block the comment is about; a thread's first comment only
 	Author   string
 }
+
+// normaliseQuote collapses runs of whitespace to single spaces and trims; the result is stored as plain text.
+func normaliseQuote(q string) string { return strings.Join(strings.Fields(q), " ") }
 
 func validAnchor(a *Anchor) bool {
 	ok := func(v float64) bool { return v >= 0 && v <= 1 } // false for NaN too
@@ -743,10 +763,20 @@ func (s *Store) addComment(space, author string, readerID int64, in CommentInput
 			return Comment{}, invalid("this link has reached its limit of %d comments a day", maxCommentsPerLinkDay)
 		}
 	}
+	quote := ""
+	if in.Quote != "" {
+		quote = normaliseQuote(in.Quote)
+		if n := utf8.RuneCountInString(quote); !utf8.ValidString(in.Quote) || n < 1 || n > maxQuoteRunes {
+			return Comment{}, invalid("a quoted phrase is 1 to %d characters", maxQuoteRunes)
+		}
+	}
 	c := Comment{Space: space, Report: in.Report, Revision: in.Revision, Block: in.Block, ParentID: in.ParentID, Author: author, FromOwner: owner, Body: body}
 	if in.ParentID != 0 {
 		if in.Anchor != nil {
 			return Comment{}, invalid("a reply carries no place on the picture")
+		}
+		if quote != "" {
+			return Comment{}, invalid("a reply carries no quoted phrase")
 		}
 		err := s.db.QueryRow(`SELECT report,revision,block FROM comments WHERE id=? AND space=? AND parent_id=0`, in.ParentID, space).Scan(&c.Report, &c.Revision, &c.Block)
 		if err != nil {
@@ -780,6 +810,12 @@ func (s *Store) addComment(space, author string, readerID int64, in CommentInput
 			a := *in.Anchor
 			c.Anchor = &a
 		}
+		if quote != "" {
+			if kind != BlockText {
+				return Comment{}, invalid("a phrase can be quoted only from a text block")
+			}
+			c.Quote = quote
+		}
 	}
 	anchor := ""
 	if c.Anchor != nil {
@@ -787,8 +823,8 @@ func (s *Store) addComment(space, author string, readerID int64, in CommentInput
 		anchor = string(b)
 	}
 	now := time.Now()
-	res, err := s.db.Exec(`INSERT INTO comments(space,report,revision,block,anchor,parent_id,author,from_owner,body,created_at,reader_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		space, c.Report, c.Revision, c.Block, anchor, c.ParentID, author, boolInt(owner), body, now.Unix(), readerID)
+	res, err := s.db.Exec(`INSERT INTO comments(space,report,revision,block,anchor,quote,parent_id,author,from_owner,body,created_at,reader_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		space, c.Report, c.Revision, c.Block, anchor, c.Quote, c.ParentID, author, boolInt(owner), body, now.Unix(), readerID)
 	if err != nil {
 		return Comment{}, err
 	}
@@ -830,13 +866,207 @@ func (s *Store) ResolveComment(id int64, resolved bool) (Comment, error) {
 	return cs[0], nil
 }
 
+// tombstone records that comment id of space was deleted.
+func tombstone(tx *sql.Tx, id int64, space string) error {
+	_, err := tx.Exec(`INSERT INTO comment_deletions(comment_id,space) VALUES(?,?)`, id, space)
+	return err
+}
+
+// DeleteComment deletes a comment for the owner; a thread's first comment takes its replies with it. It returns the
+// deleted ids, each of which gets a tombstone, and ErrNotFound for an unknown id.
+func (s *Store) DeleteComment(id int64) ([]int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var parent int64
+	var space string
+	if err := tx.QueryRow(`SELECT parent_id,space FROM comments WHERE id=?`, id).Scan(&parent, &space); err != nil {
+		return nil, ErrNotFound
+	}
+	ids := []int64{id}
+	if parent == 0 {
+		rows, err := tx.Query(`SELECT id FROM comments WHERE parent_id=? ORDER BY id`, id)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var rid int64
+			if err := rows.Scan(&rid); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			ids = append(ids, rid)
+		}
+		rows.Close()
+	}
+	for _, d := range ids {
+		if _, err := tx.Exec(`DELETE FROM comments WHERE id=?`, d); err != nil {
+			return nil, err
+		}
+		if err := tombstone(tx, d, space); err != nil {
+			return nil, err
+		}
+	}
+	return ids, tx.Commit()
+}
+
+// DeleteOwnComment lets a reader delete a comment posted through the same link, unless someone replied to it.
+// A comment that is unknown, in another space or posted through another link is ErrNotFound.
+func (s *Store) DeleteOwnComment(token string, id int64) error {
+	rd, err := s.lookup(token)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var space string
+	var reader int64
+	if err := tx.QueryRow(`SELECT space,reader_id FROM comments WHERE id=?`, id).Scan(&space, &reader); err != nil || space != rd.space || reader != rd.id {
+		return ErrNotFound
+	}
+	var replies int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM comments WHERE parent_id=?`, id).Scan(&replies); err != nil {
+		return err
+	}
+	if replies > 0 {
+		return invalid("a comment with replies cannot be deleted")
+	}
+	if _, err := tx.Exec(`DELETE FROM comments WHERE id=?`, id); err != nil {
+		return err
+	}
+	if err := tombstone(tx, id, space); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeletedAfter is the owner's feed of deletions: up to 500 tombstones with a seq above after, oldest first.
+func (s *Store) DeletedAfter(after int64) ([]Deletion, error) {
+	rows, err := s.db.Query(fmt.Sprintf(`SELECT seq,comment_id FROM comment_deletions WHERE seq>? ORDER BY seq LIMIT %d`, feedLimit), after)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Deletion{}
+	for rows.Next() {
+		var d Deletion
+		if err := rows.Scan(&d.Seq, &d.ID); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// WithdrawReport removes a report from the server: it leaves every space, its revisions and comments are deleted
+// (comments leave tombstones) and assets no other revision uses are removed with their files. ErrNotFound if the
+// report has no revisions. The owner may push revision 1 of the same key again afterwards.
+func (s *Store) WithdrawReport(key string) ([]int64, error) {
+	if !reKey.MatchString(key) {
+		return nil, ErrNotFound
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var revs int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM revisions WHERE report=?`, key).Scan(&revs); err != nil {
+		return nil, err
+	}
+	if revs == 0 {
+		return nil, ErrNotFound
+	}
+	collect := func(q string, args ...any) ([]string, error) {
+		rows, err := tx.Query(q, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var v string
+			if err := rows.Scan(&v); err != nil {
+				return nil, err
+			}
+			out = append(out, v)
+		}
+		return out, rows.Err()
+	}
+	candidates, err := collect(`SELECT DISTINCT ra.sha FROM revision_assets ra JOIN revisions r ON r.id=ra.revision WHERE r.report=?`, key)
+	if err != nil {
+		return nil, err
+	}
+	type gone struct {
+		id    int64
+		space string
+	}
+	var dead []gone
+	rows, err := tx.Query(`SELECT id,space FROM comments WHERE report=? ORDER BY id`, key)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var g gone
+		if err := rows.Scan(&g.id, &g.space); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		dead = append(dead, g)
+	}
+	rows.Close()
+	for _, q := range []string{
+		`DELETE FROM space_reports WHERE report=?`,
+		`DELETE FROM revision_assets WHERE revision IN (SELECT id FROM revisions WHERE report=?)`,
+		`DELETE FROM revisions WHERE report=?`,
+		`DELETE FROM comments WHERE report=?`,
+	} {
+		if _, err := tx.Exec(q, key); err != nil {
+			return nil, err
+		}
+	}
+	ids := []int64{}
+	for _, g := range dead {
+		ids = append(ids, g.id)
+		if err := tombstone(tx, g.id, g.space); err != nil {
+			return nil, err
+		}
+	}
+	var orphans []string
+	for _, sha := range candidates {
+		var one int
+		if err := tx.QueryRow(`SELECT 1 FROM revision_assets WHERE sha=? LIMIT 1`, sha).Scan(&one); errors.Is(err, sql.ErrNoRows) {
+			if _, err := tx.Exec(`DELETE FROM assets WHERE sha=?`, sha); err != nil {
+				return nil, err
+			}
+			orphans = append(orphans, sha)
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	for _, sha := range orphans { // after the commit: a leftover file is harmless, a missing one for a live row is not
+		if reSha.MatchString(sha) {
+			_ = os.Remove(filepath.Join(s.dir, "assets", sha))
+		}
+	}
+	return ids, nil
+}
+
 // CommentsAfter is the owner's feed: up to 500 comments with an id above after, oldest first, with their space.
 func (s *Store) CommentsAfter(after int64) ([]Comment, error) {
 	return s.queryComments(fmt.Sprintf(`WHERE id>? ORDER BY id LIMIT %d`, feedLimit), after)
 }
 
 func (s *Store) queryComments(where string, args ...any) ([]Comment, error) {
-	rows, err := s.db.Query(`SELECT id,space,report,revision,block,anchor,parent_id,author,from_owner,body,created_at,resolved_at FROM comments `+where, args...)
+	rows, err := s.db.Query(`SELECT id,space,report,revision,block,anchor,quote,parent_id,author,from_owner,body,created_at,resolved_at,reader_id FROM comments `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -848,7 +1078,7 @@ func (s *Store) queryComments(where string, args ...any) ([]Comment, error) {
 		var owner int
 		var created int64
 		var res sql.NullInt64
-		if err := rows.Scan(&c.ID, &c.Space, &c.Report, &c.Revision, &c.Block, &anchor, &c.ParentID, &c.Author, &owner, &c.Body, &created, &res); err != nil {
+		if err := rows.Scan(&c.ID, &c.Space, &c.Report, &c.Revision, &c.Block, &anchor, &c.Quote, &c.ParentID, &c.Author, &owner, &c.Body, &created, &res, &c.readerID); err != nil {
 			return nil, err
 		}
 		if anchor != "" {
@@ -868,7 +1098,7 @@ func (s *Store) queryComments(where string, args ...any) ([]Comment, error) {
 	return out, rows.Err()
 }
 
-// upgrade brings a database written by an earlier build up to date: the reader_id column on comments and the
+// upgrade brings a database written by an earlier build up to date: the reader_id and quote columns on comments and the
 // revision_assets index (filled from the stored revisions once).
 func (s *Store) upgrade() error {
 	var n int
@@ -877,6 +1107,14 @@ func (s *Store) upgrade() error {
 	}
 	if n == 0 {
 		if _, err := s.db.Exec(`ALTER TABLE comments ADD COLUMN reader_id INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('comments') WHERE name='quote'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := s.db.Exec(`ALTER TABLE comments ADD COLUMN quote TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}

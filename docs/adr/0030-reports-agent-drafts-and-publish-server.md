@@ -53,7 +53,15 @@ Owner answers (2026-11-10): laptop plus a publish server (not the whole app on t
 - A reader link may post at most 100 comments a day; only readers' comments count towards a space's 2000, so the owner can always answer.
 - Pictures are looked up through an index of the assets each revision shows, not by scanning documents.
 - The preflight names run settings that look like a machine, account or address (partition, user, host, an e-mail, a dotted host name). The run import only drops paths; it does not decide what is sensitive.
-- Follow-ups not done yet: strip metadata from attachments when publishing (EXIF, PNG text), withdraw a published report and delete a comment from the publisher side, decode the derived-data `software` field into a fixed shape before it reaches provenance, bound the Markdown inline scans in the reader for adversarial 64 KiB blocks, and guard the comment cursor against an absurd id from a compromised server.
+- Follow-ups not done yet: strip metadata from attachments when publishing (EXIF, PNG text), decode the derived-data `software` field into a fixed shape before it reaches provenance, bound the Markdown inline scans in the reader for adversarial 64 KiB blocks, and guard the comment cursor against an absurd id from a compromised server.
+
+### Pages, front matter, changes and deletions (2026-11-10)
+
+- **Pages.** Reports form a tree (`reports.parent_id`, schema 3). Moving a page under itself or its own child is refused; deleting a page moves its children up. The Notion import keeps the export's hierarchy, and a database view page absorbs its table instead of becoming a second page.
+- **Front matter.** A body may start with Obsidian-style `key: value` lines between `---` fences (`internal/reports/front.go`, `apps/web/src/reports/front.ts`, one shared fixture). Only `date` (YYYY-MM-DD) and `summary` are shown and published, as `Revision.date` and `Revision.summary`; every other key, such as an imported Notion `status`, stays on the laptop.
+- **What changed.** Block ids are content hashes, so the reader page marks the parts of the latest revision that are not in the revision this browser last read (kept in the browser's local storage) and says how many were removed. No server state is involved.
+- **Quoted comments.** A thread's first comment on a text part may carry the words the reader selected (`quote`, at most 500 characters, plain text). Both pages highlight them where the browser supports the CSS Custom Highlight API.
+- **Deleting and withdrawing.** The owner deletes any comment (a thread's first comment takes its replies). A reader deletes their own comment while nobody has answered it. Deletions leave tombstones that the owner's sync follows. Withdrawing a report deletes every published revision, its pictures and its comments on the publish server and the local record of them. The draft stays, and publishing it again starts at revision 1.
 
 ### Not now
 Graph view of links (planned after backlinks, once there are enough reports to make it useful); live co-editing (CRDT); full accounts and roles (ADR 0028 B); LaTeX manuscripts (shape.md section 11); publishing boards to the publish server.

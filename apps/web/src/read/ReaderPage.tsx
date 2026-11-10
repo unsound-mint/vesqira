@@ -4,7 +4,8 @@ import { Button, IconButton } from "../ui";
 import { Icon } from "../ui/Icon";
 import { Document, type DocBlock } from "../reports/Document";
 import { plainText, type RenderEnv } from "../reports/markdown";
-import { assetUrl, getReport, getSpace, postComment, ReadError, type ReaderComment, type ReaderRevision, type ReportView, type SpaceView } from "./api";
+import { listTitle, longDate as reportLongDate } from "../reports/front";
+import { assetUrl, deleteComment, getReport, getSpace, postComment, ReadError, type ReaderComment, type ReaderRevision, type ReportView, type SpaceView } from "./api";
 import { longDate, relative, shortDate } from "./dates";
 import s from "./ReaderPage.module.css";
 
@@ -29,6 +30,30 @@ function initialTheme(): "light" | "dark" {
 }
 
 const STALE_MS = 15 * 60 * 1000;
+const SEEN_KEY = "vesqira.read.seen";
+
+/** The latest revision of each report this browser has opened, so the page can say what changed since. */
+function seenRevisions(): Record<string, number> {
+  try {
+    const v = JSON.parse(localStorage.getItem(SEEN_KEY) ?? "{}") as unknown;
+    return v && typeof v === "object" ? (v as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function markSeen(key: string, n: number) {
+  try {
+    const all = seenRevisions();
+    if ((all[key] ?? 0) >= n) return;
+    all[key] = n;
+    localStorage.setItem(SEEN_KEY, JSON.stringify(all));
+  } catch {
+    /* storage may be unavailable */
+  }
+}
+
+
 const quote = (t: string) => (t.length > 120 ? t.slice(0, 117).trimEnd() + "…" : t);
 
 function blockText(b: ReaderRevision["blocks"][number]): string {
@@ -50,6 +75,11 @@ export function ReaderPage({ token }: { token: string }) {
   const [revMenu, setRevMenu] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [quoteDraft, setQuoteDraft] = useState<string | null>(null);
+  const [compare, setCompare] = useState<{ key: string; number: number } | null>(null);
+  const [prevIds, setPrevIds] = useState<{ key: string; number: number; ids: Set<string> } | null>(null);
+  const [seen, setSeen] = useState(seenRevisions);
+  const offered = useRef(new Set<string>());
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -71,7 +101,9 @@ export function ReaderPage({ token }: { token: string }) {
     getSpace(token).then(setSpace, (e: unknown) => setSpaceErr(e instanceof ReadError ? e : new ReadError("other", "Something went wrong.")));
   }, [token, attempt]);
 
-  const key = route.key && space?.reports.some((r) => r.key === route.key) ? route.key : (space?.reports[0]?.key ?? null);
+  // Newest first, by the date the report is about when it has one.
+  const ordered = useMemo(() => [...(space?.reports ?? [])].sort((a, b) => (b.date ?? b.publishedAt.slice(0, 10)).localeCompare(a.date ?? a.publishedAt.slice(0, 10))), [space]);
+  const key = route.key && space?.reports.some((r) => r.key === route.key) ? route.key : (ordered[0]?.key ?? null);
 
   const loadReport = useCallback(() => {
     if (!key) return Promise.resolve();
@@ -84,9 +116,27 @@ export function ReaderPage({ token }: { token: string }) {
   useEffect(() => {
     setView(null);
     setSelected(null);
+    setQuoteDraft(null);
     setRevMenu(false);
     void loadReport();
   }, [loadReport]);
+
+  // Opening the latest revision of a report read before at an older one marks what changed since then.
+  const latestOf = space?.reports.find((r) => r.key === key)?.latest ?? 0;
+  useEffect(() => {
+    const r = view?.revision;
+    if (!r || !key || r.report !== key || r.number !== latestOf) return;
+    const before = seen[key] ?? 0;
+    if (before > 0 && before < r.number && !offered.current.has(key)) setCompare({ key, number: before });
+    offered.current.add(key); // offered once per visit: hiding the marks keeps them hidden
+    markSeen(key, r.number);
+    if ((seen[key] ?? 0) < r.number) setSeen(seenRevisions()); // the list stops calling it new or updated
+  }, [view, key, latestOf, seen]);
+  useEffect(() => {
+    if (!compare || !key || compare.key !== key) return;
+    if (prevIds?.key === key && prevIds.number === compare.number) return;
+    getReport(token, key, compare.number).then((v) => setPrevIds({ key, number: compare.number, ids: new Set(v.revision.blocks.map((b) => b.id)) }), () => setCompare(null));
+  }, [compare, key, token, prevIds]);
 
   useEffect(() => {
     if (!panel && !drawer && !revMenu) return;
@@ -103,6 +153,7 @@ export function ReaderPage({ token }: { token: string }) {
   const open = useCallback((k: string, rev = 0) => {
     location.hash = `r=${encodeURIComponent(k)}${rev ? `&rev=${rev}` : ""}`;
     setDrawer(false);
+    setSeen(seenRevisions());
   }, []);
 
   const rev = view?.revision;
@@ -146,6 +197,11 @@ export function ReaderPage({ token }: { token: string }) {
     };
   }, [view, blocks]);
 
+  const marks = compare && prevIds && rev && compare.key === rev.report && prevIds.key === rev.report && prevIds.number === compare.number && compare.number < rev.number ? prevIds : null;
+  const changed = useMemo(() => (marks ? new Set(blocks.filter((b) => !marks.ids.has(b.id)).map((b) => b.id)) : undefined), [marks, blocks]);
+  const removed = marks ? [...marks.ids].filter((id) => !blocks.some((b) => b.id === id)).length : 0;
+  const quotes = useMemo(() => threads.current.filter((t) => t.root.quote && !t.root.resolvedAt).map((t) => ({ block: t.root.block, quote: t.root.quote as string })), [threads]);
+
   const counts = useMemo(() => {
     const m: Record<string, number> = {};
     for (const t of threads.current) m[t.root.block] = (m[t.root.block] ?? 0) + 1;
@@ -164,9 +220,16 @@ export function ReaderPage({ token }: { token: string }) {
 
   async function send(body: string, block: string, parentId?: number) {
     if (!rev) return;
-    await postComment(token, { report: rev.report, revision: rev.id, block, ...(parentId ? { parentId } : {}), body });
+    const q = !parentId && quoteDraft && selected === block ? quoteDraft : undefined;
+    await postComment(token, { report: rev.report, revision: rev.id, block, ...(parentId ? { parentId } : {}), ...(q ? { quote: q } : {}), body });
+    if (!parentId) setQuoteDraft(null);
     await loadReport();
   }
+  async function remove(id: number) {
+    await deleteComment(token, id);
+    await loadReport();
+  }
+  const changedSummary = changed ? [changed.size ? `${changed.size} ${changed.size === 1 ? "part is" : "parts are"} new or changed` : "no part is new or changed", removed ? `${removed} removed` : ""].filter(Boolean).join(", ") : "";
 
   return (
     <div className={s.app} data-panel={panel ? "open" : "closed"}>
@@ -180,19 +243,25 @@ export function ReaderPage({ token }: { token: string }) {
         </div>
         <nav className={s.nav} aria-label="Reports">
           <ul>
-            {space.reports.map((r) => (
-              <li key={r.key}>
-                <a href={`#r=${encodeURIComponent(r.key)}`} className={s.item} aria-current={r.key === key ? "page" : undefined} onClick={(e) => { e.preventDefault(); open(r.key); }}>
-                  <span className={s.itemTitle}>{r.title}</span>
-                  <span className={s.itemDate}>{shortDate(r.publishedAt)}</span>
-                </a>
-              </li>
-            ))}
+            {ordered.map((r) => {
+              const updated = (seen[r.key] ?? 0) > 0 && (seen[r.key] ?? 0) < r.latest;
+              const unread = !seen[r.key];
+              return (
+                <li key={r.key}>
+                  <a href={`#r=${encodeURIComponent(r.key)}`} className={s.item} title={r.title} aria-current={r.key === key ? "page" : undefined} onClick={(e) => { e.preventDefault(); open(r.key); }}>
+                    <span className={s.itemTitle}>{listTitle(r.title)}</span>
+                    <span className={s.itemMeta}>
+                      <span className={s.itemDate}>{r.date ? shortDate(r.date + "T00:00:00Z") : shortDate(r.publishedAt)}</span>
+                      {updated || unread ? <span className={s.itemNew}>{updated ? "Updated" : "New"}</span> : null}
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         </nav>
         <div className={s.sideFoot}>
           <p>Reading as {space.reader}</p>
-          <p>Figures are pictures; this link shows nothing else.</p>
         </div>
       </aside>
 
@@ -200,7 +269,7 @@ export function ReaderPage({ token }: { token: string }) {
         <div className={s.top}>
           <button type="button" className={s.commentsBtn} aria-pressed={panel} onClick={() => setPanel(!panel)}>
             <Icon icon={MessageSquare} />
-            Comments {nComments}
+            Comments{nComments ? <> <span className={s.count}>{nComments}</span></> : null}
           </button>
           <IconButton icon={theme === "dark" ? Sun : Moon} label={theme === "dark" ? "Light theme" : "Dark theme"} pressed={theme === "dark"} onClick={() => setTheme(theme === "dark" ? "light" : "dark")} />
         </div>
@@ -210,9 +279,23 @@ export function ReaderPage({ token }: { token: string }) {
               <p className={s.notice} role="status">
                 You are reading revision {rev.number} of {latest}. <button type="button" className={s.link} onClick={() => open(rev.report)}>Read the latest</button>
               </p>
+            ) : changed && marks ? (
+              <p className={s.notice} role="status">
+                <span className={s.changeKey} aria-hidden="true" />
+                Since revision {marks.number}: {changedSummary}. <button type="button" className={s.link} onClick={() => setCompare(null)}>Hide marks</button>
+              </p>
+            ) : rev.number > 1 && !old ? (
+              <p className={s.notice}>
+                <button type="button" className={s.link} onClick={() => setCompare({ key: rev.report, number: rev.number - 1 })}>Show what changed since revision {rev.number - 1}</button>
+              </p>
             ) : null}
             <Document
               title={rev.title}
+              summary={rev.summary || undefined}
+              changed={changed}
+              changedLabel={marks ? `New or changed since revision ${marks.number}` : undefined}
+              onQuote={(block, q) => { setSelected(block); setQuoteDraft(q); setPanel(true); }}
+              quotes={quotes}
               meta={
                 <>
                   <span className={s.revWrap}>
@@ -235,7 +318,7 @@ export function ReaderPage({ token }: { token: string }) {
                       </ul>
                     ) : null}
                   </span>
-                  <span>{longDate(rev.publishedAt)}</span>
+                  <span title={rev.date ? `Published ${longDate(rev.publishedAt)}` : undefined}>{rev.date ? reportLongDate(rev.date) : longDate(rev.publishedAt)}</span>
                   {rev.authors ? <span>{rev.authors}</span> : null}
                 </>
               }
@@ -243,7 +326,7 @@ export function ReaderPage({ token }: { token: string }) {
               env={env}
               counts={counts}
               activeBlock={selected}
-              onComment={(id) => { setSelected(id); setPanel(true); }}
+              onComment={(id) => { setSelected(id); setQuoteDraft(null); setPanel(true); }}
               commentLabel="Comment"
               onOpenLink={(k) => open(k)}
             />
@@ -255,7 +338,8 @@ export function ReaderPage({ token }: { token: string }) {
         <CommentsPanel
           threads={threads}
           selected={selected}
-          selText={selText}
+          selText={quoteDraft ? `“${quote(quoteDraft)}”` : selText}
+          onDelete={remove}
           revBlocks={rev?.blocks ?? []}
           stale={!!stale}
           lastSync={space.lastSync}
@@ -269,7 +353,7 @@ export function ReaderPage({ token }: { token: string }) {
 
 type Thread = { root: ReaderComment; replies: ReaderComment[] };
 
-function CommentsPanel({ threads, selected, selText, revBlocks, stale, lastSync, onClose, onSend }: {
+function CommentsPanel({ threads, selected, selText, revBlocks, stale, lastSync, onClose, onSend, onDelete }: {
   threads: { current: Thread[]; earlier: Thread[] };
   selected: string | null;
   selText: string;
@@ -278,10 +362,12 @@ function CommentsPanel({ threads, selected, selText, revBlocks, stale, lastSync,
   lastSync?: string;
   onClose: () => void;
   onSend: (body: string, block: string, parentId?: number) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
 }) {
   const head = useRef<HTMLHeadingElement>(null);
   useEffect(() => head.current?.focus(), []);
-  const hasThread = threads.current.some((t) => t.root.block === selected);
+  const quoting = selText.startsWith("“");
+  const hasThread = !quoting && threads.current.some((t) => t.root.block === selected);
   const text = (id: string) => quote(blockText(revBlocks.find((b) => b.id === id) ?? { id, kind: "text" }));
   const total = threads.current.length + threads.earlier.length;
   return (
@@ -292,15 +378,15 @@ function CommentsPanel({ threads, selected, selText, revBlocks, stale, lastSync,
       </div>
       {selected && !hasThread ? <Composer label={`Comment on: ${selText}`} action="Comment" onSend={(b) => onSend(b, selected)} /> : null}
       {selected && !hasThread && stale && lastSync ? <p className={s.sync}>The author's workspace last synced {relative(lastSync)}; your comment will reach them at the next sync.</p> : null}
-      {total === 0 && !selected ? <p className={s.quiet}>No comments yet. Use the comment button beside a paragraph to start one.</p> : null}
+      {total === 0 && !selected ? <p className={s.quiet}>No comments yet. Select words in the text, or use the button beside a paragraph, to start one.</p> : null}
       <ul className={s.threads}>
-        {threads.current.map((t) => <ThreadView key={t.root.id} t={t} excerpt={text(t.root.block)} active={t.root.block === selected} onSend={onSend} />)}
+        {threads.current.map((t) => <ThreadView key={t.root.id} t={t} excerpt={t.root.quote ? `“${quote(t.root.quote)}”` : text(t.root.block)} active={t.root.block === selected} onSend={onSend} onDelete={onDelete} />)}
       </ul>
       {threads.earlier.length ? (
         <>
           <h3 className={s.sub}>On earlier revisions</h3>
           <ul className={s.threads}>
-            {threads.earlier.map((t) => <ThreadView key={t.root.id} t={t} excerpt="this paragraph changed since" active={false} onSend={onSend} />)}
+            {threads.earlier.map((t) => <ThreadView key={t.root.id} t={t} excerpt={t.root.quote ? `“${quote(t.root.quote)}” (this paragraph changed since)` : "this paragraph changed since"} active={false} onSend={onSend} onDelete={onDelete} />)}
           </ul>
         </>
       ) : null}
@@ -308,16 +394,33 @@ function CommentsPanel({ threads, selected, selText, revBlocks, stale, lastSync,
   );
 }
 
-function ThreadView({ t, excerpt, active, onSend }: { t: Thread; excerpt: string; active: boolean; onSend: (body: string, block: string, parentId?: number) => Promise<void> }) {
+function ThreadView({ t, excerpt, active, onSend, onDelete }: { t: Thread; excerpt: string; active: boolean; onSend: (body: string, block: string, parentId?: number) => Promise<void>; onDelete: (id: number) => Promise<void> }) {
+  const [confirm, setConfirm] = useState<number | null>(null);
+  const [err, setErr] = useState(false);
   return (
     <li className={s.thread} data-active={active ? "true" : undefined}>
       <p className={s.excerpt}>{excerpt}</p>
-      {[t.root, ...t.replies].map((c) => (
-        <div key={c.id} className={s.msg}>
-          <p className={s.msgHead}><strong>{c.author}</strong> <span>{relative(c.createdAt)}</span></p>
-          <p className={s.msgBody}>{c.body}</p>
-        </div>
-      ))}
+      {[t.root, ...t.replies].map((c, i, all) => {
+        // only your own comment, and only while nobody has answered it
+        const deletable = c.mine && (c.parentId ? i === all.length - 1 : t.replies.length === 0);
+        return (
+          <div key={c.id} className={s.msg}>
+            <p className={s.msgHead}>
+              <strong>{c.author}</strong> <span>{relative(c.createdAt)}</span>
+              {deletable && confirm !== c.id ? <button type="button" className={s.msgAction} onClick={() => setConfirm(c.id)}>Delete</button> : null}
+            </p>
+            <p className={s.msgBody}>{c.body}</p>
+            {confirm === c.id ? (
+              <p className={s.confirm}>
+                Delete this comment?{" "}
+                <button type="button" className={s.link} onClick={() => void onDelete(c.id).then(() => setConfirm(null), () => setErr(true))}>Delete</button>{" "}
+                <button type="button" className={s.link} onClick={() => setConfirm(null)}>Keep</button>
+              </p>
+            ) : null}
+          </div>
+        );
+      })}
+      {err ? <p role="alert" className={s.err}>The comment was not deleted. Someone may have answered it; reload to see.</p> : null}
       {t.root.resolvedAt ? <p className={s.resolved}>Resolved</p> : null}
       <Composer label="Reply" action="Reply" compact onSend={(b) => onSend(b, t.root.block, t.root.id)} />
     </li>

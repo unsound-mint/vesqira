@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -442,6 +443,269 @@ func TestPublisherKeys(t *testing.T) {
 		t.Fatal("revoke")
 	}
 	if err := s.RevokePublisher("nobody"); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+}
+
+func TestSummaryAndDate(t *testing.T) {
+	w := newWorld(t)
+	r := rev(keyB, 2, Block{ID: "t", Kind: BlockText, Text: "x"})
+	r.Summary, r.Date = "Cube 4 reduced; two ridges stand out.", "2026-11-03"
+	out, err := w.s.PushRevision(r)
+	if err != nil || out.Summary != r.Summary || out.Date != r.Date {
+		t.Fatalf("push: %+v %v", out, err)
+	}
+	if err := w.s.PutSpace(Space{Slug: "sup", Title: "S", Reports: []string{keyA, keyB}}); err != nil {
+		t.Fatal(err)
+	}
+	rv, err := w.s.Report(w.token, keyB, 0)
+	if err != nil || rv.Revision.Summary != r.Summary || rv.Revision.Date != r.Date {
+		t.Fatalf("report: %+v %v", rv.Revision, err)
+	}
+	sv, _ := w.s.Space(w.token)
+	for _, rs := range sv.Reports {
+		switch rs.Key {
+		case keyB:
+			if rs.Summary != r.Summary || rs.Date != r.Date {
+				t.Errorf("space list: %+v", rs)
+			}
+		case keyA:
+			if rs.Summary != "" || rs.Date != "" {
+				t.Errorf("report without them: %+v", rs)
+			}
+		}
+	}
+	// old revisions hash as before: the fields vanish when empty
+	if raw, _ := json.Marshal(rev(keyA, 1)); strings.Contains(string(raw), "summary") || strings.Contains(string(raw), "date") {
+		t.Errorf("empty fields serialised: %s", raw)
+	}
+	for name, mod := range map[string]func(*Revision){
+		"newline":      func(r *Revision) { r.Summary = "a\nb" },
+		"long":         func(r *Revision) { r.Summary = strings.Repeat("é", 601) },
+		"bad utf8":     func(r *Revision) { r.Summary = "a\xffb" },
+		"date format":  func(r *Revision) { r.Date = "2026-1-3" },
+		"date invalid": func(r *Revision) { r.Date = "2026-02-30" },
+		"date time":    func(r *Revision) { r.Date = "2026-02-03T10:00:00Z" },
+	} {
+		bad := rev(keyB, 3)
+		mod(&bad)
+		if _, err := w.s.PushRevision(bad); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	ok := rev(keyB, 4)
+	ok.Summary = strings.Repeat("é", 600)
+	if _, err := w.s.PushRevision(ok); err != nil {
+		t.Errorf("600 runes: %v", err)
+	}
+}
+
+func TestCommentQuote(t *testing.T) {
+	w := newWorld(t)
+	s := w.s
+	in := func(block, quote string) CommentInput {
+		return CommentInput{Report: keyA, Revision: w.revA.ID, Block: block, Body: "x", Quote: quote}
+	}
+	c, err := s.AddComment(w.token, in("t1", "  two\n\t words   here "))
+	if err != nil || c.Quote != "two words here" {
+		t.Fatalf("quote = %+v, %v", c, err)
+	}
+	if _, err := s.AddOwnerComment("sup", CommentInput{Report: keyA, Revision: w.revA.ID, Block: "t1", Body: "x", Quote: "owner", Author: "D"}); err != nil {
+		t.Errorf("owner quote: %v", err)
+	}
+	if _, err := s.AddComment(w.token, in("t1", strings.Repeat("é", 500))); err != nil {
+		t.Errorf("500 runes: %v", err)
+	}
+	for name, ci := range map[string]CommentInput{
+		"figure block": in("f1", "phrase"),
+		"run block":    in("r1", "phrase"),
+		"too long":     in("t1", strings.Repeat("é", 501)),
+		"blank":        in("t1", " \n "),
+		"reply":        {ParentID: c.ID, Body: "x", Quote: "phrase"},
+	} {
+		if _, err := s.AddComment(w.token, ci); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	feed, _ := s.CommentsAfter(0)
+	if len(feed) == 0 || feed[0].Quote != "two words here" {
+		t.Errorf("feed: %+v", feed)
+	}
+}
+
+func TestOwnerDeleteThreadLeavesTombstones(t *testing.T) {
+	w := newWorld(t)
+	s := w.s
+	root, _ := s.AddComment(w.token, CommentInput{Report: keyA, Revision: w.revA.ID, Block: "t1", Body: "q"})
+	r1, _ := s.AddComment(w.token, CommentInput{ParentID: root.ID, Body: "a"})
+	r2, _ := s.AddOwnerComment("sup", CommentInput{ParentID: root.ID, Body: "b", Author: "D"})
+	other, _ := s.AddComment(w.token, CommentInput{Report: keyA, Revision: w.revA.ID, Block: "t1", Body: "keep"})
+	ids, err := s.DeleteComment(root.ID)
+	if err != nil || len(ids) != 3 || ids[0] != root.ID || ids[1] != r1.ID || ids[2] != r2.ID {
+		t.Fatalf("deleted %v, %v", ids, err)
+	}
+	ds, err := s.DeletedAfter(0)
+	if err != nil || len(ds) != 3 || ds[0].Seq >= ds[1].Seq || ds[0].ID != root.ID {
+		t.Fatalf("tombstones %+v, %v", ds, err)
+	}
+	if after, _ := s.DeletedAfter(ds[1].Seq); len(after) != 1 || after[0].ID != r2.ID {
+		t.Errorf("cursor: %+v", after)
+	}
+	if feed, _ := s.CommentsAfter(0); len(feed) != 1 || feed[0].ID != other.ID {
+		t.Errorf("remaining: %+v", feed)
+	}
+	if _, err := s.DeleteComment(root.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("twice: %v", err)
+	}
+	// deleting a reply removes only it
+	rp, _ := s.AddComment(w.token, CommentInput{ParentID: other.ID, Body: "r"})
+	if ids, err := s.DeleteComment(rp.ID); err != nil || len(ids) != 1 {
+		t.Errorf("reply: %v %v", ids, err)
+	}
+}
+
+func TestReaderDeletesOwnCommentsOnly(t *testing.T) {
+	w := newWorld(t)
+	s := w.s
+	rd2, _ := s.CreateReader("sup", "Postdoc", nil)
+	mine, _ := s.AddComment(w.token, CommentInput{Report: keyA, Revision: w.revA.ID, Block: "t1", Body: "mine"})
+	theirs, _ := s.AddComment(rd2.Token, CommentInput{Report: keyA, Revision: w.revA.ID, Block: "t1", Body: "theirs"})
+	owner, _ := s.AddOwnerComment("sup", CommentInput{Report: keyA, Revision: w.revA.ID, Block: "t1", Body: "o", Author: "D"})
+	threaded, _ := s.AddComment(w.token, CommentInput{Report: keyA, Revision: w.revA.ID, Block: "t1", Body: "thread"})
+	if _, err := s.AddComment(rd2.Token, CommentInput{ParentID: threaded.ID, Body: "reply"}); err != nil {
+		t.Fatal(err)
+	}
+	rv, _ := s.Report(w.token, keyA, 0)
+	got := map[int64]bool{}
+	for _, c := range rv.Comments {
+		got[c.ID] = c.Mine
+	}
+	if !got[mine.ID] || got[theirs.ID] || got[owner.ID] || !got[threaded.ID] || len(got) != 5 {
+		t.Errorf("mine flags: %v", got)
+	}
+	raw, _ := json.Marshal(rv.Comments)
+	if strings.Contains(string(raw), "readerID") || strings.Contains(strings.ToLower(string(raw)), "reader_id") {
+		t.Errorf("link id leaked: %s", raw)
+	}
+	for name, id := range map[string]int64{"another link's": theirs.ID, "owner's": owner.ID, "unknown": 9999} {
+		if err := s.DeleteOwnComment(w.token, id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if err := s.DeleteOwnComment(w.token, threaded.ID); !errors.Is(err, ErrInvalid) {
+		t.Errorf("with replies: %v", err)
+	}
+	if err := s.DeleteOwnComment("nonsense-token-nonsense-token", mine.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("bad token: %v", err)
+	}
+	if err := s.DeleteOwnComment(w.token, mine.ID); err != nil {
+		t.Fatalf("own: %v", err)
+	}
+	if ds, _ := s.DeletedAfter(0); len(ds) != 1 || ds[0].ID != mine.ID {
+		t.Errorf("tombstones: %+v", ds)
+	}
+	if err := s.DeleteOwnComment(w.token, mine.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("twice: %v", err)
+	}
+	// a link of another space cannot reach it either
+	if err := s.PutSpace(Space{Slug: "other", Title: "O", Reports: []string{keyB}}); err != nil {
+		t.Fatal(err)
+	}
+	foreign, _ := s.CreateReader("other", "F", nil)
+	if err := s.DeleteOwnComment(foreign.Token, theirs.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("other space: %v", err)
+	}
+}
+
+func TestWithdrawReport(t *testing.T) {
+	w := newWorld(t)
+	s := w.s
+	// B shares its figure asset with A and has one of its own
+	own := putPNG(t, s, 3)
+	if _, err := s.PushRevision(rev(keyB, 2, figBlock("f2", w.asset), figBlock("f3", own))); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutSpace(Space{Slug: "sup", Title: "S", Reports: []string{keyA, keyB}}); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := s.AddComment(w.token, CommentInput{Report: keyB, Revision: w.revB.ID, Block: "f2", Body: "x", Anchor: &Anchor{Kind: "point", X: .1, Y: .1}})
+	if _, err := s.AddComment(w.token, CommentInput{ParentID: c.ID, Body: "y"}); err != nil {
+		t.Fatal(err)
+	}
+	keep, _ := s.AddComment(w.token, CommentInput{Report: keyA, Revision: w.revA.ID, Block: "t1", Body: "keep"})
+	if _, _, err := s.Asset(w.token, own); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := s.WithdrawReport(keyB)
+	if err != nil || len(ids) != 2 {
+		t.Fatalf("withdraw: %v %v", ids, err)
+	}
+	if _, err := s.Report(w.token, keyB, 0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("report: %v", err)
+	}
+	if _, err := s.Report(w.token, keyB, 1); !errors.Is(err, ErrNotFound) {
+		t.Errorf("revision 1: %v", err)
+	}
+	if _, _, err := s.Asset(w.token, own); !errors.Is(err, ErrNotFound) {
+		t.Errorf("own asset: %v", err)
+	}
+	if _, _, err := s.Asset(w.token, w.asset); err != nil {
+		t.Errorf("shared asset must stay: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "assets", own)); !os.IsNotExist(err) {
+		t.Errorf("orphan file remains: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "assets", w.other)); !os.IsNotExist(err) { // used only by B's revision 1
+		t.Errorf("orphan file of revision 1 remains: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "assets", w.asset)); err != nil {
+		t.Errorf("shared asset file must stay: %v", err)
+	}
+	sv, _ := s.Space(w.token)
+	if len(sv.Reports) != 1 || sv.Reports[0].Key != keyA || sv.Comments != 1 {
+		t.Errorf("space: %+v", sv)
+	}
+	if rv, _ := s.Report(w.token, keyA, 0); len(rv.Comments) != 1 || rv.Comments[0].ID != keep.ID {
+		t.Errorf("other report's comments: %+v", rv.Comments)
+	}
+	if ds, _ := s.DeletedAfter(0); len(ds) != 2 {
+		t.Errorf("tombstones: %+v", ds)
+	}
+	if _, err := s.WithdrawReport(keyB); !errors.Is(err, ErrNotFound) {
+		t.Errorf("twice: %v", err)
+	}
+	if _, err := s.WithdrawReport("zz"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("bad key: %v", err)
+	}
+	// the key can be published again from revision 1, even with different content
+	if _, err := s.PushRevision(rev(keyB, 1, Block{ID: "n", Kind: BlockText, Text: "new"})); err != nil {
+		t.Errorf("re-push: %v", err)
+	}
+}
+
+func TestUpgradeAddsQuoteColumn(t *testing.T) {
+	dir := t.TempDir()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "old.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`CREATE TABLE comments(id INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, report TEXT NOT NULL, revision TEXT NOT NULL, block TEXT NOT NULL, anchor TEXT NOT NULL DEFAULT '', parent_id INTEGER NOT NULL DEFAULT 0, author TEXT NOT NULL, from_owner INTEGER NOT NULL DEFAULT 0, body TEXT NOT NULL, created_at INTEGER NOT NULL, resolved_at INTEGER, reader_id INTEGER NOT NULL DEFAULT 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO comments(space,report,revision,block,author,body,created_at) VALUES('sup','r','v','b','Prof','old',1)`); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs, err := s.CommentsAfter(0)
+	if err != nil || len(cs) != 1 || cs[0].Body != "old" || cs[0].Quote != "" {
+		t.Fatalf("after upgrade: %+v %v", cs, err)
+	}
+	if _, err := Open(db, dir); err != nil { // idempotent
 		t.Fatal(err)
 	}
 }

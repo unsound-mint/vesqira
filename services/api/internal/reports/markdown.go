@@ -78,9 +78,10 @@ type Block struct {
 }
 
 // Blocks splits a body into blocks. Blank lines separate blocks, except inside fenced code and $$ math; a heading is
-// always its own block; a figure or run reference alone on a line is its own block.
+// always its own block; a figure or run reference alone on a line is its own block. Front matter is not a block.
 func Blocks(body string) []Block {
-	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	_, body = SplitFront(body)
+	lines := strings.Split(body, "\n")
 	var out []Block
 	var cur []string
 	flush := func() {

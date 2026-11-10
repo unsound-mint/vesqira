@@ -63,7 +63,62 @@
 }
 
 .itemTitle {
+  display: -webkit-box;
   min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+.itemMeta {
+  display: grid;
+  flex: none;
+  justify-items: end;
+  gap: var(--sp-1);
+}
+
+.itemNew {
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: var(--w-medium);
+}
+
+.count {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.changeKey {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  margin-right: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--warn);
+  vertical-align: -0.15em;
+}
+
+.msgAction {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.msgAction:hover {
+  color: var(--err);
+  text-decoration: underline;
+}
+
+.confirm {
+  margin: var(--sp-1) 0 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
 }
 
 .itemDate {

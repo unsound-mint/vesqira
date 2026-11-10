@@ -34,6 +34,8 @@ import (
 const instructions = `Vesqira holds the researcher's reports: Markdown documents for a supervisor, drafted by you and published by the researcher.
 You can read reports, runs, figures and the supervisor's comments, create and update report drafts, attach images and draft replies to comments. You cannot publish, send a reply or resolve a thread; the researcher does that after reading your draft.
 Report syntax: CommonMark with GitHub tables and $…$ / $$…$$ math. A line holding only ![[figure:<revision>]] embeds a pinned figure (use list_figures for revisions); a line holding only [[run:<id>]] embeds a run summary; [[Report title]] links another report; ![alt](attachment:<sha256>) shows an image added with attach_image.
+A report may start with front matter: a line "---", then "date: YYYY-MM-DD" (the date the report is about) and "summary: <one sentence>" (shown under the title), then "---". Only date and summary are shown or published; keep any other keys you find as they are.
+Reports form a tree of pages: list_reports gives each one's parent id; create a new report under the right page (for example a meeting report under the page that holds the meeting reports).
 Scientific rules: never invent units, calibration or coordinate frames; say "unknown" when a value is not known. Keep measured results, interpretation and hypotheses apart and label interpretation as such. VGT orientations are axial (0° = 180°): never average angles arithmetically. A run finishing is not evidence that its result is valid.
 Every update names the revision you read (base); if someone saved in between you get a conflict with the current text: read it again and reapply your change rather than overwriting.`
 
@@ -115,8 +117,9 @@ type idArgs struct {
 }
 
 type createArgs struct {
-	Title string `json:"title" jsonschema:"report title, unique, without [ ] | or #"`
-	Body  string `json:"body" jsonschema:"Markdown body"`
+	Title  string `json:"title" jsonschema:"report title, unique, without [ ] | or #"`
+	Body   string `json:"body" jsonschema:"Markdown body"`
+	Parent int64  `json:"parent,omitempty" jsonschema:"id of the page to create it under (optional; 0 is the top level)"`
 }
 
 type updateArgs struct {
@@ -162,7 +165,7 @@ func readImage(path string) (string, error) {
 
 func mcpServer(c *apiClient) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "vesqira", Title: "Vesqira reports", Version: "0.1"}, &mcp.ServerOptions{Instructions: instructions})
-	mcp.AddTool(s, &mcp.Tool{Name: "list_reports", Description: "List reports: id, key, title, revision, last author, whether published."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_reports", Description: "List reports: id, key, title, parent page id, date, summary, revision, last author, whether published."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ noArgs) (*mcp.CallToolResult, any, error) {
 			var out any
 			if err := c.call("GET", "/api/reports", nil, &out); err != nil {
@@ -181,7 +184,7 @@ func mcpServer(c *apiClient) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "create_report", Description: "Create a report draft. It is not shared with anyone until the researcher publishes it."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, a createArgs) (*mcp.CallToolResult, any, error) {
 			var out any
-			if err := c.call("POST", "/api/reports", map[string]any{"title": a.Title, "body": a.Body, "author": "agent"}, &out); err != nil {
+			if err := c.call("POST", "/api/reports", map[string]any{"title": a.Title, "body": a.Body, "author": "agent", "parent": a.Parent}, &out); err != nil {
 				return errResult(err)
 			}
 			return textResult(out)
@@ -494,21 +497,42 @@ func importNotion(args []string) {
 			renamed[strings.ToLower(p.Title)] = t
 		}
 	}
+	// Parents before children, so each page is created under the page it sat under in Notion.
+	ids := map[string]int64{}
+	done := map[string]bool{}
 	created := 0
-	for _, p := range res.Pages {
-		body := p.Markdown
-		for old, nu := range renamed { // follow renames in links between imported pages
-			body = regexp.MustCompile(`(?i)\[\[`+regexp.QuoteMeta(old)+`\]\]`).ReplaceAllLiteralString(body, "[["+nu+"]]")
+	for pass := 0; pass < len(res.Pages)+1 && len(done) < len(res.Pages); pass++ {
+		for _, p := range res.Pages {
+			if done[p.Source] {
+				continue
+			}
+			parent := int64(0)
+			if p.Parent != "" {
+				id, ok := ids[p.Parent]
+				if !ok && !done[p.Parent] && pass < len(res.Pages) {
+					continue // its parent comes first
+				}
+				parent = id
+			}
+			done[p.Source] = true
+			body := p.Markdown
+			for old, nu := range renamed { // follow renames in links between imported pages, labelled or not
+				body = regexp.MustCompile(`(?i)\[\[`+regexp.QuoteMeta(old)+`(\|[^\]]*)?\]\]`).ReplaceAllString(body, "[["+strings.ReplaceAll(nu, "$", "$$")+"$1]]")
+			}
+			t := p.Title
+			if nu, ok := renamed[strings.ToLower(t)]; ok {
+				t = nu
+			}
+			var out struct {
+				ID int64 `json:"id"`
+			}
+			if err := c.call("POST", "/api/reports", map[string]any{"title": t, "body": body, "author": "owner", "parent": parent}, &out); err != nil {
+				fmt.Fprintf(os.Stderr, "could not create %q: %v\n", t, err)
+				continue
+			}
+			ids[p.Source] = out.ID
+			created++
 		}
-		t := p.Title
-		if nu, ok := renamed[strings.ToLower(t)]; ok {
-			t = nu
-		}
-		if err := c.call("POST", "/api/reports", map[string]any{"title": t, "body": body, "author": "owner"}, nil); err != nil {
-			fmt.Fprintf(os.Stderr, "could not create %q: %v\n", t, err)
-			continue
-		}
-		created++
 	}
 	fmt.Printf("created %d of %d reports as drafts (%d images); nothing was published\n", created, len(res.Pages), len(res.Images))
 }

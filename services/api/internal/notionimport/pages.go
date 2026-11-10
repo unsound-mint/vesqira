@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -30,6 +31,8 @@ type pageInfo struct {
 	parent   string
 	out      string
 	rows     [][]string
+	props    [][2]string // page properties (name, value) for the front matter
+	viewCSV  string      // Source of the database table this page is only a view of
 }
 
 type imgRes struct {
@@ -112,7 +115,7 @@ func (im *importer) build() error {
 			} else {
 				i = 0
 			}
-			p.body = propertiesAsList(lines[i:])
+			p.props, p.body = splitProperties(lines[i:])
 		}
 		im.pages[name] = p
 	}
@@ -130,14 +133,41 @@ func (im *importer) build() error {
 		}
 	}
 
+	// A page that is only a link to a CSV of its own database (a database view) and that CSV are one page.
+	for _, s := range im.sortedSources() {
+		p := im.pages[s]
+		if p == nil || p.csv {
+			continue
+		}
+		m := viewLinkRe.FindStringSubmatch(strings.TrimSpace(removeViewSettings(p.body)))
+		if m == nil {
+			continue
+		}
+		k, ok := im.lookup(path.Dir(p.source), m[1])
+		if q, isPage := im.pages[k]; ok && isPage && q.csv {
+			p.viewCSV = k
+			im.alias[k] = p.source
+			delete(im.pages, k)
+		}
+	}
+
 	srcs := im.sortedSources()
 	byStem := map[string]*pageInfo{}
+	// Notion also names a page's folder without the id suffix; byLoose finds the page for such a folder.
+	byLoose := map[string]*pageInfo{}
+	looseDup := map[string]bool{}
 	for _, s := range srcs { // markdown pages win over a CSV with the same stem
 		p := im.pages[s]
 		if cur, ok := byStem[p.stem]; !ok || (cur.csv && !p.csv) {
 			byStem[p.stem] = p
 		}
 		if p.id != "" {
+			lk := path.Join(path.Dir(p.stem), p.rawTitle)
+			if cur, ok := byLoose[lk]; ok && cur.csv == p.csv {
+				looseDup[lk] = true
+			} else if !ok || (cur.csv && !p.csv) {
+				byLoose[lk] = p
+			}
 			if _, dup := im.byID[p.id]; !dup {
 				im.byID[p.id] = p
 			}
@@ -150,7 +180,11 @@ func (im *importer) build() error {
 		p := im.pages[s]
 		dir := path.Dir(p.source)
 		for dir != "." && dir != "/" {
-			if par, ok := byStem[dir]; ok && par != p {
+			par, ok := byStem[dir]
+			if !ok && !looseDup[dir] {
+				par, ok = byLoose[dir]
+			}
+			if ok && par != p {
 				p.parent = par.source
 				break
 			}
@@ -178,6 +212,8 @@ func (im *importer) build() error {
 		p := im.pages[s]
 		if p.csv {
 			im.convertCSV(p)
+		} else if p.viewCSV != "" {
+			p.out = im.csvTable(p, im.files[p.viewCSV])
 		} else {
 			im.convertPage(p)
 		}
@@ -257,6 +293,14 @@ func (im *importer) wikilink(target *pageInfo, text string) string {
 	return "[[" + target.title + "]] (" + strings.TrimSpace(text) + ")"
 }
 
+// linkText drops Notion's placeholder label for untitled inline databases so the link shows the page title.
+func linkText(text string) string {
+	if sameText(text, "Untitled") {
+		return ""
+	}
+	return text
+}
+
 func cleanAlt(s string) string {
 	s = strings.NewReplacer("[", "", "]", "", "\n", " ").Replace(s)
 	return strings.TrimSpace(s)
@@ -278,7 +322,7 @@ func (im *importer) linkOut(from *pageInfo, text, dest string) string {
 			if u, err := url.Parse(dest); err == nil && (u.Host == "notion.so" || strings.HasSuffix(u.Host, ".notion.so")) {
 				if m := hexIDRe.FindStringSubmatch(path.Base(u.Path)); m != nil {
 					if pg, ok := im.byID[m[1]]; ok {
-						return im.wikilink(pg, text)
+						return im.wikilink(pg, linkText(text))
 					}
 				}
 			}
@@ -291,7 +335,7 @@ func (im *importer) linkOut(from *pageInfo, text, dest string) string {
 	}
 	if k, ok := im.lookup(dir, dest); ok {
 		if pg, isPage := im.pages[k]; isPage {
-			return im.wikilink(pg, text)
+			return im.wikilink(pg, linkText(text))
 		}
 	}
 	if strings.TrimSpace(text) == "" {
@@ -389,29 +433,31 @@ var (
 	tagStripRe = regexp.MustCompile(`</?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>]*)?/?>`)
 )
 
-func (im *importer) convertCSV(p *pageInfo) {
-	f := im.files[p.source]
+func (im *importer) convertCSV(p *pageInfo) { p.out = im.csvTable(p, im.files[p.source]) }
+
+// csvTable renders the CSV file f as a Markdown table for page p; rows that have their own page become [[links]].
+func (im *importer) csvTable(p *pageInfo, f *file) string {
 	r := csv.NewReader(strings.NewReader(normalizeText(f.data)))
 	r.LazyQuotes = true
 	r.FieldsPerRecord = -1
 	records, err := r.ReadAll()
 	if err != nil {
-		im.warn("%s: the table could not be fully parsed (%v)", p.source, err)
+		im.warn("%s: the table could not be fully parsed (%v)", f.name, err)
 	}
 	if len(records) == 0 {
-		return
+		return ""
 	}
 	header := records[0]
 	rows := records[1:]
 	if len(rows) > maxCSVRows {
-		im.warn("%s: the table has %d rows; only the first %d are imported", p.source, len(rows), maxCSVRows)
+		im.warn("%s: the table has %d rows; only the first %d are imported", f.name, len(rows), maxCSVRows)
 		rows = rows[:maxCSVRows]
 	}
 	children := map[string][]*pageInfo{}
 	for _, c := range im.childTitles[p.source] {
 		children[c.rawTitle] = append(children[c.rawTitle], c)
 	}
-	dir := path.Dir(p.source)
+	dir := path.Dir(f.name)
 	cols := len(header)
 	cell := func(s string, first bool) string {
 		linked := false
@@ -459,29 +505,101 @@ func (im *importer) convertCSV(p *pageInfo) {
 	for _, rec := range rows {
 		writeRow(rec, false)
 	}
-	p.out = strings.TrimRight(b.String(), "\n")
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // propertyLine is a Notion page property as the export writes it under the title: "Status: Draft".
-var propertyLine = regexp.MustCompile(`^([A-Z][A-Za-z0-9 /&()'.-]{0,40}): (\S.*)$`)
+var propertyLine = regexp.MustCompile(`^([A-Z][A-Za-z0-9 /&();'.-]{0,40}): (\S.*)$`)
 
-// propertiesAsList turns the block of "Key: value" lines Notion writes under a page title into a Markdown list, so
-// they read as separate facts instead of running together into one paragraph. Only a block at the very top counts.
-func propertiesAsList(lines []string) string {
+// viewLinkRe matches a body that is only a link to a CSV: a database view page.
+var viewLinkRe = regexp.MustCompile(`^\[[^\]]*\]\(([^()\s]+\.csv)\)$`)
+
+// splitProperties separates the block of "Key: value" lines Notion writes under a page title from the rest of the
+// page. Only a block at the very top counts; a single line counts only when it stands alone before a blank line.
+// The properties are returned in order as (name, value) pairs for frontMatter; without a block the lines are
+// returned unchanged.
+func splitProperties(lines []string) (props [][2]string, body string) {
 	n := 0
 	for n < len(lines) && propertyLine.MatchString(lines[n]) {
 		n++
 	}
 	if n < 2 && !(n == 1 && (len(lines) == 1 || strings.TrimSpace(lines[1]) == "")) {
-		return strings.Join(lines, "\n")
+		return nil, strings.Join(lines, "\n")
 	}
-	out := make([]string, 0, len(lines)+1)
 	for _, l := range lines[:n] {
 		m := propertyLine.FindStringSubmatch(l)
-		out = append(out, "- **"+m[1]+":** "+m[2])
+		props = append(props, [2]string{m[1], m[2]})
 	}
-	if n < len(lines) && strings.TrimSpace(lines[n]) != "" {
-		out = append(out, "")
+	rest := lines[n:]
+	for len(rest) > 0 && strings.TrimSpace(rest[0]) == "" {
+		rest = rest[1:]
 	}
-	return strings.Join(append(out, lines[n:]...), "\n")
+	return props, strings.Join(rest, "\n")
+}
+
+var nonKeyRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// propKey normalises a property name to a front matter key: lowercase, runs of other characters become "-".
+func propKey(name string) string {
+	return strings.Trim(nonKeyRe.ReplaceAllString(strings.ToLower(name), "-"), "-")
+}
+
+var notionDateLayouts = []string{"January 2, 2006", "January 2, 2006 3:04 PM", "2006/01/02", "2006-01-02"}
+
+// parseNotionDate reads a Notion date ("November 10, 2026", optionally with a time, or a range "A → B", whose
+// start is used) and returns it as YYYY-MM-DD.
+func parseNotionDate(v string) (string, bool) {
+	v = strings.TrimSpace(v)
+	if i := strings.Index(v, " → "); i >= 0 {
+		v = strings.TrimSpace(v[:i])
+	}
+	for _, layout := range notionDateLayouts {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t.Format("2006-01-02"), true
+		}
+	}
+	return "", false
+}
+
+// frontMatter renders the page properties as the Obsidian-style block the app parses: "---", one "key: value" line
+// per property, "---". Keys are normalised by propKey (empty keys skipped, first occurrence wins), a "Date" property
+// becomes "date" (or "date-notion" with the raw text when it does not parse), and the first of Headline, Summary,
+// TL;DR and Answer becomes "summary". Values are one line and never empty. It returns "" when nothing is left.
+func (im *importer) frontMatter(p *pageInfo) string {
+	var b strings.Builder
+	seen := map[string]bool{}
+	haveSummary := false
+	for _, kv := range p.props {
+		name := strings.ToLower(strings.TrimSpace(kv[0]))
+		raw := strings.TrimSpace(kv[1])
+		key := propKey(kv[0])
+		val := raw
+		switch {
+		case name == "date":
+			if d, ok := parseNotionDate(raw); ok {
+				key, val = "date", d
+			} else {
+				key = "date-notion"
+			}
+		case !haveSummary && (name == "headline" || name == "summary" || name == "tl;dr" || name == "answer"):
+			haveSummary = true
+			key = "summary"
+		}
+		if key == "" || seen[key] {
+			continue
+		}
+		if key != "date" {
+			val = tagStripRe.ReplaceAllString(im.rewriteLinks(p, val), "")
+		}
+		val = strings.Join(strings.Fields(val), " ")
+		if val == "" {
+			continue
+		}
+		seen[key] = true
+		b.WriteString(key + ": " + val + "\n")
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return "---\n" + b.String() + "---"
 }

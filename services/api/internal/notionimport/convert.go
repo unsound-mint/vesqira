@@ -4,6 +4,8 @@ import (
 	"html"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 type outLine struct {
@@ -227,7 +229,7 @@ func (w *htmlConv) processLine(l string) {
 func (im *importer) convertPage(p *pageInfo) {
 	w := &htmlConv{}
 	fence := ""
-	for _, l := range strings.Split(p.body, "\n") {
+	for _, l := range strings.Split(inlineCalloutIcons(removeViewSettings(p.body)), "\n") {
 		t := strings.TrimLeft(l, " ")
 		if fence != "" {
 			w.code(l)
@@ -257,6 +259,115 @@ func (im *importer) convertPage(p *pageInfo) {
 		}
 	}
 	p.out = strings.Trim(strings.Join(out, "\n"), "\n")
+	if fm := im.frontMatter(p); fm != "" {
+		if p.out != "" {
+			fm += "\n\n"
+		}
+		p.out = fm + p.out
+	}
+}
+
+// fenceOpen reports whether line opens a code fence and returns the fence marker.
+func fenceOpen(line string) (string, bool) {
+	t := strings.TrimLeft(line, " ")
+	if !strings.HasPrefix(t, "```") && !strings.HasPrefix(t, "~~~") {
+		return "", false
+	}
+	n := 0
+	for n < len(t) && t[n] == t[0] {
+		n++
+	}
+	return t[:n], true
+}
+
+// outsideFence marks, per line, whether it is outside fenced code.
+func outsideFence(lines []string) []bool {
+	out := make([]bool, len(lines))
+	fence := ""
+	for i, l := range lines {
+		if fence != "" {
+			t := strings.TrimLeft(l, " ")
+			if strings.HasPrefix(t, fence) && strings.Trim(t, fence[:1]) == "" {
+				fence = ""
+			}
+			continue
+		}
+		if f, ok := fenceOpen(l); ok {
+			fence = f
+			continue
+		}
+		out[i] = true
+	}
+	return out
+}
+
+var sortValueRe = regexp.MustCompile(`^[^:\n]+: (ascending|descending)$`)
+
+// removeViewSettings drops the database view settings Notion writes into a page: a "sort:" line, the
+// "Name: ascending" lines after it, and the blank line they leave.
+func removeViewSettings(body string) string {
+	if !strings.Contains(body, "sort:") {
+		return body
+	}
+	lines := strings.Split(body, "\n")
+	text := outsideFence(lines)
+	out := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); i++ {
+		if text[i] && strings.TrimRight(lines[i], " \t") == "sort:" {
+			j := i + 1
+			for j < len(lines) && text[j] && sortValueRe.MatchString(strings.TrimSpace(lines[j])) {
+				j++
+			}
+			if j > i+1 {
+				if j < len(lines) && strings.TrimSpace(lines[j]) == "" {
+					j++
+				}
+				i = j - 1
+				continue
+			}
+		}
+		out = append(out, lines[i])
+	}
+	return strings.Join(out, "\n")
+}
+
+// isIconLine reports whether a line is a callout icon: 1 to 8 runes with no letters or digits.
+func isIconLine(l string) bool {
+	l = strings.TrimSpace(l)
+	n := utf8.RuneCountInString(l)
+	if n < 1 || n > 8 {
+		return false
+	}
+	return strings.IndexFunc(l, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) < 0
+}
+
+// inlineCalloutIcons moves the icon Notion writes on its own line after "<aside>" in front of the callout's first
+// text line, so the blockquote starts "> 🧭 text" instead of a lone emoji. An icon with no text after it is dropped.
+func inlineCalloutIcons(body string) string {
+	if !strings.Contains(body, "<aside>") {
+		return body
+	}
+	lines := strings.Split(body, "\n")
+	text := outsideFence(lines)
+	out := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); i++ {
+		out = append(out, lines[i])
+		if !text[i] || strings.TrimSpace(lines[i]) != "<aside>" || i+1 >= len(lines) || !isIconLine(lines[i+1]) {
+			continue
+		}
+		icon := strings.TrimSpace(lines[i+1])
+		j := i + 2
+		for j < len(lines) && strings.TrimSpace(lines[j]) == "" {
+			j++
+		}
+		if j < len(lines) && strings.TrimSpace(lines[j]) != "</aside>" {
+			out = append(out, icon+" "+strings.TrimLeft(lines[j], " "))
+			i = j
+		} else {
+			i++ // lone icon
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // rewriteLinks rewrites Markdown links and images on one line, leaving inline

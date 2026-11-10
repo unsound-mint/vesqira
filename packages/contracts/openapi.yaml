@@ -490,6 +490,13 @@ paths:
       operationId: owner_s_reportComments_get_api_report_comments
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/report-comments/{id}/delete:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_deleteReportComment_post_api_report_comments_id_delete
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/report-comments/{id}/draft:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -565,6 +572,13 @@ paths:
       operationId: owner_s_reportRevision_get_api_reports_id_history_rev
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/reports/{id}/move:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_moveReport_post_api_reports_id_move
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/reports/{id}/preflight:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -584,6 +598,13 @@ paths:
       - {name: id, in: path, required: true, schema: {type: string}}
     post:
       operationId: owner_s_reportSeen_post_api_reports_id_seen
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/reports/{id}/withdraw:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_withdrawReport_post_api_reports_id_withdraw
       x-listener: owner
       responses: {'200': {description: ok}}
   /api/roots:
@@ -663,6 +684,18 @@ paths:
       operationId: publish_h_pub(h_ownerComment_post_publish_api_comments
       x-listener: publish
       responses: {'200': {description: ok}}
+  /publish-api/comments/deleted:
+    get:
+      operationId: publish_h_pub(h_deletedFeed_get_publish_api_comments_deleted
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/comments/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    delete:
+      operationId: publish_h_pub(h_deleteComment_delete_publish_api_comments_id
+      x-listener: publish
+      responses: {'200': {description: ok}}
   /publish-api/comments/{id}/resolve:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -685,6 +718,13 @@ paths:
       - {name: id, in: path, required: true, schema: {type: string}}
     post:
       operationId: publish_h_pub(h_revokeReader_post_publish_api_readers_id_revoke
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /publish-api/reports/{key}:
+    parameters:
+      - {name: key, in: path, required: true, schema: {type: string}}
+    delete:
+      operationId: publish_h_pub(h_withdraw_delete_publish_api_reports_key
       x-listener: publish
       responses: {'200': {description: ok}}
   /publish-api/revisions:
@@ -726,6 +766,14 @@ paths:
       - {name: token, in: path, required: true, schema: {type: string}}
     post:
       operationId: publish_h_readComment_post_read_api_token_comments
+      x-listener: publish
+      responses: {'200': {description: ok}}
+  /read-api/{token}/comments/{id}:
+    parameters:
+      - {name: token, in: path, required: true, schema: {type: string}}
+      - {name: id, in: path, required: true, schema: {type: string}}
+    delete:
+      operationId: publish_h_readDeleteComment_delete_read_api_token_comments_id
       x-listener: publish
       responses: {'200': {description: ok}}
   /read-api/{token}/reports/{key}:

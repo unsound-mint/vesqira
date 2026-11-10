@@ -26,7 +26,7 @@ func openPublishing(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS publish_comments(
 			id INTEGER PRIMARY KEY, space TEXT NOT NULL, report TEXT NOT NULL, revision TEXT NOT NULL, block TEXT NOT NULL,
 			anchor TEXT NOT NULL DEFAULT '', parent_id INTEGER NOT NULL, author TEXT NOT NULL, from_owner INTEGER NOT NULL,
-			body TEXT NOT NULL, created_at INTEGER NOT NULL, resolved_at INTEGER NOT NULL DEFAULT 0)`,
+			body TEXT NOT NULL, created_at INTEGER NOT NULL, resolved_at INTEGER NOT NULL DEFAULT 0, quote TEXT NOT NULL DEFAULT '')`, // quote: schema 3
 		`CREATE INDEX IF NOT EXISTS publish_comments_report ON publish_comments(report)`,
 		`CREATE TABLE IF NOT EXISTS reply_drafts(
 			id INTEGER PRIMARY KEY AUTOINCREMENT, comment_id INTEGER NOT NULL, body TEXT NOT NULL, author TEXT NOT NULL,
@@ -151,9 +151,9 @@ func (s *Store) MirrorComments(cs []publish.Comment) error {
 		if c.ResolvedAt != nil {
 			res = c.ResolvedAt.UnixMilli()
 		}
-		if _, err := tx.Exec(`INSERT INTO publish_comments(id,space,report,revision,block,anchor,parent_id,author,from_owner,body,created_at,resolved_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET resolved_at=excluded.resolved_at`,
-			c.ID, c.Space, c.Report, c.Revision, c.Block, anchor, c.ParentID, c.Author, c.FromOwner, c.Body, c.CreatedAt.UnixMilli(), res); err != nil {
+		if _, err := tx.Exec(`INSERT INTO publish_comments(id,space,report,revision,block,anchor,parent_id,author,from_owner,body,created_at,resolved_at,quote)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET resolved_at=excluded.resolved_at`,
+			c.ID, c.Space, c.Report, c.Revision, c.Block, anchor, c.ParentID, c.Author, c.FromOwner, c.Body, c.CreatedAt.UnixMilli(), res, c.Quote); err != nil {
 			return err
 		}
 	}
@@ -167,6 +167,54 @@ func (s *Store) CommentCursor() (int64, error) {
 	return n, err
 }
 
+// ForgetComments removes mirrored comments the publish server deleted (a first comment takes its replies with it),
+// with the reply drafts waiting on them.
+func (s *Store) ForgetComments(ids []int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, id := range ids {
+		if _, err := tx.Exec(`DELETE FROM reply_drafts WHERE comment_id=? AND sent_at=0`, id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM publish_comments WHERE id=? OR parent_id=?`, id, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// Withdrawn forgets that a report was ever published: its publications, its mirrored comments and the replies
+// drafted to them. The publish server has deleted the same; the draft itself is untouched, and publishing it again
+// starts at revision 1.
+func (s *Store) Withdrawn(reportID int64) error {
+	r, err := s.Get(reportID)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range []struct {
+		sql string
+		arg any
+	}{
+		{`DELETE FROM reply_drafts WHERE sent_at=0 AND comment_id IN (SELECT id FROM publish_comments WHERE report=?)`, r.Key},
+		{`DELETE FROM publish_comments WHERE report=?`, r.Key},
+		{`DELETE FROM report_publications WHERE report_id=?`, reportID},
+		{`DELETE FROM publish_settings WHERE k=?`, fmt.Sprintf("pending_publication_%d", reportID)},
+	} {
+		if _, err := tx.Exec(q.sql, q.arg); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) SetResolved(commentID int64, at *time.Time) error {
 	var v int64
 	if at != nil {
@@ -176,7 +224,7 @@ func (s *Store) SetResolved(commentID int64, at *time.Time) error {
 	return err
 }
 
-const commentCols = `id,space,report,revision,block,anchor,parent_id,author,from_owner,body,created_at,resolved_at`
+const commentCols = `id,space,report,revision,block,anchor,parent_id,author,from_owner,body,created_at,resolved_at,quote`
 
 func scanComments(rows *sql.Rows) ([]publish.Comment, error) {
 	defer rows.Close()
@@ -185,7 +233,7 @@ func scanComments(rows *sql.Rows) ([]publish.Comment, error) {
 		var c publish.Comment
 		var anchor string
 		var at, res int64
-		if err := rows.Scan(&c.ID, &c.Space, &c.Report, &c.Revision, &c.Block, &anchor, &c.ParentID, &c.Author, &c.FromOwner, &c.Body, &at, &res); err != nil {
+		if err := rows.Scan(&c.ID, &c.Space, &c.Report, &c.Revision, &c.Block, &anchor, &c.ParentID, &c.Author, &c.FromOwner, &c.Body, &at, &res, &c.Quote); err != nil {
 			return nil, err
 		}
 		if anchor != "" {
