@@ -25,7 +25,7 @@ jobs:
           curl -fsS -X POST -H 'Content-Type: application/json' http://127.0.0.1:8787/api/datasets -d '{"path":"/tmp/fx/hi_cube.fits"}' >/dev/null
           curl -fsS -o /tmp/plane.bin -w '%{size_download}\n' "http://127.0.0.1:8787/api/datasets/1/plane?channel=2"
           vesqira stop
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vesqira-rpm
           path: dist/rpm/*.rpm
