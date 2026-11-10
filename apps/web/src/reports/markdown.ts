@@ -1,6 +1,4 @@
-import MarkdownIt from "markdown-it";
-import type StateInline from "markdown-it/lib/rules_inline/state_inline.mjs";
-import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
+import MarkdownIt, { type StateBlock, type StateInline } from "markdown-it";
 import katex from "katex";
 
 /**
@@ -142,9 +140,10 @@ md.validateLink = (url: string) => /^(https?:|mailto:|#|attachment:|asset:)/i.te
 
 md.renderer.rules.math_inline = (tokens, i) => tex(tokens[i]!.content, false);
 md.renderer.rules.math_block = (tokens, i) => `<div class="math-display">${tex(tokens[i]!.content, true)}</div>\n`;
-md.renderer.rules.wiki = (tokens, i, _o, env: RenderEnv) => {
+// markdown-it 15 types the render environment as Env | undefined; ours always is a RenderEnv (renderMarkdown passes it)
+md.renderer.rules.wiki = (tokens, i, _o, env) => {
   const t = tokens[i]!;
-  const r = env.resolveWiki(t.content, (t.meta as { label: string | null }).label);
+  const r = (env as RenderEnv).resolveWiki(t.content, (t.meta as { label: string | null }).label);
   const label = escapeHtml(r.label);
   switch (r.kind) {
     case "link":
@@ -157,27 +156,27 @@ md.renderer.rules.wiki = (tokens, i, _o, env: RenderEnv) => {
       return r.mono ? `<code>${label}</code>` : `<em>${label}</em>`;
   }
 };
-md.renderer.rules.image = (tokens, i, _o, env: RenderEnv) => {
+md.renderer.rules.image = (tokens, i, _o, env) => {
   const t = tokens[i]!;
   const alt = escapeHtml(t.content);
-  const src = env.resolveImage(t.attrGet("src") ?? "");
+  const src = (env as RenderEnv).resolveImage(String(t.attrGet("src") ?? ""));
   if (!src) return `<span class="img-missing">${alt || "image"}</span>`;
   return `<img src="${escapeHtml(src)}" alt="${alt}" loading="lazy">`;
 };
 // The report title is the page's only h1. The report's highest heading level is drawn as h2 and the rest keep their
 // distance from it, so a report written with ## sections and one written with # sections look the same.
 const shift = (tag: string, env: RenderEnv) => `h${Math.max(2, Math.min(6, Number(tag.slice(1)) + 2 - (env.topHeading ?? 1)))}`;
-md.renderer.rules.heading_open = (tokens, i, o, env: RenderEnv, self) => {
-  tokens[i]!.tag = shift(tokens[i]!.tag, env);
+md.renderer.rules.heading_open = (tokens, i, o, env, self) => {
+  tokens[i]!.tag = shift(tokens[i]!.tag, env as RenderEnv);
   return self.renderToken(tokens, i, o);
 };
-md.renderer.rules.heading_close = (tokens, i, o, env: RenderEnv, self) => {
-  tokens[i]!.tag = shift(tokens[i]!.tag, env);
+md.renderer.rules.heading_close = (tokens, i, o, env, self) => {
+  tokens[i]!.tag = shift(tokens[i]!.tag, env as RenderEnv);
   return self.renderToken(tokens, i, o);
 };
 const defaultLinkOpen = md.renderer.rules.link_open ?? ((tokens, i, o, _e, self) => self.renderToken(tokens, i, o));
 md.renderer.rules.link_open = (tokens, i, o, env, self) => {
-  const href = tokens[i]!.attrGet("href") ?? "";
+  const href = String(tokens[i]!.attrGet("href") ?? "");
   if (/^(attachment|asset):/i.test(href)) tokens[i]!.attrSet("href", "#");
   if (/^https?:/i.test(href)) {
     tokens[i]!.attrSet("target", "_blank");
