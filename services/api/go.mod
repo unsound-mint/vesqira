@@ -2,6 +2,8 @@ module github.com/unsound-mint/vesqira/services/api
 
 go 1.26.0
 
+toolchain go1.26.10
+
 require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/getkin/kin-openapi v0.153.0
