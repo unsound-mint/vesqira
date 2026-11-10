@@ -1,34 +1,12 @@
-export type Status = "declared" | "unresolved";
+import type { components } from "./schema";
 
-export type Axis = {
-  axis: number;
-  length: number;
-  ctype: string | null;
-  ctype_status: Status;
-  cunit: string | null;
-  cunit_status: Status;
-  crval: number | null;
-  crval_status: Status;
-  crpix: number | null;
-  crpix_status: Status;
-  cdelt: number | null;
-  cdelt_status: Status;
-};
+type Schemas = components["schemas"];
 
-export type Header = {
-  naxis: number;
-  bitpix: number | null;
-  axes: Axis[];
-  bunit: string | null;
-  bunit_status: Status;
-  specsys: string | null;
-  beam?: { bmaj?: number; bmin?: number; bpa?: number; status: "declared" | "unresolved" };
-  radesys: string | null;
-};
-
-export type Interpretation = { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null; declaredBy: string; declaredAt: string; stale: boolean };
-
-export type Dataset = { nature: "" | "observed" | "simulated" | "constructed_control"; hostId: number; interpretation: Interpretation | null; id: number; path: string; name: string; sizeBytes: number; modifiedAt: string; addedAt: string; header: Header };
+export type Status = Schemas["Axis"]["ctype_status"];
+export type Axis = Schemas["Axis"];
+export type Header = Schemas["FitsHeader"];
+export type Interpretation = Schemas["Interpretation"];
+export type Dataset = Schemas["Dataset"];
 
 export class ApiError extends Error {
   constructor(message: string, readonly reasons: string[] = []) {

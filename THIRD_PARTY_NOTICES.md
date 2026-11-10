@@ -369,3 +369,8 @@ SOFTWARE.
    See the License for the specific language governing permissions and
    limitations under the License.
 ```
+||||||| ef1a3d0
+
+## kin-openapi (Go API tests)
+
+`github.com/getkin/kin-openapi` validates handler responses against `packages/contracts/openapi.yaml` in the Go tests. It is not linked into the shipped binary. MIT License, Copyright (c) 2017-2018 the project authors.

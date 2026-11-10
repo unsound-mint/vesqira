@@ -1,4 +1,11 @@
-.PHONY: check docs web fixtures api e2e demo bench viewer-bench
+# `make setup` creates .venv; recipes use it when present, so python3 below has numpy and astropy without activating anything
+export PATH := $(CURDIR)/.venv/bin:$(PATH)
+
+.PHONY: setup check docs web fixtures api e2e demo bench viewer-bench
+# Check tools, create .venv, install web, e2e and Playwright dependencies (tools/setup.sh); safe to repeat
+setup:
+	tools/setup.sh
+
 check: docs fixtures api web
 
 docs:
@@ -9,10 +16,10 @@ docs:
 web:
 	@if [ -f apps/web/package.json ]; then \
 	  if [ ! -d apps/web/node_modules ]; then echo "apps/web: run 'npm ci' in apps/web first"; exit 1; fi; \
-	  cd apps/web && npm run typecheck && npm run lint:css && npm test && npm run build; \
+	  cd apps/web && npm run check:api && npm run typecheck && npm run lint:css && npm test && npm run build; \
 	fi
 
-# Needs numpy and astropy: pip install -r fixtures/requirements.txt
+# Needs numpy and astropy: make setup (or pip install -r fixtures/requirements.txt)
 fixtures:
 	cd fixtures && python3 -m unittest discover -s .
 

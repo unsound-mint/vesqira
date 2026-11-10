@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "gen:api": "npm --prefix ../../packages/contracts ci --silent && npm --prefix ../../packages/contracts run gen --silent",
+    "check:api": "npm --prefix ../../packages/contracts ci --silent && npm --prefix ../../packages/contracts run check --silent",
     "typecheck": "tsc -b",
     "lint:css": "stylelint \"src/**/*.css\"",
     "test": "vitest run"
