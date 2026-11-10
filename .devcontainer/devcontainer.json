@@ -1,0 +1,12 @@
+{
+  "name": "Vesqira",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": { "version": "1.26" },
+    "ghcr.io/devcontainers/features/node:1": { "version": "24" },
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" }
+  },
+  "forwardPorts": [5173, 8787, 8788],
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-venv && make setup && (cd e2e && npx playwright install-deps chromium)",
+  "hostRequirements": { "memory": "4gb" }
+}
