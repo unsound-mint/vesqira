@@ -5,7 +5,8 @@ import { expect, test } from "@playwright/test";
 // ADR 0034: the GPU renderer must draw what the CPU renderer draws. "No value" pixels must be identical (they are
 // decided from the bits, never from a colormap entry); colormap indices may differ by one at most, because the CPU path
 // computes in float64 and the shader in float32, and only on a tiny share of pixels.
-const DEV = "http://127.0.0.1:5198/";
+import { API, DEV as DEV_ORIGIN } from "../ports";
+const DEV = `${DEV_ORIGIN}/`;
 
 type Case = { name: string; w: number; h: number; outW: number; outH: number; stretch: "linear" | "sqrt" | "asinh"; range: [number, number] | null; axial?: number; data: (i: number, w: number, h: number) => number };
 
@@ -73,7 +74,7 @@ for (const c of cases) {
 // The status bar says so when drawing is on the CPU, and says nothing in the normal GPU case.
 test("the status bar names the CPU fallback and its reason, and is silent when the GPU draws", async ({ page, request }) => {
   const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.run/data/hi_cube.fits");
-  const reg = await request.post("http://127.0.0.1:8787/api/datasets", { data: { path: file } });
+  const reg = await request.post(`${API}/api/datasets`, { data: { path: file } });
   expect(reg.ok()).toBe(true);
   const status = page.getByRole("contentinfo");
 

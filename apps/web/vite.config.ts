@@ -5,8 +5,10 @@ import { defineConfig } from "vitest/config";
 // proxy form ("/api": "http://...") means changeOrigin: true, which rewrites Host to the API's address while the browser
 // keeps Origin as the page's, so every POST and PUT would be refused. changeOrigin must stay false: the API then sees
 // the page's own Host (127.0.0.1:<page port>, a loopback name) next to the same Origin.
-const api = { target: "http://127.0.0.1:8787", changeOrigin: false };
-const review = { target: "http://127.0.0.1:8788", changeOrigin: false };
+// Playwright (e2e/ports.ts) points the proxies at its own API block through these variables; unset, the dev defaults apply.
+declare const process: { env: Record<string, string | undefined> };
+const api ={ target: `http://127.0.0.1:${process.env.VESQIRA_API_PORT ?? 8787}`, changeOrigin: false };
+const review = { target: `http://127.0.0.1:${process.env.VESQIRA_REVIEW_PORT ?? 8788}`, changeOrigin: false };
 const proxy = { "/api": api, "/review-api": review };
 
 export default defineConfig({

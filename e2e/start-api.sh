@@ -67,5 +67,5 @@ for r in 2026-08-01T100000Z_abc1234:0.5 2026-08-02T110000Z_abc1234:0.9; do
   printf 'generated_at_utc = "2026-08-01T10:00:00Z"\ngitcommit = "abc1234"\n[config]\nlambda = %s\nwidth = 3\n[input]\npath = "%s/data/raw/hi_cube.fits"\nsize_bytes = 100\n[outputs]\npsi_path = "%s/psi.fits"\n' "${r##*:}" "$proj" "$d" > "$d/run_metadata.toml"
 done
 cd "$root"
-exec "$run/api" --ssh "$run/fake-ssh" --addr 127.0.0.1:8787 --db "$run/t.db" --data-dir "$run" --root "$run/data" \
-  --review-addr 127.0.0.1:8788 --web-dist "$root/apps/web/dist" --ssh-config ""
+exec "$run/api" --ssh "$run/fake-ssh" --addr 127.0.0.1:${VESQIRA_API_PORT:?} --db "$run/t.db" --data-dir "$run" --root "$run/data" \
+  --review-addr 127.0.0.1:${VESQIRA_REVIEW_PORT:?} --web-dist "$root/apps/web/dist" --ssh-config ""

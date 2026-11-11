@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 // server from a named link, and the comment comes back to the owner. Both sides run the real servers and the built
 // web app; the publish server is a separate process (start-publish.sh) holding only what was published.
 const here = path.dirname(fileURLToPath(import.meta.url));
-const PUBLISH = "http://127.0.0.1:8790";
+import { PUBLISH } from "../ports";
 
 async function expectNoAxeViolations(page: Page) {
   const r = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).analyze();

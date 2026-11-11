@@ -1,7 +1,7 @@
 # `make setup` creates .venv; recipes use it when present, so python3 below has numpy and astropy without activating anything
 export PATH := $(CURDIR)/.venv/bin:$(PATH)
 
-.PHONY: setup check docs web fixtures api e2e demo bench viewer-bench desktop
+.PHONY: setup check docs web fixtures api e2e e2e-isolateddemo bench viewer-bench desktop
 # Check tools, create .venv, install web, e2e and Playwright dependencies (tools/setup.sh); safe to repeat
 setup:
 	tools/setup.sh
@@ -33,6 +33,10 @@ api:
 e2e:
 	cd apps/web && npm run build
 	cd e2e && npx playwright test
+
+# e2e on a free block of ports (e2e/ports.ts), so worktrees can run it at the same time; make e2e keeps the fixed ports CI and docs use
+e2e-isolated:
+	VESQIRA_E2E_PORT_BASE=$$(python3 tools/free-port-base.py) $(MAKE) e2e
 
 # Run the app on generated fixtures and follow docs/demo.md
 demo:
