@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { ruleOf } from "../api/declared";
 import type { Dataset } from "../api/catalog";
 import { Button, Input } from "../ui";
 import { TierBadge } from "../ui/TierBadge";
@@ -50,9 +51,9 @@ export function UnitControl({ dataset, onDeclare, onWithdraw }: {
             <dt>Unit</dt>
             <dd className="mono">{d.unit}</dd>
             <dt>Source</dt>
-            <dd>{d.declaredBy === "user" ? "declared by you" : `proposed by ${d.declaredBy}`}, {new Date(d.declaredAt).toLocaleDateString()} <TierBadge tier={d.tier} mappingVersion={d.mappingVersion} rule={d.declaredBy === "user" ? null : d.declaredBy} /></dd>
+            <dd>{d.declaredBy === "user" ? "declared by you" : ruleOf(d.declaredBy) !== null ? `declared by your rule ${ruleOf(d.declaredBy)}` : `proposed by ${d.declaredBy}`}, {new Date(d.declaredAt).toLocaleDateString()} <TierBadge tier={d.tier} mappingVersion={d.mappingVersion} rule={d.declaredBy === "user" || ruleOf(d.declaredBy) !== null ? null : d.declaredBy} /></dd>
           </dl>
-          <p className={s.note}>The file has no BUNIT. This is your declaration, kept apart from the file, which is not changed.</p>
+          <p className={s.note}>{ruleOf(d.declaredBy) !== null ? `The file has no BUNIT. This unit was declared by your import rule ${ruleOf(d.declaredBy)}, not by you and not by the file; declare one below to replace it.` : "The file has no BUNIT. This is your declaration, kept apart from the file, which is not changed."}</p>
           {d.stale ? (
             <p role="status" className={s.note}>The file has changed since you declared this unit, so it is not being used. Confirm that it still applies, or withdraw it.</p>
           ) : null}

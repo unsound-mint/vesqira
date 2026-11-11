@@ -16,6 +16,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
+	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -115,7 +116,7 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 	}
 	if psi, ok := byRole["psi"]; ok {
 		cur, _ := s.Store.Get(psi.ID)
-		if cur.Interpretation == nil || cur.Interpretation.DeclaredBy != "user" {
+		if adapterMayDeclare(cur.Interpretation) {
 			var rel *int64
 			if rd, ok := byRole["reliability"]; ok && rd.HostID == psi.HostID {
 				if why, err := compat.Grids(psi.Header, rd.Header); err == nil && len(why) == 0 {
@@ -530,4 +531,15 @@ func (s *Server) rohsaSizing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, jobs.SuggestROHSASizing(crop, n, haveCrop, haveN))
+}
+
+// adapterMayDeclare says whether a run import may write its proposed orientation over what is there: over nothing, over an earlier
+// proposal of an adapter or an analysis. Never over the researcher's own declaration, nor over a rule's, which is their standing
+// statement about a whole folder (ADR 0058).
+func adapterMayDeclare(cur *catalog.Interpretation) bool {
+	if cur == nil {
+		return true
+	}
+	_, byRule := discover.RuleName(cur.DeclaredBy)
+	return cur.DeclaredBy != "user" && !byRule
 }

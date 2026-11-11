@@ -2152,6 +2152,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}/import/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register the files the saved rules select through the existing registration paths and apply their declarations as declared by the rule; duplicates are offered, not registered */
+        post: operations["owner_s_importApplyRoute_post_api_projects_id_import_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/import/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan preview: every file of a folder with its built-in role and why, grouped by role and extension, and what a list of rules (draft or saved) does to them. Read-only */
+        post: operations["owner_s_importPreviewRoute_post_api_projects_id_import_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/import/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The project's saved import rules in priority order, whether project.toml holds them, and what the last scan counted */
+        get: operations["owner_s_importRulesGet_get_api_projects_id_import_rules"];
+        /** Replace the saved import rules (the order is the priority). Saved in the catalog only; project.toml changes only through the write route */
+        put: operations["owner_s_importRulesPut_put_api_projects_id_import_rules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/import/rules/write": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Write the saved rules into .vesqira/project.toml as a section Vesqira marks as its own, on explicit confirmation; the rest of the file is kept byte for byte */
+        post: operations["owner_s_importRulesWrite_post_api_projects_id_import_rules_write"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{id}/needs": {
         parameters: {
             query?: never;
@@ -6890,101 +6967,6 @@ export interface components {
             /** @description for example: VPN client started; the host became reachable after 12 s */
             message: string;
         };
-        WorkloadClass: {
-            /** @enum {string} */
-            class: "interactive" | "heavy" | "background";
-            /** @description tasks of this class that may run at once (--workers-interactive, --workers-heavy, --workers-background) */
-            budget: number;
-            running: number;
-            waiting: number;
-        };
-        WorkloadRequest: {
-            /**
-             * @description unknown: finished, never queued, or not a request of the scientific workers
-             * @enum {string}
-             */
-            state: "waiting" | "running" | "unknown";
-            class?: string;
-            /** @description present while waiting: what holds the class's slots, and that interactive viewing is unaffected (heavy and background classes) */
-            reason?: string;
-        };
-        /** @description Workload classes (ADR 0056). Names only operations, never files or datasets. */
-        Workload: {
-            classes: components["schemas"]["WorkloadClass"][];
-            request?: components["schemas"]["WorkloadRequest"];
-        };
-        SupportFile: {
-            name: string;
-            bytes: number;
-            /** @description the whole file, plain text, as it is in the zip */
-            text: string;
-        };
-        /** @description A support bundle built and kept in memory for ten minutes; GET /api/support/bundle/{id} returns exactly these files. */
-        SupportPreview: {
-            id: string;
-            bytes: number;
-            files: components["schemas"]["SupportFile"][];
-        };
-        SupportPreviewRequest: {
-            /** @description default false: dataset names and file names are removed from every file */
-            includeDatasetNames?: boolean;
-        };
-        /** @description How the base raster of a saved figure was drawn, so "draw again" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only. */
-        SceneRender: {
-            /** @description The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^26 pixels; a figure whose canvas is larger is stored without this record and is drawn from its PNG only. */
-            canvas: {
-                width: number;
-                height: number;
-            };
-            /** @description The two colours of the hatching that marks a pixel with no value (never a colour of the scale), as the theme gave them */
-            nodata: number[][];
-            /** @description The width in pixels the figure was composed at */
-            figureWidth: number;
-        };
-        RedrawSource: {
-            /**
-             * @description source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines.
-             * @enum {string}
-             */
-            role: "source" | "overlay" | "reliability";
-            /** Format: int64 */
-            datasetId: number;
-            name: string;
-            /**
-             * @description unchanged: equal full SHA-256. probable: nothing differs but what was recorded cannot prove the bytes are the same (an equal sampled fingerprint has a blind spot, ADR 0053). changed: the registered file is not what the figure was drawn from (it can be read). changed_on_disk: the file on disk is not what is registered (register it again first). missing: no longer registered, or no readable file.
-             * @enum {string}
-             */
-            status: "unchanged" | "probable" | "changed" | "changed_on_disk" | "missing";
-            differs: ("size" | "time" | "fingerprint")[];
-            readable: boolean;
-            /** @description The sentence the owner reads about this file */
-            text: string;
-            /**
-             * @description The declarations (unit, orientation interpretation, catalog) in force now against those recorded when the figure was saved. changed and removed are treated like changed data: the owner is asked. not_recorded: the figure was saved before declarations were recorded (not an error). Absent when the dataset is no longer registered.
-             * @enum {string}
-             */
-            declaration?: "unchanged" | "changed" | "removed" | "not_recorded";
-            /** @description The sentence the owner reads about the declarations, e.g. "declaration unchanged" or "declaration changed: unit was K (declared by you), now Jy/beam (declared by you)" */
-            declarationText?: string;
-        };
-        /** @description What "draw again" must tell the owner before it draws. Reads and changes nothing. */
-        RedrawCheck: {
-            /** Format: int64 */
-            figureId: number;
-            /**
-             * @description The description the figure was drawn from; none when it keeps none
-             * @enum {string}
-             */
-            kind: "scene" | "channel-grid" | "none";
-            /**
-             * @description ready: every file is unchanged, draw. ask: say what changed and ask before drawing. blocked: a file cannot be read. none: this figure cannot be drawn again, it is shown as its PNG.
-             * @enum {string}
-             */
-            state: "ready" | "ask" | "blocked" | "none";
-            /** @description The question or the reason, for ask, blocked and none */
-            prompt?: string;
-            sources: components["schemas"]["RedrawSource"][];
-        };
         MaskReference: {
             /** Format: int64 */
             id: number;
@@ -7089,6 +7071,62 @@ export interface components {
             mappingVersion?: string;
             note: string;
         };
+        /** @description How the base raster of a saved figure was drawn, so "draw again" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only. */
+        SceneRender: {
+            /** @description The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^26 pixels; a figure whose canvas is larger is stored without this record and is drawn from its PNG only. */
+            canvas: {
+                width: number;
+                height: number;
+            };
+            /** @description The two colours of the hatching that marks a pixel with no value (never a colour of the scale), as the theme gave them */
+            nodata: number[][];
+            /** @description The width in pixels the figure was composed at */
+            figureWidth: number;
+        };
+        RedrawSource: {
+            /**
+             * @description source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines.
+             * @enum {string}
+             */
+            role: "source" | "overlay" | "reliability";
+            /** Format: int64 */
+            datasetId: number;
+            name: string;
+            /**
+             * @description unchanged: equal full SHA-256. probable: nothing differs but what was recorded cannot prove the bytes are the same (an equal sampled fingerprint has a blind spot, ADR 0053). changed: the registered file is not what the figure was drawn from (it can be read). changed_on_disk: the file on disk is not what is registered (register it again first). missing: no longer registered, or no readable file.
+             * @enum {string}
+             */
+            status: "unchanged" | "probable" | "changed" | "changed_on_disk" | "missing";
+            differs: ("size" | "time" | "fingerprint")[];
+            readable: boolean;
+            /** @description The sentence the owner reads about this file */
+            text: string;
+            /**
+             * @description The declarations (unit, orientation interpretation, catalog) in force now against those recorded when the figure was saved. changed and removed are treated like changed data: the owner is asked. not_recorded: the figure was saved before declarations were recorded (not an error). Absent when the dataset is no longer registered.
+             * @enum {string}
+             */
+            declaration?: "unchanged" | "changed" | "removed" | "not_recorded";
+            /** @description The sentence the owner reads about the declarations, e.g. "declaration unchanged" or "declaration changed: unit was K (declared by you), now Jy/beam (declared by you)" */
+            declarationText?: string;
+        };
+        /** @description What "draw again" must tell the owner before it draws. Reads and changes nothing. */
+        RedrawCheck: {
+            /** Format: int64 */
+            figureId: number;
+            /**
+             * @description The description the figure was drawn from; none when it keeps none
+             * @enum {string}
+             */
+            kind: "scene" | "channel-grid" | "none";
+            /**
+             * @description ready: every file is unchanged, draw. ask: say what changed and ask before drawing. blocked: a file cannot be read. none: this figure cannot be drawn again, it is shown as its PNG.
+             * @enum {string}
+             */
+            state: "ready" | "ask" | "blocked" | "none";
+            /** @description The question or the reason, for ask, blocked and none */
+            prompt?: string;
+            sources: components["schemas"]["RedrawSource"][];
+        };
         /** @description One meaningful state of the viewer (ADR 0057): what was on screen, not its pixels. Mutable working state, pruned oldest first past the cap; not evidence */
         ExplorationStep: {
             /** Format: int64 */
@@ -7177,6 +7215,275 @@ export interface components {
         };
         BoardRemoveRequest: {
             expect?: components["schemas"]["BoardExpect"];
+        };
+        /** @description A researcher import rule (ADR 0058). Which declaration fields a role accepts is checked when the rules are saved. */
+        ImportRule: {
+            /** @description Unique in the project; what its declarations are labelled with ("declared by your rule <name>"). 1 to 40 letters, digits, blanks, dots, dashes or underscores. */
+            name: string;
+            /**
+             * @description glob: a pattern without "/" matches the file name at any depth, one with "/" is anchored at the project folder, "**" stands for any number of folders, matching is case-sensitive. regex: Go (RE2) syntax searched in the relative path.
+             * @enum {string}
+             */
+            kind: "glob" | "regex";
+            pattern: string;
+            /** @enum {string} */
+            role: "dataset" | "orientation" | "catalog" | "mask" | "ignore";
+            /** @description dataset: the unit the files are declared to have. A file that states its own BUNIT keeps it. */
+            unit?: string;
+            /**
+             * @description orientation (required) and catalog angle column: never defaulted.
+             * @enum {string}
+             */
+            angleUnit?: "deg" | "rad" | "";
+            /**
+             * @description orientation: empty means not declared.
+             * @enum {string}
+             */
+            angleFrame?: "pixel" | "sky" | "";
+            /** @description orientation and catalog angle: b_field, gradient, dust_polarization, starlight_polarization or unspecified; empty means not declared. */
+            quantity?: string;
+            lon?: string;
+            lat?: string;
+            /** @description catalog: degrees, hours_degrees, sexagesimal_hours_degrees or sexagesimal_degrees. */
+            coordFormat?: string;
+            /** @description catalog: icrs, fk5, fk4 or galactic. Required: the file does not say. */
+            coordFrame?: string;
+            equinox?: string;
+            angleColumn?: string;
+            sigmaColumn?: string;
+            values?: string[];
+            /**
+             * @description mask (required): what the file flags. Never missing: pixels with no value are computed from the data, not declared.
+             * @enum {string}
+             */
+            maskType?: "low_snr" | "saturated" | "invalid" | "user_excluded" | "other" | "";
+            /**
+             * @description mask (required): what a nonzero pixel of the file means. Never defaulted.
+             * @enum {string}
+             */
+            maskNonzero?: "flagged" | "valid" | "";
+            /** @description mask: what the file flags in words; required for type other. */
+            maskMeaning?: string;
+            /** @description mask (required): the project-relative path of the dataset the mask belongs to, with {dir} (the mask's folder, only at the start) and {stem} (its name without extension and without maskStrip), for example {dir}/{stem}.fits. */
+            maskTarget?: string;
+            /** @description mask: a suffix removed from the mask file's name to get {stem}, for example _mask; the file is left alone when its name lacks it. */
+            maskStrip?: string;
+        };
+        ImportRulesFile: {
+            /**
+             * @description none: project.toml holds no rules; same: it holds the saved rules; differs: it holds others; foreign: it holds [[import.rules]] Vesqira did not write, which it never rewrites.
+             * @enum {string}
+             */
+            state: "none" | "same" | "differs" | "foreign";
+            error?: string;
+        };
+        ImportSummary: {
+            rules: number;
+            /** @description Files a rule selects for registration (dataset, orientation or catalog) in the last scan. */
+            matched: number;
+            /** @description Of those, files not applied yet at their current size and time. */
+            pending: number;
+            /** @description Of the pending ones, files the previous scan did not know: "N new files match your rules". Never registered by a scan. */
+            new: number;
+        };
+        ImportRulesState: {
+            rules: components["schemas"]["ImportRule"][];
+            file: components["schemas"]["ImportRulesFile"];
+            summary?: components["schemas"]["ImportSummary"] | null;
+        };
+        /** @description The whole ordered list; the first matching rule wins. */
+        ImportRulesRequest: {
+            rules: components["schemas"]["ImportRule"][];
+        };
+        ImportRulesWriteRequest: {
+            /** @description Must be true: the rules are written to .vesqira/project.toml only on this confirmation. */
+            write: boolean;
+        };
+        ImportRulesWriteReply: {
+            written: boolean;
+            path: string;
+            rules: number;
+        };
+        ImportPreviewRequest: {
+            /** @description A folder inside the project, relative to it; empty for the whole project. */
+            folder?: string;
+            /** @description Walk again; otherwise the last walk (at most ten minutes old) is matched again. */
+            rescan?: boolean;
+            /** @description A draft list to preview; when absent the saved rules are used. Nothing is saved. */
+            rules?: components["schemas"]["ImportRule"][];
+            /** @description A group key (role|extension|author) whose files are all listed (up to 500). */
+            expand?: string;
+        };
+        ImportProposal: {
+            path: string;
+            /** Format: int64 */
+            size: number;
+            /** Format: int64 */
+            mtimeNs: number;
+            format?: string;
+            /** @description The built-in role: dataset, catalog, run_record, vgt_psi, vgt_reliability, vgt_support, vgt_fit_rbar2, run_output, rohsa_fit, rohsa_product, config, job_template, archive, other_discipline, declared_data or other. */
+            role: string;
+            /** @description The built-in rule behind the role. */
+            why: string;
+            runPath?: string;
+            locked?: boolean;
+            /** @description The built-in role, or the winning rule's role. */
+            proposedRole: string;
+            /** @description "built-in" or the name of the rule that won. */
+            by: string;
+            rule?: string;
+            /** @description Every rule that matched, in order. */
+            matched?: string[];
+            /** @description What the winning rule would declare, each statement labelled "declared by your rule <name>". */
+            declares?: string[];
+            warnings?: string[];
+        };
+        ImportGroup: {
+            role: string;
+            ext: string;
+            by: string;
+            why: string;
+            count: number;
+            /** Format: int64 */
+            bytes: number;
+            samples: components["schemas"]["ImportProposal"][];
+        };
+        ImportRuleReport: {
+            name: string;
+            error?: string;
+            matches: number;
+            wins: number;
+            shadowed: number;
+            examples: string[];
+        };
+        ImportConflict: {
+            path: string;
+            rules: string[];
+            winner: string;
+            /** @description The rules would not say the same thing. */
+            differ: boolean;
+        };
+        /** @description What a folder holds under the built-in rules and a list of rules. Read-only: it registers nothing and writes nothing. */
+        ImportPreview: {
+            folder: string;
+            /** Format: date-time */
+            scannedAt: string;
+            entries: number;
+            /** @description The walk stopped at its entry, time or depth budget; what is listed is what was reached. */
+            truncated: boolean;
+            truncatedWhy?: string;
+            /** @description More unrecognised files exist than the 50 000 that are listed. */
+            othersTruncated?: boolean;
+            notes?: string[];
+            files: number;
+            groups: components["schemas"]["ImportGroup"][];
+            /** @enum {string} */
+            rulesFrom: "draft" | "saved";
+            rules: components["schemas"]["ImportRuleReport"][];
+            conflicts: components["schemas"]["ImportConflict"][];
+            conflictCount: number;
+            selected: {
+                files: number;
+                byRole: {
+                    [key: string]: number;
+                };
+                pending: number;
+                applied: number;
+            };
+            skipped: {
+                dirs: string[];
+                dirCount: number;
+                neverRead: string[];
+                archiveCount: number;
+                /** Format: int64 */
+                archiveBytes: number;
+                links: number;
+            };
+        };
+        ImportApplyRequest: {
+            /** @description Must be true: files are registered only on this confirmation. */
+            confirm: boolean;
+            folder?: string;
+            /** @description Only these files (each must be selected by a saved rule); default: every selected file not settled at its current size and time. At most 200 are handled per request; the rest is reported as remaining. */
+            paths?: string[];
+            /** @description Register these files although a dataset already holds the same bytes (ADR 0053). */
+            asNew?: string[];
+        };
+        ImportApplyResult: {
+            path: string;
+            rule: string;
+            role: string;
+            /**
+             * @description declared: already registered, only the rule's declarations applied. duplicate: offered, not registered. skipped: nothing changed, the detail says why.
+             * @enum {string}
+             */
+            outcome: "registered" | "declared" | "duplicate" | "skipped" | "failed";
+            detail: string;
+            /** Format: int64 */
+            datasetId?: number | null;
+            /** @description Each declaration applied, labelled "declared by your rule <name>". */
+            declared: string[];
+            /** @description duplicate: the datasets that already hold the same bytes. */
+            matches?: {
+                /** Format: int64 */
+                datasetId: number;
+                /** Format: int64 */
+                locationId?: number;
+                name?: string;
+                /** @enum {string} */
+                relation: "verified" | "probable";
+            }[];
+        };
+        ImportApplyReply: {
+            results: components["schemas"]["ImportApplyResult"][];
+            summary: {
+                registered: number;
+                declared: number;
+                duplicates: number;
+                skipped: number;
+                failed: number;
+                remaining: number;
+            };
+            importSummary?: components["schemas"]["ImportSummary"] | null;
+        };
+        WorkloadClass: {
+            /** @enum {string} */
+            class: "interactive" | "heavy" | "background";
+            /** @description tasks of this class that may run at once (--workers-interactive, --workers-heavy, --workers-background) */
+            budget: number;
+            running: number;
+            waiting: number;
+        };
+        WorkloadRequest: {
+            /**
+             * @description unknown: finished, never queued, or not a request of the scientific workers
+             * @enum {string}
+             */
+            state: "waiting" | "running" | "unknown";
+            class?: string;
+            /** @description present while waiting: what holds the class's slots, and that interactive viewing is unaffected (heavy and background classes) */
+            reason?: string;
+        };
+        /** @description Workload classes (ADR 0056). Names only operations, never files or datasets. */
+        Workload: {
+            classes: components["schemas"]["WorkloadClass"][];
+            request?: components["schemas"]["WorkloadRequest"];
+        };
+        SupportFile: {
+            name: string;
+            bytes: number;
+            /** @description the whole file, plain text, as it is in the zip */
+            text: string;
+        };
+        /** @description A support bundle built and kept in memory for ten minutes; GET /api/support/bundle/{id} returns exactly these files. */
+        SupportPreview: {
+            id: string;
+            bytes: number;
+            files: components["schemas"]["SupportFile"][];
+        };
+        SupportPreviewRequest: {
+            /** @description default false: dataset names and file names are removed from every file */
+            includeDatasetNames?: boolean;
         };
     };
     responses: never;
@@ -11019,6 +11326,285 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_importApplyRoute_post_api_projects_id_import_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportApplyReply"];
+                };
+            };
+            /** @description not confirmed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no saved rules, or an import is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a path no saved rule selects */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_importPreviewRoute_post_api_projects_id_import_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not a folder inside the project */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_importRulesGet_get_api_projects_id_import_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRulesState"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_importRulesPut_put_api_projects_id_import_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRulesRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRulesState"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a rule is not valid (reasons) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_importRulesWrite_post_api_projects_id_import_rules_write: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRulesWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRulesWriteReply"];
+                };
+            };
+            /** @description not confirmed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the file holds [[import.rules]] Vesqira did not write, or (on a host) was not written by Vesqira */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

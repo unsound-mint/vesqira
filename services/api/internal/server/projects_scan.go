@@ -113,7 +113,9 @@ type storedSummary struct {
 		Name      string            `json:"name"`
 		HostRepos map[string]string `json:"hostRepos"`
 	} `json:"projectFile"`
-	Proposed     string `json:"proposedProjectFile"`
+	Proposed string `json:"proposedProjectFile"`
+	// ImportRules counts what the project's saved import rules select (ADR 0058); nil when the project has none.
+	ImportRules  *importSummary `json:"importRules"`
 	Registration struct {
 		Registered int      `json:"registered"`
 		Failed     int      `json:"failed"`
@@ -327,7 +329,7 @@ func (s *Server) runScan(ctx context.Context, p projects.Project, st *scanState)
 	pf, fileExists, _, perr := readProjectFile(fsys)
 	answers, _ := s.Projects.Answers(p.ID)
 	manual := append(pf.ManualRuns(), manualFromAnswers(answers)...)
-	opt := discover.Options{Layout: pf.ScanLayout(), ManualRuns: manual, Progress: func(n int, _ string) { st.set(func() { st.Entries = n }) }}
+	opt := discover.Options{Layout: pf.ScanLayout(), ManualRuns: manual, Inventory: true, Progress: func(n int, _ string) { st.set(func() { st.Entries = n }) }}
 	if !remote {
 		opt.Dirty = localDirty(p.Path)
 		opt.Catalogs = true
@@ -383,13 +385,14 @@ func (s *Server) runScan(ctx context.Context, p projects.Project, st *scanState)
 		st.finish("error", "internal error")
 		return
 	}
-	s.registerFound(ctx, p, h, res, prev, st)
+	ignored := s.importAfterScan(p, pf, res) // counts what the rules select; registers and declares nothing
+	s.registerFound(ctx, p, h, res, prev, st, ignored)
 }
 
 // register imports the VGT runs (the existing importer: a run found again by its folder is the same run) and registers
 // every other FITS file whose header is not in the catalog as it is on disk now. Files already registered and unchanged
 // are skipped, so a rescan costs one catalog read, not one header per file.
-func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.Host, res *discover.Result, prev map[string]string, st *scanState) {
+func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.Host, res *discover.Result, prev map[string]string, st *scanState, ignored map[string]bool) {
 	remote := p.HostID != 0
 	abs := func(rel string) string {
 		if remote {
@@ -425,6 +428,9 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 	facts, _ := s.Store.FactsByPath(p.HostID)
 	var fits []discover.File
 	for _, d := range res.Data {
+		if ignored[d.Path] {
+			continue // the researcher's rule says not to register it
+		}
 		if d.Format == "FITS" || d.Format == "Catalog" { // registerPath tells the two apart
 			fits = append(fits, d)
 		}

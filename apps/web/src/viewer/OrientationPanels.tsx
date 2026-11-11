@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Basis, BasisNote, Button, Select } from "../ui";
 import { TierBadge } from "../ui/TierBadge";
 import { isCatalog } from "../api/catalog";
+import { ruleOf } from "../api/declared";
 import type { Dataset, ImageDataset } from "../api/catalog";
 import type { AngleFrame, AngleQuantity, InterpretationRequest } from "../api/catalog";
 import type { AxialSummary } from "../api/planes";
@@ -131,9 +132,9 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
       <Button type="button" variant="primary" disabled={busy || (kind === "axial" && unit === "")} onClick={apply}>{kind === "scalar" ? "Use as scalar" : "Declare axial"}</Button>
       {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
       {cur?.stale ? <p role="alert" className={s.warn}>The file changed since you declared it. Declare it again to confirm the unit still applies.</p> : null}
-      <Basis summary={cur ? (cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? "the run import" : "the analysis that made this map"} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.`) : "Not declared: shown as an ordinary scalar map."}>
+      <Basis summary={cur ? (cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : ruleOf(cur.declaredBy) !== null ? `Declared by your rule ${ruleOf(cur.declaredBy)} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.` : `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? "the run import" : "the analysis that made this map"} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.`) : "Not declared: shown as an ordinary scalar map."}>
         <p>
-          {cur && cur.declaredBy !== "user" ? `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? `the run import (${cur.declaredBy})` : `the analysis that made this map (${cur.declaredBy})`}. Choose above and apply to override. ` : ""}Kept with the catalog; the file is never changed. The file does not declare the unit, the frame or what the angle is.
+          {cur && ruleOf(cur.declaredBy) !== null ? `Declared by your import rule ${ruleOf(cur.declaredBy)}, not by you and not by the file. Choose above and apply to make it your own. ` : cur && cur.declaredBy !== "user" ? `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? `the run import (${cur.declaredBy})` : `the analysis that made this map (${cur.declaredBy})`}. Choose above and apply to override. ` : ""}Kept with the catalog; the file is never changed. The file does not declare the unit, the frame or what the angle is.
         </p>
         {cur ? <p>{declarationNote(cur)}</p> : null}
         {cur ? <p>How far this is established: <TierBadge tier={cur.tier} mappingVersion={cur.mappingVersion} rule={cur.declaredBy === "user" ? null : cur.declaredBy} /></p> : null}
@@ -147,6 +148,7 @@ export function declarationNote(cur: NonNullable<Dataset["interpretation"]>): st
   const f = cur.frame ? FRAME_TEXT[cur.frame] : "Frame: not declared.";
   const q = cur.quantity ? QUANTITY_TEXT[cur.quantity] : "Quantity: not declared.";
   if (cur.declaredBy === "user") return `${f} ${q}`;
+  if (ruleOf(cur.declaredBy) !== null) return `${f} ${q} Declared by your import rule ${ruleOf(cur.declaredBy)}; not from the file.`;
   if (cur.declaredBy === "vgt-run-adapter") {
     return `${f} ${q} Proposed by the VGT run import from the pipeline’s convention (ψ = ½ atan2(U,Q) + 90°); not from the file. Override it if your run differs.`;
   }

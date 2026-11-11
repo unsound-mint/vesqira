@@ -48,6 +48,10 @@ type ProjectFile struct {
 		Repo string `toml:"repo"`
 	} `toml:"hosts"`
 	Answers []Answer `toml:"answers"`
+	// Import holds the researcher's import rules (ADR 0058): the first matching rule wins.
+	Import struct {
+		Rules []Rule `toml:"rules"`
+	} `toml:"import"`
 }
 
 // MaxProjectFile bounds what is read of project.toml.

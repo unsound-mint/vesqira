@@ -136,9 +136,10 @@ function Group({ project, version, def, filter, setFilter, ...h }: Handlers & { 
 }
 
 /** Screen 3: the open project in the explorer, grouped, lazy and paged. */
-export function ProjectExplorer({ project, version, hostName, selectedDatasetId, onOpenRun, onSelectDataset, onEditFile, onOverview, onCancel }: Handlers & { project: ProjectSummary; version: number; hostName: (id: number) => string; onOverview: () => void; onCancel: () => void }) {
+export function ProjectExplorer({ project, version, hostName, selectedDatasetId, onOpenRun, onSelectDataset, onEditFile, onOverview, onImport, onCancel }: Handlers & { project: ProjectSummary; version: number; hostName: (id: number) => string; onOverview: () => void; onImport: () => void; onCancel: () => void }) {
   const [filter, setFilter] = useState("");
   const ch = project.changes;
+  const rules = project.importRules;
   return (
     <div className={s.explorer}>
       <div className={s.projectHead}>
@@ -147,7 +148,16 @@ export function ProjectExplorer({ project, version, hostName, selectedDatasetId,
         <ScanStatus scan={project.scan} onCancel={onCancel} />
         {ch && ch.added + ch.removed + ch.changed > 0 ? <p className={s.rowNote}>Since last scan: {num(ch.added)} added · {num(ch.changed)} changed · {num(ch.removed)} removed</p> : null}
         {!project.projectFile.exists ? <p className={s.rowNote}>No .vesqira/project.toml yet.</p> : null}
-        <div><Button onClick={onOverview}>What is in this folder</Button></div>
+        {rules && rules.rules > 0 && (rules.new > 0 || rules.pending > 0) ? (
+          <p className={s.rowNote} role="status">
+            {rules.new > 0 ? `${num(rules.new)} new ${rules.new === 1 ? "file matches" : "files match"} your rules.` : `${num(rules.pending)} ${rules.pending === 1 ? "file matches" : "files match"} your rules, not registered yet.`}{" "}
+            <button type="button" className={s.link} onClick={onImport}>Review</button>
+          </p>
+        ) : null}
+        <div className={s.actions}>
+          <Button onClick={onOverview}>What is in this folder</Button>
+          <Button onClick={onImport}>Import rules…</Button>
+        </div>
       </div>
       {!project.scanned ? <p className={s.rowNote}>{isScanning(project) ? "Reading the folder. The groups appear when the first scan has finished." : "Not scanned yet."}</p> : null}
       {project.scanned ? GROUPS.map((def) => <Group key={def.group} project={project} version={version} def={def} filter={filter} setFilter={setFilter} selectedDatasetId={selectedDatasetId} onOpenRun={onOpenRun} onSelectDataset={onSelectDataset} onEditFile={onEditFile} />) : null}

@@ -28,6 +28,7 @@ import { RerunDraft } from "../runs/RerunDraft";
 import { RunsList } from "../catalog/RunsList";
 import { FirstLook } from "../projects/FirstLook";
 import { HealthView } from "../projects/HealthView";
+import { ImportView } from "../projects/ImportView";
 import { NeedsView } from "../projects/NeedsView";
 import { OpenProject } from "../projects/OpenProject";
 import { ProjectExplorer } from "../projects/ProjectExplorer";
@@ -265,7 +266,7 @@ export function Shell() {
     if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null), setOutsideIn(null);
   }, [linked, group?.facets.cursor, group?.basis]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
-  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "run" | "rerun" | "open" | "look" | "needs" | "health">("viewer");
+  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "run" | "rerun" | "open" | "look" | "needs" | "health" | "import">("viewer");
   const [runId, setRunId] = useState<number | null>(null);
   const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs" | "reports">("viewer");
   const from = mode === "boards" || mode === "jobs" || mode === "reports" ? mode : "viewer"; // the project pages go back to the viewer
@@ -420,6 +421,7 @@ export function Shell() {
               onSelectDataset={selectDataset}
               onEditFile={editor ? (path, hostId) => setEditing({ path, hostId }) : undefined}
               onOverview={() => setMode("look")}
+              onImport={() => setMode("import")}
               onCancel={() => void proj.cancel()}
             />
           ) : (
@@ -440,6 +442,8 @@ export function Shell() {
           <FirstLook key={project.id} project={project} onWrite={writeFile} onUseWithout={() => setMode("viewer")} onCancel={() => void proj.cancel()} />
         ) : mode === "needs" && project ? (
           <NeedsView project={project} version={proj.version} onChanged={() => { void proj.refresh(project.id); void refreshDatasets(); /* an answer can declare a unit on the files it is about */ }} />
+        ) : mode === "import" && project ? (
+          <ImportView key={project.id} project={project} version={proj.version} onChanged={() => { void proj.refresh(project.id); void refreshDatasets(); /* registering files and declaring on them changes the catalog */ }} />
         ) : mode === "health" && project ? (
           <HealthView project={project} />
         ) : mode === "jobs" ? (

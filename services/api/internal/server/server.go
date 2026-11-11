@@ -88,6 +88,11 @@ type Server struct {
 	laneOnce  sync.Once
 	heavy     chan struct{} // one FITS header registration at a time, across projects
 
+	importMu    sync.Mutex
+	importInvs  map[int64]*importInv // the last import-preview walk of each project (projects_import.go)
+	importBusy  sync.Map             // project id: an import apply is running
+	importWalks sync.Map             // project id: *sync.Mutex held across an import-preview walk
+
 	// EditorEnabled mounts the text editor routes (--enable-editor, ADR 0029). Off by default.
 	EditorEnabled bool
 	editMu        sync.Mutex            // one editor save at a time
@@ -286,6 +291,11 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/projects/{id}/needs", s.projectNeeds)
 		mux.HandleFunc("POST /api/projects/{id}/answers", s.answerProject)
 		mux.HandleFunc("POST /api/projects/{id}/project-file", s.writeProject)
+		mux.HandleFunc("GET /api/projects/{id}/import/rules", s.importRulesGet)
+		mux.HandleFunc("PUT /api/projects/{id}/import/rules", s.importRulesPut)
+		mux.HandleFunc("POST /api/projects/{id}/import/rules/write", s.importRulesWrite)
+		mux.HandleFunc("POST /api/projects/{id}/import/preview", s.importPreviewRoute)
+		mux.HandleFunc("POST /api/projects/{id}/import/apply", s.importApplyRoute)
 	}
 	if s.EditorEnabled {
 		mux.HandleFunc("GET /api/files/text", s.getText)

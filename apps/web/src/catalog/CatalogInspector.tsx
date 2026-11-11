@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ruleOf } from "../api/declared";
 import type { FormEvent } from "react";
 import { ApiError, catalogReport } from "../api/catalog";
 import type { CatalogDataset, CatalogDeclarationRequest, CatalogReport } from "../api/catalog";
@@ -194,7 +195,7 @@ function DeclarationForm({ d, rep, onDeclare }: {
   return (
     <form className={s.wrap} onSubmit={(e) => void submit(e)}>
       {decl ? (
-        <p className={s.note}>{decl.declaredBy === "user" ? "Declared by you" : `Proposed by ${decl.declaredBy}`}, {new Date(decl.declaredAt).toLocaleDateString()} <TierBadge tier={decl.tier} mappingVersion={decl.mappingVersion} rule={decl.declaredBy === "user" ? null : decl.declaredBy} />. It is kept apart from the file, which is not changed.</p>
+        <p className={s.note}>{decl.declaredBy === "user" ? "Declared by you" : ruleOf(decl.declaredBy) !== null ? `Declared by your import rule ${ruleOf(decl.declaredBy)}` : `Proposed by ${decl.declaredBy}`}, {new Date(decl.declaredAt).toLocaleDateString()} <TierBadge tier={decl.tier} mappingVersion={decl.mappingVersion} rule={decl.declaredBy === "user" || ruleOf(decl.declaredBy) !== null ? null : decl.declaredBy} />. It is kept apart from the file, which is not changed.</p>
       ) : (
         <p className={s.note}>Nothing is declared yet, so this catalog cannot be placed on the sky. Say which columns are the position and which frame they use. Vesqira does not assume it.</p>
       )}
