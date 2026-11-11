@@ -6,12 +6,15 @@ import s from "./Basis.module.css";
  * The whole sentence is still shown in the disclosure, so nothing is dropped, only moved one click away.
  */
 export function leadClause(text: string, max = 96): string {
-  const cut = text.indexOf("; ");
-  const first = cut > 0 ? text.slice(0, cut) : text.replace(/\.$/, "");
+  const semi = text.indexOf("; ");
+  const first = semi > 0 ? text.slice(0, semi) : text.replace(/\.$/, "");
   if (first.length <= max) return first.replace(/[.,:]$/, "");
   const room = first.slice(0, max);
   const at = room.lastIndexOf(" ");
-  return `${room.slice(0, at > max / 2 ? at : max).replace(/[\s,;:(]+$/, "")}…`;
+  let cut = room.slice(0, at > max / 2 ? at : max);
+  // never leave a parenthesis open: drop the unfinished parenthetical whole
+  if ((cut.match(/\(/g) ?? []).length > (cut.match(/\)/g) ?? []).length) cut = cut.slice(0, cut.lastIndexOf("("));
+  return `${cut.replace(/[\s,;:(]+$/, "")}…`;
 }
 
 /**

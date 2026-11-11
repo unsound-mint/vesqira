@@ -1,6 +1,6 @@
 .wrap {
-  --fade-right: linear-gradient(to left, var(--bg-0), transparent);
-  --fade-left: linear-gradient(to right, var(--bg-0), transparent);
+  --fade-right: linear-gradient(to left, var(--line-strong), transparent);
+  --fade-left: linear-gradient(to right, var(--line-strong), transparent);
   position: relative;
   min-width: 0;
   border: var(--bw) solid var(--line);

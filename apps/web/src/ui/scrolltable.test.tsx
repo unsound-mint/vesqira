@@ -94,6 +94,7 @@ describe("Basis", () => {
     const text = "hi_cube.fits contours of channel 41 at 3, 5 σ; placed by WCS geometry (astropy); never resampled onto the base grid";
     expect(leadClause(text)).toBe("hi_cube.fits contours of channel 41 at 3, 5 σ");
     expect(leadClause("a ".repeat(80), 20).length).toBeLessThanOrEqual(21);
+    expect(leadClause("x.fits contours of channel 41 (8 km/s) at 3, 5, 10 × σ (σ = 0.2347 K, 1.4826 × MAD of that channel)", 70)).toBe("x.fits contours of channel 41 (8 km/s) at 3, 5, 10 × σ…");
     render(<Basis summary={leadClause(text)}>{text}</Basis>);
     expect(screen.getByText("Basis")).toBeInTheDocument();
     expect(screen.getByText(text)).toBeInTheDocument();
