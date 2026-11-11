@@ -34,7 +34,13 @@ async function chooseHostFolder(page: Page, target: string) {
 async function register(page: Page, file: string) {
   await page.getByLabel("Register a FITS file").fill(path.join(data, file));
   await page.getByRole("button", { name: "Register", exact: true }).click();
-  await expect(page.getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}`) })).toBeVisible();
+  const row = page.getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}`) });
+  // A file with the same bytes as a registered dataset is offered as a location of it (ADR 0053); the walk-through's fixtures repeat
+  // bytes under several names and want separate datasets, so it chooses that when the offer appears.
+  const offer = page.getByRole("status", { name: "A dataset already holds this content" });
+  await expect(row.or(offer)).toBeVisible();
+  if (await offer.isVisible()) await offer.getByRole("button", { name: "Register as a separate dataset" }).click();
+  await expect(row).toBeVisible();
   await expect(page.getByLabel("Register a FITS file")).toHaveValue(""); // the form clears itself once the registration has finished
 }
 
