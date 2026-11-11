@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -155,7 +156,9 @@ func (s *Server) openTerminalSession(w http.ResponseWriter, r *http.Request) {
 	t.pending[sha256.Sum256([]byte(token))] = termPending{hostID: in.HostID, tab: in.Tab, expires: now.Add(lim.Connect)}
 	t.mu.Unlock()
 	for _, l := range replaced {
-		l.stop("replaced by a newer session in the same tab")
+		if l.stop != nil { // nil: still starting (slot reserved), it is replaced by the next request for the tab
+			l.stop("replaced by a newer session in the same tab")
+		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, 200, TerminalSession{Token: token, Protocol: termProtocol, ExpiresIn: int(lim.Connect / time.Second),
@@ -234,21 +237,34 @@ func (s *Server) terminalSocket(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, err.Error())
 		return
 	}
+	// The slot is reserved in the same critical section as the check, so concurrent upgrades cannot exceed the cap;
+	// it is released on every path that does not reach runTerminal.
+	live := &termLive{tab: p.tab}
 	t := &s.terms
 	t.mu.Lock()
-	full := len(t.live) >= lim.MaxSessions
-	t.mu.Unlock()
-	if full {
+	if t.live == nil {
+		t.pending, t.live = map[[32]byte]termPending{}, map[*termLive]struct{}{}
+	}
+	if len(t.live) >= lim.MaxSessions {
+		t.mu.Unlock()
 		fail(w, 429, "too many terminal sessions are open")
 		return
+	}
+	t.live[live] = struct{}{}
+	t.mu.Unlock()
+	release := func() {
+		t.mu.Lock()
+		delete(t.live, live)
+		t.mu.Unlock()
 	}
 	up := websocket.Upgrader{Subprotocols: []string{termProtocol}, ReadBufferSize: 4 << 10, WriteBufferSize: 4 << 10,
 		CheckOrigin: func(*http.Request) bool { return true }} // checked above
 	conn, err := up.Upgrade(w, r, nil)
 	if err != nil {
-		return // Upgrade has answered
+		release() // Upgrade has answered
+		return
 	}
-	s.runTerminal(conn, cmd, where, p, lim)
+	s.runTerminal(conn, cmd, where, p, lim, live)
 }
 
 // terminalCommand builds the command: the user's login shell here, or interactive ssh to a stored host.
@@ -291,7 +307,7 @@ type termControl struct {
 	Rows int    `json:"rows"`
 }
 
-func (s *Server) runTerminal(conn *websocket.Conn, cmd *exec.Cmd, where string, p termPending, lim TerminalLimits) {
+func (s *Server) runTerminal(conn *websocket.Conn, cmd *exec.Cmd, where string, p termPending, lim TerminalLimits, live *termLive) {
 	started := time.Now()
 	var wmu sync.Mutex // gorilla allows one writer at a time
 	send := func(typ int, data []byte) error {
@@ -307,6 +323,9 @@ func (s *Server) runTerminal(conn *websocket.Conn, cmd *exec.Cmd, where string, 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
 	if err != nil {
 		log.Printf("terminal: start: %v", err)
+		s.terms.mu.Lock()
+		delete(s.terms.live, live)
+		s.terms.mu.Unlock()
 		exitMsg("could not start the shell", nil)
 		_ = conn.Close()
 		return
@@ -317,12 +336,8 @@ func (s *Server) runTerminal(conn *websocket.Conn, cmd *exec.Cmd, where string, 
 	var reason string
 	var once sync.Once
 	finish := func(r string) { once.Do(func() { reason = r; close(stop) }) }
-	live := &termLive{tab: p.tab, stop: finish}
 	s.terms.mu.Lock()
-	if s.terms.live == nil {
-		s.terms.pending, s.terms.live = map[[32]byte]termPending{}, map[*termLive]struct{}{}
-	}
-	s.terms.live[live] = struct{}{}
+	live.stop = finish
 	s.terms.mu.Unlock()
 
 	exited := make(chan struct{}) // the process has been waited for
@@ -446,23 +461,119 @@ func (s *Server) runTerminal(conn *websocket.Conn, cmd *exec.Cmd, where string, 
 	s.Audit.Record("terminal session closed", "terminal", p.hostID, fmt.Sprintf("%s, %s, %s", where, time.Since(started).Round(time.Second), reason))
 }
 
-// terminate ends the shell and everything it started in its own session: hang up (as closing a terminal window does),
-// give it a moment, then kill the process group. It returns when the process has been waited for.
+// terminate ends the shell and everything it started. pty.Start makes the shell a session leader, so its session id
+// is its pid; an interactive shell puts each job in its own process group, so signalling the shell's group is not
+// enough (a job that ignores SIGHUP would outlive the tab). Every process of the session gets SIGHUP (as closing a
+// terminal window does), a moment to leave, then SIGKILL. It returns when the shell has been waited for.
+//
+// After the shell has been waited for its pid may be reused, but never while a member of its session remains, and a
+// new session leader would be the pid itself; so members other than the leader are still safe to signal.
 func terminate(cmd *exec.Cmd, ptmx io.Closer, exited <-chan struct{}) {
-	pgid := cmd.Process.Pid // pty.Start makes the shell a session leader, so its process group id is its pid
-	select {
-	case <-exited: // already waited for: the pid may be reused, so signal nothing
-		_ = ptmx.Close()
-		return
-	default:
+	sid := cmd.Process.Pid
+	isExited := func() bool {
+		select {
+		case <-exited:
+			return true
+		default:
+			return false
+		}
 	}
-	_ = syscall.Kill(-pgid, syscall.SIGHUP)
+	signalAll := func(sig syscall.Signal) {
+		gone := isExited()
+		if !gone {
+			_ = syscall.Kill(-sid, sig) // the shell's own group, and the shell
+		}
+		for _, pid := range sessionMembers(sid) {
+			if pid != sid || !gone {
+				_ = syscall.Kill(pid, sig)
+			}
+		}
+	}
+	signalAll(syscall.SIGHUP)
 	_ = ptmx.Close()
-	select {
-	case <-exited:
-		return
-	case <-time.After(2 * time.Second):
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && !(isExited() && len(liveSessionMembers(sid)) == 0) {
+		time.Sleep(25 * time.Millisecond)
 	}
-	_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	signalAll(syscall.SIGKILL)
 	<-exited
+}
+
+const (
+	maxProcScan = 1 << 18 // entries of /proc looked at per scan
+	maxStatRead = 4 << 10
+)
+
+// sessionMembers lists the processes whose session id is sid (Linux: /proc/<pid>/stat). Elsewhere, or if /proc cannot
+// be read, it returns nothing and only the process group is signalled.
+func sessionMembers(sid int) []int {
+	d, err := os.Open("/proc")
+	if err != nil {
+		return nil
+	}
+	defer d.Close()
+	var out []int
+	for scanned := 0; scanned < maxProcScan; {
+		names, err := d.Readdirnames(256)
+		for _, n := range names {
+			scanned++
+			pid, err := strconv.Atoi(n)
+			if err != nil || pid <= 0 {
+				continue
+			}
+			f, err := os.Open("/proc/" + n + "/stat")
+			if err != nil {
+				continue
+			}
+			buf, _ := io.ReadAll(io.LimitReader(f, maxStatRead))
+			f.Close()
+			if parseStatSession(buf) == sid {
+				out = append(out, pid)
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	return out
+}
+
+// liveSessionMembers is sessionMembers without zombies, which are dead but not yet reaped by their parent.
+func liveSessionMembers(sid int) []int {
+	var out []int
+	for _, pid := range sessionMembers(sid) {
+		b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+		if err == nil && !statIsZombie(b) {
+			out = append(out, pid)
+		}
+	}
+	return out
+}
+
+// statFields returns the fields after the command name of /proc/<pid>/stat: state, ppid, pgrp, session, ... The name
+// is in parentheses and may itself contain spaces and parentheses, so the last ')' ends it.
+func statFields(b []byte) []string {
+	str := string(b)
+	i := strings.LastIndexByte(str, ')')
+	if i < 0 {
+		return nil
+	}
+	return strings.Fields(str[i+1:])
+}
+
+func parseStatSession(b []byte) int {
+	f := statFields(b)
+	if len(f) < 4 {
+		return -1
+	}
+	n, err := strconv.Atoi(f[3])
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+func statIsZombie(b []byte) bool {
+	f := statFields(b)
+	return len(f) > 0 && (f[0] == "Z" || f[0] == "X")
 }

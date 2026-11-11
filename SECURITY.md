@@ -13,6 +13,16 @@ Please use GitHub's **private vulnerability reporting** (Security tab → "Repor
 - Untrusted FITS/PDF/TeX input causing resource exhaustion or code execution.
 - Remote-access credentials or secrets appearing in logs, provenance, or shared reviews.
 
+## Who can reach the owner API
+
+The owner API (`--addr`, loopback, no accounts) is the whole app: catalog, hosts, job submission and, when enabled, the editor and the terminal. What stops whom:
+
+- **Web pages (any browser tab, any site):** refused by `Host` (DNS rebinding), `Sec-Fetch-Site`, a differing `Origin` on writes and JSON-only bodies; the terminal also needs a one-time token and an `Origin` equal to the page's.
+- **Other user accounts on the same computer (Linux):** refused by a peer-uid gate on the listener. For every accepted connection the server looks the peer socket up in `/proc/net/tcp` and `tcp6` (IPv4, IPv6 and IPv4-mapped forms) and closes it, before any HTTP is read, unless the socket belongs to the uid the server runs as. If the table cannot be read or the connection is not found, it is refused (fail closed); the server will not start if `/proc/net/tcp` is unreadable. Refusals are counted and logged (one line per 10 s, no addresses or request data). `--allow-other-local-users` switches the gate off and is dangerous: on a shared workstation or HPC login node every account can then use the app as you.
+- **Other processes of the same account:** trusted. This is the single-user model (ADR 0029, ADR 0036): anything running as you can already read your files and run commands, so the app does not try to separate itself from it.
+- **macOS and Windows:** the peer-uid check does not exist there. Any local account can reach the owner API. The server logs a warning at start and refuses to start with `--enable-terminal` or `--enable-editor` unless `--allow-other-local-users` is given. Use these platforms only on a computer that has one user.
+- **Not gated, by design:** the review listener (`--review-addr`, published previews for reviewers) and the publish server are separate listeners made for other people; they have no owner routes.
+
 ## Optional features that write or run things
 
 Each is off unless the server is started with its flag, and only ever on the loopback owner address, never on `--review-addr` (ADR 0029).
@@ -32,9 +42,11 @@ Lets the person at this computer open and save text files from the app (`GET` an
 
 Lets the person at this computer open a shell from the app: the user's login shell here, or `ssh -tt` to a registered host (`POST /api/terminal/sessions`, then a WebSocket at `GET /api/terminal`). This is the most powerful switch: **a terminal runs any command with every privilege of the user running Vesqira**, and over ssh with that user's access to the host. Turn it on only on a machine where that user is you.
 
-- Only on the loopback owner address, never on `--review-addr`; not available in multi-user mode.
+- Only on the loopback owner address, never on `--review-addr`; not available in multi-user mode (the group server refuses to start with it). Only the server's own user account reaches that address on Linux (see above); other platforms need `--allow-other-local-users`.
 - A session needs a one-time token from an authenticated same-origin `POST`, carried in the WebSocket subprotocol (never in the URL), valid for 60 seconds and consumed by the first attempt. The upgrade also needs an `Origin` equal to the page's, a loopback `Host` and no cross-site `Sec-Fetch-Site`; a foreign page cannot open a session even if it can reach the port.
 - The page chooses a host by id from the registered hosts; it cannot name a command, a binary or an ssh destination. ssh uses your own configuration and agent; a passphrase or one-time-code prompt is typed in the terminal and never seen by Vesqira.
+- Closing a session hangs up and then kills every process of the shell's session, including jobs the shell put in their own process groups or that ignore SIGHUP. A process that deliberately starts a new session (`setsid`) is not tracked.
+- The environment is the full environment of the user running Vesqira (a local shell sees all of it; ssh sends what `SendEnv` in your ssh configuration says). The terminal shares the workers' ssh `ControlPath`: a master connection opened in the terminal is reused by the background workers (which run `BatchMode`), and the other way round.
 - One session per browser tab, at most 8 at once, ended after 30 minutes without input or 8 hours in all, or when the page goes away. Input, resize and output frames are size-bounded.
 - The audit log records that a session opened and closed (where, how long, why), never what was typed or shown. The terminal itself keeps no transcript; do not paste secrets into it on a shared screen.
 - It does not give a reviewer anything: the review listener has no terminal routes.

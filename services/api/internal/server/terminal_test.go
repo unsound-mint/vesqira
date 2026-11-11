@@ -3,12 +3,17 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -502,8 +507,11 @@ func TestTerminalHostSessionUsesTheConfiguredSSH(t *testing.T) {
 	readUntil(t, c, "fake-ssh-ready")
 	got, _ := os.ReadFile(argsFile)
 	args := strings.Fields(string(got))
-	if len(args) < 2 || args[0] != "-tt" || args[len(args)-1] != "login.example" {
+	if len(args) < 2 || args[0] != "-tt" || args[len(args)-1] != "login.example" || args[len(args)-2] != "--" {
 		t.Errorf("ssh arguments: %q", args)
+	}
+	if !strings.Contains(" "+strings.Join(args, " ")+" ", " -e none ") {
+		t.Errorf("ssh escape character not disabled: %q", args)
 	}
 	for _, a := range args {
 		if a == "BatchMode=yes" {
@@ -568,4 +576,122 @@ func TestTerminalClosedPageEndsTheShell(t *testing.T) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Error("the shell kept running after the page closed the socket")
+}
+
+// An interactive shell gives each job its own process group and a job may ignore SIGHUP: closing the tab must still end it.
+func TestTerminalEndsJobsThatIgnoreHUPInTheirOwnGroup(t *testing.T) {
+	e := newTerminal(t, true, func(s *Server) {
+		s.TerminalShell = []string{"/bin/sh", "-c", "trap '' HUP; PS1='VQ$ ' exec /bin/sh -i"}
+	})
+	c := e.connect(t, e.token(t, "tab-aaaaaaaa", 0))
+	readUntil(t, c, "VQ$ ")
+	_ = c.WriteMessage(websocket.BinaryMessage, []byte("sleep 1000 & echo JOB=$!=\n"))
+	re := regexp.MustCompile(`JOB=([0-9]+)=`) // the typed line is echoed first, and has no digits
+	var out string
+	var m []string
+	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	for m == nil {
+		_, data, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("no job pid in %q: %v", out, err)
+		}
+		out += string(data)
+		m = re.FindStringSubmatch(out)
+	}
+	pid := 0
+	if m != nil {
+		pid, _ = strconv.Atoi(m[1])
+	}
+	if pid == 0 {
+		t.Fatalf("no job pid in %q", out)
+	}
+	dead := func() bool {
+		b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+		return err != nil || statIsZombie(b)
+	}
+	if dead() {
+		t.Fatal("the job is not running before the tab closes")
+	}
+	_ = c.Close()
+	for i := 0; i < 300; i++ {
+		if dead() {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+	t.Error("a job that ignores SIGHUP survived the end of its session")
+}
+
+// The shell exits by itself and leaves a HUP-ignoring background job behind: the session end still removes it.
+func TestTerminalEndsLeftoverJobsAfterTheShellExited(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	e := newTerminal(t, true, func(s *Server) {
+		s.TerminalShell = []string{"/bin/sh", "-c", "trap '' HUP; sleep 1000 & echo $! > " + pidFile + "; echo up; exit 0"}
+	})
+	c := e.connect(t, e.token(t, "tab-aaaaaaaa", 0))
+	readUntil(t, c, "up")
+	readExit(t, c)
+	b, _ := os.ReadFile(pidFile)
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+	if pid == 0 {
+		t.Fatal("no pid")
+	}
+	for i := 0; i < 300; i++ {
+		d, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+		if err != nil || statIsZombie(d) {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+	t.Error("a background job outlived the shell and its session")
+}
+
+func TestStatParsingSurvivesOddCommandNames(t *testing.T) {
+	line := []byte("123 (a) b (c) S 1 123 456 0 -1 4194560")
+	if got := parseStatSession(line); got != 456 {
+		t.Errorf("session %d", got)
+	}
+	if statIsZombie(line) || !statIsZombie([]byte("1 (x) Z 1 1 1")) {
+		t.Error("zombie detection")
+	}
+	if parseStatSession([]byte("garbage")) != -1 {
+		t.Error("garbage accepted")
+	}
+}
+
+// Concurrent upgrades must not exceed the cap: the check and the registration are one critical section.
+func TestTerminalCapHoldsUnderConcurrentUpgrades(t *testing.T) {
+	const cap, attempts = 3, 12
+	e := newTerminal(t, true, func(s *Server) { s.TerminalLimits.MaxSessions = cap })
+	tokens := make([]string, attempts)
+	for i := range tokens {
+		tokens[i] = e.token(t, fmt.Sprintf("tab-%08d", i), 0)
+	}
+	var ok, full atomic.Int32
+	var wg sync.WaitGroup
+	conns := make(chan *websocket.Conn, attempts)
+	for _, tok := range tokens {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, resp, err := e.dial(e.wsURL(), []string{termProtocol, termTokenPrefix + tok}, nil)
+			switch {
+			case err == nil:
+				ok.Add(1)
+				conns <- c
+			case status(resp) == 429:
+				full.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	close(conns)
+	for c := range conns {
+		defer c.Close()
+	}
+	if ok.Load() != cap || full.Load() != attempts-cap {
+		t.Errorf("accepted %d, refused %d; want %d and %d", ok.Load(), full.Load(), cap, attempts-cap)
+	}
 }

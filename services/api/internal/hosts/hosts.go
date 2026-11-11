@@ -263,8 +263,10 @@ func (m *Manager) TerminalCommand(h Host) (bin string, args []string, env []stri
 	if err := h.Validate(); err != nil {
 		return "", nil, nil, err
 	}
-	args = []string{"-tt", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
-		"-o", "ControlMaster=auto", "-o", "ControlPath=" + filepath.Join(m.ControlDir, "%C"), "-o", "ControlPersist=120", h.Dest}
+	// -e none: no ssh escape character (~. and friends) is interpreted from what the page types; -- ends the options so
+	// a destination can never be read as one.
+	args = []string{"-tt", "-e", "none", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
+		"-o", "ControlMaster=auto", "-o", "ControlPath=" + filepath.Join(m.ControlDir, "%C"), "-o", "ControlPersist=120", "--", h.Dest}
 	return m.Ssh, args, os.Environ(), nil // the whole environment, so the agent socket and the user's locale reach ssh
 }
 
