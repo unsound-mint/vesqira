@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
@@ -55,13 +56,48 @@ func TestAVerifiedDownloadOfARegisteredHostFileBecomesAVerifiedLocation(t *testi
 	}
 }
 
-func TestADownloadIsNotLinkedWithoutAFullHashOfTheDatasetsFileToCompareWith(t *testing.T) {
+func (e *xferEnv) auditActions(action string) []string {
+	var out []string
+	es, _ := e.srv.Audit.List("", 0, 500)
+	for _, a := range es {
+		if a.Action == action {
+			out = append(out, a.Detail)
+		}
+	}
+	return out
+}
+
+func TestAVerifiedDownloadRecordsTheSourcesFullHashWhenItStillIsTheRegisteredFile(t *testing.T) {
+	e := newXferEnv(t)
+	b := e.file(e.remote, "nohash.fits", 3000)
+	d := e.hostDataset("nohash.fits", false) // registered, never hashed in full
+	tr := e.download("nohash.fits", nil)
+	e.run()
+	locs, _ := e.cat.Locations(d.ID)
+	if len(locs) != 2 {
+		t.Fatalf("%+v", locs)
+	}
+	for _, l := range locs {
+		if l.Full == nil || l.Full.Value != sha(b) {
+			t.Fatalf("no full hash on %+v", l)
+		}
+		if l.Primary && l.Full.By != "full sha256 computed by transfer "+itoa(int(tr.ID)) {
+			t.Errorf("method %q", l.Full.By)
+		}
+		if !l.Primary && l.Link != catalog.LinkVerified {
+			t.Errorf("copy link %q", l.Link)
+		}
+	}
+}
+
+func TestADownloadIsNotLinkedAndNothingIsRecordedWhenTheSourceChangedSinceRegistration(t *testing.T) {
 	e := newXferEnv(t)
 	e.file(e.remote, "nohash.fits", 100)
 	d := e.hostDataset("nohash.fits", false)
+	// the file on the host changed after it was registered: the transfer's hash says nothing about the registered dataset
+	os.WriteFile(filepath.Join(e.remote, "nohash.fits"), []byte("other bytes entirely"), 0o644)
 	e.file(e.remote, "differs.fits", 100)
 	d2 := e.hostDataset("differs.fits", true)
-	// the file on the host changed after it was registered and fingerprinted: its hash no longer matches what is recorded
 	os.WriteFile(filepath.Join(e.remote, "differs.fits"), []byte("other bytes entirely"), 0o644)
 	e.download("nohash.fits", nil)
 	e.download("differs.fits", nil)
@@ -69,9 +105,16 @@ func TestADownloadIsNotLinkedWithoutAFullHashOfTheDatasetsFileToCompareWith(t *t
 	e.download("unrelated.fits", nil)
 	e.run()
 	for _, id := range []int64{d.ID, d2.ID} {
-		if locs, _ := e.cat.Locations(id); len(locs) != 1 {
+		locs, _ := e.cat.Locations(id)
+		if len(locs) != 1 {
 			t.Errorf("dataset %d got a location without evidence: %+v", id, locs)
 		}
+	}
+	if locs, _ := e.cat.Locations(d.ID); locs[0].Full != nil {
+		t.Errorf("a hash was recorded for bytes that are not the registered ones: %+v", locs[0].Full)
+	}
+	if got := e.auditActions("downloaded copy not linked"); len(got) != 2 || !strings.Contains(strings.Join(got, "\n"), "may be stale") {
+		t.Errorf("audit: %q", got)
 	}
 }
 

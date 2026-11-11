@@ -15,9 +15,10 @@ import (
 
 // linkDownloadedLocation records a verified download as a location of the dataset whose registered file (or verified
 // location) on that host was the source (ADR 0053). The link is "verified" only on evidence: the transfer compared a SHA-256 on
-// both ends, and the dataset's own location on the host has the same full SHA-256 recorded. A source the dataset has no full
-// hash for proves nothing about the dataset's bytes (the file on the host may have changed since it was registered), so then
-// nothing is linked and the copy can still be registered or added by hand.
+// both ends, and the dataset's own location on the host has the same full SHA-256: either recorded earlier, or recorded now
+// from the transfer's hash of the source when the source still has the registered size and modification time. A source that
+// changed since registration proves nothing about the dataset's bytes, so then nothing is recorded or linked (audited) and the
+// copy can still be registered or added by hand.
 func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfer, v transfers.Verif) {
 	if s.Store == nil || t.Direction != hosts.Download || t.Kind != transfers.KindFile || v.Status != transfers.Verified || v.SourceSHA256 == "" || v.SourceSHA256 != v.DestSHA256 {
 		return
@@ -36,8 +37,24 @@ func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfe
 			src = &locs[i]
 		}
 	}
-	if src == nil || src.Full == nil || src.Full.Value != v.SourceSHA256 {
-		s.Audit.Record("downloaded copy not linked", "dataset", dsID, fmt.Sprintf("transfer %d: the dataset has no full SHA-256 equal to the one compared", t.ID))
+	if src == nil {
+		return
+	}
+	if src.Full == nil {
+		// The transfer just hashed the whole source. That is the dataset's hash only if the file on the host is still the one
+		// that was registered: same size and modification time (the host reports seconds).
+		if v.Bytes != src.SizeBytes || v.SourceMTime == 0 || v.SourceMTime != src.ModifiedAt.Unix() {
+			s.Audit.Record("downloaded copy not linked", "dataset", dsID, fmt.Sprintf("transfer %d: the source on the host no longer has the size and modification time it was registered with (registered %d bytes, %s; now %d bytes, mtime %d); the registered dataset may be stale",
+				t.ID, src.SizeBytes, src.ModifiedAt.UTC().Format(time.RFC3339), v.Bytes, v.SourceMTime))
+			return
+		}
+		by := fmt.Sprintf("full sha256 computed by transfer %d", t.ID)
+		if err := s.Store.SetFingerprint(src.ID, "full", v.SourceSHA256, by, src.SizeBytes, src.ModifiedAt.UnixNano()); err != nil {
+			return
+		}
+		s.Audit.Record("source full sha256 recorded", "dataset", dsID, fmt.Sprintf("transfer %d, sha256 %s", t.ID, v.SourceSHA256[:12]))
+	} else if src.Full.Value != v.SourceSHA256 {
+		s.Audit.Record("downloaded copy not linked", "dataset", dsID, fmt.Sprintf("transfer %d: the dataset's recorded full SHA-256 differs from the one compared", t.ID))
 		return
 	}
 	real, err := s.roots().Resolve(t.DestPath)

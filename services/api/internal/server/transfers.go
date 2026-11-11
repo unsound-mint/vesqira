@@ -1096,7 +1096,7 @@ func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h ho
 		}
 		if a.sha != "" && a.sha == b.sha {
 			return ret(outcome{state: transfers.StateDone, detail: fmt.Sprintf("A file with this name, size and SHA-256 is already %s; nothing was transferred.", where),
-				verif: transfers.Verif{Status: transfers.Verified, Method: transfers.MethodSHA256, SourceSHA256: a.sha, DestSHA256: b.sha, Bytes: src.size,
+				verif: transfers.Verif{Status: transfers.Verified, Method: transfers.MethodSHA256, SourceSHA256: a.sha, DestSHA256: b.sha, Bytes: src.size, SourceMTime: a.mtime,
 					Note: "The existing file and the source have the same SHA-256 (both hashed just now)."}})
 		}
 	}
@@ -1178,7 +1178,7 @@ func (s *Server) verify(ctx context.Context, t transfers.Transfer, h hosts.Host,
 
 	// a file: size and sha256 on both ends
 	var srcSum, dstSum string
-	var srcSize, dstSize int64
+	var srcSize, dstSize, srcMTime int64
 	if download {
 		st, err := s.Remote.StatPath(ctx, h, path.Dir(t.SourcePath), path.Base(t.SourcePath), true)
 		if err != nil {
@@ -1187,7 +1187,7 @@ func (s *Server) verify(ctx context.Context, t transfers.Transfer, h hosts.Host,
 			}
 			return classify(err)
 		}
-		srcSum, srcSize = st.SHA, st.Size
+		srcSum, srcSize, srcMTime = st.SHA, st.Size, st.MTime
 		sum, n, err := hosts.HashFile(ctx, filepath.Join(destReal, final))
 		if err != nil {
 			if ctx.Err() != nil {
@@ -1217,7 +1217,7 @@ func (s *Server) verify(ctx context.Context, t transfers.Transfer, h hosts.Host,
 		}
 		dstSum, dstSize = st.SHA, st.Size
 	}
-	v := transfers.Verif{Method: transfers.MethodSHA256, SourceSHA256: srcSum, DestSHA256: dstSum, Bytes: dstSize}
+	v := transfers.Verif{Method: transfers.MethodSHA256, SourceSHA256: srcSum, DestSHA256: dstSum, Bytes: dstSize, SourceMTime: srcMTime}
 	switch {
 	case srcSum == "" || dstSum == "":
 		v.Status = transfers.Unverified
