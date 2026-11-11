@@ -63,12 +63,12 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 The owner asked for the most convenient app for this kind of work, beyond the interview list. Items come from the owner's own research (VGT and ROHSA on LMC H I and CO, Slurm over a VPN, weekly reports) and from common radio-astronomy practice (contours, vectors, channel maps, PV diagrams, relative-orientation statistics). Design: ADR 0042. New screens do not wait for an approved mock during this push; the owner reviews afterwards.
 
 - [x] Declared angle frame and quantity (pixel or sky; B-field, gradient, dust or starlight polarization), and axial-aware resampling for align and convolve (fixes the shipped linear interpolation of axial maps); previews of axial maps stay disabled.
-- [~] Viewer scene: base plus ordered overlays, placed by WCS geometry, not resampling. Built: the scene/1 contract and viewer store (figures store their scene, never shown to reviewers), and overlays from other datasets: contours (levels incl. k×σ by MAD), orientation lines, beam ellipse, coordinate grid, each stating its basis or why it is not drawn. Not built: catalog markers and vectors (in progress).
+- [~] Viewer scene: base plus ordered overlays, placed by WCS geometry, not resampling. Built: the scene/1 contract and viewer store (figures store their scene, never shown to reviewers), and overlays from other datasets: contours (levels incl. k×σ by MAD), orientation lines, beam ellipse, coordinate grid, each stating its basis or why it is not drawn. Catalog markers and B-field vectors from point catalogs (row filter shared with relative orientation, click a marker for its row, a keyboard list of sources). Not built: linked views by WCS, draw again and SVG export.
 - [x] Point catalogs as datasets (CSV, TSV, whitespace tables, ECSV, IPAC, VOTable, FITS table; sexagesimal or degrees; declared frame and angle columns; parse report by line), e.g. starlight polarization and absorption sightlines (ADR 0044). On this computer only.
 - [x] Relative orientation between two orientation maps or a map and a catalog: alignment measure (weighted too), projected Rayleigh statistic (no p-value: correlated pixels) and histogram, the owner's shifted-pattern null reproduced, an optional P/σP cut, deterministic seeds (ADR 0047). Remote inputs, Planck HEALPix ingestion and block averaging are not built.
 - [ ] Linked view groups by sky position and spectral value (Stage 3 item, through ADR 0042).
 - [ ] Figures as scenes: draw again, change announced, SVG export (Stage 6 item).
-- [ ] Channel-map grid and position-velocity diagram along a line.
+- [x] Channel-map grid (shared scale, converted spectral labels, slab means) and position-velocity diagram along a line or polyline (offsets as sky separations; bilinear or nearest sampling, stated) (ADR 0049).
 - [x] Gaussian decomposition browser for ROHSA results: component curves over the spectrum at a pixel (streamed index of the .dat), component and residual maps, CNM versus the rest with the width cut as a declared input (ADR 0046).
 - [x] Job finished: jobs are watched while the app runs (batched squeue/sacct per host, backoff when unreachable), a notification list and an optional desktop notification, and finished VGT outputs imported once as a run (ADR 0043).
 - [x] Host quota and run-directory sizes; job efficiency from sacct (elapsed, MaxRSS against the request, CPU when accounted) offered when running again, applied only on a click; sacct columns a site lacks fall back without affecting state tracking (ADR 0045).
@@ -77,8 +77,8 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 
 - [x] Server serves the web app; Fedora RPM with launcher, desktop entry, icon and metadata (ADR 0021).
 - [x] Release workflow: build the RPM in a Fedora container on a tag, run the install smoke test, attach it to the release.
-- [ ] Source RPM built in the build root, and a COPR repository so `dnf copr enable` works.
-- [ ] Flatpak (needs flatpak-builder and a decision on ssh and agent access from the sandbox).
+- [~] Source RPM built in the build root, and a COPR repository so `dnf copr enable` works. Built: `make srpm` from vendored sources, verified to rebuild offline; `.copr/Makefile` builds from tags. Not done: the owner's COPR project (steps in `packaging/COPR.md`), a mock build.
+- [ ] Flatpak: decision proposed in ADR 0052 (ssh through the agent socket, host paths through the document portal); not built.
 - [ ] Manage readable folders inside the app instead of `vesqira add-root` (covered by Stage W: opening a project folder makes it readable).
 
 ## Stage 1 — Safety and honesty of what is stored
@@ -117,7 +117,7 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 ## Stage 4 — Runs, parameters and reproducibility
 
 - [~] Typed run metrics with units and uncertainty are in (stage L); cross-run filtering and plotting (Q128–Q131) are not.
-- [~] Parameter sweeps and "explore variations" as a set of linked runs (Q128, Q222): VGT sweeps built (drafts read before submitting, concurrency limit, exactly once per job, ADR 0048); ROHSA sweeps need a ROHSA config writer (in progress).
+- [~] Parameter sweeps and "explore variations" as a set of linked runs (Q128, Q222): VGT sweeps built (drafts read before submitting, concurrency limit, exactly once per job, ADR 0048); ROHSA reruns and sweeps edit the config line by line with a sizing suggestion from the owner's submit script, one job at a time by default; ROHSA fits on a host import, index on the host and auto-import when a job ends (ADRs 0046, 0048).
 - [x] Reproducibility facts beyond the git flag, each declared, inferred or unresolved (Q121–Q125, Q198). Capturing environment and hashes is still to do.
 - [ ] Rerun modes: strict, best effort, adapted (Q123).
 - [x] Accounting of failed evaluations when the run reports them; cancelled and excluded are stated as not recorded (Q224).
@@ -138,7 +138,7 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 - [ ] Virtual subsets (a definition, not only a materialized cutout) (Q141).
 - [ ] Generic import: scan a folder, review the proposed mapping, save the rules (Q17, Q82).
 - [x] Host aliases from your ssh config are offered while adding a host (alias, plain host name and user only; keys, proxy commands and wildcard patterns are never read out; `--ssh-config` changes or disables it) (Q27).
-- [ ] Transfers with a resumable queue and conflict handling (Q36–Q38).
+- [x] Transfers with a resumable queue and conflict handling (Q36–Q38): rsync with partial resume across dropped connections, name reservation, conflict choices that never overwrite silently, sha256 verified on both ends (ADR 0051). No "Download" button on a remote dataset yet (paths are typed or completed).
 - [ ] "Prepare for offline" (Q108).
 
 ## Stage 6 — Structure, contracts and operations
@@ -159,9 +159,9 @@ The owner chose a shared multi-user server (ADR 0028 option B). Its design ADR c
 
 Needs an ADR before code: it changes the security boundary.
 
-- [ ] Accounts and roles per project and per cluster (Q29–Q31).
+- [ ] Accounts and roles per project and per cluster (Q29–Q31). Design proposed in ADR 0050 (no code until accepted; open questions for the owner listed there).
 - [ ] Authentication before anyone but the owner can act; delegation and approval lifecycle for other users' requests (Q44, Q71).
-- [ ] Worker memory cap and the authorize-then-open window for source files.
+- [~] Worker memory cap and the authorize-then-open window for source files. The memory cap applies to every worker entry point and its setting reaches the workers; the authorize-then-open window is not closed (ADR 0050 specifies opening by component without following links).
 
 ## Stage 8 — Later phases (kept, not scheduled)
 
