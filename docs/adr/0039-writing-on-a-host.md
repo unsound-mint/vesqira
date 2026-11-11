@@ -2,6 +2,8 @@
 
 Status: **proposed; implemented, awaiting owner review.** Decided by the implementing agent under the owner's delegation of ADR decisions (roadmap Stage W). Real-ssh behaviour is not verified (see Validation). Revised after a security review.
 
+Amended by ADR 0048: an owner-queued upload may now write a file or folder inside a host source root, through rsync, with its own conflict and verification rules. The two files above remain the only ones Vesqira writes on its own initiative.
+
 ## Context
 ADR 0030 left two things open for a project or a job that lives on another machine: a project opened on a host could not get its `.vesqira/project.toml` ("an external write that needs its own authorization"), and a job submitted through Slurm left no record of what it was asked to do next to its outputs, so a rescan of the folder found a result with no settings. Both are writes on the researcher's own account, on a machine Vesqira reaches only through the researcher's own ssh configuration. AGENTS.md requires such a boundary to be documented, authorized, audited, and never to alter what the researcher or another program made.
 
