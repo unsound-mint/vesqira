@@ -15,6 +15,7 @@ import { UsedIn } from "../catalog/UsedIn";
 import { HostsPanel } from "../catalog/HostsPanel";
 import { RunPanel, RunsUsingFile, runFor } from "../catalog/RunPanel";
 import { RunPage } from "../runs/RunPage";
+import { EntryActions } from "../catalog/EntryActions";
 import { RerunDraft } from "../runs/RerunDraft";
 import { RunsList } from "../catalog/RunsList";
 import { FirstLook } from "../projects/FirstLook";
@@ -218,7 +219,7 @@ export function Shell() {
         <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
       </Section>
       <Section title="Datasets" meta={String(cat.datasets.length)}>
-        <Explorer hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={selectDataset} onRegister={cat.register} />
+        <Explorer hosts={cat.hosts} datasets={cat.allDatasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={selectDataset} onRegister={cat.register} />
       </Section>
     </>
   );
@@ -288,7 +289,7 @@ export function Shell() {
           <JobsView focusJob={focusJob} hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => openRun(r.id)} />
         ) : mode === "run" ? (
           pageRun ? (
-            <RunPage key={pageRun.id} run={pageRun} runs={cat.runs} datasets={cat.datasets} job={(pageRun.jobId != null ? cat.jobs.find((j) => j.id === pageRun.jobId) : undefined) ?? jobFor(cat.jobs, pageRun.id)} onBack={() => setMode(runFrom)} onOpenRun={openRun} onOpenInViewer={(id) => { cat.select(id); setMode("viewer"); }} onCompareInViewer={compareInViewer} onRunAgain={runAgain} />
+            <RunPage key={pageRun.id} run={pageRun} runs={cat.runs} datasets={cat.allDatasets} onEntryChanged={(c) => { void cat.refreshRuns(); void cat.refreshDatasets(); if (c === "deleted") setMode(runFrom); }} job={(pageRun.jobId != null ? cat.jobs.find((j) => j.id === pageRun.jobId) : undefined) ?? jobFor(cat.jobs, pageRun.id)} onBack={() => setMode(runFrom)} onOpenRun={openRun} onOpenInViewer={(id) => { cat.select(id); setMode("viewer"); }} onCompareInViewer={compareInViewer} onRunAgain={runAgain} />
           ) : (
             <div className={s.stage}>
               <p className={s.stageTitle}>Run not found</p>
@@ -390,6 +391,11 @@ export function Shell() {
           {actDs ? (
             <Section title="Storage" defaultOpen={false}>
               <StorageControl dataset={actDs} onCopied={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} />
+            </Section>
+          ) : null}
+          {actDs ? (
+            <Section title="Archive or delete" defaultOpen={false} meta={actDs.archived ? "archived" : undefined}>
+              <EntryActions key={actDs.id} kind="datasets" id={actDs.id} name={actDs.name} archived={actDs.archived === true} onChanged={async (c) => { await cat.refreshDatasets(); if (c === "deleted") { void cat.refreshRuns(); cat.select(null); } }} />
             </Section>
           ) : null}
           {actDs ? (

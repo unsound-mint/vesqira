@@ -6,7 +6,8 @@ export type Status = Schemas["Axis"]["ctype_status"];
 export type Axis = Schemas["Axis"];
 export type Header = Schemas["FitsHeader"];
 export type Interpretation = Schemas["Interpretation"];
-export type Dataset = Schemas["Dataset"];
+/** `archived` is set by the server on every dataset it sends (ADR 0041); the generated type predates it. */
+export type Dataset = Schemas["Dataset"] & { archived?: boolean };
 
 export class ApiError extends Error {
   constructor(message: string, readonly reasons: string[] = []) {
@@ -29,7 +30,8 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
 /** Files on this computer that are no longer what was registered. Remote files are not checked here. */
 export type Problem = "modified" | "missing" | "not_allowed";
 export const getAvailability = () => call<{ problems: Record<string, Problem> }>("/api/datasets/availability").then((r) => r.problems ?? {});
-export const listDatasets = () => call<{ datasets: Dataset[] }>("/api/datasets").then((r) => r.datasets);
+/** Without `archived` the server hides archived datasets; "all" is for the explorer, which filters them itself. */
+export const listDatasets = (opts: { archived?: "all" | "only" } = {}) => call<{ datasets: Dataset[] }>(`/api/datasets${opts.archived ? `?archived=${opts.archived}` : ""}`).then((r) => r.datasets);
 export const headerCards = (id: number) => call<{ cards: string[]; truncated: boolean }>(`/api/datasets/${id}/header-cards`);
 export const listRoots = () => call<{ roots: string[] }>("/api/roots").then((r) => r.roots);
 export const registerDataset = (path: string) =>

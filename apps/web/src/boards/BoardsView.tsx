@@ -13,6 +13,7 @@ import { listRuns } from "../api/runs";
 import type { Run } from "../api/runs";
 import { defaultOutput, JobFrame, JobLines, jobIsActive, LiveResult } from "./JobPanel";
 import { EM } from "../catalog/format";
+import { EntryActions } from "../catalog/EntryActions";
 import { RunLine } from "./RunLine";
 import { BoardCompare } from "./BoardCompare";
 import s from "./BoardsView.module.css";
@@ -51,13 +52,14 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
   const [reason, setReason] = useState("");
   const [pre, setPre] = useState<Preflight | null>(null);
   const [presenting, setPresenting] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [ticked, setTicked] = useState<number[]>([]); // item positions ticked for "what differs", oldest first; at most two
   const now = Date.now(); // elapsed times are as of the last render; the 30 s poll refreshes them
   const [seenAt, setSeenAt] = useState<Record<number, number>>({}); // when each snapshot was last opened, before this visit
 
   const reload = useCallback(async (keep?: number | null) => {
     try {
-      const bs = await listBoards();
+      const bs = await listBoards(showArchived ? { archived: "all" } : {});
       // the list says where each job is but not how far; keep the progress already read until the next poll replaces it
       setBoards((prev) => bs.map((nb) => {
         const old = prev.find((x) => x.id === nb.id);
@@ -71,7 +73,7 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not load boards.");
     }
-  }, []);
+  }, [showArchived]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -144,12 +146,16 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
       <div className={s.bar}>
         <Select label="Board" value={id ?? ""} onChange={(e) => setId(Number(e.target.value))}>
           {boards.length === 0 ? <option value="">No boards yet</option> : null}
-          {boards.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
+          {boards.map((b) => <option key={b.id} value={b.id}>{b.title}{b.archived ? " (archived)" : ""}</option>)}
         </Select>
         <form className={s.newBoard} onSubmit={(e) => { e.preventDefault(); if (name.trim()) void createBoard(name.trim()).then((b) => { setName(""); return reload(b.id); }).catch((x: Error) => setErr(x.message)); }}>
           <Input label="New board" value={name} onChange={(e) => setName(e.target.value)} />
           <Button type="submit" disabled={!name.trim()}>Create</Button>
         </form>
+      </div>
+      <div className={s.row}>
+        <Checkbox label="Show archived boards" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+        {board ? <EntryActions key={board.id} kind="boards" id={board.id} name={board.title} archived={board.archived === true} onChanged={async (c) => { if (c === "deleted" || (c === "archived" && !showArchived)) setId(null); await reload(c === "restored" ? board.id : null); }} /> : null}
       </div>
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
       {!board ? <p className={s.note}>Create a board, then add figures to it from the viewer (Figure section).</p> : null}

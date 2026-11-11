@@ -58,6 +58,8 @@ type Run struct {
 	Metrics        []Metric          `json:"metrics"`
 	// Review is the researcher's own assessment, kept apart from whether the computation finished.
 	Review Review `json:"review"`
+	// Archived runs are hidden from the lists but still resolve by id (ADR 0041).
+	Archived bool `json:"archived"`
 }
 
 // Review separates three different things: the computation finishing (the run exists), scientific QC, and interpretation.
@@ -224,6 +226,9 @@ func Open(db *sql.DB) (*Store, error) {
 	if err := schema.AddColumn(db, "runs", "metrics", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
 		return nil, err
 	}
+	if err := schema.EnsureArchive(db); err != nil {
+		return nil, err
+	}
 	return &Store{db}, nil
 }
 
@@ -281,14 +286,14 @@ func (s *Store) Save(dir string, p Parsed, outs []Output) (Run, error) {
 	return s.Get(id)
 }
 
-const runCols = `id,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics`
+var runCols = `id,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,` + schema.ArchivedExpr("run", "runs.id")
 
 func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	var r Run
 	var at int64
 	var el sql.NullFloat64
 	var pj, dj, mj string
-	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj, &mj); err != nil {
+	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj, &mj, &r.Archived); err != nil {
 		return Run{}, err
 	}
 	r.ImportedAt = time.Unix(at, 0).UTC()

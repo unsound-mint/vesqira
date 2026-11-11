@@ -15,11 +15,12 @@ const words = (q: string) => tokenize(q).map((w) => unquote(w).toLowerCase());
  * (a missing unit is not a unit, and is not matched by any unit value).
  */
 export function matchDataset(d: Dataset, q: string, hostName: string | undefined): boolean {
+  if (!archivedMatches(d.archived === true, q)) return false;
   const unit = effectiveUnit(d).toLowerCase();
   const host = (hostName ?? "").toLowerCase();
   const nature = (d.nature ?? "").toLowerCase();
   const hay = [d.name, host, unit, nature].join("\n").toLowerCase();
-  return words(q).every((w) => {
+  return words(q).filter((w) => !w.startsWith("archived:")).every((w) => {
     const field = /^(unit|host|nature):(.+)$/.exec(w);
     if (!field) return hay.includes(w);
     const key = field[1];
@@ -27,6 +28,17 @@ export function matchDataset(d: Dataset, q: string, hostName: string | undefined
     const have = key === "unit" ? unit : key === "host" ? host : nature;
     return want === "none" && key !== "host" ? have === "" : have !== "" && have === want;
   });
+}
+
+/**
+ * Archived entries are hidden unless the query asks: `archived:yes` shows only the archived ones, `archived:no` (the
+ * default) only the others, `archived:all` both. The word is a filter, not text to search for.
+ */
+export function archivedMatches(archived: boolean, q: string): boolean {
+  const w = words(q).find((x) => x.startsWith("archived:"));
+  const want = w?.slice("archived:".length);
+  if (want === "all") return true;
+  return want === "yes" ? archived : !archived;
 }
 
 const OPS = ["<=", ">=", "=", "<", ">"] as const;
@@ -39,7 +51,8 @@ const OPS = ["<=", ">=", "=", "<", ">"] as const;
  * matches: absence is not a value.
  */
 export function matchRun(r: Run, q: string): boolean {
-  return words(q).every((w) => {
+  if (!archivedMatches(r.archived === true, q)) return false;
+  return words(q).filter((w) => !w.startsWith("archived:")).every((w) => {
     if (w.startsWith("qc:")) return r.review.qc === w.slice(3);
     for (const op of OPS) {
       const i = w.indexOf(op);

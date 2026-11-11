@@ -11,10 +11,12 @@ import { PlaneViewer } from "../viewer/PlaneViewer";
 import { paramDiff } from "../compare/diff";
 import { useViewer } from "../viewer/useViewer";
 import { Button, Pill, Section } from "../ui";
+import { EntryActions } from "../catalog/EntryActions";
+import type { EntryChange } from "../catalog/EntryActions";
 import s from "./RunPage.module.css";
 
 /** A run as a page of blocks: its result, the numbers it declared, how it was set up, your assessment, and its log. */
-export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer, onRunAgain }: {
+export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer, onRunAgain, onEntryChanged }: {
   run: Run;
   runs: Run[];
   datasets: Dataset[];
@@ -26,6 +28,8 @@ export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInV
   onCompareInViewer?: (a: number, b: number) => void;
   /** Opens the draft form that repeats this run with changes. */
   onRunAgain?: (id: number) => void;
+  /** The run was archived, restored or deleted from this page. */
+  onEntryChanged?: (change: EntryChange) => void;
 }) {
   const first = run.outputs.find((o) => o.role === "psi") ?? run.outputs[0] ?? null;
   const [shown, setShown] = useState<number | null>(first?.datasetId ?? null);
@@ -62,6 +66,14 @@ export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInV
           {run.dirty ? <Pill tone="warn">code has uncommitted changes</Pill> : null}
           {run.kind === "vgt" && onRunAgain ? <Button type="button" onClick={() => onRunAgain(run.id)}>Run again with…</Button> : null}
         </header>
+
+        {onEntryChanged ? (
+          <Section title="Archive or delete" defaultOpen={false} meta={run.archived ? "archived" : undefined}>
+            <div className={s.block}>
+              <EntryActions kind="runs" id={run.id} name={run.name} archived={run.archived === true} onChanged={onEntryChanged} />
+            </div>
+          </Section>
+        ) : null}
 
         <Section title={`Result${output ? ` · ${ROLE[output.role] ?? output.role}` : ""}`} meta={output && output === first ? "default" : undefined}>
           {output ? (

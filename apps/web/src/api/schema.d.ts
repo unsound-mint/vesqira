@@ -139,6 +139,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/boards/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleArchive_post_api_boards_id_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/boards/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleDelete_post_api_boards_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/boards/{id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["owner_s_lifecycleImpact_get_api_boards_id_impact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/boards/{id}/items": {
         parameters: {
             query?: never;
@@ -276,6 +330,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/boards/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleArchive_post_api_boards_id_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/boards/{id}/snapshots": {
         parameters: {
             query?: never;
@@ -398,6 +470,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleArchive_post_api_datasets_id_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/axial": {
         parameters: {
             query?: never;
@@ -488,6 +578,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleDelete_post_api_datasets_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/derived": {
         parameters: {
             query?: never;
@@ -516,6 +624,24 @@ export interface paths {
             cookie?: never;
         };
         get: operations["owner_s_headerCards_get_api_datasets_id_header_cards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["owner_s_lifecycleImpact_get_api_datasets_id_impact"];
         put?: never;
         post?: never;
         delete?: never;
@@ -636,6 +762,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleArchive_post_api_datasets_id_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/spectrum": {
         parameters: {
             query?: never;
@@ -709,6 +853,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/figures/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleArchive_post_api_figures_id_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/figures/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleDelete_post_api_figures_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/figures/{id}/download": {
         parameters: {
             query?: never;
@@ -720,6 +900,24 @@ export interface paths {
         };
         /** The figure's picture as a PNG that carries its title and provenance inside the file */
         get: operations["owner_s_figureDownload_get_api_figures_id_download"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/figures/{id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["owner_s_lifecycleImpact_get_api_figures_id_impact"];
         put?: never;
         post?: never;
         delete?: never;
@@ -741,6 +939,24 @@ export interface paths {
         get: operations["owner_s_figurePreview_get_api_figures_id_preview"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/figures/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleArchive_post_api_figures_id_restore"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1861,6 +2077,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleArchive_post_api_runs_id_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleDelete_post_api_runs_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{id}/history": {
         parameters: {
             query?: never;
@@ -1871,6 +2123,24 @@ export interface paths {
             cookie?: never;
         };
         get: operations["owner_s_runHistory_get_api_runs_id_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["owner_s_lifecycleImpact_get_api_runs_id_impact"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1891,6 +2161,24 @@ export interface paths {
         get: operations["owner_s_rerunRun_get_api_runs_id_rerun"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["owner_s_lifecycleArchive_post_api_runs_id_restore"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2711,6 +2999,8 @@ export interface components {
             width: number;
             height: number;
             provenance: components["schemas"]["FigureProvenance"];
+            /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
+            archived?: boolean;
         };
         FigureList: {
             figures: components["schemas"]["Figure"][];
@@ -2791,6 +3081,8 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
             items: components["schemas"]["BoardItem"][];
+            /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
+            archived?: boolean;
         };
         BoardList: {
             boards: components["schemas"]["Board"][];
@@ -3159,6 +3451,66 @@ export interface operations {
             };
         };
     };
+    owner_s_lifecycleArchive_post_api_boards_id_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    owner_s_lifecycleDelete_post_api_boards_id_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    owner_s_lifecycleImpact_get_api_boards_id_impact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     owner_s_boardAdd_post_api_boards_id_items: {
         parameters: {
             query?: never;
@@ -3406,6 +3758,26 @@ export interface operations {
             };
         };
     };
+    owner_s_lifecycleArchive_post_api_boards_id_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     owner_s_snapshots_get_api_boards_id_snapshots: {
         parameters: {
             query?: never;
@@ -3600,6 +3972,26 @@ export interface operations {
             };
         };
     };
+    owner_s_lifecycleArchive_post_api_datasets_id_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     owner_s_axial_get_api_datasets_id_axial: {
         parameters: {
             query?: never;
@@ -3700,6 +4092,26 @@ export interface operations {
             };
         };
     };
+    owner_s_lifecycleDelete_post_api_datasets_id_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     owner_s_getDerived_get_api_datasets_id_derived: {
         parameters: {
             query?: never;
@@ -3721,6 +4133,26 @@ export interface operations {
         };
     };
     owner_s_headerCards_get_api_datasets_id_header_cards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    owner_s_lifecycleImpact_get_api_datasets_id_impact: {
         parameters: {
             query?: never;
             header?: never;
@@ -3897,6 +4329,26 @@ export interface operations {
             };
         };
     };
+    owner_s_lifecycleArchive_post_api_datasets_id_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     owner_s_spectrum_get_api_datasets_id_spectrum: {
         parameters: {
             query?: never;
@@ -4031,6 +4483,46 @@ export interface operations {
             };
         };
     };
+    owner_s_lifecycleArchive_post_api_figures_id_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    owner_s_lifecycleDelete_post_api_figures_id_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     owner_s_figureDownload_get_api_figures_id_download: {
         parameters: {
             query?: never;
@@ -4064,6 +4556,26 @@ export interface operations {
             };
         };
     };
+    owner_s_lifecycleImpact_get_api_figures_id_impact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     owner_s_figurePreview_get_api_figures_id_preview: {
         parameters: {
             query?: never;
@@ -4093,6 +4605,26 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Error"];
                 };
+            };
+        };
+    };
+    owner_s_lifecycleArchive_post_api_figures_id_restore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -5578,6 +6110,46 @@ export interface operations {
             };
         };
     };
+    owner_s_lifecycleArchive_post_api_runs_id_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    owner_s_lifecycleDelete_post_api_runs_id_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     owner_s_runHistory_get_api_runs_id_history: {
         parameters: {
             query?: never;
@@ -5598,7 +6170,47 @@ export interface operations {
             };
         };
     };
+    owner_s_lifecycleImpact_get_api_runs_id_impact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     owner_s_rerunRun_get_api_runs_id_rerun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    owner_s_lifecycleArchive_post_api_runs_id_restore: {
         parameters: {
             query?: never;
             header?: never;

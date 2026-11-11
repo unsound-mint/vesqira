@@ -35,6 +35,7 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
   const [q, setQ] = useState("");
   const shown = datasets.filter((d) => matchDataset(d, q, hosts.find((h) => h.id === d.hostId)?.name));
   const vocabulary = useMemo(() => datasetVocabulary(datasets, hosts), [datasets, hosts]);
+  const active = datasets.filter((d) => !d.archived).length;
 
   async function doPreview() {
     try {
@@ -74,12 +75,12 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
       {error ? <p role="alert" className={s.err}>{error}</p> : null}
       {loading ? <p className={s.note}>Loading datasets…</p> : null}
       {!loading && !error && datasets.length === 0 ? <p className={s.note}>No datasets yet. Files are referenced where they are; nothing is copied.</p> : null}
-      {datasets.length > 5 ? <FilterBox label="Filter datasets" placeholder="Filter datasets" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={datasets.length} noun="datasets" /> : null}
-      {datasets.length > 0 && shown.length === 0 ? <p className={s.note}>No dataset matches.</p> : null}
+      {datasets.length > 5 || datasets.length > active ? <FilterBox label="Filter datasets" placeholder="Filter datasets" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={active} noun="datasets" /> : null}
+      {datasets.length > 0 && shown.length === 0 ? <p className={s.note}>{active === 0 && !q.includes("archived:") ? "All datasets are archived. Filter with archived:yes to see them." : "No dataset matches."}</p> : null}
       <div role="list" aria-label="Datasets">
         {shown.map((d) => (
           <div role="listitem" key={d.id}>
-            <TreeRow icon={Database} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.hostId ? `${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${bytes(d.sizeBytes)}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
+            <TreeRow icon={Database} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.hostId ? `${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
           </div>
         ))}
       </div>

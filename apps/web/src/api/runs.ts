@@ -32,6 +32,8 @@ export type Run = {
   jobId: number | null;
   /** The run that job was drafted from with "run again with...", or null. */
   parentRunId: number | null;
+  /** Archived runs are hidden from lists by default but still resolve (ADR 0041). */
+  archived?: boolean;
 };
 
 /** The settings a new VGT draft starts from. A null is unknown, never a default: imported runs do not say how they ran. */
@@ -70,7 +72,7 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export const listRuns = () => call<{ runs: Run[] }>("/api/runs").then((r) => r.runs);
+export const listRuns = (opts: { archived?: "all" | "only" } = {}) => call<{ runs: Run[] }>(`/api/runs${opts.archived ? `?archived=${opts.archived}` : ""}`).then((r) => r.runs);
 export const importRun = (path: string) =>
   call<Run>("/api/runs/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
 

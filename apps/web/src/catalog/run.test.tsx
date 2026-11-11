@@ -99,7 +99,8 @@ describe("run page", () => {
     localStorage.clear();
     const m = { key: "am", value: 0.3, unit: "", uncertainty: null, uncertaintyKind: "" as const, n: null, definition: "", status: "declared" as const };
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      const body = url === "/api/runs" ? { runs: [run({ metrics: [m] })] } : url === "/api/jobs" ? { jobs: [] } : url === "/api/datasets" ? { datasets: [] } : url === "/api/hosts" ? { hosts: [] } : url.endsWith("/history") ? { history: [] } : {};
+      const path = url.split("?")[0]; // the shell asks for archived entries too (?archived=all)
+      const body = path === "/api/runs" ? { runs: [run({ metrics: [m] })] } : path === "/api/jobs" ? { jobs: [] } : path === "/api/datasets" ? { datasets: [] } : path === "/api/hosts" ? { hosts: [] } : url.endsWith("/history") ? { history: [] } : {};
       return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
     const user = userEvent.setup();

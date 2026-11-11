@@ -10,7 +10,7 @@ import s from "./FilterBox.module.css";
 /** One key the list can be asked about, with what occurs for it. Built from the data by the caller. */
 export type VocabKey = {
   key: string;
-  kind: "setting" | "result" | "qc" | "unit" | "host" | "nature";
+  kind: "setting" | "result" | "qc" | "unit" | "host" | "nature" | "archived";
   /** How many items have it. */
   count: number;
   numeric: boolean;
@@ -26,7 +26,7 @@ export type VocabKey = {
 };
 export type Vocabulary = { keys: VocabKey[]; names: string[] };
 
-const KIND: Record<VocabKey["kind"], string> = { setting: "setting", result: "result", qc: "assessment", unit: "unit", host: "host", nature: "nature" };
+const KIND: Record<VocabKey["kind"], string> = { setting: "setting", result: "result", qc: "assessment", unit: "unit", host: "host", nature: "nature", archived: "archived" };
 const TOKEN = /^([^<>=:\s]+)(<=|>=|=|<|>|:)(.*)$/;
 const ENDS_IN_OP = /[<>=:]$/;
 const SHOW: Record<string, string> = { "<=": "≤", ">=": "≥" };

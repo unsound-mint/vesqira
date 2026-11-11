@@ -15,6 +15,7 @@ export function RunsList({ runs, onImport, onOpen }: { runs: Run[]; onImport: (p
   const [q, setQ] = useState("");
   const shown = runs.filter((r) => matchRun(r, q));
   const vocabulary = useMemo(() => runVocabulary(runs), [runs]);
+  const active = runs.filter((r) => !r.archived).length;
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!path.trim()) return;
@@ -32,12 +33,12 @@ export function RunsList({ runs, onImport, onOpen }: { runs: Run[]; onImport: (p
         {err ? <p role="alert" className={s.err}>{err}</p> : null}
       </form>
       {runs.length === 0 ? <p className={s.note}>No runs yet. Point this at a folder holding run_metadata.toml and its output maps.</p> : null}
-      {runs.length > 3 ? <FilterBox label="Filter runs" placeholder="Filter runs" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={runs.length} noun="runs" /> : null}
+      {runs.length > 3 || runs.length > active ? <FilterBox label="Filter runs" placeholder="Filter runs" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={active} noun="runs" /> : null}
       {runs.length > 0 && shown.length === 0 ? <p className={s.note}>No run matches. Remove a filter above to widen the list.</p> : null}
       <div role="list" aria-label="Runs">
         {shown.map((r) => (
           <div role="listitem" key={r.id}>
-            <TreeRow icon={GitBranch} onSelect={() => onOpen(r)} trailing={r.reproducibleFromCommit ? "" : "dirty"}>{r.name}</TreeRow>
+            <TreeRow icon={GitBranch} onSelect={() => onOpen(r)} trailing={[r.archived ? "archived" : "", r.reproducibleFromCommit ? "" : "dirty"].filter(Boolean).join(" · ")}>{r.name}</TreeRow>
           </div>
         ))}
       </div>
