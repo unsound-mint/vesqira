@@ -16,7 +16,8 @@ import (
 // Version 3: reports sit in a tree of pages (reports.parent_id); a reader's comment may quote a phrase
 // (publish_comments.quote).
 // Version 4: a person may declare the unit of a file that has no BUNIT (dataset_units; ADR 0038).
-const Version = 4
+// Version 5: a job remembers that its run record on the host is still owed (jobs.record_owed; ADR 0039).
+const Version = 5
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -29,6 +30,17 @@ var migrations = []Migration{
 	{To: 2, Name: "board items may follow a job", Up: boardItemsMayFollowAJob},
 	{To: 3, Name: "report pages and quoted comments", Up: reportPagesAndQuotes},
 	{To: 4, Name: "declared units", Up: declaredUnits},
+	{To: 5, Name: "run record owed", Up: runRecordOwed},
+}
+
+// runRecordOwed adds jobs.record_owed. Every existing job gets 0: no record is owed for a job submitted before records
+// existed, which is what they are. A catalog without a jobs table needs nothing.
+func runRecordOwed(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='jobs'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	return AddColumn(tx, "jobs", "record_owed", "INTEGER NOT NULL DEFAULT 0")
 }
 
 // declaredUnits adds the overlay table for a unit a person declared for a dataset with no BUNIT (ADR 0038). The catalog

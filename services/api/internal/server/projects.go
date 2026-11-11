@@ -513,7 +513,7 @@ func (s *Server) answerProject(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, strings.TrimPrefix(err.Error(), "answer: "))
 		return
 	}
-	written, note, err := s.recordAnswer(p, *n, in) // the file first: a refused write changes nothing
+	written, note, err := s.recordAnswer(r.Context(), p, *n, in) // the file first: a refused write changes nothing
 	if err != nil {
 		if errors.Is(err, errProjectFile) || strings.Contains(err.Error(), "project.toml") {
 			fail(w, 409, err.Error())
@@ -563,7 +563,7 @@ func (s *Server) writeProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p.HostID != 0 {
-		fail(w, 501, "writing the project file on a host is not supported yet")
+		s.writeProjectOnHost(w, r, p, in.Text)
 		return
 	}
 	_, file := projectFilePaths(p.Path)

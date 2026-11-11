@@ -64,7 +64,7 @@ func TestDeclaredUnitsMigrationSkipsACatalogWithoutDatasets(t *testing.T) {
 	if n != 0 {
 		t.Fatal("created a table next to nothing it can refer to")
 	}
-	if !strings.Contains(migrations[len(migrations)-1].Name, "declared units") {
-		t.Fatal("the last migration is not the declared-units one")
+	if !strings.Contains(migrations[2].Name, "declared units") || migrations[2].To != 4 {
+		t.Fatal("migration 4 is not the declared-units one")
 	}
 }

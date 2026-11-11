@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"path"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -270,6 +271,7 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.Remote.RunShell(r.Context(), h, cmd, []byte(j.Script), 45*time.Second)
+	answered := time.Now()
 	var id string
 	if err == nil {
 		id, err = jobs.ParseSubmit(string(out))
@@ -285,6 +287,9 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Audit.Record("job submitted", "job", j.ID, "Slurm job "+id+", script sha256 "+j.ScriptHash[:12])
 	j, _ = s.Jobs.Get(j.ID)
+	// Settings are known now. The record is written in the background (the answer does not wait for ssh), and only once the
+	// job has created its output folder; a refresh completes it and adds the end state.
+	s.recordRunAsync(j.ID, h, jobs.SubmittedEvidence(id, answered))
 	writeJSON(w, 200, j)
 }
 
@@ -309,10 +314,15 @@ func (s *Server) checkSubmitting(ctx context.Context, j jobs.Job, h hosts.Host, 
 	if err != nil {
 		return err
 	}
+	seen := time.Now()
 	switch {
 	case found:
 		s.Audit.Record("job found on the host", "job", j.ID, "Slurm job "+id)
-		return s.Jobs.MarkSubmitted(j.ID, id)
+		if err := s.Jobs.MarkSubmitted(j.ID, id); err != nil {
+			return err
+		}
+		s.recordRunAsync(j.ID, h, jobs.FoundEvidence(id, seen))
+		return nil
 	case reopen:
 		s.Audit.Record("job reopened as draft", "job", j.ID, "the host holds no such job")
 		return s.Jobs.Reopen(j.ID)
@@ -363,11 +373,24 @@ func (s *Server) refreshJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 502, err.Error())
 			return
 		}
+		obtained := time.Now()
 		if state, detail := jobs.ParseStatus(string(out)); state != "" {
 			_ = s.Jobs.SetState(j.ID, state, detail)
+			// the record says how the job ended; and it is retried while it is still owed (folder not there yet, host down)
+			if j.RecordOwed || (isTerminal(state) && !isTerminal(j.State)) {
+				s.recordRunAsync(j.ID, h, jobs.ReportedEvidence(state, detail, obtained))
+			}
 		} else {
 			_ = s.Jobs.SetState(j.ID, j.State, detail)
 		}
+	} else if j.RecordOwed && j.SlurmID != "" && isTerminal(j.State) {
+		// the end state was read earlier but the record could not be written then: write it from what was stored
+		detail, _, _ := strings.Cut(j.Detail, "; run.json not written")
+		asOf := time.Now()
+		if j.FinishedAt != nil {
+			asOf = *j.FinishedAt
+		}
+		s.recordRunAsync(j.ID, h, jobs.ReportedEvidence(j.State, detail, asOf))
 	}
 	j, _ = s.Jobs.Get(j.ID)
 	writeJSON(w, 200, j)
