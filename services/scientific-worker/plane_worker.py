@@ -26,6 +26,7 @@ from astropy.wcs import WCS
 
 import convert
 import rohsa
+from memcap import limit_memory, over_cap_message
 from fits_header import axes_shape, clean, read_header
 
 MAX_PLANE_ELEMENTS = 1 << 24      # 16.7M pixels = 64 MiB as float32
@@ -1222,27 +1223,6 @@ def orientation_sky(c: Cube, req: dict) -> dict:
     return out
 
 
-def limit_memory() -> None:
-    """Cap the worker's private memory so one hostile or oversized file cannot take the machine down.
-
-    RLIMIT_DATA counts anonymous and private memory but not read-only file mappings, so memory-mapped cubes of any size
-    are unaffected. Importing numpy and astropy already reserves about 2 GB of address space (thread arenas), so the
-    budget is added to what the process holds once its libraries are loaded. VESQIRA_WORKER_MEM_MB sets it (default 3072);
-    0 disables it. Where /proc is not available nothing is limited. An allocation over the cap raises MemoryError, which
-    a request survives: the worker answers "cannot read" and serves the next request.
-    """
-    try:
-        mb = int(os.environ.get("VESQIRA_WORKER_MEM_MB", "3072"))
-        if mb <= 0:
-            return
-        with open("/proc/self/status") as f:
-            held = int(f.read().split("VmData:")[1].split()[0]) * 1024
-        import resource
-        _, hard = resource.getrlimit(resource.RLIMIT_DATA)
-        want = held + (mb << 20)
-        resource.setrlimit(resource.RLIMIT_DATA, (want if hard == resource.RLIM_INFINITY else min(want, hard), hard))
-    except (OSError, ValueError, IndexError, ImportError):
-        pass
 
 
 SLOW_REQUEST_S = 0.5
@@ -1284,7 +1264,10 @@ def main() -> int:
         except Refused as e:
             head, payload = {"ok": False, "code": e.code, "error": e.message, "nbytes": 0}, b""
             log_line(rid, op, f"refused code={e.code}")
-        except (OSError, ValueError, KeyError, TypeError, IndexError, MemoryError) as e:
+        except MemoryError:
+            head, payload = {"ok": False, "code": "unreadable", "error": over_cap_message(), "nbytes": 0}, b""
+            log_line(rid, op, "failed MemoryError")
+        except (OSError, ValueError, KeyError, TypeError, IndexError) as e:
             head, payload = {"ok": False, "code": "unreadable", "error": "cannot read this file (truncated, corrupt or unsupported)", "nbytes": 0}, b""
             log_line(rid, op, f"failed {type(e).__name__}")
         except Exception as e:                               # keep the worker alive on anything astropy raises

@@ -100,7 +100,9 @@ class PlaneWorker(unittest.TestCase):
             p.stdout.read(head["nbytes"])
             return head
         try:
-            self.assertFalse(ask(op="plane", path=str(big), channel=0)["ok"])
+            over = ask(op="plane", path=str(big), channel=0)
+            self.assertFalse(over["ok"])
+            self.assertEqual(over["error"], "over the memory cap (40 MB)")
             small = self.f["vgt_psi_deg.fits"]
             self.assertTrue(ask(op="plane", path=str(small), channel=0)["ok"])    # same process, next request
         finally:
