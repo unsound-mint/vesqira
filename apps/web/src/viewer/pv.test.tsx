@@ -196,6 +196,21 @@ describe("PvPanel", () => {
     expect(screen.getByText(/no channel axis of more than one channel/)).toBeInTheDocument();
   });
 
+  it("keeps the width with the path: editing it changes the path, so a saved line carries it", async () => {
+    const setPath = vi.fn();
+    render(<PvPanel v={viewer({ setPath })} />);
+    const w = screen.getByLabelText("Width");
+    await userEvent.clear(w);
+    await userEvent.type(w, "5");
+    expect(setPath).toHaveBeenLastCalledWith({ shape: "line", points: [[2, 3], [10, 3]], width: 5, widthUnit: "pixel" });
+    await userEvent.selectOptions(screen.getByLabelText("Width unit"), "arcsec");
+    expect(setPath).toHaveBeenLastCalledWith({ shape: "line", points: [[2, 3], [10, 3]], width: 2, widthUnit: "arcsec" });
+    setPath.mockClear();
+    await userEvent.clear(w);
+    await userEvent.type(w, "-1");
+    expect(setPath).not.toHaveBeenCalled(); // a width that is not positive never reaches the path
+  });
+
   it("applies typed vertices as the path, keeping the width", async () => {
     const setPath = vi.fn();
     render(<PvPanel v={viewer({ setPath })} />);

@@ -9,7 +9,7 @@ import (
 
 const goodGrid = `{"schema":"channel-grid/1","datasetId":3,"first":10,"last":40,"stride":3,"average":2,"columns":4,"panels":11,
  "spectral":{"unit":"km/s","convention":"radio"},
- "display":{"colormap":"viridis","stretch":"asinh","limits":[0.5,8.25],"limitsUnit":"K","source":"percentile 1 to 99 of the pooled panels 1, 3, 5"},
+ "display":{"colormap":"viridis","stretch":"asinh","limits":[0.5,8.25],"limitsUnit":"K","source":"1st to 99th percentile of the finite pixels pooled over panels 1, 3, 5 of 11 (evenly spaced, at the preview resolution); one scale for every panel"},
  "preview":{"step":2,"panelWidth":300,"panelHeight":200}}`
 
 func TestAChannelGridIsReadStrictlyAndReMarshalled(t *testing.T) {
@@ -51,7 +51,7 @@ func TestAChannelGridIsRefusedWhenItBreaksTheCapsOrIsIncomplete(t *testing.T) {
 		"limits upside down":           func(s string) string { return strings.Replace(s, `[0.5,8.25]`, `[9,8.25]`, 1) },
 		"a null limit":                 func(s string) string { return strings.Replace(s, `[0.5,8.25]`, `[null,8.25]`, 1) },
 		"no source for the limits": func(s string) string {
-			return strings.Replace(s, `"source":"percentile 1 to 99 of the pooled panels 1, 3, 5"`, `"source":""`, 1)
+			return strings.Replace(s, `"source":"1st to 99th percentile of the finite pixels pooled over panels 1, 3, 5 of 11 (evenly spaced, at the preview resolution); one scale for every panel"`, `"source":""`, 1)
 		},
 		"an unknown colormap":    func(s string) string { return strings.Replace(s, `"viridis"`, `"rainbow"`, 1) },
 		"twilight (angles only)": func(s string) string { return strings.Replace(s, `"viridis"`, `"twilight"`, 1) },
@@ -69,7 +69,10 @@ func TestAChannelGridIsRefusedWhenItBreaksTheCapsOrIsIncomplete(t *testing.T) {
 			s = strings.Replace(s, `"last":40`, `"last":42`, 1)
 			return strings.Replace(s, `"panels":11`, `"panels":17`, 1)
 		},
-		"no dataset":       func(s string) string { return strings.Replace(s, `"datasetId":3,`, ``, 1) },
+		"no dataset": func(s string) string { return strings.Replace(s, `"datasetId":3,`, ``, 1) },
+		"a source that is too long": func(s string) string {
+			return strings.Replace(s, `"source":"1st`, `"source":"`+strings.Repeat("x", 201)+`1st`, 1)
+		},
 		"a stride of zero": func(s string) string { return strings.Replace(s, `"stride":3`, `"stride":0`, 1) },
 	}
 	for name, mutate := range cases {

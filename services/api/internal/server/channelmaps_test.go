@@ -263,7 +263,7 @@ func TestAChannelGridFigureIsValidatedAgainstItsViewAndStoredAsTheServerReadIt(t
 	grid := func(edit func(g map[string]any)) map[string]any {
 		g := map[string]any{"schema": "channel-grid/1", "datasetId": d.ID, "first": 0, "last": 6, "stride": 2, "average": 1, "columns": 2, "panels": 4,
 			"spectral": map[string]any{"unit": "km/s", "convention": "radio"},
-			"display":  map[string]any{"colormap": "viridis", "stretch": "linear", "limits": []any{0.5, 4.5}, "limitsUnit": "K", "source": "percentile 1 to 99 of the pooled panels 1, 4"},
+			"display":  map[string]any{"colormap": "viridis", "stretch": "linear", "limits": []any{0.5, 4.5}, "limitsUnit": "K", "source": "1st to 99th percentile of the finite pixels pooled over panels 1, 4 of 4 (evenly spaced, at the preview resolution); one scale for every panel"},
 			"preview":  map[string]any{"step": 2, "panelWidth": 16, "panelHeight": 12}}
 		if edit != nil {
 			edit(g)
@@ -272,7 +272,7 @@ func TestAChannelGridFigureIsValidatedAgainstItsViewAndStoredAsTheServerReadIt(t
 	}
 	view := func(edit func(v map[string]any)) map[string]any {
 		v := map[string]any{"kind": "channelgrid", "channel": 0, "colormap": "viridis", "stretch": "linear", "range": "custom", "limits": []any{0.5, 4.5}, "limitsUnit": "K",
-			"grid": map[string]any{"first": 0, "last": 6, "stride": 2, "average": 1, "panels": 4, "previewStep": 2, "unit": "km/s", "convention": "radio", "scaleSource": "percentile 1 to 99 of the pooled panels 1, 4"}}
+			"grid": map[string]any{"first": 0, "last": 6, "stride": 2, "average": 1, "panels": 4, "previewStep": 2, "unit": "km/s", "convention": "radio", "scaleSource": "1st to 99th percentile of the finite pixels pooled over panels 1, 4 of 4 (evenly spaced, at the preview resolution); one scale for every panel"}}
 		if edit != nil {
 			edit(v)
 		}

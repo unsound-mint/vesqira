@@ -168,6 +168,16 @@ export function PvPanel({ v }: { v: Viewer }) {
   const range = { first: Number(first), last: Number(last) };
   const rangeBad = !Number.isInteger(range.first) || !Number.isInteger(range.last) || range.first < 1 || range.last < range.first || range.last > channels;
 
+  // the width belongs to the path (it is saved with a line), so a valid edit changes the path itself
+  const changeWidth = (t: string) => {
+    setWidth(t);
+    const n = Number(t);
+    if (path && t.trim() !== "" && Number.isFinite(n) && n > 0 && n <= 100000 && n !== path.width) setPath({ ...path, width: n });
+  };
+  const changeUnit = (u: "pixel" | "arcsec") => {
+    setWidthUnit(u);
+    if (path && u !== path.widthUnit) setPath({ ...path, widthUnit: u });
+  };
   const apply = () => {
     const pts = parseVertices(text);
     if (!pts) return setTextError("Give at least two vertices, one per line as “x, y”, with pixel numbers from 1.");
@@ -213,8 +223,8 @@ export function PvPanel({ v }: { v: Viewer }) {
       </div>
       {textError ? <p role="alert" className={s.err}>{textError}</p> : null}
       <div className={s.fields}>
-        <Input label="Width" inputMode="decimal" value={width} onChange={(e) => setWidth(e.target.value)} />
-        <Select label="Width unit" value={widthUnit} onChange={(e) => setWidthUnit(e.target.value as "pixel" | "arcsec")}>
+        <Input label="Width" inputMode="decimal" value={width} onChange={(e) => changeWidth(e.target.value)} />
+        <Select label="Width unit" value={widthUnit} onChange={(e) => changeUnit(e.target.value as "pixel" | "arcsec")}>
           <option value="pixel">pixels</option>
           <option value="arcsec">arcsec</option>
         </Select>

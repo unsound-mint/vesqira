@@ -172,8 +172,10 @@ export async function composeGridFigure(o: {
 export { blobToBase64 };
 
 /** The panels of a plan that are not loaded, as a sentence for the status line. */
-export const loadedText = (loaded: number, total: number, pixels: number) =>
-  `${loaded} of ${total} panels loaded · ${(pixels * 4 / 1048576).toFixed(1)} MiB transferred`;
+export const loadedText = (loaded: number, total: number, pixels: number) => {
+  const bytes = pixels * 4;
+  return `${loaded} of ${total} panels loaded · ${bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1048576).toFixed(1)} MiB`} transferred`;
+};
 
 /** The colour table as a CSS gradient, for the legend bar. */
 export function rampCss(id: ColormapId): string {

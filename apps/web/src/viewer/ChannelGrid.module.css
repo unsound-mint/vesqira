@@ -11,9 +11,13 @@
 
 .controls {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
   gap: var(--sp-2) var(--sp-3);
   align-items: end;
+}
+
+.controls > * {
+  min-width: 0;
 }
 
 .actions {
@@ -51,14 +55,12 @@
   left: var(--sp-1);
   max-width: calc(100% - var(--sp-2));
   padding: 0 var(--sp-1);
-  overflow: hidden;
   border-radius: var(--r-sm);
   background: var(--canvas);
   color: var(--canvas-text);
   font-family: var(--font-data);
   font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .state {

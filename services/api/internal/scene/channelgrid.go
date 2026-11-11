@@ -3,6 +3,7 @@ package scene
 import (
 	"encoding/json"
 	"math"
+	"regexp"
 )
 
 // ChannelGridVersion is the schema of a channel-map grid (ADR 0049). It is a separate versioned description from scene/1: a
@@ -69,6 +70,10 @@ func GridPanels(first, last, stride int) int {
 	}
 	return (last-first)/stride + 1
 }
+
+// sourceText is the sentence that says where the shared limits came from: a worker-written line of up to 200 characters, no
+// control characters or markup.
+var sourceText = regexp.MustCompile(`^[^\x00-\x1f<>"&\\]{1,200}$`)
 
 // ParseChannelGrid reads and validates a channel-grid/1 description. Required values are read through pointers, so a missing
 // or null one is refused rather than read as zero.
@@ -141,7 +146,7 @@ func ParseChannelGrid(raw []byte) (ChannelGrid, error) {
 	}
 	d := in.Display
 	if d.Colormap == nil || !isOneOf(*d.Colormap, "viridis", "inferno", "gray") || d.Stretch == nil || !isOneOf(*d.Stretch, "linear", "sqrt", "asinh") ||
-		d.Source == nil || !plainText.MatchString(*d.Source) || *d.Source == "" || len(d.Limits) != 2 || d.Limits[0] == nil || d.Limits[1] == nil {
+		d.Source == nil || !sourceText.MatchString(*d.Source) || len(d.Limits) != 2 || d.Limits[0] == nil || d.Limits[1] == nil {
 		return ChannelGrid{}, bad("display needs a colormap (viridis, inferno, gray), a stretch, two shared limits and where they came from")
 	}
 	lo, hi := *d.Limits[0], *d.Limits[1]
