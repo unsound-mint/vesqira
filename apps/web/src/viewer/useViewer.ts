@@ -6,6 +6,7 @@ import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
 import { channelForKey } from "./geometry";
 import { useSavedRegions } from "./useSavedRegions";
+import { useOverlayGeometry } from "./useOverlayGeometry";
 import { toShape } from "../api/regions";
 import type { ColormapId } from "./colormaps";
 import type { RangeMode, Stretch } from "./render";
@@ -63,6 +64,9 @@ export function useViewer(dataset: Dataset | null) {
   const [reliability, setReliability] = useState<Plane | null>(null);
   const [axial, setAxial] = useState<AxialStats | null>(null);
   const [axialError, setAxialError] = useState<string | null>(null);
+  // output pixels per image pixel on screen, reported by the plane viewer: automatic orientation spacing depends on it
+  const [drawScale, setDrawScale] = useState(0);
+  const geometry = useOverlayGeometry(scene, drawScale);
 
   // the scene, read the way the panels always have
   const display = scene?.base.display ?? pane.keep.display;
@@ -371,7 +375,7 @@ export function useViewer(dataset: Dataset | null) {
     zoom, setZoom, setCentre, colormap, setColormap, stretch, setStretch, range, setRange, customLimits, setCustomLimits, setScaleGroup,
     hover, setHover, mirror, setMirror, pinned, setPinned, probe, pixelValue, coord, coordError,
     conv, setConv, offers, convError, convertedNow: converted && converted.key === convKey ? converted.r : null,
-    canvas, interp, reliability, axial, axialError, showLines, setShowLines,
+    canvas, interp, reliability, axial, axialError, showLines, setShowLines, geometry, drawScale, setDrawScale,
     tool, setTool, region, setRegion, savedRegions, spectrum, spectrumError, spectrumLoading,
     onChannelKey, retry: () => setRetry((n) => n + 1),
   };

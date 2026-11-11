@@ -121,6 +121,31 @@
   stroke-width: 2px;
 }
 
+/* overlays from other datasets and the grid: colour and width come from the overlay (palette tokens --overlay-*) */
+.pathFill {
+  stroke: none;
+}
+
+.pathHalo,
+.pathTop {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.pathHalo {
+  stroke: var(--canvas);
+}
+
+.label {
+  font-family: var(--font-data);
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
 .linked {
   position: absolute;
   border: var(--bw) dashed var(--accent);

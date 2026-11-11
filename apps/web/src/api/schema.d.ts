@@ -781,6 +781,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/overlay-geometry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Geometry of one overlay on this dataset as base, as a binary frame
+         * @description Both datasets must be readable and unchanged, and on the same machine. Frame layout as for a plane: uint32 little-endian header length n, n bytes of JSON (an OverlayGeometryHeader, padded so the payload is 8-byte aligned), then little-endian float32 numbers laid out as the header says. A refusal (frames that cannot be related, footprints that do not overlap, an undeclared angle convention, no beam in the header) is a 422 with the reason.
+         */
+        post: operations["owner_s_overlayGeometry_post_api_datasets_id_overlay_geometry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/plane": {
         parameters: {
             query?: never;
@@ -3747,9 +3769,9 @@ export interface components {
             cy: number;
             r: number;
         };
-        /** @description One layer over the base. Only orientation (of the base map itself) and regions are drawn in this version; the other kinds are specified for the slices that add them, and a figure refuses them until then. */
+        /** @description One layer over the base. Orientation, regions, contours, beam and grid are drawn; catalog is specified for a later slice, and a figure refuses it until then. Overlays from another dataset are placed by WCS geometry, never by resampling its data. */
         SceneOverlay: components["schemas"]["OrientationOverlay"] | components["schemas"]["RegionsOverlay"] | components["schemas"]["ContoursOverlay"] | components["schemas"]["CatalogOverlay"] | components["schemas"]["BeamOverlay"] | components["schemas"]["GridOverlay"];
-        /** @description Orientation lines of an axial map, sampled on its grid. In this version datasetId is the base map. */
+        /** @description Orientation lines of an axial map, sampled on its own grid. When datasetId is the base map the lines are drawn from the plane on screen; from another dataset the worker samples that map on its own grid, converts each sample to sky-frame B-field orientation from its declared frame and quantity, and carries position and angle into the base's pixel frame by WCS (never resampled). */
         OrientationOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3761,12 +3783,13 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             visible: boolean;
+            /** @description auto: a step chosen so that lines are about gapPx output pixels apart on the base; step: every step-th pixel of the orientation map's own grid. A figure records the step it drew. */
             sampling: components["schemas"]["SamplingAuto"] | components["schemas"]["SamplingStep"];
             /**
-             * @description fixed: 0.8 of the sampling step
+             * @description fixed: 0.8 of the sampling spacing; reliability: that length times the declared reliability relative to its 99th percentile (at most 1). Needs a declared reliability map.
              * @enum {string}
              */
-            length: "fixed";
+            length: "fixed" | "reliability";
             /**
              * @description reliability: follows a reliability map on the same grid relative to its 99th percentile, faint where unknown; uniform: every line opaque. A figure records which was used.
              * @enum {string}
@@ -3777,6 +3800,20 @@ export interface components {
              * @description The reliability map that set the opacities. A figure states it whenever opacity is reliability, and it must be the map declared with the orientation map.
              */
             reliabilityId?: number;
+            /** @description Only samples whose declared reliability is at least this value (in the reliability map's own values) are drawn. Needs a declared reliability map. */
+            threshold?: number;
+            /**
+             * @description Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white.
+             * @enum {string}
+             */
+            color?: "white" | "cyan" | "amber" | "magenta" | "lime";
+            /** @description Stroke width in output pixels. Absent: the kind's default. */
+            width?: number;
+            /**
+             * @description So overlays can be told apart without colour. Absent: solid.
+             * @enum {string}
+             */
+            dash?: "solid" | "dashed";
         };
         /** @description A step in image pixels chosen so that lines are about gapPx output pixels apart */
         SamplingAuto: {
@@ -3817,7 +3854,7 @@ export interface components {
             shape: components["schemas"]["SceneRegion"];
             selected?: boolean;
         };
-        /** @description Specified, not drawn yet: contours of a map traced on its own grid and placed by WCS. */
+        /** @description Contours of one channel of a map, traced on that map's own grid (contourpy) and placed on the base by WCS: vertices go overlay pixel -> world -> base pixel, converting between celestial frames with astropy. Never resampled. Levels are in the overlay's own unit. */
         ContoursOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3829,10 +3866,23 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             visible: boolean;
+            /** @description 0-based channel of the overlay dataset that is contoured */
             channel: number;
-            levels: components["schemas"]["LevelsList"] | components["schemas"]["LevelsLinear"] | components["schemas"]["LevelsGeometric"];
-            /** @description The overlay dataset's own brightness unit */
-            unit: string;
+            levels: components["schemas"]["LevelsList"] | components["schemas"]["LevelsLinear"] | components["schemas"]["LevelsGeometric"] | components["schemas"]["LevelsSigma"];
+            /** @description The unit the levels are written in: the overlay's brightness unit as the file (or the person, for a file without BUNIT) states it. Absent when the file has no unit; the levels are then plain numbers. A level unit that no longer matches the file is refused. */
+            unit?: string;
+            /**
+             * @description Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white.
+             * @enum {string}
+             */
+            color?: "white" | "cyan" | "amber" | "magenta" | "lime";
+            /** @description Stroke width in output pixels. Absent: the kind's default. */
+            width?: number;
+            /**
+             * @description So overlays can be told apart without colour. Absent: solid.
+             * @enum {string}
+             */
+            dash?: "solid" | "dashed";
         };
         LevelsList: {
             /**
@@ -3840,6 +3890,7 @@ export interface components {
              * @enum {string}
              */
             mode: "list";
+            /** @description Strictly increasing */
             values: number[];
         };
         LevelsLinear: {
@@ -3849,6 +3900,7 @@ export interface components {
              */
             mode: "linear";
             start: number;
+            /** @description Not zero */
             step: number;
             count: number;
         };
@@ -3858,11 +3910,12 @@ export interface components {
              * @enum {string}
              */
             mode: "geometric";
+            /** @description Not zero */
             start: number;
             factor: number;
             count: number;
         };
-        /** @description Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames. */
+        /** @description Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames. A figure refuses it. */
         CatalogOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3881,7 +3934,7 @@ export interface components {
                 angleError?: string;
             };
         };
-        /** @description Specified, not drawn yet: the beam from the header's BMAJ, BMIN and BPA only, never a default. */
+        /** @description The beam of a dataset (the base or another one) drawn as an ellipse in a corner of the base, from that file's BMAJ, BMIN and BPA only (degrees, FITS standard), never a default. The ellipse is built on the sky and placed by WCS. Without BMAJ and BMIN, or with an elliptical beam and no BPA, it is refused. */
         BeamOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3893,8 +3946,25 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             visible: boolean;
+            /**
+             * @description Absent: bottom-left
+             * @enum {string}
+             */
+            corner?: "bottom-left" | "bottom-right" | "top-left" | "top-right";
+            /**
+             * @description Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white.
+             * @enum {string}
+             */
+            color?: "white" | "cyan" | "amber" | "magenta" | "lime";
+            /** @description Stroke width in output pixels. Absent: the kind's default. */
+            width?: number;
+            /**
+             * @description So overlays can be told apart without colour. Absent: solid.
+             * @enum {string}
+             */
+            dash?: "solid" | "dashed";
         };
-        /** @description Specified, not drawn yet: a coordinate grid in the dataset's own celestial frame. */
+        /** @description Celestial coordinate grid of the base map: lines of constant longitude and latitude in the chosen frame, generated on the sky with astropy and carried to base pixels by the base's WCS. datasetId is the base. */
         GridOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3906,6 +3976,23 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             visible: boolean;
+            /**
+             * @description fk5 is FK5 at equinox J2000
+             * @enum {string}
+             */
+            frame: "icrs" | "fk5" | "galactic";
+            /**
+             * @description Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white.
+             * @enum {string}
+             */
+            color?: "white" | "cyan" | "amber" | "magenta" | "lime";
+            /** @description Stroke width in output pixels. Absent: the kind's default. */
+            width?: number;
+            /**
+             * @description So overlays can be told apart without colour. Absent: solid.
+             * @enum {string}
+             */
+            dash?: "solid" | "dashed";
         };
         /** @description One column of a point catalog as the worker read it. */
         CatalogColumn: {
@@ -4280,6 +4367,92 @@ export interface components {
             partial: boolean;
             /** Format: date-time */
             measuredAt: string;
+        };
+        /** @description Levels at multiples of a robust noise estimate of the contoured channel: sigma = 1.4826 x MAD of its finite pixels (astropy.stats.mad_std). It is the scatter of the whole plane, signal included, and is labelled as such. */
+        LevelsSigma: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "sigma";
+            /** @description Strictly increasing, none zero */
+            multiples: number[];
+            /** @description The sigma the levels were drawn with, recorded by a figure. A recomputed sigma that differs is refused (the data changed). */
+            sigma?: number;
+        };
+        /** @description Geometry of one overlay on the base dataset named in the path. */
+        OverlayGeometryRequest: {
+            overlay: components["schemas"]["SceneOverlay"];
+            /** @description For orientation with auto sampling: the wanted distance between lines, in base pixels (the pane's gapPx divided by its scale). Ignored otherwise. */
+            spacing?: number;
+        };
+        /** @description The JSON header of an overlay geometry frame. Every position is in base pixels: 0-based, pixel centres at integers, y up (FITS order). Extra keys may be present and are not part of the contract. */
+        OverlayGeometryHeader: {
+            /** @enum {string} */
+            kind: "contours" | "orientation" | "beam" | "grid";
+            /** @enum {string} */
+            dtype: "<f4";
+            coords: string;
+            /** @description contours, beam, grid: the payload starts with paths pairs (group, vertex count) and continues with the vertices as (x, y) pairs. group is the level index (contours), 0 for the beam, 0 for a line of constant longitude and 1 for one of constant latitude (grid). */
+            paths?: number;
+            vertices?: number;
+            /** @description orientation: the payload is segments quadruples (x, y, angle, weight): angle in degrees counter-clockwise from the base's +x pixel axis towards +y, weight in [0, 1] (1 without a reliability map). */
+            segments?: number;
+            /** @description How the overlay was placed on the base. */
+            placement: {
+                method: string;
+                from_frame?: string | null;
+                to_frame?: string | null;
+                from_status?: string | null;
+                to_status?: string | null;
+                same_frame?: boolean;
+                same_dataset?: boolean;
+            };
+            /** @description contours: the levels traced, in unit */
+            levels?: number[];
+            unit?: string | null;
+            unit_status?: string | null;
+            sigma?: {
+                value?: number;
+                method?: string;
+            } | null;
+            channel?: number;
+            spectral_value?: number | null;
+            spectral_unit?: string | null;
+            /** @description Present when the vertices were over budget and simplified (Ramer-Douglas-Peucker) with this tolerance in base pixels. */
+            simplified?: {
+                tolerance_px?: number;
+                vertices_before?: number;
+                vertices_after?: number;
+            } | null;
+            /** @description orientation: the sampling step used, in overlay pixels */
+            step?: number;
+            /** @description orientation: the distance between samples in base pixels */
+            spacing_px?: number;
+            /** @description orientation: how the stored angles became B-field orientation in the base pixel frame */
+            conversion?: string;
+            /** @description orientation: present when the declared reliability map was read (for length, opacity or a threshold) */
+            reliability?: {
+                p99?: number | null;
+                threshold?: number | null;
+                dropped_below_threshold?: number;
+                scale?: string;
+            } | null;
+            beam?: {
+                bmaj_arcsec?: number;
+                bmin_arcsec?: number;
+                bpa_deg?: number | null;
+                source?: string;
+            } | null;
+            labels?: {
+                text: string;
+                x: number;
+                y: number;
+                /** @enum {string} */
+                axis: "lon" | "lat";
+            }[];
+            frame?: string;
+            note?: string;
         };
         /** @description A ROHSA decomposition run whose components could be drawn over a dataset: the dataset is the run's crop or exactly on its grid. A cube with the crop's axis lengths but another (or unconfirmed) grid is listed with the reason it is refused. */
         RohsaRunView: {
@@ -5626,6 +5799,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_overlayGeometry_post_api_datasets_id_overlay_geometry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OverlayGeometryRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.geometry": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

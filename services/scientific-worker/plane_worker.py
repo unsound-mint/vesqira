@@ -896,6 +896,57 @@ def header_cards(path: str) -> dict:
 MAX_DECLARED_UNIT = 40
 
 
+def unit_of(c: "Cube", declared) -> tuple:
+    """(unit, status) of a file's values: what the file says always wins; a declared unit only fills a gap."""
+    if "BUNIT" in c.h:
+        return clean(c.h.get("BUNIT")), "declared"
+    if declared is not None:
+        return declared, "user"                              # declared by the person, not by the file
+    return None, "unresolved"
+
+
+def abs_path(v) -> str:
+    if not isinstance(v, str) or not os.path.isabs(v) or len(v) > 4096:
+        raise Refused("bad_request", "bad request")
+    return v
+
+
+def overlay_geometry(base: "Cube", req: dict) -> tuple[dict, bytes]:
+    """Geometry of one overlay on `base`, in base pixels (overlay_geometry.py). The caller (the API) sends the overlay as the
+    scene states it, already validated, plus what the catalog declares about the overlay dataset: its unit for a file without
+    BUNIT, whether it is declared axial, and for an orientation map its unit, frame and quantity. Nothing is taken from the
+    browser that the catalog declares."""
+    import overlay_geometry as og
+    spec = req.get("overlay")
+    if not isinstance(spec, dict) or spec.get("kind") not in ("contours", "orientation", "beam", "grid"):
+        raise Refused("bad_request", "bad request")
+    kind = spec["kind"]
+    ov_path = abs_path(req.get("overlay_path"))
+    ov = cube_for(ov_path)
+    same = ov_path == base.path
+    who = "the base map" if same else "the overlay map"
+    try:
+        if kind == "contours":
+            if req.get("overlay_axial"):
+                raise og.Refusal("the overlay is declared as an orientation map: contours of angles are not meaningful (0 and 180 degrees are the same)")
+            head, payload = og.contours(base, ov, spec, unit_of(ov, declared_unit({"declared_bunit": req.get("overlay_declared_bunit")})), same)
+        elif kind == "orientation":
+            interp = req.get("overlay_interp")
+            if not isinstance(interp, dict):
+                raise og.Refusal("the overlay is not declared as an orientation map")
+            rp = req.get("reliability_path")
+            head, payload = og.orientation_samples(base, ov, cube_for(abs_path(rp)) if rp is not None else None, spec, interp, req.get("spacing"), same)
+        elif kind == "beam":
+            head, payload = og.beam(base, ov, spec, same, who)
+        else:
+            if not same:
+                raise og.Refusal("a coordinate grid is drawn from the base map's own WCS")
+            head, payload = og.grid(base, spec)
+    except og.Refusal as e:
+        raise Refused("unsupported", str(e))
+    return {**head, "nbytes": len(payload), "dtype": "<f4", "coords": og.COORDS}, payload
+
+
 def declared_unit(req: dict):
     """The unit the person declared for a file without BUNIT, sent with the request, or None. Text only: it is shown and
     compared as typed and never parsed or converted here."""
@@ -1010,21 +1061,23 @@ def handle(req: dict) -> tuple[dict, bytes]:
         return host_op(op, req)
     if isinstance(op, str) and op.startswith("catalog_"):
         return catalog_op(op, path, req)
-    if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky"):
+    file_ops = ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky", "overlay_geometry")
+    if op in file_ops:
         authorize(path)                                          # also enforces the roots on a remote host
         if op == "axial" and req.get("weights_path") is not None:
             authorize(req.get("weights_path"))
-    if op not in ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+        if op == "overlay_geometry":                             # every file the overlay reads, not only the base
+            authorize(req.get("overlay_path"))
+            if req.get("reliability_path") is not None:
+                authorize(req.get("reliability_path"))
+    if op not in file_ops or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")
     c = cube_for(path)
-    declared = declared_unit(req)
-    if "BUNIT" in c.h:                                       # what the file says always wins; a declared unit only fills a gap
-        bunit, status = clean(c.h.get("BUNIT")), "declared"
-    elif declared is not None:
-        bunit, status = declared, "user"                     # declared by the person, not by the file
-    else:
-        bunit, status = None, "unresolved"
+    bunit, status = unit_of(c, declared_unit(req))
     base = {"ok": True, "op": op, "origin": 0, "bunit": bunit, "bunit_status": status}
+    if op == "overlay_geometry":
+        head, payload = overlay_geometry(c, req)
+        return {**base, **head}, payload
     if op == "view":
         fl = c.flags()
         return {**base, "nbytes": 0, "width": c.shape[c.x], "height": c.shape[c.y], "channels": c.channels,
