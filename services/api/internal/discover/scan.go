@@ -55,6 +55,9 @@ type Run struct {
 	OutputBytes int64     `json:"outputBytes"`
 	MtimeNS     int64     `json:"mtimeNs"` // of the run record
 	RecordSize  int64     `json:"recordSize"`
+	// OutputRoles maps an output file name to the role the run record gives it (VGT: psi, reliability, support, fit_rbar2). Only
+	// what the record names; a file the record does not name has no role here.
+	OutputRoles map[string]string `json:"outputRoles,omitempty"`
 
 	// jobID and jobTemplate are the Vesqira job a run.json names (0 and "" when none): what lets a job's record and the fit
 	// it produced be recognised as one run (mergeJobRecords). Not part of the wire.
@@ -108,6 +111,10 @@ type Options struct {
 	MaxDuration time.Duration // 0 means DefaultMaxDuration
 	Now         func() time.Time
 	Progress    func(entries int, dir string)
+	// Inventory also lists the files nothing recognises (Result.Others), for the import preview and the researcher's rules.
+	Inventory bool
+	// MaxDepth stops the walk below that many folder levels (0 means no depth limit) and says so (Truncated).
+	MaxDepth int
 	// Dirty counts changed files in the git work tree; nil leaves it unknown. Never called when there is no .git.
 	Dirty func(ctx context.Context) (int, bool)
 }
@@ -138,7 +145,22 @@ type Result struct {
 	Canceled     bool     `json:"canceled"`
 	Notes        []string `json:"notes"`
 	DataFolders  int      `json:"dataFolders"`
+	// Others are the files no built-in rule recognised, when Options.Inventory is set: at most MaxInventory of them
+	// (OthersTruncated says when there were more), each with the run folder it sits in, if any.
+	Others          []Other `json:"others,omitempty"`
+	OthersTruncated bool    `json:"othersTruncated,omitempty"`
 }
+
+// Other is a file that no built-in rule recognised.
+type Other struct {
+	Path    string `json:"path"`
+	Size    int64  `json:"size"`
+	MtimeNS int64  `json:"mtimeNs"`
+	RunPath string `json:"runPath,omitempty"` // the run folder it belongs to; "" when it is in none
+}
+
+// MaxInventory bounds Result.Others.
+const MaxInventory = 50_000
 
 type scanner struct {
 	ctx    context.Context
@@ -217,6 +239,7 @@ func finish(r *Result) {
 		sort.Slice(f, func(i, j int) bool { return f[i].Path < f[j].Path })
 	}
 	sort.Slice(r.Links, func(i, j int) bool { return r.Links[i].Path < r.Links[j].Path })
+	sort.Slice(r.Others, func(i, j int) bool { return r.Others[i].Path < r.Others[j].Path })
 	sort.Strings(r.ResultLike)
 	var top []string // a results-like folder inside another one is part of it
 	for _, d := range r.ResultLike {
@@ -339,6 +362,13 @@ type runCtx struct{ idx int }
 // were found at or under this folder.
 func (s *scanner) walk(dir string, in *runCtx) int {
 	if s.budget() {
+		return 0
+	}
+	if s.opt.MaxDepth > 0 && dir != "" && strings.Count(dir, "/")+1 > s.opt.MaxDepth {
+		s.res.Truncated = true
+		if s.res.TruncatedWhy == "" {
+			s.res.TruncatedWhy = "stopped descending below " + strconv.Itoa(s.opt.MaxDepth) + " folder levels"
+		}
 		return 0
 	}
 	ents, err := s.fs.ReadDir(dir)
@@ -557,6 +587,12 @@ func (s *scanner) readRecord(r *Run, kind recordKind) bool {
 		for _, p := range p.Params {
 			r.Settings = append(r.Settings, Setting{p.Key, p.Value})
 		}
+		if len(p.OutputFiles) > 0 {
+			r.OutputRoles = map[string]string{}
+			for role, name := range p.OutputFiles {
+				r.OutputRoles[name] = role
+			}
+		}
 	case recROHSA:
 		stem := strings.TrimSuffix(r.Record, "_run_trace.toml")
 		p, err := runs.ParseROHSA(data, nil, nil, stem, path.Base(r.Path))
@@ -672,8 +708,12 @@ func (s *scanner) file(dir, rel string, e Entry, in *runCtx, names map[string]bo
 		}
 		r.OutputCount++
 		r.OutputBytes += st.Size
-		if f, ok := dataFormat(e.Name); ok && len(r.Outputs) < maxRunOutputs {
-			r.Outputs = append(r.Outputs, File{Path: rel, Size: st.Size, MtimeNS: st.MtimeNS, Format: f.Name, Viewer: f.Viewer})
+		if f, ok := dataFormat(e.Name); ok {
+			if len(r.Outputs) < maxRunOutputs {
+				r.Outputs = append(r.Outputs, File{Path: rel, Size: st.Size, MtimeNS: st.MtimeNS, Format: f.Name, Viewer: f.Viewer})
+			}
+		} else {
+			s.other(rel, st, r.Path)
 		}
 		return
 	}
@@ -717,6 +757,22 @@ func (s *scanner) file(dir, rel string, e Entry, in *runCtx, names map[string]bo
 		return
 	}
 	s.res.OtherFiles++
+	if s.opt.Inventory {
+		st, _ := s.fs.Stat(rel)
+		s.other(rel, st, "")
+	}
+}
+
+// other records a file nothing recognised, when the inventory is asked for.
+func (s *scanner) other(rel string, st Entry, runPath string) {
+	if !s.opt.Inventory {
+		return
+	}
+	if len(s.res.Others) >= MaxInventory {
+		s.res.OthersTruncated = true
+		return
+	}
+	s.res.Others = append(s.res.Others, Other{Path: rel, Size: st.Size, MtimeNS: st.MtimeNS, RunPath: runPath})
 }
 
 // isCatalog says whether a file is offered as a point catalog (ADR 0044) instead of "other discipline". The extensions that only
