@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -506,11 +507,19 @@ func (s *Server) applyAnswer(n need, in answerIn) error {
 
 // recordAnswer writes the answer to the project file when asked (or when the file exists), then to the catalog.
 // It returns whether the answer reached the file and a note when it did not.
-func (s *Server) recordAnswer(p projects.Project, n need, in answerIn) (written bool, note string, err error) {
+func (s *Server) recordAnswer(ctx context.Context, p projects.Project, n need, in answerIn) (written bool, note string, err error) {
 	a := projects.Answer{Need: in.Need, Answer: in.Answer, Value: in.Value, DeclaredBy: "you", Date: time.Now().Format("2006-01-02")}
 	sum := s.storedSummaryOf(p)
+	block := discover.AnswerBlock(discover.Answer{Need: a.Need, Answer: a.Answer, Value: a.Value, DeclaredBy: a.DeclaredBy, Date: a.Date})
+	if n.Kind == "result_folder" && in.Answer == "mark_run" {
+		block = discover.ManualRunBlock(strings.TrimPrefix(n.ID, "results:")) + block
+	}
 	if p.HostID != 0 {
-		note = "not written to the project: Vesqira does not write files on a host yet; the answer is kept in the catalog"
+		// on a host the file is written through the host's ssh connection, under the rules of ADR 0039
+		written, note, err = s.appendOnHost(ctx, p, block, in.Write, sum.Proposed)
+		if err != nil {
+			return false, "", err
+		}
 	} else {
 		_, file := projectFilePaths(p.Path)
 		_, statErr := os.Lstat(file)
@@ -525,10 +534,6 @@ func (s *Server) recordAnswer(p projects.Project, n need, in answerIn) (written 
 				base = string(data)
 			} else {
 				base = sum.Proposed
-			}
-			block := discover.AnswerBlock(discover.Answer{Need: a.Need, Answer: a.Answer, Value: a.Value, DeclaredBy: a.DeclaredBy, Date: a.Date})
-			if n.Kind == "result_folder" && in.Answer == "mark_run" {
-				block = discover.ManualRunBlock(strings.TrimPrefix(n.ID, "results:")) + block
 			}
 			out, aerr := discover.Append([]byte(base), block)
 			if aerr != nil {

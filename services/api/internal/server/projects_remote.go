@@ -41,7 +41,7 @@ func (s *Server) walkRemote(ctx context.Context, h hosts.Host, root string, glob
 	if len(globs) > 60 {
 		globs = globs[:60]
 	}
-	var safe []string
+	safe := []string{} // never null: the worker refuses a null list, which made a remote project with no skip globs unscannable
 	for _, g := range globs {
 		if len(g) <= 200 {
 			safe = append(safe, g)

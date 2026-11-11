@@ -119,6 +119,7 @@ type sumJSON struct {
 	Path string `json:"path"`
 	Scan struct {
 		State      string `json:"state"`
+		Error      string `json:"error"`
 		Registered int    `json:"registered"`
 		ToRegister int    `json:"toRegister"`
 	} `json:"scan"`
@@ -169,7 +170,7 @@ func (e *projEnv) settle(t *testing.T, id int64) sumJSON {
 		e.json(t, "GET", fmt.Sprintf("/api/projects/%d", id), nil, 200, &s)
 		if s.Scan.State == "done" || s.Scan.State == "error" || s.Scan.State == "canceled" {
 			if s.Scan.State != "done" {
-				t.Fatalf("scan ended as %s", s.Scan.State)
+				t.Fatalf("scan ended as %s (%s)", s.Scan.State, s.Scan.Error)
 			}
 			return s
 		}

@@ -140,11 +140,66 @@ func TestRemoteProjectIsWalkedByTheHostWorkerWithFakeSSH(t *testing.T) {
 		Note             string
 	}
 	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/answers", o.ID), map[string]any{"need": "results:results_v3", "answer": "not_run", "write": true}, 200, &ans)
-	if ans.WrittenToProject || !strings.Contains(ans.Note, "not written to the project") {
-		t.Fatalf("Vesqira does not write files on a host: %+v", ans)
+	if ans.WrittenToProject || !strings.Contains(ans.Note, "not written to the project") || !strings.Contains(ans.Note, "not written by Vesqira") {
+		t.Fatalf("a project file the researcher wrote on the host is not touched: %+v", ans)
 	}
-	if code, _ := e.call(t, "POST", fmt.Sprintf("/api/projects/%d/project-file", o.ID), map[string]any{"write": true}); code != 501 {
+	hostFile := filepath.Join(proj, ".vesqira", "project.toml")
+	const theirs = "[layout]\nskip = [\"old/**\"]\n"
+	if code, _ := e.call(t, "POST", fmt.Sprintf("/api/projects/%d/project-file", o.ID), map[string]any{"write": true}); code != 409 {
 		t.Fatalf("%d", code)
+	}
+	if code, _ := e.call(t, "POST", fmt.Sprintf("/api/projects/%d/project-file", o.ID), map[string]any{"write": true, "text": "[layout]\nskip = []\n"}); code != 409 {
+		t.Fatalf("replacing a foreign file: %d", code)
+	}
+	if code, _ := e.call(t, "POST", fmt.Sprintf("/api/projects/%d/project-file", o.ID), map[string]any{"write": false}); code != 400 {
+		t.Fatalf("no confirmation: %d", code)
+	}
+	if b, _ := os.ReadFile(hostFile); string(b) != theirs {
+		t.Fatalf("the researcher's file changed: %q", b)
+	}
+
+	// with no file there, the confirmed write creates it on the host (marker line first, the proposal after it), and
+	// from then on answers are appended to it
+	os.Remove(hostFile)
+	e.call(t, "POST", fmt.Sprintf("/api/projects/%d/scan", o.ID), nil) // a project with no file gets a proposal
+	e.settle(t, o.ID)
+	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/project-file", o.ID), map[string]any{"write": true}, 200, nil)
+	b, err := os.ReadFile(hostFile)
+	if err != nil || !strings.HasPrefix(string(b), projectMarker) || !strings.Contains(string(b), "[project]") {
+		t.Fatalf("%v %q", err, b)
+	}
+	e.settle(t, o.ID)
+	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/answers", o.ID), map[string]any{"need": "results:results_v3", "answer": "not_run"}, 200, &ans)
+	if !ans.WrittenToProject {
+		t.Fatalf("the file exists and is Vesqira's: %+v", ans)
+	}
+	if b, _ = os.ReadFile(hostFile); !strings.Contains(string(b), `need = "results:results_v3"`) || !strings.Contains(string(b), `declared_by = "you"`) || !strings.HasPrefix(string(b), projectMarker) {
+		t.Fatalf("%s", b)
+	}
+	if ents, _ := os.ReadDir(filepath.Join(proj, ".vesqira")); len(ents) != 1 {
+		t.Fatalf("a temporary file was left: %v", ents)
+	}
+	// a link where .vesqira should be is never written through
+	os.RemoveAll(filepath.Join(proj, ".vesqira"))
+	os.Symlink(outside, filepath.Join(proj, ".vesqira"))
+	if code, _ := e.call(t, "POST", fmt.Sprintf("/api/projects/%d/project-file", o.ID), map[string]any{"write": true, "text": "[layout]\nskip = []\n"}); code != 409 {
+		t.Fatalf("a link: %d", code)
+	}
+	if ents, _ := os.ReadDir(outside); len(ents) != 1 { // only secret.txt
+		t.Fatalf("something was written through the link: %v", ents)
+	}
+	entries, _ := au.List("project", o.ID, 50)
+	var wrote, refused int
+	for _, en := range entries {
+		switch en.Action {
+		case "project file written on host":
+			wrote++
+		case "project file write on host refused":
+			refused++
+		}
+	}
+	if wrote != 2 || refused != 1 {
+		t.Fatalf("the audit log must record writes and refusals on the host: %+v", entries)
 	}
 }
 

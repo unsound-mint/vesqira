@@ -284,6 +284,7 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Audit.Record("job submitted", "job", j.ID, "Slurm job "+id+", script sha256 "+j.ScriptHash[:12])
+	s.recordRun(r.Context(), j.ID, h) // settings are known now; the final state is added when a refresh sees it
 	j, _ = s.Jobs.Get(j.ID)
 	writeJSON(w, 200, j)
 }
@@ -312,7 +313,11 @@ func (s *Server) checkSubmitting(ctx context.Context, j jobs.Job, h hosts.Host, 
 	switch {
 	case found:
 		s.Audit.Record("job found on the host", "job", j.ID, "Slurm job "+id)
-		return s.Jobs.MarkSubmitted(j.ID, id)
+		if err := s.Jobs.MarkSubmitted(j.ID, id); err != nil {
+			return err
+		}
+		s.recordRun(ctx, j.ID, h)
+		return nil
 	case reopen:
 		s.Audit.Record("job reopened as draft", "job", j.ID, "the host holds no such job")
 		return s.Jobs.Reopen(j.ID)
@@ -365,6 +370,9 @@ func (s *Server) refreshJob(w http.ResponseWriter, r *http.Request) {
 		}
 		if state, detail := jobs.ParseStatus(string(out)); state != "" {
 			_ = s.Jobs.SetState(j.ID, state, detail)
+			if isTerminal(state) && !isTerminal(j.State) {
+				s.recordRun(r.Context(), j.ID, h) // the record says how the job ended
+			}
 		} else {
 			_ = s.Jobs.SetState(j.ID, j.State, detail)
 		}
