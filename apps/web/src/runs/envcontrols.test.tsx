@@ -240,4 +240,14 @@ describe("run page", () => {
     expect(screen.queryByRole("button", { name: /Compared with the parent run/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Controls/ })).toHaveTextContent("not stated");
   });
+
+  it("offers Run again with… for a ROHSA run as well as a VGT run", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
+    for (const kind of ["vgt", "rohsa"] as const) {
+      const r = run({ kind });
+      const { unmount } = render(<RunPage run={r} runs={[r]} datasets={[]} job={null} onBack={() => {}} onOpenRun={() => {}} onOpenInViewer={() => {}} onRunAgain={() => {}} />);
+      expect(screen.getByRole("button", { name: "Run again with…" })).toBeInTheDocument();
+      unmount();
+    }
+  });
 });

@@ -194,7 +194,11 @@ func (s *Server) rerunCheck(ctx context.Context, j jobs.Job, h hosts.Host) (reru
 		return out, nil
 	}
 	out.CodeChecked = true
-	diffs, msgs, blocking := compareToNow(base, runs.ParseEnvLines(string(probe)), mode == rerunStrict)
+	nowFacts := runs.ParseEnvLines(string(probe))
+	if _, ok := runs.EnvValue(base.Env, "input.sampled_fp"); ok && input != "" {
+		nowFacts = append(nowFacts, s.nowInputFingerprint(ctx, h, input))
+	}
+	diffs, msgs, blocking := compareToNow(base, nowFacts, mode == rerunStrict)
 	out.Differences, out.Messages, out.Blocking = append(out.Differences, diffs...), append(out.Messages, msgs...), blocking
 	out.Notes = append(out.Notes, afterRunNote)
 	return out, nil
@@ -252,16 +256,51 @@ func compareToNow(base baseline, now []runs.EnvFact, strict bool) ([]runs.EnvDif
 	}
 	diffs = append(diffs, dd)
 
+	// The input file is compared by its sampled fingerprint when both sides have one: equal says the sampled bytes are equal
+	// (a file only touched is then not a difference), different says the file differs. Without one on both sides the size
+	// and modification time decide, as before.
+	byFP := false
+	fpMatched := false
+	for _, ed := range runs.CompareEnv(base.Env, now) {
+		if ed.Key == "input.sampled_fp" && ed.Result != "unknown" {
+			byFP, fpMatched = true, ed.Result == "matched"
+			if !fpMatched {
+				block("the input file's sampled fingerprint differs from the one recorded for the parent run (the file's contents are not the same)")
+			}
+			diffs = append(diffs, ed)
+		}
+	}
 	for _, ed := range runs.CompareEnv(base.Env, now) {
 		switch ed.Key {
 		case "julia.manifest_sha256", "input.size_bytes", "input.mtime_epoch":
-			if ed.Result == "differed" {
+			if ed.Result == "differed" && byFP && fpMatched {
+				ed.Blocking = false
+				ed.Why = "the sampled fingerprint is equal, so this is not counted as a difference (a file that was touched or copied)"
+			} else if ed.Result == "differed" && byFP {
+				ed.Blocking = true // already blocked on the fingerprint; the size or time is shown with it
+			} else if ed.Result == "differed" {
 				block(ed.Label + " differs: parent " + ed.Parent + ", now " + ed.This)
 			}
 			diffs = append(diffs, ed)
 		}
 	}
+	if _, ok := runs.EnvValue(base.Env, "input.sampled_fp"); ok && !byFP {
+		msgs = append(msgs, "the input file's fingerprint could not be measured now ("+factReason(now, "input.sampled_fp")+"), so its size and modification time are compared instead")
+	}
 	return diffs, msgs, blocking
+}
+
+// nowInputFingerprint measures the input file's sampled fingerprint on the host as it is now, as a fact (unresolved with the
+// reason when it cannot be).
+func (s *Server) nowInputFingerprint(ctx context.Context, h hosts.Host, path string) runs.EnvFact {
+	f := runs.EnvFact{Key: "input.sampled_fp"}
+	fp, _, _, err := s.hostFingerprint(ctx, h, path)
+	if err != nil {
+		f.Status, f.Reason = runs.EnvUnresolved, err.Error()
+		return f
+	}
+	f.Status, f.Value = runs.EnvVerified, fp
+	return f
 }
 
 func short12(s string) string {

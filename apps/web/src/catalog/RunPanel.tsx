@@ -64,7 +64,7 @@ export function RunPanel({ run, role, job, onOpenPage, onRunAgain }: { run: Run;
       )}
       <div className={s.row}>
         <Button type="button" onClick={onOpenPage}>Open run page</Button>
-        {run.kind === "vgt" && onRunAgain ? <Button type="button" onClick={onRunAgain}>Run again with…</Button> : null}
+        {(run.kind === "vgt" || run.kind === "rohsa") && onRunAgain ? <Button type="button" onClick={onRunAgain}>Run again with…</Button> : null}
       </div>
     </div>
   );

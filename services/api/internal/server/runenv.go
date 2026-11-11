@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
@@ -54,6 +56,7 @@ func (s *Server) linkJobRun(ctx context.Context, j jobs.Job, h hosts.Host, run r
 	if !read {
 		return run
 	}
+	facts = s.inputFingerprint(ctx, j, h, facts)
 	if err := s.Runs.SetEnvironment(run.ID, facts); err != nil {
 		log.Printf("runs: environment: %v", err)
 		return run
@@ -151,4 +154,78 @@ func controlsAudit(c runs.Controls) string {
 		return "cleared"
 	}
 	return d
+}
+
+// inputFingerprint adds the sampled fingerprint (ADR 0053, sampled/1) of the job's input file to what the job observed.
+// The job's script cannot compute it (it is a shell fragment on a compute node, and the worker's modules are not at a path it
+// knows), so Vesqira measures it at import: from the dataset's own record when that location has one for the same size and
+// modification time, otherwise by asking the host's worker. It is kept only when the file's size and time still equal what
+// the job observed when it started, which is evidence (not proof: a file can change between samples or keep size and time)
+// that these are the bytes the job read. Otherwise the fact is unresolved and says why.
+func (s *Server) inputFingerprint(ctx context.Context, j jobs.Job, h hosts.Host, facts []runs.EnvFact) []runs.EnvFact {
+	set := func(f runs.EnvFact) []runs.EnvFact {
+		for i := range facts {
+			if facts[i].Key == f.Key {
+				f.Label = facts[i].Label
+				facts[i] = f
+			}
+		}
+		return facts
+	}
+	no := func(why string) []runs.EnvFact {
+		return set(runs.EnvFact{Key: "input.sampled_fp", Status: runs.EnvUnresolved, Reason: why})
+	}
+	sizeS, ok1 := runs.EnvValue(facts, "input.size_bytes")
+	mtS, ok2 := runs.EnvValue(facts, "input.mtime_epoch")
+	if !ok1 || !ok2 {
+		return no("the job did not record the input file's size and time, so a later measurement cannot be tied to it")
+	}
+	cfg, _ := jobs.EmbeddedConfig(j.Script)
+	path, _ := jobs.ConfigPaths(cfg)
+	if !jobs.ValidPath(path) {
+		return no("the input file is not a plain absolute path")
+	}
+	size, err1 := strconv.ParseInt(sizeS, 10, 64)
+	mt, err2 := strconv.ParseInt(mtS, 10, 64)
+	if err1 != nil || err2 != nil {
+		return no("the job's size or time was not a number")
+	}
+	if s.Store != nil {
+		if id, found, _ := s.Store.LocationOwner(h.ID, path); found {
+			locs, _ := s.Store.Locations(id)
+			for _, l := range locs {
+				if l.HostID == h.ID && l.Path == path && l.Sampled != nil && l.SizeBytes == size && l.ModifiedAt.Unix() == mt {
+					return set(runs.EnvFact{Key: "input.sampled_fp", Status: runs.EnvVerified, Value: l.Sampled.Value})
+				}
+			}
+		}
+	}
+	fp, gotSize, gotMtimeNS, err := s.hostFingerprint(ctx, h, path)
+	if err != nil {
+		return no("the input file could not be measured on the host (" + err.Error() + ")")
+	}
+	if gotSize != size || gotMtimeNS/1e9 != mt {
+		return no("the input file has changed since the job started (its size or time differs), so its fingerprint says nothing about what the job read")
+	}
+	return set(runs.EnvFact{Key: "input.sampled_fp", Status: runs.EnvVerified, Value: fp})
+}
+
+// hostFingerprint asks the host's worker for the sampled fingerprint of a file inside the host's source roots.
+func (s *Server) hostFingerprint(ctx context.Context, h hosts.Host, path string) (fp string, size, mtimeNS int64, err error) {
+	if s.Remote == nil || !h.InRoots(path) {
+		return "", 0, 0, errors.New("not available")
+	}
+	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "fingerprint", "path": path})
+	if err != nil {
+		return "", 0, 0, errors.New("the host's worker did not answer")
+	}
+	var r struct {
+		Sampled string `json:"sampled"`
+		Size    int64  `json:"size"`
+		MtimeNS int64  `json:"mtime_ns"`
+	}
+	if json.Unmarshal(rep.Head, &r) != nil || r.Sampled == "" {
+		return "", 0, 0, errors.New("the host answered unexpectedly")
+	}
+	return r.Sampled, r.Size, r.MtimeNS, nil
 }

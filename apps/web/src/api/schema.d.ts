@@ -1769,6 +1769,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{id}/rerun-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Check a rerun draft before submitting: strict reads the code folder on the host (read-only) and compares it with the parent run's observed code; best effort lists each difference; adapted marks the settings that changed */
+        get: operations["owner_s_getRerunCheck_get_api_jobs_id_rerun_check"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{id}/result": {
         parameters: {
             query?: never;
@@ -2581,6 +2600,25 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_lifecycleArchive_post_api_runs_id_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{id}/controls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** State how the run was smoothed, how its noise was modelled and how a control was built; stored as declared by the researcher */
+        put: operations["owner_s_setRunControls_put_api_runs_id_controls"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3781,6 +3819,8 @@ export interface components {
             params: components["schemas"]["RunParam"][];
             metrics: components["schemas"]["RunMetric"][];
             review: components["schemas"]["RunReview"];
+            /** @description Smoothing, noise model and control construction stated for the run, each with who said so; absent when none was stated. */
+            controls?: components["schemas"]["Controls"] | null;
         };
         /** @description How a derived dataset was made; sources are file names. */
         DerivedSummary: {
@@ -6154,6 +6194,134 @@ export interface components {
             idleSeconds: number;
             /** @description longest a session runs */
             lifetimeSeconds: number;
+        };
+        /** @description Who is responsible for a block of controls: declared (a person said so, not checked here) or verified (Vesqira ran it and records what it ran). */
+        ControlsStated: {
+            /** @enum {string} */
+            basis: "declared" | "verified";
+            /** @enum {string} */
+            by: "researcher" | "vesqira";
+            at: string;
+        };
+        /** @description The kernel applied before the result was made. A width always comes with its unit; width null means smoothing was applied and its width is not stated. */
+        ControlsSmoothing: {
+            /** @enum {string} */
+            kernel: "gaussian_fwhm" | "gaussian_sigma" | "boxcar" | "other";
+            width: number | null;
+            /** @enum {string} */
+            unit: "" | "pixel" | "arcsec" | "arcmin" | "deg" | "channel" | "km/s";
+            note: string;
+            /** @enum {string} */
+            basis: "declared" | "verified";
+            /** @enum {string} */
+            by: "researcher" | "vesqira";
+            at: string;
+        };
+        /** @description How the noise was described to the analysis. */
+        ControlsNoise: {
+            /** @enum {string} */
+            kind: "scalar_sigma" | "rms_map" | "per_channel_rms" | "other";
+            sigma: number | null;
+            sigmaUnit: string;
+            /** @description How the noise was estimated, in words. */
+            estimated: string;
+            note: string;
+            /** @enum {string} */
+            basis: "declared" | "verified";
+            /** @enum {string} */
+            by: "researcher" | "vesqira";
+            at: string;
+        };
+        ControlParam: {
+            key: string;
+            value: string;
+        };
+        /** @description How a control or null was built. Verified only for a null Vesqira ran itself (relative orientation). */
+        ControlsConstruction: {
+            /** @enum {string} */
+            kind: "shifted_map_null" | "injection_test" | "permutation" | "other";
+            params: components["schemas"]["ControlParam"][];
+            note: string;
+            /** @enum {string} */
+            basis: "declared" | "verified";
+            /** @enum {string} */
+            by: "researcher" | "vesqira";
+            at: string;
+        };
+        /** @description Smoothing, noise model and control construction stated for a result. A block that is null was not stated, which is not the same as none applied. */
+        Controls: {
+            smoothing: components["schemas"]["ControlsSmoothing"] | null;
+            noise: components["schemas"]["ControlsNoise"] | null;
+            construction: components["schemas"]["ControlsConstruction"] | null;
+        };
+        /** @description What the researcher states. Replaces the stored statement: a block that is left out or null is cleared. Basis, author and time are set by the server (declared, researcher, now) whatever is sent. */
+        ControlsDeclaration: {
+            smoothing?: {
+                /** @enum {string} */
+                kernel: "gaussian_fwhm" | "gaussian_sigma" | "boxcar" | "other";
+                width?: number | null;
+                /**
+                 * @description required with a width, refused without one
+                 * @enum {string}
+                 */
+                unit?: "pixel" | "arcsec" | "arcmin" | "deg" | "channel" | "km/s";
+                /** @description at most 300 characters; required for kind other */
+                note?: string;
+            } | null;
+            noise?: {
+                /** @enum {string} */
+                kind: "scalar_sigma" | "rms_map" | "per_channel_rms" | "other";
+                /** @description scalar_sigma only; needs sigmaUnit */
+                sigma?: number | null;
+                /** @description for example K or Jy/beam */
+                sigmaUnit?: string;
+                /** @description how the noise was estimated; at most 300 characters */
+                estimated?: string;
+                note?: string;
+            } | null;
+            construction?: {
+                /** @enum {string} */
+                kind: "shifted_map_null" | "injection_test" | "permutation" | "other";
+                /** @description lower-case names (letters, digits, _), each once; values at most 80 characters */
+                params?: components["schemas"]["ControlParam"][];
+                /** @description required for kind other */
+                note?: string;
+            } | null;
+        };
+        /** @description One fact compared between two runs, or between a parent run and the code folder as it is now. unknown means at least one side did not observe it; it is never reported as matched. */
+        EnvDifference: {
+            key: string;
+            label: string;
+            /** @enum {string} */
+            result: "matched" | "differed" | "unknown";
+            parent: string;
+            this: string;
+            /** @description differed in a fact a strict rerun requires to be equal */
+            blocking: boolean;
+            /** @description for unknown: which side did not observe it */
+            why: string;
+        };
+        RerunSettingChange: {
+            key: string;
+            /** @description null: the parent run did not have this setting */
+            parent: string | null;
+            /** @description null: the draft does not have it */
+            now: string | null;
+        };
+        /** @description What can be said about a rerun draft before it is submitted (ADR 0054). A strict draft with blocking true is refused by the submit route. */
+        RerunCheck: {
+            /** @enum {string} */
+            mode: "strict" | "best_effort" | "adapted";
+            parentRunId: number;
+            /** @description the host answered the read-only look at the code folder; adapted drafts do not ask */
+            codeChecked: boolean;
+            differences: components["schemas"]["EnvDifference"][];
+            settings: components["schemas"]["RerunSettingChange"][];
+            /** @description false when the parent run's settings were not kept, so no change can be marked */
+            settingsKnown: boolean;
+            blocking: boolean;
+            messages: string[];
+            notes: string[];
         };
     };
     responses: never;
@@ -9160,6 +9328,55 @@ export interface operations {
             };
         };
     };
+    owner_s_getRerunCheck_get_api_jobs_id_rerun_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the check */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RerunCheck"];
+                };
+            };
+            /** @description no such job */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the job repeats no run, or has no kept settings */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_jobResult_get_api_jobs_id_result: {
         parameters: {
             query?: never;
@@ -10166,6 +10383,62 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_setRunControls_put_api_runs_id_controls: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ControlsDeclaration"];
+            };
+        };
+        responses: {
+            /** @description the run with its controls (the run record as GET /api/runs/{id} returns it) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: number;
+                        controls: components["schemas"]["Controls"] | null;
+                    };
+                };
+            };
+            /** @description no such run */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a value the controls cannot carry: a width without its unit, an unknown kernel or model, text that is too long */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

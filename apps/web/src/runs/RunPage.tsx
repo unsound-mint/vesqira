@@ -76,7 +76,7 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
             )
           ) : null}
           {run.dirty ? <Pill tone="warn">code has uncommitted changes</Pill> : null}
-          {run.kind === "vgt" && onRunAgain ? <Button type="button" onClick={() => onRunAgain(run.id)}>Run again with…</Button> : null}
+          {(run.kind === "vgt" || run.kind === "rohsa") && onRunAgain ? <Button type="button" onClick={() => onRunAgain(run.id)}>Run again with…</Button> : null}
         </header>
 
         {onEntryChanged ? (
