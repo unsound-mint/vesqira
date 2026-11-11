@@ -425,3 +425,7 @@ The scientific worker (`services/scientific-worker`) imports these packages at r
 ### reproject (BSD-3-Clause)
 
 `reproject` (0.21.0). BSD-3-Clause License, Copyright (c) 2011-16, Thomas P. Robitaille.
+
+## Tauri (desktop shell, MIT OR Apache-2.0)
+
+`tauri` (2.12.5) and `tauri-plugin-dialog` (2.8.4) are the desktop shell's window and native file dialog (`apps/desktop`). Licensed MIT OR Apache-2.0, Copyright (c) 2017 – present Tauri Programme within The Commons Conservancy. Full texts: each crate's `LICENSE_MIT` and `LICENSE_APACHE-2.0`. Their transitive crates are listed in `apps/desktop/Cargo.lock`.

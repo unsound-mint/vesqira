@@ -61,7 +61,7 @@ SOURCES = [
     ("services/api/go.mod", go_direct),
     ("apps/web/package.json", web_direct),
     ("services/scientific-worker/requirements.txt", python_direct),
-    ("apps/desktop/src-tauri/Cargo.toml", rust_direct),  # optional: the desktop shell may not exist
+    ("apps/desktop/Cargo.toml", rust_direct),
 ]
 
 
