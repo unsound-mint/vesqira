@@ -9,6 +9,7 @@ import { markSeen, readSeen } from "./seen";
 import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
 import type { NewerNotice } from "../api/catalog";
 import { NewerNotices } from "../catalog/NewerNotices";
+import { FigureRedraw } from "./FigureRedraw";
 import { listDatasets } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
 import { listRuns } from "../api/runs";
@@ -232,6 +233,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
                 {f ? <LinkButton icon={Download} href={`/api/figures/${f.id}/download`} download>Download PNG</LinkButton> : null}
                 <IconButton icon={Trash2} label="Remove from board" onClick={() => run(() => removeItem(board.id, it.position))} />
               </div>
+              {f ? <FigureRedraw figure={f} /> : null}
             </div>
           </li>
           );

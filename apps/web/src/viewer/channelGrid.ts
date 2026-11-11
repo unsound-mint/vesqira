@@ -6,6 +6,10 @@ import { normalize } from "./render";
 import type { Stretch } from "./render";
 import { FIGURE_WIDTH, blobToBase64 } from "./figure";
 
+/** The hatching of a panel pixel with no value: fixed (not the theme's), so a grid looks the same in either theme and draws again the same. */
+export const GRID_NODATA: [[number, number, number], [number, number, number]] = [[27, 34, 44], [85, 98, 117]];
+export const STRETCH_LABEL: Record<Stretch, string> = { linear: "linear", sqrt: "square root", asinh: "inverse hyperbolic sine" };
+
 /** Panels per row for n panels: a near-square grid, at most 8 wide (the cap the stored description holds). */
 export function defaultColumns(n: number): number {
   return Math.max(1, Math.min(8, Math.ceil(Math.sqrt(n))));
@@ -72,7 +76,7 @@ export function paintPixels(data: Float32Array, w: number, h: number, scale: { l
 }
 
 /** The stored description of a grid (channel-grid/1) and the reviewer-safe view that goes with it, from what is on screen. */
-export function gridFigure(o: { datasetId: number; plan: ChannelGridPlan; first: number; last: number; stride: number; average: number; columns: number; unit: string; convention: string; colormap: string; stretch: string; bunit: string | null }):
+export function gridFigure(o: { datasetId: number; plan: ChannelGridPlan; first: number; last: number; stride: number; average: number; columns: number; unit: string; convention: string; colormap: string; stretch: string; bunit: string | null; overlaysNotDrawn: number; figureWidth?: number }):
   { spec: ChannelGridSpec; view: FigureRequest["view"] } | null {
   const lo = o.plan.scale.lo ?? null, hi = o.plan.scale.hi ?? null;
   if (lo === null || hi === null || !(lo < hi)) return null;
@@ -84,6 +88,8 @@ export function gridFigure(o: { datasetId: number; plan: ChannelGridPlan; first:
     ...(converted ? { spectral: converted } : {}),
     display: { colormap: o.colormap as "viridis" | "inferno" | "gray", stretch: o.stretch as "linear" | "sqrt" | "asinh", limits: [lo, hi], ...(o.bunit ? { limitsUnit: o.bunit } : {}), source },
     preview: { step: o.plan.step, panelWidth: o.plan.panel_width, panelHeight: o.plan.panel_height },
+    // what the composed picture said beyond the description, so "draw again" reproduces it
+    render: { figureWidth: o.figureWidth ?? FIGURE_WIDTH, overlaysNotDrawn: o.overlaysNotDrawn },
   };
   const view: FigureRequest["view"] = {
     kind: "channelgrid", channel: o.first, colormap: o.colormap as "viridis" | "inferno" | "gray", stretch: o.stretch as "linear" | "sqrt" | "asinh", range: "custom", limits: [lo, hi], ...(o.bunit ? { limitsUnit: o.bunit } : {}),
@@ -108,8 +114,10 @@ export async function composeGridFigure(o: {
   scale: { lo: number; hi: number };
   unit: string | null;
   captions: string[];
+  /** The width the figure is composed at; FIGURE_WIDTH unless a figure recorded another. */
+  width?: number;
 }): Promise<Blob> {
-  const pad = 16, gap = 8, W = FIGURE_WIDTH;
+  const pad = 16, gap = 8, W = o.width ?? FIGURE_WIDTH;
   const cols = Math.min(o.columns, o.panels.length);
   const cw = Math.floor((W - 2 * pad - (cols - 1) * gap) / cols);
   const ch = Math.round(cw / o.aspect);

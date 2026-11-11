@@ -1,0 +1,51 @@
+.wrap {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.box {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.list {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding-left: var(--sp-4);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.prompt {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}
+
+.img {
+  max-width: 100%;
+  height: auto;
+  border: var(--bw) solid var(--line);
+}

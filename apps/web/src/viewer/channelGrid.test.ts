@@ -106,19 +106,20 @@ describe("what the grid states", () => {
   it("has nothing to claim about a scale when no sampled pixel is finite", () => {
     const p = plan({ scale: { lo: null, hi: null, source: "x", sampled_panels: [0] } });
     expect(gridCaption(p, { stretch: "linear", bunit: "K", overlaysOnBase: 0 })[0]).toContain("no shared scale");
-    expect(gridFigure({ datasetId: 1, plan: p, first: 0, last: 20, stride: 10, average: 1, columns: 2, unit: "", convention: "radio", colormap: "viridis", stretch: "linear", bunit: "K" })).toBeNull();
+    expect(gridFigure({ datasetId: 1, plan: p, first: 0, last: 20, stride: 10, average: 1, columns: 2, unit: "", convention: "radio", colormap: "viridis", stretch: "linear", bunit: "K", overlaysNotDrawn: 0 })).toBeNull();
   });
 });
 
 describe("the stored description", () => {
   it("is built from the plan: numeric shared limits, labels' unit and convention, preview, and the matching reviewer-safe view", () => {
     const p = plan({ step: 2, panel_width: 16, panel_height: 12 });
-    const g = gridFigure({ datasetId: 7, plan: p, first: 0, last: 20, stride: 10, average: 3, columns: 2, unit: "km/s", convention: "radio", colormap: "inferno", stretch: "asinh", bunit: "K" })!;
+    const g = gridFigure({ datasetId: 7, plan: p, first: 0, last: 20, stride: 10, average: 3, columns: 2, unit: "km/s", convention: "radio", colormap: "inferno", stretch: "asinh", bunit: "K", overlaysNotDrawn: 2 })!;
     expect(g.spec).toMatchObject({
       schema: "channel-grid/1", datasetId: 7, first: 0, last: 20, stride: 10, average: 3, columns: 2, panels: 3,
       spectral: { unit: "km/s", convention: "radio" },
       display: { colormap: "inferno", stretch: "asinh", limits: [0.5, 8.25], limitsUnit: "K" },
       preview: { step: 2, panelWidth: 16, panelHeight: 12 },
+      render: { figureWidth: 720, overlaysNotDrawn: 2 },
     });
     expect(g.view).toMatchObject({ kind: "channelgrid", channel: 0, range: "custom", limits: [0.5, 8.25], limitsUnit: "K", colormap: "inferno", stretch: "asinh" });
     expect(g.view.grid).toMatchObject({ first: 0, last: 20, stride: 10, average: 3, panels: 3, previewStep: 2, unit: "km/s", convention: "radio" });
@@ -127,7 +128,7 @@ describe("the stored description", () => {
 
   it("has no spectral part when the labels are in the file's own unit", () => {
     const p = plan({ spectral: { ...plan().spectral, unit_status: "declared", convention: null, basis: null } });
-    const g = gridFigure({ datasetId: 1, plan: p, first: 0, last: 20, stride: 10, average: 1, columns: 3, unit: "", convention: "radio", colormap: "viridis", stretch: "linear", bunit: null })!;
+    const g = gridFigure({ datasetId: 1, plan: p, first: 0, last: 20, stride: 10, average: 1, columns: 3, unit: "", convention: "radio", colormap: "viridis", stretch: "linear", bunit: null, overlaysNotDrawn: 0 })!;
     expect(g.spec.spectral).toBeUndefined();
     expect(g.view.grid?.unit).toBeUndefined();
     expect(g.spec.display.limitsUnit).toBeUndefined();
