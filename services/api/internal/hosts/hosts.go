@@ -205,6 +205,7 @@ func (s *Store) Delete(id int64) error {
 // load on a shared login node) and deploys the worker scripts to the host by content hash.
 type Manager struct {
 	Ssh        string            // the ssh binary; "ssh" unless a test substitutes one
+	Rsync      string            // the rsync binary for transfers; "rsync" unless a test substitutes one
 	Files      map[string][]byte // worker script files to deploy: the modules listed in the worker directory's DEPLOY file (LoadWorkerFiles)
 	ControlDir string            // where ssh keeps its multiplexing sockets (short path)
 	Timeout    time.Duration
