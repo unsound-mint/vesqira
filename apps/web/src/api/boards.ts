@@ -45,7 +45,7 @@ export type FigureRequest = Schemas["CreateFigureRequest"];
 export const createFigure = (r: FigureRequest) => post<Figure>("/api/figures", r);
 export const listFigures = () => call<{ figures: Figure[] }>("/api/figures").then((r) => r.figures);
 export const figurePreviewUrl = (id: number) => `/api/figures/${id}/preview`;
-export const listBoards = () => call<{ boards: Board[] }>("/api/boards").then((r) => r.boards);
+export const listBoards = (opts: { archived?: "all" | "only" } = {}) => call<{ boards: Board[] }>(`/api/boards${opts.archived ? `?archived=${opts.archived}` : ""}`).then((r) => r.boards);
 /** One board with the live state of its job panels (this is the call that reads their logs; the list does not). */
 export const getBoard = (id: number) => call<Board>(`/api/boards/${id}`);
 export const createBoard = (title: string) => post<Board>("/api/boards", { title });

@@ -1344,6 +1344,10 @@
     },
     "provenance": {
      "$ref": "#/components/schemas/FigureProvenance"
+    },
+    "archived": {
+     "type": "boolean",
+     "description": "Hidden from the lists by default; still resolves by id (ADR 0041)."
     }
    }
   },
@@ -1581,6 +1585,10 @@
      "items": {
       "$ref": "#/components/schemas/BoardItem"
      }
+    },
+    "archived": {
+     "type": "boolean",
+     "description": "Hidden from the lists by default; still resolves by id (ADR 0041)."
     }
    }
   },

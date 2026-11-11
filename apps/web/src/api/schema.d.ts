@@ -2999,6 +2999,8 @@ export interface components {
             width: number;
             height: number;
             provenance: components["schemas"]["FigureProvenance"];
+            /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
+            archived?: boolean;
         };
         FigureList: {
             figures: components["schemas"]["Figure"][];
@@ -3079,6 +3081,8 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
             items: components["schemas"]["BoardItem"][];
+            /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
+            archived?: boolean;
         };
         BoardList: {
             boards: components["schemas"]["Board"][];

@@ -2607,6 +2607,9 @@ components:
           type: "integer"
         provenance:
           $ref: "#/components/schemas/FigureProvenance"
+        archived:
+          type: "boolean"
+          description: "Hidden from the lists by default; still resolves by id (ADR 0041)."
     FigureList:
       type: "object"
       required:
@@ -2776,6 +2779,9 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/BoardItem"
+        archived:
+          type: "boolean"
+          description: "Hidden from the lists by default; still resolves by id (ADR 0041)."
     BoardList:
       type: "object"
       required:
