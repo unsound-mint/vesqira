@@ -21,7 +21,7 @@ func TestArchivedEntriesMigrationAddsTheTableAndKeepsEveryRow(t *testing.T) {
 	if err := Guard(db, "file:"+p); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 5 {
+	if version(t, db) != Version || Version < 6 {
 		t.Fatalf("version %d", version(t, db))
 	}
 	var n int
