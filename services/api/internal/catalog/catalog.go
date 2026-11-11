@@ -32,6 +32,10 @@ type Dataset struct {
 	// UnitDeclaration is the unit the user declared for a file whose header has no BUNIT (see unit.go). The header
 	// facts themselves are never changed.
 	UnitDeclaration *UnitDeclaration `json:"unitDeclaration"`
+	// Kind is "fits" (an image or cube) or "catalog" (a table of sources, ADR 0043). It comes from the header the worker read.
+	Kind string `json:"kind"`
+	// CatalogDeclaration is what the user declared about a catalog's columns (positions, frame, angle); nil for anything else.
+	CatalogDeclaration *CatalogDeclaration `json:"catalogDeclaration"`
 	// Archived entries are hidden from the lists but still resolve by id (ADR 0041).
 	Archived bool `json:"archived"`
 }
@@ -131,6 +135,9 @@ func Open(dsn string) (*Store, error) {
 				unit TEXT NOT NULL, declared_by TEXT NOT NULL DEFAULT 'user', declared_at INTEGER NOT NULL,
 				size_bytes INTEGER NOT NULL DEFAULT 0, modified_ns INTEGER NOT NULL DEFAULT 0)`)
 		}
+		if err == nil {
+			_, err = db.Exec(schema.CatalogDeclarationsTable)
+		}
 	}
 	if err != nil {
 		db.Close()
@@ -185,6 +192,7 @@ func scan(row interface{ Scan(...any) error }) (Dataset, error) {
 		d.Path = strings.TrimPrefix(d.Path, fmt.Sprintf("h%d:", d.HostID))
 	}
 	d.ModifiedAt, d.AddedAt, d.Header = time.Unix(0, mod).UTC(), time.Unix(add, 0).UTC(), json.RawMessage(hdr)
+	d.Kind = kindOf(d.Header)
 	return d, nil
 }
 
@@ -208,6 +216,9 @@ func (s *Store) Get(id int64) (Dataset, error) {
 	}
 	if err == nil {
 		d.UnitDeclaration, err = s.unitDeclaration(id, d)
+	}
+	if err == nil && d.Kind == KindCatalog {
+		d.CatalogDeclaration, err = s.catalogDeclaration(id, d)
 	}
 	return d, err
 }
@@ -314,6 +325,11 @@ func (s *Store) List() ([]Dataset, error) {
 		}
 		if out[i].UnitDeclaration, err = s.unitDeclaration(out[i].ID, out[i]); err != nil {
 			return nil, err
+		}
+		if out[i].Kind == KindCatalog {
+			if out[i].CatalogDeclaration, err = s.catalogDeclaration(out[i].ID, out[i]); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return out, nil

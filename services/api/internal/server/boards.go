@@ -347,7 +347,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "previewPng must be base64")
 		return
 	}
-	d, code, msg := s.dataset(in.DatasetID)
+	d, code, msg := s.imageDataset(in.DatasetID)
 	if code != 0 {
 		fail(w, code, msg)
 		return

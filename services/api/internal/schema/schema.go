@@ -23,7 +23,8 @@ import (
 // Version 8: a job remembers whether its results are imported automatically when it finishes, and whether that was
 // tried (jobs.auto_import, jobs.auto_import_tried); finished jobs leave notifications (ADR 0043).
 // Version 9: a figure may record the scene it was drawn from (figures.scene; ADR 0042).
-const Version = 9
+// Version 10: a point catalog's declared columns (catalog_declarations; ADR 0044).
+const Version = 10
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -41,6 +42,7 @@ var migrations = []Migration{
 	{To: 7, Name: "orientation frame and quantity", Up: orientationFrameAndQuantity},
 	{To: 8, Name: "automatic import and notifications", Up: autoImportAndNotifications},
 	{To: 9, Name: "figure scene", Up: figureScene},
+	{To: 10, Name: "catalog declarations", Up: catalogDeclarations},
 }
 
 // autoImportAndNotifications adds the two job columns. Every existing job gets 0 for both: a job submitted before the
@@ -67,6 +69,24 @@ func figureScene(tx *sql.Tx) error {
 		return err
 	}
 	return AddColumn(tx, "figures", "scene", "TEXT NOT NULL DEFAULT ''")
+}
+
+// CatalogDeclarationsTable is the overlay table for what a person declared about a point catalog's columns (ADR 0043). The
+// catalog package creates it for a fresh install and the migration for an upgraded one, from this one text.
+const CatalogDeclarationsTable = `CREATE TABLE IF NOT EXISTS catalog_declarations(
+	dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id) ON DELETE CASCADE,
+	declaration TEXT NOT NULL, declared_by TEXT NOT NULL DEFAULT 'user', declared_at INTEGER NOT NULL,
+	size_bytes INTEGER NOT NULL DEFAULT 0, modified_ns INTEGER NOT NULL DEFAULT 0)`
+
+// catalogDeclarations adds the overlay table. No row to carry over: no dataset was a catalog before. A catalog without a
+// datasets table (never opened by the catalog package) needs nothing.
+func catalogDeclarations(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='datasets'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	_, err := tx.Exec(CatalogDeclarationsTable)
+	return err
 }
 
 // runRecordOwed adds jobs.record_owed. Every existing job gets 0: no record is owed for a job submitted before records

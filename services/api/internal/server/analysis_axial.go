@@ -56,7 +56,7 @@ func (s *Server) axialAnalysis(ctx context.Context, op string, d catalog.Dataset
 		a.args = append(a.args, "--axial-frame", a.frame)
 	}
 	if in.ReliabilityID != nil {
-		rel, code, msg := s.dataset(*in.ReliabilityID)
+		rel, code, msg := s.imageDataset(*in.ReliabilityID)
 		if code != 0 {
 			return nil, 409, "the declared reliability dataset: " + msg
 		}

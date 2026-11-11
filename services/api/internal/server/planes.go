@@ -125,6 +125,10 @@ func (s *Server) source(w http.ResponseWriter, r *http.Request) (d catalog.Datas
 		fail(w, 500, "internal error")
 		return
 	}
+	if d.Kind == catalog.KindCatalog {
+		fail(w, 409, "this is a point catalog: it has no planes, only rows (see its catalog report)")
+		return
+	}
 	real, k, status, msg := s.authorize(r.Context(), d)
 	if status != 0 {
 		fail(w, status, msg)

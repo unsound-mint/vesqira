@@ -424,7 +424,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 	facts, _ := s.Store.FactsByPath(p.HostID)
 	var fits []discover.File
 	for _, d := range res.Data {
-		if d.Format == "FITS" {
+		if d.Format == "FITS" || d.Format == "Catalog" { // registerPath tells the two apart
 			fits = append(fits, d)
 		}
 	}
