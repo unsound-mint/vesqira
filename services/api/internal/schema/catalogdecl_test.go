@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// A catalog from before point catalogs (schema 7) upgrades with every dataset and declaration kept, gets the overlay table,
+// A catalog from before point catalogs (schema 9) upgrades with every dataset and declaration kept, gets the overlay table,
 // and is backed up first; the table cascades with its dataset.
 func TestCatalogDeclarationsMigrationKeepsEveryDatasetAndAddsTheOverlay(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.db")
@@ -16,7 +16,7 @@ func TestCatalogDeclarationsMigrationKeepsEveryDatasetAndAddsTheOverlay(t *testi
 		`INSERT INTO datasets VALUES (1, '/d/a.fits', 'a.fits'), (2, '/d/b.fits', 'b.fits')`,
 		`CREATE TABLE interpretations(dataset_id INTEGER PRIMARY KEY, kind TEXT, unit TEXT, frame TEXT, quantity TEXT)`,
 		`INSERT INTO interpretations VALUES (1, 'axial_orientation', 'rad', 'pixel', 'b_field')`,
-		`PRAGMA user_version = 7`,
+		`PRAGMA user_version = 9`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatal(err)
@@ -25,7 +25,7 @@ func TestCatalogDeclarationsMigrationKeepsEveryDatasetAndAddsTheOverlay(t *testi
 	if err := Guard(db, "file:"+p); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 8 {
+	if version(t, db) != Version || Version < 10 {
 		t.Fatalf("version %d", version(t, db))
 	}
 	var n int
@@ -57,7 +57,7 @@ func TestCatalogDeclarationsMigrationSkipsACatalogWithoutDatasets(t *testing.T) 
 	p := filepath.Join(t.TempDir(), "c.db")
 	db := open(t, p)
 	db.Exec(`CREATE TABLE other(id INTEGER)`)
-	db.Exec(`PRAGMA user_version = 7`)
+	db.Exec(`PRAGMA user_version = 9`)
 	if err := Guard(db, "file:"+p); err != nil {
 		t.Fatal(err)
 	}
