@@ -28,7 +28,7 @@ func TestOrientationDeclarationMigrationKeepsEveryRowAndLeavesTheNewFieldsUnknow
 	if err := Guard(db, "file:"+p); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 5 {
+	if version(t, db) != Version || Version < 7 {
 		t.Fatalf("version %d", version(t, db))
 	}
 	rows, err := db.Query(`SELECT dataset_id,kind,unit,reliability_id,declared_by,frame,quantity FROM interpretations ORDER BY dataset_id`)
