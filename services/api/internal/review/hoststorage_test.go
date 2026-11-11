@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Disk, quota and folder sizes of a host (ADR 0044) are the owner's: a reviewer's handler has no such route, and the app it
+// Disk, quota and folder sizes of a host (ADR 0045) are the owner's: a reviewer's handler has no such route, and the app it
 // serves cannot reach one by falling through to the static files.
 func TestReviewListenerHasNoHostStorageOrFolderSizes(t *testing.T) {
 	dist := t.TempDir()

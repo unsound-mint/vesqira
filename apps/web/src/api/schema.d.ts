@@ -4167,7 +4167,7 @@ export interface components {
             quotaNote: string;
             filesystems: components["schemas"]["HostFilesystem"][];
         };
-        /** @description Quota and disk usage of a host (ADR 0044). A look is reused for 10 minutes; a failed one for 1 minute; Refresh cannot reach the host more than once per 15 seconds. */
+        /** @description Quota and disk usage of a host (ADR 0045). A look is reused for 10 minutes; a failed one for 1 minute; Refresh cannot reach the host more than once per 15 seconds. */
         HostStorage: {
             /** @description the last good look; null if there has never been one */
             report: components["schemas"]["HostStorageReport"] | null;

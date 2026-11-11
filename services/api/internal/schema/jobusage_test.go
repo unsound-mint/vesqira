@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// A catalog from before job usage (schema 8) upgrades with its jobs kept and no usage invented for them: an empty value
+// A catalog from before job usage (schema 10) upgrades with its jobs kept and no usage invented for them: an empty value
 // means "not recorded".
 func TestJobUsageMigrationKeepsJobsAndInventsNothing(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.db")
@@ -13,7 +13,7 @@ func TestJobUsageMigrationKeepsJobsAndInventsNothing(t *testing.T) {
 	for _, q := range []string{
 		`CREATE TABLE jobs(id INTEGER PRIMARY KEY, name TEXT NOT NULL, state TEXT NOT NULL)`,
 		`INSERT INTO jobs(id,name,state) VALUES (1, 'vgt-a', 'completed'), (2, 'vgt-b', 'running')`,
-		`PRAGMA user_version = 8`,
+		`PRAGMA user_version = 10`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatal(err)
@@ -33,7 +33,7 @@ func TestJobUsageMigrationKeepsJobsAndInventsNothing(t *testing.T) {
 	p2 := filepath.Join(t.TempDir(), "d.db")
 	db2 := open(t, p2)
 	db2.Exec(`CREATE TABLE other(id INTEGER)`)
-	db2.Exec(`PRAGMA user_version = 8`)
+	db2.Exec(`PRAGMA user_version = 10`)
 	if err := Guard(db2, "file:"+p2); err != nil {
 		t.Fatal(err)
 	}

@@ -296,7 +296,7 @@ type rerunJSON struct {
 	// ConfigChanged compares the stored config text with the file on the host now; null when not asked or not reachable.
 	ConfigChanged *bool `json:"configChanged"`
 	// LastJob is the job that produced the run and what the scheduler recorded it used, for sizing the next request
-	// (ADR 0044). Null for an imported run.
+	// (ADR 0045). Null for an imported run.
 	LastJob *rerunJob `json:"lastJob"`
 }
 

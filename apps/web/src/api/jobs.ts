@@ -1,7 +1,7 @@
 import { request as call, postJSON as post } from "./http";
 import type { Run } from "./runs";
 
-/** What the scheduler recorded a finished job used (ADR 0044). null is "not reported", never 0. */
+/** What the scheduler recorded a finished job used (ADR 0045). null is "not reported", never 0. */
 export type JobUsage = {
   state: string;
   exitCode: string;

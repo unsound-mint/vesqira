@@ -5583,7 +5583,7 @@ components:
         cached:
           type: "boolean"
           description: "true when no call was made to the host for this answer"
-      description: "Quota and disk usage of a host (ADR 0044). A look is reused for 10 minutes; a failed one for 1 minute; Refresh cannot reach the host more than once per 15 seconds."
+      description: "Quota and disk usage of a host (ADR 0045). A look is reused for 10 minutes; a failed one for 1 minute; Refresh cannot reach the host more than once per 15 seconds."
     RunFolder:
       type: "object"
       required:

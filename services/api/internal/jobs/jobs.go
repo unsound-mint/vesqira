@@ -71,7 +71,7 @@ type Job struct {
 	// jobs only). AutoImportTried is set when that attempt was claimed, so it never runs twice and a failure is not retried.
 	AutoImport      bool `json:"autoImport"`
 	AutoImportTried bool `json:"-"`
-	// Usage is what the scheduler reported the job used when it ended (ADR 0044), or nil while it has not ended or when
+	// Usage is what the scheduler reported the job used when it ended (ADR 0045), or nil while it has not ended or when
 	// the end was never read from sacct.
 	Usage *Usage `json:"usage"`
 }

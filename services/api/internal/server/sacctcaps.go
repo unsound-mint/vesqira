@@ -11,7 +11,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 )
 
-// Which sacct columns a host's sacct accepts (ADR 0044). A job's state must never depend on the optional usage columns:
+// Which sacct columns a host's sacct accepts (ADR 0045). A job's state must never depend on the optional usage columns:
 // a site whose sacct rejects one (older Slurm, other accounting setup) answers with an error and no rows, so the
 // extended call falls back, within the same refresh, to the minimal columns the status parser always needed, and the
 // host remembers it. Usage is then recorded with the columns the site lacks named, not as zeros.

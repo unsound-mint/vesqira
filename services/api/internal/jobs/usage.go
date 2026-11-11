@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// What a finished job used (ADR 0044). The numbers are what Slurm's accounting (sacct) reported, kept as reported: a
+// What a finished job used (ADR 0045). The numbers are what Slurm's accounting (sacct) reported, kept as reported: a
 // value sacct did not give is nil, never 0, and nothing here is a verdict on whether the job's result is valid.
 
 // Usage is what sacct said about one finished job. Pointers are "not reported".

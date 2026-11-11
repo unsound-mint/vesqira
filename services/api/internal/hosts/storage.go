@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Disk and quota on a host (ADR 0044). Everything here is read-only and runs as the user on the host, never with sudo. The
+// Disk and quota on a host (ADR 0045). Everything here is read-only and runs as the user on the host, never with sudo. The
 // output of a remote tool is untrusted text: it is bounded, parsed defensively, and a tool whose output does not parse is
 // reported as unavailable, not guessed at. Sizes are powers of 1024, which is what each of these tools prints.
 

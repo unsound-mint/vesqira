@@ -13,7 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 )
 
-// Disk and quota on a host, and how big the run folders are (ADR 0044). Read-only, on demand, and cached: the answer to a
+// Disk and quota on a host, and how big the run folders are (ADR 0045). Read-only, on demand, and cached: the answer to a
 // look at a host is kept for storageFresh, so an open Hosts or Jobs screen that asks every few minutes costs the login node
 // one short command per ten minutes. Nothing here deletes, moves or writes on a host.
 

@@ -1,4 +1,4 @@
-# ADR 0044: Host storage, run folder sizes, and what a finished job used
+# ADR 0045: Host storage, run folder sizes, and what a finished job used
 
 Status: **proposed; implemented, awaiting owner review.** Decided by the implementing agent under the owner's delegation of ADR decisions (roadmap Stage S). No real cluster tool (`beegfs-ctl`, `lfs`, `quota`, `sacct` with a real accounting database) was run: see Validation. The new UI has not had a design review.
 
@@ -26,7 +26,7 @@ The owner's own HPC work hit the 400 GiB home quota and a run stalled writing it
 - **Cap the time suggestion by asking Slurm for the partition's limit**: needs a `sinfo` call and partition semantics (QOS limits, defaults) Vesqira does not model. Deferred: the cap exists in `SuggestRequest(partitionMaxSec)` and the hint tells the person to check the partition's maximum.
 
 ## Consequences
-- Schema 9: `jobs.usage` (JSON text, `''` for none). An older build refuses a version 9 catalog (ADR 0020). `schema_v9.sql` is the snapshot; the main branch's latest was 8 when this was written, so renumber if another slice took 9.
+- Schema 11: `jobs.usage` (JSON text, `''` for none). An older build refuses a version 11 catalog (ADR 0020). `schema_v11.sql` is the snapshot.
 - The status commands changed shape (no `-X`, more columns, steps present). A site that disables job accounting returns no `sacct` rows: usage stays absent and the state still comes from `squeue`. A site whose `sacct` rejects one of the column names must not stop job tracking: see "Sites whose sacct lacks a column" under Decision. Which columns the owner's real `sacct` accepts is still **not verified** (see Validation).
 - A `du` on a very large directory tree can take as long as the file system needs; the 80 s limit means such a folder shows "did not finish", not a partial number.
 
