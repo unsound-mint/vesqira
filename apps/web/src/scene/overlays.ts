@@ -3,7 +3,7 @@ import type { Dataset } from "../api/catalog";
 import { glyphStride, orientationLines, MIN_OPACITY } from "../viewer/glyphs";
 import { lut } from "../viewer/colormaps";
 import { MARKER_STRIDE } from "../api/overlays";
-import { outline } from "../viewer/region";
+import { linePath, outline } from "../viewer/region";
 import { readyGeometry, toPicture } from "./geometry";
 import type { GeometryMap } from "./geometry";
 import { DEFAULT_WIDTH, OVERLAY_COLORS } from "./palette";
@@ -29,7 +29,7 @@ export type Mark =
   | { type: "rect"; role: Exclude<MarkRole, "orientation">; x: number; y: number; w: number; h: number }
   | { type: "circle"; role: Exclude<MarkRole, "orientation">; cx: number; cy: number; r: number }
   /** A polyline (closed: a polygon) as x0, y0, x1, y1, ...; fill is an opacity for a filled polygon. */
-  | { type: "path"; role: "contour" | "grid" | "beam"; points: number[]; closed: boolean; stroke: Stroke; fill?: number }
+  | { type: "path"; role: "contour" | "grid" | "beam" | "region" | "saved" | "draft"; points: number[]; closed: boolean; stroke: Stroke; fill?: number }
   /**
    * A catalog source: a circle of r output pixels (so it keeps its size at every zoom) at a picture position, ringed in the
    * overlay's colour. `layer` and `row` name the overlay and the table row, so a click can find the row.
@@ -234,18 +234,33 @@ export function labelAnchor(x: number, y: number, w: number, h: number): { ancho
   return { anchor: along(x, w), baseline: edge === "top" ? "top" : "bottom" };
 }
 
-function shape(r: SceneRegion, height: number, role: Exclude<MarkRole, "orientation">): Mark {
+/** How a path of a line region is stroked by role; it differs by dash and width as well as colour. */
+const LINE_STROKE: Record<Exclude<MarkRole, "orientation">, Stroke> = {
+  region: { color: "cyan", width: 2, dashed: false },
+  saved: { color: "white", width: 1.5, dashed: false },
+  draft: { color: "cyan", width: 1.5, dashed: true },
+};
+
+/** A line region: its polyline and a chevron at the end, which says which way the offset of a position-velocity diagram runs. */
+export function lineMarks(points: readonly (readonly [number, number])[], height: number, role: Exclude<MarkRole, "orientation">): Mark[] {
+  const { path, head } = linePath(points, height);
+  const stroke = LINE_STROKE[role];
+  return [{ type: "path", role, points: path, closed: false, stroke }, ...(head.length ? [{ type: "path", role, points: head, closed: false, stroke: { ...stroke, dashed: false } } as Mark] : [])];
+}
+
+function shape(r: SceneRegion, height: number, role: Exclude<MarkRole, "orientation">): Mark[] {
+  if (r.shape === "line") return lineMarks(r.points.map((p) => [p[0]!, p[1]!] as const), height, role);
   const o = outline(r, height);
-  return o.kind === "rect" ? { type: "rect", role, x: o.x, y: o.y, w: o.w, h: o.h } : { type: "circle", role, cx: o.cx, cy: o.cy, r: o.r };
+  return [o.kind === "rect" ? { type: "rect", role, x: o.x, y: o.y, w: o.w, h: o.h } : { type: "circle", role, cx: o.cx, cy: o.cy, r: o.r }];
 }
 
 /** Saved regions (the selected one emphasised), then the working region, then the one being drawn. */
 const regions: Renderer<"regions"> = (o, scene, { plane, draft }) => {
   if (o.datasetId !== scene.base.datasetId) return [];
   const h = plane.head.height;
-  const out = o.saved.map((r) => shape(r.shape, h, r.selected ? "region" : "saved"));
-  if (o.active) out.push(shape(o.active, h, "region"));
-  if (draft) out.push(shape(draft, h, "draft"));
+  const out = o.saved.flatMap((r) => shape(r.shape, h, r.selected ? "region" : "saved"));
+  if (o.active) out.push(...shape(o.active, h, "region"));
+  if (draft) out.push(...shape(draft, h, "draft"));
   return out;
 };
 

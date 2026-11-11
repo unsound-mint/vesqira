@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -145,10 +146,10 @@ func TestDS9SkyRegionsAreWorkedOutWithTheDatasetsOwnWCS(t *testing.T) {
 		t.Fatalf("%s", pb)
 	}
 	c, b, g := out.Items[0], out.Items[1], out.Items[2]
-	if c.Status != regions.Approximate || c.Shape == nil || *c.Shape != (regions.Shape{Shape: "circle", CX: 15, CY: 11, R: 2}) {
+	if c.Status != regions.Approximate || c.Shape == nil || !reflect.DeepEqual(*c.Shape, regions.Shape{Shape: "circle", CX: 15, CY: 11, R: 2}) {
 		t.Errorf("sky circle: %+v", c)
 	}
-	if b.Status != regions.Approximate || b.Shape == nil || *b.Shape != (regions.Shape{Shape: "rect", X0: 10, Y0: 9, X1: 20, Y1: 13}) { // 10 x 5 pixels around (15, 11)
+	if b.Status != regions.Approximate || b.Shape == nil || !reflect.DeepEqual(*b.Shape, regions.Shape{Shape: "rect", X0: 10, Y0: 9, X1: 20, Y1: 13}) { // 10 x 5 pixels around (15, 11)
 		t.Errorf("sky box: %+v", b)
 	}
 	if g.Status != regions.Skipped || !strings.Contains(g.Note, "no frame transformation") {

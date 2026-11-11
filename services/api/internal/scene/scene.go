@@ -72,7 +72,14 @@ type Point struct {
 	Y float64 `json:"y"`
 }
 
-// Region is a pixel rectangle (inclusive bounds) or circle, 0-based with y from the bottom, as the region tools use.
+// MaxLinePoints and MaxLineWidth mirror internal/regions: a saved line is copied into the scene as it was saved.
+const (
+	MaxLinePoints = 64
+	MaxLineWidth  = 100000.0
+)
+
+// Region is a pixel rectangle (inclusive bounds), circle or, for a saved region only, a line (vertices, width across the
+// path, its unit), 0-based with y from the bottom, as the region tools use. A line has no area: it is never the working region.
 type Region struct {
 	Shape string `json:"shape"`
 	X0    *int   `json:"x0,omitempty"`
@@ -82,6 +89,10 @@ type Region struct {
 	CX    *int   `json:"cx,omitempty"`
 	CY    *int   `json:"cy,omitempty"`
 	R     *int   `json:"r,omitempty"`
+	// line
+	Points    [][]int  `json:"points,omitempty"`
+	Width     *float64 `json:"width,omitempty"`
+	WidthUnit string   `json:"widthUnit,omitempty"`
 }
 
 type SavedRegion struct {
@@ -737,7 +748,7 @@ func parseOverlay(raw []byte) (Overlay, error) {
 			return o, err
 		}
 		if in.Active != nil && string(*in.Active) != "null" {
-			r, err := parseRegion(*in.Active)
+			r, err := parseRegion(*in.Active, false)
 			if err != nil {
 				return Overlay{}, err
 			}
@@ -761,7 +772,7 @@ func parseOverlay(raw []byte) (Overlay, error) {
 				return Overlay{}, bad("a saved region needs its own id and a shape")
 			}
 			ids[*s.ID] = true
-			r, err := parseRegion(s.Shape)
+			r, err := parseRegion(s.Shape, true)
 			if err != nil {
 				return Overlay{}, err
 			}
@@ -772,7 +783,7 @@ func parseOverlay(raw []byte) (Overlay, error) {
 	return Overlay{}, bad("unknown overlay kind %q", head.Kind) // unreachable: every drawn kind is handled above
 }
 
-func parseRegion(raw []byte) (Region, error) {
+func parseRegion(raw []byte, allowLine bool) (Region, error) {
 	var r Region
 	if err := strict(raw, &r); err != nil {
 		return Region{}, bad("region: %v", err)
@@ -785,15 +796,31 @@ func parseRegion(raw []byte) (Region, error) {
 		}
 		return true
 	}
+	area := r.Points == nil && r.Width == nil && r.WidthUnit == ""
 	switch r.Shape {
+	case "line":
+		if !allowLine {
+			return Region{}, bad("a line has no area: it cannot be the working region (only a saved region may be a line)")
+		}
+		if r.X0 == nil && r.Y0 == nil && r.X1 == nil && r.Y1 == nil && r.CX == nil && r.CY == nil && r.R == nil &&
+			len(r.Points) >= 2 && len(r.Points) <= MaxLinePoints && r.Width != nil && finite(*r.Width) && *r.Width > 0 && *r.Width <= MaxLineWidth &&
+			(r.WidthUnit == "pixel" || r.WidthUnit == "arcsec") {
+			for _, p := range r.Points {
+				if len(p) != 2 || p[0] < -maxCoord || p[0] > maxCoord || p[1] < -maxCoord || p[1] > maxCoord {
+					return Region{}, bad("each vertex of a line is a pair of whole pixel numbers")
+				}
+			}
+			return r, nil
+		}
+		return Region{}, bad("a line has 2 to %d vertices, a width above 0 and its unit (pixel or arcsec)", MaxLinePoints)
 	case "rect":
-		if ok(r.X0, r.Y0, r.X1, r.Y1) && r.CX == nil && r.CY == nil && r.R == nil && *r.X0 <= *r.X1 && *r.Y0 <= *r.Y1 {
+		if area && ok(r.X0, r.Y0, r.X1, r.Y1) && r.CX == nil && r.CY == nil && r.R == nil && *r.X0 <= *r.X1 && *r.Y0 <= *r.Y1 {
 			return r, nil
 		}
 	case "circle":
-		if ok(r.CX, r.CY, r.R) && r.X0 == nil && r.Y0 == nil && r.X1 == nil && r.Y1 == nil && *r.R >= 0 {
+		if area && ok(r.CX, r.CY, r.R) && r.X0 == nil && r.Y0 == nil && r.X1 == nil && r.Y1 == nil && *r.R >= 0 {
 			return r, nil
 		}
 	}
-	return Region{}, bad("a region is a rect (x0 <= x1, y0 <= y1) or a circle (cx, cy, r >= 0) in whole pixels")
+	return Region{}, bad("a region is a rect (x0 <= x1, y0 <= y1) or a circle (cx, cy, r >= 0) in whole pixels (a saved region may also be a line)")
 }

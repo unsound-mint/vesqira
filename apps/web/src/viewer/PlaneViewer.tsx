@@ -9,10 +9,10 @@ import { GlPlaneRenderer, cpuNote, forcedCpu, gpuSupported, setRendererNote } fr
 import type { Rgb } from "./render";
 import type { Viewer } from "./useViewer";
 import { channelLabel } from "./format";
-import { fromDrag } from "./region";
+import { fromDrag, lineFromDrag, lineValid } from "./region";
 import type { Pt } from "./region";
-import type { RegionShape } from "../api/planes";
-import { dashOf, LABEL_PX, nearestMarker, sceneMarks } from "../scene/overlays";
+import type { LineShape, RegionShape } from "../api/planes";
+import { dashOf, LABEL_PX, lineMarks, nearestMarker, sceneMarks } from "../scene/overlays";
 import { SourcePopover } from "./SourceRow";
 import type { Mark } from "../scene/overlays";
 import { dragCentre, placement } from "../scene/view";
@@ -30,6 +30,8 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
   const cv = v.canvas;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [draft, setDraft] = useState<RegionShape | null>(null);
+  const [lineDraft, setLineDraft] = useState<LineShape | null>(null);
+  const extend = useRef(false); // Shift held when the line gesture started: the new point is one more vertex of the path
   const anchor = useRef<Pt | null>(null);
   const { plane, view } = v;
   const [gpuOff, setGpuOff] = useState(false); // set when the GPU renderer could not start or its context was lost
@@ -118,8 +120,10 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
 
   function commit() {
     if (draft) v.setRegion(draft);
+    if (lineDraft && lineValid(lineDraft)) v.setPath(lineDraft);
     anchor.current = null;
     setDraft(null);
+    setLineDraft(null);
   }
 
   function moveCursor(dx: number, dy: number) {
@@ -153,6 +157,7 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
     if (e.key === "Escape" && anchor.current) {
       anchor.current = null;
       setDraft(null);
+      setLineDraft(null);
       e.preventDefault();
     } else if (e.key === "Escape" && v.picked) {
       v.setPicked(null);
@@ -178,8 +183,14 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
 
   // every overlay, in scene order, through the overlay registry (the same marks a saved figure strokes)
   const marks = useMemo(
-    () => (v.scene && plane ? sceneMarks(v.scene, { plane, scale: shape.scale, interp: v.interp, reliability: v.reliability, draft, geometry: v.geometry }) : []),
-    [v.scene?.overlays, v.scene?.base.datasetId, plane, shape.scale, v.interp, v.reliability, draft, v.geometry], // eslint-disable-line react-hooks/exhaustive-deps
+    () => {
+      if (!v.scene || !plane) return [];
+      const layers = sceneMarks(v.scene, { plane, scale: shape.scale, interp: v.interp, reliability: v.reliability, draft, geometry: v.geometry });
+      // the position-velocity path and the line being drawn are pane gestures, not scene layers: on top of everything
+      const h = plane.head.height;
+      return [...layers, ...(v.path ? lineMarks(v.path.points, h, "region") : []), ...(lineDraft ? lineMarks(lineDraft.points, h, "draft") : [])];
+    },
+    [v.scene?.overlays, v.scene?.base.datasetId, plane, shape.scale, v.interp, v.reliability, draft, v.geometry, v.path, lineDraft], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const labels = useMemo(() => marks.filter((m): m is Extract<Mark, { type: "text" }> => m.type === "text"), [marks]);
   const sources = useMemo(() => marks.filter((m): m is Extract<Mark, { type: "marker" }> => m.type === "marker"), [marks]);
@@ -223,7 +234,10 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
               const p = pick(e);
               if (p) {
                 anchor.current = p;
-                setDraft(fromDrag(v.tool, p, p));
+                if (v.tool === "line") {
+                  extend.current = e.shiftKey;
+                  setLineDraft(lineFromDrag(p, p, v.path, e.shiftKey));
+                } else setDraft(fromDrag(v.tool, p, p));
               }
             }}
             onMouseMove={(e) => {
@@ -237,7 +251,8 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
               const p = pick(e);
               v.setHover(p);
               onProbe?.(p);
-              if (anchor.current && p && v.tool !== "pointer") setDraft(fromDrag(v.tool, anchor.current, p));
+              if (anchor.current && p && v.tool === "line") setLineDraft(lineFromDrag(anchor.current, p, v.path, extend.current));
+              else if (anchor.current && p && (v.tool === "rect" || v.tool === "circle")) setDraft(fromDrag(v.tool, anchor.current, p));
             }}
             onMouseUp={() => {
               panStart.current = null;

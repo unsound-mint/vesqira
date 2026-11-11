@@ -1,6 +1,6 @@
-import type { RegionShape } from "../api/planes";
+import type { LineShape, RegionShape } from "../api/planes";
 
-export type Tool = "pointer" | "rect" | "circle";
+export type Tool = "pointer" | "rect" | "circle" | "line";
 export type Pt = { x: number; y: number };
 
 /** A region from a drag between two image pixels (0-based, y from the bottom). Circles are centred on the first point. */
@@ -23,7 +23,43 @@ export function outline(r: RegionShape, height: number): { kind: "rect"; x: numb
   return { kind: "circle", cx: r.cx + 0.5, cy: height - 1 - r.cy + 0.5, r: r.r + 0.5 };
 }
 
-export const sameRegion = (a: RegionShape | null, b: RegionShape | null) => JSON.stringify(a) === JSON.stringify(b);
+export const sameRegion = (a: RegionShape | LineShape | null, b: RegionShape | LineShape | null) => JSON.stringify(a) === JSON.stringify(b);
+
+export const DEFAULT_WIDTH: Pick<LineShape, "width" | "widthUnit"> = { width: 1, widthUnit: "pixel" };
+
+/**
+ * A line from a drag between two image pixels. `extend` (Shift) adds the new point as one more vertex of the path being drawn
+ * instead of starting again, which is how a polyline is made. The width and its unit stay as they were set.
+ */
+export function lineFromDrag(a: Pt, b: Pt, keep?: LineShape | null, extend = false): LineShape {
+  const w = keep ? { width: keep.width, widthUnit: keep.widthUnit } : DEFAULT_WIDTH;
+  const points: [number, number][] = extend && keep && keep.points.length > 0 ? [...keep.points, [b.x, b.y]] : [[a.x, a.y], [b.x, b.y]];
+  return { shape: "line", points, ...w };
+}
+
+/** Length along the path in image pixels (the worker samples it at about one-pixel spacing). */
+export function pathLength(points: readonly (readonly [number, number])[]): number {
+  let n = 0;
+  for (let i = 1; i < points.length; i++) n += Math.hypot(points[i]![0] - points[i - 1]![0], points[i]![1] - points[i - 1]![1]);
+  return n;
+}
+
+/** True when the path has at least two different vertices, so it can be cut along. */
+export const lineValid = (l: LineShape | null): l is LineShape => l !== null && l.points.length >= 2 && pathLength(l.points) > 0;
+
+/** A path as picture coordinates (pixel edges, y from the top) with a chevron at its end so the direction of the offset axis is visible. */
+export function linePath(points: readonly (readonly [number, number])[], height: number): { path: number[]; head: number[] } {
+  const p = points.map(([x, y]) => [x + 0.5, height - 1 - y + 0.5] as const);
+  const path = p.flatMap(([x, y]) => [x, y]);
+  const n = p.length;
+  if (n < 2) return { path, head: [] };
+  const [x1, y1] = p[n - 1]!, [x0, y0] = p[n - 2]!;
+  const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+  const size = Math.max(1.5, Math.min(8, 0.1 * pathLength(points)));
+  const ux = (x1 - x0) / len, uy = (y1 - y0) / len;
+  const bx = x1 - ux * size, by = y1 - uy * size;
+  return { path, head: [bx - uy * size * 0.5, by + ux * size * 0.5, x1, y1, bx + uy * size * 0.5, by - ux * size * 0.5] };
+}
 
 /**
  * The pixels of a region inside a width x height grid, as one inclusive x-span per row (y from the bottom, 0-based), by the

@@ -330,6 +330,10 @@ func (s *Server) spectrum(w http.ResponseWriter, r *http.Request) {
 	case "circle":
 		names = []string{"cx", "cy", "r"}
 	default:
+		if shape == "line" {
+			fail(w, 400, "a line has no area: a spectrum is taken over a rect or a circle (a line is for a position-velocity diagram)")
+			return
+		}
 		fail(w, 400, "shape must be rect or circle")
 		return
 	}

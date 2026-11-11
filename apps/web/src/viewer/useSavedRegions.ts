@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { applyDs9, createSavedRegion, deleteSavedRegion, listSavedRegions, toShape, updateSavedRegion } from "../api/regions";
+import { applyDs9, createSavedRegion, deleteSavedRegion, isLine, listSavedRegions, savedShape, toLine, toShape, updateSavedRegion } from "../api/regions";
 import type { SavedRegion } from "../api/regions";
-import type { RegionShape } from "../api/planes";
+import type { LineShape, RegionShape } from "../api/planes";
 
-/** The saved, named regions of one dataset: list, select, save, rename, replace the shape, duplicate, delete and undo. */
-export function useSavedRegions(datasetId: number | null, setRegion: (r: RegionShape | null) => void) {
+/**
+ * The saved, named regions of one dataset: list, select, save, rename, replace the shape, duplicate, delete and undo.
+ * Selecting an area makes it the working region; selecting a line makes it the path of the position-velocity diagram.
+ */
+export function useSavedRegions(datasetId: number | null, setRegion: (r: RegionShape | null) => void, setPath: (l: LineShape | null) => void) {
   const [saved, setSaved] = useState<SavedRegion[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [hidden, setHidden] = useState<Set<number>>(new Set());
@@ -38,10 +41,11 @@ export function useSavedRegions(datasetId: number | null, setRegion: (r: RegionS
 
   const select = useCallback((r: SavedRegion | null) => {
     setSelectedId(r ? r.id : null);
-    setRegion(r ? toShape(r) : null);
-  }, [setRegion]);
+    if (r && isLine(r)) setPath(toLine(r));
+    else setRegion(r ? toShape(r) : null);
+  }, [setRegion, setPath]);
 
-  const save = (name: string, shape: RegionShape) => run(async () => {
+  const save = (name: string, shape: RegionShape | LineShape) => run(async () => {
     const r = await createSavedRegion(datasetId!, name, shape);
     setSaved((l) => [...l, r]);
     setSelectedId(r.id);
@@ -50,12 +54,12 @@ export function useSavedRegions(datasetId: number | null, setRegion: (r: RegionS
     const r = await updateSavedRegion(id, { name });
     setSaved((l) => l.map((x) => (x.id === id ? r : x)));
   });
-  const reshape = (id: number, shape: RegionShape) => run(async () => {
+  const reshape = (id: number, shape: RegionShape | LineShape) => run(async () => {
     const r = await updateSavedRegion(id, { shape });
     setSaved((l) => l.map((x) => (x.id === id ? r : x)));
   });
   const duplicate = (r: SavedRegion) => run(async () => {
-    const c = await createSavedRegion(datasetId!, `${r.name} copy`.slice(0, 80), toShape(r));
+    const c = await createSavedRegion(datasetId!, `${r.name} copy`.slice(0, 80), savedShape(r));
     setSaved((l) => [...l, c]);
     select(c);
   });
@@ -67,7 +71,7 @@ export function useSavedRegions(datasetId: number | null, setRegion: (r: RegionS
   });
   const undoDelete = () => run(async () => {
     if (!undo) return;
-    const r = await createSavedRegion(datasetId!, undo.name, toShape(undo));
+    const r = await createSavedRegion(datasetId!, undo.name, savedShape(undo));
     setSaved((l) => [...l, r]);
     setUndo(null);
   });

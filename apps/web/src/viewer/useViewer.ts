@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
 import { expandPreview, getAxial, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
-import type { AxialStats, Conversions, Converted, Coord, Plane, RegionShape, Spectrum, View } from "../api/planes";
+import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
 import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
 import { channelForKey } from "./geometry";
 import { useSavedRegions } from "./useSavedRegions";
 import { useOverlayGeometry } from "./useOverlayGeometry";
 import type { PickedSource } from "./SourceRow";
-import { toShape } from "../api/regions";
+import { savedShape } from "../api/regions";
 import type { ColormapId } from "./colormaps";
 import type { RangeMode, Stretch } from "./render";
 import { initialPane, orientationOf, paneReducer, regionsOf, ORIENTATION_ID, REGIONS_ID } from "../scene/scene";
-import type { PaneAction, ScenePoint } from "../scene/scene";
+import type { PaneAction, SceneRegion, ScenePoint } from "../scene/scene";
 
 export type Pixel = { x: number; y: number };
 
@@ -61,6 +61,8 @@ export function useViewer(dataset: Dataset | null) {
   const [converted, setConverted] = useState<{ key: string; r: Converted } | null>(null);
   const [convError, setConvError] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>("pointer");
+  // `path` (above, next to the saved regions) is what a position-velocity diagram is cut along: a pane gesture, kept until it is
+  // saved or replaced (a saved line is a region)
   const [spectrum, setSpectrum] = useState<Spectrum | null>(null);
   const [spectrumError, setSpectrumError] = useState<string | null>(null);
   const [spectrumLoading, setSpectrumLoading] = useState(false);
@@ -81,7 +83,8 @@ export function useViewer(dataset: Dataset | null) {
   const stretch = display.stretch as Stretch;
   const range = display.range as RangeMode;
   const customLimits = (display.limits as [number, number] | undefined) ?? null;
-  const region: RegionShape | null = regionsOf(scene)?.active ?? null; // keeps its identity across unrelated actions
+  const active = regionsOf(scene)?.active;
+  const region = (active && active.shape !== "line" ? active : null) as RegionShape | null; // an area; keeps its identity across unrelated actions (a line is never the working region: it has no area)
   const showLines = orientationOf(scene)?.visible ?? pane.keep.linesVisible;
   const zoom = scene?.view.zoom ?? 1; // 1 = the picture fitted to its pane
 
@@ -95,7 +98,8 @@ export function useViewer(dataset: Dataset | null) {
   const setShowLines = useCallback((on: boolean) => dispatch({ type: "updateOverlay", id: ORIENTATION_ID, patch: { visible: on } }), []);
   const setZoom = useCallback((z: number) => dispatch({ type: "setView", view: { zoom: z } }), []);
   const setCentre = useCallback((c: ScenePoint | null) => dispatch({ type: "setView", view: { centre: c } }), []);
-  const savedRegions = useSavedRegions(datasetId, setRegion);
+  const [path, setPath] = useState<LineShape | null>(null);
+  const savedRegions = useSavedRegions(datasetId, setRegion, setPath);
 
   // The declaration can change while the map is open (declared axial, or withdrawn); the scene's mapping and its own
   // orientation lines follow it.
@@ -107,7 +111,7 @@ export function useViewer(dataset: Dataset | null) {
   const { saved: savedList, hidden: hiddenSaved, selectedId: selectedSaved } = savedRegions;
   const sceneDataset = scene?.base.datasetId ?? null;
   useEffect(() => {
-    const saved = savedList.filter((r) => !hiddenSaved.has(r.id)).map((r) => ({ id: r.id, shape: toShape(r), ...(r.id === selectedSaved ? { selected: true } : {}) }));
+    const saved = savedList.filter((r) => !hiddenSaved.has(r.id)).map((r) => ({ id: r.id, shape: savedShape(r) as SceneRegion, ...(r.id === selectedSaved ? { selected: true } : {}) }));
     dispatch({ type: "updateOverlay", id: REGIONS_ID, patch: { saved } });
   }, [savedList, hiddenSaved, selectedSaved, sceneDataset]);
 
@@ -126,6 +130,7 @@ export function useViewer(dataset: Dataset | null) {
     setOffers(null);
     setConverted(null);
     setSpectrum(null);
+    setPath(null);
     setTool("pointer");
     if (datasetId === null) return;
     const ac = new AbortController();
@@ -383,7 +388,7 @@ export function useViewer(dataset: Dataset | null) {
     hover, setHover, mirror, setMirror, pinned, setPinned, picked, setPicked, probe, pixelValue, coord, coordError,
     conv, setConv, offers, convError, convertedNow: converted && converted.key === convKey ? converted.r : null,
     canvas, interp, reliability, axial, axialError, showLines, setShowLines, geometry, drawScale, setDrawScale,
-    tool, setTool, region, setRegion, savedRegions, spectrum, spectrumError, spectrumLoading,
+    tool, setTool, region, setRegion, path, setPath, savedRegions, spectrum, spectrumError, spectrumLoading,
     onChannelKey, retry: () => setRetry((n) => n + 1),
   };
 }

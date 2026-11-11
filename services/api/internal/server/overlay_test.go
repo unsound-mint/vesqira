@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,12 +22,19 @@ import (
 type countingPlanes struct {
 	inner PlaneService
 	n     atomic.Int64
+	mu    sync.Mutex
+	ops   map[string]int64 // when set, every request counted by its op
 }
 
 func (c *countingPlanes) Do(ctx context.Context, req map[string]any) (worker.Reply, error) {
 	if req["op"] == "overlay_geometry" {
 		c.n.Add(1)
 	}
+	c.mu.Lock()
+	if c.ops != nil {
+		c.ops[req["op"].(string)]++
+	}
+	c.mu.Unlock()
 	return c.inner.Do(ctx, req)
 }
 

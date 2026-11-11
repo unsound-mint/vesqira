@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,9 +24,17 @@ const (
 	maxCoord      = 1 << 20
 )
 
-// Shape is a rectangle (inclusive pixel bounds) or a circle (centre pixel and radius in pixels).
+// MaxLinePoints bounds the vertices of a line; MaxLineWidth bounds its width (pixels or arcsec).
+const (
+	MaxLinePoints = 64
+	MaxLineWidth  = 100000.0
+)
+
+// Shape is a rectangle (inclusive pixel bounds), a circle (centre pixel and radius in pixels) or a line (a path of whole-pixel
+// vertices with a width: the cut a position-velocity diagram is taken along; it has no area, so no spectrum or histogram
+// is ever taken of it).
 type Shape struct {
-	Shape string `json:"shape"` // rect | circle
+	Shape string `json:"shape"` // rect | circle | line
 	X0    int    `json:"x0"`
 	Y0    int    `json:"y0"`
 	X1    int    `json:"x1"`
@@ -32,6 +42,10 @@ type Shape struct {
 	CX    int    `json:"cx"`
 	CY    int    `json:"cy"`
 	R     int    `json:"r"`
+	// line: vertices [x, y] (0-based, y from the bottom), the width across the path, and its unit (pixel or arcsec)
+	Points    [][]int `json:"points,omitempty"`
+	Width     float64 `json:"width,omitempty"`
+	WidthUnit string  `json:"widthUnit,omitempty"`
 }
 
 type Region struct {
@@ -56,8 +70,33 @@ func (s Shape) normalised() (Shape, error) {
 			return s, fmt.Errorf("%w: a circle needs a centre pixel and a radius of 0 or more", ErrInvalid)
 		}
 		return Shape{Shape: "circle", CX: s.CX, CY: s.CY, R: s.R}, nil
+	case "line":
+		if len(s.Points) < 2 || len(s.Points) > MaxLinePoints {
+			return s, fmt.Errorf("%w: a line needs 2 to %d vertices", ErrInvalid, MaxLinePoints)
+		}
+		pts := make([][]int, len(s.Points))
+		moved := false
+		for i, p := range s.Points {
+			if len(p) != 2 || !in(p[0]) || !in(p[1]) {
+				return s, fmt.Errorf("%w: each vertex of a line is a pair of whole pixel numbers", ErrInvalid)
+			}
+			pts[i] = []int{p[0], p[1]}
+			if p[0] != s.Points[0][0] || p[1] != s.Points[0][1] {
+				moved = true
+			}
+		}
+		if !moved {
+			return s, fmt.Errorf("%w: a line needs two different vertices", ErrInvalid)
+		}
+		if s.WidthUnit != "pixel" && s.WidthUnit != "arcsec" {
+			return s, fmt.Errorf("%w: the width of a line is in pixel or arcsec", ErrInvalid)
+		}
+		if math.IsNaN(s.Width) || math.IsInf(s.Width, 0) || s.Width <= 0 || s.Width > MaxLineWidth {
+			return s, fmt.Errorf("%w: the width of a line is a positive number", ErrInvalid)
+		}
+		return Shape{Shape: "line", Points: pts, Width: s.Width, WidthUnit: s.WidthUnit}, nil
 	}
-	return s, fmt.Errorf("%w: the shape is a rect or a circle", ErrInvalid)
+	return s, fmt.Errorf("%w: the shape is a rect, a circle or a line", ErrInvalid)
 }
 
 // cleanName keeps a name short and free of control characters.
@@ -210,6 +249,16 @@ func DS9(rs []Region) string {
 			fmt.Fprintf(&b, "box(%s,%s,%d,%d,0) # text={%s}\n", half(r.Shape.X0+r.Shape.X1+2), half(r.Shape.Y0+r.Shape.Y1+2), w, h, label)
 		case "circle":
 			fmt.Fprintf(&b, "circle(%d,%d,%d) # text={%s}\n", r.Shape.CX+1, r.Shape.CY+1, r.Shape.R, label)
+		case "line":
+			// DS9's projection is a two-vertex line with a width in image pixels. A polyline, or a width in arcsec (DS9 would need
+			// the sky system to read it), has no exact image-coordinate DS9 shape: it is left as a comment, never approximated.
+			p := r.Shape.Points
+			wtxt := strconv.FormatFloat(r.Shape.Width, 'g', -1, 64)
+			if len(p) == 2 && r.Shape.WidthUnit == "pixel" {
+				fmt.Fprintf(&b, "# projection(%d,%d,%d,%d,%s) # text={%s}\n", p[0][0]+1, p[0][1]+1, p[1][0]+1, p[1][1]+1, wtxt, label)
+			} else {
+				fmt.Fprintf(&b, "# not written as a DS9 shape: line {%s} of %d vertices, width %s %s (DS9 has no polyline or angular width in image coordinates)\n", label, len(p), wtxt, r.Shape.WidthUnit)
+			}
 		}
 	}
 	return b.String()

@@ -4,7 +4,7 @@ import type { RegionShape } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { nominalPixels, sameRegion } from "./region";
-import { ds9Url, previewDs9, toShape } from "../api/regions";
+import { ds9Url, isLine, previewDs9, savedShape } from "../api/regions";
 import type { ImportItem, SavedRegion } from "../api/regions";
 import type { Tool } from "./region";
 import s from "./RegionPanel.module.css";
@@ -13,6 +13,7 @@ const TOOLS: { id: Tool; label: string }[] = [
   { id: "pointer", label: "Pointer" },
   { id: "rect", label: "Rectangle" },
   { id: "circle", label: "Circle" },
+  { id: "line", label: "Line" },
 ];
 
 const FIELDS = { rect: ["x0", "y0", "x1", "y1"], circle: ["cx", "cy", "r"] } as const;
@@ -58,12 +59,12 @@ export function RegionPanel({ v }: { v: Viewer }) {
     <div className={s.wrap}>
       <div role="group" aria-label="Region tool" className={s.tools}>
         {TOOLS.map((t) => (
-          <button key={t.id} type="button" className={s.tool} aria-pressed={v.tool === t.id} onClick={() => { v.setTool(t.id); if (t.id !== "pointer") setKind(t.id); }}>
+          <button key={t.id} type="button" className={s.tool} aria-pressed={v.tool === t.id} onClick={() => { v.setTool(t.id); if (t.id === "rect" || t.id === "circle") setKind(t.id); }}>
             {t.label}
           </button>
         ))}
       </div>
-      <p className={s.note}>{v.tool === "pointer" ? "Choose Rectangle or Circle, then drag on the image. A circle is drawn from its centre." : "Drag on the image. Esc cancels a drag."}</p>
+      <p className={s.note}>{v.tool === "pointer" ? "Choose Rectangle or Circle, then drag on the image. A circle is drawn from its centre. A Line is the cut for a position-velocity diagram: it has no area." : v.tool === "line" ? "Drag on the image from where the offset starts. Hold Shift while dragging to add another vertex to the path. Esc cancels a drag." : "Drag on the image. Esc cancels a drag."}</p>
       <form className={s.fields} onSubmit={(e) => { e.preventDefault(); apply(); }} aria-label="Region by pixel numbers">
         {FIELDS[kind].map((f) => (
           <Input key={f} label={LABEL[f]!} inputMode="numeric" value={text[f] ?? ""} onChange={(e) => setText({ ...text, [f]: e.target.value })} />
@@ -92,10 +93,16 @@ export function RegionPanel({ v }: { v: Viewer }) {
   );
 }
 
-const describe = (r: SavedRegion) =>
-  r.shape.shape === "rect"
+const describe = (r: SavedRegion) => {
+  if (r.shape.shape === "line") {
+    const pts = r.shape.points ?? [];
+    const a = pts[0], b = pts[pts.length - 1];
+    return `line of ${pts.length} vertices from ${a ? `${a[0]! + 1}, ${a[1]! + 1}` : "?"} to ${b ? `${b[0]! + 1}, ${b[1]! + 1}` : "?"}, width ${r.shape.width} ${r.shape.widthUnit === "arcsec" ? "arcsec" : r.shape.width === 1 ? "pixel" : "pixels"}`;
+  }
+  return r.shape.shape === "rect"
     ? `rectangle x ${r.shape.x0 + 1}–${r.shape.x1 + 1}, y ${r.shape.y0 + 1}–${r.shape.y1 + 1}`
     : `circle at ${r.shape.cx + 1}, ${r.shape.cy + 1}, radius ${r.shape.r}`;
+};
 
 /** Named regions kept with the dataset: save the current one, pick one to work with, rename, replace its shape, copy, delete. */
 function SavedList({ v }: { v: Viewer }) {
@@ -108,12 +115,15 @@ function SavedList({ v }: { v: Viewer }) {
       <form className={s.row} onSubmit={(e) => { e.preventDefault(); if (v.region && name.trim()) { void sr.save(name.trim(), v.region); setName(""); } }}>
         <Input label="Save the current region as" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
         <Button type="submit" disabled={!v.region || !name.trim()}>Save</Button>
+        <Button type="button" disabled={!v.path || !name.trim()} onClick={() => { void sr.save(name.trim(), v.path!); setName(""); }}>Save the line</Button>
       </form>
-      {sr.saved.length === 0 ? <p className={s.note}>{v.region ? "Give the region a name to keep it with this dataset." : "No saved regions yet. Draw one, then save it."}</p> : null}
+      {sr.saved.length === 0 ? <p className={s.note}>{v.region || v.path ? "Give it a name to keep it with this dataset." : "No saved regions yet. Draw one, then save it."}</p> : null}
       <ul className={s.list}>
         {sr.saved.map((r) => {
           const selected = sr.selectedId === r.id;
-          const changed = selected && v.region !== null && !sameRegion(v.region, toShape(r));
+          const line = isLine(r);
+          const current = line ? v.path : v.region;
+          const changed = selected && current !== null && !sameRegion(current, savedShape(r));
           return (
             <li key={r.id} className={selected ? s.selected : undefined}>
               {editing?.id === r.id ? (
@@ -131,7 +141,7 @@ function SavedList({ v }: { v: Viewer }) {
                   <span className={s.note}>{describe(r)}</span>
                   <div className={s.actions}>
                     <Button type="button" onClick={() => setEditing({ id: r.id, text: r.name })}>Rename</Button>
-                    <Button type="button" disabled={!changed} onClick={() => void sr.reshape(r.id, v.region!)}>Use current shape</Button>
+                    <Button type="button" disabled={!changed} onClick={() => void sr.reshape(r.id, current!)}>Use current {line ? "line" : "shape"}</Button>
                     <Button type="button" onClick={() => void sr.duplicate(r)}>Duplicate</Button>
                     <a className={s.link} href={ds9Url(r.datasetId, r.id)} download>DS9</a>
                     <Button type="button" onClick={() => void sr.remove(r)}>Delete</Button>
