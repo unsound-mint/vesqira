@@ -907,7 +907,7 @@ def declared_unit(req: dict):
 
 
 def catalog_op(op: str, path, req: dict) -> tuple[dict, bytes]:
-    """Point catalogs (ADR 0043): tables read by astropy, bounded, never executed. The reply's payload is a JSON document."""
+    """Point catalogs (ADR 0044): tables read by astropy, bounded, never executed. The reply's payload is a JSON document."""
     import catalog_table as ct
     if op not in ct.OPS or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")

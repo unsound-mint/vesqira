@@ -34,6 +34,10 @@ type relOrientParams struct {
 	KeepFraction *float64 `json:"keepFraction"`
 	Seed         *int64   `json:"seed"`
 	Bins         *int     `json:"bins"`
+	// Optional catalog row filter P/σP >= SnrMin, off unless both columns (declared value columns of the catalog) are named.
+	SnrColumn      *string  `json:"snrColumn"`
+	SnrSigmaColumn *string  `json:"snrSigmaColumn"`
+	SnrMin         *float64 `json:"snrMin"`
 }
 
 type relOrientReq struct {
@@ -78,14 +82,30 @@ func (p relOrientParams) worker(catalogMode bool) (map[string]any, string) {
 		if msg := whole("minPixels", p.MinPixels, 1, 1000000); msg != "" {
 			return nil, msg
 		}
+		named := func(v *string) bool { return v != nil && *v != "" }
+		if named(p.SnrColumn) != named(p.SnrSigmaColumn) || (p.SnrMin != nil && !named(p.SnrColumn)) {
+			return nil, "the P/σP filter needs both columns: choose the column holding P and the column holding σP"
+		}
+		if named(p.SnrColumn) {
+			if *p.SnrColumn == *p.SnrSigmaColumn {
+				return nil, "the P/σP filter needs two different columns"
+			}
+			if msg := num("snrMin", p.SnrMin, 0, 1e6); msg != "" {
+				return nil, msg
+			}
+			out["snr_column"], out["snr_sigma_column"] = *p.SnrColumn, *p.SnrSigmaColumn
+			if p.SnrMin != nil {
+				out["snr_min"] = *p.SnrMin
+			}
+		}
 		if p.RadiusArcmin != nil {
 			out["radius_arcmin"] = *p.RadiusArcmin
 		}
 		if p.MinPixels != nil {
 			out["min_pixels"] = *p.MinPixels
 		}
-	} else if p.RadiusArcmin != nil || p.MinPixels != nil {
-		return nil, "radiusArcmin and minPixels apply to a comparison with a catalog only"
+	} else if p.RadiusArcmin != nil || p.MinPixels != nil || p.SnrColumn != nil || p.SnrSigmaColumn != nil || p.SnrMin != nil {
+		return nil, "radiusArcmin, minPixels and the P/σP filter apply to a comparison with a catalog only"
 	}
 	if p.NShifts != nil {
 		out["n_shifts"] = *p.NShifts

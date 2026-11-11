@@ -34,6 +34,7 @@ MAX_SEGMENTS = 5000                   # star segments kept in the summary for th
 MAX_TABLE_ROWS = 1_000_000            # per-pixel rows written for a map comparison; larger maps keep the FITS of |Δψ| only
 MAX_DISK_WORK = 60_000_000            # pixels gathered per vectorised disk step (memory bound, not a result limit)
 BOOT_SAMPLES = 2000                   # bootstrap resamples (star_vgt_scale_analysis.py:82)
+SNR_DEFAULT = 3.0                     # P/σP >= 3: `keep = p / sp >= min_snr`, min_snr=3.0 (vgt_phase_vs_stars.py:83,87; main passes 3.0 for LMC, 0.0 otherwise, :141)
 SIGMA_FLOOR_DEG = 1.0                 # catalog weights 1/max(σ, 1°)² (star_vgt_scale_analysis.py:269)
 GAUSS_BEAM = math.pi / (4.0 * math.log(2.0))   # area of a Gaussian beam = GAUSS_BEAM * BMAJ * BMIN (1.1331)
 
@@ -365,6 +366,15 @@ def check_params(p: dict, mode: str) -> dict:
     if mode == "catalog":
         out["radius_arcmin"] = num("radius_arcmin", 10.0, 1e-3, 600.0)
         out["min_pixels"] = num("min_pixels", 5, 1, 10 ** 6, True)
+        # Optional row filter P/σP >= k, off unless both columns are chosen; the three keys are recorded only when it is on.
+        cols = [p.get(k) for k in ("snr_column", "snr_sigma_column")]
+        if any(c is not None and c != "" for c in cols) or p.get("snr_min") is not None:
+            if not all(isinstance(c, str) and c for c in cols):
+                raise Refusal("the P/σP filter needs both columns: choose the column holding P and the column holding σP")
+            if cols[0] == cols[1]:
+                raise Refusal("the P/σP filter needs two different columns")
+            out["snr_column"], out["snr_sigma_column"] = cols
+            out["snr_min"] = num("snr_min", SNR_DEFAULT, 0.0, 1e6)
     return out
 
 
@@ -379,6 +389,8 @@ REASONS = {
     "few": "too few pixels with a value in the disk",
     "no_weight": "every reliability weight in the disk is zero",
     "cancel": "the orientations in the disk cancel (no mean orientation)",
+    "snr_missing": "P or σP missing, unreadable, or σP not positive (the P/σP filter needs both)",
+    "snr": "P/σP below the chosen threshold",
 }
 
 DEFINITIONS = {
@@ -443,6 +455,13 @@ def op_catalog(args, params: dict) -> dict:
     if not decl["angle"]:
         raise Refusal("the catalog has no angle column declared: declare which column is the position angle, its unit and what it measures")
     q = decl["angle"]["quantity"]
+    reasons = dict(REASONS)
+    snr_filter = None
+    if "snr_column" in p:
+        for c in (p["snr_column"], p["snr_sigma_column"]):
+            if c not in decl["values"]:
+                raise Refusal(f"the P/σP filter: {c!r} is not one of the catalog's declared value columns")
+        reasons["snr"] = f"P/σP below {p['snr_min']:g}"
     rot = _undeclared(ori.b_rotation_deg, q, what="the catalog's angle: ")
     try:
         conv = ct.convert(L, decl)
@@ -454,6 +473,20 @@ def op_catalog(args, params: dict) -> dict:
     reason = np.full(n, "", dtype=object)
     reason[~np.isfinite(lon)] = "position"
     reason[(reason == "") & ~np.isfinite(ang)] = "angle"
+    if "snr_column" in p:
+        # The script drops these rows first, so they also leave the shifted pattern (vgt_phase_vs_stars.py:87-88).
+        # A missing or unreadable P or σP is its own reason and is never read as 0; σP <= 0 has no ratio.
+        pv = ct.number_field(L, p["snr_column"], "").values
+        sv = ct.number_field(L, p["snr_sigma_column"], "").values
+        todo = reason == ""
+        unusable = ~(np.isfinite(pv) & np.isfinite(sv) & (sv > 0))
+        reason[todo & unusable] = "snr_missing"
+        with np.errstate(all="ignore"):
+            ratio = pv / sv
+        reason[todo & ~unusable & ~(ratio >= p["snr_min"])] = "snr"
+        snr_filter = {"p_column": p["snr_column"], "sigma_column": p["snr_sigma_column"], "min": p["snr_min"],
+                      "rule": f"keep a row when P/σP >= {p['snr_min']:g} (the script's `keep = p / sp >= min_snr`, vgt_phase_vs_stars.py:87)",
+                      "excluded_below": int((reason == "snr").sum()), "excluded_missing": int((reason == "snr_missing").sum())}
     have = reason == ""
     x = np.full(n, np.nan)
     y = np.full(n, np.nan)
@@ -490,9 +523,9 @@ def op_catalog(args, params: dict) -> dict:
     used = reason == ""
     d = np.where(used, headless_deg(v - star_pix), np.nan)
     n_real = int(used.sum())
-    counts = {key: int((reason == key).sum()) for key in REASONS}
+    counts = {key: int((reason == key).sum()) for key in reasons}
     if n_real == 0:
-        why = "; ".join(f"{REASONS[kk]}: {cnt}" for kk, cnt in counts.items() if cnt)
+        why = "; ".join(f"{reasons[kk]}: {cnt}" for kk, cnt in counts.items() if cnt)
         raise Refusal(f"no source could be compared ({why or 'the catalog is empty'})")
     am = alignment_measure(d[used])
     wts = None
@@ -531,13 +564,14 @@ def op_catalog(args, params: dict) -> dict:
         for i in range(n):
             yield [i + 1, _f(lon[i]), _f(lat[i]), frame_txt, _f(lon_m[i]), _f(lat_m[i]), _f(x[i] + 1, 3), _f(y[i] + 1, 3),
                    _f(star_sky[i], 3), _f(map_sky[i], 3), _f(dsky[i], 3), _f(absd[i], 3), _f(cos2(d[i]) if used[i] else None),
-                   int(npx[i]), _f(R[i], 4), _f(None if wts is None else wts[i], 4), 1 if used[i] else 0, REASONS.get(reason[i], "")]
+                   int(npx[i]), _f(R[i], 4), _f(None if wts is None else wts[i], 4), 1 if used[i] else 0, reasons.get(reason[i], "")]
     write_csv(args.out, header, rows())
     seg_idx = np.flatnonzero(inmap)[:MAX_SEGMENTS]
     summary = {
         "label": LABEL, "mode": "map_catalog", "definitions": DEFINITIONS, "parameters": p,
         "map": {**mfacts, "nx": nx, "ny": ny, "pixel_scale_arcmin": pixel_scale_deg(w2) * 60.0},
         "catalog": {"frame": frame_txt, "quantity": q, "rotation_to_b_deg": rot, "rows": n, "uncertainty_column": decl["angle"]["sigmaColumn"]},
+        "snr_filter": snr_filter,
         "conversion": f"Both sides as B-field orientation. The catalog position angle (east of north in {frame_txt}) is rotated by {rot:g}° for its quantity, "
                       f"carried into the map's celestial frame ({mfacts['celestial_frame']}) at each position and then into the map's pixel frame with astropy; "
                       "the map is rotated by its quantity and, if declared on the sky, carried into its pixel frame. Δψ is taken in the map's pixel frame; "
@@ -547,7 +581,7 @@ def op_catalog(args, params: dict) -> dict:
                     f"{p['min_pixels']} usable pixels, is not used. NaN pixels are left out.",
         "weighting": {"disk": "reliability-weighted: each pixel by the declared reliability map (a NaN reliability leaves the pixel out)" if mfacts["reliability"]
                       else "unweighted: no reliability map is declared for the map", "sources": weighting_star},
-        "counts": {"rows": n, "used": n_real, "excluded": {REASONS[kk]: cnt for kk, cnt in counts.items() if cnt},
+        "counts": {"rows": n, "used": n_real, "excluded": {reasons[kk]: cnt for kk, cnt in counts.items() if cnt},
                    "share_used": n_real / n if n else None, "disks_truncated_by_search_box": int((trunc & used).sum())},
         "am": am, "am_weighted": am_w if wts is not None else None,
         "median_abs_dpsi_deg": float(np.median(absd[used])),

@@ -4276,6 +4276,12 @@ export interface components {
             seed?: number;
             /** @description Equal-width bins of |Δψ| over [0, 90] degrees (default 9) */
             bins?: number;
+            /** @description Map vs catalog only: the declared value column holding P, for the optional filter P/σP ≥ snrMin; off unless both columns are named */
+            snrColumn?: string;
+            /** @description Map vs catalog only: the declared value column holding σP */
+            snrSigmaColumn?: string;
+            /** @description The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason */
+            snrMin?: number;
         };
         RelativeOrientationRequest: {
             /**
@@ -4326,7 +4332,7 @@ export interface components {
                 [key: string]: string;
             };
             parameters: {
-                [key: string]: number;
+                [key: string]: number | string;
             };
             /** @description The map's declaration as used (unit, frame, quantity, rotation to B, celestial frame, reliability), its size nx, ny and pixel scale */
             map?: {
@@ -4392,6 +4398,10 @@ export interface components {
                 reason?: string | null;
             };
             policy: string;
+            /** @description The P/σP filter as applied (columns, k, rule, rows excluded below k and for missing values); null when it was off */
+            snr_filter?: {
+                [key: string]: unknown;
+            } | null;
         };
         RelativeOrientationResult: {
             dataset: components["schemas"]["Dataset"];

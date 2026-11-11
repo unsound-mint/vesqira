@@ -77,6 +77,23 @@ describe("relative orientation", () => {
     expect(screen.getByLabelText("Shifts in the null")).toHaveValue("1000");
   });
 
+  it("offers the P/σP filter off by default, proposes the column pair, and sends it only when chosen", async () => {
+    const calls = mockFetch({ "/api/analysis/relative-orientation": () => ({ status: 201, body: { dataset: cat(9, "r.csv"), summary: catalogSummary } }) });
+    const psi = map(1, "psi.fits");
+    const stars = cat(2, "stars.csv", decl({ values: ["Pcor", "sPcor", "P(%)", "sP(%)", "dist"] }));
+    render(<RelativeOrientationPanel dataset={psi} datasets={[psi, stars]} onCreated={() => {}} />);
+    await userEvent.selectOptions(screen.getByLabelText("Compare orientation with"), "2");
+    expect(screen.getByLabelText("Filter rows: column P")).toHaveValue("");
+    expect(screen.getByText(/Proposal, from the column names only: P = P\(%\), σP = sP\(%\)/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Filter rows: column P"), "Pcor");
+    expect(screen.getByRole("button", { name: "Compute the alignment measure" })).toBeDisabled();   // half a filter is refused, not guessed
+    await userEvent.click(screen.getByRole("button", { name: "Use this proposal" }));
+    expect(screen.getByLabelText("Keep rows with P/σP ≥")).toHaveValue("3");
+    await userEvent.click(screen.getByRole("button", { name: "Compute the alignment measure" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(JSON.parse(String(calls[0]!.init!.body)).params).toMatchObject({ snrColumn: "P(%)", snrSigmaColumn: "sP(%)", snrMin: 3 });
+  });
+
   it("from a catalog it offers maps, and puts the map first in the request; a refusal shows its reasons", async () => {
     const calls = mockFetch({ "/api/analysis/relative-orientation": () => ({ status: 409, body: { error: "the maps are not known to share a grid", reasons: ["different CRVAL1"] } }) });
     const stars = cat(2, "stars.csv");

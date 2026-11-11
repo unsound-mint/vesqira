@@ -10,7 +10,22 @@ import s from "./RelativeOrientation.module.css";
 /* Relative orientation (ADR 0047). Results are agreement statistics between two tracers: worded neutrally, never as a
    validation or a success of either side (AGENTS.md invariant 9). */
 
-const DEFAULTS = { radiusArcmin: "10", minPixels: "5", nShiftsCatalog: "3000", nShiftsMaps: "1000", minShiftDeg: "1", keepFraction: "0.9", seed: "20261020", bins: "9" };
+const DEFAULTS = {
+  snrMin: "3", radiusArcmin: "10", minPixels: "5", nShiftsCatalog: "3000", nShiftsMaps: "1000", minShiftDeg: "1", keepFraction: "0.9", seed: "20261020", bins: "9" };
+
+const norm = (c: string) => c.toLowerCase().replace(/\s+/g, "");
+const SNR_PAIRS = [["P(%)", "sP(%)"], ["Pcor", "sPcor"]];
+
+/** A proposal for the P/σP filter from the catalog's declared value columns, or null: P(%) with sP(%), else Pcor with sPcor. The person
+    still chooses; nothing is applied from a name match alone. */
+export function proposeSnrColumns(values: string[]): { p: string; sigma: string } | null {
+  for (const [p, sg] of SNR_PAIRS) {
+    const a = values.find((c) => norm(c) === norm(p!));
+    const b = values.find((c) => norm(c) === norm(sg!));
+    if (a && b) return { p: a, sigma: b };
+  }
+  return null;
+}
 
 /** What is still missing before a dataset can enter a comparison, or null when it can. */
 export function notReady(d: Dataset): string | null {
@@ -50,7 +65,14 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   const set = (k: string) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
   // every field must be a number: an empty or unreadable one is never sent as a silent default
   const fields: (keyof typeof DEFAULTS)[] = [...(catalogMode ? (["radiusArcmin", "minPixels", "nShiftsCatalog"] as const) : (["nShiftsMaps"] as const)), "minShiftDeg", "keepFraction", "seed", "bins"];
-  const unreadable = fields.filter((k) => val(k).trim() === "" || !Number.isFinite(Number(val(k))));
+  const catalogDs = fromCatalog ? dataset : chosen;
+  const valueCols = catalogMode && catalogDs && isCatalog(catalogDs) ? (catalogDs.catalogDeclaration?.values ?? []) : [];
+  const proposal = proposeSnrColumns(valueCols);
+  const snrP = v.snrP ?? "";
+  const snrSigma = v.snrSigma ?? "";
+  const snrOn = catalogMode && snrP !== "" && snrSigma !== "";
+  const snrHalf = catalogMode && (snrP === "") !== (snrSigma === "");
+  const unreadable = [...fields, ...(snrOn ? (["snrMin"] as const) : [])].filter((k) => val(k).trim() === "" || !Number.isFinite(Number(val(k))));
 
   if (why) return <p className={s.note}>To compare this {fromCatalog ? "catalog" : "map"} with another orientation tracer, declare it first: {why}.</p>;
 
@@ -61,6 +83,7 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
     const n = (k: keyof typeof DEFAULTS) => Number(val(k));
     const params: RelOrientParams = { nShifts: n(catalogMode ? "nShiftsCatalog" : "nShiftsMaps"), minShiftDeg: n("minShiftDeg"), keepFraction: n("keepFraction"), seed: n("seed"), bins: n("bins") };
     if (catalogMode) Object.assign(params, { radiusArcmin: n("radiusArcmin"), minPixels: n("minPixels") });
+    if (snrOn) Object.assign(params, { snrColumn: snrP, snrSigmaColumn: snrSigma, snrMin: n("snrMin") });
     const map = fromCatalog ? chosen : dataset;
     const otherDs = fromCatalog ? dataset : chosen;
     const ctl = new AbortController();
@@ -101,8 +124,30 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
             <Input label="Seed" value={val("seed")} onChange={set("seed")} inputMode="numeric" />
             <Input label="Histogram bins (equal width)" value={val("bins")} onChange={set("bins")} inputMode="numeric" />
           </div>
+          {catalogMode ? (
+            <fieldset className={s.grid} aria-label="Optional row filter on P/σP">
+              <Select label="Filter rows: column P" value={snrP} onChange={set("snrP")} disabled={valueCols.length === 0}>
+                <option value="">Off: use every row</option>
+                {valueCols.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+              <Select label="Filter rows: column σP" value={snrSigma} onChange={set("snrSigma")} disabled={valueCols.length === 0}>
+                <option value="">Off: use every row</option>
+                {valueCols.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+              {snrOn ? <Input label="Keep rows with P/σP ≥" value={val("snrMin")} onChange={set("snrMin")} inputMode="decimal" /> : null}
+            </fieldset>
+          ) : null}
+          {catalogMode && valueCols.length === 0 ? <p className={s.note}>No value columns are declared for the catalog, so there is nothing to filter on; declare the P and σP columns as values to enable the P/σP filter.</p> : null}
+          {catalogMode && proposal && !(snrP === proposal.p && snrSigma === proposal.sigma) ? (
+            <p className={s.note}>
+              Proposal, from the column names only: P = {proposal.p}, σP = {proposal.sigma}.{" "}
+              <Button onClick={() => setV({ ...v, snrP: proposal.p, snrSigma: proposal.sigma })}>Use this proposal</Button>
+            </p>
+          ) : null}
+          {snrOn ? <p className={s.note}>Rows with P/σP below {val("snrMin")} are left out and listed in the table with that reason; rows with P or σP missing are left out with their own reason. The default is the threshold your comparison script uses (3); the filter is recorded with the result.</p> : null}
+          {snrHalf ? <p className={s.err}>The P/σP filter needs both columns: choose P and σP, or set both to Off.</p> : null}
           {unreadable.length ? <p className={s.err}>Every parameter needs a number; {unreadable.length === 1 ? "one is" : `${unreadable.length} are`} empty or not a number.</p> : null}
-          <Button variant="primary" disabled={busy || unreadable.length > 0} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
+          <Button variant="primary" disabled={busy || unreadable.length > 0 || snrHalf} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
           {busy ? <Button onClick={() => abort.current?.abort()}>Cancel</Button> : null}
           <p className={s.note}>The seed is recorded with the result: the same inputs and seed give the same numbers. A null of thousands of shifts can take minutes on a large map.</p>
         </>
@@ -177,6 +222,7 @@ export function RelOrientView({ s: r, names, tableUrl }: { s: RelOrientSummary; 
           {Object.entries(r.definitions ?? {}).map(([k, d]) => (<Fragment key={k}><dt>{k.replace(/_/g, " ")}</dt><dd>{d}</dd></Fragment>))}
           <dt>Parameters</dt>
           <dd className="mono">{Object.entries(p).map(([k, x]) => `${k}=${x}`).join(" ")}</dd>
+          {r.snr_filter ? (<><dt>P/σP filter</dt><dd>{String(r.snr_filter.rule)}; columns {String(r.snr_filter.p_column)} and {String(r.snr_filter.sigma_column)}; {String(r.snr_filter.excluded_below)} rows below, {String(r.snr_filter.excluded_missing)} with P or σP missing.</dd></>) : null}
           <dt>Conversion</dt>
           <dd>{r.conversion}</dd>
           {r.sampling ? (<><dt>Sampling</dt><dd>{r.sampling}</dd></>) : null}

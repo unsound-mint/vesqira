@@ -4540,6 +4540,20 @@
      "minimum": 2,
      "maximum": 90,
      "description": "Equal-width bins of |Δψ| over [0, 90] degrees (default 9)"
+    },
+    "snrColumn": {
+     "type": "string",
+     "description": "Map vs catalog only: the declared value column holding P, for the optional filter P/σP ≥ snrMin; off unless both columns are named"
+    },
+    "snrSigmaColumn": {
+     "type": "string",
+     "description": "Map vs catalog only: the declared value column holding σP"
+    },
+    "snrMin": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1000000,
+     "description": "The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason"
     }
    }
   },
@@ -4714,7 +4728,14 @@
     "parameters": {
      "type": "object",
      "additionalProperties": {
-      "type": "number"
+      "oneOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "string"
+       }
+      ]
      }
     },
     "map": {
@@ -4924,6 +4945,12 @@
     },
     "policy": {
      "type": "string"
+    },
+    "snr_filter": {
+     "type": "object",
+     "nullable": true,
+     "additionalProperties": true,
+     "description": "The P/σP filter as applied (columns, k, rule, rows excluded below k and for missing values); null when it was off"
     }
    }
   },

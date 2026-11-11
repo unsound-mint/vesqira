@@ -318,6 +318,68 @@ class CatalogMode(Base):
         self.assertEqual(len(lines), 5)
         self.assertTrue(lines[1].split(",")[-2] == "1" and lines[2].endswith(ro.REASONS["edge"]))
 
+    def snr_catalog(self, p, sp):
+        """The aligned catalog of build() with P and σP columns added (empty cell = missing); returns (map, catalog, declaration)."""
+        m, c, w, phi = self.build(lambda w, xs, ys, phi, r: self.b_at(w, xs, ys, phi), nstar=len(p))
+        lines = Path(c).read_text().splitlines()
+        out = [lines[0] + ",P,sP"] + [f"{ln},{'' if np.isnan(p[i]) else repr(float(p[i]))},{'' if np.isnan(sp[i]) else repr(float(sp[i]))}" for i, ln in enumerate(lines[1:])]
+        Path(c).write_text("\n".join(out) + "\n")
+        return m, c, {**decl(), "values": ["P", "sP"]}
+
+    def run_snr(self, m, c, d, params):
+        a = args(input=m, catalog=c, declaration=json.dumps(d), out=self.p("out.csv"), axial_frame="pixel")
+        return ro.op_catalog(a, {"radius_arcmin": 2.0, "n_shifts": 0, **params})["summary"]
+
+    def test_snr_filter_counts_match_a_direct_computation_and_missing_values_are_their_own_reason(self):
+        r = np.random.default_rng(7)
+        n = 60
+        p, sp = r.uniform(0.1, 2.0, n), r.uniform(0.1, 0.5, n)
+        p[3], sp[8], p[11], sp[20] = np.nan, np.nan, np.nan, 0.0         # missing P, missing sP, missing P, sP not positive
+        m, c, d = self.snr_catalog(p, sp)
+        base = self.run_snr(m, c, d, {})
+        s = self.run_snr(m, c, d, {"snr_column": "P", "snr_sigma_column": "sP", "snr_min": 3.0})
+        bad = np.isnan(p) | np.isnan(sp) | ~(sp > 0)
+        with np.errstate(all="ignore"):
+            low = ~bad & ~(p / sp >= 3.0)
+        ex = s["counts"]["excluded"]
+        self.assertEqual(ex["P/σP below 3"], int(low.sum()))
+        self.assertEqual(ex[ro.REASONS["snr_missing"]], int(bad.sum()))
+        self.assertEqual(int(bad.sum()), 4)
+        self.assertEqual(s["counts"]["used"] + sum(ex.values()), n)                      # every row is used or counted with a reason
+        self.assertEqual(s["snr_filter"]["excluded_below"], int(low.sum()))
+        lines = Path(self.p("out.csv")).read_text().splitlines()
+        self.assertEqual(len(lines), n + 1)                           # every row stays in the table
+        self.assertEqual(sum(1 for ln in lines[1:] if ln.endswith("P/σP below 3")), int(low.sum()))
+        # a ratio exactly at k is kept (>=, as the script)
+        p2, sp2 = np.full(n, 3.0), np.full(n, 1.0)
+        m, c, d = self.snr_catalog(p2, sp2)
+        self.assertNotIn("P/σP below 3", self.run_snr(m, c, d, {"snr_column": "P", "snr_sigma_column": "sP", "snr_min": 3.0})["counts"]["excluded"])
+        with self.assertRaisesRegex(ro.Refusal, "P/σP below 3.01: 60"):
+            self.run_snr(m, c, d, {"snr_column": "P", "snr_sigma_column": "sP", "snr_min": 3.01})
+
+    def test_snr_filter_off_leaves_numbers_and_parameters_unchanged_and_on_is_recorded(self):
+        r = np.random.default_rng(8)
+        n = 50
+        p, sp = r.uniform(0.1, 2.0, n), r.uniform(0.1, 0.5, n)
+        m, c, d = self.snr_catalog(p, sp)
+        off = self.run_snr(m, c, d, {})
+        on = self.run_snr(m, c, d, {"snr_column": "P", "snr_sigma_column": "sP"})            # default threshold: the script's 3
+        m0, c0, w, phi = self.build(lambda w, xs, ys, phi, rr: self.b_at(w, xs, ys, phi), nstar=n)
+        plain = self.run_op(m0, c0)
+        self.assertEqual((off["am"], off["counts"], off["parameters"]), (plain["am"], plain["counts"], plain["parameters"]))
+        self.assertIsNone(off["snr_filter"])
+        self.assertNotIn("snr_column", off["parameters"])
+        self.assertEqual((on["parameters"]["snr_column"], on["parameters"]["snr_sigma_column"], on["parameters"]["snr_min"]), ("P", "sP", 3.0))
+        self.assertEqual(on["snr_filter"]["min"], 3.0)
+
+    def test_snr_filter_parameters_are_checked(self):
+        for bad in ({"snr_column": "P"}, {"snr_min": 3.0}, {"snr_column": "P", "snr_sigma_column": "P"}, {"snr_column": "P", "snr_sigma_column": "sP", "snr_min": -1}):
+            with self.assertRaises(ro.Refusal):
+                ro.check_params(bad, "catalog")
+        with self.assertRaises(ro.Refusal):
+            m, c, d = self.snr_catalog(np.ones(10), np.ones(10))
+            self.run_snr(m, c, {**d, "values": ["P"]}, {"snr_column": "P", "snr_sigma_column": "sP"})      # sP is not a declared value column
+
     def test_sigma_weights_follow_the_owners_floor(self):
         m, c, w, phi = self.build(lambda w, xs, ys, phi, r: self.b_at(w, xs, ys, phi), sigma=np.full(80, 0.5))
         s = self.run_op(m, c, sigma=True)
