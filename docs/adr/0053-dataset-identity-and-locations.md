@@ -48,7 +48,7 @@ Availability (the "missing" / "changed on disk" flags) treats a registered file 
 
 **Lifecycle (ADR 0041).** Locations go with their dataset (`deleteSteps`), the impact preview lists the extra locations ("forgotten; the files are never deleted"), and files are never deleted. No allowlist entry was needed.
 
-**Schema.** Version 15 adds `dataset_locations` (a primary row per existing dataset, no fingerprint: none was computed) and `figures.identity`. Version 14 is a no-op placeholder reserved for the transfers branch so the numbering has no gap; replace it with that branch's migration on merge.
+**Schema.** Version 15 adds `dataset_locations` (a primary row per existing dataset, no fingerprint: none was computed) and `figures.identity`. Version 14 is the transfer queue (ADR 0051).
 
 ## Alternatives
 
@@ -65,7 +65,7 @@ Availability (the "missing" / "changed on disk" flags) treats a registered file 
 - A file on a host gets only a sampled fingerprint at registration; a full hash is on request, through the host's connection and its request timeout, and fails honestly when too slow.
 - Datasets registered before this have no fingerprint until one is computed (on request, when a location is added, or when a figure is saved); the UI says "not computed".
 - Reading from a copy on this computer makes a pairing with a file on the registered file's host (an overlay, a reliability map) refuse as "another host", as it would for any two machines.
-- Not built: "newer result" notices for files on hosts, locations on a host through the web form (the API takes `hostId`), `downloaded` locations (the transfers branch calls `AddLocation` with that kind), reading a verified location in analysis jobs, relative orientation and catalog rows, and offering the same-content choice for project scans and host registrations.
+- Not built: "newer result" notices for files on hosts, locations on a host through the web form (the API takes `hostId`), reading a verified location in analysis jobs, relative orientation and catalog rows, and offering the same-content choice for project scans and host registrations.
 
 ## Validation
 
@@ -74,3 +74,5 @@ Availability (the "missing" / "changed on disk" flags) treats a registered file 
 ## Rollback / Migration
 
 Schema 15 is additive (a table and a column); an older program refuses a newer catalog, and the backup taken before the upgrade is the way back. Removing the feature means dropping `dataset_locations` and `figures.identity`; datasets, figures and files do not depend on them.
+
+**Transfers (ADR 0051).** When a download finishes `verified` and its source is the registered file or a verified location of a dataset on that host, whose recorded full SHA-256 equals the one compared, the copy becomes a `downloaded` location linked `verified` (full hash stamped from the transfer). A source with no full hash recorded, or a different one, links nothing: the host's file may have changed since registration. Registering a verified download whose bytes a dataset already holds answers 409 `same_content` as local registration does (`asNew` keeps it separate).

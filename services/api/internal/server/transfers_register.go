@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -23,6 +24,17 @@ func (s *Server) registerTransfer(w http.ResponseWriter, r *http.Request) {
 	t, ok := s.transferFrom(w, r)
 	if !ok {
 		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+	var in struct {
+		// AsNew registers the copy as its own dataset although a dataset already holds the same (or probably the same) bytes.
+		AsNew bool `json:"asNew"`
+	}
+	if body, _ := io.ReadAll(r.Body); len(body) > 0 {
+		if err := json.Unmarshal(body, &in); err != nil {
+			fail(w, 400, "invalid request body")
+			return
+		}
 	}
 	switch {
 	case t.Direction != hosts.Download || t.Kind != transfers.KindFile:
@@ -52,6 +64,12 @@ func (s *Server) registerTransfer(w http.ResponseWriter, r *http.Request) {
 	if err != nil || sum != t.Verif.DestSHA256 || n != t.Verif.Bytes {
 		fail(w, 409, "the file on this computer changed since it was verified; copy it again before registering it")
 		return
+	}
+	if !in.AsNew && !s.knownFile(real) {
+		if m := s.sameContentVerified(r.Context(), real, sum); len(m) > 0 {
+			failCode(w, 409, "same_content", "A dataset already holds this content. Add the file as another location of it, or register it as a separate dataset.", map[string]any{"matches": m})
+			return
+		}
 	}
 	d, code, msg := s.registerPath(r.Context(), real)
 	if code != 0 {

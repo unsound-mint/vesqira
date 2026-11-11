@@ -640,6 +640,9 @@ func (s *Server) settle(t transfers.Transfer, h hosts.Host, out outcome) {
 		case out.state == transfers.StateDone && out.verif.Status == transfers.Unverified:
 			s.notifyTransfer(t, h, notify.KindTransferFailed, "arrived but NOT verified: "+tName(t), out.verif.Note)
 		case out.state == transfers.StateDone:
+			if done, err := s.Transfers.Get(t.ID); err == nil { // the kind and the final name are settled by the attempt
+				s.linkDownloadedLocation(context.Background(), done, out.verif)
+			}
 			s.notifyTransfer(t, h, notify.KindTransferDone, "finished and verified: "+tName(t), out.detail)
 		}
 	}
