@@ -1,4 +1,4 @@
-# ADR 0039: Archive and delete catalog entries, with an impact preview
+# ADR 0041: Archive and delete catalog entries, with an impact preview
 
 Status: **proposed; implemented, awaiting owner review.** Roadmap Stage 5, Q145.
 

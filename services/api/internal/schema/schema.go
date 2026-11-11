@@ -17,7 +17,7 @@ import (
 // (publish_comments.quote).
 // Version 4: a person may declare the unit of a file that has no BUNIT (dataset_units; ADR 0038).
 // Version 5: a job remembers that its run record on the host is still owed (jobs.record_owed; ADR 0039).
-// Version 6: entries may be archived (archived_entries; ADR 0039).
+// Version 6: entries may be archived (archived_entries; ADR 0041).
 const Version = 6
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
@@ -63,6 +63,11 @@ func EnsureArchive(db *sql.DB) error {
 // ArchivedExpr is the SQL that tells whether the row of a table (idCol such as "datasets.id") is archived, for a select
 // list. kind is one of "dataset", "run", "figure", "board".
 func ArchivedExpr(kind, idCol string) string {
+	switch kind {
+	case "dataset", "run", "figure", "board":
+	default: // kind is spliced into SQL text: only the four constants may get there
+		panic("schema.ArchivedExpr: unknown kind " + kind)
+	}
 	return `EXISTS(SELECT 1 FROM archived_entries WHERE kind='` + kind + `' AND entity_id=` + idCol + `)`
 }
 

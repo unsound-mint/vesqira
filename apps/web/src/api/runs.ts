@@ -32,7 +32,7 @@ export type Run = {
   jobId: number | null;
   /** The run that job was drafted from with "run again with...", or null. */
   parentRunId: number | null;
-  /** Archived runs are hidden from lists by default but still resolve (ADR 0039). */
+  /** Archived runs are hidden from lists by default but still resolve (ADR 0041). */
   archived?: boolean;
 };
 

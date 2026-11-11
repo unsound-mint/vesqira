@@ -12,7 +12,7 @@ export type EntryChange = "archived" | "restored" | "deleted";
 /**
  * Archive (instant, undone with Restore) and Delete… (opens the impact preview) for one catalog entry. Archiving only
  * hides the entry from lists; what refers to it keeps working. Deleting forgets the entry in the catalog and never
- * removes the file it points to (ADR 0039).
+ * removes the file it points to (ADR 0041).
  */
 export function EntryActions({ kind, id, name, archived, onChanged }: { kind: EntryKind; id: number; name: string; archived: boolean; onChanged: (change: EntryChange) => void | Promise<void> }) {
   const [confirming, setConfirming] = useState(false);

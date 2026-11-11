@@ -110,7 +110,7 @@ type Figure struct {
 	Width      int             `json:"width"`
 	Height     int             `json:"height"`
 	Provenance json.RawMessage `json:"provenance"`
-	// Archived figures are hidden from the lists but still resolve by id, on boards, in reports and in reviews (ADR 0039).
+	// Archived figures are hidden from the lists but still resolve by id, on boards, in reports and in reviews (ADR 0041).
 	Archived bool `json:"archived"`
 }
 
@@ -302,7 +302,7 @@ type Board struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	Items     []Item    `json:"items"`
-	// Archived boards are hidden from the lists but still open by id (ADR 0039).
+	// Archived boards are hidden from the lists but still open by id (ADR 0041).
 	Archived bool `json:"archived"`
 }
 

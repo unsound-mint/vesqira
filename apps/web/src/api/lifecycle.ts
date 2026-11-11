@@ -1,6 +1,6 @@
 import { ApiError } from "./catalog";
 
-/** What can be archived or deleted from the catalog (ADR 0039). The names are the route segments. */
+/** What can be archived or deleted from the catalog (ADR 0041). The names are the route segments. */
 export type EntryKind = "datasets" | "runs" | "figures" | "boards";
 
 export type ImpactItem = { id: number; label: string };

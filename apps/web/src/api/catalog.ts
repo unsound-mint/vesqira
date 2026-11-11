@@ -6,7 +6,7 @@ export type Status = Schemas["Axis"]["ctype_status"];
 export type Axis = Schemas["Axis"];
 export type Header = Schemas["FitsHeader"];
 export type Interpretation = Schemas["Interpretation"];
-/** `archived` is set by the server on every dataset it sends (ADR 0039); the generated type predates it. */
+/** `archived` is set by the server on every dataset it sends (ADR 0041); the generated type predates it. */
 export type Dataset = Schemas["Dataset"] & { archived?: boolean };
 
 export class ApiError extends Error {

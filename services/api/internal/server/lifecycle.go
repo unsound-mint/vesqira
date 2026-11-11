@@ -13,7 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/lifecycle"
 )
 
-// Archive, restore and delete for datasets, runs, figures and boards (ADR 0039). Deleting an entry forgets it in the
+// Archive, restore and delete for datasets, runs, figures and boards (ADR 0041). Deleting an entry forgets it in the
 // catalog; it never removes a source file. Bytes Vesqira wrote itself (a managed copy, an analysis result) are removed
 // only when the request says so separately.
 

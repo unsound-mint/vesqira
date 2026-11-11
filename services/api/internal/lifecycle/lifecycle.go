@@ -1,5 +1,5 @@
 // Package lifecycle archives and deletes catalog entries (datasets, runs, figures, boards) and says, before it happens,
-// what depends on them (ADR 0039). It works on the shared catalog database with plain SQL because an entry's
+// what depends on them (ADR 0041). It works on the shared catalog database with plain SQL because an entry's
 // dependents live in the tables of many packages; it imports none of them.
 //
 // Deleting an entry only forgets it. No file on disk or on a host is ever touched here; the one case where Vesqira
@@ -499,28 +499,18 @@ func (s *Service) Delete(kind string, id int64, digest string) (Deleted, error) 
 		return Deleted{}, &BlockedError{im}
 	}
 	out := Deleted{Impact: im}
-	steps := []string{`DELETE FROM archived_entries WHERE kind='` + kind + `' AND entity_id=?`}
-	switch kind {
-	case KindDataset:
-		steps = append(steps,
-			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
-			`DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`,
-			`DELETE FROM datasets WHERE id=?`)
-	case KindRun:
-		steps = append(steps,
-			`UPDATE jobs SET run_id=NULL WHERE run_id=?`, `UPDATE jobs SET parent_run_id=NULL WHERE parent_run_id=?`,
-			`DELETE FROM run_outputs WHERE run_id=?`, `DELETE FROM run_review WHERE run_id=?`, `DELETE FROM run_review_history WHERE run_id=?`,
-			`DELETE FROM runs WHERE id=?`)
-	case KindFigure:
+	if kind == KindFigure {
 		if err := tx.QueryRow(`SELECT preview_sha FROM figures WHERE id=?`, id).Scan(&out.OrphanPreview); err != nil {
 			return Deleted{}, err
 		}
-		steps = append(steps, `DELETE FROM figures WHERE id=?`)
-	case KindBoard:
-		steps = append(steps, `DELETE FROM board_items WHERE board_id=?`, `DELETE FROM boards WHERE id=?`)
 	}
-	for _, st := range steps {
-		if t := tableOf(st); t != "" && !has(tx, t) {
+	// kind is a bound parameter, never part of the SQL text; impact() above already refused any kind that is not one of
+	// the constants.
+	if _, err := tx.Exec(`DELETE FROM archived_entries WHERE kind=? AND entity_id=?`, kind, id); err != nil {
+		return Deleted{}, fmt.Errorf("delete %s %d: %w", kind, id, err)
+	}
+	for _, st := range deleteSteps(kind) {
+		if t := tableOf(st); t != "" && optionalTables[t] && !has(tx, t) {
 			continue
 		}
 		if _, err := tx.Exec(st, id); err != nil {
@@ -550,4 +540,38 @@ func tableOf(st string) string {
 		return f[1]
 	}
 	return ""
+}
+
+// optionalTables are written by a store that a catalog may never have opened (ADR 0041). Every other table Delete
+// writes to must exist: a missing or renamed one is an error, not a silent skip. TestEveryKeyedTableIsHandled runs
+// against the full schema, so a rename fails there.
+var optionalTables = map[string]bool{
+	"saved_regions": true,                                                  // regions store
+	"derived":       true,                                                  // derived store
+	"run_review":    true, "run_review_history": true, "run_outputs": true, // runs store
+	"jobs":        true, // jobs store
+	"board_items": true, // boards store
+}
+
+// deleteSteps are the statements that forget what is keyed to an entry, each taking the entry id; the entry's own row
+// goes last. A table keyed to an entry kind that is not named here (or in the allowlist of
+// TestEveryKeyedTableIsHandled) would be left behind.
+func deleteSteps(kind string) []string {
+	switch kind {
+	case KindDataset:
+		return []string{
+			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
+			`DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`,
+			`DELETE FROM datasets WHERE id=?`}
+	case KindRun:
+		return []string{
+			`UPDATE jobs SET run_id=NULL WHERE run_id=?`, `UPDATE jobs SET parent_run_id=NULL WHERE parent_run_id=?`,
+			`DELETE FROM run_outputs WHERE run_id=?`, `DELETE FROM run_review WHERE run_id=?`, `DELETE FROM run_review_history WHERE run_id=?`,
+			`DELETE FROM runs WHERE id=?`}
+	case KindFigure:
+		return []string{`DELETE FROM figures WHERE id=?`}
+	case KindBoard:
+		return []string{`DELETE FROM board_items WHERE board_id=?`, `DELETE FROM boards WHERE id=?`}
+	}
+	return nil
 }

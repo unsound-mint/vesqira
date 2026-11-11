@@ -32,7 +32,7 @@ type Dataset struct {
 	// UnitDeclaration is the unit the user declared for a file whose header has no BUNIT (see unit.go). The header
 	// facts themselves are never changed.
 	UnitDeclaration *UnitDeclaration `json:"unitDeclaration"`
-	// Archived entries are hidden from the lists but still resolve by id (ADR 0039).
+	// Archived entries are hidden from the lists but still resolve by id (ADR 0041).
 	Archived bool `json:"archived"`
 }
 

@@ -58,7 +58,7 @@ type Run struct {
 	Metrics        []Metric          `json:"metrics"`
 	// Review is the researcher's own assessment, kept apart from whether the computation finished.
 	Review Review `json:"review"`
-	// Archived runs are hidden from the lists but still resolve by id (ADR 0039).
+	// Archived runs are hidden from the lists but still resolve by id (ADR 0041).
 	Archived bool `json:"archived"`
 }
 
