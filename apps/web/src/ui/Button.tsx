@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { Icon } from "./Icon";
 import s from "./Button.module.css";
 
-type Common = { variant?: "default" | "primary" | "ghost"; size?: "sm" | "md" | "lg" };
+type Common = { variant?: "default" | "primary" | "danger" | "ghost"; size?: "sm" | "md" | "lg" };
 
 export function Button({
   variant = "default",

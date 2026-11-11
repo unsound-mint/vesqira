@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button } from "../ui";
+import { Basis, Button } from "../ui";
 import { rohsaSizing } from "../api/jobs";
 import type { RohsaSizing } from "../api/jobs";
 import { parseMem } from "./usageText";
@@ -41,7 +41,9 @@ export function RohsaSizingHint({ cropSize, nGauss, cpus, mem, time, onUse }: {
       </p>
       {z.assumed.length > 0 ? <p className={s.warn} role="note">Not given, so read the way the script reads it: {z.assumed.join("; ")}.</p> : null}
       {short ? <p className={s.warn} role="note">This memory request is smaller than the {z.mem} the table gives for this size.</p> : null}
-      <p className={s.src}>Source: {z.basis}. A change of N or crop moves a row of that table; a measured run (above, when there is one) says more than the table.</p>
+      <Basis summary="From your sizing table, for this crop and N.">
+        <p>Source: {z.basis}. A change of N or crop moves a row of that table; a measured run (above, when there is one) says more than the table.</p>
+      </Basis>
       <div className={s.row}>
         <Button type="button" onClick={() => onUse({ cpus: String(z.cpus), mem: z.mem, time: z.time })} disabled={same}>Use {z.cpus} CPUs, {z.mem}, {z.time}</Button>
       </div>

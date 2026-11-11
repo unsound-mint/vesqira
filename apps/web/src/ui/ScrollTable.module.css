@@ -1,0 +1,42 @@
+.wrap {
+  --fade-right: linear-gradient(to left, var(--bg-0), transparent);
+  --fade-left: linear-gradient(to right, var(--bg-0), transparent);
+  position: relative;
+  min-width: 0;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.box {
+  min-height: 0;
+  overflow: auto;
+  border-radius: inherit;
+}
+
+.box:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* the edge that has more: a fade into the page plus a hairline, so it reads in both themes and without colour */
+.shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--sp-8);
+  pointer-events: none;
+}
+
+.shadeRight {
+  right: 0;
+  border-right: 2px solid var(--line-strong);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  background: var(--fade-right);
+}
+
+.shadeLeft {
+  left: 0;
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--r-md) 0 0 var(--r-md);
+  background: var(--fade-left);
+}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Input, Select, Switch } from "../ui";
+import { Basis, Input, ScrollTable, Select, Switch } from "../ui";
 import type { Components } from "../api/rohsa";
 import type { Spectrum } from "../api/planes";
 import type { Viewer } from "./useViewer";
@@ -152,14 +152,14 @@ export function GaussianComponents({ v }: { v: Viewer }) {
                 onChange={(e) => setCutText(e.target.value)}
                 aria-invalid={cut === null}
               />
-              <p className={cut === null ? s.err : s.note}>
-                {cut === null
-                  ? "Enter a positive number."
-                  : `Your cut: a component is CNM when σ < ${cut} km/s, otherwise "others". The starting value ${PIPELINE_CNM_SIGMA_KMS} km/s is the pipeline's scan-script default (T_D < 500 K); change it freely. Two groups only: nothing here separates the others further.`}
-              </p>
+              {cut === null ? <p className={s.err}>Enter a positive number.</p> : (
+                <Basis summary={`Your cut: a component is CNM when σ < ${cut} km/s, otherwise "others".`}>
+                  <p>The starting value {PIPELINE_CNM_SIGMA_KMS} km/s is the pipeline&rsquo;s scan-script default (T_D &lt; 500 K); change it freely. Two groups only: nothing here separates the others further.</p>
+                </Basis>
+              )}
               {!velocity ? <p className={s.note}>{comps.head.axis.note} Widths and the CNM split need a velocity axis, so every component is shown unclassified.</p> : null}
               {comps.head.axis.unit_status === "inferred" ? <p className={s.note}>The crop has no CUNIT for its spectral axis: {comps.head.axis.source_unit} is the FITS default for {comps.head.axis.name ?? "this axis"}, assumed here.</p> : null}
-              <div className={s.scroll} role="region" aria-label="Fitted components" tabIndex={0}>
+              <ScrollTable label="Fitted components" className={s.scroll}>
                 <table>
                   <thead>
                     <tr>
@@ -186,8 +186,11 @@ export function GaussianComponents({ v }: { v: Viewer }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
-              <p className={s.note}>{T_DOPPLER_NOTE}. FWHM = 2√(2 ln 2) σ. Centre and σ come from the file's channel numbers (the file counts channels from 1) through the crop's spectral axis. An amplitude of 0 is a fitted value, not a missing one.</p>
+              </ScrollTable>
+              <Basis summary="T_D is an upper limit on the kinetic temperature (thermal broadening only). An amplitude of 0 is a fitted value, not a missing one.">
+                <p>{T_DOPPLER_NOTE}. FWHM = 2√(2 ln 2) σ.</p>
+                <p>Centre and σ come from the file&rsquo;s channel numbers (the file counts channels from 1) through the crop&rsquo;s spectral axis.</p>
+              </Basis>
             </>
           ) : null}
         </>

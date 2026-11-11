@@ -40,9 +40,6 @@
 
 .scroller {
   min-height: 0;
-  overflow: auto;
-  border: var(--bw) solid var(--line);
-  border-radius: var(--r-md);
 }
 
 .table {

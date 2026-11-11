@@ -3,15 +3,10 @@
   gap: var(--sp-2);
 }
 
-.row,
-.buttons {
+.row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
-}
-
-.buttons {
-  justify-content: flex-end;
 }
 
 .note {
@@ -30,22 +25,6 @@
   margin: 0;
   font-size: var(--text-sm);
   font-weight: var(--w-strong);
-}
-
-.dialog {
-  display: grid;
-  gap: var(--sp-3);
-  width: min(560px, calc(100vw - var(--sp-8)));
-  max-height: calc(100vh - var(--sp-8));
-  margin: auto;
-  padding: var(--sp-5);
-  box-sizing: border-box;
-  overflow: auto;
-  border: var(--bw) solid var(--line-strong);
-  border-radius: var(--r-lg);
-  background: var(--bg-2);
-  color: var(--text);
-  box-shadow: var(--shadow);
 }
 
 .title {

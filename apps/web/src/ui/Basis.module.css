@@ -1,0 +1,57 @@
+.basis {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.summary,
+.warn {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.summary {
+  color: var(--text);
+}
+
+.warn {
+  color: var(--warn);
+  font-weight: var(--w-strong);
+}
+
+.details {
+  min-width: 0;
+}
+
+.toggle {
+  width: fit-content;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--text);
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.body {
+  display: grid;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  line-height: var(--lh-sm);
+  overflow-wrap: anywhere;
+}
+
+.body > p {
+  margin: 0;
+}

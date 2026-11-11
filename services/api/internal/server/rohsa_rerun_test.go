@@ -501,3 +501,26 @@ func TestSweepRefusesROHSAKeysItMustNotVaryAndVGTKeysOnAROHSABase(t *testing.T) 
 		t.Errorf("old base: %d %s", r.StatusCode, b)
 	}
 }
+
+func TestROHSASweepReviewHasNoUnexpectedLinesWhenTheBaseScriptWasEditedByHand(t *testing.T) {
+	e := newWatchEnv(t)
+	base := e.rohsaDraft("rohsa-base", map[string]string{"lambda": "10"}, nil)
+	edited := strings.Replace(base.Script, `echo "job_id`, `echo "reviewed; job_id`, 1)
+	if edited == base.Script {
+		t.Fatal("the script has no echo line to edit")
+	}
+	if r, b := postJSON(t, e.api("/api/jobs/"+itoa(int(base.ID))+"/script"), map[string]any{"script": edited}); r.StatusCode != 200 {
+		t.Fatalf("edit %d %s", r.StatusCode, b)
+	}
+	sw := e.createSweep(map[string]any{"name": "rsweep", "baseJobId": base.ID, "params": []map[string]any{
+		{"key": "n_gauss", "label": "N", "values": []string{"4", "8"}}, {"key": "lambda", "label": "λ", "values": []string{"3", "30"}}}})
+	_, rev := e.sweepReview(sw.ID)
+	if rev["baseEditedLines"].(float64) != 2 {
+		t.Errorf("base edit not reported once: %v", rev["baseEditedLines"])
+	}
+	for _, jv := range rev["jobs"].([]any) {
+		if m := jv.(map[string]any); m["unexpected"].(float64) != 0 {
+			t.Errorf("unexpected lines in %v: %v", m["label"], m["diff"])
+		}
+	}
+}

@@ -4,7 +4,7 @@ import type { Host } from "../api/hosts";
 import type { Job } from "../api/jobs";
 import type { Rerun, Run } from "../api/runs";
 import { RunsUsingFile } from "../catalog/RunPanel";
-import { RerunDraft, duration } from "./RerunDraft";
+import { RerunDraft } from "./RerunDraft";
 
 const host: Host = { id: 1, name: "Cluster", dest: "login1", python: "python3", roots: ["/data"], createdAt: "" };
 const run = (over: Partial<Run> = {}): Run => ({
@@ -139,12 +139,6 @@ describe("run again with…", () => {
     await userEvent.click(screen.getByRole("button", { name: "Try adding again" }));
     await waitFor(() => expect(posts.filter((p) => p.url === "/api/boards/5/items")).toHaveLength(2));
     expect(posts.filter((p) => p.url === "/api/jobs")).toHaveLength(1);
-  });
-
-  it("formats durations", () => {
-    expect(duration(45)).toBe("45 s");
-    expect(duration(720)).toBe("12 min");
-    expect(duration(6360)).toBe("1 h 46 min");
   });
 });
 

@@ -1,7 +1,8 @@
-import { Button } from "../ui";
+import { Basis, Button } from "../ui";
 import { bytes } from "../catalog/format";
 import type { JobUsage as Usage } from "../api/jobs";
-import { parseMem, parseTime, span, usageLines } from "./usageText";
+import { formatDuration, parseTime } from "../ui/duration";
+import { parseMem, usageLines } from "./usageText";
 import s from "./JobUsage.module.css";
 
 /** What the scheduler recorded a finished job used, in words. Nothing here says the result is valid. */
@@ -40,15 +41,18 @@ export function SizingHint({ jobId, jobName, usage, mem, time, onUseMem, onUseTi
       <p className={s.lead}>
         Measured in job {jobId} <span className="mono">{jobName}</span>:{" "}
         {usage.maxRssBytes === null ? "memory use not recorded" : <>peak memory <strong>{bytes(usage.maxRssBytes)}</strong>{usage.reqMemBytes !== null ? ` (requested ${bytes(usage.reqMemBytes)})` : ""}</>}
-        {"; "}ran <strong>{span(usage.elapsedSeconds)}</strong>{usage.timelimitSeconds !== null ? ` (limit ${span(usage.timelimitSeconds)})` : ""}.
+        {"; "}ran <strong>{formatDuration(usage.elapsedSeconds)}</strong>{usage.timelimitSeconds !== null ? ` (limit ${formatDuration(usage.timelimitSeconds)})` : ""}.
         {" "}You are asking for {mem.trim() || "no memory"} and {time.trim() || "no time limit"}.
       </p>
       {memShort ? <p className={s.warn} role="note">This memory request is smaller than the {bytes(usage.maxRssBytes!)} that job reached.</p> : null}
-      {timeShort ? <p className={s.warn} role="note">This time limit is shorter than the {span(usage.elapsedSeconds)} that job needed.</p> : null}
+      {timeShort ? <p className={s.warn} role="note">This time limit is shorter than the {formatDuration(usage.elapsedSeconds)} that job needed.</p> : null}
       {usage.oomKilled ? <p className={s.warn} role="note">That job was stopped for exceeding its memory, so its peak understates what the work needs.</p> : null}
       {sg ? (
         <>
-          <p className={s.note}>Suggested from job {jobId}&rsquo;s measured use: {sg.mem ? <>memory <span className="mono">{sg.mem}</span></> : "no memory suggestion"}{sg.time ? <>, time <span className="mono">{sg.time}</span></> : ""}. {sg.basis ? `Basis: ${sg.basis}.` : ""} The partition&rsquo;s own maximum time is not known here; check it.</p>
+          <Basis summary={<>Suggested from job {jobId}&rsquo;s measured use: {sg.mem ? <>memory <span className="mono">{sg.mem}</span></> : "no memory suggestion"}{sg.time ? <>, time <span className="mono">{sg.time}</span></> : ""}.</>}>
+            {sg.basis ? <p>{sg.basis}.</p> : null}
+            <p>The partition&rsquo;s own maximum time is not known here; check it.</p>
+          </Basis>
           <div className={s.row}>
             {sg.mem ? <Button type="button" onClick={() => onUseMem(sg.mem)} disabled={mem.trim() === sg.mem}>Use memory {sg.mem}</Button> : null}
             {sg.time ? <Button type="button" onClick={() => onUseTime(sg.time)} disabled={time.trim() === sg.time}>Use time {sg.time}</Button> : null}
