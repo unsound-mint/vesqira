@@ -11,6 +11,7 @@ import type { Host } from "../api/hosts";
 import type { Run } from "../api/runs";
 import { HostStorage } from "../hosts/HostStorage";
 import { SizingHint, UsageSummary } from "./JobUsage";
+import { RerunCheck } from "./RerunCheck";
 import { listSweeps } from "../api/sweeps";
 import type { Sweep } from "../api/sweeps";
 import { SweepForm } from "../sweeps/SweepForm";
@@ -276,6 +277,7 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun, onSweep }: { jo
         <span className={s.note}>{host?.name ?? "host removed"}{job.slurmId ? ` · Slurm job ${job.slurmId}` : ""}{job.detail ? ` · ${job.detail}` : ""}</span>
       </div>
       {job.note ? <p className={s.note}>Why: {job.note}</p> : null}
+      {draft && job.parentRunId != null && (job.template === "vgt" || job.template === "rohsa") ? <RerunCheck key={job.id} job={job} /> : null}
       {job.usage ? <UsageSummary usage={job.usage} /> : null}
       <label className={s.label} htmlFor="job-script">Script{draft ? " (this exact text is what will be submitted; you can edit it)" : " as submitted"} · sha256 <span className="mono">{job.scriptHash.slice(0, 12)}</span></label>
       <textarea id="job-script" className={s.script} readOnly={!draft} rows={18} value={script} onChange={(e) => setScript(e.target.value)} spellCheck={false} />

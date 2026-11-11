@@ -1,0 +1,76 @@
+.box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  font-size: var(--text-sm);
+}
+
+.lead,
+.note,
+.src {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.lead {
+  color: var(--text);
+}
+
+.note,
+.src {
+  color: var(--text-2);
+}
+
+.src {
+  font-size: var(--text-xs);
+}
+
+.warn {
+  color: var(--text);
+  font-weight: var(--w-strong);
+}
+
+.warn p {
+  margin: 0;
+}
+
+.warn ul,
+.list {
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-4);
+  font-weight: var(--w-regular);
+}
+
+.scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.table th,
+.table td {
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
+  border-bottom: var(--bw) solid var(--line);
+  text-align: left;
+  font-weight: var(--w-regular);
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--text-2);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}

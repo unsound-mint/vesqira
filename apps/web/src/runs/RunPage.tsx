@@ -1,9 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Dataset } from "../api/catalog";
 import type { Job } from "../api/jobs";
 import { jobLog } from "../api/jobs";
 import { metricText } from "../api/metrics";
 import type { Run } from "../api/runs";
+import { getRun } from "../api/runs";
 import { Assessment, ROLE, RohsaFacts } from "../catalog/RunPanel";
 import { bytes, EM } from "../catalog/format";
 import { TONE } from "../jobs/JobsView";
@@ -13,10 +14,12 @@ import { useViewer } from "../viewer/useViewer";
 import { Button, Pill, Section } from "../ui";
 import { EntryActions } from "../catalog/EntryActions";
 import type { EntryChange } from "../catalog/EntryActions";
+import { ControlsEditor } from "./ControlsEditor";
+import { ParentComparison } from "./ParentComparison";
 import s from "./RunPage.module.css";
 
 /** A run as a page of blocks: its result, the numbers it declared, how it was set up, your assessment, and its log. */
-export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer, onRunAgain, onEntryChanged }: {
+export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer, onRunAgain, onEntryChanged }: {
   run: Run;
   runs: Run[];
   datasets: Dataset[];
@@ -31,6 +34,15 @@ export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInV
   /** The run was archived, restored or deleted from this page. */
   onEntryChanged?: (change: EntryChange) => void;
 }) {
+  // The list leaves out what needs a second look (how it compares with its parent); the single-run answer has it. Without it the page still works.
+  const [detail, setDetail] = useState<Run | null>(null);
+  useEffect(() => {
+    let live = true;
+    setDetail(null);
+    getRun(listed.id).then((r) => live && setDetail(r)).catch(() => undefined);
+    return () => { live = false; };
+  }, [listed.id]);
+  const run = detail && detail.id === listed.id ? { ...listed, ...detail } : listed;
   const first = run.outputs.find((o) => o.role === "psi") ?? run.outputs[0] ?? null;
   const [shown, setShown] = useState<number | null>(first?.datasetId ?? null);
   const output = run.outputs.find((o) => o.datasetId === shown) ?? first;
@@ -189,18 +201,28 @@ export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInV
           </div>
         </Section>
 
+        {run.parentComparison ? (
+          <Section title="Compared with the parent run" meta={run.parentComparison.mode ? run.parentComparison.mode.replace("_", " ") : undefined}>
+            <ParentComparison cmp={run.parentComparison} parentName={parent?.name ?? "parent run"} />
+          </Section>
+        ) : null}
+
         {run.reproducibility && run.reproducibility.length > 0 ? (
           <Section title="What is known about rerunning this" meta={`(${unresolved} unresolved)`} defaultOpen={false}>
-            <p className={s.block}>Declared means the run’s own metadata says so and it was not checked here; unresolved means nothing records it. This says nothing about whether the result is right.</p>
+            <p className={s.block}>Verified means the job observed it itself when it ran (a record next to its outputs, not signed); declared means the run’s own metadata says so and it was not checked here; unresolved means nothing records it. This says nothing about whether the result is right.</p>
             <ul className={s.known}>
               {run.reproducibility.map((f) => (
                 <li key={f.key}>
-                  <Pill tone={f.status === "unresolved" ? "warn" : "neutral"}>{f.status}</Pill> <strong>{f.label}.</strong> {f.detail}
+                  <Pill tone={f.status === "unresolved" ? "warn" : f.status === "verified" ? "ok" : "neutral"}>{f.status}</Pill> <strong>{f.label}.</strong> {f.detail}
                 </li>
               ))}
             </ul>
           </Section>
         ) : null}
+
+        <Section title="Controls" meta={run.controls && (run.controls.smoothing || run.controls.noise || run.controls.construction) ? "stated by you" : "not stated"} defaultOpen={false}>
+          <ControlsEditor key={`${run.id}-${JSON.stringify(run.controls ?? null)}`} run={run} onSaved={(r) => setDetail(r)} />
+        </Section>
 
         <Section title="Your assessment">
           <div className={s.block}>

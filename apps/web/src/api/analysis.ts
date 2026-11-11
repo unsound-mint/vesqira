@@ -2,6 +2,7 @@ import { request as call, postJSON as post } from "./http";
 import type { Dataset } from "./catalog";
 import type { Job } from "./jobs";
 import type { components } from "./schema";
+import type { Controls } from "./runs";
 
 export type AnalysisOp = "axial_diff" | "scalar_diff" | "stats" | "moment" | "cutout" | "slab" | "align" | "convolve";
 export type AnalysisRequest = { op: AnalysisOp; datasetId: number; referenceId?: number; params?: Record<string, string>; cpus?: number; mem?: string; time?: string };
@@ -19,7 +20,7 @@ export type StatsSummary = {
   policy: string;
 };
 
-export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string> }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
+export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
 
 export const runAnalysis = (r: AnalysisRequest) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r);
 export const createAnalysisJob = (r: AnalysisRequest) => post<Job>("/api/analysis/job", r);

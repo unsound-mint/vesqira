@@ -6,7 +6,7 @@ import type { Host } from "../api/hosts";
 import { addJobToBoard, listBoards } from "../api/boards";
 import type { Board } from "../api/boards";
 import { getRerun } from "../api/runs";
-import type { Rerun, Run } from "../api/runs";
+import type { Rerun, RerunMode, Run } from "../api/runs";
 import { bytes, EM } from "../catalog/format";
 import { NOISE_MODES, SETTINGS } from "../jobs/JobsView";
 import { SizingHint } from "../jobs/JobUsage";
@@ -31,6 +31,29 @@ function baseline(rerun: Rerun, key: string): string {
 }
 
 type Field = { key: string; label: string; kind: string };
+
+const MODES: { id: RerunMode; name: string; what: string }[] = [
+  { id: "adapted", name: "Adapted", what: "Change settings. The settings that differ from the parent are marked. The code is the folder on the host as it is when you submit." },
+  { id: "best_effort", name: "Best effort", what: "Repeat it with the code as it is now. Before you submit, every difference from what the parent run observed is listed." },
+  { id: "strict", name: "Strict", what: "Same code revision, no changed file, same Manifest.toml and input file as the parent observed. It is not submitted if the host's code folder is not exactly that, and the job stops itself if the folder moves while it waits. Settings stay as they were." },
+];
+
+/** Why a strict rerun cannot be offered for this run, or "" when it can. The server decides again; this only saves a failed request. */
+export function strictRefusal(run: Run): string {
+  const env = run.environment ?? [];
+  const val = (k: string) => env.find((f) => f.key === k && f.status === "verified")?.value;
+  if (val("code.commit")) {
+    const dirty = val("code.dirty");
+    if (dirty === "yes") return "the parent run's code had uncommitted changes, which its commit does not describe";
+    if (dirty !== "no") return "whether the parent run's tracked files had changed was not observed, so its commit may not describe its code";
+    return "";
+  }
+  const declared = run.gitCommit.replace(/-dirty$/, "");
+  if (!declared) return "the parent run recorded no code revision";
+  if (run.gitCommit.endsWith("-dirty")) return "the parent run declares uncommitted changes, which its commit does not describe";
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(declared)) return "the parent run declares only a short revision, which cannot be compared exactly";
+  return "";
+}
 
 /** "Run again with…": a draft job that starts from a finished run. Nothing is submitted here; the script is read and submitted on the Jobs screen. */
 export function RerunDraft({ run, hosts, onBack, onPrepared }: { run: Run; hosts: Host[]; onBack: () => void; onPrepared: (job: Job) => void }) {
@@ -71,6 +94,8 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
   const [vals, setVals] = useState<Record<string, string>>(declaredBase);
   const [name, setName] = useState(rerun.name);
   const [why, setWhy] = useState("");
+  const [mode, setMode] = useState<RerunMode>("adapted");
+  const strictNo = strictRefusal(run);
   const [hostId, setHostId] = useState(hostKnown ? String(rerun.hostId) : "");
   const hostNum = hostId ? Number(hostId) : null; // no host chosen: the path fields do not complete
   const [repoDir, setRepoDir] = useState(req.repoDir ?? "");
@@ -107,7 +132,8 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
 
   const changed = (key: string) => rohsa ? (vals[key] ?? "").trim() !== "" && !sameValue(vals[key] ?? "", base[key] ?? "") : (vals[key] ?? "").trim() !== (base[key] ?? "").trim();
   const nChanged = fields.filter((st) => changed(st.key)).length;
-  const missing = !hostId || !repoDir.trim() || !configPath.trim() || !name.trim() || !res.cpus.trim() || !res.mem.trim() || !res.time.trim();
+  const strictBlocked = mode === "strict" && (strictNo !== "" || nChanged > 0);
+  const missing = strictBlocked || !hostId || !repoDir.trim() || !configPath.trim() || !name.trim() || !res.cpus.trim() || !res.mem.trim() || !res.time.trim();
 
   async function prepare() {
     setBusy(true);
@@ -132,8 +158,8 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
         account: res.account.trim(),
       };
       const job = await createJob(rohsa
-        ? { hostId: Number(hostId), template: "rohsa", name: name.trim(), note: why.trim() || undefined, parentRunId: run.id, rohsa: common }
-        : { hostId: Number(hostId), template: "vgt", name: name.trim(), note: why.trim() || undefined, parentRunId: run.id, vgt: common });
+        ? { hostId: Number(hostId), template: "rohsa", name: name.trim(), note: why.trim() || undefined, parentRunId: run.id, rerunMode: mode, rohsa: common }
+        : { hostId: Number(hostId), template: "vgt", name: name.trim(), note: why.trim() || undefined, parentRunId: run.id, rerunMode: mode, vgt: common });
       const board = boards.find((b) => String(b.id) === boardId) ?? null;
       if (!board) {
         onPrepared(job);
@@ -168,6 +194,25 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
         <p className={s.warn} role="alert">The config file on the host has changed since this run. This draft uses the text the run started from, not the file as it is now.</p>
       ) : null}
       {rerun.configChanged === null && !imported ? <p className={s.warn} role="note">Could not check whether the config file on the host changed.</p> : null}
+
+      <fieldset className={s.modes}>
+        <legend>How closely to repeat it</legend>
+        {MODES.map((m) => {
+          const refused = m.id === "strict" && strictNo !== "";
+          const id = `rerun-mode-${m.id}`;
+          return (
+            <div key={m.id} className={s.mode}>
+              <input type="radio" id={id} name="rerun-mode" value={m.id} checked={mode === m.id} disabled={refused} aria-describedby={`${id}-what`} onChange={() => setMode(m.id)} />
+              <label htmlFor={id} className={s.modeText}>
+                <strong>{m.name}</strong>
+                <span id={`${id}-what`} className={s.modeNote}>{m.what}{refused ? ` Not available: ${strictNo}.` : ""}</span>
+              </label>
+            </div>
+          );
+        })}
+        {mode === "strict" && nChanged > 0 ? <p className={s.warn} role="alert">A strict rerun repeats the run with its own settings, and {nChanged} {nChanged === 1 ? "is" : "are"} changed below. Choose Adapted to change settings.</p> : null}
+        {mode === "strict" ? <p className={s.note}>The code folder is read on the host (read-only) when you submit. Julia version, loaded modules, node and CPU are known only when the job runs.</p> : null}
+      </fieldset>
 
       <fieldset className={s.fields}>
         <legend>Settings (as the pipeline reads them){nChanged > 0 ? ` · ${nChanged} changed` : ""}</legend>

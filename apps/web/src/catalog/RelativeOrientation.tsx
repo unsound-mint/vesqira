@@ -4,6 +4,8 @@ import { ApiError, isCatalog } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
 import { getDerived, relativeOrientationTableUrl, runRelativeOrientation } from "../api/analysis";
 import type { RelOrientParams, RelOrientSummary } from "../api/analysis";
+import type { Controls } from "../api/runs";
+import { ControlsView } from "../runs/ControlsView";
 import { EM } from "./format";
 import s from "./RelativeOrientation.module.css";
 
@@ -181,23 +183,23 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
 /** The result of a relative-orientation comparison, from the dataset's derived record, in its own inspector section. Renders nothing for
     other datasets. */
 export function RelativeOrientationResult({ dataset, datasets }: { dataset: Dataset; datasets: Dataset[] }) {
-  const [rec, setRec] = useState<{ op: string; sources: number[]; summary: RelOrientSummary } | null>(null);
+  const [rec, setRec] = useState<{ op: string; sources: number[]; summary: RelOrientSummary; controls: Controls | null } | null>(null);
   useEffect(() => {
     setRec(null);
     getDerived(dataset.id)
-      .then((d) => setRec(d.op === "relorient_catalog" || d.op === "relorient_maps" ? { op: d.op, sources: d.sources, summary: d.summary as unknown as RelOrientSummary } : null))
+      .then((d) => setRec(d.op === "relorient_catalog" || d.op === "relorient_maps" ? { op: d.op, sources: d.sources, summary: d.summary as unknown as RelOrientSummary, controls: d.params.controls ?? null } : null))
       .catch(() => setRec(null));
   }, [dataset.id]);
   if (!rec) return null;
   const names = rec.sources.map((id) => datasets.find((x) => x.id === id)?.name ?? `dataset ${id}`);
   return (
     <Section title="Relative orientation result" meta={`AM ${fmt(rec.summary.am)}`}>
-      <RelOrientView s={rec.summary} names={names} tableUrl={rec.summary.table?.file ? relativeOrientationTableUrl(dataset.id) : null} />
+      <RelOrientView s={rec.summary} names={names} tableUrl={rec.summary.table?.file ? relativeOrientationTableUrl(dataset.id) : null} controls={rec.controls} />
     </Section>
   );
 }
 
-export function RelOrientView({ s: r, names, tableUrl }: { s: RelOrientSummary; names: string[]; tableUrl: string | null }) {
+export function RelOrientView({ s: r, names, tableUrl, controls }: { s: RelOrientSummary; names: string[]; tableUrl: string | null; controls?: Controls | null }) {
   const n = r.null;
   const c = r.counts;
   const p = r.parameters;
@@ -227,6 +229,7 @@ export function RelOrientView({ s: r, names, tableUrl }: { s: RelOrientSummary; 
           {excluded.map(([why, k]) => <li key={why}><span className="mono">{k.toLocaleString("en-US")}</span> {why}</li>)}
         </ul>
       ) : null}
+      {controls?.construction ? (<><p className={s.kicker}>How the control was built</p><ControlsView controls={controls} only="construction" /></>) : null}
       <DeltaPsiHistogram s={r} />
       {cat && r.segments ? <SegmentsFigure s={r} /> : null}
       {!cat && r.prs?.note ? <p className={s.note}>{r.prs.note}</p> : null}

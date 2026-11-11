@@ -4,6 +4,7 @@ import { createAnalysisJob, getDerived, runAnalysis } from "../api/analysis";
 import type { AnalysisOp, Derived, StatsSummary } from "../api/analysis";
 import type { Dataset } from "../api/catalog";
 import type { Job } from "../api/jobs";
+import { ControlsView } from "../runs/ControlsView";
 import { EM } from "./format";
 import { beamText } from "./resolution";
 import s from "./AnalysisPanel.module.css";
@@ -167,6 +168,12 @@ export function DerivedPanel({ dataset, datasets }: { dataset: Dataset; datasets
         <dd className="mono">{names.join(", ")}</dd>
         <dt>Options</dt>
         <dd className="mono">{Object.entries(d.params.options ?? {}).map(([k, x]) => `${k}=${x}`).join(" ") || EM}</dd>
+        {d.params.controls ? (
+          <>
+            <dt>Controls</dt>
+            <dd><ControlsView controls={d.params.controls} /></dd>
+          </>
+        ) : null}
         <dt>Software</dt>
         <dd className="mono">{Object.entries(d.software).map(([k, x]) => `${k} ${x}`).join(", ")}</dd>
       </dl>

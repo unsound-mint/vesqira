@@ -7,8 +7,23 @@ export type RunOutput = { role: string; datasetId: number; name: string };
 
 export type RunReview = { qc: "not_assessed" | "passed" | "failed" | "inconclusive"; interpretation: "not_interpreted" | "supports" | "challenges" | "inconclusive"; note: string };
 
-export type RunFact = { key: string; label: string; status: "declared" | "inferred" | "unresolved"; detail: string };
+/** verified: observed by the run's own job (ADR 0054); declared: the run's metadata says so, not checked; inferred: a weak rule matched; unresolved: nothing records it. */
+export type RunFact = { key: string; label: string; status: "verified" | "declared" | "inferred" | "unresolved"; detail: string };
 
+/** One thing a job observed about where it ran. Unresolved says why it could not be read; value is empty then. */
+export type EnvFact = { key: string; label: string; status: "verified" | "unresolved"; value: string; reason: string };
+
+/** A fact compared between two runs. unknown means a side did not observe it: never "matched". */
+export type EnvDifference = components["schemas"]["EnvDifference"];
+export type RerunMode = "strict" | "best_effort" | "adapted";
+export type ParentComparison = { parentRunId: number; mode: RerunMode | ""; parentObserved: boolean; thisObserved: boolean; facts: EnvDifference[] };
+
+/** Smoothing, noise model and control construction stated for a result; a null block was not stated (not "none applied"). */
+export type Controls = components["schemas"]["Controls"];
+export type ControlsDeclaration = components["schemas"]["ControlsDeclaration"];
+export type RerunCheck = components["schemas"]["RerunCheck"];
+
+import type { components } from "./schema";
 import type { Metric } from "./metrics";
 import type { RohsaRecord } from "./rohsa";
 
@@ -39,6 +54,13 @@ export type Run = {
   archived?: boolean;
   /** The decomposition record of a ROHSA run (ADR 0046); null for other kinds. */
   rohsa?: RohsaRecord | null;
+  /** What the job observed about where it ran (ADR 0054); empty for a run no job of this catalog made. */
+  environment?: EnvFact[];
+  /** Smoothing, noise model and control construction stated for the run; null when none was stated. */
+  controls?: Controls | null;
+  /** How the draft repeated its parent run, and what both runs observed; null for a run that repeats nothing. */
+  rerunMode?: RerunMode | null;
+  parentComparison?: ParentComparison | null;
 };
 
 export type RerunRequest = {
@@ -83,4 +105,8 @@ export const runReviewHistory = (id: number) => call<{ history: RunReviewRevisio
 export const setRunReview = (id: number, rv: RunReview) =>
   call<Run>(`/api/runs/${id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rv) });
 
+export const getRun = (id: number) => call<Run>(`/api/runs/${id}`);
 export const getRerun = (id: number) => call<Rerun>(`/api/runs/${id}/rerun`);
+
+export const setRunControls = (id: number, c: ControlsDeclaration) =>
+  call<Run>(`/api/runs/${id}/controls`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) });

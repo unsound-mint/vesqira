@@ -166,3 +166,41 @@
   color: var(--err);
   font-size: var(--text-sm);
 }
+
+.modes {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.modes legend {
+  padding: 0 var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.mode {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-2);
+  align-items: start;
+  font-size: var(--text-sm);
+}
+
+.mode input {
+  margin-top: var(--sp-1);
+}
+
+.modeText {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.modeNote {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
