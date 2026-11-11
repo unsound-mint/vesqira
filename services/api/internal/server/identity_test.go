@@ -2,9 +2,7 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -139,7 +137,6 @@ func (e *idEnv) addLocation(id int64, path string, declare bool) (int, catalog.L
 	return code, l, m
 }
 
-func sha(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
 func fileSHA(t *testing.T, p string) string {
 	t.Helper()

@@ -687,7 +687,7 @@ const kindReserved = "reserved"
 // nobody has touched the name since; any other entry means the name was lost.
 func (e end) identity() string { return fmt.Sprintf("%s:%d:%d", e.kind, e.size, e.mtime) }
 
-func (s *Server) localStat(p string) end {
+func (s *Server) localEnd(p string) end {
 	st, err := os.Lstat(p)
 	switch {
 	case err != nil:
@@ -752,9 +752,9 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 		src = fromRemote(st)
 	} else {
 		if p, err := s.roots().Resolve(t.SourcePath); err == nil {
-			src = s.localStat(p)
+			src = s.localEnd(p)
 		} else if p, err := s.roots().ResolveDir(t.SourcePath); err == nil {
-			src = s.localStat(p)
+			src = s.localEnd(p)
 		} else {
 			return failed("the source is no longer a file or folder inside the source roots on this computer")
 		}
@@ -933,7 +933,7 @@ func clipText(s string, n int) string {
 // folder is named the way the owner named it (a root may be a symbolic link there); the host resolves it again each time.
 func (s *Server) lookDest(ctx context.Context, t transfers.Transfer, h hosts.Host, destReal, name string, hash bool) (end, error) {
 	if t.Direction == hosts.Download {
-		e := s.localStat(filepath.Join(destReal, name))
+		e := s.localEnd(filepath.Join(destReal, name))
 		if hash && e.kind == hosts.KindFile {
 			sum, _, err := hosts.HashFile(ctx, e.real)
 			if err != nil {
