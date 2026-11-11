@@ -112,7 +112,7 @@ func main() {
 		log.Fatal(err)
 	}
 	files := map[string][]byte{}
-	for _, f := range []string{"plane_worker.py", "fits_header.py", "analysis.py", "convert.py", "orientation.py"} {
+	for _, f := range []string{"plane_worker.py", "fits_header.py", "analysis.py", "convert.py", "orientation.py", "catalog_table.py"} {
 		b, err := os.ReadFile(filepath.Join(filepath.Dir(*planeScript), f))
 		if err != nil {
 			log.Fatalf("remote hosts need the worker scripts: %v", err)

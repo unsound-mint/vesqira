@@ -906,6 +906,18 @@ def declared_unit(req: dict):
     return v
 
 
+def catalog_op(op: str, path, req: dict) -> tuple[dict, bytes]:
+    """Point catalogs (ADR 0043): tables read by astropy, bounded, never executed. The reply's payload is a JSON document."""
+    import catalog_table as ct
+    if op not in ct.OPS or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+        raise Refused("bad_request", "bad request")
+    real = authorize(path)
+    try:
+        return ct.handle(op, real, req)
+    except ct.Bad as e:
+        raise Refused("unreadable", str(e))
+
+
 def handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
     if op == "cards":
@@ -915,6 +927,8 @@ def handle(req: dict) -> tuple[dict, bytes]:
         return header_cards(path), b""
     if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon"):
         return host_op(op, req)
+    if isinstance(op, str) and op.startswith("catalog_"):
+        return catalog_op(op, path, req)
     if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky"):
         authorize(path)                                          # also enforces the roots on a remote host
         if op == "axial" and req.get("weights_path") is not None:
