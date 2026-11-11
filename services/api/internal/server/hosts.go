@@ -62,14 +62,21 @@ func (s *Server) authorizeRemote(ctx context.Context, d catalog.Dataset) (real s
 	if err != nil || !h.InRoots(d.Path) {
 		return "", k, 403, "not available"
 	}
+	if state, at := s.reach.get(d.HostID); state == "no" && time.Since(at) < offlineRetry && s.Offline.Has(d.ID) {
+		return "", k, 502, msgHostUnreachable // just failed, and a copy can answer: do not wait out another connect timeout (ADR 0059)
+	}
 	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "stat", "path": d.Path})
 	var re *worker.RequestError
 	switch {
 	case errors.As(err, &re):
 		return "", k, 403, "not available"
 	case err != nil:
-		return "", k, 502, "the host is not reachable (is the VPN up?)"
+		if ctx.Err() == nil { // a request the browser gave up on says nothing about the host
+			s.reach.set(d.HostID, false)
+		}
+		return "", k, 502, msgHostUnreachable
 	}
+	s.reach.set(d.HostID, true)
 	var st struct {
 		Size    int64 `json:"size"`
 		MtimeNS int64 `json:"mtime_ns"`
@@ -77,6 +84,7 @@ func (s *Server) authorizeRemote(ctx context.Context, d catalog.Dataset) (real s
 	if json.Unmarshal(rep.Head, &st) != nil {
 		return "", k, 502, "the host answered unexpectedly"
 	}
+	s.Offline.NoteSeen(d.ID, d.HostID, st.Size, st.MtimeNS) // a copy made from another signature is stale from here on
 	if st.Size != d.SizeBytes || st.MtimeNS != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}

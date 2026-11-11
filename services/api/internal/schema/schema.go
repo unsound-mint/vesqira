@@ -39,7 +39,8 @@ import (
 // Version 20: a project keeps the researcher's import rules and a record of what each was applied to (import_rules, import_applied;
 // ADR 0058).
 // Version 21: a board panel may carry its place on the board's grid (board_items.layout_x, layout_y, layout_w, layout_h; ADR 0060).
-const Version = 21
+// Version 22: offline copies of bounded, derived replies (offline_entries) and the size limit for them (offline_settings; ADR 0059).
+const Version = 22
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -69,6 +70,7 @@ var migrations = []Migration{
 	{To: 19, Name: "exploration history", Up: explorationHistory},
 	{To: 20, Name: "import rules", Up: importRules},
 	{To: 21, Name: "board layout grid", Up: boardLayoutGrid},
+	{To: 22, Name: "offline copies", Up: offlineCopies},
 }
 
 // boardLayoutGrid adds the four nullable columns that place a panel on the grid. NULL is what every existing panel gets: the board
@@ -283,6 +285,34 @@ const ExplorationStepsTable = `CREATE TABLE IF NOT EXISTS exploration_steps(
 
 // ExplorationStepsIndex serves "the newest steps of a project" and pruning.
 const ExplorationStepsIndex = `CREATE INDEX IF NOT EXISTS exploration_steps_project ON exploration_steps(project_id, id)`
+
+// OfflineEntriesTable is the index of the offline store (ADR 0059): one row per kept reply of the scientific worker (a view, the
+// header cards, one plane at one step, one region spectrum), keyed exactly as the plane cache is, plus the file signature it was
+// made from (host, size, mtime and the content identity when one was recorded). The bytes are a file under <data>/offline, with
+// the SHA-256 they must still have. seen_* is what a live look last found on the host: a copy whose signature differs from it is
+// stale and is never served. Keyed by dataset_id only, and deleted with the dataset (lifecycle). The offline package creates it
+// for a fresh install and the migration for an upgraded one.
+const OfflineEntriesTable = `CREATE TABLE IF NOT EXISTS offline_entries(
+	id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL,
+	host_id INTEGER NOT NULL, size INTEGER NOT NULL, mtime INTEGER NOT NULL, identity TEXT NOT NULL DEFAULT '',
+	op TEXT NOT NULL, channel INTEGER NOT NULL, step INTEGER NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL,
+	q TEXT NOT NULL DEFAULT '', unit TEXT NOT NULL DEFAULT '',
+	file TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, taken_at INTEGER NOT NULL,
+	seen_size INTEGER NOT NULL DEFAULT 0, seen_mtime INTEGER NOT NULL DEFAULT 0, seen_at INTEGER NOT NULL DEFAULT 0,
+	UNIQUE(dataset_id, host_id, size, mtime, op, channel, step, x, y, q, unit))`
+
+// OfflineSettingsTable holds the one setting of the offline store: the most it may keep, in bytes (one row, id 1).
+const OfflineSettingsTable = `CREATE TABLE IF NOT EXISTS offline_settings(
+	id INTEGER PRIMARY KEY CHECK (id = 1), cap_bytes INTEGER NOT NULL CHECK (cap_bytes >= 0))`
+
+// offlineCopies adds the offline tables. Nothing to carry over: nothing was kept offline before.
+func offlineCopies(tx *sql.Tx) error {
+	if _, err := tx.Exec(OfflineEntriesTable); err != nil {
+		return err
+	}
+	_, err := tx.Exec(OfflineSettingsTable)
+	return err
+}
 
 // explorationHistory adds the history table. Nothing to carry over: no step was kept before.
 func explorationHistory(tx *sql.Tx) error {

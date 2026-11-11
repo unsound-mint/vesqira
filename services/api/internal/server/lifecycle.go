@@ -223,6 +223,9 @@ func (s *Server) lifecycleDelete(kind string) http.HandlerFunc {
 				detail = fmt.Sprintf("deleted %q from the catalog; its %s bytes were kept on disk", res.Impact.Name, pre.OwnedBytes.Kind)
 			}
 		}
+		if kind == lifecycle.KindDataset {
+			s.Offline.RemoveFiles(id) // the rows went with the dataset; this is the offline copy's files (ADR 0059)
+		}
 		if res.OrphanPreview != "" && s.Boards != nil {
 			if err := s.Boards.RemovePreview(res.OrphanPreview); err != nil {
 				log.Printf("delete figure %d: removing preview: %v", id, err)

@@ -26,6 +26,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
+	"github.com/unsound-mint/vesqira/services/api/internal/offline"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
@@ -58,7 +59,9 @@ type Server struct {
 	Sweeps     *sweeps.Store    // parameter sweeps (ADR 0048); nil disables their routes
 	Transfers  *transfers.Store // the transfer queue (ADR 0051); nil disables the routes
 	Derived    *derived.Store
-	Masks      *masks.Store // typed masks (ADR 0057); nil disables their routes
+	Masks      *masks.Store   // typed masks (ADR 0057); nil disables their routes
+	Offline    *offline.Store // offline copies of bounded replies (ADR 0059); nil disables them
+	offlineRun offlineRunner  // the one running preparation (offline_prepare.go)
 	ManagedDir string
 	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
 	CacheDir  string
@@ -330,6 +333,15 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/datasets/{id}/regions/import", s.importRegions)
 		mux.HandleFunc("POST /api/regions/{id}", s.updateRegion)
 		mux.HandleFunc("POST /api/regions/{id}/delete", s.deleteRegion)
+	}
+	if s.Offline != nil { // owner listener only: the review listener has no route to an offline copy (ADR 0059)
+		mux.HandleFunc("GET /api/offline", s.offlineOverview)
+		mux.HandleFunc("POST /api/offline/plan", s.offlinePlanRoute)
+		mux.HandleFunc("POST /api/offline/prepare", s.offlinePrepareRoute)
+		mux.HandleFunc("GET /api/offline/prepare", s.offlinePrepareStatus)
+		mux.HandleFunc("POST /api/offline/prepare/cancel", s.offlinePrepareCancel)
+		mux.HandleFunc("PUT /api/offline/settings", s.offlineSettings)
+		mux.HandleFunc("POST /api/offline/forget", s.offlineForget)
 	}
 	if s.History != nil {
 		mux.HandleFunc("GET /api/history", s.listHistory)
