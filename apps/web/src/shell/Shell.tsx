@@ -283,6 +283,7 @@ export function Shell() {
   // Exploration history of the primary pane, per project, and undo of the active pane's edits (ADR 0055). "Continue from here" may
   // have to open another dataset first; the scene is applied once that pane has started over on it.
   const [pendingScene, setPendingScene] = useState<Scene | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false); // up to 500 rows are only drawn while the section is open
   const hist = useExplorationHistory({
     projectId: project?.id ?? 0,
     scene: viewerA.scene,
@@ -559,8 +560,8 @@ export function Shell() {
           <Section title="Spectrum">
             {actDs ? <><SpectrumPlot v={viewer} /><GaussianComponents v={viewer} /></> : <p className={s.empty}>{EM}</p>}
           </Section>
-          <Section title="History" defaultOpen={false} meta={hist.steps.length > 0 ? String(hist.steps.length) : undefined}>
-            {actDs ? <HistoryPanel steps={hist.steps} keep={hist.keep} error={hist.error} onContinue={hist.continueFrom} /> : <p className={s.empty}>{EM}</p>}
+          <Section title="History" defaultOpen={false} onToggle={setHistoryOpen} meta={hist.steps.length > 0 ? String(hist.steps.length) : undefined}>
+            {!historyOpen ? null : actDs ? <HistoryPanel steps={hist.steps} keep={hist.keep} error={hist.error} onContinue={hist.continueFrom} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Position-velocity" defaultOpen={false} meta={viewer.path ? "line drawn" : undefined}>
             {actDs ? <PvPanel v={viewer} /> : <p className={s.empty}>{EM}</p>}
