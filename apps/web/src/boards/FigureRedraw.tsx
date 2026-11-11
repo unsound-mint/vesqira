@@ -21,13 +21,14 @@ export function saveBlobAs(blob: Blob, name: string): void {
 
 const MESSAGES = {
   same: "Drawn again from unchanged data: the picture has the same pixels as the saved one.",
+  sameUnproven: "The picture has the same pixels as the saved one, although the data was not proven unchanged: a change, if there is one, is not in what this picture shows.",
   differs: "The picture drawn now is not the same as the saved one. The saved picture is kept; look at both before you save this as a new revision.",
 };
 
 /**
  * "Draw again" and "Export SVG" for a stored figure (ADR 0042, section 5). It first asks the server what the figure's files look
- * like now and, if anything changed or cannot be proven unchanged, says so and waits for the owner. A redrawing is shown beside
- * nothing and replaces nothing: it becomes a new, linked figure only on "Save as a new revision".
+ * like now and, if anything changed or cannot be proven unchanged, says so and waits for the owner. A redrawing replaces
+ * nothing: it becomes a new, linked figure only on "Save as a new revision".
  */
 export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f: Figure) => void }) {
   const schema = (figure.scene as { schema?: string } | undefined)?.schema;
@@ -37,7 +38,7 @@ export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f
   const [intent, setIntent] = useState<"draw" | "svg">("draw");
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [out, setOut] = useState<{ r: Redrawn; url: string; same: boolean } | null>(null);
+  const [out, setOut] = useState<{ r: Redrawn; url: string; same: boolean; proven: boolean } | null>(null);
   const [saved, setSaved] = useState<Figure | null>(null);
   const live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
@@ -52,6 +53,7 @@ export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f
   }
 
   async function draw(refresh: boolean, why: "draw" | "svg") {
+    const proven = !refresh; // draw(true) is only called after the owner agreed to data that is not proven unchanged
     setBusy("drawing");
     setErr(null);
     setCheck(null);
@@ -64,7 +66,7 @@ export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f
         return;
       }
       const same = await samePixels(r.blob, await savedPicture(figure)).catch(() => false);
-      if (live.current) setOut({ r, url: URL.createObjectURL(r.blob), same });
+      if (live.current) setOut({ r, url: URL.createObjectURL(r.blob), same, proven });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "The figure could not be drawn again.");
     } finally {
@@ -134,7 +136,7 @@ export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f
       {out ? (
         <div className={s.box} role="region" aria-label="The figure drawn again">
           <img className={s.img} src={out.url} alt={`${figure.title}, drawn again`} />
-          <p role="status" className={s.note}>{out.same ? MESSAGES.same : MESSAGES.differs}</p>
+          <p role="status" className={s.note}>{out.same ? (out.proven ? MESSAGES.same : MESSAGES.sameUnproven) : MESSAGES.differs}</p>
           {out.r.notes.length ? <ul className={s.list}>{out.r.notes.map((n) => <li key={n}>{n}</li>)}</ul> : null}
           <p className={s.note}>The original picture is kept. Saving makes a new figure, linked to this one; boards and shared reviews keep the figure they hold.</p>
           <div className={s.row}>

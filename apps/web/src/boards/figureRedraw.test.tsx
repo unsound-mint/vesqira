@@ -57,6 +57,17 @@ describe("draw again", () => {
     expect(redraw).toHaveBeenCalledWith(expect.anything(), { refresh: true }); // the sigma is measured again, only now
   });
 
+  it("does not call the data unchanged when the owner agreed to draw from data that was not proven so, even if the pixels are the same", async () => {
+    check.mockResolvedValue({ figureId: 7, kind: "scene", state: "ask", prompt: "p", sources: [source("probable", "x")] });
+    redraw.mockResolvedValue(drawn());
+    render(<FigureRedraw figure={fig()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Draw again" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Draw anyway" }));
+    const text = (await screen.findByText(/same pixels as the saved one/)).textContent ?? "";
+    expect(text).toContain("although the data was not proven unchanged");
+    expect(text).not.toContain("from unchanged data");
+  });
+
   it("draws nothing on Cancel", async () => {
     check.mockResolvedValue({ figureId: 7, kind: "scene", state: "ask", prompt: "p", sources: [source("probable", "x")] });
     render(<FigureRedraw figure={fig()} />);
