@@ -23,6 +23,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
@@ -53,6 +54,7 @@ type Server struct {
 	Sweeps     *sweeps.Store    // parameter sweeps (ADR 0048); nil disables their routes
 	Transfers  *transfers.Store // the transfer queue (ADR 0051); nil disables the routes
 	Derived    *derived.Store
+	Masks      *masks.Store // typed masks (ADR 0055); nil disables their routes
 	ManagedDir string
 	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
 	CacheDir  string
@@ -207,6 +209,12 @@ func (s *Server) Handler() http.Handler {
 	if s.analysisDeps() {
 		mux.HandleFunc("POST /api/analysis", s.analyze)
 		mux.HandleFunc("GET /api/datasets/{id}/derived", s.getDerived)
+		if s.Masks != nil {
+			mux.HandleFunc("GET /api/datasets/{id}/masks", s.listMasks)
+			mux.HandleFunc("POST /api/datasets/{id}/masks", s.createMask)
+			mux.HandleFunc("POST /api/masks/{id}/delete", s.deleteMask)
+			mux.HandleFunc("GET /api/masks/{id}/plane", s.maskPlane)
+		}
 		mux.HandleFunc("POST /api/analysis/relative-orientation", s.relativeOrientation)
 		mux.HandleFunc("GET /api/datasets/{id}/relative-orientation.csv", s.relativeOrientationTable)
 		if s.HostDB != nil && s.Remote != nil && s.Jobs != nil {

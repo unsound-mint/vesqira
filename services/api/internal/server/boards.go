@@ -135,13 +135,37 @@ type safeInterpretation struct {
 	Kind           string `json:"kind"`
 	Unit           string `json:"unit"`
 	DeclaredBy     string `json:"declaredBy"`
+	Tier           string `json:"tier"`
+	MappingVersion string `json:"mappingVersion,omitempty"`
 	HasReliability bool   `json:"hasReliabilityMap"`
 }
 
 // safeUnitDeclaration is the unit the author declared for a file with no BUNIT, said to be the author's.
 type safeUnitDeclaration struct {
-	Unit       string `json:"unit"`
-	DeclaredBy string `json:"declaredBy"`
+	Unit           string `json:"unit"`
+	DeclaredBy     string `json:"declaredBy"`
+	Tier           string `json:"tier"`
+	MappingVersion string `json:"mappingVersion,omitempty"`
+}
+
+// safeTier says how far one interpretation behind a figure is established (ADR 0055): verified (a check the app ran), declared (the
+// author), inferred (a rule, with its mapping version) or unresolved. A reviewer sees it next to what the figure shows; it carries no
+// id and no path.
+type safeTier struct {
+	What           string `json:"what"`
+	Tier           string `json:"tier"`
+	Rule           string `json:"rule,omitempty"`
+	MappingVersion string `json:"mappingVersion,omitempty"`
+	Note           string `json:"note"`
+}
+
+// tierOf is the tier recorded for an interpretation written by `by`, for a value made without the store (an empty tier is derived
+// from its author, never assumed verified).
+func tierOf(tier, mapping, by string) (string, string) {
+	if tier != "" {
+		return tier, mapping
+	}
+	return catalog.TierOf(by)
 }
 
 // Provenance is the reviewer-safe account of where a figure came from. It has no path and no dataset id.
@@ -154,6 +178,8 @@ type Provenance struct {
 		Header     safeHeader `json:"headerDeclaredByFile"`
 	} `json:"source"`
 	Interpretation *safeInterpretation `json:"interpretation,omitempty"`
+	// Tiers lists, for the brightness unit, the orientation declaration and the masks applied, how far each is established.
+	Tiers []safeTier `json:"tiers"`
 	// UnitDeclaration is set when the brightness unit of the figure is one the author declared because the file has no BUNIT
 	// (headerDeclaredByFile.bunit stays null: the header is only what the file said).
 	UnitDeclaration *safeUnitDeclaration `json:"unitDeclaration,omitempty"`
@@ -200,6 +226,14 @@ func identityNote(d catalog.Dataset) string {
 	return "its bytes were not hashed"
 }
 
+// ruleOf names the rule behind an inferred interpretation (never for a declared one: the author is not a rule).
+func ruleOf(tier, by string) string {
+	if tier == catalog.TierInferred {
+		return by
+	}
+	return ""
+}
+
 func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary, overlaySources []catalog.Dataset) (json.RawMessage, error) {
 	var pr Provenance
 	pr.Source.Name, pr.Source.SizeBytes, pr.Source.ModifiedAt = d.Name, d.SizeBytes, d.ModifiedAt
@@ -223,8 +257,20 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		"The picture was drawn by the author's browser and the view settings are as reported by it; the server checked them against the catalogued header (channel range, brightness unit) but did not redraw the picture.",
 		"Pixels are shown as float32; the author's viewer treats NaN, BLANK and infinite values as no value and never draws them as zero.",
 	}
+	pr.Tiers = []safeTier{}
+	switch {
+	case pr.Source.Header.BUnit != nil:
+		pr.Tiers = append(pr.Tiers, safeTier{What: "brightness unit", Tier: catalog.TierVerified, Note: "BUNIT is in the file and was read; it was not checked against the data"})
+	case declaredUnit != "":
+		t, mv := tierOf(d.UnitDeclaration.Tier, d.UnitDeclaration.MappingVersion, d.UnitDeclaration.DeclaredBy)
+		pr.Tiers = append(pr.Tiers, safeTier{What: "brightness unit", Tier: t, MappingVersion: mv, Rule: ruleOf(t, d.UnitDeclaration.DeclaredBy),
+			Note: "the file has no BUNIT; the unit is " + map[string]string{catalog.TierDeclared: "the author's declaration", catalog.TierInferred: "proposed by a rule"}[t]})
+	default:
+		pr.Tiers = append(pr.Tiers, safeTier{What: "brightness unit", Tier: catalog.TierUnresolved, Note: "the file has no BUNIT and none was declared"})
+	}
 	if declaredUnit != "" {
-		pr.UnitDeclaration = &safeUnitDeclaration{Unit: declaredUnit, DeclaredBy: "the author of this board, not the file"}
+		ut, umv := tierOf(d.UnitDeclaration.Tier, d.UnitDeclaration.MappingVersion, d.UnitDeclaration.DeclaredBy)
+		pr.UnitDeclaration = &safeUnitDeclaration{Unit: declaredUnit, DeclaredBy: "the author of this board, not the file", Tier: ut, MappingVersion: umv}
 		pr.Statements = append(pr.Statements, "The brightness unit ("+declaredUnit+") was declared by the author of this board, not by the file: the file has no BUNIT.")
 	}
 	if d.Interpretation != nil {
@@ -235,9 +281,13 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 				by = "the analysis that made this map (" + d.Interpretation.DeclaredBy + "), not the file"
 			}
 		}
-		pr.Interpretation = &safeInterpretation{Kind: d.Interpretation.Kind, Unit: d.Interpretation.Unit, DeclaredBy: by, HasReliability: d.Interpretation.ReliabilityID != nil}
+		it, imv := tierOf(d.Interpretation.Tier, d.Interpretation.MappingVersion, d.Interpretation.DeclaredBy)
+		pr.Interpretation = &safeInterpretation{Kind: d.Interpretation.Kind, Unit: d.Interpretation.Unit, DeclaredBy: by, Tier: it, MappingVersion: imv, HasReliability: d.Interpretation.ReliabilityID != nil}
+		pr.Tiers = append(pr.Tiers, safeTier{What: "orientation (axial angle, its unit and meaning)", Tier: it, MappingVersion: imv, Rule: ruleOf(it, d.Interpretation.DeclaredBy),
+			Note: "not from the file; " + map[string]string{catalog.TierDeclared: "declared by the author", catalog.TierInferred: "proposed by a rule and not confirmed"}[it]})
 		pr.Statements = append(pr.Statements, "The orientation unit and meaning were declared by "+by+", not by the file. Angles are axial (0° and 180° are the same orientation) and statistics use the doubled-angle method.")
 	}
+	pr.Tiers = append(pr.Tiers, masksTiers(der)...)
 	switch d.Nature {
 	case "constructed_control":
 		pr.Statements = append(pr.Statements, "This is a constructed control (synthetic data built for a test), declared by the author. It is not an observation.")

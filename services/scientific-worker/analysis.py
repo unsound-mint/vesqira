@@ -214,17 +214,40 @@ def write_axial(args, theta_deg, rel, header, summary: dict, history: list[str])
 
 # ---------------------------------------------------------------------------------------------------------------
 
+def mask_policy(args, c: Cube, allow_weight: bool = False, which: str = "masks"):
+    """The masks an operation was told to apply (the --masks option), opened for reading (close them with ap.__exit__), or None. Each
+    has its own policy."""
+    import masks as mk
+    try:
+        specs = mk.parse_specs(getattr(args, which, None))
+        return mk.Applied(c, specs, allow_weight).__enter__() if specs else None
+    except mk.MaskError as e:
+        fail(str(e))
+
+
 def op_stats(args) -> dict:
     c = open_cube(args.input)
     c0, c1 = chan_range(c, args)
+    ap = mask_policy(args, c)
+    try:
+        return _stats(args, c, c0, c1, ap)
+    finally:
+        if ap is not None:
+            ap.__exit__(None, None, None)
+
+
+def _stats(args, c: Cube, c0: int, c1: int, ap) -> dict:
     n = nan = 0
     mean = m2 = 0.0
     lo, hi = math.inf, -math.inf
     peak = None
     per = []
     for ch, p in planes(c, c0, c1):
+        nan += int(p.size - np.count_nonzero(np.isfinite(p)))        # no value in the file: counted before any mask, and apart from them
+        if ap is not None:
+            ex, _ = ap.plane(ch, p)
+            p = np.where(ex, np.nan, p)                              # a masked pixel is left out; it is not turned into zero
         fin = p[np.isfinite(p)]
-        nan += p.size - fin.size
         row = {"channel": ch, "finite": int(fin.size), "rms": None, "mad_sigma": None, "min": None, "max": None, "mean": None}
         if fin.size:
             row.update(rms=float(fin.std()), mad_sigma=float(1.4826 * np.median(np.abs(fin - np.median(fin)))),
@@ -244,6 +267,11 @@ def op_stats(args) -> dict:
     out = {"channels": [c0, c1], "finite": n, "no_value": nan, "min": None if n == 0 else lo, "max": None if n == 0 else hi,
            "mean": None if n == 0 else mean, "std": None if n < 2 else math.sqrt(m2 / n), "peak": peak, "per_channel": per,
            "policy": "NaN, BLANK and infinite values are excluded and counted; nothing is treated as zero"}
+    if ap is not None:
+        import masks as mk
+        out["masks"] = ap.record()
+        out["excluded_by_mask"] = ap.unique_excluded
+        out["policy"] += ". " + mk.masks_policy_sentence(ap.specs)
     if peak is not None and c.celestial:
         w = c.coord(peak["x"], peak["y"], peak["channel"])
         out["peak"]["sky"] = w["sky"]
@@ -267,8 +295,11 @@ def op_moment(args) -> dict:
     s2 = np.zeros((ny, nx))
     count = np.zeros((ny, nx), dtype=np.int64)
     thr = args.threshold
+    ap = mask_policy(args, c)
     for ch, p in planes(c, c0, c1):
         ok = np.isfinite(p)
+        if ap is not None:
+            ok &= ~ap.plane(ch, p)[0]            # a masked pixel is not selected, exactly like one below the threshold; it is not zero
         if thr is not None:
             ok &= p >= thr                       # below the threshold counts as not selected, not as zero
         w = np.where(ok, p, 0.0) * width[ch]
@@ -288,6 +319,8 @@ def op_moment(args) -> dict:
         else:
             for ch, p in planes(c, c0, c1):
                 ok = np.isfinite(p)
+                if ap is not None:
+                    ok &= ~ap.plane_quiet(ch, p)[0]
                 if thr is not None:
                     ok &= p >= thr
                 w = np.where(ok, p, 0.0) * width[ch]
@@ -305,6 +338,12 @@ def op_moment(args) -> dict:
             h["VESQBUNS"] = "user"                              # the BUNIT written above is that brightness unit times the spectral one
             h["HISTORY"] = f"Vesqira: brightness unit {bu} was declared by the author for the input; the file has no BUNIT"
         note_unit(summary, bu_src, bu)
+    if ap is not None:
+        import masks as mk
+        summary["masks"] = ap.record()
+        summary["policy"] += ". " + mk.masks_policy_sentence(ap.specs)
+        h["HISTORY"] = ("Vesqira: masks applied: " + "; ".join(f"{s['type']} {s['policy']}" for s in ap.specs))[:68]
+        ap.__exit__(None, None, None)
     write_fits(args.out, out.astype("<f4"), h)
     return {"ok": True, "op": "moment", "summary": summary}
 
@@ -741,7 +780,12 @@ def op_relorient(args) -> dict:
         fail(str(e))
 
 
-OPS = {"relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
+def op_mask(args) -> dict:
+    import masks as mk
+    return mk.op_mask(args)
+
+
+OPS = {"mask": op_mask, "relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
 
 
 def log_failure(op: str, what: str) -> None:
@@ -785,6 +829,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--catalog")              # relorient_catalog: the catalog file, and its declaration as JSON
     ap.add_argument("--declaration")
     ap.add_argument("--params")               # relorient_*: parameters as a JSON object (relorient.check_params)
+    ap.add_argument("--masks")                # masks to apply, a JSON list of {path, type, policy[, weight, id, name, tier, rule, fingerprint]} (ADR 0055)
+    ap.add_argument("--ref-masks")            # the same for the reference of relorient_maps
     ap.add_argument("--table-out")            # relorient_maps: where the per-pixel CSV goes
     args = ap.parse_args(argv)
     limit_memory()

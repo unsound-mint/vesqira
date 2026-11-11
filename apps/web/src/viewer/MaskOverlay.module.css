@@ -1,0 +1,61 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stroke {
+  fill: none;
+  stroke: var(--canvas-text);
+  stroke-width: 1;
+  opacity: 0.9;
+}
+
+.ink {
+  fill: var(--canvas-text);
+  opacity: 0.9;
+}
+
+.swatch {
+  stroke: var(--canvas-text-2);
+  stroke-width: 1;
+}
+
+.legend {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-3);
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: var(--sp-1) var(--sp-2);
+  list-style: none;
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--canvas-text);
+  font-size: var(--text-xs);
+  line-height: var(--lh-md);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.count {
+  color: var(--canvas-text-2);
+  font-family: var(--font-data);
+}
+
+.problem {
+  position: absolute;
+  bottom: var(--sp-5);
+  left: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: var(--text-xs);
+}

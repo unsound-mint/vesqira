@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui";
+import { tierLine } from "../api/tier";
 import { RunLine } from "./RunLine";
 import { figurePreviewUrl, listBoards } from "../api/boards";
 import type { Board } from "../api/boards";
@@ -61,6 +62,7 @@ export function PrintBoard({ boardId }: { boardId: number }) {
             <p>File <span className="mono">{f.provenance.source.name}</span> ({f.provenance.source.identity}).</p>
             {f.provenance.interpretation ? <p>Interpretation declared by {f.provenance.interpretation.declaredBy}: {f.provenance.interpretation.kind}, unit {f.provenance.interpretation.unit}.</p> : null}
             {f.provenance.run ? <RunLine run={f.provenance.run} /> : null}
+            {(f.provenance.tiers ?? []).map((t) => <p key={t.what} data-tier={t.tier}>{tierLine(t)}</p>)}
             {f.provenance.statements.map((t) => <p key={t}>{t}</p>)}
           </div>
         </section>

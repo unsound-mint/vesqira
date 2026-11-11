@@ -914,6 +914,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/masks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The masks of a dataset */
+        get: operations["owner_s_listMasks_get_api_datasets_id_masks"];
+        put?: never;
+        /**
+         * Make a typed mask of a dataset as a derived file
+         * @description The dataset's file is never changed. 409 for a file on another host. A mask of type other needs a description; the type missing is computed from the data and cannot be declared.
+         */
+        post: operations["owner_s_createMask_post_api_datasets_id_masks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/nature": {
         parameters: {
             query?: never;
@@ -1927,6 +1950,47 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_submitJob_post_api_jobs_id_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/masks/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget a mask (its file is kept) */
+        post: operations["owner_s_deleteMask_post_api_masks_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/masks/{id}/plane": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One plane of a mask, for the viewer's hatch overlay
+         * @description The same frame as a data plane (uint32 header length, JSON header, payload) with a uint8 payload, row 0 = FITS y 1, 1 = flagged. A mask of one plane answers the same for every channel.
+         */
+        get: operations["owner_s_maskPlane_get_api_masks_id_plane"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3609,6 +3673,13 @@ export interface components {
             /** Format: date-time */
             declaredAt: string;
             stale: boolean;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
+             * @enum {string}
+             */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion: string;
         };
         /** @description A registered dataset: a reference to the original file plus header facts. The file itself is never altered. */
         Dataset: {
@@ -3756,6 +3827,13 @@ export interface components {
             declaredAt: string;
             /** @description The file's size or modification time differs from when the unit was declared: it may no longer describe these bytes. */
             stale: boolean;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
+             * @enum {string}
+             */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion: string;
         };
         /** @description What this running server can do, so a client can show a feature as unavailable instead of failing on a 404. */
         Capabilities: {
@@ -3862,11 +3940,25 @@ export interface components {
             unit: string;
             declaredBy: string;
             hasReliabilityMap: boolean;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it. Absent on a figure saved before tiers existed.
+             * @enum {string}
+             */
+            tier?: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion?: string;
         };
         /** @description The brightness unit the author declared because the file has no BUNIT. */
         FigureUnitDeclaration: {
             unit: string;
             declaredBy: string;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it. Absent on a figure saved before tiers existed.
+             * @enum {string}
+             */
+            tier?: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion?: string;
         };
         RunParam: {
             key: string;
@@ -3950,6 +4042,8 @@ export interface components {
             derived?: components["schemas"]["DerivedSummary"];
             view: components["schemas"]["FigureView"];
             statements: string[];
+            /** @description Absent on a figure saved before tiers existed */
+            tiers?: components["schemas"]["FigureTier"][];
         };
         /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. */
         Figure: {
@@ -4779,6 +4873,13 @@ export interface components {
             declaredAt: string;
             /** @description True when the file's size or modification time differs from when this was declared. A stale declaration is not applied: positions are refused until it is confirmed again. */
             stale: boolean;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
+             * @enum {string}
+             */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion: string;
         };
         RegisterPathRequest: {
             /** @description Absolute path inside a source root; resolved and authorised like a FITS registration */
@@ -5101,6 +5202,10 @@ export interface components {
              */
             otherId: number;
             params?: components["schemas"]["RelativeOrientationParams"];
+            /** @description Masks of the first map, each with its own policy (ADR 0055); refused for a comparison with a catalog */
+            masks?: components["schemas"]["MaskReference"][];
+            /** @description Masks of the second map */
+            otherMasks?: components["schemas"]["MaskReference"][];
         };
         RelativeOrientationHistogram: {
             edges_deg: number[];
@@ -6679,6 +6784,110 @@ export interface components {
             reachable: boolean;
             /** @description for example: VPN client started; the host became reachable after 12 s */
             message: string;
+        };
+        MaskReference: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * @description Stated for every mask: there is no default and no global policy. `weight` only where the analysis has weights (relative orientation); the policy for a no-value mask is exclude.
+             * @enum {string}
+             */
+            policy: "exclude" | "keep" | "weight";
+            /** @description With the weight policy: the factor a flagged pixel counts with */
+            weight?: number | null;
+        };
+        /** @description A typed mask (ADR 0055): a derived uint8 FITS file flagging pixels of a dataset for a stated reason. It changes nothing in the dataset and is applied only where an operation names it with a policy. */
+        Mask: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            datasetId: number;
+            /**
+             * @description missing: no value in the file (NaN, BLANK), computed and never declared. Zero is a value and is never `missing`.
+             * @enum {string}
+             */
+            type: "missing" | "invalid" | "low_snr" | "saturated" | "user_excluded" | "other";
+            name: string;
+            width: number;
+            height: number;
+            /** @description 0: one plane that applies to every channel; otherwise one plane per channel */
+            channels: number;
+            /** Format: int64 */
+            flagged: number;
+            /** Format: int64 */
+            total: number;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
+             * @enum {string}
+             */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion: string;
+            /** @enum {string} */
+            method: "computed" | "regions" | "import";
+            /** @description How the mask was made, as the worker described it: the rule, the estimator, the threshold and where sigma or the threshold came from, the regions, or the file imported */
+            rule: {
+                [key: string]: unknown;
+            };
+            meaning: string;
+            author: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description What is recorded about the bytes the mask was made from: sha256:<hex>, sampled:<fingerprint> (not proof) or empty */
+            sourceIdentity: string;
+            /** Format: int64 */
+            fileSize: number;
+            /** @description SHA-256 of the mask file */
+            sha256: string;
+            /** @description The dataset's size or modification time differs from when the mask was made: it is not applied until it is made again */
+            stale: boolean;
+        };
+        MaskList: {
+            masks: components["schemas"]["Mask"][];
+        };
+        CreateMaskRequest: {
+            /**
+             * @description missing: computed from the data (type missing). low_snr: value / sigma < k. saturated: value >= threshold. regions: user_excluded from saved regions. import: a registered image of the same grid, with its declared type and the meaning of nonzero
+             * @enum {string}
+             */
+            method: "missing" | "low_snr" | "saturated" | "regions" | "import";
+            /**
+             * @description Only for an import
+             * @enum {string}
+             */
+            type?: "invalid" | "low_snr" | "saturated" | "user_excluded" | "other";
+            name?: string;
+            k?: number;
+            sigma?: {
+                /** @enum {string} */
+                kind: "value" | "mad" | "map";
+                value?: number;
+                /** Format: int64 */
+                datasetId?: number;
+            };
+            threshold?: number;
+            /** @description Where the saturation threshold comes from (required) */
+            source?: string;
+            regionIds?: number[];
+            /** Format: int64 */
+            importDatasetId?: number;
+            /**
+             * @description What a nonzero pixel of the imported file means
+             * @enum {string}
+             */
+            nonzero?: "flagged" | "valid";
+            /** @description Required for type other */
+            meaning?: string;
+        };
+        /** @description How far one interpretation behind a figure is established (ADR 0055): the brightness unit, the orientation declaration, or a mask that was applied to the result. No id and no path. */
+        FigureTier: {
+            what: string;
+            /** @enum {string} */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description For an inferred interpretation: the rule that proposed it */
+            rule?: string;
+            mappingVersion?: string;
+            note: string;
         };
         /** @description How the base raster of a saved figure was drawn, so "draw again" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only. */
         SceneRender: {
@@ -8303,6 +8512,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FingerprintQueued"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listMasks_get_api_datasets_id_masks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaskList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createMask_post_api_datasets_id_masks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMaskRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mask"];
                 };
             };
             /** @description Error */
@@ -10117,6 +10392,73 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_deleteMask_post_api_masks_id_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: int64 */
+                        removed: number;
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_maskPlane_get_api_masks_id_plane: {
+        parameters: {
+            query: {
+                channel: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description a frame */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.plane": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
