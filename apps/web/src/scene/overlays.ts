@@ -292,12 +292,12 @@ export function sceneLayers(scene: Scene, ctx: DrawContext): { id: string; kind:
 export const sceneMarks = (scene: Scene, ctx: DrawContext): Mark[] => sceneLayers(scene, ctx).flatMap((l) => l.marks);
 
 /** How each role looks on a figure (the viewer styles the same roles with CSS tokens in PlaneViewer.module.css). */
-const FIGURE_STROKE: Record<Exclude<MarkRole, "orientation">, { color: string; width: number; dash: number[] }> = {
+export const FIGURE_STROKE: Record<Exclude<MarkRole, "orientation">, { color: string; width: number; dash: number[] }> = {
   region: { color: "#3cc4e8", width: 2, dash: [] },
   saved: { color: "#a7b3c1", width: 1.5, dash: [] },
   draft: { color: "#3cc4e8", width: 1.5, dash: [4, 3] },
 };
-const HALO = "#06080c"; // --canvas: every line gets a dark halo so it reads over bright and dark pixels alike
+export const HALO = "#06080c"; // --canvas: every line gets a dark halo so it reads over bright and dark pixels alike
 export const LABEL_PX = 11;
 const FONT = "'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace";
 export const dashOf = (width: number): number[] => [Math.max(3, 4 * width), Math.max(2, 3 * width)];

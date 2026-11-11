@@ -10,16 +10,15 @@ import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import type { Plane } from "../api/planes";
 import { lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
-import { composeGridFigure, defaultColumns, gridCaption, gridFigure, loadedText, paintPixels, panelLabel, rampCss, blobToBase64 } from "./channelGrid";
+import { composeGridFigure, defaultColumns, GRID_NODATA, gridCaption, gridFigure, loadedText, paintPixels, panelLabel, rampCss, STRETCH_LABEL, blobToBase64 } from "./channelGrid";
 import type { Stretch } from "./render";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import s from "./ChannelGrid.module.css";
 
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
-const NODATA: [[number, number, number], [number, number, number]] = [[27, 34, 44], [85, 98, 117]];
+const NODATA = GRID_NODATA;
 const GRID_COLORMAPS: { id: ColormapId; label: string }[] = [{ id: "viridis", label: "Viridis" }, { id: "inferno", label: "Inferno" }, { id: "gray", label: "Gray" }];
-const STRETCH_LABEL: Record<Stretch, string> = { linear: "linear", sqrt: "square root", asinh: "inverse hyperbolic sine" };
 
 type Loaded = { plane: Plane; slab: { excluded_samples: number; pixels_without_value: number; samples: number } | null };
 
@@ -192,12 +191,13 @@ export function ChannelGrid({ v, dataset }: { v: Viewer; dataset: Dataset }) {
     setLimits([a, b]);
   }
 
+  const overlaysNotDrawn = v.scene?.overlays.filter((o) => o.visible && o.id !== "regions" && o.id !== "orientation").length ?? 0;
   async function save() {
     if (!plan || !shared) return;
     setSaving(true);
     setSaveError(null);
     try {
-      const built = gridFigure({ datasetId: dataset.id, plan, first: nums.first - 1, last: nums.last - 1, stride: nums.stride, average: nums.average, columns: cols, unit, convention, colormap, stretch, bunit });
+      const built = gridFigure({ datasetId: dataset.id, plan, first: nums.first - 1, last: nums.last - 1, stride: nums.stride, average: nums.average, columns: cols, unit, convention, colormap, stretch, bunit, overlaysNotDrawn });
       if (!built) throw new Error("There is no shared scale to save: the sampled panels hold no finite pixel.");
       if (loaded.current.size < plan.panel_count) throw new Error("Load every panel before saving, so the figure shows what its description states.");
       const aspect = plan.panel_width / plan.panel_height;
@@ -205,7 +205,7 @@ export function ChannelGrid({ v, dataset }: { v: Viewer; dataset: Dataset }) {
         title: `${dataset.name}, channel maps ${nums.first}–${nums.last}`,
         panels: plan.panels.map((p) => ({ label: labels[p.index]!, source: canvases.current.get(p.index) ?? null })),
         columns: cols, aspect, lut: lut(colormap), scale: shared, unit: bunit,
-        captions: [dataset.name, ...gridCaption(plan, { stretch: STRETCH_LABEL[stretch], bunit, overlaysOnBase: v.scene?.overlays.filter((o) => o.visible && o.id !== "regions" && o.id !== "orientation").length ?? 0 }), "Header values are declared by the file, not verified."],
+        captions: [dataset.name, ...gridCaption(plan, { stretch: STRETCH_LABEL[stretch], bunit, overlaysOnBase: overlaysNotDrawn }), "Header values are declared by the file, not verified."],
       });
       setSaved(await createFigure({ datasetId: dataset.id, title: `${dataset.name}, channel maps ${nums.first}–${nums.last}`, caption: "", view: built.view, previewPng: await blobToBase64(blob), channelGrid: built.spec }));
     } catch (e) {

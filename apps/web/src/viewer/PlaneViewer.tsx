@@ -6,7 +6,7 @@ import { lut } from "./colormaps";
 import { pixelAt } from "./geometry";
 import { limits, outputSize, renderPlane } from "./render";
 import { GlPlaneRenderer, cpuNote, forcedCpu, gpuSupported, setRendererNote } from "./glRenderer";
-import type { Rgb } from "./render";
+import { nodataColours } from "./nodata";
 import type { Viewer } from "./useViewer";
 import { channelLabel } from "./format";
 import { fromDrag, lineFromDrag, lineValid } from "./region";
@@ -19,12 +19,6 @@ import { SourcePopover } from "./SourceRow";
 import type { Mark } from "../scene/overlays";
 import { dragCentre, placement } from "../scene/view";
 import s from "./PlaneViewer.module.css";
-
-function token(name: string, fallback: Rgb): Rgb {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const m = /^#([0-9a-f]{6})$/i.exec(raw);
-  return m ? [parseInt(m[1]!.slice(0, 2), 16), parseInt(m[1]!.slice(2, 4), 16), parseInt(m[1]!.slice(4, 6), 16)] : fallback;
-}
 
 /** The plane on screen: native aspect, square pixels, sharp edges, north up, "no value" pixels hatched. */
 export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProbe?: (p: Pt | null) => void; onDrawn?: (plane: NonNullable<Viewer["plane"]>) => void; onSize?: (size: { w: number; h: number }) => void }) {
@@ -97,7 +91,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
       stretch: v.stretch,
       outW,
       outH,
-      nodata: [token("--nodata-a", [27, 34, 44]), token("--nodata-b", [85, 98, 117])] as [Rgb, Rgb],
+      nodata: nodataColours(),
     };
     if (useGpu) {
       if (gl.current?.canvas !== canvas) {

@@ -35,19 +35,27 @@ export function captionLines(f: FigureFacts, view: View | null, plane: Plane | n
   return out;
 }
 
-const INK = "#e7ecf2";
-const INK2 = "#a7b3c1";
-const BG = "#0f151c";
-const FONT = "'Geist Variable', 'Geist', system-ui, sans-serif";
-const MONO = "'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace";
+export const INK = "#e7ecf2";
+export const INK2 = "#a7b3c1";
+export const BG = "#0f151c";
+export const FONT = "'Geist Variable', 'Geist', system-ui, sans-serif";
+export const MONO = "'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace";
 
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+/** The width of a text in the caption font, measured on a canvas (a test passes its own). */
+export type Measure = (text: string) => number;
+export function canvasMeasure(): Measure {
+  const probe = document.createElement("canvas").getContext("2d")!;
+  probe.font = `12px ${FONT}`;
+  return (t) => probe.measureText(t).width;
+}
+
+function wrap(measure: Measure, text: string, maxW: number): string[] {
   const words = text.split(" ");
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
     const t = cur ? `${cur} ${w}` : w;
-    if (ctx.measureText(t).width > maxW && cur) {
+    if (measure(t) > maxW && cur) {
       lines.push(cur);
       cur = w;
     } else cur = t;
@@ -62,24 +70,40 @@ function toBlob(c: HTMLCanvasElement): Promise<Blob> {
 
 export const FIGURE_WIDTH = 720;
 
-/** Plane figure: the whole plane as drawn, its overlays (one list of marks per layer from the scene's overlay registry, stroked in scene order like the screen), a legend and the caption. Returns a PNG. */
-export async function composeImageFigure(o: {
-  source: HTMLCanvasElement;
+/** What a plane figure is made of: the same input paints the PNG and writes the SVG (scene/svg.ts), so the two cannot differ. */
+export type ImageFigure = {
   planeW: number;
   planeH: number;
   layers: Mark[][];
   legend: { kind: "scalar"; lut: Uint8ClampedArray; limits: [number, number] | null; unit: string | null } | { kind: "cyclic"; lut: Uint8ClampedArray };
   title: string;
   captions: string[];
-}): Promise<Blob> {
-  const pad = 20;
-  const W = FIGURE_WIDTH;
+  /** The width the figure is composed at; FIGURE_WIDTH unless a figure recorded another. */
+  width?: number;
+};
+
+export const FIGURE_PAD = 20;
+/** Output pixels per image pixel in a figure of this width: what the overlay registry draws at. */
+export const figureScale = (figureWidth: number, planeW: number) => (figureWidth - 2 * FIGURE_PAD) / planeW;
+
+export type ImageLayout = { W: number; H: number; pad: number; iw: number; ih: number; top: number; by: number; capLines: string[]; ends: [string, string] };
+
+/** Where everything of a plane figure goes. One function for the PNG and the SVG. */
+export function layoutImageFigure(o: ImageFigure, measure: Measure): ImageLayout {
+  const pad = FIGURE_PAD;
+  const W = o.width ?? FIGURE_WIDTH;
   const iw = W - 2 * pad;
   const ih = Math.round((iw * o.planeH) / o.planeW);
-  const probe = document.createElement("canvas").getContext("2d")!;
-  probe.font = `12px ${FONT}`;
-  const capLines = o.captions.flatMap((c) => wrap(probe, c, iw));
+  const capLines = o.captions.flatMap((c) => wrap(measure, c, iw));
   const H = pad + 26 + ih + 14 + 40 + capLines.length * 17 + pad;
+  const top = pad + 26;
+  const ends: [string, string] = o.legend.kind === "cyclic" ? ["0°", "180° (same as 0°)"] : o.legend.limits ? (o.legend.limits.map((v) => `${Number(v.toPrecision(5))}${o.legend.kind === "scalar" && o.legend.unit ? ` ${o.legend.unit}` : ""}`) as [string, string]) : ["unknown", "unknown"];
+  return { W, H, pad, iw, ih, top, by: top + ih + 14, capLines, ends };
+}
+
+/** Plane figure: the whole plane as drawn, its overlays (one list of marks per layer from the scene's overlay registry, stroked in scene order like the screen), a legend and the caption. Returns a PNG. */
+export async function composeImageFigure(o: ImageFigure & { source: HTMLCanvasElement }): Promise<Blob> {
+  const { W, H, pad, iw, ih, top, by, capLines, ends } = layoutImageFigure(o, canvasMeasure());
   const c = document.createElement("canvas");
   c.width = W;
   c.height = H;
@@ -90,7 +114,6 @@ export async function composeImageFigure(o: {
   ctx.fillStyle = INK;
   ctx.font = `600 16px ${FONT}`;
   ctx.fillText(o.title.slice(0, 120), pad, pad + 14);
-  const top = pad + 26;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(o.source, pad, top, iw, ih);
   ctx.save();
@@ -98,7 +121,6 @@ export async function composeImageFigure(o: {
   for (const layer of o.layers) strokeMarks(ctx, layer, iw / o.planeW, ih / o.planeH, INK, { w: o.planeW, h: o.planeH });
   ctx.restore();
   // legend bar
-  const by = top + ih + 14;
   for (let x = 0; x < iw; x++) {
     const i = Math.round((x / (iw - 1)) * 255) * 3;
     ctx.fillStyle = `rgb(${o.legend.lut[i]},${o.legend.lut[i + 1]},${o.legend.lut[i + 2]})`;
@@ -106,10 +128,9 @@ export async function composeImageFigure(o: {
   }
   ctx.fillStyle = INK2;
   ctx.font = `12px ${MONO}`;
-  const ends = o.legend.kind === "cyclic" ? ["0°", "180° (same as 0°)"] : o.legend.limits ? o.legend.limits.map((v) => `${Number(v.toPrecision(5))}${o.legend.kind === "scalar" && o.legend.unit ? ` ${o.legend.unit}` : ""}`) : ["unknown", "unknown"];
-  ctx.fillText(ends[0]!, pad, by + 28);
+  ctx.fillText(ends[0], pad, by + 28);
   ctx.textAlign = "right";
-  ctx.fillText(ends[1]!, pad + iw, by + 28);
+  ctx.fillText(ends[1], pad + iw, by + 28);
   ctx.textAlign = "left";
   ctx.font = `12px ${FONT}`;
   capLines.forEach((l, i) => ctx.fillText(l, pad, by + 52 + i * 17));
@@ -122,9 +143,8 @@ export async function composeSpectrumFigure(o: { spectrum: Spectrum; title: stri
   const pad = 20;
   const pw = W - 2 * pad - 40;
   const ph = 300;
-  const probe = document.createElement("canvas").getContext("2d")!;
-  probe.font = `12px ${FONT}`;
-  const capLines = o.captions.flatMap((c) => wrap(probe, c, W - 2 * pad));
+  const measure = canvasMeasure();
+  const capLines = o.captions.flatMap((c) => wrap(measure, c, W - 2 * pad));
   const H = pad + 26 + ph + 50 + capLines.length * 17 + pad;
   const c = document.createElement("canvas");
   c.width = W;

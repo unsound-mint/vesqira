@@ -238,6 +238,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/figures", s.listFigures)
 		mux.HandleFunc("GET /api/figures/{id}/preview", s.figurePreview)
 		mux.HandleFunc("GET /api/figures/{id}/download", s.figureDownload)
+		mux.HandleFunc("GET /api/figures/{id}/redraw-check", s.redrawCheck)
 		mux.HandleFunc("POST /api/figures/{id}/text", s.figureText)
 		mux.HandleFunc("GET /api/figures/{id}/impact", s.lifecycleImpact("figure"))
 		mux.HandleFunc("POST /api/figures/{id}/archive", s.lifecycleArchive("figure", true))

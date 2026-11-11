@@ -31,6 +31,10 @@ export type FigureRequest = Schemas["CreateFigureRequest"];
 export const createFigure = (r: FigureRequest) => post<Figure>("/api/figures", r);
 export const listFigures = () => call<{ figures: Figure[] }>("/api/figures").then((r) => r.figures);
 export const figurePreviewUrl = (id: number) => `/api/figures/${id}/preview`;
+/** What "draw again" must tell the owner before it draws (ADR 0042, section 5); reads and changes nothing. */
+export type RedrawCheck = Schemas["RedrawCheck"];
+export type RedrawSource = Schemas["RedrawSource"];
+export const getRedrawCheck = (id: number) => call<RedrawCheck>(`/api/figures/${id}/redraw-check`);
 export const listBoards = (opts: { archived?: "all" | "only" } = {}) => call<{ boards: Board[] }>(`/api/boards${opts.archived ? `?archived=${opts.archived}` : ""}`).then((r) => r.boards);
 /** One board with the live state of its job panels (this is the call that reads their logs; the list does not). */
 export const getBoard = (id: number) => call<Board>(`/api/boards/${id}`);

@@ -6,6 +6,7 @@ import type { Board, Figure } from "../api/boards";
 import { defaultFigureTitle, saveViewFigure } from "./saveFigure";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
+import { FigureRedraw } from "../boards/FigureRedraw";
 import s from "./FigurePanel.module.css";
 
 /** Saves what is on screen as a figure that keeps its source, parameters and provenance (pinned evidence). */
@@ -93,6 +94,7 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
           {!boardId ? <Input label="New board name" value={newBoard} onChange={(e) => setNewBoard(e.target.value)} /> : null}
           <Button onClick={addIt}>Add to board</Button>
           {note ? <p className={s.note}>{note}</p> : null}
+          <FigureRedraw figure={saved} only="svg" />
         </div>
       ) : null}
     </div>
