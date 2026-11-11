@@ -56,6 +56,10 @@ type Interpretation struct {
 	Quantity   *string   `json:"quantity"`
 	DeclaredBy string    `json:"declaredBy"` // "user" or the name of an adapter, e.g. "vgt-run-adapter"
 	DeclaredAt time.Time `json:"declaredAt"`
+	// Tier is how far this interpretation is established (ADR 0055): declared by the researcher, or inferred by DeclaredBy's
+	// rule, whose mapping version is MappingVersion (empty for a declared one).
+	Tier           string `json:"tier"`
+	MappingVersion string `json:"mappingVersion"`
 	// Stale is true when the file's registered size or modification time differs from what it was when the user
 	// made the declaration: the declaration may no longer describe these bytes.
 	Stale bool `json:"stale"`
@@ -121,6 +125,9 @@ func Open(dsn string) (*Store, error) {
 		// older catalogs lack the column that records who made a declaration; adding it twice is harmless
 		err = schema.AddColumn(db, "interpretations", "declared_by", "TEXT NOT NULL DEFAULT 'user'")
 		if err == nil {
+			err = schema.AddTierColumns(db, "interpretations")
+		}
+		if err == nil {
 			err = schema.AddColumn(db, "interpretations", "frame", "TEXT")
 		}
 		if err == nil {
@@ -143,6 +150,11 @@ func Open(dsn string) (*Store, error) {
 		}
 		if err == nil {
 			_, err = db.Exec(schema.DatasetLocationsTable)
+		}
+		for _, t := range []string{"dataset_units", "catalog_declarations"} {
+			if err == nil {
+				err = schema.AddTierColumns(db, t)
+			}
 		}
 	}
 	if err != nil {
@@ -247,7 +259,7 @@ func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
 	var rel sql.NullInt64
 	var frame, quantity sql.NullString
 	var at, size, mod int64
-	err := s.db.QueryRow(`SELECT kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity FROM interpretations WHERE dataset_id=?`, id).Scan(&in.Kind, &in.Unit, &rel, &at, &size, &mod, &in.DeclaredBy, &frame, &quantity)
+	err := s.db.QueryRow(`SELECT kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity,tier,mapping_version FROM interpretations WHERE dataset_id=?`, id).Scan(&in.Kind, &in.Unit, &rel, &at, &size, &mod, &in.DeclaredBy, &frame, &quantity, &in.Tier, &in.MappingVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -305,10 +317,12 @@ func (s *Store) SetInterpretation(d Dataset, in Interpretation) error {
 	if in.Quantity != nil {
 		quantity = *in.Quantity
 	}
-	_, err := s.db.Exec(`INSERT INTO interpretations(dataset_id,kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity) VALUES(?,?,?,?,?,?,?,?,?,?)
+	tier, mapping := TierOf(by)
+	_, err := s.db.Exec(`INSERT INTO interpretations(dataset_id,kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity,tier,mapping_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(dataset_id) DO UPDATE SET kind=excluded.kind,unit=excluded.unit,reliability_id=excluded.reliability_id,declared_at=excluded.declared_at,
-			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns,declared_by=excluded.declared_by,frame=excluded.frame,quantity=excluded.quantity`,
-		id, in.Kind, in.Unit, rel, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano(), by, frame, quantity)
+			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns,declared_by=excluded.declared_by,frame=excluded.frame,quantity=excluded.quantity,
+			tier=excluded.tier,mapping_version=excluded.mapping_version`,
+		id, in.Kind, in.Unit, rel, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano(), by, frame, quantity, tier, mapping)
 	return err
 }
 
@@ -422,7 +436,7 @@ func (s *Store) FactsByPath(hostID int64) (map[string]PathFacts, error) {
 // ProposedInterpretations returns the interpretations someone other than the user declared (a run import's proposal),
 // by dataset id. Until the user confirms one it stays labelled with its author.
 func (s *Store) ProposedInterpretations() (map[int64]Interpretation, error) {
-	rows, err := s.db.Query(`SELECT dataset_id,kind,unit,reliability_id,declared_by,frame,quantity FROM interpretations WHERE declared_by<>'user'`)
+	rows, err := s.db.Query(`SELECT dataset_id,kind,unit,reliability_id,declared_by,frame,quantity,tier,mapping_version FROM interpretations WHERE declared_by<>'user'`)
 	if err != nil {
 		return nil, err
 	}
@@ -433,7 +447,7 @@ func (s *Store) ProposedInterpretations() (map[int64]Interpretation, error) {
 		var in Interpretation
 		var rel sql.NullInt64
 		var frame, quantity sql.NullString
-		if err := rows.Scan(&id, &in.Kind, &in.Unit, &rel, &in.DeclaredBy, &frame, &quantity); err != nil {
+		if err := rows.Scan(&id, &in.Kind, &in.Unit, &rel, &in.DeclaredBy, &frame, &quantity, &in.Tier, &in.MappingVersion); err != nil {
 			return nil, err
 		}
 		if rel.Valid {

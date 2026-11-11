@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
@@ -37,6 +38,7 @@ func Open(db *sql.DB, dir string) error {
 		{"notify", func() error { _, e := notify.Open(db); return e }},
 		{"regions", func() error { _, e := regions.Open(db); return e }},
 		{"derived", func() error { _, e := derived.Open(db); return e }},
+		{"masks", func() error { _, e := masks.Open(db); return e }},
 		{"reports", func() error { _, e := reports.Open(db, dir); return e }},
 		{"projects", func() error { _, e := projects.Open(db); return e }},
 		{"transfers", func() error { _, e := transfers.Open(db); return e }},

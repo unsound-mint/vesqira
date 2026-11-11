@@ -42,6 +42,9 @@ type CatalogDeclaration struct {
 	Values     []string  `json:"values"`
 	DeclaredBy string    `json:"declaredBy"` // "user"
 	DeclaredAt time.Time `json:"declaredAt"`
+	// Tier and MappingVersion say how far the declaration is established (ADR 0055).
+	Tier           string `json:"tier"`
+	MappingVersion string `json:"mappingVersion"`
 	// Stale is true when the file's registered size or modification time differs from what it was at the declaration.
 	Stale bool `json:"stale"`
 }
@@ -182,9 +185,9 @@ func ValidateCatalogDeclaration(d Dataset, in CatalogDeclaration) ([]string, err
 // catalogDeclaration reads the stored declaration of dataset id, with its staleness against the registered file.
 func (s *Store) catalogDeclaration(id int64, d Dataset) (*CatalogDeclaration, error) {
 	var raw string
-	var by string
+	var by, tier, mapping string
 	var at, size, mod int64
-	err := s.db.QueryRow(`SELECT declaration,declared_by,declared_at,size_bytes,modified_ns FROM catalog_declarations WHERE dataset_id=?`, id).Scan(&raw, &by, &at, &size, &mod)
+	err := s.db.QueryRow(`SELECT declaration,declared_by,declared_at,size_bytes,modified_ns,tier,mapping_version FROM catalog_declarations WHERE dataset_id=?`, id).Scan(&raw, &by, &at, &size, &mod, &tier, &mapping)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -195,7 +198,7 @@ func (s *Store) catalogDeclaration(id int64, d Dataset) (*CatalogDeclaration, er
 	if err := json.Unmarshal([]byte(raw), &c); err != nil {
 		return nil, fmt.Errorf("stored catalog declaration of dataset %d: %w", id, err)
 	}
-	c.DeclaredBy, c.DeclaredAt = by, time.Unix(at, 0).UTC()
+	c.DeclaredBy, c.DeclaredAt, c.Tier, c.MappingVersion = by, time.Unix(at, 0).UTC(), tier, mapping
 	c.Stale = size != d.SizeBytes || mod != d.ModifiedAt.UnixNano()
 	return &c, nil
 }
@@ -209,15 +212,16 @@ func (s *Store) SetCatalogDeclaration(d Dataset, in CatalogDeclaration, by strin
 	if in.Values == nil {
 		in.Values = []string{}
 	}
-	in.DeclaredBy, in.DeclaredAt, in.Stale = "", time.Time{}, false // kept in their own columns
+	in.DeclaredBy, in.DeclaredAt, in.Stale, in.Tier, in.MappingVersion = "", time.Time{}, false, "", "" // kept in their own columns
+	tier, mapping := TierOf(by)
 	b, err := json.Marshal(in)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`INSERT INTO catalog_declarations(dataset_id,declaration,declared_by,declared_at,size_bytes,modified_ns) VALUES(?,?,?,?,?,?)
+	_, err = s.db.Exec(`INSERT INTO catalog_declarations(dataset_id,declaration,declared_by,declared_at,size_bytes,modified_ns,tier,mapping_version) VALUES(?,?,?,?,?,?,?,?)
 		ON CONFLICT(dataset_id) DO UPDATE SET declaration=excluded.declaration,declared_by=excluded.declared_by,declared_at=excluded.declared_at,
-			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns`,
-		d.ID, string(b), by, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano())
+			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns,tier=excluded.tier,mapping_version=excluded.mapping_version`,
+		d.ID, string(b), by, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano(), tier, mapping)
 	return err
 }
 

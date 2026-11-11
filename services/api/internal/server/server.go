@@ -23,6 +23,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
@@ -53,6 +54,7 @@ type Server struct {
 	Sweeps     *sweeps.Store    // parameter sweeps (ADR 0048); nil disables their routes
 	Transfers  *transfers.Store // the transfer queue (ADR 0051); nil disables the routes
 	Derived    *derived.Store
+	Masks      *masks.Store // typed masks (ADR 0055); nil disables their routes
 	ManagedDir string
 	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
 	CacheDir  string

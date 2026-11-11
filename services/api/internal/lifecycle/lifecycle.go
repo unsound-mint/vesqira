@@ -318,6 +318,15 @@ func datasetImpact(q querier, b *builder, id int64) error {
 	b.add("regions", "removed", regs, func(n int) string {
 		return plural(n, "saved region goes", "saved regions go") + " with it."
 	})
+	// A mask is a derived resource of its dataset: it goes with it from the catalog (its file on disk is never deleted). A result made
+	// with it keeps its own record of the mask (type, rule, policy, fingerprint), so its provenance stays whole.
+	mk, err := items(q, "masks", `SELECT id, type||' mask '||name FROM masks WHERE dataset_id=?`, id)
+	if err != nil {
+		return err
+	}
+	b.add("masks", "removed", mk, func(n int) string {
+		return plural(n, "mask goes", "masks go") + " with it; the mask files stay on disk. Results made with them keep their own record of the masks."
+	})
 	var decl []Item
 	for i, d := range []struct{ table, label string }{{"interpretations", "orientation declaration"}, {"dataset_nature", "declared nature"}, {"dataset_units", "declared unit"}, {"catalog_declarations", "declared catalog columns"}} {
 		got, err := items(q, d.table, `SELECT dataset_id, '`+d.label+`' FROM `+d.table+` WHERE dataset_id=?`, id)
@@ -554,6 +563,7 @@ func tableOf(st string) string {
 // against the full schema, so a rename fails there.
 var optionalTables = map[string]bool{
 	"saved_regions": true,                                                                      // regions store
+	"masks":         true,                                                                      // masks store (ADR 0055)
 	"derived":       true,                                                                      // derived store
 	"run_review":    true, "run_review_history": true, "run_outputs": true, "rohsa_runs": true, // runs store
 	"jobs":        true, // jobs store
@@ -569,7 +579,7 @@ func deleteSteps(kind string) []string {
 	switch kind {
 	case KindDataset:
 		return []string{
-			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
+			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM masks WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
 			`DELETE FROM dataset_locations WHERE dataset_id=?`, `DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`, `DELETE FROM catalog_declarations WHERE dataset_id=?`, `UPDATE transfers SET dataset_id=NULL WHERE dataset_id=?`,
 			`DELETE FROM datasets WHERE id=?`}
 	case KindRun:
