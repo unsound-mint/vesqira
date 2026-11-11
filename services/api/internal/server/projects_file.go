@@ -79,7 +79,7 @@ func writeProjectFile(root string, data []byte) error {
 	if fi, err := os.Lstat(file); err == nil && !fi.Mode().IsRegular() {
 		return fmt.Errorf("%w: project.toml is not a plain file", errProjectFile)
 	}
-	return writeFileAtomic(dir, filepath.Base(file), data, 0o644)
+	return writeFileAtomic(root, filepath.ToSlash(filepath.Join(filepath.Base(dir), filepath.Base(file))), data, 0o644)
 }
 
 // readProjectFile reads the project file through the scanner's file interface (the same for a host).

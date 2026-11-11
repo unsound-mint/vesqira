@@ -699,7 +699,7 @@ func (s *scanner) addData(rel string, e Entry, in *runCtx, f format) {
 	}
 	if role := roleOf(rel); role != "" {
 		file.Role = role
-		file.ReadOnly = role == "raw" || role == "external"
+		file.ReadOnly = RoleIsReadOnly(role)
 	}
 	s.res.Data = append(s.res.Data, file)
 }

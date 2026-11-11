@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 )
 
 // The editor for text files on this computer (ADR 0029, step 1). It exists only when the server was started with
@@ -79,11 +81,26 @@ func checkTextBytes(b []byte) (int, string) {
 	return 0, ""
 }
 
+// readOnlyRole says whether real sits under a data/raw or data/external folder of any root that holds it: source data
+// the project explorer marks read-only (discover.RoleOf is the scanner's own rule, so the two cannot disagree). The check
+// is made on the path below each root, so a root that itself lives under a folder called data/raw is not locked by it.
+func (s *Server) readOnlyRole(real string) (string, bool) {
+	for _, pl := range s.roots().Under(real) {
+		if role := discover.RoleOf(pl.Rel); discover.RoleIsReadOnly(role) {
+			return role, true
+		}
+	}
+	return "", false
+}
+
 // openText authorizes p and reads the file. status 0 is success; any other status comes with the message to show.
 func (s *Server) openText(p string) (real string, fi os.FileInfo, data []byte, status int, msg string) {
 	real, err := s.roots().Resolve(p)
 	if err != nil || holdsCredentials(real) {
 		return "", nil, nil, 404, "that file is not inside a folder Vesqira may read"
+	}
+	if role, ro := s.readOnlyRole(real); ro {
+		return "", nil, nil, 403, "that file is " + role + " source data (data/" + role + "), which Vesqira treats as read-only; the editor does not open it"
 	}
 	ext := strings.ToLower(filepath.Ext(real))
 	switch {
@@ -131,15 +148,14 @@ func (s *Server) getText(w http.ResponseWriter, r *http.Request) {
 		fail(w, status, msg)
 		return
 	}
+	// like a save: hash first, path last (the detail is cut at 300 characters); never the content.
+	s.Audit.Record("file opened for editing", "file", 0, "sha256 "+sha256Hex(data)+" "+real)
 	writeJSON(w, 200, asTextFile(real, fi, data))
 }
 
 func (s *Server) putText(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 8<<20) // JSON escaping can make 2 MiB of text larger on the wire
-	var in textSave
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&in); err != nil {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20)) // JSON escaping can make 2 MiB of text larger on the wire
+	if err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			fail(w, 413, "that is larger than the editor's 2 MiB limit")
@@ -148,11 +164,24 @@ func (s *Server) putText(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad request")
 		return
 	}
+	// encoding/json replaces invalid UTF-8 with U+FFFD without an error, which would write different bytes than the ones
+	// the researcher sent; the raw body is the only place the invalid bytes are still visible.
+	if !utf8.Valid(raw) {
+		fail(w, 415, "the content is not valid UTF-8 text; nothing was written")
+		return
+	}
+	var in textSave
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
 	if len(in.Content) > maxTextFile {
 		fail(w, 413, "that is larger than the editor's 2 MiB limit")
 		return
 	}
-	if st, m := checkTextBytes([]byte(in.Content)); st != 0 {
+	if st, m := checkTextBytes([]byte(in.Content)); st != 0 { // FITS magic and NUL bytes; the UTF-8 case is covered above
 		fail(w, st, m)
 		return
 	}
@@ -173,7 +202,13 @@ func (s *Server) putText(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 409, textConflict{Error: "the file changed on disk since you opened it; nothing was written", Current: asTextFile(real, fi, cur)})
 		return
 	}
-	if err := writeFileAtomic(filepath.Dir(real), filepath.Base(real), []byte(in.Content), fi.Mode().Perm()); err != nil {
+	// Confined to the root that holds the file: a folder swapped for a link after the check above cannot redirect the write.
+	pls := s.roots().Under(real)
+	if len(pls) == 0 {
+		fail(w, 404, "that file is not inside a folder Vesqira may read")
+		return
+	}
+	if err := writeFileAtomic(pls[0].Root, pls[0].Rel, []byte(in.Content), fi.Mode().Perm()); err != nil {
 		log.Printf("editor save: %v", err)
 		fail(w, 500, "could not save the file (is its folder writable?)")
 		return

@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
 import { Modal } from "../ui/Modal";
 import { Button, Pill } from "../ui";
-import { fromEditorText, lineEnding, openTextFile, saveTextFile, toEditorText } from "../api/editor";
+import { BOM, fromEditorText, hasBom, hasLoneCR, lineEnding, openTextFile, saveTextFile, toEditorText, withoutBom } from "../api/editor";
 import type { TextFile } from "../api/editor";
 import { bytes } from "../catalog/format";
 import { CodeSurface, languageFor } from "./CodeSurface";
 import s from "./Editor.module.css";
 
-type Opened = { file: TextFile; text: string; saved: string; eol: "\n" | "\r\n"; mixed: boolean };
+type Opened = { file: TextFile; text: string; saved: string; eol: "\n" | "\r\n"; mixed: boolean; bom: boolean };
+
+const LONE_CR = "This file has bare carriage-return (CR) line endings. The editor would turn them into ordinary line breaks, so it does not open the file.";
 
 const open = (file: TextFile): Opened => {
-  const { eol, mixed } = lineEnding(file.content);
-  const text = toEditorText(file.content);
-  return { file, text, saved: text, eol, mixed };
+  const body = withoutBom(file.content);
+  const { eol, mixed } = lineEnding(body);
+  const text = toEditorText(body);
+  return { file, text, saved: text, eol, mixed, bom: hasBom(file.content) };
 };
 
 /**
@@ -32,7 +35,11 @@ export default function EditorScreen({ path, onClose }: { path: string; onClose:
   useEffect(() => {
     let live = true;
     openTextFile(path).then(
-      (f) => live && setDoc(open(f)),
+      (f) => {
+        if (!live) return;
+        if (hasLoneCR(f.content)) setError(LONE_CR);
+        else setDoc(open(f));
+      },
       (e: unknown) => live && setError(e instanceof Error ? e.message : "Could not open the file."),
     );
     return () => {
@@ -47,7 +54,7 @@ export default function EditorScreen({ path, onClose }: { path: string; onClose:
     setSaving(true);
     setError(null);
     try {
-      const r = await saveTextFile(doc.file.path, fromEditorText(doc.text, doc.eol), base);
+      const r = await saveTextFile(doc.file.path, (doc.bom ? BOM : "") + fromEditorText(doc.text, doc.eol), base);
       if (r.status === "saved") {
         setDoc({ ...doc, file: r.file, saved: doc.text });
         setConflict(null);
@@ -100,11 +107,11 @@ export default function EditorScreen({ path, onClose }: { path: string; onClose:
               </div>
               <div>
                 <h3 className={s.versionTitle}>On disk now · {bytes(conflict.current.size)}</h3>
-                <textarea className={s.readonly} readOnly aria-label="On disk now" value={toEditorText(conflict.current.content)} spellCheck={false} />
+                <textarea className={s.readonly} readOnly aria-label="On disk now" value={toEditorText(withoutBom(conflict.current.content))} spellCheck={false} />
               </div>
             </div>
             <div className={s.actions}>
-              <Button onClick={() => { setDoc(open(conflict.current)); setConflict(null); setConfirmOverwrite(false); }}>Take theirs</Button>
+              <Button onClick={() => { if (hasLoneCR(conflict.current.content)) { setDoc(null); setError(LONE_CR); } else setDoc(open(conflict.current)); setConflict(null); setConfirmOverwrite(false); }}>Take theirs</Button>
               {confirmOverwrite ? (
                 <>
                   <Button variant="primary" disabled={saving} onClick={() => void save(conflict.current)}>Overwrite the file on disk</Button>

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -343,24 +344,44 @@ func TestEditorSaveIsAuditedWithHashesAndNeverTheContent(t *testing.T) {
 	var saved textFile
 	_ = json.Unmarshal(b, &saved)
 	es, err := e.au.List("file", 0, 10)
-	if err != nil || len(es) != 1 {
+	if err != nil || len(es) != 2 {
 		t.Fatalf("audit: %v %+v", err, es)
 	}
-	d := es[0].Detail
-	for _, want := range []string{f.Sha256, saved.Sha256, p} {
-		if !strings.Contains(d, want) {
-			t.Errorf("audit detail lacks %q: %s", want, d)
+	var opened, savedE string // newest first
+	for _, a := range es {
+		switch a.Action {
+		case "file opened for editing":
+			opened = a.Detail
+		case "file saved":
+			savedE = a.Detail
 		}
 	}
-	for _, leaked := range []string{"secret-token", "hunter2", "before", "after"} {
-		if strings.Contains(d, leaked) {
-			t.Errorf("audit detail contains content %q: %s", leaked, d)
+	for what, want := range map[string][]string{opened: {f.Sha256, p}, savedE: {f.Sha256, saved.Sha256, p}} {
+		for _, w := range want {
+			if !strings.Contains(what, w) {
+				t.Errorf("audit detail lacks %q: %q", w, what)
+			}
+		}
+	}
+	if opened == "" || savedE == "" {
+		t.Fatalf("expected an open and a save entry: %+v", es)
+	}
+	for _, d := range []string{opened, savedE} {
+		for _, leaked := range []string{"secret-token", "hunter2", "before", "after"} {
+			if strings.Contains(d, leaked) {
+				t.Errorf("audit detail contains content %q: %s", leaked, d)
+			}
 		}
 	}
 	// a refused save is not a save
 	e.save(t, p, "again\n", f.textVersion)
-	if es, _ := e.au.List("file", 0, 10); len(es) != 1 {
-		t.Errorf("a refused save was audited as a save: %d entries", len(es))
+	if es, _ := e.au.List("file", 0, 10); len(es) != 2 {
+		t.Errorf("a refused save was audited: %d entries", len(es))
+	}
+	// a refused open is not an open
+	e.open(t, filepath.Join(e.root, "missing.md"))
+	if es, _ := e.au.List("file", 0, 10); len(es) != 2 {
+		t.Errorf("a refused open was audited: %d entries", len(es))
 	}
 }
 
@@ -404,5 +425,113 @@ func TestEditorRefusesCrossSiteAndForeignHostRequests(t *testing.T) {
 	// the same-origin request the app makes is accepted
 	if code, b := e.do(t, "PUT", e.ts.URL+"/api/files/text", body, map[string]string{"Sec-Fetch-Site": "same-origin", "Origin": e.ts.URL}); code != 200 {
 		t.Errorf("same-origin PUT: %d %s", code, b)
+	}
+}
+
+func TestEditorRefusesRawAndExternalDataButEditsOtherRoles(t *testing.T) {
+	e := newEditor(t, true)
+	for _, d := range []string{"raw", "external", "processed"} {
+		if err := os.MkdirAll(filepath.Join(e.root, "proj", "data", d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, role := range []string{"raw", "external"} {
+		p := filepath.Join(e.root, "proj", "data", role, "notes.txt")
+		write(t, p, []byte("source\n"), 0o644)
+		if code, _ := e.open(t, p); code != 403 {
+			t.Errorf("GET %s: %d", role, code)
+		}
+		if code, _ := e.save(t, p, "changed\n", textVersion{Mtime: "1", Sha256: "a"}); code != 403 {
+			t.Errorf("PUT %s: %d", role, code)
+		}
+		if b, _ := os.ReadFile(p); string(b) != "source\n" {
+			t.Errorf("%s data was written: %q", role, b)
+		}
+	}
+	ok := filepath.Join(e.root, "proj", "data", "processed", "notes.txt")
+	write(t, ok, []byte("mine\n"), 0o644)
+	if code, _ := e.open(t, ok); code != 200 {
+		t.Errorf("processed: %d", code)
+	}
+}
+
+func TestEditorRefusesInvalidUTF8InTheSaveBody(t *testing.T) {
+	e := newEditor(t, true)
+	p := filepath.Join(e.root, "a.toml")
+	write(t, p, []byte("x = 1\n"), 0o644)
+	_, f := e.open(t, p)
+	// encoding/json would turn the bad byte into U+FFFD and write something the researcher never sent
+	body := `{"path":` + strconv.Quote(p) + `,"content":"x = ` + "\xff" + `\n","base":{"size":` + strconv.Itoa(int(f.Size)) + `,"mtime":"` + f.Mtime + `","sha256":"` + f.Sha256 + `"}}`
+	req, _ := http.NewRequest("PUT", e.ts.URL+"/api/files/text", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 415 {
+		t.Errorf("invalid UTF-8 body: %d", resp.StatusCode)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "x = 1\n" {
+		t.Errorf("file written: %q", b)
+	}
+}
+
+func TestWriteFileAtomicCannotBeRedirectedByASwappedFolder(t *testing.T) {
+	base := t.TempDir()
+	root, outside := filepath.Join(base, "root"), filepath.Join(base, "outside")
+	for _, d := range []string{root, outside} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(root, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileAtomic(root, "sub/a.toml", []byte("fine\n"), 0o644); err != nil {
+		t.Fatalf("a plain write failed: %v", err)
+	}
+	// the folder is replaced by a link to somewhere else after the caller authorized the path
+	if err := os.RemoveAll(filepath.Join(root, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileAtomic(root, "sub/a.toml", []byte("owned\n"), 0o644); err == nil {
+		t.Error("the write followed a swapped folder out of the root")
+	}
+	if ents, _ := os.ReadDir(outside); len(ents) != 0 {
+		t.Errorf("something was written outside the root: %v", ents)
+	}
+}
+
+func TestLocalOnlyOriginMustEqualHost(t *testing.T) {
+	// The web dev and preview servers proxy /api with changeOrigin: false, so the API sees the page's own Host
+	// (127.0.0.1:5198) next to its Origin. Origin equal to Host passes; any other origin, even another port of the
+	// same machine or another loopback name, is refused.
+	h := localOnly(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	for name, c := range map[string]struct {
+		host, origin string
+		want         int
+	}{
+		"same host and origin":  {"127.0.0.1:5198", "http://127.0.0.1:5198", 204},
+		"no origin":             {"127.0.0.1:5198", "", 204},
+		"other port":            {"127.0.0.1:5198", "http://127.0.0.1:5199", 403},
+		"rewritten host (vite)": {"127.0.0.1:8787", "http://127.0.0.1:5198", 403},
+		"other loopback name":   {"127.0.0.1:5198", "http://localhost:5198", 403},
+		"foreign origin":        {"127.0.0.1:5198", "https://evil.example", 403},
+	} {
+		req := httptest.NewRequest("PUT", "/api/files/text", strings.NewReader("{}"))
+		req.Host = c.host
+		req.Header.Set("Content-Type", "application/json")
+		if c.origin != "" {
+			req.Header.Set("Origin", c.origin)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != c.want {
+			t.Errorf("%s: %d, want %d", name, rec.Code, c.want)
+		}
 	}
 }

@@ -67,3 +67,10 @@ export function lineEnding(text: string): { eol: "\n" | "\r\n"; mixed: boolean }
 }
 export const toEditorText = (text: string) => text.replace(/\r\n/g, "\n");
 export const fromEditorText = (text: string, eol: "\n" | "\r\n") => (eol === "\n" ? text : text.replace(/\n/g, "\r\n"));
+
+/** A UTF-8 byte order mark is invisible in the editor, so it is set aside on open and put back first on save. */
+export const BOM = "\uFEFF";
+export const hasBom = (text: string) => text.startsWith(BOM);
+export const withoutBom = (text: string) => (hasBom(text) ? text.slice(1) : text);
+/** A "\r" that is not part of "\r\n": the editor treats it as a line break and would write "\n" in its place, so such files are not opened. */
+export const hasLoneCR = (text: string) => /\r(?!\n)/.test(text);

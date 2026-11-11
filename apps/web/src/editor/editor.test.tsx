@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { fromEditorText, lineEnding, looksEditable, toEditorText } from "../api/editor";
+import { fromEditorText, hasLoneCR, lineEnding, looksEditable, toEditorText } from "../api/editor";
 import EditorScreen from "./EditorScreen";
 
 // Monaco does not run in jsdom; the screen's own behaviour is what is tested, through the surface's contract.
@@ -97,7 +97,53 @@ describe("the editor screen", () => {
   });
 });
 
+describe("bytes the editor surface cannot show", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps a UTF-8 byte order mark: hidden from the editor, written back first and once", async () => {
+    const calls = server((c) => (c.method === "GET" ? json(200, file("\uFEFFker = 8\n", "aaa")) : json(200, file(c.body!.content, "bbb", "2"))));
+    render(<EditorScreen path={PATH} onClose={() => {}} />);
+    const box = (await screen.findByLabelText("Contents of pipeline.toml")) as HTMLTextAreaElement;
+    expect(box.value).toBe("ker = 8\n");
+    await userEvent.type(box, "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByText("saved")).toBeTruthy());
+    expect(calls.find((c) => c.method === "PUT")!.body?.content).toBe("\uFEFFker = 8\nx");
+  });
+
+  it("writes no byte order mark to a file that had none", async () => {
+    const calls = server((c) => (c.method === "GET" ? json(200, file("a\n", "aaa")) : json(200, file(c.body!.content, "bbb", "2"))));
+    render(<EditorScreen path={PATH} onClose={() => {}} />);
+    await userEvent.type(await screen.findByLabelText("Contents of pipeline.toml"), "b");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByText("saved")).toBeTruthy());
+    expect(calls.find((c) => c.method === "PUT")!.body?.content).toBe("a\nb");
+  });
+
+  it("does not open a file with a bare CR, which the editor would rewrite as LF", async () => {
+    server(() => json(200, file("a\rb\r\nc\n", "aaa")));
+    render(<EditorScreen path={PATH} onClose={() => {}} />);
+    expect((await screen.findByRole("alert")).textContent).toContain("carriage-return");
+    expect(screen.queryByLabelText("Contents of pipeline.toml")).toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("still opens a CRLF file and puts CRLF back", async () => {
+    const calls = server((c) => (c.method === "GET" ? json(200, file("a\r\nb\r\n", "aaa")) : json(200, file(c.body!.content, "bbb", "2"))));
+    render(<EditorScreen path={PATH} onClose={() => {}} />);
+    await userEvent.type(await screen.findByLabelText("Contents of pipeline.toml"), "c");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByText("saved")).toBeTruthy());
+    expect(calls.find((c) => c.method === "PUT")!.body?.content).toBe("a\r\nb\r\nc");
+  });
+});
+
 describe("editor helpers", () => {
+  it("tells a bare CR from CRLF", () => {
+    expect(hasLoneCR("a\rb")).toBe(true);
+    expect(hasLoneCR("a\r\nb\r")).toBe(true);
+    expect(hasLoneCR("a\r\nb\n")).toBe(false);
+  });
   it("puts the file's own line endings back", () => {
     const crlf = "a\r\nb\r\n";
     expect(lineEnding(crlf)).toEqual({ eol: "\r\n", mixed: false });

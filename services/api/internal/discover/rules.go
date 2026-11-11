@@ -166,6 +166,12 @@ func roleOf(rel string) string {
 	return ""
 }
 
+// RoleOf is roleOf for callers outside the scanner (a path relative to the project folder, slash-separated).
+func RoleOf(rel string) string { return roleOf(rel) }
+
+// RoleIsReadOnly says whether files in a data role are source data Vesqira never writes: raw and external.
+func RoleIsReadOnly(role string) bool { return role == "raw" || role == "external" }
+
 // Run records, in the order they are tried.
 type recordKind string
 
