@@ -17,7 +17,7 @@ const inspector = (page: Page) => page.getByRole("complementary", { name: "Inspe
 test("a ROHSA fit is imported and its Gaussian components are read at a pinned pixel", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Runs", exact: false }).first().click().catch(() => undefined);
-  await page.getByLabel("Import a VGT run").fill(path.join(data, "rohsa_run_demo", "region_a"));
+  await page.getByLabel("Import a run (VGT or ROHSA)").fill(path.join(data, "rohsa_run_demo", "region_a"));
   await page.getByRole("button", { name: "Import run" }).click();
   await expect(page.getByRole("list", { name: "Runs" }).getByRole("listitem").filter({ hasText: "rohsa_n3" })).toBeVisible();
 

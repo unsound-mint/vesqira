@@ -28,7 +28,7 @@ export function RunsList({ runs, onImport, onOpen }: { runs: Run[]; onImport: (p
   return (
     <div className={s.wrap}>
       <form className={s.form} onSubmit={submit}>
-        <PathField label="Import a VGT run" kind="dir" placeholder="/path/to/run_folder" value={path} onChange={setPath} />
+        <PathField label="Import a run (VGT or ROHSA)" kind="dir" placeholder="/path/to/run_folder" value={path} onChange={setPath} />
         <Button type="submit" disabled={busy || !path.trim()}>{busy ? "Importing…" : "Import run"}</Button>
         {err ? <p role="alert" className={s.err}>{err}</p> : null}
       </form>
