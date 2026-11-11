@@ -117,17 +117,17 @@ func TestBoardOrderingNotesAndRemoval(t *testing.T) {
 	if titles() != "ACD" {
 		t.Fatal(titles())
 	}
-	s.MoveItem(b.ID, 2, -1)
+	s.MoveItem(b.ID, 2, -1, nil)
 	if titles() != "ADC" {
 		t.Fatal(titles())
 	}
-	s.SetNote(b.ID, 0, "look here")
-	s.RemoveItem(b.ID, 1)
+	s.SetNote(b.ID, 0, "look here", nil)
+	s.RemoveItem(b.ID, 1, nil)
 	bb, _ := s.Board(b.ID)
 	if titles() != "AC" || bb.Items[0].Note != "look here" || bb.Items[1].Position != 1 {
 		t.Fatalf("%s %+v", titles(), bb.Items)
 	}
-	if err := s.MoveItem(b.ID, 0, -1); !errors.Is(err, ErrNotFound) {
+	if err := s.MoveItem(b.ID, 0, -1, nil); !errors.Is(err, ErrNotFound) {
 		t.Errorf("moving past the top: %v", err)
 	}
 	if err := s.AddItem(b.ID, 9999); !errors.Is(err, ErrNotFound) {
@@ -165,7 +165,7 @@ func TestSnapshotIsFrozenAndTokenIsNeverStored(t *testing.T) {
 	}
 	// editing the board and the figure afterwards does not change what the reviewer sees
 	s.SetText(f.ID, "Changed after sharing", "x")
-	s.SetNote(b.ID, 0, "late note")
+	s.SetNote(b.ID, 0, "late note", nil)
 	s.AddItem(b.ID, fig(t, s, "Late", 77).ID)
 	r, err := s.Review(tok)
 	if err != nil || len(r.Snapshot.Items) != 1 || r.Snapshot.Items[0].Title != "Peak" || r.Snapshot.Items[0].Note != "" {

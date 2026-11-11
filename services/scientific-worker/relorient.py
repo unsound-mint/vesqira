@@ -618,7 +618,7 @@ def beam_count(cubes, n_used: int, pix_area_deg2: float) -> dict:
 
 def op_maps(args, params: dict) -> dict:
     """Map against map on a common grid (mode B)."""
-    from analysis import open_cube, image_header, write_fits
+    from analysis import open_cube, image_header, write_fits, mask_policy
     p = check_params(params, "maps")
     a = open_cube(args.input)
     b = open_cube(args.reference)
@@ -629,19 +629,37 @@ def op_maps(args, params: dict) -> dict:
     ny, nx = phi_a.shape
     wgt = w_a * w_b
     d = headless_deg(phi_a - phi_b)
-    used = np.isfinite(d) & np.isfinite(wgt)
+    # Masks of either map (ADR 0055), each with its own policy: an excluded pixel is left out (counted apart from "no orientation"),
+    # a kept one is untouched, a weighted one counts with its factor on top of the declared reliability (weights are what this
+    # statistic already has). A pixel with no value is never "masked" here: it is already excluded, and zero is an angle.
+    ap_a, ap_b = mask_policy(args, a, True), mask_policy(args, b, True, "ref_masks")
+    ex_a = np.zeros(phi_a.shape, dtype=bool)
+    ex_b = np.zeros(phi_a.shape, dtype=bool)
+    mask_weighted = False
+    for ap, phi, ex in ((ap_a, phi_a, ex_a), (ap_b, phi_b, ex_b)):
+        if ap is not None:
+            e, wm = ap.plane(0, phi)
+            ex |= e
+            wgt = wgt * wm
+            mask_weighted = mask_weighted or any(s["policy"] == "weight" for s in ap.specs)
+    ex_any = ex_a | ex_b
+    used = np.isfinite(d) & np.isfinite(wgt) & ~ex_any
+    excluded_by_mask = int((np.isfinite(d) & np.isfinite(wgt) & ex_any).sum())
+    for ap in (ap_a, ap_b):
+        if ap is not None:
+            ap.__exit__(None, None, None)
     n_real = int(used.sum())
     missing = int((~(np.isfinite(phi_a) & np.isfinite(phi_b))).sum())
     unknown_w = int((np.isfinite(d) & ~np.isfinite(wgt)).sum())
     if n_real == 0:
         raise Refusal("no pixel has an orientation in both maps")
-    weighted = fa["reliability"] or fb["reliability"]
+    weighted = fa["reliability"] or fb["reliability"] or mask_weighted
     dv = d[used]
     am = alignment_measure(dv)
     absd = np.abs(d)
     pix_area = abs(float(np.linalg.det(wa2.pixel_scale_matrix)))
-    va = np.isfinite(phi_a) & np.isfinite(w_a)
-    vb = np.isfinite(phi_b) & np.isfinite(w_b)
+    va = np.isfinite(phi_a) & np.isfinite(w_a) & ~ex_a
+    vb = np.isfinite(phi_b) & np.isfinite(w_b) & ~ex_b
     nul = {"method": "shifted map: the second map moved by whole pixels with wrap, values kept", "skipped": None}
     n_sub = int(p["keep_fraction"] * n_real)
     min_shift_px = p["min_shift_deg"] / pixel_scale_deg(wa2)
@@ -680,10 +698,13 @@ def op_maps(args, params: dict) -> dict:
         "map": {**fa, "nx": nx, "ny": ny, "pixel_scale_arcmin": pixel_scale_deg(wa2) * 60.0}, "other": fb,
         "conversion": "Both maps as B-field orientation in their common pixel frame (each rotated by its quantity; a sky-frame map carried into the "
                       "pixel frame with astropy); per-pixel Δψ = first − second.",
-        "weighting": ("w = product of the declared reliabilities (1 for a map without one); a pixel with an unknown (NaN) reliability is left out"
+        "weighting": (("w = product of the declared reliabilities (1 for a map without one)" + (" and the factors of the masks applied with the weight policy" if mask_weighted else "")
+                       + "; a pixel with an unknown (NaN) reliability is left out")
                       if weighted else "unweighted: neither map declares a reliability map"),
         "counts": {"pixels": nx * ny, "used": n_real, "share_used": n_real / (nx * ny),
-                   "excluded": {k: c for k, c in (("no orientation in one or both maps", missing), ("unknown reliability", unknown_w)) if c}},
+                   "excluded": {k: c for k, c in (("no orientation in one or both maps", missing), ("unknown reliability", unknown_w),
+                                                  ("excluded by a mask", excluded_by_mask)) if c}},
+        "masks": {"map": ap_a.record() if ap_a else [], "other": ap_b.record() if ap_b else []},
         "am": am, "am_weighted": alignment_measure(dv, wgt[used]) if weighted else None,
         "median_abs_dpsi_deg": float(np.median(absd[used])),
         "prs": {"V": projected_rayleigh(dv), "V_weighted": projected_rayleigh(dv, wgt[used]) if weighted else None, "n": n_real,

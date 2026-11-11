@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui";
+import { tierLine } from "../api/tier";
 import { Modal } from "../ui/Modal";
 import { RunLine } from "./RunLine";
 import { figurePreviewUrl } from "../api/boards";
@@ -72,6 +73,7 @@ export function PresentView({ board, onClose }: { board: Board; onClose: () => v
                 <p className={s.line}>File <span className="mono">{f.provenance.source.name}</span> ({f.provenance.source.identity}).</p>
                 {f.provenance.interpretation ? <p className={s.line}>Interpretation declared by {f.provenance.interpretation.declaredBy}: {f.provenance.interpretation.kind}, unit {f.provenance.interpretation.unit}.</p> : null}
                 {f.provenance.run ? <RunLine run={f.provenance.run} /> : null}
+                {(f.provenance.tiers ?? []).map((t) => <p key={t.what} className={s.line} data-tier={t.tier}>{tierLine(t)}</p>)}
                 {f.provenance.statements.map((t) => <p key={t} className={s.line}>{t}</p>)}
               </div>
             ) : null}

@@ -485,13 +485,73 @@ func (s *Store) PinItem(boardID int64, pos int, figureID int64) error {
 	return nil
 }
 
-// reorder rewrites positions 0..n-1 in the given order of the current positions.
-func (s *Store) reorder(boardID int64, order []int) error {
+// Expect is what a client last saw at a position, for an edit that must not land on something else (an undo, with the board
+// possibly changed in another window since). Kind is "figure" or "job", ID the figure's or job's id; Note, when present, the
+// note as the client last saw it. The position is the one the edit names.
+type Expect struct {
+	Kind string  `json:"kind"`
+	ID   int64   `json:"id"`
+	Note *string `json:"note,omitempty"`
+}
+
+// ConflictError is ErrConflict for a failed Expect: the item at the position is no longer the one the client saw (or is gone).
+type ConflictError struct{}
+
+func (ConflictError) Error() string {
+	return "the board has changed: the panel is no longer what was expected there"
+}
+func (ConflictError) Is(t error) bool { return t == ErrConflict }
+
+// editTx runs one edit of the item at pos in a single transaction. Its first statement is a write, so the transaction holds the
+// write lock before it reads: what expect is checked against cannot change before the edit is applied, and a second writer waits
+// (busy_timeout) instead of failing on a stale read. With expect nil an unknown position is ErrNotFound; with expect, the item
+// being absent or different is ConflictError and nothing is changed.
+func (s *Store) editTx(boardID int64, pos int, expect *Expect, edit func(tx *sql.Tx, n int) error) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE boards SET updated_at=? WHERE id=?`, time.Now().Unix(), boardID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM board_items WHERE board_id=?`, boardID).Scan(&n); err != nil {
+		return err
+	}
+	var note string
+	var fid, jid sql.NullInt64
+	err = tx.QueryRow(`SELECT note, figure_id, job_id FROM board_items WHERE board_id=? AND position=?`, boardID, pos).Scan(&note, &fid, &jid)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if expect != nil {
+			return ConflictError{}
+		}
+		return ErrNotFound
+	case err != nil:
+		return err
+	}
+	if expect != nil {
+		kind, id := KindFigure, fid.Int64
+		if jid.Valid {
+			kind, id = KindJob, jid.Int64
+		}
+		if expect.Kind != kind || expect.ID != id || (expect.Note != nil && *expect.Note != note) {
+			return ConflictError{}
+		}
+	}
+	if err := edit(tx, n); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// reorderTx rewrites positions 0..n-1 in the given order of the current positions.
+func reorderTx(tx *sql.Tx, boardID int64, order []int) error {
 	if _, err := tx.Exec(`UPDATE board_items SET position = position + 100000 WHERE board_id=?`, boardID); err != nil {
 		return err
 	}
@@ -500,61 +560,47 @@ func (s *Store) reorder(boardID int64, order []int) error {
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	s.touch(boardID)
 	return nil
 }
 
-func (s *Store) RemoveItem(boardID int64, pos int) error {
-	b, err := s.Board(boardID)
-	if err != nil {
-		return err
-	}
-	if pos < 0 || pos >= len(b.Items) {
-		return ErrNotFound
-	}
-	if _, err := s.db.Exec(`DELETE FROM board_items WHERE board_id=? AND position=?`, boardID, pos); err != nil {
-		return err
-	}
-	var order []int
-	for i := range b.Items {
-		if i != pos {
-			order = append(order, i)
+// RemoveItem takes the item at pos off the board and closes the gap, in one transaction. expect may be nil.
+func (s *Store) RemoveItem(boardID int64, pos int, expect *Expect) error {
+	return s.editTx(boardID, pos, expect, func(tx *sql.Tx, n int) error {
+		if _, err := tx.Exec(`DELETE FROM board_items WHERE board_id=? AND position=?`, boardID, pos); err != nil {
+			return err
 		}
-	}
-	return s.reorder(boardID, order)
+		var order []int
+		for i := 0; i < n; i++ {
+			if i != pos {
+				order = append(order, i)
+			}
+		}
+		return reorderTx(tx, boardID, order)
+	})
 }
 
-// MoveItem moves the item at pos by delta places (-1 up, +1 down).
-func (s *Store) MoveItem(boardID int64, pos, delta int) error {
-	b, err := s.Board(boardID)
-	if err != nil {
-		return err
-	}
-	to := pos + delta
-	if pos < 0 || pos >= len(b.Items) || to < 0 || to >= len(b.Items) {
-		return ErrNotFound
-	}
-	order := make([]int, len(b.Items))
-	for i := range order {
-		order[i] = i
-	}
-	order[pos], order[to] = order[to], order[pos]
-	return s.reorder(boardID, order)
+// MoveItem moves the item at pos by delta places (-1 up, +1 down), in one transaction. expect may be nil.
+func (s *Store) MoveItem(boardID int64, pos, delta int, expect *Expect) error {
+	return s.editTx(boardID, pos, expect, func(tx *sql.Tx, n int) error {
+		to := pos + delta
+		if to < 0 || to >= n {
+			return ErrNotFound
+		}
+		order := make([]int, n)
+		for i := range order {
+			order[i] = i
+		}
+		order[pos], order[to] = order[to], order[pos]
+		return reorderTx(tx, boardID, order)
+	})
 }
 
-func (s *Store) SetNote(boardID int64, pos int, note string) error {
-	res, err := s.db.Exec(`UPDATE board_items SET note=? WHERE board_id=? AND position=?`, clip(note, MaxText), boardID, pos)
-	if err != nil {
+// SetNote sets the note of the item at pos, in one transaction. expect may be nil.
+func (s *Store) SetNote(boardID int64, pos int, note string, expect *Expect) error {
+	return s.editTx(boardID, pos, expect, func(tx *sql.Tx, _ int) error {
+		_, err := tx.Exec(`UPDATE board_items SET note=? WHERE board_id=? AND position=?`, clip(note, MaxText), boardID, pos)
 		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	s.touch(boardID)
-	return nil
+	})
 }
 
 // ---------- snapshots, tokens, review ----------

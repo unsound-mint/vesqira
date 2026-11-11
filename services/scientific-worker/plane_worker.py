@@ -2,7 +2,7 @@
 """Persistent plane worker (ADR 0008): selective plane reads and WCS readouts for FITS cubes.
 
 Protocol on stdin/stdout. One JSON request per line:
-    {"op": "view"  | "plane" | "coord", "path": "/abs/file.fits", "channel": int, "x": int, "y": int}
+    {"op": "view"  | "plane" | "coord" | "mask_plane", "path": "/abs/file.fits", "channel": int, "x": int, "y": int}
 Each request gets one JSON header line, then exactly header["nbytes"] raw bytes (0 unless op is "plane").
 Pixel and channel indices are 0-based on the wire. The path is authorized by the caller; this process still
 treats the file as untrusted. It never writes (except the ROHSA index sidecar under a cache folder the caller names, ADR 0046), and never prints anything but protocol lines to stdout.
@@ -1164,6 +1164,14 @@ def handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "bad request")
         authorize(path)
         return header_cards(path), b""
+    if op == "mask_plane":                                       # a plane of a typed mask file (ADR 0055), for the viewer's hatch overlay
+        if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+            raise Refused("bad_request", "bad request")
+        ch = req.get("channel")
+        if isinstance(ch, bool) or not isinstance(ch, int) or ch < 0:
+            raise Refused("bad_request", "channel must be a non-negative integer")
+        import masks as mk
+        return mk.mask_plane(path, ch)
     if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "fingerprint", "fingerprint_full"):
         return host_op(op, req)
     if isinstance(op, str) and op.startswith("catalog_"):

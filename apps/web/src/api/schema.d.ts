@@ -914,6 +914,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/masks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The masks of a dataset */
+        get: operations["owner_s_listMasks_get_api_datasets_id_masks"];
+        put?: never;
+        /**
+         * Make a typed mask of a dataset as a derived file
+         * @description The dataset's file is never changed. 409 for a file on another host. A mask of type other needs a description; the type missing is computed from the data and cannot be declared.
+         */
+        post: operations["owner_s_createMask_post_api_datasets_id_masks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/nature": {
         parameters: {
             query?: never;
@@ -1461,6 +1484,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The viewer's exploration history for a project, oldest first, without scenes (owner listener only) */
+        get: operations["owner_s_listHistory_get_api_history"];
+        put?: never;
+        /** Record a step of the exploration history; the oldest steps beyond the cap are dropped (owner listener only) */
+        post: operations["owner_s_addHistoryStep_post_api_history"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One step with the scene to restore (owner listener only) */
+        get: operations["owner_s_getHistoryStep_get_api_history_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/hosts": {
         parameters: {
             query?: never;
@@ -1927,6 +1987,47 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_submitJob_post_api_jobs_id_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/masks/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget a mask (its file is kept) */
+        post: operations["owner_s_deleteMask_post_api_masks_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/masks/{id}/plane": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One plane of a mask, for the viewer's hatch overlay
+         * @description The same frame as a data plane (uint32 header length, JSON header, payload) with a uint8 payload, row 0 = FITS y 1, 1 = flagged. A mask of one plane answers the same for every channel.
+         */
+        get: operations["owner_s_maskPlane_get_api_masks_id_plane"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3662,6 +3763,13 @@ export interface components {
             /** Format: date-time */
             declaredAt: string;
             stale: boolean;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
+             * @enum {string}
+             */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion: string;
         };
         /** @description A registered dataset: a reference to the original file plus header facts. The file itself is never altered. */
         Dataset: {
@@ -3809,6 +3917,13 @@ export interface components {
             declaredAt: string;
             /** @description The file's size or modification time differs from when the unit was declared: it may no longer describe these bytes. */
             stale: boolean;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
+             * @enum {string}
+             */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion: string;
         };
         /** @description What this running server can do, so a client can show a feature as unavailable instead of failing on a 404. */
         Capabilities: {
@@ -3915,11 +4030,25 @@ export interface components {
             unit: string;
             declaredBy: string;
             hasReliabilityMap: boolean;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it. Absent on a figure saved before tiers existed.
+             * @enum {string}
+             */
+            tier?: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion?: string;
         };
         /** @description The brightness unit the author declared because the file has no BUNIT. */
         FigureUnitDeclaration: {
             unit: string;
             declaredBy: string;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it. Absent on a figure saved before tiers existed.
+             * @enum {string}
+             */
+            tier?: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion?: string;
         };
         RunParam: {
             key: string;
@@ -4003,6 +4132,8 @@ export interface components {
             derived?: components["schemas"]["DerivedSummary"];
             view: components["schemas"]["FigureView"];
             statements: string[];
+            /** @description Absent on a figure saved before tiers existed */
+            tiers?: components["schemas"]["FigureTier"][];
         };
         /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. */
         Figure: {
@@ -4145,9 +4276,11 @@ export interface components {
         BoardMoveRequest: {
             /** @enum {integer} */
             delta: -1 | 1;
+            expect?: components["schemas"]["BoardExpect"];
         };
         BoardNoteRequest: {
             note: string;
+            expect?: components["schemas"]["BoardExpect"];
         };
         /** @description A frozen, published version of a board. Optional fields are omitted when empty. */
         Snapshot: {
@@ -4832,6 +4965,13 @@ export interface components {
             declaredAt: string;
             /** @description True when the file's size or modification time differs from when this was declared. A stale declaration is not applied: positions are refused until it is confirmed again. */
             stale: boolean;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
+             * @enum {string}
+             */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion: string;
         };
         RegisterPathRequest: {
             /** @description Absolute path inside a source root; resolved and authorised like a FITS registration */
@@ -5154,6 +5294,10 @@ export interface components {
              */
             otherId: number;
             params?: components["schemas"]["RelativeOrientationParams"];
+            /** @description Masks of the first map, each with its own policy (ADR 0055); refused for a comparison with a catalog */
+            masks?: components["schemas"]["MaskReference"][];
+            /** @description Masks of the second map */
+            otherMasks?: components["schemas"]["MaskReference"][];
         };
         RelativeOrientationHistogram: {
             edges_deg: number[];
@@ -6828,6 +6972,199 @@ export interface components {
             prompt?: string;
             sources: components["schemas"]["RedrawSource"][];
         };
+        MaskReference: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * @description Stated for every mask: there is no default and no global policy. `weight` only where the analysis has weights (relative orientation); the policy for a no-value mask is exclude.
+             * @enum {string}
+             */
+            policy: "exclude" | "keep" | "weight";
+            /** @description With the weight policy: the factor a flagged pixel counts with */
+            weight?: number | null;
+        };
+        /** @description A typed mask (ADR 0055): a derived uint8 FITS file flagging pixels of a dataset for a stated reason. It changes nothing in the dataset and is applied only where an operation names it with a policy. */
+        Mask: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            datasetId: number;
+            /**
+             * @description missing: no value in the file (NaN, BLANK), computed and never declared. Zero is a value and is never `missing`.
+             * @enum {string}
+             */
+            type: "missing" | "invalid" | "low_snr" | "saturated" | "user_excluded" | "other";
+            name: string;
+            width: number;
+            height: number;
+            /** @description 0: one plane that applies to every channel; otherwise one plane per channel */
+            channels: number;
+            /** Format: int64 */
+            flagged: number;
+            /** Format: int64 */
+            total: number;
+            /**
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
+             * @enum {string}
+             */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
+            mappingVersion: string;
+            /** @enum {string} */
+            method: "computed" | "regions" | "import";
+            /** @description How the mask was made, as the worker described it: the rule, the estimator, the threshold and where sigma or the threshold came from, the regions, or the file imported */
+            rule: {
+                [key: string]: unknown;
+            };
+            meaning: string;
+            author: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description What is recorded about the bytes the mask was made from: sha256:<hex>, sampled:<fingerprint> (not proof) or empty */
+            sourceIdentity: string;
+            /** Format: int64 */
+            fileSize: number;
+            /** @description SHA-256 of the mask file */
+            sha256: string;
+            /** @description The dataset's size or modification time differs from when the mask was made: it is not applied until it is made again */
+            stale: boolean;
+        };
+        MaskList: {
+            masks: components["schemas"]["Mask"][];
+        };
+        CreateMaskRequest: {
+            /**
+             * @description missing: computed from the data (type missing). low_snr: value / sigma < k. saturated: value >= threshold. regions: user_excluded from saved regions. import: a registered image of the same grid, with its declared type and the meaning of nonzero
+             * @enum {string}
+             */
+            method: "missing" | "low_snr" | "saturated" | "regions" | "import";
+            /**
+             * @description Only for an import
+             * @enum {string}
+             */
+            type?: "invalid" | "low_snr" | "saturated" | "user_excluded" | "other";
+            name?: string;
+            k?: number;
+            sigma?: {
+                /** @enum {string} */
+                kind: "value" | "mad" | "map";
+                value?: number;
+                /** Format: int64 */
+                datasetId?: number;
+            };
+            threshold?: number;
+            /** @description Where the saturation threshold comes from (required) */
+            source?: string;
+            regionIds?: number[];
+            /** Format: int64 */
+            importDatasetId?: number;
+            /**
+             * @description What a nonzero pixel of the imported file means
+             * @enum {string}
+             */
+            nonzero?: "flagged" | "valid";
+            /** @description Required for type other */
+            meaning?: string;
+        };
+        /** @description How far one interpretation behind a figure is established (ADR 0055): the brightness unit, the orientation declaration, or a mask that was applied to the result. No id and no path. */
+        FigureTier: {
+            what: string;
+            /** @enum {string} */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description For an inferred interpretation: the rule that proposed it */
+            rule?: string;
+            mappingVersion?: string;
+            note: string;
+        };
+        /** @description One meaningful state of the viewer (ADR 0057): what was on screen, not its pixels. Mutable working state, pruned oldest first past the cap; not evidence */
+        ExplorationStep: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description The open project the step belongs to; 0 when no project was open
+             */
+            projectId: number;
+            /**
+             * Format: int64
+             * @description The step this one was reached from. Null for the first step of a branch, or when that step was pruned. Several steps with the same parent are branches
+             */
+            parentId: number | null;
+            /**
+             * Format: int64
+             * @description The base dataset of the scene (the owner's id; never sent to a reviewer)
+             */
+            datasetId: number;
+            /** @enum {string} */
+            kind: "opened" | "channel" | "region" | "overlay" | "link" | "continued";
+            label: string;
+            /** Format: date-time */
+            at: string;
+        };
+        ExplorationHistory: {
+            /** @description Oldest first, without scenes */
+            steps: components["schemas"]["ExplorationStep"][];
+            /** @description How many steps a project keeps */
+            keep: number;
+        };
+        ExplorationStepWithScene: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description The open project the step belongs to; 0 when no project was open
+             */
+            projectId: number;
+            /**
+             * Format: int64
+             * @description The step this one was reached from. Null for the first step of a branch, or when that step was pruned. Several steps with the same parent are branches
+             */
+            parentId: number | null;
+            /**
+             * Format: int64
+             * @description The base dataset of the scene (the owner's id; never sent to a reviewer)
+             */
+            datasetId: number;
+            /** @enum {string} */
+            kind: "opened" | "channel" | "region" | "overlay" | "link" | "continued";
+            label: string;
+            /** Format: date-time */
+            at: string;
+            /** @description The scene to restore (scene/1). Only the single-step read and the create reply carry it, and the create reply does not */
+            scene?: components["schemas"]["Scene"];
+        };
+        AddExplorationStepRequest: {
+            /** Format: int64 */
+            projectId: number;
+            /**
+             * Format: int64
+             * @description A step of the same project; continuing from an earlier step makes a branch
+             */
+            parentId?: number | null;
+            /** @enum {string} */
+            kind: "opened" | "channel" | "region" | "overlay" | "link" | "continued";
+            label: string;
+            scene: components["schemas"]["Scene"];
+        };
+        /** @description What the client last saw at the position it edits (ADR 0057). The edit is applied, in one transaction, only if the panel there is still this one; otherwise nothing changes and the reply is 409 with the current board. Used by undo; a client that omits it gets the unguarded edit. */
+        BoardExpect: {
+            /** @enum {string} */
+            kind: "figure" | "job";
+            /**
+             * Format: int64
+             * @description The figure's or the job's id
+             */
+            id: number;
+            /** @description The panel's note as the client last saw it; omit when the note does not matter */
+            note?: string;
+        };
+        BoardConflict: {
+            error: string;
+            board: components["schemas"]["Board"];
+        };
+        BoardRemoveRequest: {
+            expect?: components["schemas"]["BoardExpect"];
+        };
     };
     responses: never;
     parameters: never;
@@ -7220,6 +7557,15 @@ export interface operations {
                     "application/json": components["schemas"]["Board"];
                 };
             };
+            /** @description The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardConflict"];
+                };
+            };
             /** @description Error */
             default: {
                 headers: {
@@ -7254,6 +7600,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardConflict"];
                 };
             };
             /** @description Error */
@@ -7313,9 +7668,9 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["BoardRemoveRequest"];
             };
         };
         responses: {
@@ -7326,6 +7681,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardConflict"];
                 };
             };
             /** @description Error */
@@ -8408,6 +8772,72 @@ export interface operations {
             };
         };
     };
+    owner_s_listMasks_get_api_datasets_id_masks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaskList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createMask_post_api_datasets_id_masks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMaskRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Mask"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_setNature_post_api_datasets_id_nature: {
         parameters: {
             query?: never;
@@ -9394,6 +9824,101 @@ export interface operations {
             };
         };
     };
+    owner_s_listHistory_get_api_history: {
+        parameters: {
+            query?: {
+                project?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorationHistory"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_addHistoryStep_post_api_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddExplorationStepRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorationStep"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_getHistoryStep_get_api_history_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorationStepWithScene"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listHosts_get_api_hosts: {
         parameters: {
             query?: never;
@@ -10209,6 +10734,73 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_deleteMask_post_api_masks_id_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: int64 */
+                        removed: number;
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_maskPlane_get_api_masks_id_plane: {
+        parameters: {
+            query: {
+                channel: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description a frame */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.plane": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

@@ -30,7 +30,7 @@ describe("analysis panel", () => {
     await userEvent.type(screen.getByLabelText("To channel"), "50");
     await userEvent.click(screen.getByRole("button", { name: "Create the new file" }));
     await waitFor(() => expect(created).toHaveLength(1));
-    expect(JSON.parse(String(calls[0]!.init!.body))).toEqual({ op: "moment", datasetId: 1, params: { order: "1", threshold: "1.5", chanStart: "9", chanEnd: "49" } });
+    expect(JSON.parse(String(calls.find((c) => c.url === "/api/analysis")!.init!.body))).toEqual({ op: "moment", datasetId: 1, params: { order: "1", threshold: "1.5", chanStart: "9", chanEnd: "49" } });
   });
 
   it("explains alignment honestly and needs a reference", async () => {

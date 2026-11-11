@@ -46,6 +46,10 @@ type relOrientReq struct {
 	DatasetID int64           `json:"datasetId"` // the orientation map
 	OtherID   int64           `json:"otherId"`   // a catalog (mode A) or a second orientation map (mode B)
 	Params    relOrientParams `json:"params"`
+	// Masks of the map and (for two maps) of the second one, each with its own policy (ADR 0055). The weight policy is accepted here:
+	// the statistic already has weights.
+	Masks      []maskUse `json:"masks"`
+	OtherMasks []maskUse `json:"otherMasks"`
 }
 
 // worker turns the parameters into the worker's names, refusing values outside the ranges the worker accepts (it checks again).
@@ -245,6 +249,30 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 		args = append(args, ra...)
 		args = append(args, "--table-out", tablePath)
 	}
+	var maskSafe, otherSafe []map[string]any
+	if len(in.Masks) > 0 || len(in.OtherMasks) > 0 {
+		if catalogMode {
+			fail(w, 422, "masks are applied to pixels of two maps; a comparison with a catalog does not take them yet")
+			return
+		}
+		specs, safe, _, code, msg := s.maskSpecs(in.Masks, d, true)
+		if code != 0 {
+			fail(w, code, "the map: "+msg)
+			return
+		}
+		if specs != "" {
+			args = append(args, "--masks", specs)
+		}
+		ospecs, osafe, _, code, msg := s.maskSpecs(in.OtherMasks, other, true)
+		if code != 0 {
+			fail(w, code, "the second map: "+msg)
+			return
+		}
+		if ospecs != "" {
+			args = append(args, "--ref-masks", ospecs)
+		}
+		maskSafe, otherSafe = safe, osafe
+	}
 	pj, _ := json.Marshal(params)
 	full := append([]string{"-P", s.Analysis.Script, op}, args...)
 	full = append(full, "--params", string(pj), "--out", outPath)
@@ -270,6 +298,9 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 	recParams := map[string]any{"options": params, "mode": map[bool]string{true: "map_catalog", false: "map_map"}[catalogMode]}
 	if k := relorientConstruction(catalogMode, res.Summary, time.Now()); k != nil { // Vesqira ran the null, so it records how it was built
 		recParams["controls"] = runs.Controls{Construction: k}
+	}
+	if len(maskSafe) > 0 || len(otherSafe) > 0 {
+		recParams["masks"] = map[string]any{"map": maskSafe, "other": otherSafe}
 	}
 	rec, _ := json.Marshal(recParams)
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: op, Params: rec, Sources: []int64{d.ID, other.ID}, Summary: res.Summary, Software: res.Software}); err != nil {

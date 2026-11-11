@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
+<<<<<<< HEAD
 import { Button, ErrorReference, Input } from "../ui";
 import { ApiError } from "../api/http";
+||||||| e4aef11
+import { Button, Input } from "../ui";
+=======
+import { Button, Input } from "../ui";
+import { tierLine } from "../api/tier";
+>>>>>>> main
 import { RunLine } from "../boards/RunLine";
 import { addReviewComment, getReview, OUTCOME_TEXT, reviewPreviewUrl, setOutcome } from "../api/boards";
 import type { OutcomeValue } from "../api/boards";
@@ -107,6 +114,7 @@ export function ReviewPage({ token }: { token: string }) {
             <ul>
               <li>File: <span className="mono">{it.provenance.source.name}</span> ({it.provenance.source.identity}).</li>
               {it.provenance.interpretation ? <li>Interpretation declared by {it.provenance.interpretation.declaredBy}: {it.provenance.interpretation.kind}, unit {it.provenance.interpretation.unit}.</li> : null}
+              {(it.provenance.tiers ?? []).map((t) => <li key={t.what} data-tier={t.tier}>{tierLine(t)}</li>)}
               {it.provenance.statements.map((t) => <li key={t}>{t}</li>)}
             </ul>
           </details>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Basis, BasisNote, Button, Select } from "../ui";
+import { TierBadge } from "../ui/TierBadge";
 import { isCatalog } from "../api/catalog";
 import type { Dataset, ImageDataset } from "../api/catalog";
 import type { AngleFrame, AngleQuantity, InterpretationRequest } from "../api/catalog";
@@ -135,6 +136,7 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
           {cur && cur.declaredBy !== "user" ? `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? `the run import (${cur.declaredBy})` : `the analysis that made this map (${cur.declaredBy})`}. Choose above and apply to override. ` : ""}Kept with the catalog; the file is never changed. The file does not declare the unit, the frame or what the angle is.
         </p>
         {cur ? <p>{declarationNote(cur)}</p> : null}
+        {cur ? <p>How far this is established: <TierBadge tier={cur.tier} mappingVersion={cur.mappingVersion} rule={cur.declaredBy === "user" ? null : cur.declaredBy} /></p> : null}
       </Basis>
     </div>
   );

@@ -3,9 +3,10 @@ import type { Dataset } from "./catalog";
 import type { Job } from "./jobs";
 import type { components } from "./schema";
 import type { Controls } from "./runs";
+import type { MaskUse } from "./masks";
 
 export type AnalysisOp = "axial_diff" | "scalar_diff" | "stats" | "moment" | "cutout" | "slab" | "align" | "convolve";
-export type AnalysisRequest = { op: AnalysisOp; datasetId: number; referenceId?: number; params?: Record<string, string>; cpus?: number; mem?: string; time?: string };
+export type AnalysisRequest = { op: AnalysisOp; datasetId: number; referenceId?: number; params?: Record<string, string>; masks?: MaskUse[]; cpus?: number; mem?: string; time?: string };
 
 export type StatsSummary = {
   channels: [number, number];
@@ -18,9 +19,14 @@ export type StatsSummary = {
   peak: { value: number; channel: number; x: number; y: number; sky?: { lon: number; lat: number } | null } | null;
   per_channel: { channel: number; finite: number; rms: number | null; mad_sigma: number | null }[];
   policy: string;
+  /** The masks that were applied, each with its own policy, and how many pixels with a value they left out (ADR 0055). */
+  masks?: AppliedMask[];
+  excluded_by_mask?: number;
 };
 
-export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
+export type AppliedMask = { id: number; name: string; type: string; policy: string; weight?: number; tier?: string; pixels_flagged_with_value: number; pixels_excluded: number };
+
+export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls; masks?: { type: string; name: string; policy: string; weight?: number; tier: string; mappingVersion?: string }[] }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
 
 export const runAnalysis = (r: AnalysisRequest, signal?: AbortSignal, requestId?: string) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r, signal, requestId);
 export const createAnalysisJob = (r: AnalysisRequest) => post<Job>("/api/analysis/job", r);
@@ -30,7 +36,15 @@ type Schemas = components["schemas"];
 export type RelOrientParams = Schemas["RelativeOrientationParams"];
 export type RelOrientSummary = Schemas["RelativeOrientationSummary"];
 /** Aborting the request stops the computation: the server kills the program when its request ends. */
+<<<<<<< HEAD
 export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams }, signal?: AbortSignal, requestId?: string) =>
   post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal, requestId);
+||||||| e4aef11
+export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams }, signal?: AbortSignal) =>
+  post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal);
+=======
+export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams; masks?: MaskUse[]; otherMasks?: MaskUse[] }, signal?: AbortSignal) =>
+  post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal);
+>>>>>>> main
 export const relativeOrientationTableUrl = (id: number) => `/api/datasets/${id}/relative-orientation.csv`;
 export const jobResult = (id: number) => call<{ summary: StatsSummary | Record<string, unknown> }>(`/api/jobs/${id}/result`);

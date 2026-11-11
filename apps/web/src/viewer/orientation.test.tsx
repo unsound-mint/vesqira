@@ -130,7 +130,7 @@ describe("declaring an interpretation", () => {
   });
 
   it("shows the VGT import's proposal as the pipeline's convention, overridable, and starts from it", async () => {
-    const proposed: Dataset = { ...ds(1, "psi.fits"), interpretation: { kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "pixel", quantity: "b_field", declaredBy: "vgt-run-adapter", declaredAt: "", stale: false } };
+    const proposed: Dataset = { ...ds(1, "psi.fits"), interpretation: { kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "pixel", quantity: "b_field", declaredBy: "vgt-run-adapter", tier: "inferred", mappingVersion: "1", declaredAt: "", stale: false } };
     const calls: unknown[] = [];
     render(<InterpretationPanel v={viewer} dataset={proposed} datasets={[proposed]} declare={async (_id, b) => (calls.push(b), null)} />);
     expect(screen.getByText(/Proposed by the VGT run import from the pipeline’s convention \(ψ = ½ atan2\(U,Q\) \+ 90°\)/)).toBeInTheDocument();
@@ -142,7 +142,7 @@ describe("declaring an interpretation", () => {
   });
 
   it("describes a declaration from before the frame and quantity existed as not declared", () => {
-    const old: Dataset = { ...ds(1, "psi.fits"), interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: null, quantity: null, declaredBy: "user", declaredAt: "", stale: false } };
+    const old: Dataset = { ...ds(1, "psi.fits"), interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: null, quantity: null, declaredBy: "user", tier: "declared", mappingVersion: "", declaredAt: "", stale: false } };
     render(<InterpretationPanel v={viewer} dataset={old} datasets={[old]} declare={async () => null} />);
     expect(screen.getByText(/Frame: not declared\. Quantity: not declared\./)).toBeInTheDocument();
   });

@@ -196,7 +196,7 @@ func declarationArg(d catalog.Dataset) (map[string]any, int, string) {
 	b, _ := json.Marshal(c)
 	var m map[string]any
 	_ = json.Unmarshal(b, &m)
-	for _, k := range []string{"declaredBy", "declaredAt", "stale"} {
+	for _, k := range []string{"declaredBy", "declaredAt", "stale", "tier", "mappingVersion"} {
 		delete(m, k)
 	}
 	return m, 0, ""

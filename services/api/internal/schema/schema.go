@@ -33,7 +33,10 @@ import (
 // Version 16: a run keeps what its job observed about the environment and the controls stated for it (runs.environment,
 // runs.controls; ADR 0054).
 // Version 17: a host may carry the argv of the user's VPN client (hosts.vpn_command, hosts.vpn_disconnect; ADR 0029 step 3).
-const Version = 17
+// Version 18: interpretation tiers (tier, mapping_version on interpretations, dataset_units and catalog_declarations, existing
+// rows migrated from declared_by) and typed masks (masks; ADR 0055).
+// Version 19: the exploration history, a bounded list of viewer scenes per project (exploration_steps; ADR 0057).
+const Version = 19
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -59,6 +62,68 @@ var migrations = []Migration{
 	{To: 15, Name: "dataset locations and figure identity", Up: datasetIdentity},
 	{To: 16, Name: "run environment and controls", Up: runEnvironmentAndControls},
 	{To: 17, Name: "host VPN commands", Up: hostVPNCommands},
+	{To: 18, Name: "interpretation tiers and typed masks", Up: tiersAndMasks},
+	{To: 19, Name: "exploration history", Up: explorationHistory},
+}
+
+// MasksTable is the table of typed masks (ADR 0055): one row per derived mask file, with what the mask is for (the dataset), what
+// it means (type, rule, meaning), how it was made (method, author, tier) and which bytes it was made from and is (source and own
+// identity). The masks package creates it for a fresh install and the migration for an upgraded one, from this one text.
+const MasksTable = `CREATE TABLE IF NOT EXISTS masks(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+	type TEXT NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE,
+	width INTEGER NOT NULL, height INTEGER NOT NULL, channels INTEGER NOT NULL,
+	flagged INTEGER NOT NULL, total INTEGER NOT NULL,
+	tier TEXT NOT NULL, mapping_version TEXT NOT NULL DEFAULT '',
+	method TEXT NOT NULL, rule TEXT NOT NULL, meaning TEXT NOT NULL DEFAULT '', author TEXT NOT NULL, created_at INTEGER NOT NULL,
+	source_size INTEGER NOT NULL, source_mtime INTEGER NOT NULL, source_identity TEXT NOT NULL DEFAULT '',
+	file_size INTEGER NOT NULL, file_mtime INTEGER NOT NULL, sha256 TEXT NOT NULL)`
+
+// AddTierColumns adds the tier and mapping_version columns of ADR 0055 to a declaration table (a default of "declared" suits
+// every row the researcher wrote; tiersAndMasks corrects the rows a rule wrote).
+func AddTierColumns(db interface {
+	Exec(string, ...any) (sql.Result, error)
+	Query(string, ...any) (*sql.Rows, error)
+}, table string) error {
+	if err := AddColumn(db, table, "tier", "TEXT NOT NULL DEFAULT 'declared'"); err != nil {
+		return err
+	}
+	return AddColumn(db, table, "mapping_version", "TEXT NOT NULL DEFAULT ''")
+}
+
+// tiersAndMasks gives every declaration a tier and creates the masks table. A declaration the researcher made (declared_by
+// 'user') is `declared`; one a rule or adapter made is `inferred`, named by declared_by, with mapping version "1" (the mapping
+// every such row was made by: versions did not exist yet). Nothing is migrated to `verified`: no existing row was ever checked.
+// A catalog without a table (never opened by its package) needs nothing for it.
+func tiersAndMasks(tx *sql.Tx) error {
+	for _, t := range []string{"interpretations", "dataset_units", "catalog_declarations"} {
+		var n int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, t).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			continue
+		}
+		if err := AddTierColumns(tx, t); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name='declared_by'`, t).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 { // not the catalog's own table (a test's stand-in): nobody is recorded as the author, so nothing to read a rule from
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE ` + t + ` SET tier='inferred', mapping_version='1' WHERE declared_by<>'user'`); err != nil {
+			return err
+		}
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='datasets'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	_, err := tx.Exec(MasksTable)
+	return err
 }
 
 // DatasetLocationsTable is where a dataset's files are (ADR 0053). Every dataset has one primary row (the file it was
@@ -166,6 +231,27 @@ const TransfersTable = `CREATE TABLE IF NOT EXISTS transfers(
 -- until the end, so the destination folder alone cannot say that a name is taken.
 CREATE UNIQUE INDEX IF NOT EXISTS transfers_live_name ON transfers(CASE direction WHEN 'download' THEN 0 ELSE host_id END, dest_dir, final_name)
 	WHERE final_name<>'' AND state IN ('queued','waiting','running','verifying')`
+
+// ExplorationStepsTable is the viewer's exploration history (ADR 0057): per project (0 = none open), one row per meaningful
+// scene state. parent_id is the step it was reached from (NULL for the first of a branch, or when that step was pruned); it is
+// deliberately not a foreign key, because pruning the oldest rows must not rewrite or delete their descendants. scene is the
+// scene/1 JSON, validated before it is stored. The history package creates it for a fresh install and the migration for an
+// upgraded one.
+const ExplorationStepsTable = `CREATE TABLE IF NOT EXISTS exploration_steps(
+	id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL DEFAULT 0, parent_id INTEGER,
+	dataset_id INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, scene TEXT NOT NULL, at INTEGER NOT NULL)`
+
+// ExplorationStepsIndex serves "the newest steps of a project" and pruning.
+const ExplorationStepsIndex = `CREATE INDEX IF NOT EXISTS exploration_steps_project ON exploration_steps(project_id, id)`
+
+// explorationHistory adds the history table. Nothing to carry over: no step was kept before.
+func explorationHistory(tx *sql.Tx) error {
+	if _, err := tx.Exec(ExplorationStepsTable); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ExplorationStepsIndex)
+	return err
+}
 
 // transfersTable adds the queue table. There is nothing to carry over: no transfer existed before.
 func transfersTable(tx *sql.Tx) error {

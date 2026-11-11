@@ -16,8 +16,11 @@ import (
 // one: that would be a correction of what the file says, which is a different and larger decision.
 type UnitDeclaration struct {
 	Unit       string    `json:"unit"`
-	DeclaredBy string    `json:"declaredBy"` // "user"
+	DeclaredBy string    `json:"declaredBy"` // "user", or the rule that proposed it (the rohsa run adapter)
 	DeclaredAt time.Time `json:"declaredAt"`
+	// Tier and MappingVersion say how far the unit is established (ADR 0055): declared by the researcher, or inferred by a rule.
+	Tier           string `json:"tier"`
+	MappingVersion string `json:"mappingVersion"`
 	// Stale is true when the file's registered size or modification time differs from what it was at the declaration:
 	// the declaration may no longer describe these bytes.
 	Stale bool `json:"stale"`
@@ -52,7 +55,7 @@ func ValidUnit(s string) bool {
 func (s *Store) unitDeclaration(id int64, d Dataset) (*UnitDeclaration, error) {
 	var u UnitDeclaration
 	var at, size, mod int64
-	err := s.db.QueryRow(`SELECT unit,declared_by,declared_at,size_bytes,modified_ns FROM dataset_units WHERE dataset_id=?`, id).Scan(&u.Unit, &u.DeclaredBy, &at, &size, &mod)
+	err := s.db.QueryRow(`SELECT unit,declared_by,declared_at,size_bytes,modified_ns,tier,mapping_version FROM dataset_units WHERE dataset_id=?`, id).Scan(&u.Unit, &u.DeclaredBy, &at, &size, &mod, &u.Tier, &u.MappingVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -119,10 +122,11 @@ func (s *Store) SetUnitDeclarations(ds []Dataset, unit, by string) (applied []Da
 		if bad > 0 {
 			continue
 		}
-		if _, err := tx.Exec(`INSERT INTO dataset_units(dataset_id,unit,declared_by,declared_at,size_bytes,modified_ns) VALUES(?,?,?,?,?,?)
+		tier, mapping := TierOf(by)
+		if _, err := tx.Exec(`INSERT INTO dataset_units(dataset_id,unit,declared_by,declared_at,size_bytes,modified_ns,tier,mapping_version) VALUES(?,?,?,?,?,?,?,?)
 			ON CONFLICT(dataset_id) DO UPDATE SET unit=excluded.unit,declared_by=excluded.declared_by,declared_at=excluded.declared_at,
-				size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns`,
-			d.ID, unit, by, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano()); err != nil {
+				size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns,tier=excluded.tier,mapping_version=excluded.mapping_version`,
+			d.ID, unit, by, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano(), tier, mapping); err != nil {
 			return nil, err
 		}
 		applied = append(applied, d)
