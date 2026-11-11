@@ -279,15 +279,24 @@ export function Shell() {
   const pageRun = mode === "run" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
   // The run page is a full page of its own: the map inspector and channel timeline describe the viewer, not the run.
-  const projectPage = mode === "open" || mode === "look" || mode === "needs" || mode === "health";
   const noProjectYet = mode === "viewer" && !project && !cat.selectedImage && !cat.selectedCatalog; // nothing open at all: the way in is opening a folder
   // Every mode but the viewer is a page of its own (Jobs, Boards and Reports included): the map inspector and the channel
   // timeline describe a dataset in the viewer, so beside a page they would be empty sections taking its width.
   const onPage = mode !== "viewer" || noProjectYet;
-  // On a narrow screen the explorer is an overlay on the canvas: choosing a project page has to uncover it.
+  // On a narrow screen the explorer is an overlay on the canvas, so any page the person moves to (and the first paint, when a
+  // layout saved on a wide screen says "open") has to uncover it: the explorer is open only when asked for.
+  const narrowNow = () => typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches;
   useEffect(() => {
-    if (projectPage && typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches) set("sideOpen", false);
+    if (narrowNow()) set("sideOpen", false);
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const q = matchMedia("(width <= 800px)");
+    if (typeof q.addEventListener !== "function") return;
+    const onChange = () => { if (q.matches) { set("sideOpen", false); set("inspOpen", false); } };
+    q.addEventListener("change", onChange);
+    return () => q.removeEventListener("change", onChange);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const selectDataset = (id: number) => {
     cat.select(id);
     // choosing a dataset is asking to see it; a draft being edited (rerun) is not thrown away by a click in the explorer

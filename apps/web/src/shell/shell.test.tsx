@@ -79,6 +79,13 @@ describe("Shell on a narrow screen", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => vi.unstubAllGlobals());
 
+  it("opens with the explorer closed even when the saved layout says open", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    localStorage.setItem("vesqira.layout.v1", JSON.stringify({ sideOpen: true, inspOpen: true, timelineOpen: true }));
+    render(<Shell />);
+    expect(explorer()).toHaveAttribute("hidden");
+  });
+
   it("closes the explorer overlay when a dataset is chosen, so the choice is not hidden behind it", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
@@ -89,8 +96,9 @@ describe("Shell on a narrow screen", () => {
       if (url.startsWith("/api/datasets/")) return new Response(JSON.stringify({ error: "not in this test" }), { status: 404, headers: { "Content-Type": "application/json" } });
       return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
-    localStorage.setItem("vesqira.layout.v1", JSON.stringify({ sideOpen: true, inspOpen: false, timelineOpen: true }));
     render(<Shell />);
+    expect(explorer()).toHaveAttribute("hidden"); // closed until asked for, even for a layout saved open on a wide screen
+    await user.click(screen.getAllByRole("button", { name: "Toggle explorer" })[0]!);
     expect(explorer()).not.toHaveAttribute("hidden");
     await user.click(await screen.findByRole("button", { name: /a\.fits/ }));
     await waitFor(() => expect(explorer()).toHaveAttribute("hidden"));
