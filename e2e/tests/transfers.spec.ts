@@ -55,6 +55,7 @@ test("a file is downloaded, verified by hash on both ends, and never overwritten
   await expect(first.getByText("Done, verified")).toBeVisible({ timeout: 60_000 });
   const copy = path.join(incoming, "transfer_cube.fits");
   expect(sha(copy)).toBe(sha(remoteFile));
+  await first.getByText("Paths and SHA-256").click();
   await expect(first.getByText(sha(copy))).toBeVisible();
   expect(fs.readdirSync(incoming)).toEqual(["transfer_cube.fits"]); // no partial folder left behind
 
@@ -75,4 +76,13 @@ test("a file is downloaded, verified by hash on both ends, and never overwritten
 
   const results = await new AxeBuilder({ page }).include('section[aria-label="Transfers"]').analyze();
   expect(results.violations).toEqual([]);
+  // the panel as it looks (kept in .run for a person to look at; not an assertion)
+  await panel.screenshot({ path: path.resolve(here, "../.run/transfers-panel.png") });
+
+  // leave the shared run as it was found: the other specs know nothing of this host or folder
+  const hosts = (await (await page.request.get(`${API}/api/hosts`)).json()) as { hosts: { id: number; name: string }[] };
+  const mine = hosts.hosts.find((h) => h.name === "Transfer host");
+  if (mine) await page.request.post(`${API}/api/hosts/${mine.id}/delete`, { data: {} });
+  fs.rmSync(incoming, { recursive: true, force: true });
+  fs.rmSync(remoteFile, { force: true });
 });

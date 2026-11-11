@@ -97,7 +97,6 @@ export function Transfers({ hosts, onRegistered }: { hosts: Host[]; onRegistered
                 <span className={s.where}>{t.direction === "download" ? "from" : "to"} {hostName(t.hostId)}</span>
                 <Pill tone={TONE(t)}>{stateText(t)}</Pill>
               </div>
-              <p className={s.path}><span className="mono">{t.sourcePath}</span> → <span className="mono">{t.destPath}</span></p>
               {isRunning(t) || (t.state === "waiting" && t.doneBytes > 0) ? (
                 <>
                   {total > 0 ? <progress className={s.bar} max={total} value={Math.min(t.doneBytes, total)} aria-label={`${t.name}: ${Math.round((t.doneBytes / total) * 100)} %`} /> : null}
@@ -108,7 +107,12 @@ export function Transfers({ hosts, onRegistered }: { hosts: Host[]; onRegistered
               {t.detail ? <p className={s.note}>{t.detail}</p> : null}
               {t.warning ? <p className={s.warn} role="note">{t.warning}</p> : null}
               {vtext ? <p className={t.verification.status === "verified" ? s.note : s.warn}>{vtext}</p> : null}
-              {t.verification.status === "verified" && t.verification.method === "sha256" ? <p className={s.hash}>SHA-256 <span className="mono">{t.verification.destSha256}</span></p> : null}
+              <details className={s.more}>
+                <summary>Paths{t.verification.status === "verified" && t.verification.method === "sha256" ? " and SHA-256" : ""}</summary>
+                <p className={s.path}>From <span className="mono">{t.sourcePath}</span></p>
+                <p className={s.path}>To <span className="mono">{t.destPath}</span></p>
+                {t.verification.status === "verified" && t.verification.method === "sha256" ? <p className={s.hash}>SHA-256 <span className="mono">{t.verification.destSha256}</span></p> : null}
+              </details>
               {rowErr[t.id] ? <p role="alert" className={s.err}>{rowErr[t.id]}</p> : null}
               <div className={s.actions}>
                 {t.state === "conflict" ? (
