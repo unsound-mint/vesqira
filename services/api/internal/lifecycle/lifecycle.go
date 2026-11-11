@@ -550,6 +550,7 @@ var optionalTables = map[string]bool{
 	"derived":       true,                                                                      // derived store
 	"run_review":    true, "run_review_history": true, "run_outputs": true, "rohsa_runs": true, // runs store
 	"jobs":        true, // jobs store
+	"transfers":   true, // transfers store
 	"board_items": true, // boards store
 	"sweeps":      true, // sweeps store (ADR 0048)
 }
@@ -562,7 +563,7 @@ func deleteSteps(kind string) []string {
 	case KindDataset:
 		return []string{
 			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
-			`DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`, `DELETE FROM catalog_declarations WHERE dataset_id=?`,
+			`DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`, `DELETE FROM catalog_declarations WHERE dataset_id=?`, `UPDATE transfers SET dataset_id=NULL WHERE dataset_id=?`,
 			`DELETE FROM datasets WHERE id=?`}
 	case KindRun:
 		return []string{

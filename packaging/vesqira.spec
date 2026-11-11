@@ -32,6 +32,7 @@ Requires:       python3-contourpy
 Requires:       python3-numpy
 Requires:       python3-reproject
 Requires:       openssh-clients
+Requires:       rsync
 Requires:       curl
 Requires:       webkit2gtk4.1
 Requires:       gtk3

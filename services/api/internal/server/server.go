@@ -29,6 +29,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
+	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
 )
 
 type HeaderReader interface {
@@ -47,7 +48,8 @@ type Server struct {
 	HostDB     *hosts.Store // remote hosts; nil disables them
 	Remote     *hosts.Manager
 	Jobs       *jobs.Store
-	Sweeps     *sweeps.Store // parameter sweeps (ADR 0048); nil disables their routes
+	Sweeps     *sweeps.Store    // parameter sweeps (ADR 0048); nil disables their routes
+	Transfers  *transfers.Store // the transfer queue (ADR 0051); nil disables the routes
 	Derived    *derived.Store
 	ManagedDir string
 	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
@@ -90,6 +92,7 @@ type Server struct {
 	sweepBoardMu sync.Mutex     // one board per sweep
 	imports      sync.WaitGroup // automatic imports of finished jobs in flight (jobwatch.go)
 	disk         hostDisk       // cached storage looks and measured folder sizes per host (hoststorage.go)
+	xfer         transferRunner // the running transfers and the hosts' rsync probes (transfers.go)
 
 	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
@@ -131,6 +134,15 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/hosts/{id}/storage/refresh", s.hostStorage(true))
 		mux.HandleFunc("GET /api/hosts/{id}/folders", s.hostFolders)
 		mux.HandleFunc("POST /api/hosts/{id}/folders/size", s.measureFolder)
+		if s.Transfers != nil {
+			mux.HandleFunc("GET /api/transfers", s.listTransfers)
+			mux.HandleFunc("POST /api/transfers", s.createTransfer)
+			mux.HandleFunc("POST /api/transfers/{id}/cancel", s.cancelTransfer)
+			mux.HandleFunc("POST /api/transfers/{id}/retry", s.retryTransfer)
+			mux.HandleFunc("POST /api/transfers/{id}/resolve", s.resolveTransfer)
+			mux.HandleFunc("POST /api/transfers/{id}/remove", s.removeTransfer)
+			mux.HandleFunc("POST /api/transfers/{id}/register", s.registerTransfer)
+		}
 		if s.Jobs != nil {
 			mux.HandleFunc("GET /api/jobs", s.listJobs)
 			mux.HandleFunc("GET /api/rohsa/sizing", s.rohsaSizing)
@@ -422,6 +434,9 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 // table extension: the worker is asked, and only a table it can read becomes a catalog; otherwise it stays a FITS dataset
 // exactly as before.
 func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset, int, string) {
+	if inPartialFolder(real) {
+		return catalog.Dataset{}, 422, "this file is part of an unfinished transfer and cannot be registered; it gets its real name when the transfer completes"
+	}
 	if hasCatalogExt(real) {
 		return s.registerCatalogPath(ctx, real)
 	}
@@ -447,6 +462,16 @@ func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset
 		return catalog.Dataset{}, 500, "internal error"
 	}
 	return d, 0, ""
+}
+
+// inPartialFolder reports whether a path is inside a folder where rsync keeps an unfinished transfer (ADR 0051).
+func inPartialFolder(p string) bool {
+	for _, c := range strings.Split(filepath.ToSlash(p), "/") {
+		if c == hosts.PartialDir {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {

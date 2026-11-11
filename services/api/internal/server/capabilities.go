@@ -28,6 +28,7 @@ type Capabilities struct {
 		Preview        bool `json:"preview"` // reduced plane previews (the step parameter)
 		Hosts          bool `json:"hosts"`
 		Jobs           bool `json:"jobs"`
+		Transfers      bool `json:"transfers"` // the resumable transfer queue (ADR 0051)
 		Analysis       bool `json:"analysis"`
 		RemoteAnalysis bool `json:"remoteAnalysis"`
 		Runs           bool `json:"runs"`
@@ -52,6 +53,7 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 	f := &c.Features
 	f.Planes, f.PlaneCache, f.Preview = s.Planes != nil, s.Cache != nil, s.Planes != nil
 	f.Hosts, f.Jobs = remote, remote && s.Jobs != nil
+	f.Transfers = remote && s.Transfers != nil
 	f.Analysis, f.RemoteAnalysis = s.analysisDeps(), s.analysisDeps() && remote && s.Jobs != nil
 	f.Runs, f.Boards, f.Regions, f.Audit = s.Runs != nil, s.Boards != nil, s.Regions != nil, s.Audit != nil
 	f.Editor = s.EditorEnabled

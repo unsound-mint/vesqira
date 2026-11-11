@@ -9,7 +9,7 @@ import (
 )
 
 // SkipNames are folders that are never walked, in any project.
-var SkipNames = []string{".git", ".venv", "venv", "node_modules", "__pycache__", ".cache", ".tox", ".mypy_cache", ".ipynb_checkpoints", ".vesqira"}
+var SkipNames = []string{".git", ".venv", "venv", "node_modules", "__pycache__", ".cache", ".tox", ".mypy_cache", ".ipynb_checkpoints", ".vesqira", ".vesqira-partial"}
 
 // NeverFiles and NeverDirs are name patterns (matched case-insensitively against one name) for things that are never
 // read, statted or descended into: a blinding key or anything its owner marked as not to be opened. They are sent to

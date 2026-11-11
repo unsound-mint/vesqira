@@ -2,7 +2,7 @@
 //
 // Vesqira never stores, reads or sends keys or passwords: it runs `ssh` with the user's own configuration and agent.
 // A connection (VPN included) is the user's to bring up. The plane worker runs on the remote host over that ssh
-// channel, so only planes travel and cubes stay where they are, and the remote worker enforces the host's source
+// channel, so only planes travel and cubes stay where they are (until the owner queues a transfer, transfer.go), and the remote worker enforces the host's source
 // roots itself, because this process cannot resolve symlinks on another machine.
 package hosts
 
@@ -205,6 +205,7 @@ func (s *Store) Delete(id int64) error {
 // load on a shared login node) and deploys the worker scripts to the host by content hash.
 type Manager struct {
 	Ssh        string            // the ssh binary; "ssh" unless a test substitutes one
+	Rsync      string            // the rsync binary for transfers; "rsync" unless a test substitutes one
 	Files      map[string][]byte // worker script files to deploy: the modules listed in the worker directory's DEPLOY file (LoadWorkerFiles)
 	ControlDir string            // where ssh keeps its multiplexing sockets (short path)
 	Timeout    time.Duration

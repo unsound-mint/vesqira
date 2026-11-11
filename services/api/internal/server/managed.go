@@ -75,7 +75,7 @@ func (s *Server) copyDataset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if d.HostID != 0 {
-		fail(w, 409, "a file on another host is not copied here; analyse it there or keep it as a reference")
+		fail(w, 409, "a file on another host is not copied by this button; download it with a transfer (Transfers panel), analyse it there, or keep it as a reference")
 		return
 	}
 	if s.ManagedDir == "" || s.Derived == nil {

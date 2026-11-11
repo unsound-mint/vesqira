@@ -6,10 +6,12 @@ import s from "./NotificationBell.module.css";
 
 const LABEL: Record<Notification["kind"], string> = {
   completed: "Finished", failed: "Failed", timeout: "Time limit", cancelled: "Cancelled", unknown: "Unknown", imported: "Imported", import_failed: "Import failed",
+  transfer_done: "Transfer verified", transfer_failed: "Transfer problem", transfer_conflict: "Needs a decision",
 };
 // "finished" is not "good": a completed job is accent, never the green that means a checked result
 const TONE: Record<Notification["kind"], "neutral" | "ok" | "warn" | "err" | "accent"> = {
   completed: "accent", failed: "err", timeout: "warn", cancelled: "warn", unknown: "warn", imported: "accent", import_failed: "err",
+  transfer_done: "ok", transfer_failed: "err", transfer_conflict: "warn",
 };
 
 export const whenText = (iso: string) => {

@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
+	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
 )
 
 // Open creates the tables of every store on db (the catalog's own are created by catalog.Open); dir is the data directory
@@ -38,6 +39,7 @@ func Open(db *sql.DB, dir string) error {
 		{"derived", func() error { _, e := derived.Open(db); return e }},
 		{"reports", func() error { _, e := reports.Open(db, dir); return e }},
 		{"projects", func() error { _, e := projects.Open(db); return e }},
+		{"transfers", func() error { _, e := transfers.Open(db); return e }},
 	} {
 		if err := s.open(); err != nil {
 			return fmt.Errorf("opening %s: %w", s.name, err)

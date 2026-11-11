@@ -27,7 +27,8 @@ import (
 // Version 11: a finished job keeps what sacct reported it used (jobs.usage, JSON; ADR 0045).
 // Version 12: a ROHSA run keeps its decomposition record (rohsa_runs; ADR 0046).
 // Version 13: parameter sweeps, a record of a grid of linked draft jobs (sweeps, sweep_jobs; ADR 0048).
-const Version = 13
+// Version 14: the transfer queue (transfers; ADR 0051).
+const Version = 14
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -49,6 +50,7 @@ var migrations = []Migration{
 	{To: 11, Name: "job usage", Up: jobUsage},
 	{To: 12, Name: "ROHSA runs", Up: rohsaRuns},
 	{To: 13, Name: "parameter sweeps", Up: parameterSweeps},
+	{To: 14, Name: "transfers", Up: transfersTable},
 }
 
 // SweepsTables is the DDL of both sweep tables (ADR 0048), shared by the sweeps package (a fresh catalog) and the migration
@@ -65,6 +67,30 @@ CREATE TABLE IF NOT EXISTS sweep_jobs(
 // parameterSweeps adds the two sweep tables. No row to carry over: no sweep existed before.
 func parameterSweeps(tx *sql.Tx) error {
 	_, err := tx.Exec(SweepsTables)
+	return err
+}
+
+// TransfersTable is the queue of transfers between this computer and a host (ADR 0051). The transfers package creates it for a
+// fresh install and the migration for an upgraded one, from this one text.
+const TransfersTable = `CREATE TABLE IF NOT EXISTS transfers(
+	id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, direction TEXT NOT NULL, kind TEXT NOT NULL DEFAULT '',
+	source_path TEXT NOT NULL, dest_dir TEXT NOT NULL, name TEXT NOT NULL, final_name TEXT NOT NULL DEFAULT '',
+	policy TEXT NOT NULL, state TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
+	total_bytes INTEGER NOT NULL DEFAULT 0, done_bytes INTEGER NOT NULL DEFAULT 0, rate_bps INTEGER NOT NULL DEFAULT 0, eta_s INTEGER NOT NULL DEFAULT -1,
+	bwlimit_kbps INTEGER NOT NULL DEFAULT 0, compress INTEGER NOT NULL DEFAULT 1, checksum INTEGER NOT NULL DEFAULT 0,
+	attempts INTEGER NOT NULL DEFAULT 0, fails INTEGER NOT NULL DEFAULT 0, next_at INTEGER, warning TEXT NOT NULL DEFAULT '',
+	verif_status TEXT NOT NULL DEFAULT '', verif_method TEXT NOT NULL DEFAULT '', verif_note TEXT NOT NULL DEFAULT '',
+	src_sha TEXT NOT NULL DEFAULT '', dst_sha TEXT NOT NULL DEFAULT '', verif_bytes INTEGER NOT NULL DEFAULT 0,
+	copied INTEGER NOT NULL DEFAULT 0, written_sha TEXT NOT NULL DEFAULT '', replaced TEXT NOT NULL DEFAULT '',
+	dataset_id INTEGER, created_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER);
+-- A final name belongs to one live transfer per side (this computer, or one host) and folder: the file sits in .vesqira-partial
+-- until the end, so the destination folder alone cannot say that a name is taken.
+CREATE UNIQUE INDEX IF NOT EXISTS transfers_live_name ON transfers(CASE direction WHEN 'download' THEN 0 ELSE host_id END, dest_dir, final_name)
+	WHERE final_name<>'' AND state IN ('queued','waiting','running','verifying')`
+
+// transfersTable adds the queue table. There is nothing to carry over: no transfer existed before.
+func transfersTable(tx *sql.Tx) error {
+	_, err := tx.Exec(TransfersTable)
 	return err
 }
 
