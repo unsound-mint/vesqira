@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toShape } from "../api/regions";
+import { sameRegion } from "./region";
 import { Select, Switch } from "../ui";
 import { COLORMAPS, lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
@@ -89,6 +91,19 @@ export function DisplayControls({ v }: { v: Viewer }) {
   const lim = stats ? limits(stats, v.range, v.customLimits) : null;
   const unit = v.view?.bunit ?? null;
   const axial = v.interp !== null;
+  // What the histogram counts: the plane, the region drawn now, or a saved region. A choice that no longer exists means the plane.
+  const [histOf, setHistOf] = useState("plane");
+  const savedList = v.savedRegions.saved;
+  const drawnIsSaved = v.region !== null && savedList.some((r) => sameRegion(toShape(r), v.region));
+  const histScope = useMemo(() => {
+    const p = v.plane;
+    if (!p) return null;
+    const mk = (name: string, shape: NonNullable<typeof v.region>) => ({ name, shape, width: p.head.width, height: p.head.height, preview: !!p.head.preview });
+    if (histOf === "drawn" && v.region && !drawnIsSaved) return mk("drawn region", v.region);
+    const saved = histOf.startsWith("s") ? savedList.find((r) => `s${r.id}` === histOf) : undefined;
+    return saved ? mk(saved.name, toShape(saved)) : null;
+  }, [histOf, v.region, drawnIsSaved, savedList, v.plane]);
+  const histValue = histScope ? histOf : "plane";
 
   useEffect(() => {
     const c = bar.current;
@@ -143,7 +158,18 @@ export function DisplayControls({ v }: { v: Viewer }) {
       }}>
         {RANGES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
       </Select>
-      {v.plane && stats && !v.plane.head.preview ? <Histogram data={v.plane.data} stats={stats} limits={lim} unit={unit} onChange={(lo, hi) => { v.setCustomLimits([lo, hi]); v.setRange("custom"); }} /> : null}
+      {v.plane && stats && !v.plane.head.preview ? (
+        <>
+          {v.region || savedList.length > 0 ? (
+            <Select label="Histogram of" value={histValue} onChange={(e) => setHistOf(e.target.value)}>
+              <option value="plane">Plane</option>
+              {v.region && !drawnIsSaved ? <option value="drawn">Region: drawn region</option> : null}
+              {savedList.map((r) => <option key={r.id} value={`s${r.id}`}>Region: {r.name}</option>)}
+            </Select>
+          ) : null}
+          <Histogram data={v.plane.data} stats={stats} limits={lim} unit={unit} scope={histScope} onChange={(lo, hi) => { v.setCustomLimits([lo, hi]); v.setRange("custom"); }} />
+        </>
+      ) : null}
       <div className={s.legend}>
         <canvas ref={bar} className={s.bar} width={256} height={1} role="img" aria-label={`${v.colormap} colour bar from low to high`} />
         <div className={s.ends}>

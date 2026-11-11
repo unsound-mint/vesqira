@@ -1,4 +1,5 @@
-import type { PlaneStats } from "../api/planes";
+import type { PlaneStats, RegionShape } from "../api/planes";
+import { regionRows } from "./region";
 
 export type Stretch = "linear" | "sqrt" | "asinh";
 export type RangeMode = "percentile" | "minmax" | "custom";
@@ -113,4 +114,27 @@ export function histogram(data: Float32Array, min: number, max: number, bins: nu
     counts[Math.min(bins - 1, Math.floor((v - min) * k))]!++;
   }
   return counts;
+}
+
+export type RegionHistogram = { counts: number[]; pixels: number; nonfinite: number };
+
+/**
+ * The histogram of the pixels inside a region of a plane (row 0 is the bottom row, as in the file). `pixels` is every pixel
+ * of the region inside the plane and `nonfinite` those with no value; the counts hold only the finite ones. Zero is a value.
+ */
+export function regionHistogram(data: Float32Array, width: number, height: number, shape: RegionShape, min: number, max: number, bins: number): RegionHistogram {
+  const counts = new Array<number>(bins).fill(0);
+  const flat = !(max > min);
+  const k = flat ? 0 : bins / (max - min);
+  let pixels = 0, nonfinite = 0;
+  regionRows(shape, width, height, (y, xa, xb) => {
+    for (let i = y * width + xa, end = y * width + xb; i <= end; i++) {
+      pixels++;
+      const v = data[i]!;
+      if (!Number.isFinite(v)) { nonfinite++; continue; }
+      if (flat) counts[0]!++;
+      else if (v >= min && v <= max) counts[Math.min(bins - 1, Math.floor((v - min) * k))]!++;
+    }
+  });
+  return { counts, pixels, nonfinite };
 }
