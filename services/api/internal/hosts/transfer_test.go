@@ -156,7 +156,7 @@ func TestRsyncArgvKeepsHostileNamesWhole(t *testing.T) {
 	}
 	// the options that matter are all there, and rsync is told to keep unfinished files out of the final name
 	argv, _ := m.RsyncArgv(h, RsyncSpec{Direction: Download, Local: "/l/f", Remote: "/data/f", BwlimitKBps: 500})
-	for _, want := range []string{"--protect-args", "--partial-dir=" + PartialDir, "--timeout=60", "--info=progress2", "--bwlimit=500", "--safe-links"} {
+	for _, want := range []string{"--protect-args", "--partial-dir=" + PartialDir, "--timeout=600", "--info=progress2", "--bwlimit=500", "--safe-links"} {
 		if indexOf(argv, want) < 0 {
 			t.Errorf("missing %s in %q", want, argv)
 		}

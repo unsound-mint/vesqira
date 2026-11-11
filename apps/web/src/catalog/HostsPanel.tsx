@@ -55,7 +55,7 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
   return (
     <div className={s.wrap}>
       {hosts.map((h) => <HostRow key={h.id} host={h} onChange={onChange} onRegistered={onRegistered} />)}
-      {hosts.length === 0 ? <p className={s.note}>No hosts yet. Files stay on the host; only planes travel.</p> : null}
+      {hosts.length === 0 ? <p className={s.note}>No hosts yet. Files stay on the host and only planes travel, unless you start a transfer.</p> : null}
       {hosts.length > 0 ? <Transfers hosts={hosts} onRegistered={onRegistered} /> : null}
       <form className={s.form} onSubmit={add} aria-label="Add a host">
         <Input label="Host name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Cluster login" />

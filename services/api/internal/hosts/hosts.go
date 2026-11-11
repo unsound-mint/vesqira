@@ -2,7 +2,7 @@
 //
 // Vesqira never stores, reads or sends keys or passwords: it runs `ssh` with the user's own configuration and agent.
 // A connection (VPN included) is the user's to bring up. The plane worker runs on the remote host over that ssh
-// channel, so only planes travel and cubes stay where they are, and the remote worker enforces the host's source
+// channel, so only planes travel and cubes stay where they are (until the owner queues a transfer, transfer.go), and the remote worker enforces the host's source
 // roots itself, because this process cannot resolve symlinks on another machine.
 package hosts
 

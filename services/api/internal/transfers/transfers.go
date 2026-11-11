@@ -88,10 +88,14 @@ type Transfer struct {
 	NextAt      *time.Time `json:"nextAttemptAt"`
 	Warning     string     `json:"warning"`
 	Verif       Verif      `json:"verification"`
-	DatasetID   *int64     `json:"datasetId"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	StartedAt   *time.Time `json:"startedAt"`
-	FinishedAt  *time.Time `json:"finishedAt"`
+	// Copied is set when rsync finished for the chosen name, so the file there is this transfer's own; WrittenSHA is the hash of
+	// that file when it was checked. Neither is shown: they decide whether a retry may touch what is at the destination.
+	Copied     bool       `json:"-"`
+	WrittenSHA string     `json:"-"`
+	DatasetID  *int64     `json:"datasetId"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	StartedAt  *time.Time `json:"startedAt"`
+	FinishedAt *time.Time `json:"finishedAt"`
 }
 
 // Verif is what was checked after the bytes arrived. Status is empty until then.
@@ -115,7 +119,7 @@ func Open(db *sql.DB) (*Store, error) {
 
 const cols = `id,host_id,direction,kind,source_path,dest_dir,name,final_name,policy,state,detail,total_bytes,done_bytes,rate_bps,eta_s,
 	bwlimit_kbps,compress,checksum,attempts,fails,next_at,warning,verif_status,verif_method,verif_note,src_sha,dst_sha,verif_bytes,dataset_id,
-	created_at,started_at,finished_at`
+	created_at,started_at,finished_at,copied,written_sha`
 
 func ts(n sql.NullInt64) *time.Time {
 	if !n.Valid {
@@ -127,16 +131,16 @@ func ts(n sql.NullInt64) *time.Time {
 
 func scan(row interface{ Scan(...any) error }) (Transfer, error) {
 	var t Transfer
-	var compress, checksum int
+	var compress, checksum, copied int
 	var next, ds, started, finished sql.NullInt64
 	var created int64
 	err := row.Scan(&t.ID, &t.HostID, &t.Direction, &t.Kind, &t.SourcePath, &t.DestDir, &t.Name, &t.FinalName, &t.Policy, &t.State, &t.Detail,
 		&t.TotalBytes, &t.DoneBytes, &t.RateBps, &t.EtaSeconds, &t.BwlimitKBps, &compress, &checksum, &t.Attempts, &t.Fails, &next, &t.Warning,
-		&t.Verif.Status, &t.Verif.Method, &t.Verif.Note, &t.Verif.SourceSHA256, &t.Verif.DestSHA256, &t.Verif.Bytes, &ds, &created, &started, &finished)
+		&t.Verif.Status, &t.Verif.Method, &t.Verif.Note, &t.Verif.SourceSHA256, &t.Verif.DestSHA256, &t.Verif.Bytes, &ds, &created, &started, &finished, &copied, &t.WrittenSHA)
 	if err != nil {
 		return Transfer{}, err
 	}
-	t.Compress, t.Checksum = compress != 0, checksum != 0
+	t.Compress, t.Checksum, t.Copied = compress != 0, checksum != 0, copied != 0
 	t.NextAt, t.StartedAt, t.FinishedAt = ts(next), ts(started), ts(finished)
 	if ds.Valid {
 		t.DatasetID = &ds.Int64
@@ -272,6 +276,24 @@ func (s *Store) Move(id int64, from []string, to, detail string) (bool, error) {
 	return s.update(id, from, to, detail, nil, -1)
 }
 
+// Verifying moves a running transfer to verifying once rsync has finished for its chosen name: the file there is now this
+// transfer's own (Copied), and a copy-again flag is spent.
+func (s *Store) Verifying(id int64) (bool, error) {
+	res, err := s.db.Exec(`UPDATE transfers SET state='verifying', copied=1, checksum=0, detail='' WHERE id=? AND state='running'`, id)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// ClearFinalName forgets the chosen name, so the next attempt runs the conflict check again. It is used when the name chosen
+// earlier is no longer free (something else was put there) or the file there is no longer the one this transfer wrote.
+func (s *Store) ClearFinalName(id int64) error {
+	_, err := s.db.Exec(`UPDATE transfers SET final_name='', copied=0, written_sha='' WHERE id=?`, id)
+	return err
+}
+
 // Retry parks a failed attempt until next. fails is the new count in a row.
 func (s *Store) Retry(id int64, from []string, next time.Time, fails int, detail string) (bool, error) {
 	return s.update(id, from, StateWaiting, detail, &next, fails)
@@ -311,8 +333,9 @@ func (s *Store) Finish(id int64, from []string, to, detail string, v Verif) (boo
 	if err != nil || !ok {
 		return ok, err
 	}
-	_, err = s.db.Exec(`UPDATE transfers SET verif_status=?, verif_method=?, verif_note=?, src_sha=?, dst_sha=?, verif_bytes=? WHERE id=?`,
-		v.Status, v.Method, v.Note, v.SourceSHA256, v.DestSHA256, v.Bytes, id)
+	_, err = s.db.Exec(`UPDATE transfers SET verif_status=?, verif_method=?, verif_note=?, src_sha=?, dst_sha=?, verif_bytes=?,
+		written_sha=CASE WHEN ?<>'' THEN ? ELSE written_sha END WHERE id=?`,
+		v.Status, v.Method, v.Note, v.SourceSHA256, v.DestSHA256, v.Bytes, v.DestSHA256, v.DestSHA256, id)
 	return true, err
 }
 
@@ -340,10 +363,11 @@ func (s *Store) Requeue(id int64, checksum bool) (bool, error) {
 }
 
 // Recover is run once at start: a transfer that was running or verifying when the app closed goes back to the queue, to
-// resume from its partial file. It returns how many.
-func (s *Store) Recover() (int, error) {
-	res, err := s.db.Exec(`UPDATE transfers SET state='queued', next_at=NULL, rate_bps=0, eta_s=-1,
-		detail='Vesqira was closed during this transfer; it resumes from the partial file' WHERE state IN ('running','verifying')`)
+// resume from its partial file, after a short wait so an rsync that a crash orphaned (it ends by itself, see ADR 0048) is gone. It
+// returns how many.
+func (s *Store) Recover(now time.Time, wait time.Duration) (int, error) {
+	res, err := s.db.Exec(`UPDATE transfers SET state='queued', next_at=?, rate_bps=0, eta_s=-1,
+		detail='Vesqira was closed during this transfer; it resumes from the partial file' WHERE state IN ('running','verifying')`, now.Add(wait).Unix())
 	if err != nil {
 		return 0, err
 	}

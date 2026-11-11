@@ -6,13 +6,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 )
 
 // The plain folder listing behind the desktop file tree: names only, inside the readable roots. It is not the project
 // tree (GET /api/projects/{id}/tree), which groups what discovery found; this one shows the folder as it is on disk.
 
-// neverListed are folders that hold credentials; they are neither shown in the tree nor listed.
-var neverListed = map[string]bool{".ssh": true, ".gnupg": true}
+// neverListed are folders that hold credentials, and the folder where an unfinished transfer waits; they are neither shown in the tree nor listed.
+var neverListed = map[string]bool{".ssh": true, ".gnupg": true, hosts.PartialDir: true} // the last is where an unfinished transfer waits (ADR 0048)
 
 func holdsCredentials(real string) bool {
 	for _, part := range strings.Split(real, string(filepath.Separator)) {

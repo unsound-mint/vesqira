@@ -61,6 +61,14 @@ func (s *Server) registerTransfer(w http.ResponseWriter, r *http.Request) {
 	s.finishTransferRegistration(w, t, d, sum, n)
 }
 
+// verifiedAt is when the hashes were compared (the transfer finished then), not when the dataset was registered.
+func verifiedAt(t transfers.Transfer) string {
+	if t.FinishedAt == nil {
+		return ""
+	}
+	return t.FinishedAt.UTC().Format(time.RFC3339)
+}
+
 func (s *Server) finishTransferRegistration(w http.ResponseWriter, t transfers.Transfer, d catalog.Dataset, sum string, n int64) {
 	hostName := ""
 	if h, err := s.HostDB.Get(t.HostID); err == nil {
@@ -74,7 +82,7 @@ func (s *Server) finishTransferRegistration(w http.ResponseWriter, t transfers.T
 			"sha256":   sum,
 			"bytes":    n,
 			"method":   t.Verif.Method,
-			"verified": time.Now().UTC().Format(time.RFC3339),
+			"verified": verifiedAt(t),
 			"status":   "external reference; verified at transfer time",
 		})
 		if err := s.Derived.Save(derived.Record{DatasetID: d.ID, Op: "transfer", Params: json.RawMessage(`{}`), Summary: summary}); err != nil {

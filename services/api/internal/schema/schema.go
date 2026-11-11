@@ -81,6 +81,7 @@ const TransfersTable = `CREATE TABLE IF NOT EXISTS transfers(
 	attempts INTEGER NOT NULL DEFAULT 0, fails INTEGER NOT NULL DEFAULT 0, next_at INTEGER, warning TEXT NOT NULL DEFAULT '',
 	verif_status TEXT NOT NULL DEFAULT '', verif_method TEXT NOT NULL DEFAULT '', verif_note TEXT NOT NULL DEFAULT '',
 	src_sha TEXT NOT NULL DEFAULT '', dst_sha TEXT NOT NULL DEFAULT '', verif_bytes INTEGER NOT NULL DEFAULT 0,
+	copied INTEGER NOT NULL DEFAULT 0, written_sha TEXT NOT NULL DEFAULT '',
 	dataset_id INTEGER, created_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER)`
 
 // transfersTable adds the queue table. There is nothing to carry over: no transfer existed before.

@@ -34,9 +34,10 @@ const (
 	minRemoteRsync = "3.0.0" // --protect-args, --no-inc-recursive
 	statTimeout    = 60 * time.Second
 	hashTimeout    = 6 * time.Hour // 11 GB on a loaded login node
-	// IOTimeout is rsync's own --timeout: an attempt whose connection went silent (a VPN that drops without closing the
-	// socket) ends instead of hanging, and the queue retries it.
-	IOTimeout = 60
+	// IOTimeout is rsync's own --timeout, in seconds. It is long on purpose: resuming a multi-GB partial file or comparing
+	// checksums moves no bytes for minutes, and rsync would call that a stall. A dead link is found much sooner by ssh itself
+	// (ServerAliveInterval 15 x 2), which ends the attempt; this only catches a connection that stays open and says nothing.
+	IOTimeout = 600
 )
 
 // ErrTransferRefused is matched with errors.Is for a refusal that retrying cannot cure.
@@ -443,7 +444,7 @@ func relDirSlash(p string) string { return strings.TrimRight(p, "/") + "/" }
 //	--safe-links     a link inside a copied folder that points outside the copied tree is dropped, not copied.
 //	--protect-args   the remote path is not parsed by the host's shell.
 //	--partial-dir    an unfinished file lives in PartialDir, never under its final name; a retry resumes from it.
-//	--timeout        an attempt whose connection went silent ends and is retried.
+//	--timeout        an attempt whose connection stays open but silent for ten minutes ends and is retried.
 //	--info=progress2 one running total, which is what the queue shows.
 //	--no-i-r         the whole file list first, so a folder's total is known.
 //	-z               on by default (the owner's habit); off for data that does not compress.

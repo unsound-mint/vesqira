@@ -172,7 +172,7 @@ func TestTheQueueSurvivesARestart(t *testing.T) {
 	db.Close()
 
 	_, s2 := openAt(t, p)
-	n, err := s2.Recover()
+	n, err := s2.Recover(time.Now(), 15*time.Second)
 	if err != nil || n != 1 {
 		t.Fatalf("recovered %d: %v", n, err)
 	}

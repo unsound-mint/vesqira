@@ -434,6 +434,9 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 // table extension: the worker is asked, and only a table it can read becomes a catalog; otherwise it stays a FITS dataset
 // exactly as before.
 func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset, int, string) {
+	if inPartialFolder(real) {
+		return catalog.Dataset{}, 422, "this file is part of an unfinished transfer and cannot be registered; it gets its real name when the transfer completes"
+	}
 	if hasCatalogExt(real) {
 		return s.registerCatalogPath(ctx, real)
 	}
@@ -459,6 +462,16 @@ func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset
 		return catalog.Dataset{}, 500, "internal error"
 	}
 	return d, 0, ""
+}
+
+// inPartialFolder reports whether a path is inside a folder where rsync keeps an unfinished transfer (ADR 0048).
+func inPartialFolder(p string) bool {
+	for _, c := range strings.Split(filepath.ToSlash(p), "/") {
+		if c == hosts.PartialDir {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {

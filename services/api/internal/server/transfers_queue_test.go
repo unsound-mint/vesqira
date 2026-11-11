@@ -94,17 +94,29 @@ func TestKeepBothUsesANewNameAndKeepsItAcrossRetries(t *testing.T) {
 	if w.State != transfers.StateWaiting || w.FinalName != "big (2).fits" {
 		t.Fatalf("%+v", w)
 	}
-	e.file(e.local, "big (2).fits", 3) // someone creates the name meanwhile: the retry must not pick another or overwrite it
+	e.file(e.local, "big (2).fits", 3) // someone creates the name meanwhile: the retry must neither overwrite it nor pick a name by itself
 	e.pass(time.Now().Add(time.Hour))
 	w = e.get(b.ID)
-	if w.FinalName != "big (2).fits" {
-		t.Fatalf("the name changed on retry: %+v", w)
+	if w.State != transfers.StateConflict || w.FinalName != "" || !strings.Contains(w.Detail, "left alone") {
+		t.Fatalf("a name that was taken meanwhile must put the transfer back to asking: %+v", w)
 	}
 	if st, _ := os.Stat(filepath.Join(e.local, "big (2).fits")); st.Size() != 3 {
 		t.Fatalf("a file that appeared meanwhile was overwritten (%d bytes)", st.Size())
 	}
-	if w.Verif.Status == transfers.Verified {
-		t.Fatalf("a different file at the destination cannot be verified: %+v", w)
+	if _, err := os.Stat(filepath.Join(e.local, hosts_PartialDir, "big (2).fits")); err == nil {
+		t.Errorf("the partial file of the abandoned name was left behind")
+	}
+	// the owner decides again; keep both now picks the next free name
+	if r, _ := postJSON(t, e.api("/api/transfers/"+itoa(int(b.ID))+"/resolve"), map[string]any{"policy": "keep_both"}); r.StatusCode != 200 {
+		t.Fatal(r.StatusCode)
+	}
+	e.run()
+	w = e.get(b.ID)
+	if w.State != transfers.StateDone || w.FinalName != "big (3).fits" || w.Verif.Status != transfers.Verified {
+		t.Fatalf("%+v", w)
+	}
+	if st, _ := os.Stat(filepath.Join(e.local, "big (2).fits")); st.Size() != 3 {
+		t.Fatal("the file that appeared meanwhile changed")
 	}
 }
 
@@ -174,7 +186,7 @@ func TestAFileThatAppearsAfterTheCheckIsNeverOverwritten(t *testing.T) {
 	e := newXferEnv(t)
 	e.file(e.remote, "cube.fits", 5<<20)
 	tr := e.download("cube.fits", map[string]any{"bwlimitKBps": 2000})
-	// the conflict check passes (nothing there); a file with the name appears before rsync finishes
+	// the conflict check passes (nothing there); the connection drops; a file with the name appears before the retry
 	e.flag("DROP", true, e.local+" 1000")
 	e.pass(time.Now())
 	if g := e.get(tr.ID); g.State != transfers.StateWaiting {
@@ -182,11 +194,129 @@ func TestAFileThatAppearsAfterTheCheckIsNeverOverwritten(t *testing.T) {
 	}
 	other := e.file(e.local, "cube.fits", 20)
 	e.pass(time.Now().Add(time.Hour))
+	g := e.get(tr.ID)
+	if g.State != transfers.StateConflict || g.Verif.Status != "" {
+		t.Fatalf("a changed destination must put the transfer back to asking, nothing verified: %+v", g)
+	}
+	// pressing Try again or Copy again cannot overwrite it either: they are not offered for a transfer that is asking
+	for _, op := range []string{"retry"} {
+		if r, _ := postJSON(t, e.api("/api/transfers/"+itoa(int(tr.ID))+"/"+op), map[string]any{}); r.StatusCode != 409 {
+			t.Errorf("%s on a transfer waiting for a decision: %d", op, r.StatusCode)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		e.pass(time.Now().Add(time.Duration(i+2) * time.Hour))
+	}
 	if b, _ := os.ReadFile(filepath.Join(e.local, "cube.fits")); string(b) != string(other) {
 		t.Fatal("a file that appeared meanwhile was overwritten")
 	}
-	if g := e.get(tr.ID); g.Verif.Status == transfers.Verified {
-		t.Fatalf("a copy that never arrived was called verified: %+v", g)
+}
+
+// Copy again replaces the file this transfer wrote, and only that file: if something else has taken its place since, the
+// transfer asks instead.
+func TestCopyAgainNeverOverwritesAFileThisTransferDidNotWrite(t *testing.T) {
+	e := newXferEnv(t)
+	want := e.file(e.remote, "cube.fits", 5000)
+	e.flag("CORRUPT", true, "")
+	tr := e.download("cube.fits", nil)
+	e.run()
+	g := e.get(tr.ID)
+	if g.Verif.Status != transfers.Unverified || g.Verif.DestSHA256 == "" {
+		t.Fatalf("%+v", g)
+	}
+	e.flag("CORRUPT", false, "")
+	// someone replaces the copy with their own file, then presses Copy again
+	mine := []byte("my own notes, not a cube")
+	os.WriteFile(filepath.Join(e.local, "cube.fits"), mine, 0o644)
+	if r, _ := postJSON(t, e.api("/api/transfers/"+itoa(int(tr.ID))+"/retry"), map[string]any{}); r.StatusCode != 200 {
+		t.Fatal(r.StatusCode)
+	}
+	e.run()
+	g = e.get(tr.ID)
+	if g.State != transfers.StateConflict || !strings.Contains(g.Detail, "not the one this transfer wrote") {
+		t.Fatalf("%+v", g)
+	}
+	if b, _ := os.ReadFile(filepath.Join(e.local, "cube.fits")); string(b) != string(mine) {
+		t.Fatal("Copy again overwrote a file this transfer did not write")
+	}
+	// when the file is still the one it wrote, Copy again does replace it and compares contents
+	os.WriteFile(filepath.Join(e.local, "cube.fits"), []byte("x"), 0o644)
+	e.flag("CORRUPT", true, "")
+	os.Remove(filepath.Join(e.local, "cube.fits"))
+	tr2 := e.download("cube.fits", map[string]any{"name": "again.fits"})
+	e.run()
+	e.flag("CORRUPT", false, "")
+	if g := e.get(tr2.ID); g.Verif.Status != transfers.Unverified {
+		t.Fatalf("%+v", g)
+	}
+	if r, _ := postJSON(t, e.api("/api/transfers/"+itoa(int(tr2.ID))+"/retry"), map[string]any{}); r.StatusCode != 200 {
+		t.Fatal(r.StatusCode)
+	}
+	e.run()
+	g = e.get(tr2.ID)
+	got, _ := os.ReadFile(filepath.Join(e.local, "again.fits"))
+	if g.State != transfers.StateDone || g.Verif.Status != transfers.Verified || string(got) != string(want) {
+		t.Fatalf("%+v", g)
+	}
+}
+
+// After rsync has finished for a name, a retry (a network error while checking) only checks again: it does not run rsync a
+// second time and so cannot be fooled by, or overwrite, what is there.
+func TestARetryAfterTheCopyOnlyChecksAgain(t *testing.T) {
+	e := newXferEnv(t)
+	want := e.file(e.remote, "cube.fits", 5000)
+	tr := e.download("cube.fits", nil)
+	e.pass(time.Now()) // a full, verified run first, to see how many rsync runs one transfer takes
+	runs := e.sshCalls("rsync --server")
+	if runs != 1 || e.get(tr.ID).Verif.Status != transfers.Verified {
+		t.Fatalf("%d rsync runs, %+v", runs, e.get(tr.ID))
+	}
+	// now the same state as a network error while checking: copied, running again
+	if _, err := e.cat.DB().Exec(`UPDATE transfers SET state='queued', verif_status='', verif_method='', verif_note='' WHERE id=?`, tr.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.pass(time.Now())
+	g := e.get(tr.ID)
+	if g.State != transfers.StateDone || g.Verif.Status != transfers.Verified || e.sshCalls("rsync --server") != runs {
+		t.Fatalf("rsync ran again after it had finished: %d runs, %+v", e.sshCalls("rsync --server"), g)
+	}
+	if b, _ := os.ReadFile(filepath.Join(e.local, "cube.fits")); string(b) != string(want) {
+		t.Fatal("the file changed")
+	}
+}
+
+// Replacing a folder that already holds other files merges; the content check then lists the extras instead of calling the
+// result verified.
+func TestAFolderReplacedIntoAnExistingFolderIsUnverifiedWhenExtraFilesWereThere(t *testing.T) {
+	e := newXferEnv(t)
+	e.file(filepath.Join(e.remote, "run1"), "a.fits", 3000)
+	e.file(filepath.Join(e.local, "run1"), "mine.txt", 10)
+	tr := e.download("run1", map[string]any{"policy": "replace"})
+	e.run()
+	g := e.get(tr.ID)
+	if g.State != transfers.StateDone || g.Verif.Status != transfers.Unverified || !strings.Contains(g.Verif.Note, "mine.txt") {
+		t.Fatalf("%+v", g)
+	}
+	if _, err := os.Stat(filepath.Join(e.local, "run1", "mine.txt")); err != nil {
+		t.Fatal("replace deleted a file that was already there")
+	}
+}
+
+// An unfinished transfer is neither a dataset nor shown in the file tree.
+func TestAnUnfinishedTransferCannotBeRegisteredOrBrowsed(t *testing.T) {
+	e := newXferEnv(t)
+	e.file(filepath.Join(e.local, hosts_PartialDir), "cube.fits", 3000)
+	r, b := postJSON(t, e.api("/api/datasets"), map[string]any{"path": filepath.Join(e.local, hosts_PartialDir, "cube.fits")})
+	if r.StatusCode != 422 && r.StatusCode != 503 && r.StatusCode != 500 {
+		t.Fatalf("%d %s", r.StatusCode, b)
+	}
+	if r.StatusCode == 422 && !strings.Contains(string(b), "unfinished transfer") {
+		t.Fatalf("%s", b)
+	}
+	e.file(e.local, "ok.fits", 10)
+	_, tb := get(t, e.api("/api/files/tree?path="+e.local))
+	if strings.Contains(string(tb), hosts_PartialDir) || !strings.Contains(string(tb), "ok.fits") {
+		t.Fatalf("%s", tb)
 	}
 }
 
@@ -393,7 +523,7 @@ func TestAClosedAppResumesTheTransferAtTheNextStart(t *testing.T) {
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 	e.mgr.Close()
-	n, _ := e.store.Recover()
+	n, _ := e.store.Recover(time.Now(), 0)
 	if n != 1 {
 		t.Fatalf("recovered %d", n)
 	}

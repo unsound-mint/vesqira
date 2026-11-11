@@ -31,6 +31,9 @@ const (
 	maxTransferFails = 30
 	probeFresh       = 30 * time.Minute
 	progressEvery    = time.Second
+	// recoverWait is how long a transfer that a crash left running waits before it is started again. An orphaned rsync dies on
+	// its own within a second or two, because its progress output goes to a pipe nobody reads any more (SIGPIPE).
+	recoverWait = 15 * time.Second
 )
 
 // transferBackoff is the wait after fails failures in a row: the base doubled once per failure, up to ten minutes. The first
@@ -475,7 +478,7 @@ func (s *Server) RunTransfers(ctx context.Context) {
 	if s.Transfers == nil || s.HostDB == nil || s.Remote == nil {
 		return
 	}
-	if n, err := s.Transfers.Recover(); err != nil {
+	if n, err := s.Transfers.Recover(time.Now(), recoverWait); err != nil {
 		log.Printf("transfers: recover: %v", err)
 	} else if n > 0 {
 		log.Printf("transfers: %d transfer(s) interrupted by the last shutdown are queued again", n)
@@ -755,12 +758,36 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 	}
 
 	final := t.FinalName
+	skipCopy := false
 	if final == "" { // the first attempt: the conflict check, once; its answer is stored so a retry resumes the same file
 		o, name := s.resolveConflict(ctx, t, h, destReal, src)
 		if o != nil {
 			return *o
 		}
 		final = name
+	} else {
+		// A retry. The partial file is in PartialDir, so nothing may be at the chosen name unless this transfer put it there.
+		switch {
+		case t.Copied && !t.Checksum: // rsync already finished for this name; only the check is left
+			skipCopy = true
+		case src.kind == hosts.KindFile && t.Copied && t.Checksum:
+			// Copy again replaces only the file this transfer itself wrote and hashed, never one that took its place since.
+			cur, err := s.lookDest(ctx, t, h, destReal, final, true)
+			if err != nil {
+				return classify(err)
+			}
+			if cur.kind != hosts.KindFile || t.WrittenSHA == "" || cur.sha != t.WrittenSHA {
+				return s.nameLost(t, final, "the file there is not the one this transfer wrote (it changed since, or its content could not be hashed)")
+			}
+		case src.kind == hosts.KindFile && !t.Copied:
+			cur, err := s.lookDest(ctx, t, h, destReal, final, false)
+			if err != nil {
+				return classify(err)
+			}
+			if cur.kind != hosts.KindAbsent {
+				return s.nameLost(t, final, "something else was put there after this transfer was queued")
+			}
+		}
 	}
 	total := int64(0)
 	if src.kind == hosts.KindFile {
@@ -788,49 +815,51 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 	} else {
 		spec.Local, spec.Remote = src.real, path.Join(destReal, final)
 	}
-	argv, err := s.Remote.RsyncArgv(h, spec)
-	if err != nil {
-		return classify(err)
+	if !skipCopy {
+		argv, err := s.Remote.RsyncArgv(h, spec)
+		if err != nil {
+			return classify(err)
+		}
+		var lastSaved time.Time
+		res, err := s.Remote.RunRsync(ctx, argv, func(p hosts.Progress) {
+			if time.Since(lastSaved) < progressEvery && p.Percent < 100 {
+				return
+			}
+			lastSaved = time.Now()
+			tot := total
+			if tot == 0 && p.Percent > 0 {
+				tot = p.Bytes * 100 / int64(p.Percent)
+			}
+			done := p.Bytes
+			if tot > 0 && done > tot { // after a resume rsync may count the matched bytes again; never show more than the whole
+				done = tot
+			}
+			_ = s.Transfers.Progress(t.ID, done, tot, p.RateBps, p.EtaSec)
+		})
+		if err != nil {
+			return classify(err)
+		}
+		if ctx.Err() != nil {
+			return outcome{state: transfers.StateCancelled}
+		}
+		if res.ExitCode != 0 {
+			msg := fmt.Sprintf("rsync exited with code %d", res.ExitCode)
+			if res.ExitCode == -1 {
+				msg = "rsync was stopped by a signal"
+			}
+			if res.Stderr != "" {
+				msg += ": " + clipText(res.Stderr, 300)
+			}
+			if hosts.RsyncExitRetryable(res.ExitCode) {
+				return outcome{state: "retry", detail: msg}
+			}
+			if res.ExitCode == 11 {
+				msg += " (the disk may be full; free some space and press Try again, the partial file is kept)"
+			}
+			return failed("%s", msg)
+		}
 	}
-	var lastSaved time.Time
-	res, err := s.Remote.RunRsync(ctx, argv, func(p hosts.Progress) {
-		if time.Since(lastSaved) < progressEvery && p.Percent < 100 {
-			return
-		}
-		lastSaved = time.Now()
-		tot := total
-		if tot == 0 && p.Percent > 0 {
-			tot = p.Bytes * 100 / int64(p.Percent)
-		}
-		done := p.Bytes
-		if tot > 0 && done > tot { // after a resume rsync may count the matched bytes again; never show more than the whole
-			done = tot
-		}
-		_ = s.Transfers.Progress(t.ID, done, tot, p.RateBps, p.EtaSec)
-	})
-	if err != nil {
-		return classify(err)
-	}
-	if ctx.Err() != nil {
-		return outcome{state: transfers.StateCancelled}
-	}
-	if res.ExitCode != 0 {
-		msg := fmt.Sprintf("rsync exited with code %d", res.ExitCode)
-		if res.ExitCode == -1 {
-			msg = "rsync was stopped by a signal"
-		}
-		if res.Stderr != "" {
-			msg += ": " + clipText(res.Stderr, 300)
-		}
-		if hosts.RsyncExitRetryable(res.ExitCode) {
-			return outcome{state: "retry", detail: msg}
-		}
-		if res.ExitCode == 11 {
-			msg += " (the disk may be full; free some space and press Try again, the partial file is kept)"
-		}
-		return failed("%s", msg)
-	}
-	if ok, _ := s.Transfers.Move(t.ID, []string{transfers.StateRunning}, transfers.StateVerifying, ""); !ok {
+	if ok, _ := s.Transfers.Verifying(t.ID); !ok {
 		return outcome{state: transfers.StateCancelled}
 	}
 	return s.verify(ctx, t, h, spec, src, destReal, final)
@@ -843,25 +872,39 @@ func clipText(s string, n int) string {
 	return s
 }
 
+// lookDest looks at a name in the destination folder, on whichever side that is, hashing a file when asked. On the host the
+// folder is named the way the owner named it (a root may be a symbolic link there); the host resolves it again each time.
+func (s *Server) lookDest(ctx context.Context, t transfers.Transfer, h hosts.Host, destReal, name string, hash bool) (end, error) {
+	if t.Direction == hosts.Download {
+		e := s.localStat(filepath.Join(destReal, name))
+		if hash && e.kind == hosts.KindFile {
+			sum, _, err := hosts.HashFile(ctx, e.real)
+			if err != nil {
+				return e, err
+			}
+			e.sha = sum
+		}
+		return e, nil
+	}
+	st, err := s.Remote.StatPath(ctx, h, t.DestDir, name, hash)
+	return fromRemote(st), err
+}
+
+// nameLost answers a retry that finds the destination changed under it: the transfer goes back to asking, nothing at the
+// destination is touched, and a partial file of a download that was only going to be resumed under the abandoned name is deleted.
+func (s *Server) nameLost(t transfers.Transfer, name, why string) outcome {
+	if !t.Copied {
+		s.discardLocalPartial(t)
+	}
+	_ = s.Transfers.ClearFinalName(t.ID)
+	return outcome{state: transfers.StateConflict, detail: fmt.Sprintf("%s is now at the destination and %s. It was left alone and nothing was changed; choose what to do.", name, why)}
+}
+
 // resolveConflict looks at the name at the destination and applies the transfer's policy. It returns a finished outcome
 // (conflict, skipped, already there, failed, retry) or nil with the name to use. Nothing at the destination is touched.
 func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h hosts.Host, destReal string, src end) (*outcome, string) {
 	download := t.Direction == hosts.Download
-	look := func(name string, hash bool) (end, error) {
-		if download {
-			e := s.localStat(filepath.Join(destReal, name))
-			if hash && e.kind == hosts.KindFile {
-				sum, _, err := hosts.HashFile(ctx, e.real)
-				if err != nil {
-					return e, err
-				}
-				e.sha = sum
-			}
-			return e, nil
-		}
-		st, err := s.Remote.StatPath(ctx, h, t.DestDir, name, hash) // the lexical folder: the host resolves it itself (a root may be a symbolic link)
-		return fromRemote(st), err
-	}
+	look := func(name string, hash bool) (end, error) { return s.lookDest(ctx, t, h, destReal, name, hash) }
 	ret := func(o outcome) (*outcome, string) { return &o, "" }
 	existing, err := look(t.Name, false)
 	if err != nil {
