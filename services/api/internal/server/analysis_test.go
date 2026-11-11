@@ -52,11 +52,7 @@ func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
 	sshScript := fmt.Sprintf("#!/bin/sh\nwhile [ $# -gt 0 ]; do case \"$1\" in -o) shift 2;; -T) shift;; *) break;; esac; done\nshift\ncmd=$(printf '%%s' \"$*\" | sed -e 's#\\$HOME#%s#g' -e 's#bash -lc#bash -c#')\nPATH=%s:$PATH exec sh -c \"$cmd\"\n", remoteHome, bin)
 	sshBin := filepath.Join(base, "ssh")
 	os.WriteFile(sshBin, []byte(sshScript), 0o755)
-	files := map[string][]byte{}
-	for _, f := range []string{"plane_worker.py", "fits_header.py", "analysis.py", "convert.py", "orientation.py", "overlay_geometry.py"} {
-		b, _ := os.ReadFile(filepath.Join(repo, "services/scientific-worker", f))
-		files[f] = b
-	}
+	files := workerFiles(t, repo)
 	mgr := hosts.NewManager(sshBin, files)
 	mgr.ControlDir = t.TempDir()
 	t.Cleanup(mgr.Close)

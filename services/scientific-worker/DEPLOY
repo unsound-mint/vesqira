@@ -1,0 +1,10 @@
+# The worker modules that ship together: copied to remote hosts (internal/hosts), installed by the RPM (tools/build-rpm.sh)
+# and loaded by the API tests. One file name per line. tools/check_worker_manifest.py (make check) fails when a module
+# imported by one of these is missing here, or a name here is not a file.
+plane_worker.py
+fits_header.py
+analysis.py
+convert.py
+orientation.py
+catalog_table.py
+overlay_geometry.py

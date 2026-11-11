@@ -10,6 +10,7 @@ check: docs fixtures api web
 
 docs:
 	python3 tools/check_docs.py
+	python3 tools/check_worker_manifest.py
 	@if [ -d tests ]; then python3 -m unittest discover -s tests; fi
 
 # Web checks run when the app exists; install once with: cd apps/web && npm ci
