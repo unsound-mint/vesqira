@@ -58,19 +58,6 @@ func newWatchEnv(t *testing.T) *watchEnv {
 	os.MkdirAll(filepath.Join(base, "localroot"), 0o755)
 	bin := filepath.Join(base, "slurm-bin")
 	fakeSlurm(t, bin)
-	state := filepath.Join(bin, "state")
-	write := func(name, body string) {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// squeue -h -j LIST -o FMT: one line per id still queued or running ("%T" alone for a single job, "id|STATE" otherwise)
-	write("squeue", fmt.Sprintf(`for id in $(echo "$3" | tr , ' '); do s=$(cat %[1]s/$id 2>/dev/null); case "$s" in PENDING|RUNNING) if [ "$5" = "%%T" ]; then echo $s; else echo "$id|$s"; fi;; esac; done
-`, state))
-	// sacct -n -P -X -j LIST -o COLS: one line per id that has ended
-	write("sacct", fmt.Sprintf(`for id in $(echo "$5" | tr , ' '); do s=$(cat %[1]s/$id 2>/dev/null); ec=0:0; [ "$s" = FAILED ] && ec=1:0
-case "$s" in COMPLETED|FAILED|CANCELLED|TIMEOUT) line="$s|$ec|00:00:09|2026-11-04T10:00:00|2026-11-04T10:00:09"; case "$7" in JobID*) line="$id|$line";; esac; echo "$line";; esac; done
-`, state))
 	sshScript := fmt.Sprintf(`#!/bin/sh
 while [ $# -gt 0 ]; do case "$1" in -o) shift 2;; -T) shift;; *) break;; esac; done
 shift

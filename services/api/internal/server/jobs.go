@@ -393,7 +393,7 @@ func (s *Server) refreshJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 502, err.Error())
 			return
 		}
-		s.applyJobStatus(j, h, jobs.ParseStatusFull(string(out)), time.Now())
+		s.applyJobStatus(j, h, jobs.ParseBatchStatus(string(out), []string{j.SlurmID})[j.SlurmID], time.Now())
 	} else if j.RecordOwed && j.SlurmID != "" && isTerminal(j.State) {
 		s.retryOwedRecord(j, h)
 	}

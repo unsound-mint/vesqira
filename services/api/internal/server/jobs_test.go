@@ -40,9 +40,17 @@ echo PENDING > %[1]s/$n
 echo "fake log line for job $n" > "$PWD/$(sed -n 's/^#SBATCH --job-name=//p' "$f")-$n.out"
 echo $n
 `, state))
-	write("squeue", fmt.Sprintf(`id=$3; s=$(cat %[1]s/$id 2>/dev/null); case "$s" in PENDING|RUNNING) echo $s;; esac
+	// squeue -h -j LIST -o '%i|%T': one "id|STATE" line per id still queued or running
+	write("squeue", fmt.Sprintf(`for id in $(echo "$3" | tr , ' '); do s=$(cat %[1]s/$id 2>/dev/null); case "$s" in PENDING|RUNNING) echo "$id|$s";; esac; done
 `, state))
-	write("sacct", fmt.Sprintf(`id=$5; s=$(cat %[1]s/$id 2>/dev/null); case "$s" in COMPLETED|FAILED|CANCELLED) echo "$s|0:0|00:00:09|2026-11-04T10:00:00|2026-11-04T10:00:09";; esac
+	// sacct -n -P -j LIST -o JobID,State,...: for an id that has ended, the job's row and its .batch step. A test may put its own
+	// rows (complete lines) in <state>/<id>.sacct to stand in for a particular accounting record.
+	write("sacct", fmt.Sprintf(`for id in $(echo "$4" | tr , ' '); do
+if [ -f %[1]s/$id.sacct ]; then cat %[1]s/$id.sacct; continue; fi
+s=$(cat %[1]s/$id 2>/dev/null); ec=0:0; [ "$s" = FAILED ] && ec=1:0
+case "$s" in COMPLETED|FAILED|CANCELLED|TIMEOUT)
+echo "$id|$s|$ec|00:00:09|2026-11-04T10:00:00|2026-11-04T10:00:09|00:30:00|4G|billing=2,cpu=2,mem=4G,node=1|2|00:00:12||1"
+echo "$id.batch|$s|$ec|00:00:09|2026-11-04T10:00:00|2026-11-04T10:00:09||||2|00:00:12|1048576K|1";; esac; done
 `, state))
 	write("scancel", fmt.Sprintf(`echo CANCELLED > %[1]s/$1
 `, state))

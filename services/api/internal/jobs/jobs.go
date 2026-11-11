@@ -70,6 +70,9 @@ type Job struct {
 	// jobs only). AutoImportTried is set when that attempt was claimed, so it never runs twice and a failure is not retried.
 	AutoImport      bool `json:"autoImport"`
 	AutoImportTried bool `json:"-"`
+	// Usage is what the scheduler reported the job used when it ended (ADR 0044), or nil while it has not ended or when
+	// the end was never read from sacct.
+	Usage *Usage `json:"usage"`
 }
 
 // VGTRequest is what a VGT job was asked to do, kept so a later run can start from an exact copy. BaseConfigText is
@@ -398,7 +401,7 @@ func StatusCommand(slurmID string) (string, error) {
 	if !ValidSlurmID(slurmID) {
 		return "", fmt.Errorf("%w: bad job id", ErrInvalid)
 	}
-	return `squeue -h -j ` + slurmID + ` -o %T 2>/dev/null; echo '---'; sacct -n -P -X -j ` + slurmID + ` -o State,ExitCode,Elapsed,Start,End 2>/dev/null`, nil
+	return BatchStatusCommand([]string{slurmID}) // one format for the Refresh button and the watcher, so both record usage
 }
 
 // BatchStatusCommand asks about several jobs on one host with one squeue and one sacct call, which is how the background
@@ -413,7 +416,7 @@ func BatchStatusCommand(ids []string) (string, error) {
 		}
 	}
 	list := strings.Join(ids, ",")
-	return `squeue -h -j ` + list + ` -o '%i|%T' 2>/dev/null; echo '---'; sacct -n -P -X -j ` + list + ` -o JobID,State,ExitCode,Elapsed,Start,End 2>/dev/null`, nil
+	return `squeue -h -j ` + list + ` -o '%i|%T' 2>/dev/null; echo '---'; sacct -n -P -j ` + list + ` -o ` + UsageFields + ` 2>/dev/null`, nil
 }
 
 // ParseBatchStatus splits the answer to BatchStatusCommand into one Status per requested id, each parsed by the same rules
@@ -421,6 +424,7 @@ func BatchStatusCommand(ids []string) (string, error) {
 func ParseBatchStatus(out string, ids []string) map[string]Status {
 	parts := strings.SplitN(out, "---", 2)
 	queue, acct := map[string]string{}, map[string]string{}
+	rows := map[string][][]string{} // every sacct row per job: the job's own and its steps (12, 12.batch, 12.0)
 	for _, line := range strings.Split(parts[0], "\n") {
 		if f := strings.SplitN(strings.TrimSpace(line), "|", 2); len(f) == 2 && queue[f[0]] == "" {
 			queue[f[0]] = f[1]
@@ -428,14 +432,26 @@ func ParseBatchStatus(out string, ids []string) map[string]Status {
 	}
 	if len(parts) == 2 {
 		for _, line := range strings.Split(parts[1], "\n") {
-			if f := strings.SplitN(strings.TrimSpace(line), "|", 2); len(f) == 2 && acct[f[0]] == "" {
+			line = strings.TrimSpace(line)
+			f := strings.SplitN(line, "|", 2)
+			if len(f) != 2 {
+				continue
+			}
+			if id, _, step := strings.Cut(f[0], "."); step {
+				rows[id] = append(rows[id], strings.Split(line, "|"))
+				continue
+			}
+			rows[f[0]] = append(rows[f[0]], strings.Split(line, "|"))
+			if acct[f[0]] == "" {
 				acct[f[0]] = f[1]
 			}
 		}
 	}
 	res := make(map[string]Status, len(ids))
 	for _, id := range ids {
-		res[id] = ParseStatusFull(queue[id] + "\n---\n" + acct[id])
+		st := ParseStatusFull(queue[id] + "\n---\n" + acct[id])
+		st.Usage = ParseUsage(rows[id])
+		res[id] = st
 	}
 	return res
 }
@@ -475,6 +491,9 @@ func ParseStatus(out string) (state, detail string) {
 // OUT_OF_MEMORY...), empty when it did not list the job. ExitCode is sacct's "code:signal" and is empty when sacct gave none.
 type Status struct {
 	State, Detail, Slurm, ExitCode string
+	// Usage is what sacct recorded about the job's use (nil when sacct listed no row for it); it is final only once the
+	// job has ended.
+	Usage *Usage
 }
 
 // ParseStatusFull is ParseStatus with the scheduler's own word and exit code kept, so a message can say "time limit"
@@ -578,21 +597,31 @@ func Open(db *sql.DB) (*Store, error) {
 	if err == nil {
 		err = schema.AddColumn(db, "jobs", "auto_import_tried", "INTEGER NOT NULL DEFAULT 0")
 	}
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "usage", "TEXT NOT NULL DEFAULT ''")
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &Store{db}, nil
 }
 
-const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params,request,parent_run_id,note,record_owed,auto_import,auto_import_tried`
+const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params,request,parent_run_id,note,record_owed,auto_import,auto_import_tried,usage`
 
 func scan(row interface{ Scan(...any) error }) (Job, error) {
 	var j Job
 	var c int64
 	var sub, fin, run, parent sql.NullInt64
 	var owed, auto, tried int
-	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params, &j.Request, &parent, &j.Note, &owed, &auto, &tried); err != nil {
+	var usage string
+	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params, &j.Request, &parent, &j.Note, &owed, &auto, &tried, &usage); err != nil {
 		return Job{}, err
+	}
+	if usage != "" {
+		var u Usage
+		if json.Unmarshal([]byte(usage), &u) == nil {
+			j.Usage = &u
+		}
 	}
 	j.RecordOwed, j.AutoImport, j.AutoImportTried = owed != 0, auto != 0, tried != 0
 	j.CreatedAt = time.Unix(c, 0).UTC()
@@ -770,6 +799,16 @@ func (s *Store) Watchable(now time.Time) ([]Job, error) {
 		out = append(out, j)
 	}
 	return out, rows.Err()
+}
+
+// SetUsage keeps what sacct reported for a job that has ended. It does nothing for a job that has not ended.
+func (s *Store) SetUsage(id int64, u Usage) error {
+	b, err := json.Marshal(u)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE jobs SET usage=? WHERE id=? AND state IN (?,?,?)`, string(b), id, StateCompleted, StateFailed, StateCancelled)
+	return err
 }
 
 // SetRecordOwed marks whether the run record on the host still has to be written (see Job.RecordOwed).

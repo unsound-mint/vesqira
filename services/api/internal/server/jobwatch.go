@@ -194,6 +194,12 @@ func (s *Server) applyJobStatus(j jobs.Job, h hosts.Host, st jobs.Status, obtain
 		return // another caller already moved this job on, and it handles the record and the announcement
 	}
 	ended := isTerminal(st.State)
+	if ended && st.Usage != nil {
+		// what the scheduler recorded the job used, kept with the job; only the caller that saw the end stores it
+		if err := s.Jobs.SetUsage(j.ID, *st.Usage); err != nil {
+			log.Printf("jobs: usage of job %d: %v", j.ID, err)
+		}
+	}
 	// the record says how the job ended; and it is retried while it is still owed (folder not there yet, host down)
 	if j.RecordOwed || ended {
 		s.recordRunAsync(j.ID, h, jobs.ReportedEvidence(st.State, st.Detail, obtained))

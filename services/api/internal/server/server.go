@@ -80,6 +80,7 @@ type Server struct {
 	records     sync.WaitGroup // background run-record writes in flight (hostwrite.go)
 	recordLocks sync.Map       // job id -> *sync.Mutex: one record write per job at a time
 	imports     sync.WaitGroup // automatic imports of finished jobs in flight (jobwatch.go)
+	disk        hostDisk       // cached storage looks and measured folder sizes per host (hoststorage.go)
 
 	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
@@ -117,6 +118,10 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/hosts/{id}/complete", s.completeRemote)
 		mux.HandleFunc("POST /api/hosts/{id}/register", s.registerRemote)
 		mux.HandleFunc("GET /api/hosts/{id}/text", s.hostText)
+		mux.HandleFunc("GET /api/hosts/{id}/storage", s.hostStorage(false))
+		mux.HandleFunc("POST /api/hosts/{id}/storage/refresh", s.hostStorage(true))
+		mux.HandleFunc("GET /api/hosts/{id}/folders", s.hostFolders)
+		mux.HandleFunc("POST /api/hosts/{id}/folders/size", s.measureFolder)
 		if s.Jobs != nil {
 			mux.HandleFunc("GET /api/jobs", s.listJobs)
 			mux.HandleFunc("POST /api/jobs", s.createJob)
