@@ -125,14 +125,43 @@ class Geometry(unittest.TestCase):
         self.assertFalse(head["ok"])
         self.assertIn("does not overlap", head["error"])
 
-    def test_an_undeclared_celestial_frame_is_refused_by_name(self):
+    def test_an_undeclared_celestial_frame_takes_the_fits_default_and_says_so(self):
         hb = header(n=21, extra={"RADESYS": "ICRS"})
-        bare = header(n=21, extra={"BUNIT": "K"})               # RA/Dec, no RADESYS, no EQUINOX
+        bare = header(n=21, extra={"BUNIT": "K"})               # RA/Dec, no RADESYS, no EQUINOX: ICRS by the FITS standard
         b = self.file("base2.fits", np.zeros((21, 21)), hb)
         f = self.file("bare.fits", blob(21, 10, 10), bare)
+        spec = {"kind": "contours", "channel": 0, "levels": {"mode": "list", "values": [1.0]}, "unit": "K"}
+        head, _ = self.ask(b, f, spec)
+        self.assertTrue(head["ok"], head)
+        self.assertIn("base frame ICRS (declared in the header)", head["placement"]["method"])
+        self.assertIn("overlay frame ICRS (assumed: FITS default, header declares no RADESYS or EQUINOX)", head["placement"]["method"])
+        self.assertEqual(head["placement"]["from_status"], "assumed")
+        # and as the base
+        head, _ = self.ask(f, f, {"kind": "grid", "frame": "icrs"})
+        self.assertTrue(head["ok"], head)
+        self.assertIn("base frame ICRS (assumed: FITS default", head["placement"]["method"])
+
+    def test_equinox_without_radesys_is_inferred_by_the_standard(self):
+        hb = header(n=21, extra={"RADESYS": "ICRS"})
+        old = header(n=21, extra={"BUNIT": "K", "EQUINOX": 1950.0})       # FK4 by the standard
+        new = header(n=21, extra={"BUNIT": "K", "EQUINOX": 2000.0})       # FK5
+        b = self.file("base3.fits", np.zeros((21, 21)), hb)
+        spec = {"kind": "contours", "channel": 0, "levels": {"mode": "list", "values": [1.0]}, "unit": "K"}
+        for name, h, label in (("fk4.fits", old, "FK4 (B1950)"), ("fk5.fits", new, "FK5 (J2000)")):
+            f = self.file(name, blob(21, 10, 10), h)
+            head, _ = self.ask(b, f, spec)
+            if head["ok"]:
+                self.assertIn(f"overlay frame {label} (inferred from EQUINOX", head["placement"]["method"])
+            else:
+                self.assertIn("overlap", head["error"])      # B1950 precession can move the footprint off a small field
+
+    def test_an_unbuildable_celestial_frame_is_still_refused(self):
+        hb = header(n=21, extra={"RADESYS": "ICRS"})
+        b = self.file("base4.fits", np.zeros((21, 21)), hb)
+        f = self.file("bad.fits", blob(21, 10, 10), header(n=21, extra={"BUNIT": "K", "RADESYS": "NOSUCH"}))
         head, _ = self.ask(b, f, {"kind": "contours", "channel": 0, "levels": {"mode": "list", "values": [1.0]}, "unit": "K"})
         self.assertFalse(head["ok"])
-        self.assertIn("RADESYS", head["error"])
+        self.assertIn("celestial frame", head["error"])
 
     def test_nan_pixels_are_gaps_in_the_contour(self):
         n = 41
@@ -228,9 +257,9 @@ class Geometry(unittest.TestCase):
         self.assertTrue(head["ok"], head)
         head, _ = self.ask(f, f, {"kind": "beam"})
         self.assertTrue(head["ok"], head)
-        head, _ = self.ask(f, f, {"kind": "grid", "frame": "icrs"})       # a grid relates it to a named frame
-        self.assertFalse(head["ok"])
-        self.assertIn("RADESYS", head["error"])
+        head, _ = self.ask(f, f, {"kind": "grid", "frame": "icrs"})       # a grid relates it to a named frame: the default, said
+        self.assertTrue(head["ok"], head)
+        self.assertIn("assumed: FITS default", head["placement"]["method"])
 
     def test_rdp_keeps_shape_within_tolerance(self):
         t = np.linspace(0, 2 * np.pi, 500)

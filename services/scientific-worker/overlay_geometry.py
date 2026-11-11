@@ -20,6 +20,7 @@ import math
 
 import numpy as np
 
+import convert
 import orientation as ori
 
 MAX_VERTICES = 200_000          # contour or grid vertices sent to the browser (1.6 MB of float32)
@@ -40,6 +41,11 @@ GRID_LINES_WANTED = 5
 GRID_SAMPLES = 160              # vertices along one grid line before clipping
 
 
+STATUS_TEXT = {"declared": "declared in the header",
+               "inferred": "inferred from EQUINOX: FITS default, header declares no RADESYS",
+               "assumed": "assumed: FITS default, header declares no RADESYS or EQUINOX"}
+
+
 class Refusal(Exception):
     """The overlay cannot be drawn honestly; the message says why, for the person."""
 
@@ -56,26 +62,38 @@ def frame_label(f) -> str:
 
 
 class Sky:
-    """A file's two-axis celestial WCS and the celestial frame it is in, refused when either is not established."""
+    """A file's two-axis celestial WCS and the celestial frame it is in.
+
+    The frame is what astropy's wcs_to_celestial_frame builds, which applies the FITS standard default when the header is
+    silent (ICRS; FK4 or FK5 from EQUINOX). `status` is the readout conversions' own (convert._frame_status): declared,
+    inferred (from EQUINOX) or assumed (the default), and `basis` says so in words. Refused only when no frame can be built
+    or it is not one convert.py transforms (ICRS, FK5, FK4, Galactic)."""
 
     def __init__(self, c, who: str, relate: bool = True):
         """relate: the frame is used to relate this file to another file or another frame. A file drawn on itself (its own
-        beam or contours) needs no declared frame, since nothing is converted."""
+        beam or contours) converts nothing, so a frame that cannot be built is no obstacle."""
         try:
             self.w = ori.celestial_wcs(c)
         except ori.Undeclared as e:
             raise Refusal(f"{who}: {e}") from e
-        facts = c.sky_facts()
-        self.status = facts.get("frame_status")
-        if relate and self.status not in ("declared", "inferred"):
-            # wcslib would assume ICRS (or FK4/FK5 from EQUINOX); relating two files on an assumed frame is not done
-            raise Refusal(f"{who}: the celestial frame is not declared (RADESYS, or EQUINOX for FK4/FK5), so it cannot be related to another file")
-        try:
-            self.frame = ori.sky_frame(self.w)
-        except ori.Undeclared as e:
-            raise Refusal(f"{who}: {e}") from e
-        self.label = frame_label(self.frame) if self.status in ("declared", "inferred") else "its own frame (not declared)"
+        self.status = convert._frame_status(c.sky_facts())
+        src, why = convert._sky_source(c)
+        if src is not None:
+            self.frame = src[1]
+            self.label = src[0]
+        else:
+            if relate:
+                raise Refusal(f"{who}: {why}, so it cannot be related to another file")
+            try:
+                self.frame = ori.sky_frame(self.w)
+            except ori.Undeclared as e:
+                raise Refusal(f"{who}: {e}") from e
+            self.label = frame_label(self.frame)
         self.shape = (c.shape[c.x], c.shape[c.y])   # (width, height)
+
+    @property
+    def basis(self) -> str:
+        return f"{self.label} ({STATUS_TEXT[self.status]})"
 
     def same_frame(self, other: "Sky") -> bool:
         return bool(self.frame.is_equivalent_frame(other.frame))
@@ -86,6 +104,12 @@ class Sky:
         return float(np.mean(proj_plane_pixel_scales(self.w)))
 
 
+def basis(base: Sky, src: Sky | None) -> str:
+    """The frames a placement rests on, each with how it was established. The overlay's is left out when it is the base itself."""
+    text = f"base frame {base.basis}"
+    return text if src is None or src is base else f"{text}; overlay frame {src.basis}"
+
+
 def placement(src: Sky, base: Sky, same_dataset: bool) -> dict:
     same = src.same_frame(base)
     if same_dataset:
@@ -94,7 +118,7 @@ def placement(src: Sky, base: Sky, same_dataset: bool) -> dict:
         method = f"{PLACED}; both in {base.label}"
     else:
         method = f"{PLACED}; converted from {src.label} to the base's {base.label} frame"
-    return {"method": method, "from_frame": src.label, "to_frame": base.label, "from_status": src.status, "to_status": base.status,
+    return {"method": f"{method}; {basis(base, None if same_dataset else src)}", "from_frame": src.label, "to_frame": base.label, "from_status": src.status, "to_status": base.status,
             "same_frame": same, "same_dataset": same_dataset}
 
 
@@ -419,7 +443,8 @@ def beam(base_cube, src_cube, spec: dict, same_dataset: bool, who: str) -> tuple
                      "bpa_frame": src.label, "source": f"BMAJ, BMIN{'' if note else ' and BPA'} of the header of {who} (degrees, FITS standard)",
                      **({"note": note} if note else {})},
             "placement": {"method": "an ellipse built on the sky around a corner of the base and placed by its WCS"
-                          + ("" if src is base or src.same_frame(base) else f"; position angle rotated from {src.label} to {base.label}"),
+                          + ("" if src is base or src.same_frame(base) else f"; position angle rotated from {src.label} to {base.label}")
+                          + f"; {basis(base, None if same_dataset else src)}",
                           "from_frame": src.label, "to_frame": base.label, "from_status": src.status, "to_status": base.status,
                           "same_frame": src is base or src.same_frame(base), "same_dataset": same_dataset}}
     return head, payload
@@ -553,8 +578,9 @@ def grid(base_cube, spec: dict) -> tuple[dict, bytes]:
     layout, payload = paths_payload(paths)
     head = {"kind": "grid", **layout, "frame": frame_label(gf), "lon_step_deg": s_lon, "lat_step_deg": s_lat, "labels": labels,
             "simplified": simplified,
-            "placement": {"method": f"lines of constant longitude and latitude in {frame_label(gf)}, generated on the sky and placed by the base's WCS"
-                          + ("" if base.frame.is_equivalent_frame(gf) else f" after conversion to its {base.label} frame (astropy)"),
+            "placement": {"method": f"lines of constant longitude and latitude in {frame_label(gf)} (named by you), generated on the sky and placed by the base's WCS"
+                          + ("" if base.frame.is_equivalent_frame(gf) else f" after conversion to its {base.label} frame (astropy)")
+                          + f"; base frame {base.basis}",
                           "from_frame": frame_label(gf), "to_frame": base.label, "from_status": "declared", "to_status": base.status,
                           "same_frame": bool(base.frame.is_equivalent_frame(gf)), "same_dataset": True}}
     return head, payload
