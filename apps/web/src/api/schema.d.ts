@@ -3934,92 +3934,6 @@ export interface components {
              */
             dash?: "solid" | "dashed";
         };
-        /** @description Levels at multiples of a robust noise estimate of the contoured channel: sigma = 1.4826 x MAD of its finite pixels (astropy.stats.mad_std). It is the scatter of the whole plane, signal included, and is labelled as such. */
-        LevelsSigma: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            mode: "sigma";
-            /** @description Strictly increasing, none zero */
-            multiples: number[];
-            /** @description The sigma the levels were drawn with, recorded by a figure. A recomputed sigma that differs is refused (the data changed). */
-            sigma?: number;
-        };
-        /** @description Geometry of one overlay on the base dataset named in the path. */
-        OverlayGeometryRequest: {
-            overlay: components["schemas"]["SceneOverlay"];
-            /** @description For orientation with auto sampling: the wanted distance between lines, in base pixels (the pane's gapPx divided by its scale). Ignored otherwise. */
-            spacing?: number;
-        };
-        /** @description The JSON header of an overlay geometry frame. Every position is in base pixels: 0-based, pixel centres at integers, y up (FITS order). Extra keys may be present and are not part of the contract. */
-        OverlayGeometryHeader: {
-            /** @enum {string} */
-            kind: "contours" | "orientation" | "beam" | "grid";
-            /** @enum {string} */
-            dtype: "<f4";
-            coords: string;
-            /** @description contours, beam, grid: the payload starts with paths pairs (group, vertex count) and continues with the vertices as (x, y) pairs. group is the level index (contours), 0 for the beam, 0 for a line of constant longitude and 1 for one of constant latitude (grid). */
-            paths?: number;
-            vertices?: number;
-            /** @description orientation: the payload is segments quadruples (x, y, angle, weight): angle in degrees counter-clockwise from the base's +x pixel axis towards +y, weight in [0, 1] (1 without a reliability map). */
-            segments?: number;
-            /** @description How the overlay was placed on the base. */
-            placement: {
-                method: string;
-                from_frame?: string | null;
-                to_frame?: string | null;
-                from_status?: string | null;
-                to_status?: string | null;
-                same_frame?: boolean;
-                same_dataset?: boolean;
-            };
-            /** @description contours: the levels traced, in unit */
-            levels?: number[];
-            unit?: string | null;
-            unit_status?: string | null;
-            sigma?: {
-                value?: number;
-                method?: string;
-            } | null;
-            channel?: number;
-            spectral_value?: number | null;
-            spectral_unit?: string | null;
-            /** @description Present when the vertices were over budget and simplified (Ramer-Douglas-Peucker) with this tolerance in base pixels. */
-            simplified?: {
-                tolerance_px?: number;
-                vertices_before?: number;
-                vertices_after?: number;
-            } | null;
-            /** @description orientation: the sampling step used, in overlay pixels */
-            step?: number;
-            /** @description orientation: the distance between samples in base pixels */
-            spacing_px?: number;
-            /** @description orientation: how the stored angles became B-field orientation in the base pixel frame */
-            conversion?: string;
-            /** @description orientation: present when the declared reliability map was read (for length, opacity or a threshold) */
-            reliability?: {
-                p99?: number | null;
-                threshold?: number | null;
-                dropped_below_threshold?: number;
-                scale?: string;
-            } | null;
-            beam?: {
-                bmaj_arcsec?: number;
-                bmin_arcsec?: number;
-                bpa_deg?: number | null;
-                source?: string;
-            } | null;
-            labels?: {
-                text: string;
-                x: number;
-                y: number;
-                /** @enum {string} */
-                axis: "lon" | "lat";
-            }[];
-            frame?: string;
-            note?: string;
-        };
         /** @description One column of a point catalog as the worker read it. */
         CatalogColumn: {
             name: string;
@@ -4393,6 +4307,92 @@ export interface components {
             partial: boolean;
             /** Format: date-time */
             measuredAt: string;
+        };
+        /** @description Levels at multiples of a robust noise estimate of the contoured channel: sigma = 1.4826 x MAD of its finite pixels (astropy.stats.mad_std). It is the scatter of the whole plane, signal included, and is labelled as such. */
+        LevelsSigma: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "sigma";
+            /** @description Strictly increasing, none zero */
+            multiples: number[];
+            /** @description The sigma the levels were drawn with, recorded by a figure. A recomputed sigma that differs is refused (the data changed). */
+            sigma?: number;
+        };
+        /** @description Geometry of one overlay on the base dataset named in the path. */
+        OverlayGeometryRequest: {
+            overlay: components["schemas"]["SceneOverlay"];
+            /** @description For orientation with auto sampling: the wanted distance between lines, in base pixels (the pane's gapPx divided by its scale). Ignored otherwise. */
+            spacing?: number;
+        };
+        /** @description The JSON header of an overlay geometry frame. Every position is in base pixels: 0-based, pixel centres at integers, y up (FITS order). Extra keys may be present and are not part of the contract. */
+        OverlayGeometryHeader: {
+            /** @enum {string} */
+            kind: "contours" | "orientation" | "beam" | "grid";
+            /** @enum {string} */
+            dtype: "<f4";
+            coords: string;
+            /** @description contours, beam, grid: the payload starts with paths pairs (group, vertex count) and continues with the vertices as (x, y) pairs. group is the level index (contours), 0 for the beam, 0 for a line of constant longitude and 1 for one of constant latitude (grid). */
+            paths?: number;
+            vertices?: number;
+            /** @description orientation: the payload is segments quadruples (x, y, angle, weight): angle in degrees counter-clockwise from the base's +x pixel axis towards +y, weight in [0, 1] (1 without a reliability map). */
+            segments?: number;
+            /** @description How the overlay was placed on the base. */
+            placement: {
+                method: string;
+                from_frame?: string | null;
+                to_frame?: string | null;
+                from_status?: string | null;
+                to_status?: string | null;
+                same_frame?: boolean;
+                same_dataset?: boolean;
+            };
+            /** @description contours: the levels traced, in unit */
+            levels?: number[];
+            unit?: string | null;
+            unit_status?: string | null;
+            sigma?: {
+                value?: number;
+                method?: string;
+            } | null;
+            channel?: number;
+            spectral_value?: number | null;
+            spectral_unit?: string | null;
+            /** @description Present when the vertices were over budget and simplified (Ramer-Douglas-Peucker) with this tolerance in base pixels. */
+            simplified?: {
+                tolerance_px?: number;
+                vertices_before?: number;
+                vertices_after?: number;
+            } | null;
+            /** @description orientation: the sampling step used, in overlay pixels */
+            step?: number;
+            /** @description orientation: the distance between samples in base pixels */
+            spacing_px?: number;
+            /** @description orientation: how the stored angles became B-field orientation in the base pixel frame */
+            conversion?: string;
+            /** @description orientation: present when the declared reliability map was read (for length, opacity or a threshold) */
+            reliability?: {
+                p99?: number | null;
+                threshold?: number | null;
+                dropped_below_threshold?: number;
+                scale?: string;
+            } | null;
+            beam?: {
+                bmaj_arcsec?: number;
+                bmin_arcsec?: number;
+                bpa_deg?: number | null;
+                source?: string;
+            } | null;
+            labels?: {
+                text: string;
+                x: number;
+                y: number;
+                /** @enum {string} */
+                axis: "lon" | "lat";
+            }[];
+            frame?: string;
+            note?: string;
         };
     };
     responses: never;
