@@ -109,7 +109,7 @@ func (s *Store) SetUnitDeclarations(ds []Dataset, unit, by string) (applied []Da
 	}
 	defer tx.Rollback()
 	for _, d := range ds {
-		if fileStatesItsUnit(d) {
+		if fileStatesItsUnit(d) || d.Kind == KindCatalog { // a point catalog has no brightness: its columns carry their own units
 			continue
 		}
 		var bad int
@@ -136,10 +136,11 @@ func (s *Store) noBrightness(id int64) (bool, error) {
 	return n > 0, err
 }
 
-// NoBrightnessIDs returns the datasets that cannot be given a brightness unit: orientation maps (proposed or confirmed) and
-// the reliability maps declared for them.
+// NoBrightnessIDs returns the datasets that cannot be given a brightness unit: orientation maps (proposed or confirmed), the
+// reliability maps declared for them, and point catalogs.
 func (s *Store) NoBrightnessIDs() (map[int64]bool, error) {
-	rows, err := s.db.Query(`SELECT dataset_id FROM interpretations UNION SELECT reliability_id FROM interpretations WHERE reliability_id IS NOT NULL`)
+	rows, err := s.db.Query(`SELECT dataset_id FROM interpretations UNION SELECT reliability_id FROM interpretations WHERE reliability_id IS NOT NULL
+		UNION SELECT id FROM datasets WHERE header LIKE '%"kind":"catalog"%'`)
 	if err != nil {
 		return nil, err
 	}

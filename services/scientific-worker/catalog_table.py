@@ -1,4 +1,4 @@
-"""Point catalogs (ADR 0043): read a table of sources, and turn its declared columns into sky positions.
+"""Point catalogs (ADR 0044): read a table of sources, and turn its declared columns into sky positions.
 
 A catalog is untrusted input. Nothing here executes anything: tables are read with astropy's own readers (astropy.io.ascii,
 astropy.io.votable, astropy.io.fits, ECSV), never by a parser written here, and every read is bounded before it allocates:
@@ -331,7 +331,7 @@ _DOCTYPE = re.compile(rb"<!\s*(DOCTYPE|ENTITY)", re.I)
 _STREAM_HREF = re.compile(rb"<\s*STREAM\b[^>]*\bhref\s*=", re.I)
 _GZIP_STREAM = re.compile(rb"<\s*STREAM\b[^>]*\bencoding\s*=\s*[\"']?gzip", re.I)
 _XINCLUDE = re.compile(rb"xi:include|xmlns:xi", re.I)
-_ARRAYSIZE = re.compile(rb"\barraysize\s*=\s*[\"']\s*(\d+)", re.I)
+_ARRAYSIZE = re.compile(rb"\barraysize\s*=\s*[\"']\s*([0-9x*]+)", re.I)
 _NROWS = re.compile(rb"\bnrows\s*=\s*[\"']?\s*(\d+)", re.I)
 
 
@@ -349,8 +349,12 @@ def read_votable(data: bytes) -> Loaded:
     if _XINCLUDE.search(data):
         raise Bad("this VOTable includes other documents, which is not read")
     for m in _ARRAYSIZE.finditer(data):
-        if int(m.group(1)) > MAX_ARRAYSIZE:
-            raise Bad(f"this VOTable declares an array of {int(m.group(1)):,} values per cell; the limit is {MAX_ARRAYSIZE:,}")
+        size = 1
+        for dim in m.group(1).split(b"x"):          # 60000x60000 is a product, and a trailing * is a variable length
+            if dim.strip(b"*").isdigit():
+                size *= int(dim.strip(b"*"))
+        if size > MAX_ARRAYSIZE:
+            raise Bad(f"this VOTable declares an array of {size:,} values per cell; the limit is {MAX_ARRAYSIZE:,}")
     for m in _NROWS.finditer(data):
         if int(m.group(1)) > MAX_ROWS:
             raise Bad(f"this VOTable declares {int(m.group(1)):,} rows; the limit is {MAX_ROWS:,}")

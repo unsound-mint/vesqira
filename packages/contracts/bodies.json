@@ -331,7 +331,7 @@
       "fits",
       "catalog"
      ],
-     "description": "An image or cube (fits) or a table of sources (catalog, ADR 0043)"
+     "description": "An image or cube (fits) or a table of sources (catalog, ADR 0044)"
     },
     "catalogDeclaration": {
      "allOf": [
@@ -3349,7 +3349,7 @@
     "rows",
     "columns"
    ],
-   "description": "What the worker read from a point catalog when it was registered (ADR 0043). The rows stay in the file."
+   "description": "What the worker read from a point catalog when it was registered (ADR 0044). The rows stay in the file."
   },
   "CatalogAngle": {
    "type": "object",

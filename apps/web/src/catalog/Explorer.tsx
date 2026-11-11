@@ -11,7 +11,7 @@ import { previewFile } from "../api/catalog";
 import type { Preview } from "../api/catalog";
 import s from "./Explorer.module.css";
 
-const FITS_EXT = [".fits", ".fit", ".fits.gz", ".csv", ".tsv", ".ecsv", ".dat", ".txt", ".tbl", ".cat", ".vot", ".votable"];
+const FITS_EXT = [".fits", ".fit", ".fits.gz", ".csv", ".tsv", ".ecsv", ".dat", ".txt", ".tbl", ".cat", ".xcat", ".vot", ".votable"];
 const isFitsPath = (p: string) => /\.(fits?|fits\.gz)$/i.test(p.trim());
 const PROBLEM_SHORT: Record<string, string> = { modified: " · changed on disk", missing: " · missing", not_allowed: " · outside the source folders" };
 

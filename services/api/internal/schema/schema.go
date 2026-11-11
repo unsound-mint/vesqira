@@ -71,7 +71,7 @@ func figureScene(tx *sql.Tx) error {
 	return AddColumn(tx, "figures", "scene", "TEXT NOT NULL DEFAULT ''")
 }
 
-// CatalogDeclarationsTable is the overlay table for what a person declared about a point catalog's columns (ADR 0043). The
+// CatalogDeclarationsTable is the overlay table for what a person declared about a point catalog's columns (ADR 0044). The
 // catalog package creates it for a fresh install and the migration for an upgraded one, from this one text.
 const CatalogDeclarationsTable = `CREATE TABLE IF NOT EXISTS catalog_declarations(
 	dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id) ON DELETE CASCADE,

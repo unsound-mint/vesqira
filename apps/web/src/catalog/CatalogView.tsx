@@ -65,7 +65,7 @@ export function CatalogView({ dataset, problem }: { dataset: CatalogDataset; pro
         <>
           <div className={s.scroller} role="region" aria-label="Catalog rows" tabIndex={0}>
             <table className={s.table}>
-              <caption className={s.caption}>Rows {(offset + 1).toLocaleString("en-US")} to {last.toLocaleString("en-US")} of {total.toLocaleString("en-US")}. A dash is a missing value, not zero.</caption>
+              <caption className={s.caption}>Rows {(offset + 1).toLocaleString("en-US")} to {last.toLocaleString("en-US")} of {total.toLocaleString("en-US")}. A dash is a missing value, not zero. Numbers are shown as read: a leading zero or a trailing 0 is not kept.</caption>
               <thead>
                 <tr>
                   {page.lines ? <th scope="col" className={s.num}>Line</th> : <th scope="col" className={s.num}>Row</th>}

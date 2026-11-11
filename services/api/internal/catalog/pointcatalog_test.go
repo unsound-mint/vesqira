@@ -146,3 +146,16 @@ func TestADeclarationIsStaleWhenTheFileChangesAndFollowsTheDatasetOutOfExistence
 		t.Fatal("a declaration outlived its dataset")
 	}
 }
+
+func TestACatalogIsNeverGivenABrightnessUnit(t *testing.T) {
+	s := open(t)
+	d := catalogDataset(t, s, starCols...)
+	applied, err := s.SetUnitDeclarations([]Dataset{d}, "Jy", "user")
+	if err != nil || len(applied) != 0 {
+		t.Fatalf("applied %v, %v", applied, err)
+	}
+	ids, err := s.NoBrightnessIDs()
+	if err != nil || !ids[d.ID] {
+		t.Fatalf("%v %v", ids, err)
+	}
+}

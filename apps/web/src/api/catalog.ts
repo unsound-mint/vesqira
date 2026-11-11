@@ -20,7 +20,7 @@ export type CatalogPositions = Schemas["CatalogPositions"];
 type DatasetBase = Omit<Schemas["Dataset"], "header" | "kind" | "catalogDeclaration">;
 /** An image or cube. `kind` is optional so that a dataset built without it (tests, older answers) is an image, as before. */
 export type ImageDataset = DatasetBase & { kind?: "fits"; header: Header; catalogDeclaration?: null };
-/** A table of sources (ADR 0043): no planes, no pixel grid. */
+/** A table of sources (ADR 0044): no planes, no pixel grid. */
 export type CatalogDataset = DatasetBase & { kind: "catalog"; header: CatalogHeader; catalogDeclaration: CatalogDeclaration | null };
 /** `archived` is set by the server on every dataset it sends (ADR 0041); the generated type predates it. Narrow on `kind`. */
 export type Dataset = (ImageDataset | CatalogDataset) & { archived?: boolean };

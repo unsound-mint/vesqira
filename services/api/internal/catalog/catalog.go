@@ -32,7 +32,7 @@ type Dataset struct {
 	// UnitDeclaration is the unit the user declared for a file whose header has no BUNIT (see unit.go). The header
 	// facts themselves are never changed.
 	UnitDeclaration *UnitDeclaration `json:"unitDeclaration"`
-	// Kind is "fits" (an image or cube) or "catalog" (a table of sources, ADR 0043). It comes from the header the worker read.
+	// Kind is "fits" (an image or cube) or "catalog" (a table of sources, ADR 0044). It comes from the header the worker read.
 	Kind string `json:"kind"`
 	// CatalogDeclaration is what the user declared about a catalog's columns (positions, frame, angle); nil for anything else.
 	CatalogDeclaration *CatalogDeclaration `json:"catalogDeclaration"`

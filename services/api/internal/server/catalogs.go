@@ -14,13 +14,13 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
-// Point catalogs (ADR 0043): tables of sources registered as datasets of kind "catalog". The worker reads them with astropy,
+// Point catalogs (ADR 0044): tables of sources registered as datasets of kind "catalog". The worker reads them with astropy,
 // bounded and never executed; this file is the API around that: registration under the same root authorisation as a FITS
 // file, the declaration of columns, pages of rows, the parse report and positions on the sky.
 
 // catalogExts are the file names registered as catalogs without asking the worker about the content. A FITS file is told apart
 // by what the worker finds in it (see registerPath).
-var catalogExts = []string{".csv", ".tsv", ".ecsv", ".dat", ".txt", ".tbl", ".cat", ".vot", ".votable"}
+var catalogExts = []string{".csv", ".tsv", ".ecsv", ".dat", ".txt", ".tbl", ".cat", ".xcat", ".vot", ".votable"}
 
 func hasCatalogExt(name string) bool {
 	l := strings.ToLower(name)

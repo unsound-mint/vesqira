@@ -29,7 +29,7 @@ func (s *Server) dataset(id int64) (catalog.Dataset, int, string) {
 	return d, 0, ""
 }
 
-// imageDataset is dataset for operations that need a pixel grid: a point catalog (ADR 0043) is refused with 409.
+// imageDataset is dataset for operations that need a pixel grid: a point catalog (ADR 0044) is refused with 409.
 func (s *Server) imageDataset(id int64) (catalog.Dataset, int, string) {
 	d, code, msg := s.dataset(id)
 	if code == 0 && d.Kind == catalog.KindCatalog {

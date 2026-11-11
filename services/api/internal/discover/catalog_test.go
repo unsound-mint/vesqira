@@ -2,7 +2,7 @@ package discover
 
 import "testing"
 
-// Catalogs are offered instead of "other discipline" (ADR 0043), but a README that sits beside the tables is not one.
+// Catalogs are offered instead of "other discipline" (ADR 0044), but a README that sits beside the tables is not one.
 func TestCatalogsAreOfferedAndReadmesAreNot(t *testing.T) {
 	root := canonical(t)
 	write(t, root, "data/stars/mf_stars_LMC.dat", "#Star\tRA(J2000)\tDEC(J2000)\tP(%)\tsP(%)\tPA(deg)\tsPA(deg)\n67-2\t4 47 07.65\t-67 06 23.31\t1.17\t0.08\t25\t4\t\t\t\n69-7\t4 49 15.83\t-69 27 27.92\t1.30\t0.09\t38\t7\n67-5\t4 50 17.23\t-67 39 29.93\t0.79\t0.16\t61\t6\t\n")
@@ -13,7 +13,7 @@ func TestCatalogsAreOfferedAndReadmesAreNot(t *testing.T) {
 	write(t, root, "data/absorption.ecsv", "# %ECSV 1.0\n# ---\n# datatype:\n# - {name: a, datatype: int64}\na\n1\n")
 	write(t, root, "elsewhere/notes.csv", "name,l,b\na,1,2\nb,3,4\n") // a table outside a declared data folder is not offered
 	write(t, root, "elsewhere/table.vot", "<?xml version=\"1.0\"?><VOTABLE/>")
-	r := scan(t, LocalFS{root}, Options{Layout: Layout{Data: []string{"data"}}})
+	r := scan(t, LocalFS{root}, Options{Catalogs: true, Layout: Layout{Data: []string{"data"}}})
 	got := map[string]File{}
 	for _, f := range r.Data {
 		got[f.Path] = f
@@ -53,5 +53,18 @@ func TestLooksTabular(t *testing.T) {
 	}
 	if !looksTabular([]byte("a b c\nd e f\ng h"), true) {
 		t.Error("the cut last line must not count")
+	}
+}
+
+// A project on another host is scanned with catalogs off: they are read from this computer only.
+func TestNoCatalogsWhenTheScanIsNotLocal(t *testing.T) {
+	root := canonical(t)
+	write(t, root, "data/a.csv", "a,b\n1,2\n3,4\n")
+	write(t, root, "data/b.ecsv", "# %ECSV 1.0\n")
+	r := scan(t, LocalFS{root}, Options{Layout: Layout{Data: []string{"data"}}})
+	for _, f := range r.Data {
+		if f.Format == "Catalog" {
+			t.Errorf("%s offered as a catalog", f.Path)
+		}
 	}
 }

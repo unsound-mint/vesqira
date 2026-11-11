@@ -330,6 +330,7 @@ func (s *Server) runScan(ctx context.Context, p projects.Project, st *scanState)
 	opt := discover.Options{Layout: pf.ScanLayout(), ManualRuns: manual, Progress: func(n int, _ string) { st.set(func() { st.Entries = n }) }}
 	if !remote {
 		opt.Dirty = localDirty(p.Path)
+		opt.Catalogs = true
 	}
 	var walkTruncated bool
 	var walkWhy string

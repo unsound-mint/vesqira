@@ -2847,7 +2847,7 @@ export interface components {
             /** @description Present when the person declared a unit for a file without BUNIT. The header's own bunit and bunit_status stay as the file gave them. */
             unitDeclaration: components["schemas"]["UnitDeclaration"] | null;
             /**
-             * @description An image or cube (fits) or a table of sources (catalog, ADR 0043)
+             * @description An image or cube (fits) or a table of sources (catalog, ADR 0044)
              * @enum {string}
              */
             kind: "fits" | "catalog";
@@ -3781,7 +3781,7 @@ export interface components {
             /** @description False for a column of arrays: it is listed but cannot be used as a position, angle or value. */
             scalar: boolean;
         };
-        /** @description What the worker read from a point catalog when it was registered (ADR 0043). The rows stay in the file. */
+        /** @description What the worker read from a point catalog when it was registered (ADR 0044). The rows stay in the file. */
         CatalogHeader: {
             /** @enum {string} */
             kind: "catalog";

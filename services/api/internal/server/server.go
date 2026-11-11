@@ -381,7 +381,7 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 
 // registerPath reads the header of an already-authorized file and records the reference.
 //
-// A file named like a table (.csv, .ecsv, .vot, ...) is a point catalog (ADR 0043). A FITS file with no image axes may be a
+// A file named like a table (.csv, .ecsv, .vot, ...) is a point catalog (ADR 0044). A FITS file with no image axes may be a
 // table extension: the worker is asked, and only a table it can read becomes a catalog; otherwise it stays a FITS dataset
 // exactly as before.
 func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset, int, string) {

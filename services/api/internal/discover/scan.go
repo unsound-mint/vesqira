@@ -93,7 +93,10 @@ type Layout struct {
 }
 
 type Options struct {
-	Layout      Layout
+	Layout Layout
+	// Catalogs offers tables as point catalogs (ADR 0044). Off for a project on another host: catalogs are read from this
+	// computer only, and deciding that a text file is a table would cost a remote read per file.
+	Catalogs    bool
 	ManualRuns  []ManualRun
 	MaxEntries  int           // 0 means DefaultMaxEntries
 	MaxDuration time.Duration // 0 means DefaultMaxDuration
@@ -688,17 +691,19 @@ func (s *scanner) file(dir, rel string, e Entry, in *runCtx, names map[string]bo
 	s.res.OtherFiles++
 }
 
-// isCatalog says whether a file is offered as a point catalog (ADR 0043) instead of "other discipline". The extensions that only
+// isCatalog says whether a file is offered as a point catalog (ADR 0044) instead of "other discipline". The extensions that only
 // tables use (.ecsv, .vot) count anywhere. The plain-text ones (.csv, .tsv, .dat, .txt, ...) also hold READMEs and logs, so they
 // count only in a folder the researcher declared as data and only when the first lines look like a table: the same number of
 // columns on nearly every line.
 func (s *scanner) isCatalog(rel, name string) bool {
 	switch l := strings.ToLower(name); {
+	case !s.opt.Catalogs:
+		return false
 	case strings.HasSuffix(l, ".ecsv"), strings.HasSuffix(l, ".vot"), strings.HasSuffix(l, ".votable"):
 		return true
 	case !within(rel, s.layDat):
 		return false
-	case hasAnySuffix(l, ".csv", ".tsv", ".dat", ".txt", ".tbl", ".cat"):
+	case hasAnySuffix(l, ".csv", ".tsv", ".dat", ".txt", ".tbl", ".cat", ".xcat"):
 		head, truncated, err := s.fs.ReadFile(rel, jobPeek)
 		return err == nil && looksTabular(head, truncated)
 	}

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// KindCatalog and KindFITS are the values of Dataset.Kind. A point catalog is a table of sources (ADR 0043); a FITS dataset is
+// KindCatalog and KindFITS are the values of Dataset.Kind. A point catalog is a table of sources (ADR 0044); a FITS dataset is
 // an image or cube. Everything registered before catalogs existed is FITS.
 const (
 	KindFITS    = "fits"

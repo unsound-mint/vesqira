@@ -1,4 +1,4 @@
-"""Point catalogs (ADR 0043): every format, sexagesimal hours versus degrees, a Galactic table, unreadable rows reported with their
+"""Point catalogs (ADR 0044): every format, sexagesimal hours versus degrees, a Galactic table, unreadable rows reported with their
 line, caps that refuse, a hostile VOTable, and frame transforms checked against astropy built the long way round in the tests."""
 import gzip
 import json
@@ -316,6 +316,9 @@ class HostileVotable(unittest.TestCase):
 
     def test_huge_declared_arrays_are_refused(self):
         self.refused(votable(field_extra='arraysize="999999999"'), "array")
+
+    def test_an_arraysize_that_is_a_product_is_bounded_too(self):
+        self.refused(votable(field_extra='arraysize="60000x60000"'), "array")
 
     def test_a_stream_fetched_from_a_url_is_refused(self):
         t = """<?xml version="1.0"?><VOTABLE version="1.4"><RESOURCE><TABLE><FIELD name="a" datatype="double"/>
