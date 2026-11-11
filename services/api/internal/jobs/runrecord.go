@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-
-	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
 // RunRecordName is the file Vesqira writes next to a job's outputs. It is a record format discovery already reads
@@ -77,9 +75,10 @@ func RunRecord(j Job, hostName string, inputs []RunInput, ev StateEvidence, now 
 	return RunRecordWithEnvironment(j, hostName, inputs, ev, now, nil)
 }
 
-// RunRecordWithEnvironment is RunRecord plus, when env is not empty, what the job itself observed about where it ran (read
-// from its vesqira-env.json), each fact with its status. Only a finished job has such a file, so earlier writes pass nil.
-func RunRecordWithEnvironment(j Job, hostName string, inputs []RunInput, ev StateEvidence, now time.Time, env []runs.EnvFact) ([]byte, error) {
+// RunRecordWithEnvironment is RunRecord plus, when env is not empty, what the job itself observed about where it ran (the
+// facts read from its vesqira-env.json as JSON, each with its status; this package does not know their type). Only a finished
+// job has such a file, so earlier writes pass nil.
+func RunRecordWithEnvironment(j Job, hostName string, inputs []RunInput, ev StateEvidence, now time.Time, env json.RawMessage) ([]byte, error) {
 	settings := map[string]string{}
 	add := func(k, v string) {
 		if k == "" || len(k) > 80 || len(settings) >= maxRecordSettings {

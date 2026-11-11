@@ -15,7 +15,6 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
-	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
 // Writing on a host is the one place Vesqira changes a file that is not on this computer (ADR 0039). It writes two
@@ -243,10 +242,10 @@ func (s *Server) recordRun(ctx context.Context, jobID int64, h hosts.Host, ev jo
 		return
 	}
 	j.State, j.Detail = ev.Value, ev.Detail
-	var env []runs.EnvFact
+	var env json.RawMessage
 	if isTerminal(ev.Value) && (j.Template == "vgt" || j.Template == "rohsa") {
 		if facts, read := s.readJobEnvironment(ctx, j, h); read { // what the job saw, merged into the record at its end (ADR 0054)
-			env = facts
+			env, _ = json.Marshal(facts)
 		}
 	}
 	data, err := jobs.RunRecordWithEnvironment(j, h.Name, s.runInputs(j), ev, time.Now(), env)
