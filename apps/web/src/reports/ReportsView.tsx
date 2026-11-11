@@ -106,14 +106,18 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     setTitleDraft(null);
     setSummaryDraft(null);
     setDateEdit(false);
-    if (current != null && renameNext.current === current) {
-      renameNext.current = null;
-      setTitleDraft(list.find((r) => r.id === current)?.title ?? "");
-    }
     setReviewing(false);
     setActiveBlock(null);
     if (current != null) void load(current);
   }, [current, load]);
+  // A report just created opens with its title ready to type, but only once its page is the one on screen: until it has loaded,
+  // `view` is still the previous report (or none), and a title typed then would rename that one, or be dropped.
+  useEffect(() => {
+    if (view && renameNext.current === view.id) {
+      renameNext.current = null;
+      setTitleDraft(view.title);
+    }
+  }, [view]);
   useEffect(() => {
     if (mode === "graph") api.reportGraph().then(setGraph).catch((e: unknown) => setError(msg(e)));
   }, [mode, list]);
