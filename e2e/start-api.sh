@@ -38,6 +38,7 @@ printf '#!/bin/sh\necho CANCELLED > %s/$1\n' "$st" > "$bin/scancel"
 chmod +x "$bin"/*
 cat > "$run/fake-ssh" <<FAKE
 #!/bin/sh
+[ -e $run/remote-home/DOWN ] && exit 255 # tests/zzzzz-offline.spec.ts takes the host away by creating this file
 while [ \$# -gt 0 ]; do case "\$1" in -o) shift 2;; -T) shift;; *) break;; esac; done
 shift
 cmd=\$(printf '%s' "\$*" | sed -e 's#\$HOME#$run/remote-home#g' -e 's#bash -lc#bash -c#')

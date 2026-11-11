@@ -333,6 +333,33 @@ func TestChangedFileMakesTheCopyStaleAndItIsRefused(t *testing.T) {
 	}
 }
 
+// The content identity recorded for the location is part of the match: a copy made without one, or with another, is not served as the
+// file once an identity is recorded that it cannot vouch for, and one made with the same identity is served and says so.
+func TestCopyIsServedOnlyForTheSameRecordedIdentity(t *testing.T) {
+	e := newOfflineEnv(t)
+	d, _ := e.cat.Get(e.remote.ID)
+	loc := d.Locations[0]
+	if err := e.cat.SetFingerprint(loc.ID, "full", strings.Repeat("ab", 32), "test", loc.SizeBytes, loc.ModifiedAt.UnixNano()); err != nil {
+		t.Fatal(err)
+	}
+	e.prepare(t, map[string]any{"datasetIds": []int64{e.remote.ID}, "channels": map[string]int{"from": 2, "to": 2}, "detail": "full", "budgetBytes": 8 << 20})
+	e.down(t, true)
+	r, _ := e.get(t, e.ds("/plane?channel=2"))
+	var mark offlineMark
+	_ = json.Unmarshal([]byte(r.Header.Get("X-Vesqira-Offline")), &mark)
+	if r.StatusCode != 200 || mark.Signature.Identity != "sha256:"+strings.Repeat("ab", 32) {
+		t.Fatalf("same identity: %d %q", r.StatusCode, r.Header.Get("X-Vesqira-Offline"))
+	}
+	// the catalog now records another full hash for the same file: the copy cannot vouch for it
+	if _, err := e.cat.DB().Exec(`UPDATE dataset_locations SET full_sha256=? WHERE id=?`, strings.Repeat("cd", 32), loc.ID); err != nil {
+		t.Fatal(err)
+	}
+	r, b := e.get(t, e.ds("/plane?channel=2"))
+	if r.StatusCode != 409 || !strings.Contains(string(b), "offline_stale") {
+		t.Fatalf("another identity: %d %s", r.StatusCode, b)
+	}
+}
+
 // The review listener has no route to any offline copy, or to the routes that read through one.
 func TestReviewerCannotReachOfflineCopies(t *testing.T) {
 	e := newOfflineEnv(t)
