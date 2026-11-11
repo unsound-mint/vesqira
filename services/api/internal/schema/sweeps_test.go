@@ -5,14 +5,14 @@ import (
 	"testing"
 )
 
-// A catalog from before sweeps (schema 11) upgrades with its jobs untouched and gains the two empty sweep tables.
+// A catalog from before sweeps (schema 12) upgrades with its jobs untouched and gains the two empty sweep tables.
 func TestSweepsMigrationKeepsJobsAndAddsEmptyTables(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.db")
 	db := open(t, p)
 	for _, q := range []string{
 		`CREATE TABLE jobs(id INTEGER PRIMARY KEY, name TEXT NOT NULL, state TEXT NOT NULL, usage TEXT NOT NULL DEFAULT '')`,
 		`INSERT INTO jobs(id,name,state) VALUES (1, 'vgt-a', 'completed'), (2, 'vgt-b', 'draft')`,
-		`PRAGMA user_version = 11`,
+		`PRAGMA user_version = 12`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatal(err)

@@ -17,6 +17,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 )
 
 // keyColumns are the columns that point at a deletable entry (dataset, run, figure, board) or carry a reference to one
@@ -44,6 +45,7 @@ var intentional = map[string]string{
 	"derived.sources":                "a derived dataset stays; its provenance names a source that is no longer in the catalog (impact group derived: stays)",
 	"interpretations.reliability_id": "deleting a dataset used as a reliability map is blocked until that declaration is cleared (impact group reliability: blocks)",
 	"jobs.params":                    "a job's JSON params record what was asked at the time; history is not rewritten",
+	"sweeps.params":                  "the swept values as asked, a record of the grid; not a reference to a catalog entry",
 	"runs.params":                    "the run's own recorded settings, not a reference to a catalog entry",
 	"audit.target":                   "the audit log is append-only history; (kind, target) names an entry that may since have been deleted, and the delete itself is recorded there",
 	"derived.params":                 "the operation's own recorded parameters (provenance), not a reference that must resolve",
@@ -63,6 +65,7 @@ func TestEveryKeyedTableIsHandled(t *testing.T) {
 		"runs":     func() error { _, err := runs.Open(db); return err },
 		"hosts":    func() error { _, err := hosts.Open(db); return err },
 		"jobs":     func() error { _, err := jobs.Open(db); return err },
+		"sweeps":   func() error { _, err := sweeps.Open(db); return err },
 		"audit":    func() error { _, err := audit.Open(db); return err },
 		"regions":  func() error { _, err := regions.Open(db); return err },
 		"derived":  func() error { _, err := derived.Open(db); return err },

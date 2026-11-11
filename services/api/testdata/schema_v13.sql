@@ -79,6 +79,9 @@ CREATE TABLE report_publications( report_id INTEGER NOT NULL, number INTEGER NOT
 -- table reports
 CREATE TABLE reports( id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, title TEXT NOT NULL UNIQUE COLLATE NOCASE, body TEXT NOT NULL, revision INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, seen_revision INTEGER NOT NULL DEFAULT 0, parent_id INTEGER NOT NULL DEFAULT 0);
 
+-- table rohsa_runs
+CREATE TABLE rohsa_runs(run_id INTEGER PRIMARY KEY, dat_path TEXT NOT NULL, info TEXT NOT NULL);
+
 -- table run_outputs
 CREATE TABLE run_outputs( run_id INTEGER NOT NULL, role TEXT NOT NULL, dataset_id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(run_id, role));
 
