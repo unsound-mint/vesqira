@@ -62,12 +62,12 @@ function toBlob(c: HTMLCanvasElement): Promise<Blob> {
 
 export const FIGURE_WIDTH = 720;
 
-/** Plane figure: the whole plane as drawn, its overlays (marks from the scene's overlay registry), a legend and the caption. Returns a PNG. */
+/** Plane figure: the whole plane as drawn, its overlays (one list of marks per layer from the scene's overlay registry, stroked in scene order like the screen), a legend and the caption. Returns a PNG. */
 export async function composeImageFigure(o: {
   source: HTMLCanvasElement;
   planeW: number;
   planeH: number;
-  marks: Mark[];
+  layers: Mark[][];
   legend: { kind: "scalar"; lut: Uint8ClampedArray; limits: [number, number] | null; unit: string | null } | { kind: "cyclic"; lut: Uint8ClampedArray };
   title: string;
   captions: string[];
@@ -95,7 +95,7 @@ export async function composeImageFigure(o: {
   ctx.drawImage(o.source, pad, top, iw, ih);
   ctx.save();
   ctx.translate(pad, top);
-  strokeMarks(ctx, o.marks, iw / o.planeW, ih / o.planeH, INK);
+  for (const layer of o.layers) strokeMarks(ctx, layer, iw / o.planeW, ih / o.planeH, INK, { w: o.planeW, h: o.planeH });
   ctx.restore();
   // legend bar
   const by = top + ih + 14;

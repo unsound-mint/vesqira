@@ -48,14 +48,16 @@ type Server struct {
 	Jobs       *jobs.Store
 	Derived    *derived.Store
 	ManagedDir string
-	Analysis   *AnalysisConfig
-	Audit      *audit.Store  // nil records nothing
-	Notes      *notify.Store // events for the owner (jobs ended, results imported); nil records nothing and disables the routes
-	Regions    *regions.Store
-	SSHConfig  string         // the user's ssh_config, only read to offer host aliases; empty offers none
-	Hints      hintSource     // overrides the catalog for the runs list's input hints (tests count calls)
-	WebDist    string         // built web app served at / on this (loopback) listener; empty serves the API only
-	Reports    *reports.Store // nil disables reports
+	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
+	CacheDir  string
+	Analysis  *AnalysisConfig
+	Audit     *audit.Store  // nil records nothing
+	Notes     *notify.Store // events for the owner (jobs ended, results imported); nil records nothing and disables the routes
+	Regions   *regions.Store
+	SSHConfig string         // the user's ssh_config, only read to offer host aliases; empty offers none
+	Hints     hintSource     // overrides the catalog for the runs list's input hints (tests count calls)
+	WebDist   string         // built web app served at / on this (loopback) listener; empty serves the API only
+	Reports   *reports.Store // nil disables reports
 	// PublishKeyFile holds the publisher key for the publish server (0600, beside the catalog); never in the catalog.
 	PublishKeyFile string
 
@@ -211,7 +213,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/{id}/conversions", s.conversions)
 	mux.HandleFunc("GET /api/datasets/{id}/convert", s.convert)
 	mux.HandleFunc("GET /api/datasets/{id}/spectrum", s.spectrum)
+	mux.HandleFunc("GET /api/datasets/{id}/rohsa", s.rohsaRuns)
+	mux.HandleFunc("POST /api/datasets/{id}/rohsa/index", s.rohsaIndex)
+	mux.HandleFunc("GET /api/datasets/{id}/rohsa/components", s.rohsaComponents)
 	mux.HandleFunc("GET /api/datasets/{id}/axial", s.axial)
+	mux.HandleFunc("POST /api/datasets/{id}/overlay-geometry", s.overlayGeometry)
 	if s.Regions != nil {
 		mux.HandleFunc("GET /api/datasets/{id}/regions", s.listRegions)
 		mux.HandleFunc("POST /api/datasets/{id}/regions", s.createRegion)

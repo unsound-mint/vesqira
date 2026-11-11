@@ -1,0 +1,97 @@
+.wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+
+.list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+
+.row[aria-current="true"] {
+  border-color: var(--accent);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+}
+
+/* the overlay's colour, next to its name; the name and the line style carry the meaning, not the colour */
+.swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+
+.tools {
+  display: flex;
+  flex: none;
+}
+
+.basis,
+.refused,
+.note,
+.hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  overflow-wrap: anywhere;
+}
+
+.basis,
+.note,
+.hint {
+  color: var(--text-2);
+}
+
+.refused {
+  color: var(--warn);
+}
+
+.form {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: var(--sp-2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}

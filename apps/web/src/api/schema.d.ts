@@ -798,6 +798,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/overlay-geometry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Geometry of one overlay on this dataset as base, as a binary frame
+         * @description Both datasets must be readable and unchanged, and on the same machine. Frame layout as for a plane: uint32 little-endian header length n, n bytes of JSON (an OverlayGeometryHeader, padded so the payload is 8-byte aligned), then little-endian float32 numbers laid out as the header says. A refusal (frames that cannot be related, footprints that do not overlap, an undeclared angle convention, no beam in the header) is a 422 with the reason.
+         */
+        post: operations["owner_s_overlayGeometry_post_api_datasets_id_overlay_geometry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/plane": {
         parameters: {
             query?: never;
@@ -905,6 +927,66 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_lifecycleArchive_post_api_datasets_id_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/rohsa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** ROHSA decomposition runs whose Gaussian components can be drawn over this dataset */
+        get: operations["owner_s_rohsaRuns_get_api_datasets_id_rohsa"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/rohsa/components": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The Gaussian components of one pixel as a binary frame
+         * @description Frame layout as for a plane: uint32 little-endian header length n, then n bytes of JSON (a RohsaComponentsHeader, padded with spaces), then little-endian float64 axis[channels] (km/s, or channel numbers when the spectral axis is not a resolved velocity), model[channels] (the sum of the valid components) and component[n_gauss][channels]. 409 until the .dat is indexed (see the index route) or when the dataset is not on the run's grid.
+         */
+        get: operations["owner_s_rohsaComponents_get_api_datasets_id_rohsa_components"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/rohsa/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Advance (or confirm) the index of a run's .dat; each call works for a bounded time */
+        post: operations["owner_s_rohsaIndex_post_api_datasets_id_rohsa_index"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3723,9 +3805,9 @@ export interface components {
             cy: number;
             r: number;
         };
-        /** @description One layer over the base. Only orientation (of the base map itself) and regions are drawn in this version; the other kinds are specified for the slices that add them, and a figure refuses them until then. */
+        /** @description One layer over the base. Orientation, regions, contours, beam and grid are drawn; catalog is specified for a later slice, and a figure refuses it until then. Overlays from another dataset are placed by WCS geometry, never by resampling its data. */
         SceneOverlay: components["schemas"]["OrientationOverlay"] | components["schemas"]["RegionsOverlay"] | components["schemas"]["ContoursOverlay"] | components["schemas"]["CatalogOverlay"] | components["schemas"]["BeamOverlay"] | components["schemas"]["GridOverlay"];
-        /** @description Orientation lines of an axial map, sampled on its grid. In this version datasetId is the base map. */
+        /** @description Orientation lines of an axial map, sampled on its own grid. When datasetId is the base map the lines are drawn from the plane on screen; from another dataset the worker samples that map on its own grid, converts each sample to sky-frame B-field orientation from its declared frame and quantity, and carries position and angle into the base's pixel frame by WCS (never resampled). */
         OrientationOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3737,12 +3819,13 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             visible: boolean;
+            /** @description auto: a step chosen so that lines are about gapPx output pixels apart on the base; step: every step-th pixel of the orientation map's own grid. A figure records the step it drew. */
             sampling: components["schemas"]["SamplingAuto"] | components["schemas"]["SamplingStep"];
             /**
-             * @description fixed: 0.8 of the sampling step
+             * @description fixed: 0.8 of the sampling spacing; reliability: that length times the declared reliability relative to its 99th percentile (at most 1). Needs a declared reliability map.
              * @enum {string}
              */
-            length: "fixed";
+            length: "fixed" | "reliability";
             /**
              * @description reliability: follows a reliability map on the same grid relative to its 99th percentile, faint where unknown; uniform: every line opaque. A figure records which was used.
              * @enum {string}
@@ -3753,6 +3836,20 @@ export interface components {
              * @description The reliability map that set the opacities. A figure states it whenever opacity is reliability, and it must be the map declared with the orientation map.
              */
             reliabilityId?: number;
+            /** @description Only samples whose declared reliability is at least this value (in the reliability map's own values) are drawn. Needs a declared reliability map. */
+            threshold?: number;
+            /**
+             * @description Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white.
+             * @enum {string}
+             */
+            color?: "white" | "cyan" | "amber" | "magenta" | "lime";
+            /** @description Stroke width in output pixels. Absent: the kind's default. */
+            width?: number;
+            /**
+             * @description So overlays can be told apart without colour. Absent: solid.
+             * @enum {string}
+             */
+            dash?: "solid" | "dashed";
         };
         /** @description A step in image pixels chosen so that lines are about gapPx output pixels apart */
         SamplingAuto: {
@@ -3793,7 +3890,7 @@ export interface components {
             shape: components["schemas"]["SceneRegion"];
             selected?: boolean;
         };
-        /** @description Specified, not drawn yet: contours of a map traced on its own grid and placed by WCS. */
+        /** @description Contours of one channel of a map, traced on that map's own grid (contourpy) and placed on the base by WCS: vertices go overlay pixel -> world -> base pixel, converting between celestial frames with astropy. Never resampled. Levels are in the overlay's own unit. */
         ContoursOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3805,10 +3902,23 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             visible: boolean;
+            /** @description 0-based channel of the overlay dataset that is contoured */
             channel: number;
-            levels: components["schemas"]["LevelsList"] | components["schemas"]["LevelsLinear"] | components["schemas"]["LevelsGeometric"];
-            /** @description The overlay dataset's own brightness unit */
-            unit: string;
+            levels: components["schemas"]["LevelsList"] | components["schemas"]["LevelsLinear"] | components["schemas"]["LevelsGeometric"] | components["schemas"]["LevelsSigma"];
+            /** @description The unit the levels are written in: the overlay's brightness unit as the file (or the person, for a file without BUNIT) states it. Absent when the file has no unit; the levels are then plain numbers. A level unit that no longer matches the file is refused. */
+            unit?: string;
+            /**
+             * @description Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white.
+             * @enum {string}
+             */
+            color?: "white" | "cyan" | "amber" | "magenta" | "lime";
+            /** @description Stroke width in output pixels. Absent: the kind's default. */
+            width?: number;
+            /**
+             * @description So overlays can be told apart without colour. Absent: solid.
+             * @enum {string}
+             */
+            dash?: "solid" | "dashed";
         };
         LevelsList: {
             /**
@@ -3816,6 +3926,7 @@ export interface components {
              * @enum {string}
              */
             mode: "list";
+            /** @description Strictly increasing */
             values: number[];
         };
         LevelsLinear: {
@@ -3825,6 +3936,7 @@ export interface components {
              */
             mode: "linear";
             start: number;
+            /** @description Not zero */
             step: number;
             count: number;
         };
@@ -3834,11 +3946,12 @@ export interface components {
              * @enum {string}
              */
             mode: "geometric";
+            /** @description Not zero */
             start: number;
             factor: number;
             count: number;
         };
-        /** @description Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames. */
+        /** @description Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames. A figure refuses it. */
         CatalogOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3857,7 +3970,7 @@ export interface components {
                 angleError?: string;
             };
         };
-        /** @description Specified, not drawn yet: the beam from the header's BMAJ, BMIN and BPA only, never a default. */
+        /** @description The beam of a dataset (the base or another one) drawn as an ellipse in a corner of the base, from that file's BMAJ, BMIN and BPA only (degrees, FITS standard), never a default. The ellipse is built on the sky and placed by WCS. Without BMAJ and BMIN, or with an elliptical beam and no BPA, it is refused. */
         BeamOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3869,8 +3982,25 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             visible: boolean;
+            /**
+             * @description Absent: bottom-left
+             * @enum {string}
+             */
+            corner?: "bottom-left" | "bottom-right" | "top-left" | "top-right";
+            /**
+             * @description Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white.
+             * @enum {string}
+             */
+            color?: "white" | "cyan" | "amber" | "magenta" | "lime";
+            /** @description Stroke width in output pixels. Absent: the kind's default. */
+            width?: number;
+            /**
+             * @description So overlays can be told apart without colour. Absent: solid.
+             * @enum {string}
+             */
+            dash?: "solid" | "dashed";
         };
-        /** @description Specified, not drawn yet: a coordinate grid in the dataset's own celestial frame. */
+        /** @description Celestial coordinate grid of the base map: lines of constant longitude and latitude in the chosen frame, generated on the sky with astropy and carried to base pixels by the base's WCS. datasetId is the base. */
         GridOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -3882,6 +4012,23 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             visible: boolean;
+            /**
+             * @description fk5 is FK5 at equinox J2000
+             * @enum {string}
+             */
+            frame: "icrs" | "fk5" | "galactic";
+            /**
+             * @description Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white.
+             * @enum {string}
+             */
+            color?: "white" | "cyan" | "amber" | "magenta" | "lime";
+            /** @description Stroke width in output pixels. Absent: the kind's default. */
+            width?: number;
+            /**
+             * @description So overlays can be told apart without colour. Absent: solid.
+             * @enum {string}
+             */
+            dash?: "solid" | "dashed";
         };
         /** @description One column of a point catalog as the worker read it. */
         CatalogColumn: {
@@ -4406,6 +4553,183 @@ export interface components {
         RelativeOrientationResult: {
             dataset: components["schemas"]["Dataset"];
             summary: components["schemas"]["RelativeOrientationSummary"];
+        };
+        /** @description Levels at multiples of a robust noise estimate of the contoured channel: sigma = 1.4826 x MAD of its finite pixels (astropy.stats.mad_std). It is the scatter of the whole plane, signal included, and is labelled as such. */
+        LevelsSigma: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "sigma";
+            /** @description Strictly increasing, none zero */
+            multiples: number[];
+            /** @description The sigma the levels were drawn with, recorded by a figure. A recomputed sigma that differs is refused (the data changed). */
+            sigma?: number;
+        };
+        /** @description Geometry of one overlay on the base dataset named in the path. */
+        OverlayGeometryRequest: {
+            overlay: components["schemas"]["SceneOverlay"];
+            /** @description For orientation with auto sampling: the wanted distance between lines, in base pixels (the pane's gapPx divided by its scale). Ignored otherwise. */
+            spacing?: number;
+        };
+        /** @description The JSON header of an overlay geometry frame. Every position is in base pixels: 0-based, pixel centres at integers, y up (FITS order). Extra keys may be present and are not part of the contract. */
+        OverlayGeometryHeader: {
+            /** @enum {string} */
+            kind: "contours" | "orientation" | "beam" | "grid";
+            /** @enum {string} */
+            dtype: "<f4";
+            coords: string;
+            /** @description contours, beam, grid: the payload starts with paths pairs (group, vertex count) and continues with the vertices as (x, y) pairs. group is the level index (contours), 0 for the beam, 0 for a line of constant longitude and 1 for one of constant latitude (grid). */
+            paths?: number;
+            vertices?: number;
+            /** @description orientation: the payload is segments quadruples (x, y, angle, weight): angle in degrees counter-clockwise from the base's +x pixel axis towards +y, weight in [0, 1] (1 without a reliability map). */
+            segments?: number;
+            /** @description How the overlay was placed on the base. */
+            placement: {
+                method: string;
+                from_frame?: string | null;
+                to_frame?: string | null;
+                from_status?: string | null;
+                to_status?: string | null;
+                same_frame?: boolean;
+                same_dataset?: boolean;
+            };
+            /** @description contours: the levels traced, in unit */
+            levels?: number[];
+            unit?: string | null;
+            unit_status?: string | null;
+            sigma?: {
+                value?: number;
+                method?: string;
+            } | null;
+            channel?: number;
+            spectral_value?: number | null;
+            spectral_unit?: string | null;
+            /** @description Present when the vertices were over budget and simplified (Ramer-Douglas-Peucker) with this tolerance in base pixels. */
+            simplified?: {
+                tolerance_px?: number;
+                vertices_before?: number;
+                vertices_after?: number;
+            } | null;
+            /** @description orientation: the sampling step used, in overlay pixels */
+            step?: number;
+            /** @description orientation: the distance between samples in base pixels */
+            spacing_px?: number;
+            /** @description orientation: how the stored angles became B-field orientation in the base pixel frame */
+            conversion?: string;
+            /** @description orientation: present when the declared reliability map was read (for length, opacity or a threshold) */
+            reliability?: {
+                p99?: number | null;
+                threshold?: number | null;
+                dropped_below_threshold?: number;
+                scale?: string;
+            } | null;
+            beam?: {
+                bmaj_arcsec?: number;
+                bmin_arcsec?: number;
+                bpa_deg?: number | null;
+                source?: string;
+            } | null;
+            labels?: {
+                text: string;
+                x: number;
+                y: number;
+                /** @enum {string} */
+                axis: "lon" | "lat";
+            }[];
+            frame?: string;
+            note?: string;
+        };
+        /** @description A ROHSA decomposition run whose components could be drawn over a dataset: the dataset is the run's crop or exactly on its grid. A cube with the crop's axis lengths but another (or unconfirmed) grid is listed with the reason it is refused. */
+        RohsaRunView: {
+            /** Format: int64 */
+            runId: number;
+            name: string;
+            /** @description Gaussians per pixel, as the run's records declare; 0 when they do not */
+            nGauss: number;
+            nGaussBasis: string;
+            /** Format: int64 */
+            cropDatasetId: number;
+            cropName: string;
+            cropBunit: string | null;
+            /** @description the dataset is the crop the fit used */
+            isCrop: boolean;
+            usable: boolean;
+            /** @description why the components cannot be drawn over this dataset */
+            refusal: string | null;
+        };
+        RohsaRunList: {
+            runs: components["schemas"]["RohsaRunView"][];
+        };
+        RohsaIndexRequest: {
+            /** Format: int64 */
+            runId: number;
+        };
+        /** @description Progress of the index of a ROHSA .dat. building: call again; ready: pixels can be read; refused: the file is not the ROHSA row layout, with the reason and example lines. */
+        RohsaIndexState: {
+            ok?: boolean;
+            op?: string;
+            /** @enum {string} */
+            state: "building" | "ready" | "refused";
+            done_bytes: number;
+            size_bytes: number;
+            rows: number;
+            malformed: number;
+            reason: string | null;
+            examples: {
+                line: number;
+                problem: string;
+            }[];
+            /** @description size of the sidecar index: 8 bytes per pixel */
+            index_bytes: number;
+            width?: number;
+            height?: number;
+        };
+        RohsaComponent: {
+            /** @description 1-based Gaussian number within the pixel, in file order */
+            k: number;
+            /** @description fitted amplitude in the crop's brightness unit; 0 is a real value */
+            amp: number;
+            /** @description the file's 1-based channel number */
+            mean_channel_file: number;
+            /** @description 0-based channel index: the file's value minus 1 */
+            mean_channel: number;
+            sigma_channel: number;
+            /** @description false when sigma is not positive and finite; such a component is not drawn */
+            valid: boolean;
+            /** @description km/s on the crop's spectral axis; null without a resolved velocity axis */
+            centre: number | null;
+            /** @description km/s */
+            sigma: number | null;
+            /** @description 2 sqrt(2 ln 2) sigma, km/s */
+            fwhm: number | null;
+            /** @description 121.1 K (km/s)^-2 x sigma^2: an upper limit on the kinetic temperature */
+            t_doppler_k: number | null;
+        };
+        /** @description The JSON header of a rohsa components frame. */
+        RohsaComponentsHeader: {
+            ok?: boolean;
+            x: number;
+            y: number;
+            channels: number;
+            n_gauss: number;
+            components: components["schemas"]["RohsaComponent"][];
+            axis: {
+                /** @enum {string} */
+                kind: "velocity" | "channel";
+                name: string | null;
+                unit: string | null;
+                source_unit: string | null;
+                /** @enum {string|null} */
+                unit_status: "declared" | "inferred" | "unresolved" | null;
+                note: string | null;
+            };
+            bunit: string | null;
+            layout: string;
+            /** @description the conventions applied, in words: columns, 1-based mean, sigma, model, invalid components, FWHM, T_D */
+            conventions: {
+                [key: string]: string;
+            };
         };
     };
     responses: never;
@@ -5724,6 +6048,43 @@ export interface operations {
             };
         };
     };
+    owner_s_overlayGeometry_post_api_datasets_id_overlay_geometry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OverlayGeometryRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.geometry": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_plane_get_api_datasets_id_plane: {
         parameters: {
             query: {
@@ -5900,6 +6261,126 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_rohsaRuns_get_api_datasets_id_rohsa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RohsaRunList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_rohsaComponents_get_api_datasets_id_rohsa_components: {
+        parameters: {
+            query: {
+                run: number;
+                x: number;
+                y: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.plane": string;
+                };
+            };
+            /** @description not indexed yet, or the dataset is not on the run's grid */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_rohsaIndex_post_api_datasets_id_rohsa_index: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RohsaIndexRequest"];
+            };
+        };
+        responses: {
+            /** @description the index state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RohsaIndexState"];
+                };
+            };
+            /** @description the dataset is not on the run's grid (the reasons are listed), or the run has no crop */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

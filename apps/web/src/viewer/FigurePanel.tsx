@@ -9,7 +9,7 @@ import { EM } from "../catalog/format";
 import s from "./FigurePanel.module.css";
 
 /** Saves what is on screen as a figure that keeps its source, parameters and provenance (pinned evidence). */
-export function FigurePanel({ v, dataset }: { v: Viewer; dataset: Dataset }) {
+export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Dataset; datasets?: Dataset[] }) {
   const [kind, setKind] = useState<"plane" | "spectrum">("plane");
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
@@ -40,7 +40,7 @@ export function FigurePanel({ v, dataset }: { v: Viewer; dataset: Dataset }) {
     setErr(null);
     setNote(null);
     try {
-      setSaved(await saveViewFigure(v, dataset, { title, caption, kind }));
+      setSaved(await saveViewFigure(v, dataset, { title, caption, kind, datasets }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not save the figure.");
     } finally {

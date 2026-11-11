@@ -69,14 +69,7 @@ func TestRemoteHostEndToEndWithFakeSSH(t *testing.T) {
 	localRoot := filepath.Join(base, "localroot")
 	os.WriteFile(filepath.Join(localRoot, "hi_cube.fits"), cube, 0o644)
 
-	files := map[string][]byte{}
-	for _, f := range []string{"plane_worker.py", "fits_header.py", "convert.py", "orientation.py"} {
-		b, err := os.ReadFile(filepath.Join(repo, "services/scientific-worker", f))
-		if err != nil {
-			t.Fatal(err)
-		}
-		files[f] = b
-	}
+	files := workerFiles(t, repo)
 	mgr := hosts.NewManager(fakeSSH(t, remoteHome), files)
 	mgr.ControlDir = t.TempDir()
 	t.Cleanup(mgr.Close)
@@ -263,4 +256,14 @@ func TestBrowseHostFoldersBeforeTheHostIsSaved(t *testing.T) {
 			t.Errorf("%s: %d, want 400", q, code)
 		}
 	}
+}
+
+// workerFiles is what a remote host receives: the modules in the worker directory's DEPLOY list.
+func workerFiles(t *testing.T, repo string) map[string][]byte {
+	t.Helper()
+	files, err := hosts.LoadWorkerFiles(filepath.Join(repo, "services/scientific-worker"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }

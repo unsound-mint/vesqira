@@ -229,7 +229,11 @@ func Open(db *sql.DB) (*Store, error) {
 	if err := schema.EnsureArchive(db); err != nil {
 		return nil, err
 	}
-	return &Store{db}, nil
+	st := &Store{db}
+	if err := st.openROHSA(); err != nil {
+		return nil, err
+	}
+	return st, nil
 }
 
 func nonNil(m []Metric) []Metric {

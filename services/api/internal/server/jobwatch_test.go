@@ -69,11 +69,7 @@ PATH=%[4]s:$PATH exec sh -c "$cmd"
 	sshBin := filepath.Join(base, "ssh")
 	os.WriteFile(sshBin, []byte(sshScript), 0o755)
 
-	files := map[string][]byte{}
-	for _, f := range []string{"plane_worker.py", "fits_header.py", "convert.py"} {
-		b, _ := os.ReadFile(filepath.Join(repo, "services/scientific-worker", f))
-		files[f] = b
-	}
+	files := workerFiles(t, repo)
 	mgr := hosts.NewManager(sshBin, files)
 	mgr.ControlDir = t.TempDir()
 	t.Cleanup(mgr.Close)

@@ -2819,12 +2819,12 @@
      "grid": "#/components/schemas/GridOverlay"
     }
    },
-   "description": "One layer over the base. Only orientation (of the base map itself) and regions are drawn in this version; the other kinds are specified for the slices that add them, and a figure refuses them until then."
+   "description": "One layer over the base. Orientation, regions, contours, beam and grid are drawn; catalog is specified for a later slice, and a figure refuses it until then. Overlays from another dataset are placed by WCS geometry, never by resampling its data."
   },
   "OrientationOverlay": {
    "type": "object",
    "additionalProperties": false,
-   "description": "Orientation lines of an axial map, sampled on its grid. In this version datasetId is the base map.",
+   "description": "Orientation lines of an axial map, sampled on its own grid. When datasetId is the base map the lines are drawn from the plane on screen; from another dataset the worker samples that map on its own grid, converts each sample to sky-frame B-field orientation from its declared frame and quantity, and carries position and angle into the base's pixel frame by WCS (never resampled).",
    "required": [
     "id",
     "kind",
@@ -2869,14 +2869,16 @@
        "auto": "#/components/schemas/SamplingAuto",
        "step": "#/components/schemas/SamplingStep"
       }
-     }
+     },
+     "description": "auto: a step chosen so that lines are about gapPx output pixels apart on the base; step: every step-th pixel of the orientation map's own grid. A figure records the step it drew."
     },
     "length": {
      "type": "string",
      "enum": [
-      "fixed"
+      "fixed",
+      "reliability"
      ],
-     "description": "fixed: 0.8 of the sampling step"
+     "description": "fixed: 0.8 of the sampling spacing; reliability: that length times the declared reliability relative to its 99th percentile (at most 1). Needs a declared reliability map."
     },
     "opacity": {
      "type": "string",
@@ -2891,6 +2893,35 @@
      "format": "int64",
      "minimum": 1,
      "description": "The reliability map that set the opacities. A figure states it whenever opacity is reliability, and it must be the map declared with the orientation map."
+    },
+    "threshold": {
+     "type": "number",
+     "description": "Only samples whose declared reliability is at least this value (in the reliability map's own values) are drawn. Needs a declared reliability map."
+    },
+    "color": {
+     "type": "string",
+     "enum": [
+      "white",
+      "cyan",
+      "amber",
+      "magenta",
+      "lime"
+     ],
+     "description": "Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white."
+    },
+    "width": {
+     "type": "number",
+     "minimum": 0.5,
+     "maximum": 4,
+     "description": "Stroke width in output pixels. Absent: the kind's default."
+    },
+    "dash": {
+     "type": "string",
+     "enum": [
+      "solid",
+      "dashed"
+     ],
+     "description": "So overlays can be told apart without colour. Absent: solid."
     }
    }
   },
@@ -3005,15 +3036,14 @@
   "ContoursOverlay": {
    "type": "object",
    "additionalProperties": false,
-   "description": "Specified, not drawn yet: contours of a map traced on its own grid and placed by WCS.",
+   "description": "Contours of one channel of a map, traced on that map's own grid (contourpy) and placed on the base by WCS: vertices go overlay pixel -> world -> base pixel, converting between celestial frames with astropy. Never resampled. Levels are in the overlay's own unit.",
    "required": [
     "id",
     "kind",
     "datasetId",
     "visible",
     "channel",
-    "levels",
-    "unit"
+    "levels"
    ],
    "properties": {
     "id": {
@@ -3037,7 +3067,8 @@
     },
     "channel": {
      "type": "integer",
-     "minimum": 0
+     "minimum": 0,
+     "description": "0-based channel of the overlay dataset that is contoured"
     },
     "levels": {
      "oneOf": [
@@ -3049,6 +3080,9 @@
       },
       {
        "$ref": "#/components/schemas/LevelsGeometric"
+      },
+      {
+       "$ref": "#/components/schemas/LevelsSigma"
       }
      ],
      "discriminator": {
@@ -3056,14 +3090,40 @@
       "mapping": {
        "list": "#/components/schemas/LevelsList",
        "linear": "#/components/schemas/LevelsLinear",
-       "geometric": "#/components/schemas/LevelsGeometric"
+       "geometric": "#/components/schemas/LevelsGeometric",
+       "sigma": "#/components/schemas/LevelsSigma"
       }
      }
     },
     "unit": {
      "type": "string",
      "maxLength": 64,
-     "description": "The overlay dataset's own brightness unit"
+     "description": "The unit the levels are written in: the overlay's brightness unit as the file (or the person, for a file without BUNIT) states it. Absent when the file has no unit; the levels are then plain numbers. A level unit that no longer matches the file is refused."
+    },
+    "color": {
+     "type": "string",
+     "enum": [
+      "white",
+      "cyan",
+      "amber",
+      "magenta",
+      "lime"
+     ],
+     "description": "Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white."
+    },
+    "width": {
+     "type": "number",
+     "minimum": 0.5,
+     "maximum": 4,
+     "description": "Stroke width in output pixels. Absent: the kind's default."
+    },
+    "dash": {
+     "type": "string",
+     "enum": [
+      "solid",
+      "dashed"
+     ],
+     "description": "So overlays can be told apart without colour. Absent: solid."
     }
    }
   },
@@ -3087,7 +3147,8 @@
      "maxItems": 64,
      "items": {
       "type": "number"
-     }
+     },
+     "description": "Strictly increasing"
     }
    }
   },
@@ -3111,7 +3172,8 @@
      "type": "number"
     },
     "step": {
-     "type": "number"
+     "type": "number",
+     "description": "Not zero"
     },
     "count": {
      "type": "integer",
@@ -3137,7 +3199,8 @@
      ]
     },
     "start": {
-     "type": "number"
+     "type": "number",
+     "description": "Not zero"
     },
     "factor": {
      "type": "number",
@@ -3154,7 +3217,7 @@
   "CatalogOverlay": {
    "type": "object",
    "additionalProperties": false,
-   "description": "Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames.",
+   "description": "Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames. A figure refuses it.",
    "required": [
     "id",
     "kind",
@@ -3217,7 +3280,7 @@
   "BeamOverlay": {
    "type": "object",
    "additionalProperties": false,
-   "description": "Specified, not drawn yet: the beam from the header's BMAJ, BMIN and BPA only, never a default.",
+   "description": "The beam of a dataset (the base or another one) drawn as an ellipse in a corner of the base, from that file's BMAJ, BMIN and BPA only (degrees, FITS standard), never a default. The ellipse is built on the sky and placed by WCS. Without BMAJ and BMIN, or with an elliptical beam and no BPA, it is refused.",
    "required": [
     "id",
     "kind",
@@ -3243,18 +3306,54 @@
     },
     "visible": {
      "type": "boolean"
+    },
+    "corner": {
+     "type": "string",
+     "enum": [
+      "bottom-left",
+      "bottom-right",
+      "top-left",
+      "top-right"
+     ],
+     "description": "Absent: bottom-left"
+    },
+    "color": {
+     "type": "string",
+     "enum": [
+      "white",
+      "cyan",
+      "amber",
+      "magenta",
+      "lime"
+     ],
+     "description": "Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white."
+    },
+    "width": {
+     "type": "number",
+     "minimum": 0.5,
+     "maximum": 4,
+     "description": "Stroke width in output pixels. Absent: the kind's default."
+    },
+    "dash": {
+     "type": "string",
+     "enum": [
+      "solid",
+      "dashed"
+     ],
+     "description": "So overlays can be told apart without colour. Absent: solid."
     }
    }
   },
   "GridOverlay": {
    "type": "object",
    "additionalProperties": false,
-   "description": "Specified, not drawn yet: a coordinate grid in the dataset's own celestial frame.",
+   "description": "Celestial coordinate grid of the base map: lines of constant longitude and latitude in the chosen frame, generated on the sky with astropy and carried to base pixels by the base's WCS. datasetId is the base.",
    "required": [
     "id",
     "kind",
     "datasetId",
-    "visible"
+    "visible",
+    "frame"
    ],
    "properties": {
     "id": {
@@ -3275,6 +3374,40 @@
     },
     "visible": {
      "type": "boolean"
+    },
+    "frame": {
+     "type": "string",
+     "enum": [
+      "icrs",
+      "fk5",
+      "galactic"
+     ],
+     "description": "fk5 is FK5 at equinox J2000"
+    },
+    "color": {
+     "type": "string",
+     "enum": [
+      "white",
+      "cyan",
+      "amber",
+      "magenta",
+      "lime"
+     ],
+     "description": "Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white."
+    },
+    "width": {
+     "type": "number",
+     "minimum": 0.5,
+     "maximum": 4,
+     "description": "Stroke width in output pixels. Absent: the kind's default."
+    },
+    "dash": {
+     "type": "string",
+     "enum": [
+      "solid",
+      "dashed"
+     ],
+     "description": "So overlays can be told apart without colour. Absent: solid."
     }
    }
   },
@@ -4968,6 +5101,586 @@
      "$ref": "#/components/schemas/RelativeOrientationSummary"
     }
    }
+  },
+  "LevelsSigma": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "mode",
+    "multiples"
+   ],
+   "description": "Levels at multiples of a robust noise estimate of the contoured channel: sigma = 1.4826 x MAD of its finite pixels (astropy.stats.mad_std). It is the scatter of the whole plane, signal included, and is labelled as such.",
+   "properties": {
+    "mode": {
+     "type": "string",
+     "enum": [
+      "sigma"
+     ]
+    },
+    "multiples": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 64,
+     "items": {
+      "type": "number"
+     },
+     "description": "Strictly increasing, none zero"
+    },
+    "sigma": {
+     "type": "number",
+     "exclusiveMinimum": true,
+     "minimum": 0,
+     "description": "The sigma the levels were drawn with, recorded by a figure. A recomputed sigma that differs is refused (the data changed)."
+    }
+   }
+  },
+  "OverlayGeometryRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "overlay"
+   ],
+   "description": "Geometry of one overlay on the base dataset named in the path.",
+   "properties": {
+    "overlay": {
+     "$ref": "#/components/schemas/SceneOverlay"
+    },
+    "spacing": {
+     "type": "number",
+     "minimum": 1,
+     "maximum": 4096,
+     "description": "For orientation with auto sampling: the wanted distance between lines, in base pixels (the pane's gapPx divided by its scale). Ignored otherwise."
+    }
+   }
+  },
+  "OverlayGeometryHeader": {
+   "type": "object",
+   "description": "The JSON header of an overlay geometry frame. Every position is in base pixels: 0-based, pixel centres at integers, y up (FITS order). Extra keys may be present and are not part of the contract.",
+   "required": [
+    "kind",
+    "dtype",
+    "coords",
+    "placement"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "contours",
+      "orientation",
+      "beam",
+      "grid"
+     ]
+    },
+    "dtype": {
+     "type": "string",
+     "enum": [
+      "<f4"
+     ]
+    },
+    "coords": {
+     "type": "string"
+    },
+    "paths": {
+     "type": "integer",
+     "description": "contours, beam, grid: the payload starts with paths pairs (group, vertex count) and continues with the vertices as (x, y) pairs. group is the level index (contours), 0 for the beam, 0 for a line of constant longitude and 1 for one of constant latitude (grid)."
+    },
+    "vertices": {
+     "type": "integer"
+    },
+    "segments": {
+     "type": "integer",
+     "description": "orientation: the payload is segments quadruples (x, y, angle, weight): angle in degrees counter-clockwise from the base's +x pixel axis towards +y, weight in [0, 1] (1 without a reliability map)."
+    },
+    "placement": {
+     "type": "object",
+     "description": "How the overlay was placed on the base.",
+     "required": [
+      "method"
+     ],
+     "properties": {
+      "method": {
+       "type": "string"
+      },
+      "from_frame": {
+       "type": "string",
+       "nullable": true
+      },
+      "to_frame": {
+       "type": "string",
+       "nullable": true
+      },
+      "from_status": {
+       "type": "string",
+       "nullable": true
+      },
+      "to_status": {
+       "type": "string",
+       "nullable": true
+      },
+      "same_frame": {
+       "type": "boolean"
+      },
+      "same_dataset": {
+       "type": "boolean"
+      }
+     }
+    },
+    "levels": {
+     "type": "array",
+     "items": {
+      "type": "number"
+     },
+     "description": "contours: the levels traced, in unit"
+    },
+    "unit": {
+     "type": "string",
+     "nullable": true
+    },
+    "unit_status": {
+     "type": "string",
+     "nullable": true
+    },
+    "sigma": {
+     "type": "object",
+     "nullable": true,
+     "properties": {
+      "value": {
+       "type": "number"
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    "channel": {
+     "type": "integer"
+    },
+    "spectral_value": {
+     "type": "number",
+     "nullable": true
+    },
+    "spectral_unit": {
+     "type": "string",
+     "nullable": true
+    },
+    "simplified": {
+     "type": "object",
+     "nullable": true,
+     "description": "Present when the vertices were over budget and simplified (Ramer-Douglas-Peucker) with this tolerance in base pixels.",
+     "properties": {
+      "tolerance_px": {
+       "type": "number"
+      },
+      "vertices_before": {
+       "type": "integer"
+      },
+      "vertices_after": {
+       "type": "integer"
+      }
+     }
+    },
+    "step": {
+     "type": "integer",
+     "description": "orientation: the sampling step used, in overlay pixels"
+    },
+    "spacing_px": {
+     "type": "number",
+     "description": "orientation: the distance between samples in base pixels"
+    },
+    "conversion": {
+     "type": "string",
+     "description": "orientation: how the stored angles became B-field orientation in the base pixel frame"
+    },
+    "reliability": {
+     "type": "object",
+     "nullable": true,
+     "description": "orientation: present when the declared reliability map was read (for length, opacity or a threshold)",
+     "properties": {
+      "p99": {
+       "type": "number",
+       "nullable": true
+      },
+      "threshold": {
+       "type": "number",
+       "nullable": true
+      },
+      "dropped_below_threshold": {
+       "type": "integer"
+      },
+      "scale": {
+       "type": "string"
+      }
+     }
+    },
+    "beam": {
+     "type": "object",
+     "nullable": true,
+     "properties": {
+      "bmaj_arcsec": {
+       "type": "number"
+      },
+      "bmin_arcsec": {
+       "type": "number"
+      },
+      "bpa_deg": {
+       "type": "number",
+       "nullable": true
+      },
+      "source": {
+       "type": "string"
+      }
+     }
+    },
+    "labels": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "text",
+       "x",
+       "y",
+       "axis"
+      ],
+      "properties": {
+       "text": {
+        "type": "string"
+       },
+       "x": {
+        "type": "number"
+       },
+       "y": {
+        "type": "number"
+       },
+       "axis": {
+        "type": "string",
+        "enum": [
+         "lon",
+         "lat"
+        ]
+       }
+      }
+     }
+    },
+    "frame": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "RohsaRunView": {
+   "type": "object",
+   "properties": {
+    "runId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "nGauss": {
+     "type": "integer",
+     "description": "Gaussians per pixel, as the run's records declare; 0 when they do not"
+    },
+    "nGaussBasis": {
+     "type": "string"
+    },
+    "cropDatasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "cropName": {
+     "type": "string"
+    },
+    "cropBunit": {
+     "type": "string",
+     "nullable": true
+    },
+    "isCrop": {
+     "type": "boolean",
+     "description": "the dataset is the crop the fit used"
+    },
+    "usable": {
+     "type": "boolean"
+    },
+    "refusal": {
+     "type": "string",
+     "description": "why the components cannot be drawn over this dataset",
+     "nullable": true
+    }
+   },
+   "required": [
+    "runId",
+    "name",
+    "nGauss",
+    "nGaussBasis",
+    "cropDatasetId",
+    "cropName",
+    "cropBunit",
+    "isCrop",
+    "usable",
+    "refusal"
+   ],
+   "description": "A ROHSA decomposition run whose components could be drawn over a dataset: the dataset is the run's crop or exactly on its grid. A cube with the crop's axis lengths but another (or unconfirmed) grid is listed with the reason it is refused."
+  },
+  "RohsaRunList": {
+   "type": "object",
+   "properties": {
+    "runs": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RohsaRunView"
+     }
+    }
+   },
+   "required": [
+    "runs"
+   ]
+  },
+  "RohsaIndexRequest": {
+   "type": "object",
+   "properties": {
+    "runId": {
+     "type": "integer",
+     "format": "int64"
+    }
+   },
+   "required": [
+    "runId"
+   ]
+  },
+  "RohsaIndexState": {
+   "type": "object",
+   "properties": {
+    "ok": {
+     "type": "boolean"
+    },
+    "op": {
+     "type": "string"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "building",
+      "ready",
+      "refused"
+     ]
+    },
+    "done_bytes": {
+     "type": "integer"
+    },
+    "size_bytes": {
+     "type": "integer"
+    },
+    "rows": {
+     "type": "integer"
+    },
+    "malformed": {
+     "type": "integer"
+    },
+    "reason": {
+     "type": "string",
+     "nullable": true
+    },
+    "examples": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "line": {
+        "type": "integer"
+       },
+       "problem": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "line",
+       "problem"
+      ]
+     }
+    },
+    "index_bytes": {
+     "type": "integer",
+     "description": "size of the sidecar index: 8 bytes per pixel"
+    },
+    "width": {
+     "type": "integer"
+    },
+    "height": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "state",
+    "done_bytes",
+    "size_bytes",
+    "rows",
+    "malformed",
+    "reason",
+    "examples",
+    "index_bytes"
+   ],
+   "description": "Progress of the index of a ROHSA .dat. building: call again; ready: pixels can be read; refused: the file is not the ROHSA row layout, with the reason and example lines."
+  },
+  "RohsaComponent": {
+   "type": "object",
+   "properties": {
+    "k": {
+     "type": "integer",
+     "description": "1-based Gaussian number within the pixel, in file order"
+    },
+    "amp": {
+     "type": "number",
+     "description": "fitted amplitude in the crop's brightness unit; 0 is a real value"
+    },
+    "mean_channel_file": {
+     "type": "number",
+     "description": "the file's 1-based channel number"
+    },
+    "mean_channel": {
+     "type": "number",
+     "description": "0-based channel index: the file's value minus 1"
+    },
+    "sigma_channel": {
+     "type": "number"
+    },
+    "valid": {
+     "type": "boolean",
+     "description": "false when sigma is not positive and finite; such a component is not drawn"
+    },
+    "centre": {
+     "type": "number",
+     "description": "km/s on the crop's spectral axis; null without a resolved velocity axis",
+     "nullable": true
+    },
+    "sigma": {
+     "type": "number",
+     "description": "km/s",
+     "nullable": true
+    },
+    "fwhm": {
+     "type": "number",
+     "description": "2 sqrt(2 ln 2) sigma, km/s",
+     "nullable": true
+    },
+    "t_doppler_k": {
+     "type": "number",
+     "description": "121.1 K (km/s)^-2 x sigma^2: an upper limit on the kinetic temperature",
+     "nullable": true
+    }
+   },
+   "required": [
+    "k",
+    "amp",
+    "mean_channel_file",
+    "mean_channel",
+    "sigma_channel",
+    "valid",
+    "centre",
+    "sigma",
+    "fwhm",
+    "t_doppler_k"
+   ]
+  },
+  "RohsaComponentsHeader": {
+   "type": "object",
+   "properties": {
+    "ok": {
+     "type": "boolean"
+    },
+    "x": {
+     "type": "integer"
+    },
+    "y": {
+     "type": "integer"
+    },
+    "channels": {
+     "type": "integer"
+    },
+    "n_gauss": {
+     "type": "integer"
+    },
+    "components": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RohsaComponent"
+     }
+    },
+    "axis": {
+     "type": "object",
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "velocity",
+        "channel"
+       ]
+      },
+      "name": {
+       "type": "string",
+       "nullable": true
+      },
+      "unit": {
+       "type": "string",
+       "nullable": true
+      },
+      "source_unit": {
+       "type": "string",
+       "nullable": true
+      },
+      "unit_status": {
+       "type": "string",
+       "enum": [
+        "declared",
+        "inferred",
+        "unresolved"
+       ],
+       "nullable": true
+      },
+      "note": {
+       "type": "string",
+       "nullable": true
+      }
+     },
+     "required": [
+      "kind",
+      "name",
+      "unit",
+      "source_unit",
+      "unit_status",
+      "note"
+     ]
+    },
+    "bunit": {
+     "type": "string",
+     "nullable": true
+    },
+    "layout": {
+     "type": "string"
+    },
+    "conventions": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     },
+     "description": "the conventions applied, in words: columns, 1-based mean, sigma, model, invalid components, FWHM, T_D"
+    }
+   },
+   "required": [
+    "components",
+    "axis",
+    "channels",
+    "n_gauss",
+    "x",
+    "y",
+    "bunit",
+    "layout",
+    "conventions"
+   ],
+   "description": "The JSON header of a rohsa components frame."
   }
  },
  "operations": {
@@ -7369,6 +8082,255 @@
     },
     "404": {
      "description": "not a relative-orientation result, or no table (a map comparison over the row limit)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/overlay-geometry": {
+   "summary": "Geometry of one overlay on this dataset as base, as a binary frame",
+   "description": "Both datasets must be readable and unchanged, and on the same machine. Frame layout as for a plane: uint32 little-endian header length n, n bytes of JSON (an OverlayGeometryHeader, padded so the payload is 8-byte aligned), then little-endian float32 numbers laid out as the header says. A refusal (frames that cannot be related, footprints that do not overlap, an undeclared angle convention, no beam in the header) is a 422 with the reason.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/OverlayGeometryRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "headers": {
+      "Cache-Control": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "no-store"
+        ]
+       }
+      },
+      "X-Content-Type-Options": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "nosniff"
+        ]
+       }
+      }
+     },
+     "content": {
+      "application/vnd.vesqira.geometry": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       },
+       "x-frame-header": {
+        "$ref": "#/components/schemas/OverlayGeometryHeader"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/rohsa": {
+   "summary": "ROHSA decomposition runs whose Gaussian components can be drawn over this dataset",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RohsaRunList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/rohsa/index": {
+   "summary": "Advance (or confirm) the index of a run's .dat; each call works for a bounded time",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RohsaIndexRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "the index state",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RohsaIndexState"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "the dataset is not on the run's grid (the reasons are listed), or the run has no crop",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/rohsa/components": {
+   "summary": "The Gaussian components of one pixel as a binary frame",
+   "description": "Frame layout as for a plane: uint32 little-endian header length n, then n bytes of JSON (a RohsaComponentsHeader, padded with spaces), then little-endian float64 axis[channels] (km/s, or channel numbers when the spectral axis is not a resolved velocity), model[channels] (the sum of the valid components) and component[n_gauss][channels]. 409 until the .dat is indexed (see the index route) or when the dataset is not on the run's grid.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "run",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "x",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    {
+     "name": "y",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "headers": {
+      "Cache-Control": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "no-store"
+        ]
+       }
+      }
+     },
+     "content": {
+      "application/vnd.vesqira.plane": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       },
+       "x-frame-header": {
+        "$ref": "#/components/schemas/RohsaComponentsHeader"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "not indexed yet, or the dataset is not on the run's grid",
      "content": {
       "application/json": {
        "schema": {

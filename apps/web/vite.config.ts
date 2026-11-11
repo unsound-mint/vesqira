@@ -16,5 +16,6 @@ export default defineConfig({
   // design/tokens.css lives outside the app root and is the only token source; allow only that folder.
   server: { fs: { allow: [".", "../../design"] }, proxy },
   preview: { proxy },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test-setup.ts"], css: false },
+  // CSS is not processed in tests, except the token file, which a test reads as text to hold palette.ts to it
+  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test-setup.ts"], css: { include: [/design\/tokens\.css/] } },
 });

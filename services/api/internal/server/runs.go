@@ -140,6 +140,19 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 8<<10, &in, true) {
 		return
 	}
+	if dat, found, code, msg := s.rohsaTarget(in.Path); found {
+		if code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		run, code, msg := s.importROHSA(r.Context(), dat)
+		if code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		writeJSON(w, 201, s.runView(run))
+		return
+	}
 	meta := in.Path
 	if filepath.Base(meta) != "run_metadata.toml" {
 		meta = filepath.Join(meta, "run_metadata.toml")
@@ -165,6 +178,8 @@ type runJSON struct {
 		Basis     string `json:"basis"`
 	} `json:"inputHint"`
 	Reproducibility []runs.Fact `json:"reproducibility"`
+	// Rohsa is the decomposition record of a ROHSA run (ADR 0046); null for every other kind.
+	Rohsa *runs.RohsaInfo `json:"rohsa"`
 	// JobID is the Vesqira job whose outputs this run is; ParentRunID is the run that job was drafted from.
 	JobID       *int64 `json:"jobId"`
 	ParentRunID *int64 `json:"parentRunId"`
@@ -222,6 +237,11 @@ func (s *Server) runViewWith(r runs.Run, lin map[int64]jobs.Lineage, hints map[c
 		}
 	}
 	out.Reproducibility = runs.Reproducibility(r, out.InputHint != nil)
+	if r.Kind == "rohsa" {
+		if rr, err := s.Runs.ROHSA(r.ID); err == nil {
+			out.Rohsa = &rr.Info
+		}
+	}
 	return out
 }
 
@@ -336,6 +356,10 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		fail(w, 500, "internal error")
+		return
+	}
+	if run.Kind != "vgt" {
+		fail(w, 422, "running again is offered for VGT runs only; this run's kind is "+run.Kind)
 		return
 	}
 	out := rerunJSON{ParentRunID: id, Source: "imported", Template: "vgt", Name: againName(run.Name), Params: run.Params, Notes: []string{}, VGT: rerunVGT{Set: map[string]string{}}}

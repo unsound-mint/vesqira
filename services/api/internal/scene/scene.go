@@ -30,7 +30,7 @@ var ErrInvalid = errors.New("invalid scene")
 // would describe layers its picture does not have, so Parse refuses them until the slice that draws them.
 var (
 	Kinds = []string{"orientation", "regions", "contours", "catalog", "beam", "grid"}
-	Drawn = map[string]bool{"orientation": true, "regions": true}
+	Drawn = map[string]bool{"orientation": true, "regions": true, "contours": true, "beam": true, "grid": true}
 )
 
 type Scene struct {
@@ -96,23 +96,54 @@ type Sampling struct {
 	Step  *int     `json:"step,omitempty"`
 }
 
+// Levels are the contour levels of a contours overlay: an explicit list, a linear or geometric generator, or multiples of
+// a robust noise estimate of the contoured channel (sigma is recorded by a figure).
+type Levels struct {
+	Mode      string    `json:"mode"`
+	Values    []float64 `json:"values,omitempty"`
+	Start     *float64  `json:"start,omitempty"`
+	Step      *float64  `json:"step,omitempty"`
+	Factor    *float64  `json:"factor,omitempty"`
+	Count     *int      `json:"count,omitempty"`
+	Multiples []float64 `json:"multiples,omitempty"`
+	Sigma     *float64  `json:"sigma,omitempty"`
+}
+
+// Style is how a drawn overlay is stroked; every field is optional.
+type Style struct {
+	Color string   `json:"color,omitempty"`
+	Width *float64 `json:"width,omitempty"`
+	Dash  string   `json:"dash,omitempty"`
+}
+
 // Overlay is one layer. Common fields first; the rest belong to one kind and are only set for it.
 type Overlay struct {
 	ID        string `json:"id"`
 	Kind      string `json:"kind"`
 	DatasetID int64  `json:"datasetId"`
 	Visible   bool   `json:"visible"`
+	Style
 	// orientation
 	Sampling      *Sampling `json:"sampling,omitempty"`
 	Length        string    `json:"length,omitempty"`
 	Opacity       string    `json:"opacity,omitempty"`
 	ReliabilityID *int64    `json:"reliabilityId,omitempty"`
+	Threshold     *float64  `json:"threshold,omitempty"`
 	// regions
 	Active *Region       `json:"active,omitempty"`
 	Saved  []SavedRegion `json:"saved"`
+	// contours
+	Channel *int    `json:"channel,omitempty"`
+	Levels  *Levels `json:"levels,omitempty"`
+	Unit    *string `json:"unit,omitempty"`
+	// beam
+	Corner string `json:"corner,omitempty"`
+	// grid
+	Frame string `json:"frame,omitempty"`
 }
 
 // MarshalJSON writes only the fields of the overlay's kind; a regions overlay always has its saved list, even empty.
+// Every kind Parse accepts has its own case, so nothing it read is dropped when the server stores its reading.
 func (o Overlay) MarshalJSON() ([]byte, error) {
 	type common struct {
 		ID        string `json:"id"`
@@ -129,7 +160,29 @@ func (o Overlay) MarshalJSON() ([]byte, error) {
 			Length        string    `json:"length"`
 			Opacity       string    `json:"opacity"`
 			ReliabilityID *int64    `json:"reliabilityId,omitempty"`
-		}{c, o.Sampling, o.Length, o.Opacity, o.ReliabilityID})
+			Threshold     *float64  `json:"threshold,omitempty"`
+			Style
+		}{c, o.Sampling, o.Length, o.Opacity, o.ReliabilityID, o.Threshold, o.Style})
+	case "contours":
+		return json.Marshal(struct {
+			common
+			Channel *int    `json:"channel"`
+			Levels  *Levels `json:"levels"`
+			Unit    *string `json:"unit,omitempty"`
+			Style
+		}{c, o.Channel, o.Levels, o.Unit, o.Style})
+	case "beam":
+		return json.Marshal(struct {
+			common
+			Corner string `json:"corner,omitempty"`
+			Style
+		}{c, o.Corner, o.Style})
+	case "grid":
+		return json.Marshal(struct {
+			common
+			Frame string `json:"frame"`
+			Style
+		}{c, o.Frame, o.Style})
 	case "regions":
 		saved := o.Saved
 		if saved == nil {
@@ -141,7 +194,7 @@ func (o Overlay) MarshalJSON() ([]byte, error) {
 			Saved  []SavedRegion `json:"saved"`
 		}{c, o.Active, saved})
 	}
-	return json.Marshal(c)
+	return nil, fmt.Errorf("overlay kind %q has no stored form", o.Kind)
 }
 
 var (
@@ -305,6 +358,131 @@ func parseView(raw []byte) (View, error) {
 	return v, nil
 }
 
+// maxLevel bounds every level, multiple and threshold: far beyond any physical brightness, and safe to print.
+const maxLevel = 1e30
+
+// styleIn is the optional stroke style as read (pointers, so a null is refused rather than read as absent).
+type styleIn struct {
+	Color *string  `json:"color"`
+	Width *float64 `json:"width"`
+	Dash  *string  `json:"dash"`
+}
+
+func (s styleIn) read() (Style, error) {
+	var out Style
+	if s.Color != nil {
+		if !isOneOf(*s.Color, "white", "cyan", "amber", "magenta", "lime") {
+			return Style{}, bad("an overlay colour is white, cyan, amber, magenta or lime")
+		}
+		out.Color = *s.Color
+	}
+	if s.Width != nil {
+		if !finite(*s.Width) || *s.Width < 0.5 || *s.Width > 4 {
+			return Style{}, bad("an overlay width is between 0.5 and 4")
+		}
+		out.Width = s.Width
+	}
+	if s.Dash != nil {
+		if !isOneOf(*s.Dash, "solid", "dashed") {
+			return Style{}, bad("an overlay dash is solid or dashed")
+		}
+		out.Dash = *s.Dash
+	}
+	return out, nil
+}
+
+// increasing reports whether vs are finite, within maxLevel and strictly increasing.
+func increasing(vs []*float64) bool {
+	for i, v := range vs {
+		if v == nil || !finite(*v) || math.Abs(*v) > maxLevel || (i > 0 && *v <= *vs[i-1]) {
+			return false
+		}
+	}
+	return true
+}
+
+func deref(vs []*float64) []float64 {
+	out := make([]float64, len(vs))
+	for i, v := range vs {
+		out[i] = *v
+	}
+	return out
+}
+
+func parseLevels(raw json.RawMessage) (*Levels, error) {
+	var in struct {
+		Mode      *string    `json:"mode"`
+		Values    []*float64 `json:"values"`
+		Start     *float64   `json:"start"`
+		Step      *float64   `json:"step"`
+		Factor    *float64   `json:"factor"`
+		Count     *int       `json:"count"`
+		Multiples []*float64 `json:"multiples"`
+		Sigma     *float64   `json:"sigma"`
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, bad("contours need their levels")
+	}
+	if err := strict(raw, &in); err != nil || in.Mode == nil {
+		return nil, bad("contour levels: not a levels object")
+	}
+	num := func(p *float64) bool { return p != nil && finite(*p) && math.Abs(*p) <= maxLevel }
+	count := func() bool { return in.Count != nil && *in.Count >= 1 && *in.Count <= 64 }
+	only := func(ok ...bool) bool { // every field the mode does not use is absent
+		for _, b := range ok {
+			if !b {
+				return false
+			}
+		}
+		return true
+	}
+	l := &Levels{Mode: *in.Mode}
+	switch *in.Mode {
+	case "list":
+		if len(in.Values) < 1 || len(in.Values) > 64 || !increasing(in.Values) || !only(in.Start == nil, in.Step == nil, in.Factor == nil, in.Count == nil, in.Multiples == nil, in.Sigma == nil) {
+			return nil, bad("a level list is 1 to 64 finite, strictly increasing numbers")
+		}
+		l.Values = deref(in.Values)
+	case "linear":
+		if !num(in.Start) || !num(in.Step) || *in.Step == 0 || !count() || !only(in.Values == nil, in.Factor == nil, in.Multiples == nil, in.Sigma == nil) {
+			return nil, bad("linear levels need a start, a step that is not zero and a count of 1 to 64")
+		}
+		l.Start, l.Step, l.Count = in.Start, in.Step, in.Count
+	case "geometric":
+		if !num(in.Start) || *in.Start == 0 || !num(in.Factor) || *in.Factor <= 1 || !count() || !only(in.Values == nil, in.Step == nil, in.Multiples == nil, in.Sigma == nil) {
+			return nil, bad("geometric levels need a start that is not zero, a factor above 1 and a count of 1 to 64")
+		}
+		l.Start, l.Factor, l.Count = in.Start, in.Factor, in.Count
+	case "sigma":
+		if len(in.Multiples) < 1 || len(in.Multiples) > 64 || !increasing(in.Multiples) || !only(in.Values == nil, in.Start == nil, in.Step == nil, in.Factor == nil, in.Count == nil) {
+			return nil, bad("sigma levels are 1 to 64 finite, strictly increasing multiples")
+		}
+		for _, m := range in.Multiples {
+			if *m == 0 {
+				return nil, bad("a sigma multiple of zero is not a contour of the noise")
+			}
+		}
+		l.Multiples = deref(in.Multiples)
+		if in.Sigma != nil {
+			if !num(in.Sigma) || *in.Sigma <= 0 {
+				return nil, bad("a recorded sigma is a positive finite number")
+			}
+			l.Sigma = in.Sigma
+		}
+	default:
+		return nil, bad("contour levels are list, linear, geometric or sigma")
+	}
+	return l, nil
+}
+
+// ParseOverlay reads one overlay as strictly as Parse does inside a scene (the overlay geometry route takes one alone).
+func ParseOverlay(raw []byte) (Overlay, error) {
+	if len(raw) > MaxBytes {
+		return Overlay{}, bad("larger than %d bytes", MaxBytes)
+	}
+	return parseOverlay(raw)
+}
+
 func parseOverlay(raw []byte) (Overlay, error) {
 	var head struct {
 		Kind string `json:"kind"`
@@ -339,9 +517,11 @@ func parseOverlay(raw []byte) (Overlay, error) {
 				GapPx *float64 `json:"gapPx"`
 				Step  *int     `json:"step"`
 			} `json:"sampling"`
-			Length        *string `json:"length"`
-			Opacity       *string `json:"opacity"`
-			ReliabilityID *int64  `json:"reliabilityId"`
+			Length        *string  `json:"length"`
+			Opacity       *string  `json:"opacity"`
+			ReliabilityID *int64   `json:"reliabilityId"`
+			Threshold     *float64 `json:"threshold"`
+			styleIn
 		}
 		if err := strict(raw, &in); err != nil {
 			return Overlay{}, bad("orientation: %v", err)
@@ -349,6 +529,15 @@ func parseOverlay(raw []byte) (Overlay, error) {
 		o, err := check(in.common)
 		if err != nil {
 			return o, err
+		}
+		if o.Style, err = in.styleIn.read(); err != nil {
+			return Overlay{}, err
+		}
+		if in.Threshold != nil {
+			if !finite(*in.Threshold) || math.Abs(*in.Threshold) > maxLevel {
+				return Overlay{}, bad("the reliability threshold is a finite number")
+			}
+			o.Threshold = in.Threshold
 		}
 		sp := in.Sampling
 		switch {
@@ -361,8 +550,8 @@ func parseOverlay(raw []byte) (Overlay, error) {
 		default:
 			return Overlay{}, bad("orientation sampling is auto with gapPx 4 to 256, or step with step 1 to 4096")
 		}
-		if in.Length == nil || *in.Length != "fixed" || in.Opacity == nil || !isOneOf(*in.Opacity, "reliability", "uniform") {
-			return Overlay{}, bad("orientation length is fixed and opacity is reliability or uniform")
+		if in.Length == nil || !isOneOf(*in.Length, "fixed", "reliability") || in.Opacity == nil || !isOneOf(*in.Opacity, "reliability", "uniform") {
+			return Overlay{}, bad("orientation length is fixed or reliability and opacity is reliability or uniform")
 		}
 		o.Length, o.Opacity = *in.Length, *in.Opacity
 		if in.ReliabilityID != nil {
@@ -371,6 +560,79 @@ func parseOverlay(raw []byte) (Overlay, error) {
 			}
 			o.ReliabilityID = in.ReliabilityID
 		}
+		return o, nil
+	case "contours":
+		var in struct {
+			common
+			Channel *int            `json:"channel"`
+			Levels  json.RawMessage `json:"levels"`
+			Unit    *string         `json:"unit"`
+			styleIn
+		}
+		if err := strict(raw, &in); err != nil {
+			return Overlay{}, bad("contours: %v", err)
+		}
+		o, err := check(in.common)
+		if err != nil {
+			return o, err
+		}
+		if o.Style, err = in.styleIn.read(); err != nil {
+			return Overlay{}, err
+		}
+		if in.Channel == nil || *in.Channel < 0 || *in.Channel > maxCoord {
+			return Overlay{}, bad("contours need the channel they trace, at least 0")
+		}
+		if o.Levels, err = parseLevels(in.Levels); err != nil {
+			return Overlay{}, err
+		}
+		if in.Unit != nil && !plainText.MatchString(*in.Unit) {
+			return Overlay{}, bad("the contour unit is plain short text")
+		}
+		o.Channel, o.Unit = in.Channel, in.Unit
+		return o, nil
+	case "beam":
+		var in struct {
+			common
+			Corner *string `json:"corner"`
+			styleIn
+		}
+		if err := strict(raw, &in); err != nil {
+			return Overlay{}, bad("beam: %v", err)
+		}
+		o, err := check(in.common)
+		if err != nil {
+			return o, err
+		}
+		if o.Style, err = in.styleIn.read(); err != nil {
+			return Overlay{}, err
+		}
+		if in.Corner != nil {
+			if !isOneOf(*in.Corner, "bottom-left", "bottom-right", "top-left", "top-right") {
+				return Overlay{}, bad("the beam corner is bottom-left, bottom-right, top-left or top-right")
+			}
+			o.Corner = *in.Corner
+		}
+		return o, nil
+	case "grid":
+		var in struct {
+			common
+			Frame *string `json:"frame"`
+			styleIn
+		}
+		if err := strict(raw, &in); err != nil {
+			return Overlay{}, bad("grid: %v", err)
+		}
+		o, err := check(in.common)
+		if err != nil {
+			return o, err
+		}
+		if o.Style, err = in.styleIn.read(); err != nil {
+			return Overlay{}, err
+		}
+		if in.Frame == nil || !isOneOf(*in.Frame, "icrs", "fk5", "galactic") {
+			return Overlay{}, bad("the grid frame is icrs, fk5 or galactic")
+		}
+		o.Frame = *in.Frame
 		return o, nil
 	case "regions":
 		var in struct {

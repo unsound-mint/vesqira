@@ -12,7 +12,7 @@ import { channelLabel } from "./format";
 import { fromDrag } from "./region";
 import type { Pt } from "./region";
 import type { RegionShape } from "../api/planes";
-import { sceneMarks } from "../scene/overlays";
+import { dashOf, LABEL_PX, sceneMarks } from "../scene/overlays";
 import type { Mark } from "../scene/overlays";
 import { dragCentre, placement } from "../scene/view";
 import s from "./PlaneViewer.module.css";
@@ -174,9 +174,13 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
 
   // every overlay, in scene order, through the overlay registry (the same marks a saved figure strokes)
   const marks = useMemo(
-    () => (v.scene && plane ? sceneMarks(v.scene, { plane, scale: shape.scale, interp: v.interp, reliability: v.reliability, draft }) : []),
-    [v.scene?.overlays, v.scene?.base.datasetId, plane, shape.scale, v.interp, v.reliability, draft], // eslint-disable-line react-hooks/exhaustive-deps
+    () => (v.scene && plane ? sceneMarks(v.scene, { plane, scale: shape.scale, interp: v.interp, reliability: v.reliability, draft, geometry: v.geometry }) : []),
+    [v.scene?.overlays, v.scene?.base.datasetId, plane, shape.scale, v.interp, v.reliability, draft, v.geometry], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  const labels = useMemo(() => marks.filter((m): m is Extract<Mark, { type: "text" }> => m.type === "text"), [marks]);
+  // automatic orientation spacing of other datasets' lines follows the zoom, so the viewer says what scale it draws at
+  const setDrawScale = v.setDrawScale;
+  useEffect(() => setDrawScale(shape.scale), [shape.scale, setDrawScale]);
 
   const probe = v.probe;
   const cell = plane ? shape.width / plane.head.width : 0;
@@ -243,9 +247,15 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
               v.setPinned(p && v.pinned && v.pinned.x === p.x && v.pinned.y === p.y ? null : p);
             }}
           />
-          <svg className={s.overlay} viewBox={`0 0 ${plane.head.width} ${plane.head.height}`} preserveAspectRatio="none" aria-hidden="true">
+          <svg className={s.overlay} viewBox={`0 0 ${plane.head.width} ${plane.head.height}`} preserveAspectRatio="none" aria-hidden="true" data-testid="overlay-marks">
             <Marks marks={marks} />
           </svg>
+          {labels.length ? (
+            // labels in screen pixels, so text keeps its size at every zoom
+            <svg className={s.overlay} width={shape.width} height={shape.height} aria-hidden="true">
+              <Labels labels={labels} cell={cell} />
+            </svg>
+          ) : null}
           {probe && probe.x < plane.head.width && probe.y < plane.head.height ? (
             <span
               className={v.pinned ? s.pinned : v.hover ? s.marker : s.linked}
@@ -279,19 +289,50 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
   );
 }
 
+const ink = (c: string) => `var(--overlay-${c})`;
+
 /** The SVG side of the overlay registry: one element per mark, styled by role with the design tokens. */
 function Marks({ marks }: { marks: Mark[] }) {
   return marks.map((m, i) => {
+    if (m.type === "text") return null; // drawn in screen pixels by Labels
     if (m.type === "line") {
+      const st = m.stroke;
       return (
         <g key={i} opacity={m.opacity}>
-          <line className={s.lineHalo} x1={m.x1} y1={m.y1} x2={m.x2} y2={m.y2} />
-          <line className={s.lineTop} x1={m.x1} y1={m.y1} x2={m.x2} y2={m.y2} />
+          <line className={s.lineHalo} x1={m.x1} y1={m.y1} x2={m.x2} y2={m.y2} style={st ? { strokeWidth: st.width + 2 } : undefined} />
+          <line className={s.lineTop} x1={m.x1} y1={m.y1} x2={m.x2} y2={m.y2} style={st ? { stroke: ink(st.color), strokeWidth: st.width } : undefined} />
+        </g>
+      );
+    }
+    if (m.type === "path") {
+      const pts = m.points.join(" ");
+      const El = m.closed ? "polygon" : "polyline";
+      const dash = m.stroke.dashed ? dashOf(m.stroke.width).join(" ") : undefined;
+      return (
+        <g key={i} data-role={m.role}>
+          {m.fill !== undefined ? <El points={pts} className={s.pathFill} style={{ fill: ink(m.stroke.color), fillOpacity: m.fill }} /> : null}
+          <El points={pts} className={s.pathHalo} style={{ strokeWidth: m.stroke.width + 2, strokeDasharray: dash }} />
+          <El points={pts} className={s.pathTop} style={{ stroke: ink(m.stroke.color), strokeWidth: m.stroke.width, strokeDasharray: dash }} />
         </g>
       );
     }
     const cls = m.role === "region" ? s.region : m.role === "saved" ? s.saved : s.draft;
     return m.type === "rect" ? <rect key={i} className={cls} x={m.x} y={m.y} width={m.w} height={m.h} /> : <circle key={i} className={cls} cx={m.cx} cy={m.cy} r={m.r} />;
+  });
+}
+
+/** Overlay labels (grid coordinates, the beam size) at their picture positions times the screen cell, with a dark halo. */
+function Labels({ labels, cell }: { labels: Extract<Mark, { type: "text" }>[]; cell: number }) {
+  return labels.map((m, i) => {
+    const pad = 3;
+    const x = m.x * cell + (m.anchor === "start" ? pad : m.anchor === "end" ? -pad : 0);
+    const y = m.y * cell + (m.baseline === "bottom" ? -pad : m.baseline === "top" ? pad : 0);
+    const baseline = m.baseline === "top" ? "hanging" : m.baseline === "bottom" ? "text-after-edge" : "central";
+    return (
+      <text key={i} className={s.label} x={x} y={y} textAnchor={m.anchor} dominantBaseline={baseline} style={{ fill: ink(m.color), fontSize: LABEL_PX }} data-role={m.role}>
+        {m.text}
+      </text>
+    );
   });
 }
 

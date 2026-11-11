@@ -156,7 +156,7 @@ func (p ViewParams) checkAgainst(h safeHeader, declaredUnit string) bool {
 	return true
 }
 
-func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary) (json.RawMessage, error) {
+func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary, overlaySources []catalog.Dataset) (json.RawMessage, error) {
 	var pr Provenance
 	pr.Source.Name, pr.Source.SizeBytes, pr.Source.ModifiedAt = d.Name, d.SizeBytes, d.ModifiedAt
 	pr.Source.Identity = "a reference to the file by name, size and modification time; its bytes were not hashed"
@@ -203,32 +203,65 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 	if p.Region != nil {
 		pr.Statements = append(pr.Statements, "Region values are means of the finite pixels inside the region; flagged channels keep their data; pixel scale is taken at the reference pixel.")
 	}
+	// Overlays from other files are named by file name, size and time like the source (never by catalog id: ADR 0011).
+	for _, o := range overlaySources {
+		pr.Statements = append(pr.Statements, fmt.Sprintf("Overlay drawn from another file, %s (%d bytes, modified %s; its bytes were not hashed), placed on this map by WCS geometry, never resampled onto its grid. The caption states how.",
+			o.Name, o.SizeBytes, o.ModifiedAt.UTC().Format(time.RFC3339)))
+	}
 	return json.Marshal(pr)
 }
 
 var errBadView = errors.New("view does not match the dataset")
 
 // checkScene holds a figure's scene to the dataset and to the view description sent with it, so the two cannot tell
-// different stories about one picture. In this version every layer is drawn from the figure's own dataset, and a spectrum
-// figure (a plot, not a pane) has no scene.
-func checkScene(sc scene.Scene, d catalog.Dataset, vp ViewParams) error {
-	refuse := func(why string) error { return fmt.Errorf("%w: %s", scene.ErrInvalid, why) }
+// different stories about one picture. Regions and the grid are the base's own; contours, orientation lines and the beam
+// may come from another registered dataset (placed by WCS), which lookup returns. It returns those other datasets, in
+// scene order, so the caller can authorize them. A spectrum figure (a plot, not a pane) has no scene.
+func checkScene(sc scene.Scene, d catalog.Dataset, vp ViewParams, lookup func(int64) (catalog.Dataset, error)) ([]catalog.Dataset, error) {
+	refuse := func(why string) ([]catalog.Dataset, error) { return nil, fmt.Errorf("%w: %s", scene.ErrInvalid, why) }
 	if vp.Kind == "spectrum" {
 		return refuse("a spectrum figure has no scene")
 	}
 	if sc.Base.DatasetID != d.ID {
 		return refuse("the scene's base is not the figure's dataset")
 	}
+	var others []catalog.Dataset
+	seen := map[int64]bool{}
 	for _, o := range sc.Overlays {
+		src := d
 		if o.DatasetID != d.ID {
-			return refuse("overlays from another dataset are not drawn in this version")
+			if o.Kind == "regions" || o.Kind == "grid" {
+				return refuse(o.Kind + " belong to the base map")
+			}
+			got, err := lookup(o.DatasetID)
+			if err != nil {
+				return refuse("an overlay names a dataset that is not registered")
+			}
+			if got.HostID != d.HostID {
+				return refuse("an overlay's dataset is on another machine than the base")
+			}
+			src = got
+			if !seen[got.ID] {
+				seen[got.ID] = true
+				others = append(others, got)
+			}
 		}
-		if o.Kind == "orientation" && d.Interpretation == nil {
+		if o.Kind != "orientation" {
+			continue
+		}
+		in := src.Interpretation
+		if in == nil {
 			return refuse("orientation lines need a map declared axial")
 		}
+		if o.DatasetID != d.ID && (in.Frame == nil || in.Quantity == nil || *in.Quantity == "unspecified") {
+			return refuse("orientation lines from another dataset need its angle frame and quantity declared")
+		}
 		// opacities from a reliability map are only reproducible when the figure names that map, and it is the declared one
-		if o.Kind == "orientation" && o.Opacity == "reliability" && (o.ReliabilityID == nil || d.Interpretation.ReliabilityID == nil || *o.ReliabilityID != *d.Interpretation.ReliabilityID) {
+		if o.Opacity == "reliability" && (o.ReliabilityID == nil || in.ReliabilityID == nil || *o.ReliabilityID != *in.ReliabilityID) {
 			return refuse("orientation opacity from reliability must name the declared reliability map")
+		}
+		if (o.Length == "reliability" || o.Threshold != nil) && in.ReliabilityID == nil {
+			return refuse("length by reliability or a reliability threshold needs a declared reliability map")
 		}
 	}
 	disp := sc.Base.Display
@@ -270,7 +303,7 @@ func checkScene(sc scene.Scene, d catalog.Dataset, vp ViewParams) error {
 	if c := sc.View.Centre; c != nil && (c.X > float64(maxLen) || c.Y > float64(maxLen)) {
 		return refuse("the view centre is outside the image")
 	}
-	return nil
+	return others, nil
 }
 
 func sameFloats(a, b []float64) bool {
@@ -361,21 +394,28 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		run, _ = s.Runs.ForDataset(d.ID)
 	}
 	var sceneJSON json.RawMessage
+	var others []catalog.Dataset
 	if len(in.Scene) > 0 && string(in.Scene) != "null" {
 		sc, err := scene.Parse(in.Scene)
 		if err == nil {
-			err = checkScene(sc, d, vp)
+			others, err = checkScene(sc, d, vp, s.Store.Get)
 		}
 		if err != nil {
 			fail(w, 400, err.Error())
 			return
+		}
+		for _, o := range others { // every file the picture drew from is still the one that was registered
+			if _, _, status, m := s.authorize(r.Context(), o); status != 0 {
+				fail(w, status, "overlay "+o.Name+": "+m)
+				return
+			}
 		}
 		if sceneJSON, err = json.Marshal(sc); err != nil { // what is stored is the server's reading, never the client's bytes
 			fail(w, 500, "internal error")
 			return
 		}
 	}
-	prov, err := buildProvenance(d, vp, run, s.derivedSummary(d.ID))
+	prov, err := buildProvenance(d, vp, run, s.derivedSummary(d.ID), others)
 	if errors.Is(err, errBadView) {
 		fail(w, 400, "the view description does not match the dataset")
 		return

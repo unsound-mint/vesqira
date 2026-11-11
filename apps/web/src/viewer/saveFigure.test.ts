@@ -11,7 +11,7 @@ const drawn: Mark[][] = [];
 vi.mock("../api/boards", () => ({ createFigure: vi.fn(async (r: FigureRequest) => { sent.push(r); return { id: 1 }; }) }));
 vi.mock("./figure", async (orig) => ({
   ...(await orig<typeof import("./figure")>()),
-  composeImageFigure: vi.fn(async (o: { marks: Mark[] }) => { drawn.push(o.marks); return new Blob(["png"]); }),
+  composeImageFigure: vi.fn(async (o: { layers: Mark[][] }) => { drawn.push(o.layers.flat()); return new Blob(["png"]); }),
   composeSpectrumFigure: vi.fn(async () => new Blob(["png"])),
   blobToBase64: async () => "cG5n",
 }));

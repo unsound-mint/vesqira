@@ -52,14 +52,7 @@ func TestRemoteProjectIsWalkedByTheHostWorkerWithFakeSSH(t *testing.T) {
 	os.Symlink(outside, filepath.Join(proj, "door"))
 	put(t, outside, "secret.txt", "s")
 
-	files := map[string][]byte{}
-	for _, f := range []string{"plane_worker.py", "fits_header.py", "convert.py", "orientation.py"} {
-		b, err := os.ReadFile(filepath.Join(repo, "services/scientific-worker", f))
-		if err != nil {
-			t.Fatal(err)
-		}
-		files[f] = b
-	}
+	files := workerFiles(t, repo)
 	mgr := hosts.NewManager(fakeSSH(t, remoteHome), files)
 	mgr.ControlDir = t.TempDir()
 	t.Cleanup(mgr.Close)
