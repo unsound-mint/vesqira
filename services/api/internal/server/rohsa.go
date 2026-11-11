@@ -165,6 +165,15 @@ func (s *Server) importROHSA(ctx context.Context, src rohsaSource) (runs.Run, in
 	if len(outs) == 0 {
 		info.Notes = append(info.Notes, "No product maps were found under rohsa/"+parsed.ProductLabel+"/ beside the .dat.")
 	}
+	// A host that stopped answering (ssh dropped, the deadline passed, the caller left) is not a host with no trace, no crop or no
+	// maps. Nothing is saved: a run built from silence would overwrite a good one under the same key, and an automatic import
+	// would link and announce it and never try again.
+	if code, msg := src.Failed(); code != 0 {
+		return runs.Run{}, code, msg
+	}
+	if err := ctx.Err(); err != nil {
+		return runs.Run{}, 502, "the import was interrupted before it finished; nothing was saved"
+	}
 	run, err := s.Runs.Save(src.Key(), parsed.Parsed, outs)
 	if err != nil {
 		log.Printf("runs: %v", err)
@@ -199,7 +208,7 @@ func (s *Server) importROHSAFromHost(w http.ResponseWriter, r *http.Request, hos
 		fail(w, code, msg)
 		return
 	}
-	run, code, msg := s.importROHSA(ctx, remoteROHSA{s: s, h: h, dat: dat})
+	run, code, msg := s.importROHSA(ctx, newRemoteROHSA(s, h, dat))
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -219,7 +228,7 @@ func (s *Server) importROHSAJob(ctx context.Context, j jobs.Job, h hosts.Host) (
 		}
 		return runs.Run{}, code, msg
 	}
-	run, code, msg := s.importROHSA(ctx, remoteROHSA{s: s, h: h, dat: dat})
+	run, code, msg := s.importROHSA(ctx, newRemoteROHSA(s, h, dat))
 	if code == 0 {
 		s.Audit.Record("rohsa run imported from host", "run", run.ID, h.Name+": "+dat)
 	}

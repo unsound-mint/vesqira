@@ -566,7 +566,9 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	if j.Template == "rohsa" {
-		run, code, msg := s.importROHSAJob(ctx, j, h)
+		rctx, rcancel := context.WithTimeout(r.Context(), remoteImportTimeout) // the same bound as the automatic import
+		defer rcancel()
+		run, code, msg := s.importROHSAJob(rctx, j, h)
 		if code != 0 {
 			fail(w, code, msg)
 			return

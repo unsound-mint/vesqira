@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
@@ -31,6 +32,9 @@ type rohsaSource interface {
 	Register(ctx context.Context, rel string) (d catalog.Dataset, found bool, code int, msg string)
 	// Fits lists the *.fits names in a sub-folder (relative to the .dat's folder), sorted; nil when there is none.
 	Fits(ctx context.Context, rel string) []string
+	// Failed says the machine stopped answering (or the request was cancelled) at some point of the reads above. A file that
+	// is not there is an ordinary answer and a note; a silence is not, and the import must not save a run built from it.
+	Failed() (code int, msg string)
 }
 
 type localROHSA struct {
@@ -38,9 +42,10 @@ type localROHSA struct {
 	dat string
 }
 
-func (l localROHSA) HostID() int64 { return 0 }
-func (l localROHSA) Dat() string   { return l.dat }
-func (l localROHSA) Key() string   { return l.dat }
+func (l localROHSA) Failed() (int, string) { return 0, "" }
+func (l localROHSA) HostID() int64         { return 0 }
+func (l localROHSA) Dat() string           { return l.dat }
+func (l localROHSA) Key() string           { return l.dat }
 func (l localROHSA) Near(_ context.Context, name string) []byte {
 	return l.s.readNear(filepath.Dir(l.dat), name)
 }
@@ -74,16 +79,51 @@ func (l localROHSA) Fits(_ context.Context, rel string) []string {
 // remoteROHSA is a fit on a host. Its records are read and its FITS files registered by the host's worker, which enforces
 // the host's roots on the resolved path, exactly as for any other remote file.
 type remoteROHSA struct {
-	s   *Server
-	h   hosts.Host
-	dat string
+	s    *Server
+	h    hosts.Host
+	dat  string
+	down *hostSilence // shared by the copies of this value; nil means the caller does not ask
+}
+
+// hostSilence remembers that the host did not answer during an import (ssh dropped, the deadline passed, the caller left).
+type hostSilence struct {
+	mu   sync.Mutex
+	code int
+	msg  string
+}
+
+func (h *hostSilence) note(code int, msg string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	if h.code == 0 {
+		h.code, h.msg = code, msg
+	}
+	h.mu.Unlock()
+}
+
+func (r remoteROHSA) Failed() (int, string) {
+	if r.down == nil {
+		return 0, ""
+	}
+	r.down.mu.Lock()
+	defer r.down.mu.Unlock()
+	return r.down.code, r.down.msg
+}
+
+func newRemoteROHSA(s *Server, h hosts.Host, dat string) remoteROHSA {
+	return remoteROHSA{s: s, h: h, dat: dat, down: &hostSilence{}}
 }
 
 func (r remoteROHSA) HostID() int64 { return r.h.ID }
 func (r remoteROHSA) Dat() string   { return r.dat }
 func (r remoteROHSA) Key() string   { return hostKey(r.h.ID, r.dat) }
 func (r remoteROHSA) Near(ctx context.Context, name string) []byte {
-	text, code, _ := r.s.remoteText(ctx, r.h, path.Join(path.Dir(r.dat), name))
+	text, code, msg := r.s.remoteText(ctx, r.h, path.Join(path.Dir(r.dat), name))
+	if code == 502 || ctx.Err() != nil {
+		r.down.note(502, msg)
+	}
 	if code != 0 || len(text) > runs.MaxMetadataBytes {
 		return nil
 	}
@@ -91,13 +131,19 @@ func (r remoteROHSA) Near(ctx context.Context, name string) []byte {
 }
 func (r remoteROHSA) Register(ctx context.Context, rel string) (catalog.Dataset, bool, int, string) {
 	d, code, msg := r.s.registerRemoteFile(ctx, r.h, path.Join(path.Dir(r.dat), rel))
+	if code == 502 || ctx.Err() != nil {
+		r.down.note(502, msg)
+	}
 	if code == 403 {
 		return catalog.Dataset{}, false, 0, "" // not available there: skipped
 	}
 	return d, true, code, msg
 }
 func (r remoteROHSA) Fits(ctx context.Context, rel string) []string {
-	_, files, _ := r.s.remoteList(ctx, r.h, path.Join(path.Dir(r.dat), rel))
+	_, files, _, err := r.s.remoteList(ctx, r.h, path.Join(path.Dir(r.dat), rel))
+	if silent(err) || ctx.Err() != nil {
+		r.down.note(502, "the host is not reachable (is the VPN up?)")
+	}
 	var names []string
 	for _, f := range files {
 		if strings.HasSuffix(f, ".fits") {
@@ -108,15 +154,26 @@ func (r remoteROHSA) Fits(ctx context.Context, rel string) []string {
 	return names
 }
 
+// silent says whether an error from the host's worker means the host did not answer, as opposed to the worker refusing the
+// request (a folder that is absent, outside the roots or not a folder: the same refusal for all of them).
+func silent(err error) bool {
+	var re *worker.RequestError
+	return err != nil && !errors.As(err, &re)
+}
+
 // remoteList lists one folder on a host through its worker: the folder's real path, its file names and its sub-folder names.
-// A folder that is absent, outside the roots or not a folder is the same answer (nil, nil, error).
-func (s *Server) remoteList(ctx context.Context, h hosts.Host, dir string) (real string, files []string, dirs []string) {
+// A folder that is absent, outside the roots or not a folder is one answer (empty real, nil error); the host not answering is
+// an error.
+func (s *Server) remoteList(ctx context.Context, h hosts.Host, dir string) (real string, files []string, dirs []string, err error) {
 	if !h.InRoots(dir) {
-		return "", nil, nil
+		return "", nil, nil, nil
 	}
 	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "list", "path": dir})
+	if silent(err) {
+		return "", nil, nil, err
+	}
 	if err != nil {
-		return "", nil, nil
+		return "", nil, nil, nil
 	}
 	var l struct {
 		Path    string `json:"path"`
@@ -126,7 +183,7 @@ func (s *Server) remoteList(ctx context.Context, h hosts.Host, dir string) (real
 		} `json:"entries"`
 	}
 	if json.Unmarshal(rep.Head, &l) != nil {
-		return "", nil, nil
+		return "", nil, nil, nil
 	}
 	for _, e := range l.Entries {
 		switch e.Kind {
@@ -136,7 +193,7 @@ func (s *Server) remoteList(ctx context.Context, h hosts.Host, dir string) (real
 			dirs = append(dirs, e.Name)
 		}
 	}
-	return l.Path, files, dirs
+	return l.Path, files, dirs, nil
 }
 
 // Where a job's fit may be below its output folder: the pipeline writes <output>/<region>/rohsa_<label>.dat, and the search
@@ -166,7 +223,10 @@ func (s *Server) findRemoteROHSA(ctx context.Context, h hosts.Host, dir string) 
 			return nil, false, err
 		}
 		listed++
-		real, files, subs := s.remoteList(ctx, h, it.dir)
+		real, files, subs, err := s.remoteList(ctx, h, it.dir)
+		if err != nil {
+			return nil, false, err // the host stopped answering: not "no fit here"
+		}
 		if real == "" {
 			if it.depth == 0 {
 				return nil, false, errors.New("not available")
@@ -223,6 +283,8 @@ func (s *Server) rohsaTargetRemote(ctx context.Context, h hosts.Host, p string) 
 	switch {
 	case err != nil && errors.Is(err, context.Canceled):
 		return "", 499, "canceled"
+	case err != nil && silent(err):
+		return "", 502, "the host is not reachable (is the VPN up?)"
 	case err != nil:
 		return "", 403, "not available"
 	}
