@@ -1,6 +1,8 @@
 import type { Plane } from "../api/planes";
 import type { Dataset } from "../api/catalog";
 import { glyphStride, orientationLines, MIN_OPACITY } from "../viewer/glyphs";
+import { lut } from "../viewer/colormaps";
+import { MARKER_STRIDE } from "../api/overlays";
 import { outline } from "../viewer/region";
 import { readyGeometry, toPicture } from "./geometry";
 import type { GeometryMap } from "./geometry";
@@ -18,6 +20,8 @@ import type { OverlayKind, OverlayOf, Scene, SceneOverlay, SceneRegion } from ".
  * worker placed on the base by WCS (ctx.geometry); without it they draw nothing, and the overlay list says why.
  */
 export type MarkRole = "orientation" | "region" | "saved" | "draft";
+/** How a catalog marker is filled: with its ring's colour, a colour for its value (a #rrggbb string), or not at all (a value is unknown). */
+export type MarkerFill = "ink" | "none" | `#${string}`;
 /** A stroke an overlay chose: a palette colour, a width in output pixels, dashed or not (so layers differ without colour). */
 export type Stroke = { color: OverlayColor; width: number; dashed: boolean };
 export type Mark =
@@ -26,6 +30,11 @@ export type Mark =
   | { type: "circle"; role: Exclude<MarkRole, "orientation">; cx: number; cy: number; r: number }
   /** A polyline (closed: a polygon) as x0, y0, x1, y1, ...; fill is an opacity for a filled polygon. */
   | { type: "path"; role: "contour" | "grid" | "beam"; points: number[]; closed: boolean; stroke: Stroke; fill?: number }
+  /**
+   * A catalog source: a circle of r output pixels (so it keeps its size at every zoom) at a picture position, ringed in the
+   * overlay's colour. `layer` and `row` name the overlay and the table row, so a click can find the row.
+   */
+  | { type: "marker"; role: "catalog"; layer: string; row: number; x: number; y: number; r: number; ring: OverlayColor; ringWidth: number; fill: MarkerFill }
   /** A label at a picture position; size and offset are in output pixels so text does not scale with zoom. */
   | { type: "text"; role: "grid" | "beam"; x: number; y: number; text: string; color: OverlayColor; anchor: "start" | "middle" | "end"; baseline: "top" | "middle" | "bottom" };
 
@@ -144,6 +153,60 @@ export function beamText(b: { bmaj_arcsec?: number; bmin_arcsec?: number; bpa_de
   return `${a(b.bmaj_arcsec)} × ${a(b.bmin_arcsec)}${b.bpa_deg !== null && b.bpa_deg !== undefined ? `, PA ${Number(b.bpa_deg.toPrecision(4))}°` : ""}`;
 }
 
+export const MARKER_RADIUS = 4;
+const viridis = lut("viridis");
+/** The colour a catalog value has between the smallest and largest drawn (viridis, linear): the legend uses the same function. */
+export function valueColor(v: number, min: number, max: number): `#${string}` {
+  const t = max > min ? Math.min(1, Math.max(0, (v - min) / (max - min))) : 0.5;
+  const i = 3 * Math.round(t * 255);
+  const h = (n: number) => viridis[i + n]!.toString(16).padStart(2, "0");
+  return `#${h(0)}${h(1)}${h(2)}`;
+}
+
+/**
+ * Catalog sources from the worker's geometry: one marker per drawn row (ringed in the overlay colour; filled by the colour
+ * column's value, hollow when that value is unknown, so the colour is never the only cue: the legend and the row list state
+ * the numbers), and, when vectors are on, a headless segment through the marker, as long as the worker computed.
+ */
+const catalog: Renderer<"catalog"> = (o, _scene, { plane, geometry }) => {
+  const g = readyGeometry(geometry, o.id, "catalog");
+  if (!g) return [];
+  const h = plane.head.height;
+  const stroke = strokeOf(o, "catalog");
+  const c = g.head.color;
+  const lines: Mark[] = [];
+  const dots: Mark[] = [];
+  const m = g.markers;
+  for (let i = 0; i + MARKER_STRIDE <= m.length; i += MARKER_STRIDE) {
+    const [x, y] = toPicture(m[i]!, m[i + 1]!, h);
+    const angle = m[i + 2]!, length = m[i + 3]!, value = m[i + 4]!;
+    if (Number.isFinite(angle) && Number.isFinite(length)) {
+      const t = (angle * Math.PI) / 180;
+      const dx = Math.cos(t) * length / 2;
+      const dy = -Math.sin(t) * length / 2; // picture y points down
+      lines.push({ type: "line", role: "orientation", x1: x - dx, y1: y - dy, x2: x + dx, y2: y + dy, opacity: 1, stroke });
+    }
+    const fill: MarkerFill = c ? (Number.isFinite(value) ? valueColor(value, c.min ?? 0, c.max ?? 0) : "none") : "ink";
+    dots.push({ type: "marker", role: "catalog", layer: o.id, row: m[i + 5]!, x, y, r: MARKER_RADIUS, ring: stroke.color, ringWidth: Math.min(stroke.width, 2), fill });
+  }
+  return [...lines, ...dots];
+};
+
+/** The marker nearest a picture position (x right, y down, in image pixels) within `radiusPx` screen pixels at `cell` screen pixels per image pixel; null when none. A later layer wins a tie. */
+export function nearestMarker(marks: Mark[], x: number, y: number, cell: number, radiusPx = 9): Extract<Mark, { type: "marker" }> | null {
+  let best: Extract<Mark, { type: "marker" }> | null = null;
+  let bestD = radiusPx;
+  for (const m of marks) {
+    if (m.type !== "marker") continue;
+    const d = Math.hypot((m.x - x) * cell, (m.y - y) * cell);
+    if (d <= bestD) {
+      best = m;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
 /** Lines of constant longitude and latitude with their labels at the bottom and left edges. */
 const grid: Renderer<"grid"> = (o, _scene, { plane, geometry }) => {
   const g = readyGeometry(geometry, o.id, "grid");
@@ -187,10 +250,10 @@ const regions: Renderer<"regions"> = (o, scene, { plane, draft }) => {
 };
 
 /**
- * Overlay kind -> renderer. A kind without an entry (catalog) is specified in scene/1 but not drawn yet; the figure endpoint
- * refuses such a scene, so a picture never claims a layer it lacks.
+ * Overlay kind -> renderer. A kind without an entry would be specified in scene/1 but not drawn; the figure endpoint refuses
+ * such a scene, so a picture never claims a layer it lacks. Every kind has one today.
  */
-const registry: { [K in OverlayKind]?: Renderer<K> } = { orientation, regions, contours, beam, grid };
+const registry: { [K in OverlayKind]?: Renderer<K> } = { orientation, regions, contours, catalog, beam, grid };
 
 export const drawnKinds = (): OverlayKind[] => Object.keys(registry) as OverlayKind[];
 
@@ -280,6 +343,24 @@ export function strokeMarks(ctx: CanvasRenderingContext2D, marks: Mark[], sx: nu
     ctx.stroke();
   }
   ctx.setLineDash([]);
+  for (const m of marks) {
+    if (m.type !== "marker") continue;
+    const x = m.x * sx, y = m.y * sy;
+    ctx.beginPath();
+    ctx.arc(x, y, m.r + 1, 0, Math.PI * 2);
+    ctx.lineWidth = m.ringWidth + 2;
+    ctx.strokeStyle = HALO;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, m.r, 0, Math.PI * 2);
+    if (m.fill !== "none") {
+      ctx.fillStyle = m.fill === "ink" ? OVERLAY_COLORS[m.ring] : m.fill;
+      ctx.fill();
+    }
+    ctx.lineWidth = m.ringWidth;
+    ctx.strokeStyle = OVERLAY_COLORS[m.ring];
+    ctx.stroke();
+  }
   ctx.font = `${LABEL_PX}px ${FONT}`;
   for (const m of marks) {
     if (m.type !== "text") continue;

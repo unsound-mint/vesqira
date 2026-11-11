@@ -14,4 +14,4 @@ export type OverlayColor = keyof typeof OVERLAY_COLORS;
 export const OVERLAY_COLOR_NAMES = Object.keys(OVERLAY_COLORS) as OverlayColor[];
 
 /** Default stroke widths in output pixels, by kind, when the overlay sets none. */
-export const DEFAULT_WIDTH: Record<"contours" | "orientation" | "beam" | "grid", number> = { contours: 1.25, orientation: 2, beam: 1.5, grid: 0.75 };
+export const DEFAULT_WIDTH: Record<"contours" | "orientation" | "catalog" | "beam" | "grid", number> = { contours: 1.25, orientation: 2, catalog: 1.5, beam: 1.5, grid: 0.75 };

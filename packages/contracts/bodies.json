@@ -2828,7 +2828,7 @@
      "grid": "#/components/schemas/GridOverlay"
     }
    },
-   "description": "One layer over the base. Orientation, regions, contours, beam and grid are drawn; catalog is specified for a later slice, and a figure refuses it until then. Overlays from another dataset are placed by WCS geometry, never by resampling its data."
+   "description": "One layer over the base. Orientation, regions, contours, catalog, beam and grid are drawn. Overlays from another dataset are placed by WCS geometry, never by resampling its data."
   },
   "OrientationOverlay": {
    "type": "object",
@@ -3226,13 +3226,12 @@
   "CatalogOverlay": {
    "type": "object",
    "additionalProperties": false,
-   "description": "Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames. A figure refuses it.",
+   "description": "Markers of a point catalog (ADR 0044) over the base, one per row, placed by WCS from the celestial frame the person declared for the catalog (never assumed) to the base's frame with astropy. The position columns, the frame and the meaning of the angle come from the catalog's stored declaration, never from the scene. Optional vectors (headless segments) are the declared angle turned into sky-frame B-field orientation (starlight unrotated, dust polarization and gradients rotated by 90 degrees; refused, naming the missing declaration, when the quantity is not declared) and carried into the base's pixel frame. Rows outside the base's footprint, rows removed by the filter and rows with no readable position are counted, not drawn.",
    "required": [
     "id",
     "kind",
     "datasetId",
-    "visible",
-    "columns"
+    "visible"
    ],
    "properties": {
     "id": {
@@ -3254,35 +3253,80 @@
     "visible": {
      "type": "boolean"
     },
-    "columns": {
+    "vectors": {
+     "type": "boolean",
+     "description": "Draw an orientation vector at each row from the declared angle column. Absent: markers only."
+    },
+    "lengthColumn": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64,
+     "description": "Vector length from this column. Needs vectors. Absent: every vector has the same length. A missing, unreadable, zero or negative value draws no vector."
+    },
+    "lengthScale": {
+     "type": "number",
+     "minimum": 1e-9,
+     "maximum": 1000000,
+     "description": "Base pixels per unit of the length column. Absent: chosen so that the 99th percentile of the drawn values is 6% of the base's shorter side; the overlay states the scale it used."
+    },
+    "colorColumn": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 64,
+     "description": "Colour each marker by this column, linearly between the smallest and largest value drawn (a legend states them). A row with no value is drawn hollow."
+    },
+    "filter": {
      "type": "object",
      "additionalProperties": false,
      "required": [
-      "lon",
-      "lat"
+      "column",
+      "min"
      ],
+     "description": "Keep rows whose column (divided by sigmaColumn when given, for example P / sigma_P >= 3) is at least min. A row whose value or uncertainty is missing, unreadable or (for an uncertainty) not positive does not pass and is counted as unknown.",
      "properties": {
-      "lon": {
+      "column": {
        "type": "string",
        "minLength": 1,
-       "maxLength": 64
+       "maxLength": 64,
+       "description": "A table column with one value per row"
       },
-      "lat": {
+      "sigmaColumn": {
        "type": "string",
        "minLength": 1,
-       "maxLength": 64
+       "maxLength": 64,
+       "description": "The column holding the uncertainty of column"
       },
-      "angle": {
-       "type": "string",
-       "minLength": 1,
-       "maxLength": 64
-      },
-      "angleError": {
-       "type": "string",
-       "minLength": 1,
-       "maxLength": 64
+      "min": {
+       "type": "number",
+       "minimum": -1e+30,
+       "maximum": 1e+30
       }
      }
+    },
+    "color": {
+     "type": "string",
+     "enum": [
+      "white",
+      "cyan",
+      "amber",
+      "magenta",
+      "lime"
+     ],
+     "description": "Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white."
+    },
+    "width": {
+     "type": "number",
+     "minimum": 0.5,
+     "maximum": 4,
+     "description": "Stroke width in output pixels. Absent: the kind's default."
+    },
+    "dash": {
+     "type": "string",
+     "enum": [
+      "solid",
+      "dashed"
+     ],
+     "description": "So overlays can be told apart without colour. Absent: solid."
     }
    }
   },
@@ -5178,7 +5222,8 @@
       "contours",
       "orientation",
       "beam",
-      "grid"
+      "grid",
+      "catalog"
      ]
     },
     "dtype": {
@@ -5299,7 +5344,7 @@
     },
     "conversion": {
      "type": "string",
-     "description": "orientation: how the stored angles became B-field orientation in the base pixel frame"
+     "description": "orientation, catalog with vectors: how the stored angles became B-field orientation in the base pixel frame"
     },
     "reliability": {
      "type": "object",
@@ -5376,6 +5421,159 @@
     },
     "note": {
      "type": "string"
+    },
+    "markers": {
+     "type": "integer",
+     "description": "catalog: the payload is markers rows of six numbers (x, y, vector angle, vector length, colour value, row): x, y in base pixels; vector angle in degrees counter-clockwise from the base's +x pixel axis towards +y, in [0, 180), and vector length in base pixels (NaN: no vector at this row); the colour value as in the catalog (NaN: unknown); row is the 1-based row number in the table."
+    },
+    "counts": {
+     "type": "object",
+     "description": "catalog: every row of the table is in exactly one of no_position, outside, filtered and drawn.",
+     "properties": {
+      "rows": {
+       "type": "integer"
+      },
+      "no_position": {
+       "type": "integer"
+      },
+      "no_position_missing": {
+       "type": "integer"
+      },
+      "no_position_unreadable": {
+       "type": "integer"
+      },
+      "outside": {
+       "type": "integer"
+      },
+      "filtered": {
+       "type": "integer"
+      },
+      "drawn": {
+       "type": "integer"
+      }
+     }
+    },
+    "filter": {
+     "type": "object",
+     "description": "catalog: the row filter as applied, counted over the rows on the base.",
+     "nullable": true,
+     "properties": {
+      "rule": {
+       "type": "string"
+      },
+      "column": {
+       "type": "string"
+      },
+      "sigma_column": {
+       "type": "string",
+       "nullable": true
+      },
+      "min": {
+       "type": "number"
+      },
+      "kept": {
+       "type": "integer"
+      },
+      "removed": {
+       "type": "integer"
+      },
+      "unknown": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     }
+    },
+    "vectors": {
+     "type": "object",
+     "description": "catalog: the orientation vectors, when drawn.",
+     "nullable": true,
+     "properties": {
+      "quantity": {
+       "type": "string"
+      },
+      "drawn": {
+       "type": "integer"
+      },
+      "no_angle": {
+       "type": "integer"
+      },
+      "no_length": {
+       "type": "integer"
+      },
+      "length": {
+       "type": "object",
+       "properties": {
+        "column": {
+         "type": "string",
+         "nullable": true
+        },
+        "unit": {
+         "type": "string",
+         "nullable": true
+        },
+        "px_per_unit": {
+         "type": "number",
+         "nullable": true
+        },
+        "fixed_px": {
+         "type": "number",
+         "nullable": true
+        },
+        "method": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    "color": {
+     "type": "object",
+     "description": "catalog: the colour column and the range its legend states.",
+     "nullable": true,
+     "properties": {
+      "column": {
+       "type": "string"
+      },
+      "unit": {
+       "type": "string",
+       "nullable": true
+      },
+      "min": {
+       "type": "number",
+       "nullable": true
+      },
+      "max": {
+       "type": "number",
+       "nullable": true
+      },
+      "unknown": {
+       "type": "integer"
+      },
+      "scale": {
+       "type": "string"
+      }
+     }
+    },
+    "catalog": {
+     "type": "object",
+     "description": "catalog: how the table was read.",
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "frame": {
+       "type": "string"
+      },
+      "frame_status": {
+       "type": "string"
+      },
+      "skipped_lines": {
+       "type": "integer",
+       "description": "Lines of the file that were not rows (see the catalog's parse report)."
+      }
+     }
     }
    }
   },

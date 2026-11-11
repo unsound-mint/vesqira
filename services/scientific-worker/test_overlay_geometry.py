@@ -480,6 +480,218 @@ class Geometry(unittest.TestCase):
         self.assertFalse(head["ok"])
 
 
+class CatalogOverlay(unittest.TestCase):
+    """Point catalogs on a base map (ADR 0042 catalog overlay, ADR 0044): positions and angles are checked against astropy used
+    directly here, counts must partition the rows, and a missing declaration is refused by name."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.d = Path(cls.tmp.name)
+        cls.c = Client()
+        cls.n = 41
+        cls.hb = header(n=cls.n, cd=rot_cd(35.0, SCALE * 0.9), extra={"RADESYS": "ICRS"})     # rotated, 0.9 arcmin pixels
+        cls.base = cls.d / "base.fits"
+        write(cls.base, np.zeros((cls.n, cls.n)), cls.hb)
+        cls.w = WCS(cls.hb)
+        cls.centre = SkyCoord(150.0 * u.deg, 2.0 * u.deg, frame="icrs")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.c.close()
+        cls.tmp.cleanup()
+
+    DECL = {"lon": "ra", "lat": "dec", "format": "degrees", "frame": "icrs", "equinox": None,
+            "angle": {"column": "pa", "unit": "deg", "frame": "sky", "quantity": "starlight_polarization", "sigmaColumn": None}, "values": []}
+
+    def table(self, name, rows, header_line="ra,dec,pa,p,sp"):
+        p = self.d / name
+        p.write_text(header_line + "\n" + "\n".join(rows) + "\n")
+        return p
+
+    def ask(self, table, spec, decl=None, **extra):
+        spec = {"kind": "catalog", **spec}
+        return self.c.ask(op="overlay_catalog", path=str(self.base), overlay_path=str(table), overlay=spec, declaration=decl or self.DECL, **extra)
+
+    @staticmethod
+    def drawn(head, payload):
+        a = np.frombuffer(payload, dtype="<f4").reshape(-1, 6).astype(float)
+        assert len(a) == head["markers"]
+        return a
+
+    def at(self, dx_arcmin, dy_arcmin):
+        s = self.centre.spherical_offsets_by(dx_arcmin * u.arcmin, dy_arcmin * u.arcmin)
+        return float(s.ra.deg), float(s.dec.deg)
+
+    def test_rows_land_at_the_astropy_pixels_on_a_rotated_base(self):
+        offs = [(0, 0), (5, 3), (-7, 8), (10, -9), (-12, -4)]
+        rows = [f"{ra:.8f},{dec:.8f},0,1,0.1" for ra, dec in (self.at(*o) for o in offs)]
+        head, payload = self.ask(self.table("pos.csv", rows), {})
+        self.assertTrue(head["ok"], head)
+        a = self.drawn(head, payload)
+        self.assertEqual(head["counts"]["drawn"], 5)
+        for k, (ra, dec) in enumerate(self.at(*o) for o in offs):
+            x, y = self.w.world_to_pixel(SkyCoord(ra * u.deg, dec * u.deg, frame="icrs"))
+            self.assertEqual(int(a[k][5]), k + 1)
+            self.assertLess(math.hypot(a[k][0] - float(x), a[k][1] - float(y)), 0.5)
+        self.assertIn("declared by you", head["placement"]["method"])
+        self.assertIn("base frame ICRS (declared in the header)", head["placement"]["method"])
+
+    def test_galactic_catalog_on_an_icrs_base(self):
+        offs = [(0, 0), (6, -5), (-8, 7)]
+        sky = [SkyCoord(*self.at(*o), unit="deg", frame="icrs") for o in offs]
+        rows = [f"{s.galactic.l.deg:.8f},{s.galactic.b.deg:.8f},0,1,0.1" for s in sky]
+        decl = {**self.DECL, "frame": "galactic"}
+        head, payload = self.ask(self.table("gal.csv", rows), {"vectors": True}, decl)
+        self.assertTrue(head["ok"], head)
+        self.assertFalse(head["placement"]["same_frame"])
+        self.assertEqual((head["placement"]["from_frame"], head["placement"]["to_frame"]), ("Galactic", "ICRS"))
+        a = self.drawn(head, payload)
+        for k, s in enumerate(sky):
+            x, y = self.w.world_to_pixel(s)
+            self.assertLess(math.hypot(a[k][0] - float(x), a[k][1] - float(y)), 0.5)
+            # starlight PA 0 is Galactic north: step towards it on the sky and see where that lands on the base
+            g = s.galactic
+            tip = SkyCoord(g.l, g.b + 1e-3 * u.deg, frame="galactic").icrs
+            tx, ty = self.w.world_to_pixel(tip)
+            want = math.degrees(math.atan2(float(ty) - float(y), float(tx) - float(x))) % 180.0
+            self.assertLess(axial_dist(a[k][2], want), 0.05)
+
+    def north_east_in_pixels(self, ra, dec):
+        """Base pixel direction (degrees counter-clockwise from +x, mod 180) of celestial north and east at a position, by astropy."""
+        x, y = (float(v) for v in self.w.world_to_pixel(SkyCoord(ra * u.deg, dec * u.deg)))
+        eps = 1e-3
+        out = []
+        for dra, ddec in ((0.0, eps), (eps / math.cos(math.radians(dec)), 0.0)):
+            tx, ty = self.w.world_to_pixel(SkyCoord((ra + dra) * u.deg, (dec + ddec) * u.deg))
+            out.append(math.degrees(math.atan2(float(ty) - y, float(tx) - x)) % 180.0)
+        return out
+
+    def test_starlight_north_points_to_base_north_and_dust_is_rotated_a_quarter_turn(self):
+        ra, dec = self.at(4, -3)
+        north, east = self.north_east_in_pixels(ra, dec)
+        self.assertGreater(axial_dist(north, east), 80.0)        # the rotated base really distinguishes them
+        t = self.table("pa0.csv", [f"{ra:.8f},{dec:.8f},0,1,0.1"])
+        head, payload = self.ask(t, {"vectors": True})
+        self.assertTrue(head["ok"], head)
+        a = self.drawn(head, payload)
+        self.assertLess(axial_dist(a[0][2], north), 0.05)
+        self.assertIn("starlight polarization, parallel to B", head["conversion"])
+        dust = {**self.DECL, "angle": {**self.DECL["angle"], "quantity": "dust_polarization"}}
+        head, payload = self.ask(t, {"vectors": True}, dust)
+        self.assertLess(axial_dist(self.drawn(head, payload)[0][2], east), 0.05)       # dust polarization 0 (north) means B is east: +90
+        self.assertIn("rotated by 90 degrees", head["conversion"])
+        # an angle in radians and an angle of 180 degrees are the same orientation as 0
+        t2 = self.table("pa180.csv", [f"{ra:.8f},{dec:.8f},180,1,0.1"])
+        head, payload = self.ask(t2, {"vectors": True})
+        self.assertLess(axial_dist(self.drawn(head, payload)[0][2], north), 0.05)
+
+    def test_an_undeclared_angle_quantity_is_refused_naming_it(self):
+        ra, dec = self.at(0, 0)
+        t = self.table("q.csv", [f"{ra:.8f},{dec:.8f},10,1,0.1"])
+        for q, word in ((None, "does not declare what its angle column 'pa' is"), ("unspecified", "'unspecified'")):
+            decl = {**self.DECL, "angle": {**self.DECL["angle"], "quantity": q}}
+            head, _ = self.ask(t, {"vectors": True}, decl)
+            self.assertFalse(head["ok"])
+            self.assertIn(word, head["error"])
+            # markers alone need no quantity
+            head, _ = self.ask(t, {}, decl)
+            self.assertTrue(head["ok"], head)
+        head, _ = self.ask(t, {"vectors": True}, {**self.DECL, "angle": None})
+        self.assertIn("declares none", head["error"])
+
+    def test_every_row_is_counted_once_and_the_filter_reuses_value_over_sigma(self):
+        ins = [self.at(*o) for o in [(0, 0), (3, 3), (-4, 5), (6, -6), (-9, -2), (2, 9)]]
+        ps = [(2.0, 0.1), (1.0, 0.5), (3.0, 0.1), (0.5, 0.0), (1.0, ""), ("", 0.1)]     # ratios 20, 2, 30, undefined (sigma 0), unknown, unknown
+        rows = [f"{ra:.8f},{dec:.8f},10,{p},{sp}" for (ra, dec), (p, sp) in zip(ins, ps)]
+        far_ra, far_dec = self.at(300, 0)                                             # 5 degrees away: off the 37 arcmin footprint
+        rows += [f"{far_ra:.8f},{far_dec:.8f},10,5,0.1", "abc,10,10,5,0.1", ",,10,5,0.1"]
+        t = self.table("flt.csv", rows)
+        head, payload = self.ask(t, {}, None)
+        self.assertEqual(head["counts"], {"rows": 9, "no_position": 2, "no_position_missing": 1, "no_position_unreadable": 1, "outside": 1, "filtered": 0, "drawn": 6})
+        head, payload = self.ask(t, {"filter": {"column": "p", "sigmaColumn": "sp", "min": 5.0}})
+        self.assertTrue(head["ok"], head)
+        c = head["counts"]
+        self.assertEqual((c["drawn"], c["filtered"], c["outside"], c["no_position"]), (2, 4, 1, 2))
+        self.assertEqual(c["drawn"] + c["filtered"] + c["outside"] + c["no_position"], c["rows"])
+        f = head["filter"]
+        self.assertEqual((f["kept"], f["removed"], f["unknown"]), (2, 1, 3))             # the ratio 2 is removed; sigma 0, empty sigma and empty value are unknown
+        self.assertEqual(f["rule"], "p / sp >= 5")
+        self.assertEqual([int(r[5]) for r in self.drawn(head, payload)], [1, 3])
+        head, payload = self.ask(t, {"filter": {"column": "p", "min": 1.5}})                 # without sigma: the value itself
+        self.assertEqual(head["filter"]["rule"], "p >= 1.5")
+        self.assertEqual([int(r[5]) for r in self.drawn(head, payload)], [1, 3])
+
+    def test_a_row_at_the_antipode_of_the_reference_point_is_outside(self):
+        anti = SkyCoord(150.0 * u.deg + 180 * u.deg, -2.0 * u.deg, frame="icrs")
+        t = self.table("anti.csv", [f"{anti.ra.deg:.8f},{anti.dec.deg:.8f},0,1,0.1"])
+        head, payload = self.ask(t, {})
+        self.assertTrue(head["ok"], head)
+        self.assertEqual((head["counts"]["drawn"], head["counts"]["outside"]), (0, 1))
+
+    def test_vector_length_by_a_column_has_a_stated_scale_and_skips_missing_and_zero_values(self):
+        offs = [(0, 0), (4, 4), (-5, 3), (6, -6), (-8, -8)]
+        vals = [1.0, 2.0, 4.0, 0.0, ""]
+        rows = [f"{ra:.8f},{dec:.8f},20,{v},0.1" for (ra, dec), v in zip((self.at(*o) for o in offs), vals)]
+        t = self.table("len.csv", rows)
+        head, payload = self.ask(t, {"vectors": True, "lengthColumn": "p"})
+        self.assertTrue(head["ok"], head)
+        a = self.drawn(head, payload)
+        v = head["vectors"]
+        self.assertEqual((v["drawn"], v["no_length"], v["no_angle"]), (3, 2, 0))
+        per = v["length"]["px_per_unit"]
+        p99 = float(np.percentile([1.0, 2.0, 4.0], 99))
+        self.assertAlmostEqual(per, 0.06 * self.n / p99, places=6)
+        np.testing.assert_allclose(a[:3, 3], [1.0 * per, 2.0 * per, 4.0 * per], rtol=1e-5)
+        self.assertTrue(np.all(np.isnan(a[3:, 3])) and np.all(np.isnan(a[3:, 2])))
+        self.assertIn("99th percentile", v["length"]["method"])
+        head, payload = self.ask(t, {"vectors": True, "lengthColumn": "p", "lengthScale": 2.5})
+        np.testing.assert_allclose(self.drawn(head, payload)[:3, 3], [2.5, 5.0, 10.0], rtol=1e-5)
+        head, payload = self.ask(t, {"vectors": True})
+        self.assertEqual(head["vectors"]["length"]["fixed_px"], 0.06 * self.n)
+        np.testing.assert_allclose(self.drawn(head, payload)[:, 3], 0.06 * self.n, rtol=1e-5)
+
+    def test_colour_by_a_value_column_reports_its_range_and_unknown_rows(self):
+        offs = [(0, 0), (4, 4), (-5, 3)]
+        rows = [f"{ra:.8f},{dec:.8f},20,{p},0.1" for (ra, dec), p in zip((self.at(*o) for o in offs), [1.5, "", 4.5])]
+        head, payload = self.ask(self.table("col.csv", rows), {"colorColumn": "p"})
+        self.assertTrue(head["ok"], head)
+        self.assertEqual({k: head["color"][k] for k in ("column", "min", "max", "unknown")}, {"column": "p", "min": 1.5, "max": 4.5, "unknown": 1})
+        a = self.drawn(head, payload)
+        self.assertTrue(np.isnan(a[1][4]))
+
+    def test_bad_requests_are_refused_by_name(self):
+        ra, dec = self.at(0, 0)
+        t = self.table("bad.csv", [f"{ra:.8f},{dec:.8f},10,1,0.1"])
+        head, _ = self.ask(t, {"colorColumn": "nope"})
+        self.assertIn("colour column: there is no column named 'nope'", head["error"])
+        head, _ = self.ask(t, {"filter": {"column": "p", "sigmaColumn": "zz", "min": 1}})
+        self.assertIn("filter uncertainty column", head["error"])
+        head, _ = self.ask(t, {"lengthColumn": "p"})
+        self.assertIn("needs orientation vectors", head["error"])
+        head, _ = self.ask(t, {}, {**self.DECL, "frame": None})
+        self.assertIn("the catalog's declaration", head["error"])
+        head, _ = self.c.ask(op="overlay_catalog", path=str(self.base), overlay_path=str(t), overlay={"kind": "contours"}, declaration=self.DECL)
+        self.assertFalse(head["ok"])
+
+    def test_more_markers_than_the_budget_is_refused_not_truncated(self):
+        import catalog_table as ct
+        offs = [(i % 10 - 5, i // 10 - 5) for i in range(30)]
+        rows = [f"{ra:.8f},{dec:.8f},10,1,0.1" for ra, dec in (self.at(*o) for o in offs)]
+        t = self.table("many.csv", rows)
+        old = og.MAX_MARKERS
+        og.MAX_MARKERS = 10
+        try:
+            import os
+            import plane_worker
+            cube = plane_worker.cube_for(os.path.realpath(self.base))
+            with self.assertRaises(og.Refusal) as cm:
+                og.catalog(cube, ct.load(str(t)), self.DECL, {"kind": "catalog"})
+            self.assertIn("add a row filter", str(cm.exception))
+        finally:
+            og.MAX_MARKERS = old
+
+
 def _seg_dist(p, a, b):
     ab = b - a
     t = 0.0 if not np.any(ab) else float(np.clip(np.dot(p - a, ab) / np.dot(ab, ab), 0, 1))

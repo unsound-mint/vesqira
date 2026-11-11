@@ -7,6 +7,7 @@ import type { Tool } from "./region";
 import { channelForKey } from "./geometry";
 import { useSavedRegions } from "./useSavedRegions";
 import { useOverlayGeometry } from "./useOverlayGeometry";
+import type { PickedSource } from "./SourceRow";
 import { toShape } from "../api/regions";
 import type { ColormapId } from "./colormaps";
 import type { RangeMode, Stretch } from "./render";
@@ -49,6 +50,8 @@ export function useViewer(dataset: Dataset | null) {
   const scene = pane.scene;
   const [hover, setHover] = useState<Pixel | null>(null);
   const [pinned, setPinned] = useState<Pixel | null>(null);
+  // the catalog row picked on the map or in the overlay's list (ephemeral, like the pinned pixel)
+  const [picked, setPicked] = useState<PickedSource | null>(null);
   // the pixel under the cursor in the linked pane, when the two maps share a grid
   const [mirror, setMirror] = useState<Pixel | null>(null);
   const [coord, setCoord] = useState<Coord | null>(null);
@@ -67,6 +70,9 @@ export function useViewer(dataset: Dataset | null) {
   // output pixels per image pixel on screen, reported by the plane viewer: automatic orientation spacing depends on it
   const [drawScale, setDrawScale] = useState(0);
   const geometry = useOverlayGeometry(scene, drawScale);
+  useEffect(() => {
+    if (picked && !scene?.overlays.some((o) => o.id === picked.overlayId && o.kind === "catalog" && o.visible)) setPicked(null);
+  }, [picked, scene?.overlays]);
 
   // the scene, read the way the panels always have
   const display = scene?.base.display ?? pane.keep.display;
@@ -114,6 +120,7 @@ export function useViewer(dataset: Dataset | null) {
     dispatch({ type: "resetForDataset", datasetId, axial: interp !== null }); // channel 0, fitted, no region; colours carry over
     setHover(null);
     setPinned(null);
+    setPicked(null);
     setCoord(null);
     setConv(NO_CONV);
     setOffers(null);
@@ -373,7 +380,7 @@ export function useViewer(dataset: Dataset | null) {
   return {
     scene, dispatch: dispatch as (a: PaneAction) => void, datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
     zoom, setZoom, setCentre, colormap, setColormap, stretch, setStretch, range, setRange, customLimits, setCustomLimits, setScaleGroup,
-    hover, setHover, mirror, setMirror, pinned, setPinned, probe, pixelValue, coord, coordError,
+    hover, setHover, mirror, setMirror, pinned, setPinned, picked, setPicked, probe, pixelValue, coord, coordError,
     conv, setConv, offers, convError, convertedNow: converted && converted.key === convKey ? converted.r : null,
     canvas, interp, reliability, axial, axialError, showLines, setShowLines, geometry, drawScale, setDrawScale,
     tool, setTool, region, setRegion, savedRegions, spectrum, spectrumError, spectrumLoading,

@@ -30,7 +30,7 @@ var ErrInvalid = errors.New("invalid scene")
 // would describe layers its picture does not have, so Parse refuses them until the slice that draws them.
 var (
 	Kinds = []string{"orientation", "regions", "contours", "catalog", "beam", "grid"}
-	Drawn = map[string]bool{"orientation": true, "regions": true, "contours": true, "beam": true, "grid": true}
+	Drawn = map[string]bool{"orientation": true, "regions": true, "contours": true, "catalog": true, "beam": true, "grid": true}
 )
 
 type Scene struct {
@@ -140,6 +140,20 @@ type Overlay struct {
 	Corner string `json:"corner,omitempty"`
 	// grid
 	Frame string `json:"frame,omitempty"`
+	// catalog: the position columns and the angle's meaning come from the catalog's stored declaration, never from the scene
+	Vectors      bool           `json:"vectors,omitempty"`
+	LengthColumn string         `json:"lengthColumn,omitempty"`
+	LengthScale  *float64       `json:"lengthScale,omitempty"`
+	ColorColumn  string         `json:"colorColumn,omitempty"`
+	Filter       *CatalogFilter `json:"filter,omitempty"`
+}
+
+// CatalogFilter keeps the rows of a catalog whose Column (divided by SigmaColumn when given) is at least Min. A row whose value or
+// uncertainty is missing, unreadable or (for an uncertainty) not positive does not pass; the overlay counts such rows.
+type CatalogFilter struct {
+	Column      string   `json:"column"`
+	SigmaColumn string   `json:"sigmaColumn,omitempty"`
+	Min         *float64 `json:"min"`
 }
 
 // MarshalJSON writes only the fields of the overlay's kind; a regions overlay always has its saved list, even empty.
@@ -171,6 +185,16 @@ func (o Overlay) MarshalJSON() ([]byte, error) {
 			Unit    *string `json:"unit,omitempty"`
 			Style
 		}{c, o.Channel, o.Levels, o.Unit, o.Style})
+	case "catalog":
+		return json.Marshal(struct {
+			common
+			Vectors      bool           `json:"vectors,omitempty"`
+			LengthColumn string         `json:"lengthColumn,omitempty"`
+			LengthScale  *float64       `json:"lengthScale,omitempty"`
+			ColorColumn  string         `json:"colorColumn,omitempty"`
+			Filter       *CatalogFilter `json:"filter,omitempty"`
+			Style
+		}{c, o.Vectors, o.LengthColumn, o.LengthScale, o.ColorColumn, o.Filter, o.Style})
 	case "beam":
 		return json.Marshal(struct {
 			common
@@ -201,6 +225,8 @@ var (
 	idText    = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 	unitText  = regexp.MustCompile(`^[A-Za-z0-9/*^. -]{0,16}$`)
 	plainText = regexp.MustCompile(`^[^\x00-\x1f<>"&\\]{0,64}$`)
+	// a catalog column name as the table gives it (names may hold brackets and percent signs), shown in the interface
+	columnText = regexp.MustCompile(`^[^\x00-\x1f<>"&\\]{1,64}$`)
 )
 
 func bad(format string, a ...any) error {
@@ -589,6 +615,69 @@ func parseOverlay(raw []byte) (Overlay, error) {
 			return Overlay{}, bad("the contour unit is plain short text")
 		}
 		o.Channel, o.Unit = in.Channel, in.Unit
+		return o, nil
+	case "catalog":
+		var in struct {
+			common
+			Vectors      *bool    `json:"vectors"`
+			LengthColumn *string  `json:"lengthColumn"`
+			LengthScale  *float64 `json:"lengthScale"`
+			ColorColumn  *string  `json:"colorColumn"`
+			Filter       *struct {
+				Column      *string  `json:"column"`
+				SigmaColumn *string  `json:"sigmaColumn"`
+				Min         *float64 `json:"min"`
+			} `json:"filter"`
+			styleIn
+		}
+		if err := strict(raw, &in); err != nil {
+			return Overlay{}, bad("catalog: %v", err)
+		}
+		o, err := check(in.common)
+		if err != nil {
+			return o, err
+		}
+		if o.Style, err = in.styleIn.read(); err != nil {
+			return Overlay{}, err
+		}
+		column := func(what string, p *string) (string, error) {
+			if p == nil {
+				return "", nil
+			}
+			if !columnText.MatchString(*p) {
+				return "", bad("the catalog's %s is a column name of 1 to 64 plain characters", what)
+			}
+			return *p, nil
+		}
+		o.Vectors = in.Vectors != nil && *in.Vectors
+		if o.LengthColumn, err = column("length column", in.LengthColumn); err != nil {
+			return Overlay{}, err
+		}
+		if o.ColorColumn, err = column("colour column", in.ColorColumn); err != nil {
+			return Overlay{}, err
+		}
+		if o.LengthColumn != "" && !o.Vectors {
+			return Overlay{}, bad("a catalog length column needs vectors to be on")
+		}
+		if in.LengthScale != nil {
+			if o.LengthColumn == "" || !finite(*in.LengthScale) || *in.LengthScale <= 0 || *in.LengthScale > maxCoord {
+				return Overlay{}, bad("a catalog length scale is a positive number of pixels per unit and goes with a length column")
+			}
+			o.LengthScale = in.LengthScale
+		}
+		if f := in.Filter; f != nil {
+			if f.Column == nil || f.Min == nil || !finite(*f.Min) || math.Abs(*f.Min) > maxLevel {
+				return Overlay{}, bad("a catalog filter needs a column and a finite minimum")
+			}
+			cf := &CatalogFilter{Min: f.Min}
+			if cf.Column, err = column("filter column", f.Column); err != nil {
+				return Overlay{}, err
+			}
+			if cf.SigmaColumn, err = column("filter uncertainty column", f.SigmaColumn); err != nil {
+				return Overlay{}, err
+			}
+			o.Filter = cf
+		}
 		return o, nil
 	case "beam":
 		var in struct {

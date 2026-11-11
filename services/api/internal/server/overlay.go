@@ -14,14 +14,16 @@ import (
 
 // geometryKinds are the overlay kinds the worker places on a base map (ADR 0042, section 3). Regions are drawn from the
 // scene alone, and same-dataset orientation lines from the plane on screen; the route still serves those for one call path.
-var geometryKinds = map[string]bool{"contours": true, "orientation": true, "beam": true, "grid": true}
+var geometryKinds = map[string]bool{"contours": true, "orientation": true, "beam": true, "grid": true, "catalog": true}
 
 // overlayGeometry answers with the geometry of one overlay on this dataset as the base, in base pixels, as a binary frame.
 // Overlays from another dataset are placed by WCS, never resampled. Every file the overlay reads is authorized as a plane
 // read is (inside the roots, unchanged since it was registered), and must be on the base's machine. What the catalog
 // declares about the overlay dataset (its unit for a file without BUNIT, the angle convention, the reliability map) is
 // taken from the catalog, never from the request. A refusal from the worker (frames that cannot be related, footprints that
-// do not overlap, a missing declaration, no beam) is a 422 with its reason.
+// do not overlap, a missing declaration, no beam) is a 422 with its reason. A catalog overlay (ADR 0044) reads a point
+// catalog: its columns, frame and angle meaning are the stored declaration (409 when missing or stale), and the table is read
+// on the worker's heavy lane.
 func (s *Server) overlayGeometry(w http.ResponseWriter, r *http.Request) {
 	d, real, k, ok := s.source(w, r)
 	if !ok {
@@ -65,6 +67,10 @@ func (s *Server) overlayGeometry(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if (ov.Kind == catalog.KindCatalog) != (o.Kind == "catalog") {
+		fail(w, 409, "this overlay kind and this dataset do not match: a catalog overlay needs a point catalog, and a point catalog has no pixel grid to contour, sample or take a beam from")
+		return
+	}
 	// The cache key is everything that can change the answer: the base and overlay file identities (and declared units, in
 	// the keys), the overlay's geometry settings (not its colour or visibility), the declarations read from the catalog,
 	// the reliability map's identity and the spacing.
@@ -83,6 +89,26 @@ func (s *Server) overlayGeometry(w http.ResponseWriter, r *http.Request) {
 	req := map[string]any{"op": "overlay_geometry", "path": real, "overlay_path": ovReal, "overlay": specMap}
 	k.op = "overlay"
 	k.q = string(specJSON) + "|o" + identity(ovKey) + "|u" + ovKey.unit
+	if o.Kind == "catalog" {
+		if why := checkCatalogOverlay(o, ov); why != "" {
+			fail(w, 409, why)
+			return
+		}
+		decl, _, _ := declarationArg(ov)
+		declJSON, err := json.Marshal(decl)
+		if err != nil {
+			fail(w, 500, "internal error")
+			return
+		}
+		req["op"], req["declaration"] = "overlay_catalog", decl
+		k.q += "|d" + string(declJSON) // a declaration changed (frame, quantity, columns) must not be answered from the cache
+		rep, ok := s.ask(w, r, k, req)
+		if !ok {
+			return
+		}
+		writeFrameAs(w, rep, "application/vnd.vesqira.geometry")
+		return
+	}
 	axial := ov.Interpretation != nil && ov.Interpretation.Kind == "axial_orientation"
 	switch o.Kind {
 	case "contours":
@@ -167,4 +193,49 @@ func deref(p *string) string {
 		return "-"
 	}
 	return *p
+}
+
+// checkCatalogOverlay holds a catalog overlay to the catalog it names, with what the server knows without reading the table: it
+// is a point catalog with a fresh declaration, every column the overlay names exists and holds one value per row, and vectors
+// have a declared angle whose quantity says how it relates to B. It returns why not, or "". The worker checks again on use
+// (it reads the real columns); a figure is checked here because saving one does not run the worker.
+func checkCatalogOverlay(o scene.Overlay, ds catalog.Dataset) string {
+	if ds.Kind != catalog.KindCatalog {
+		return "a catalog overlay needs a point catalog"
+	}
+	if _, code, msg := declarationArg(ds); code != 0 {
+		return msg
+	}
+	h, ok := catalog.ParseCatalogHeader(ds.Header)
+	if !ok {
+		return "the catalog's header cannot be read"
+	}
+	scalar := map[string]bool{}
+	for _, c := range h.Columns {
+		scalar[c.Name] = c.Scalar
+	}
+	var filterCol, filterSigma string
+	if o.Filter != nil {
+		filterCol, filterSigma = o.Filter.Column, o.Filter.SigmaColumn
+	}
+	for _, c := range []struct{ what, name string }{{"length column", o.LengthColumn}, {"colour column", o.ColorColumn}, {"filter column", filterCol}, {"filter uncertainty column", filterSigma}} {
+		if c.name == "" {
+			continue
+		}
+		if sc, found := scalar[c.name]; !found || !sc {
+			return c.what + ": the catalog has no column named " + strconv.Quote(c.name) + " with one value per row"
+		}
+	}
+	if o.Vectors {
+		a := ds.CatalogDeclaration.Angle
+		switch {
+		case a == nil:
+			return "orientation vectors need an angle column, and the catalog declares none"
+		case a.Quantity == nil:
+			return "the catalog does not declare what its angle column " + strconv.Quote(a.Column) + " is (the B-field, a gradient, dust polarization or starlight polarization), so it cannot be turned into a B-field orientation; declare its quantity first"
+		case *a.Quantity == "unspecified":
+			return "the quantity of the catalog's angle column " + strconv.Quote(a.Column) + " is declared as 'unspecified': say whether it is the B-field, a gradient, dust polarization or starlight polarization"
+		}
+	}
+	return ""
 }

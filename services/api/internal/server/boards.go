@@ -205,6 +205,11 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 	}
 	// Overlays from other files are named by file name, size and time like the source (never by catalog id: ADR 0011).
 	for _, o := range overlaySources {
+		if o.Kind == catalog.KindCatalog {
+			pr.Statements = append(pr.Statements, fmt.Sprintf("Point catalog drawn on this map, %s (%d bytes, modified %s; its bytes were not hashed). Its position columns, celestial frame and the meaning of its angle were declared by the author of this board, not by the file. Rows are placed by WCS geometry, never moved or interpolated; the caption states the frames, the row filter and the rows not drawn.",
+				o.Name, o.SizeBytes, o.ModifiedAt.UTC().Format(time.RFC3339)))
+			continue
+		}
 		pr.Statements = append(pr.Statements, fmt.Sprintf("Overlay drawn from another file, %s (%d bytes, modified %s; its bytes were not hashed), placed on this map by WCS geometry, never resampled onto its grid. The caption states how.",
 			o.Name, o.SizeBytes, o.ModifiedAt.UTC().Format(time.RFC3339)))
 	}
@@ -245,6 +250,15 @@ func checkScene(sc scene.Scene, d catalog.Dataset, vp ViewParams, lookup func(in
 				seen[got.ID] = true
 				others = append(others, got)
 			}
+		}
+		if (src.Kind == catalog.KindCatalog) != (o.Kind == "catalog") {
+			return refuse("a catalog overlay needs a point catalog, and a point catalog is only drawn by a catalog overlay")
+		}
+		if o.Kind == "catalog" {
+			if why := checkCatalogOverlay(o, src); why != "" {
+				return refuse(why)
+			}
+			continue
 		}
 		if o.Kind != "orientation" {
 			continue

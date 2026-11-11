@@ -65,7 +65,7 @@ func TestAFigureSceneIsValidatedAgainstTheContractAndTheFigure(t *testing.T) {
 		"unknown overlay kind": fig(with(func(s map[string]any) {
 			s["overlays"] = append(ov(s), map[string]any{"id": "x", "kind": "heatmap", "datasetId": d.ID, "visible": true})
 		}), view),
-		"a kind not drawn yet": fig(with(func(s map[string]any) {
+		"a catalog overlay naming columns itself (the declaration owns them)": fig(with(func(s map[string]any) {
 			s["overlays"] = append(ov(s), map[string]any{"id": "c", "kind": "catalog", "datasetId": d.ID, "visible": true, "columns": map[string]any{"lon": "RA", "lat": "DEC"}})
 		}), view),
 		"contours from a dataset that is not registered": fig(with(func(s map[string]any) {

@@ -14,7 +14,12 @@ export type GeometryPath = { group: number; xy: Float32Array };
  */
 export type OverlayGeometry =
   | { kind: "contours" | "beam" | "grid"; head: OverlayGeometryHead; paths: GeometryPath[] }
-  | { kind: "orientation"; head: OverlayGeometryHead; segments: Float32Array };
+  | { kind: "orientation"; head: OverlayGeometryHead; segments: Float32Array }
+  | { kind: "catalog"; head: OverlayGeometryHead; markers: CatalogMarkers };
+
+/** A catalog's drawn rows, six numbers each, in row order: x, y (base pixels), vector angle (degrees counter-clockwise from the base's +x, NaN: no vector), vector length (base pixels), colour value (NaN: unknown), row (1-based). */
+export type CatalogMarkers = Float32Array;
+export const MARKER_STRIDE = 6;
 
 /** Frame: uint32 LE header length, JSON header (space padded to 8 bytes), then little-endian float32 as the header says. */
 export function parseGeometry(buf: ArrayBuffer): OverlayGeometry {
@@ -27,6 +32,10 @@ export function parseGeometry(buf: ArrayBuffer): OverlayGeometry {
   // copied out (never a view), so an unaligned header cannot break the read and the numbers are always little-endian
   const nums = new Float32Array(count);
   for (let i = 0; i < count; i++) nums[i] = dv.getFloat32(4 + n + i * 4, true);
+  if (head.kind === "catalog") {
+    if (count !== MARKER_STRIDE * (head.markers ?? -1)) throw new ApiError("The overlay response has the wrong size.");
+    return { kind: "catalog", head, markers: nums };
+  }
   if (head.kind === "orientation") {
     if (count !== 4 * (head.segments ?? -1)) throw new ApiError("The overlay response has the wrong size.");
     return { kind: "orientation", head, segments: nums };

@@ -1,0 +1,69 @@
+.popover {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  gap: var(--sp-1);
+  max-height: 60%;
+  padding: var(--sp-2);
+  overflow: auto;
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  pointer-events: auto;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.values {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--sp-2);
+}
+
+.pair dt {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.pair dd {
+  margin: 0;
+  font-family: var(--font-data);
+  overflow-wrap: anywhere;
+}
+
+/* a missing value is said in words and set apart in style, never shown as 0 or hidden */
+.pair dd[data-missing="true"] {
+  color: var(--text-2);
+  font-style: italic;
+}
+
+.note,
+.error {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.error {
+  color: var(--warn);
+}

@@ -63,11 +63,32 @@
     ],
     "view": {"zoom": 1}
    }
+  },
+  {
+   "name": "catalogs: markers, vectors with a length column and a filter, colour by a value",
+   "scene": {
+    "schema": "scene/1",
+    "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}},
+    "overlays": [
+     {"id": "stars", "kind": "catalog", "datasetId": 7, "visible": true},
+     {"id": "pol", "kind": "catalog", "datasetId": 7, "visible": true, "vectors": true, "lengthColumn": "P(%)", "lengthScale": 4, "colorColumn": "sPA(deg)", "filter": {"column": "P(%)", "sigmaColumn": "sP(%)", "min": 3}, "color": "lime", "width": 1.5},
+     {"id": "los", "kind": "catalog", "datasetId": 8, "visible": false, "vectors": true, "filter": {"column": "snr", "min": 5}, "dash": "dashed"}
+    ],
+    "view": {"zoom": 1}
+   }
   }
  ],
  "invalid": [
   {"name": "unknown overlay kind", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "a", "kind": "heatmap", "datasetId": 1, "visible": true}], "view": {"zoom": 1}}},
-  {"name": "a specified kind that is not drawn yet (catalog)", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "columns": {"lon": "RA", "lat": "DEC"}}], "view": {"zoom": 1}}},
+  {"name": "catalog columns in the scene (the declaration owns them)", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "columns": {"lon": "RA", "lat": "DEC"}}], "view": {"zoom": 1}}},
+  {"name": "a catalog length column without vectors", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "lengthColumn": "P"}], "view": {"zoom": 1}}},
+  {"name": "a catalog length scale without a length column", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "vectors": true, "lengthScale": 2}], "view": {"zoom": 1}}},
+  {"name": "a catalog length scale of zero", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "vectors": true, "lengthColumn": "P", "lengthScale": 0}], "view": {"zoom": 1}}},
+  {"name": "a catalog filter without its minimum", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "filter": {"column": "P"}}], "view": {"zoom": 1}}},
+  {"name": "a catalog filter minimum that is null", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "filter": {"column": "P", "min": null}}], "view": {"zoom": 1}}},
+  {"name": "an empty catalog column name", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "colorColumn": ""}], "view": {"zoom": 1}}},
+  {"name": "a catalog column name with markup", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "colorColumn": "<b>"}], "view": {"zoom": 1}}},
+  {"name": "a catalog filter with an unknown key", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "catalog", "datasetId": 2, "visible": true, "filter": {"column": "P", "min": 1, "max": 2}}], "view": {"zoom": 1}}},
   {"name": "contour levels not increasing", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "contours", "datasetId": 2, "visible": true, "channel": 0, "levels": {"mode": "list", "values": [2, 1]}}], "view": {"zoom": 1}}},
   {"name": "a sigma multiple of zero", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "contours", "datasetId": 2, "visible": true, "channel": 0, "levels": {"mode": "sigma", "multiples": [0, 3]}}], "view": {"zoom": 1}}},
   {"name": "linear levels with a zero step", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "contours", "datasetId": 2, "visible": true, "channel": 0, "levels": {"mode": "linear", "start": 1, "step": 0, "count": 3}}], "view": {"zoom": 1}}},

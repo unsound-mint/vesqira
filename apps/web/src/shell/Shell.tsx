@@ -414,7 +414,7 @@ export function Shell() {
             {actDs ? <DisplayControls v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Overlays" meta={viewer.scene ? String(viewer.scene.overlays.length) : undefined}>
-            {actDs ? <OverlayPanel scene={viewer.scene} dispatch={viewer.dispatch} geometry={viewer.geometry} datasets={cat.allDatasets} /> : <p className={s.empty}>{EM}</p>}
+            {actDs ? <OverlayPanel scene={viewer.scene} dispatch={viewer.dispatch} geometry={viewer.geometry} datasets={cat.allDatasets} picked={viewer.picked} onPick={viewer.setPicked} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Region">
             {actDs ? <RegionPanel v={viewer} /> : <p className={s.empty}>{EM}</p>}

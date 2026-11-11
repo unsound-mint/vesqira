@@ -12,7 +12,8 @@ import { channelLabel } from "./format";
 import { fromDrag } from "./region";
 import type { Pt } from "./region";
 import type { RegionShape } from "../api/planes";
-import { dashOf, LABEL_PX, sceneMarks } from "../scene/overlays";
+import { dashOf, LABEL_PX, nearestMarker, sceneMarks } from "../scene/overlays";
+import { SourcePopover } from "./SourceRow";
 import type { Mark } from "../scene/overlays";
 import { dragCentre, placement } from "../scene/view";
 import s from "./PlaneViewer.module.css";
@@ -153,6 +154,9 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
       anchor.current = null;
       setDraft(null);
       e.preventDefault();
+    } else if (e.key === "Escape" && v.picked) {
+      v.setPicked(null);
+      e.preventDefault();
     } else if (e.key === "Escape" && v.pinned) {
       v.setPinned(null);
       e.preventDefault();
@@ -178,6 +182,9 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
     [v.scene?.overlays, v.scene?.base.datasetId, plane, shape.scale, v.interp, v.reliability, draft, v.geometry], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const labels = useMemo(() => marks.filter((m): m is Extract<Mark, { type: "text" }> => m.type === "text"), [marks]);
+  const sources = useMemo(() => marks.filter((m): m is Extract<Mark, { type: "marker" }> => m.type === "marker"), [marks]);
+  const pickedMark = v.picked ? sources.find((m) => m.layer === v.picked!.overlayId && m.row === v.picked!.row) ?? null : null;
+  const pickedOverlay = v.picked ? v.scene?.overlays.find((o) => o.id === v.picked!.overlayId) : undefined;
   // automatic orientation spacing of other datasets' lines follows the zoom, so the viewer says what scale it draws at
   const setDrawScale = v.setDrawScale;
   useEffect(() => setDrawScale(shape.scale), [shape.scale, setDrawScale]);
@@ -243,6 +250,14 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
             }}
             onClick={(e) => {
               if (v.tool !== "pointer" || moved.current) return;
+              const box = e.currentTarget.getBoundingClientRect();
+              const per = box.width / plane.head.width; // screen pixels per image pixel
+              const hit = per > 0 ? nearestMarker(marks, (e.clientX - box.left) / per, (e.clientY - box.top) / per, per) : null;
+              if (hit) {
+                v.setPicked({ overlayId: hit.layer, row: hit.row });
+                return;
+              }
+              if (v.picked) v.setPicked(null);
               const p = pick(e);
               v.setPinned(p && v.pinned && v.pinned.x === p.x && v.pinned.y === p.y ? null : p);
             }}
@@ -250,11 +265,15 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
           <svg className={s.overlay} viewBox={`0 0 ${plane.head.width} ${plane.head.height}`} preserveAspectRatio="none" aria-hidden="true" data-testid="overlay-marks">
             <Marks marks={marks} />
           </svg>
-          {labels.length ? (
-            // labels in screen pixels, so text keeps its size at every zoom
+          {labels.length || sources.length ? (
+            // labels and catalog markers in screen pixels, so text and dots keep their size at every zoom
             <svg className={s.overlay} width={shape.width} height={shape.height} aria-hidden="true">
               <Labels labels={labels} cell={cell} />
+              <Sources sources={sources} cell={cell} picked={pickedMark} />
             </svg>
+          ) : null}
+          {pickedMark && pickedOverlay ? (
+            <SourcePopover datasetId={pickedOverlay.datasetId} row={pickedMark.row} name="Catalog source" at={{ x: pickedMark.x * cell, y: pickedMark.y * cell }} frame={{ w: shape.width, h: shape.height }} onClose={() => v.setPicked(null)} />
           ) : null}
           {probe && probe.x < plane.head.width && probe.y < plane.head.height ? (
             <span
@@ -294,7 +313,7 @@ const ink = (c: string) => `var(--overlay-${c})`;
 /** The SVG side of the overlay registry: one element per mark, styled by role with the design tokens. */
 function Marks({ marks }: { marks: Mark[] }) {
   return marks.map((m, i) => {
-    if (m.type === "text") return null; // drawn in screen pixels by Labels
+    if (m.type === "text" || m.type === "marker") return null; // drawn in screen pixels by Labels and Sources
     if (m.type === "line") {
       const st = m.stroke;
       return (
@@ -319,6 +338,25 @@ function Marks({ marks }: { marks: Mark[] }) {
     const cls = m.role === "region" ? s.region : m.role === "saved" ? s.saved : s.draft;
     return m.type === "rect" ? <rect key={i} className={cls} x={m.x} y={m.y} width={m.w} height={m.h} /> : <circle key={i} className={cls} cx={m.cx} cy={m.cy} r={m.r} />;
   });
+}
+
+/** Catalog sources in screen pixels: a ring in the overlay colour, filled by the colour column's value (hollow when unknown); the picked one is doubled. */
+function Sources({ sources, cell, picked }: { sources: Extract<Mark, { type: "marker" }>[]; cell: number; picked: Extract<Mark, { type: "marker" }> | null }) {
+  return (
+    <g data-role="catalog">
+      {sources.map((m) => {
+        const x = m.x * cell, y = m.y * cell;
+        const on = picked !== null && picked.layer === m.layer && picked.row === m.row;
+        return (
+          <g key={`${m.layer}:${m.row}`} data-row={m.row}>
+            <circle className={s.sourceHalo} cx={x} cy={y} r={m.r + 1 + (on ? 3 : 0)} style={{ strokeWidth: m.ringWidth + 2 }} />
+            <circle className={s.source} cx={x} cy={y} r={m.r}
+              style={{ fill: m.fill === "none" ? "none" : m.fill === "ink" ? ink(m.ring) : m.fill, stroke: ink(m.ring), strokeWidth: on ? m.ringWidth + 1 : m.ringWidth }} />
+          </g>
+        );
+      })}
+    </g>
+  );
 }
 
 /** Overlay labels (grid coordinates, the beam size) at their picture positions times the screen cell, with a dark halo. */
