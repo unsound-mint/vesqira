@@ -366,7 +366,7 @@ func (s *scanner) walk(dir string, in *runCtx) int {
 		}
 		if e.Dir && !e.Link {
 			if _, skip := s.skippedDir(rel, e.Name); skip {
-				if e.Name != ".vesqira" {
+				if !strings.HasPrefix(e.Name, ".vesqira") {
 					s.res.Skipped.Dirs = append(s.res.Skipped.Dirs, rel)
 				}
 				continue

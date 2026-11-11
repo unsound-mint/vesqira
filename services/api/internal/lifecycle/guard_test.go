@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
+	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
 )
 
 // keyColumns are the columns that point at a deletable entry (dataset, run, figure, board) or carry a reference to one
@@ -61,16 +62,17 @@ func TestEveryKeyedTableIsHandled(t *testing.T) {
 	defer cat.Close()
 	db, dir := cat.DB(), t.TempDir()
 	opens := map[string]func() error{
-		"boards":   func() error { _, err := boards.Open(db, dir); return err },
-		"runs":     func() error { _, err := runs.Open(db); return err },
-		"hosts":    func() error { _, err := hosts.Open(db); return err },
-		"jobs":     func() error { _, err := jobs.Open(db); return err },
-		"sweeps":   func() error { _, err := sweeps.Open(db); return err },
-		"audit":    func() error { _, err := audit.Open(db); return err },
-		"regions":  func() error { _, err := regions.Open(db); return err },
-		"derived":  func() error { _, err := derived.Open(db); return err },
-		"reports":  func() error { _, err := reports.Open(db, dir); return err },
-		"projects": func() error { _, err := projects.Open(db); return err },
+		"boards":    func() error { _, err := boards.Open(db, dir); return err },
+		"runs":      func() error { _, err := runs.Open(db); return err },
+		"hosts":     func() error { _, err := hosts.Open(db); return err },
+		"jobs":      func() error { _, err := jobs.Open(db); return err },
+		"sweeps":    func() error { _, err := sweeps.Open(db); return err },
+		"audit":     func() error { _, err := audit.Open(db); return err },
+		"regions":   func() error { _, err := regions.Open(db); return err },
+		"derived":   func() error { _, err := derived.Open(db); return err },
+		"reports":   func() error { _, err := reports.Open(db, dir); return err },
+		"projects":  func() error { _, err := projects.Open(db); return err },
+		"transfers": func() error { _, err := transfers.Open(db); return err },
 	}
 	for name, open := range opens { // the full schema: every store main.go opens on the catalog file
 		if err := open(); err != nil {
