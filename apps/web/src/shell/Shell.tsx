@@ -13,6 +13,7 @@ import { UnitControl } from "../catalog/UnitControl";
 import { fileStatesItsUnit } from "../catalog/unit";
 import { Explorer } from "../catalog/Explorer";
 import { AnalysisPanel, DerivedPanel } from "../catalog/AnalysisPanel";
+import { RelativeOrientationPanel, RelativeOrientationResult } from "../catalog/RelativeOrientation";
 import { NatureControl } from "../catalog/NatureControl";
 import { StorageControl } from "../catalog/StorageControl";
 import { UsedIn } from "../catalog/UsedIn";
@@ -357,7 +358,13 @@ export function Shell() {
         <div className={s.scroll}>
           {cat.selectedCatalog ? (
             <>
+              <RelativeOrientationResult dataset={cat.selectedCatalog} datasets={cat.allDatasets} />
               <CatalogInspector d={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} onDeclare={cat.declareCatalog} onReread={() => { void cat.register(cat.selectedCatalog!.path); }} />
+              {cat.selectedCatalog.catalogDeclaration?.angle ? (
+                <Section title="Compare orientation" defaultOpen={false}>
+                  <RelativeOrientationPanel key={cat.selectedCatalog.id} dataset={cat.selectedCatalog} datasets={cat.allDatasets} onCreated={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} />
+                </Section>
+              ) : null}
               <Section title="Nature of the data">
                 <NatureControl dataset={cat.selectedCatalog} onChange={cat.declareNature} />
               </Section>
@@ -390,9 +397,15 @@ export function Shell() {
               <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} declare={cat.declare} />
             </Section>
           ) : null}
+          {actDs ? <RelativeOrientationResult dataset={actDs} datasets={cat.allDatasets} /> : null}
           {viewer.interp ? (
             <Section title="Orientation">
               <OrientationStats v={viewer} />
+            </Section>
+          ) : null}
+          {actDs && actDs.interpretation?.kind === "axial_orientation" ? (
+            <Section title="Compare orientation" defaultOpen={false}>
+              <RelativeOrientationPanel key={actDs.id} dataset={actDs} datasets={cat.allDatasets} onCreated={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} />
             </Section>
           ) : null}
           <Section title="Display">

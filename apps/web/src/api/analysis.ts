@@ -1,6 +1,7 @@
 import { request as call, postJSON as post } from "./http";
 import type { Dataset } from "./catalog";
 import type { Job } from "./jobs";
+import type { components } from "./schema";
 
 export type AnalysisOp = "axial_diff" | "scalar_diff" | "stats" | "moment" | "cutout" | "slab" | "align" | "convolve";
 export type AnalysisRequest = { op: AnalysisOp; datasetId: number; referenceId?: number; params?: Record<string, string>; cpus?: number; mem?: string; time?: string };
@@ -23,4 +24,11 @@ export type Derived = { datasetId: number; op: string; params: { options?: Recor
 export const runAnalysis = (r: AnalysisRequest) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r);
 export const createAnalysisJob = (r: AnalysisRequest) => post<Job>("/api/analysis/job", r);
 export const getDerived = (id: number) => call<Derived>(`/api/datasets/${id}/derived`);
+type Schemas = components["schemas"];
+/** Relative orientation (ADR 0047): a declared orientation map against a catalog with a declared angle, or against a second map. */
+export type RelOrientParams = Schemas["RelativeOrientationParams"];
+export type RelOrientSummary = Schemas["RelativeOrientationSummary"];
+export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams }) =>
+  post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r);
+export const relativeOrientationTableUrl = (id: number) => `/api/datasets/${id}/relative-orientation.csv`;
 export const jobResult = (id: number) => call<{ summary: StatsSummary | Record<string, unknown> }>(`/api/jobs/${id}/result`);

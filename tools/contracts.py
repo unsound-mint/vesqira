@@ -76,8 +76,13 @@ def scalar(v):
     return json.dumps(v, ensure_ascii=False)
 
 
+# Plain words YAML reads as null or a boolean, not as a string; such a key is quoted (a property may be named "null").
+YAML_WORDS = {"null", "true", "false", "yes", "no", "on", "off", "y", "n", "~"}
+
+
 def key(k):
-    return k if re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$.\-]*", k) else json.dumps(k)
+    plain = re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$.\-]*", k) and k.lower() not in YAML_WORDS
+    return k if plain else json.dumps(k)
 
 
 def emit(v, ind):
