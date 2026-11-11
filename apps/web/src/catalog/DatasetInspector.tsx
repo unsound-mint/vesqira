@@ -33,7 +33,7 @@ export function DatasetInspector({ d, problem, onReread }: { d: ImageDataset; pr
     <div className={s.wrap}>
       {problem ? (
         <div role="status" className={s.note}>
-          <p style={{ margin: 0 }}>{PROBLEM_TEXT[problem]}</p>
+          <p style={{ margin: 0 }}>{PROBLEM_TEXT[problem]}{problem === "modified" && d.locations?.some((l) => l.link === "verified") ? " A verified copy of the earlier version is still read from (see Locations)." : ""}</p>
           {problem === "modified" && onReread ? <Button type="button" onClick={onReread}>Read it again</Button> : null}
         </div>
       ) : null}

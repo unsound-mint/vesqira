@@ -180,8 +180,51 @@ func (s *Server) recordIdentity(ctx context.Context, d catalog.Dataset) catalog.
 			s.storeMeasure(p, "full", func() (measured, int, string) { return s.measureFull(ctx, p, nil) })
 		}
 	}
+	s.reassessLinks(d.ID)
 	if got, err := s.Store.Get(d.ID); err == nil {
 		return got
+	}
+	return d
+}
+
+// reassessLinks compares each stale location with the registered file as it is now, once that has fingerprints again: equal full
+// hashes make it verified again (a file that was only touched), equal sampled fingerprints and sizes probable, and anything
+// else leaves it stale.
+func (s *Server) reassessLinks(datasetID int64) {
+	locs, err := s.Store.Locations(datasetID)
+	if err != nil {
+		return
+	}
+	p, ok := primaryOf(locs)
+	if !ok {
+		return
+	}
+	for _, l := range locs {
+		if l.Link != catalog.LinkStale {
+			continue
+		}
+		switch idty.Relate(l.Evidence(), p.Evidence()) {
+		case idty.Verified:
+			_ = s.Store.SetLink(l.ID, catalog.LinkVerified)
+		case idty.Probable:
+			_ = s.Store.SetLink(l.ID, catalog.LinkProbable)
+		}
+	}
+}
+
+// ensureFingerprinted gives a dataset registered before fingerprints existed its cheap one, so what a figure says about the
+// file's bytes is what was recorded. Returns the dataset as stored.
+func (s *Server) ensureFingerprinted(ctx context.Context, d catalog.Dataset) catalog.Dataset {
+	locs, err := s.Store.Locations(d.ID)
+	if err != nil {
+		return d
+	}
+	if p, ok := primaryOf(locs); ok && p.Sampled == nil && p.Full == nil {
+		s.storeMeasure(p, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, p) })
+		s.reassessLinks(d.ID)
+		if got, err := s.Store.Get(d.ID); err == nil {
+			return got
+		}
 	}
 	return d
 }
@@ -301,6 +344,7 @@ func (s *Server) startFull(datasetID int64, loc catalog.Location) (int, string) 
 				return
 			}
 			s.Audit.Record("full sha256 computed", "dataset", datasetID, m.value[:12]+" by "+m.by)
+			s.reassessLinks(datasetID)
 			finish("")
 		}
 	}()
@@ -546,6 +590,9 @@ type linkWhy struct {
 func decideLink(nl catalog.Location, existing []catalog.Location, declare bool) (string, linkWhy) {
 	verified, probable, different := false, false, ""
 	for _, l := range existing {
+		if !l.Primary && l.Link != catalog.LinkVerified {
+			continue // only the registered file and verified locations are what the dataset's bytes are; the others prove nothing
+		}
 		switch idty.Relate(nl.Evidence(), l.Evidence()) {
 		case idty.Verified:
 			verified = true

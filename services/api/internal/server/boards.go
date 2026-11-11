@@ -186,10 +186,24 @@ func (p ViewParams) checkAgainst(h safeHeader, declaredUnit string) bool {
 	return true
 }
 
+// identityNote says what was recorded about a file's bytes, never more: a SHA-256 only when one was computed for these bytes, a
+// sampled fingerprint is not called a hash of the file.
+func identityNote(d catalog.Dataset) string {
+	if p, ok := primaryOf(d.Locations); ok {
+		switch {
+		case p.Full != nil:
+			return "the SHA-256 of its bytes was recorded when it was registered"
+		case p.Sampled != nil:
+			return "a sampled fingerprint of it (not a hash of the whole file) was recorded"
+		}
+	}
+	return "its bytes were not hashed"
+}
+
 func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary, overlaySources []catalog.Dataset) (json.RawMessage, error) {
 	var pr Provenance
 	pr.Source.Name, pr.Source.SizeBytes, pr.Source.ModifiedAt = d.Name, d.SizeBytes, d.ModifiedAt
-	pr.Source.Identity = "a reference to the file by name, size and modification time; its bytes were not hashed"
+	pr.Source.Identity = "a reference to the file by name, size and modification time; " + identityNote(d)
 	if err := json.Unmarshal(d.Header, &pr.Source.Header); err != nil {
 		return nil, err
 	}
@@ -239,12 +253,12 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 	// Overlays from other files are named by file name, size and time like the source (never by catalog id: ADR 0011).
 	for _, o := range overlaySources {
 		if o.Kind == catalog.KindCatalog {
-			pr.Statements = append(pr.Statements, fmt.Sprintf("Point catalog drawn on this map, %s (%d bytes, modified %s; its bytes were not hashed). Its position columns, celestial frame and the meaning of its angle were declared by the author of this board, not by the file. Rows are placed by WCS geometry, never moved or interpolated; the caption states the frames, the row filter and the rows not drawn.",
-				o.Name, o.SizeBytes, o.ModifiedAt.UTC().Format(time.RFC3339)))
+			pr.Statements = append(pr.Statements, fmt.Sprintf("Point catalog drawn on this map, %s (%d bytes, modified %s; %s). Its position columns, celestial frame and the meaning of its angle were declared by the author of this board, not by the file. Rows are placed by WCS geometry, never moved or interpolated; the caption states the frames, the row filter and the rows not drawn.",
+				o.Name, o.SizeBytes, o.ModifiedAt.UTC().Format(time.RFC3339), identityNote(o)))
 			continue
 		}
-		pr.Statements = append(pr.Statements, fmt.Sprintf("Overlay drawn from another file, %s (%d bytes, modified %s; its bytes were not hashed), placed on this map by WCS geometry, never resampled onto its grid. The caption states how.",
-			o.Name, o.SizeBytes, o.ModifiedAt.UTC().Format(time.RFC3339)))
+		pr.Statements = append(pr.Statements, fmt.Sprintf("Overlay drawn from another file, %s (%d bytes, modified %s; %s), placed on this map by WCS geometry, never resampled onto its grid. The caption states how.",
+			o.Name, o.SizeBytes, o.ModifiedAt.UTC().Format(time.RFC3339), identityNote(o)))
 	}
 	return json.Marshal(pr)
 }
@@ -530,6 +544,10 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, "internal error")
 			return
 		}
+	}
+	d = s.ensureFingerprinted(r.Context(), d)
+	for i := range others {
+		others[i] = s.ensureFingerprinted(r.Context(), others[i])
 	}
 	prov, err := buildProvenance(d, vp, run, s.derivedSummary(d.ID), others)
 	if errors.Is(err, errBadView) {

@@ -9,6 +9,7 @@ export const LINK_TEXT: Record<DatasetLocation["link"], string> = {
   verified: "verified same bytes (equal full SHA-256)",
   probable: "probably the same (sampled fingerprint); not verified",
   declared: "declared the same by you; not checked",
+  stale: "was verified against an earlier version of the registered file, which has changed since; not trusted now",
 };
 
 export const KIND_TEXT: Record<DatasetLocation["kind"], string> = {

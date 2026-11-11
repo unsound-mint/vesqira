@@ -164,6 +164,61 @@ func TestFindSameReturnsVerifiedBeforeProbableAndNeverADifferentFile(t *testing.
 	}
 }
 
+func TestOtherLocationsAreNotTrustedAfterTheRegisteredFileChanges(t *testing.T) {
+	s := openStore(t)
+	d := reg(t, s, 0, "/data/a.fits", 100, t0)
+	add := func(path, link string) Location {
+		l, err := s.AddLocation(d.ID, Location{Path: path, Link: link, SizeBytes: 100, ModifiedAt: t0})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return l
+	}
+	v, p, dec := add("/b/v.fits", LinkVerified), add("/b/p.fits", LinkProbable), add("/b/d.fits", LinkDeclared)
+	reg(t, s, 0, "/data/a.fits", 100, t0) // read again, unchanged: nothing is demoted
+	got, _ := s.Locations(d.ID)
+	if got[1].Link != LinkVerified || got[2].Link != LinkProbable || got[3].Link != LinkDeclared {
+		t.Fatalf("unchanged: %+v", got)
+	}
+	reg(t, s, 0, "/data/a.fits", 101, t0) // the registered file changed
+	got, _ = s.Locations(d.ID)
+	if got[1].ID != v.ID || got[1].Link != LinkStale || got[2].ID != p.ID || got[2].Link != LinkStale || got[3].ID != dec.ID || got[3].Link != LinkDeclared {
+		t.Fatalf("verified and probable go stale, a declaration stays what it was: %+v", got)
+	}
+	if order := ReadOrder(got); len(order) != 1 || !order[0].Primary {
+		t.Fatalf("a stale location is not read from: %+v", order)
+	}
+	if err := s.SetLink(v.ID, LinkVerified); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetLink(v.ID, "registered"); err == nil {
+		t.Fatal("not a link for another file")
+	}
+}
+
+func TestOnlyTheRegisteredFileAndVerifiedLocationsMakeADatasetAMatch(t *testing.T) {
+	s := openStore(t)
+	d := reg(t, s, 0, "/data/a.fits", 50, t0)
+	for path, link := range map[string]string{"/b/declared.fits": LinkDeclared, "/b/probable.fits": LinkProbable} {
+		l, err := s.AddLocation(d.ID, Location{Path: path, Link: link, SizeBytes: 50, ModifiedAt: t0, Sampled: &Stamp{Value: "S"}, Full: &Stamp{Value: "F"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = l
+	}
+	// the registered file has no fingerprint; only locations that prove nothing do
+	got, err := s.FindSame(identity.Evidence{Size: 50, Sampled: "S", Full: "F"}, 0)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("a declared or probable location is not what the dataset's bytes are: %+v %v", got, err)
+	}
+	if _, err := s.AddLocation(d.ID, Location{Path: "/b/verified.fits", Link: LinkVerified, SizeBytes: 50, ModifiedAt: t0, Full: &Stamp{Value: "F"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.FindSame(identity.Evidence{Size: 50, Full: "F"}, 0); len(got) != 1 || got[0].Relation != identity.Verified {
+		t.Fatalf("a verified location does: %+v", got)
+	}
+}
+
 func TestReadOrderPrefersLocalThenTheRegisteredFileAndOnlyEverVerifiedOnes(t *testing.T) {
 	loc := func(id, host int64, primary bool, link string) Location {
 		return Location{ID: id, HostID: host, Primary: primary, Link: link}

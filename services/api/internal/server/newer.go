@@ -256,11 +256,7 @@ func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset
 		if err != nil {
 			return
 		}
-		p, ok := primaryOf(locs)
-		if ok && p.Sampled == nil && p.Full == nil { // registered before fingerprints existed: take the cheap one now
-			s.storeMeasure(p, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, p) })
-			p, _ = s.Store.Location(d.ID, p.ID)
-		}
+		p, _ := primaryOf(locs)
 		e := figureDatasetIdentity{Role: role, DatasetID: d.ID, Name: d.Name, SizeBytes: d.SizeBytes, ModifiedAt: d.ModifiedAt.UTC()}
 		if p.Sampled != nil {
 			e.Sampled = &identityValue{Value: p.Sampled.Value, Algorithm: idty.SampledAlgorithm, Covers: idty.Covers, At: p.Sampled.At, By: p.Sampled.By}

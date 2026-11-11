@@ -404,8 +404,8 @@ func (s *Server) availability(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		_, _, status, _ := s.authorize(r.Context(), d)
-		if status != 0 && s.readableLocally(r.Context(), d) { // the registered file has a problem but a verified copy here reads: the viewer works
-			continue
+		if status != 0 && status != 409 && s.readableLocally(r.Context(), d) { // the registered file is gone but a verified copy here reads: the viewer works
+			continue // (a file that changed is still said to have changed)
 		}
 		switch status {
 		case 0:

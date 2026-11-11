@@ -5939,10 +5939,10 @@ export interface components {
             /** @description The file the dataset was registered from. Dataset.path and hostId are this location. */
             primary: boolean;
             /**
-             * @description Why the location belongs to the dataset. registered: the primary, no claim. verified: equal full SHA-256 (the same bytes). probable: same size and equal sampled fingerprint, which is NOT proof. declared: the researcher's word, nothing was proven.
+             * @description Why the location belongs to the dataset. registered: the primary, no claim. verified: equal full SHA-256 (the same bytes). probable: same size and equal sampled fingerprint, which is NOT proof. declared: the researcher's word, nothing was proven. stale: was verified or probable against an earlier version of the registered file, which has changed since; not read from until compared again.
              * @enum {string}
              */
-            link: "registered" | "verified" | "probable" | "declared";
+            link: "registered" | "verified" | "probable" | "declared" | "stale";
             /** Format: int64 */
             sizeBytes: number;
             /** Format: date-time */

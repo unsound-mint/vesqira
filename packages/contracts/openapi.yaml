@@ -9545,7 +9545,8 @@ components:
             - "verified"
             - "probable"
             - "declared"
-          description: "Why the location belongs to the dataset. registered: the primary, no claim. verified: equal full SHA-256 (the same bytes). probable: same size and equal sampled fingerprint, which is NOT proof. declared: the researcher's word, nothing was proven."
+            - "stale"
+          description: "Why the location belongs to the dataset. registered: the primary, no claim. verified: equal full SHA-256 (the same bytes). probable: same size and equal sampled fingerprint, which is NOT proof. declared: the researcher's word, nothing was proven. stale: was verified or probable against an earlier version of the registered file, which has changed since; not read from until compared again."
         sizeBytes:
           type: "integer"
           format: "int64"

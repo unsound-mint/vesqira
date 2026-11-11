@@ -270,7 +270,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await page.getByRole("button", { name: "Boards", exact: true }).click();
   await expect(page.getByRole("heading", { name: "H I peak at 8 km/s" })).toBeVisible();
   await page.getByText("Where this came from").click();
-  await expect(page.getByText(/bytes were not hashed/)).toBeVisible();
+  await expect(page.getByText(/SHA-256 of its bytes was recorded|sampled fingerprint of it|bytes were not hashed/)).toBeVisible();
   await page.getByLabel("Note for the reviewer").fill("Check the unit of the colour bar.");
   await page.getByLabel("Note for the reviewer").blur();
   await page.getByLabel("Label").fill("Group meeting draft");
@@ -332,7 +332,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   const printPage = await page.context().newPage();
   await printPage.goto(`${new URL(page.url()).origin}/#/print/1`);
   await expect(printPage.getByRole("button", { name: "Print or save as PDF" })).toBeVisible();
-  await expect(printPage.getByText(/bytes were not hashed/)).toBeVisible();
+  await expect(printPage.getByText(/SHA-256 of its bytes was recorded|sampled fingerprint of it|bytes were not hashed/)).toBeVisible();
   await printPage.close();
   await page.getByRole("button", { name: "Revoke link" }).click();
   await sup.reload();

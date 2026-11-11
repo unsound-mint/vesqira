@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,8 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	idty "github.com/unsound-mint/vesqira/services/api/internal/identity"
+	"github.com/unsound-mint/vesqira/services/api/internal/publish"
+	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
@@ -290,6 +293,15 @@ func TestLinkingRulesVerifiedProbableDeclaredAndRefused(t *testing.T) {
 	}
 	if code, l, _ := e.addLocation(gone.ID, cand, true); code != 201 || l.Link != catalog.LinkDeclared || l.Sampled == nil {
 		t.Fatalf("declared: %d %+v", code, l)
+	}
+
+	// a declaration is not evidence: a file whose hash equals a declared location's is not "verified" by it
+	again := e.write("gone_again.fits", []byte("will vanish"))
+	if code, _, m := e.addLocation(gone.ID, again, false); code != 409 || m["code"] != "identity_not_established" {
+		t.Fatalf("equal to a declared location only: %d %v", code, m)
+	}
+	if got := catalog.ReadOrder(e.dataset(gone.ID).Locations); len(got) != 1 {
+		t.Fatalf("a declared location is not read from: %+v", got)
 	}
 
 	// removing a location forgets it; the registered file stays; the file on disk is untouched
@@ -675,6 +687,132 @@ func TestRemoteFingerprintsAreComputedByTheHostsWorker(t *testing.T) {
 	os.WriteFile(filepath.Join(remoteRoot, "hi_cube.fits"), []byte("changed on the host"), 0o644)
 	if r, _ := postJSON(t, fpURL, map[string]any{"mode": "sampled"}); r.StatusCode != http.StatusConflict {
 		t.Fatalf("changed on the host: %d", r.StatusCode)
+	}
+}
+
+// A copy was verified against the registered file as it was. When that file is read again with other bytes the copy must not go on
+// being read under the new header; when the bytes come back (a file only touched) the comparison restores it.
+func TestAVerifiedLocationGoesStaleWhenTheRegisteredFileChangesAndIsComparedAgain(t *testing.T) {
+	e := newIDEnv(t)
+	p := e.write("a.fits", []byte("version one"))
+	d := e.mustRegister(p)
+	cp := e.write("a_copy.fits", []byte("version one"))
+	if code, l, m := e.addLocation(d.ID, cp, false); code != 201 || l.Link != catalog.LinkVerified {
+		t.Fatalf("add: %d %v", code, m)
+	}
+	links := func() (string, int) {
+		got := e.dataset(d.ID).Locations
+		return got[1].Link, len(catalog.ReadOrder(got))
+	}
+	e.write("a.fits", []byte("version two!"))
+	e.mustRegister(p) // "Read it again"
+	if link, readable := links(); link != catalog.LinkStale || readable != 1 {
+		t.Fatalf("after the registered file changed: link %q, %d readable", link, readable)
+	}
+	_, lb := e.call("GET", "/api/datasets/"+itoa(int(d.ID))+"/locations", nil)
+	var out struct {
+		ReadsFrom *readsFrom `json:"readsFrom"`
+	}
+	json.Unmarshal(lb, &out)
+	if out.ReadsFrom == nil || !out.ReadsFrom.Primary {
+		t.Fatalf("the registered file is read: %s", lb)
+	}
+	// the bytes are back (the file was touched, not changed): compared again, the copy is verified again
+	e.write("a.fits", []byte("version one"))
+	e.mustRegister(p)
+	if link, readable := links(); link != catalog.LinkVerified || readable != 2 {
+		t.Fatalf("after the same bytes returned: link %q, %d readable", link, readable)
+	}
+}
+
+// What a figure records about its data, the owner-side identity, must never reach a reviewer: not the frozen snapshot, not the review
+// API, not a published report.
+func TestFigureIdentityNeverReachesAReviewerOrAReport(t *testing.T) {
+	e := newIDEnv(t)
+	d := e.mustRegister(e.write("a.fits", []byte("figure source bytes")))
+	view := map[string]any{"kind": "plane", "channel": 3, "colormap": "viridis", "stretch": "linear", "range": "percentile"}
+	_, fb := e.call("POST", "/api/figures", map[string]any{"datasetId": d.ID, "title": "Fig", "view": view, "previewPng": testPNG(t)})
+	var fig boards.Figure
+	json.Unmarshal(fb, &fig)
+	var id figureIdentity
+	if json.Unmarshal(fig.Identity, &id) != nil || len(id.Datasets) != 1 || id.Datasets[0].Full == nil {
+		t.Fatalf("identity: %s", fig.Identity)
+	}
+	secrets := []string{id.Datasets[0].Full.Value, id.Datasets[0].Sampled.Value, "figure-identity", "fullSha256", "sampledFingerprint"}
+	_, bb := e.call("POST", "/api/boards", map[string]any{"title": "Board"})
+	var b boards.Board
+	json.Unmarshal(bb, &b)
+	e.call("POST", "/api/boards/"+itoa(int(b.ID))+"/items", map[string]any{"figureId": fig.ID})
+	code, pb := e.call("POST", "/api/boards/"+itoa(int(b.ID))+"/publish", map[string]any{"label": "v1", "hours": 24})
+	if code != 201 {
+		t.Fatalf("publish: %d %s", code, pb)
+	}
+	var pub struct{ Token string }
+	json.Unmarshal(pb, &pub)
+	rv := httptest.NewServer((&review.Handler{Store: e.srv.Boards}).Handler())
+	defer rv.Close()
+	_, review := get(t, rv.URL+"/review-api/"+pub.Token)
+	if !strings.Contains(string(review), "Fig") {
+		t.Fatalf("the reviewer sees the board: %s", review)
+	}
+	_, snaps := e.call("GET", "/api/boards/"+itoa(int(b.ID))+"/snapshots", nil)
+	for _, secret := range secrets {
+		if strings.Contains(string(review), secret) || strings.Contains(string(snaps), secret) {
+			t.Errorf("%q reached the review API or the snapshot list", secret)
+		}
+	}
+	// and the owner-side snapshot's frozen copy has no field that could carry it
+	for _, v := range []any{boards.FrozenItem{}, publish.Figure{}} {
+		rt := reflect.TypeOf(v)
+		for i := 0; i < rt.NumField(); i++ {
+			if n := rt.Field(i).Name; n == "Identity" || n == "Scene" || n == "DatasetID" {
+				t.Errorf("%s has a field %s: an owner-side field must not be copied into what a reviewer or a report holds", rt, n)
+			}
+		}
+	}
+}
+
+func TestWhatAFigureSaysAboutTheBytesIsWhatWasRecorded(t *testing.T) {
+	e := newIDEnv(t)
+	small := e.mustRegister(e.write("small.fits", []byte("small")))
+	big := e.mustRegister(e.sparse("big.fits", idty.SmallFull+1, 1))
+	view := map[string]any{"kind": "plane", "channel": 3, "colormap": "viridis", "stretch": "linear", "range": "percentile"}
+	identityOf := func(d catalog.Dataset) string {
+		_, fb := e.call("POST", "/api/figures", map[string]any{"datasetId": d.ID, "title": "Fig", "view": view, "previewPng": testPNG(t)})
+		var fig boards.Figure
+		json.Unmarshal(fb, &fig)
+		var pr Provenance
+		json.Unmarshal(fig.Provenance, &pr)
+		return pr.Source.Identity
+	}
+	if got := identityOf(small); !strings.Contains(got, "the SHA-256 of its bytes was recorded") || strings.Contains(got, "not hashed") {
+		t.Errorf("a small file has a full hash: %q", got)
+	}
+	if got := identityOf(big); !strings.Contains(got, "sampled fingerprint of it (not a hash of the whole file)") || strings.Contains(got, "SHA-256 of its bytes") {
+		t.Errorf("a large file has only the sampled fingerprint: %q", got)
+	}
+	// a file registered before fingerprints existed gets its cheap one when a figure is saved, and the figure says so
+	if _, err := e.db.Exec(`UPDATE dataset_locations SET sampled_fp='', sampled_at=0, sampled_by='', full_sha256='', full_at=0, full_by='' WHERE dataset_id=?`, big.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := identityOf(big); !strings.Contains(got, "sampled fingerprint of it") {
+		t.Errorf("an old registration: %q", got)
+	}
+}
+
+func TestAChangedFileKeepsItsChangedFlagEvenWithAVerifiedCopy(t *testing.T) {
+	e := newIDEnv(t)
+	a := e.write("a.fits", []byte("bytes"))
+	d := e.mustRegister(a)
+	if code, _, m := e.addLocation(d.ID, e.write("a_copy.fits", []byte("bytes")), false); code != 201 {
+		t.Fatalf("add: %d %v", code, m)
+	}
+	e.write("a.fits", []byte("bytes, edited"))
+	_, b := e.call("GET", "/api/datasets/availability", nil)
+	var out struct{ Problems map[string]string }
+	json.Unmarshal(b, &out)
+	if out.Problems[itoa(int(d.ID))] != "modified" {
+		t.Fatalf("a file that changed is still said to have changed (so it can be read again): %v", out.Problems)
 	}
 }
 

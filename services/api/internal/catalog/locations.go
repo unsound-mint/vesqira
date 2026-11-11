@@ -25,6 +25,7 @@ const (
 	LinkVerified   = "verified"   // the full SHA-256 values are equal
 	LinkProbable   = "probable"   // same size and sampled fingerprint: probably the same, NOT verified
 	LinkDeclared   = "declared"   // the researcher says it is the same; nothing was proven
+	LinkStale      = "stale"      // was verified or probable against an earlier version of the registered file, which has changed since
 )
 
 var (
@@ -139,6 +140,21 @@ func (s *Store) Location(datasetID, locID int64) (Location, error) {
 // upsertPrimary keeps the primary location in step with the dataset row. When the file's size or modification time changed,
 // the fingerprints stored for the old bytes are dropped: a hash must never stay attached to bytes it was not computed from.
 func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
+	var oldSize, oldMod int64
+	changed := false
+	switch err := s.db.QueryRow(`SELECT size_bytes,modified_at FROM dataset_locations WHERE host_id=? AND path=?`, d.HostID, d.Path).Scan(&oldSize, &oldMod); {
+	case err == nil:
+		changed = oldSize != d.SizeBytes || oldMod != d.ModifiedAt.UnixNano()
+	case !errors.Is(err, sql.ErrNoRows):
+		return err
+	}
+	if changed {
+		// what the other locations were compared with is gone: they were verified or probable against the earlier file, and
+		// are not read from until they are compared with the file as it is now (the server does that once it has its hashes)
+		if _, err := s.db.Exec(`UPDATE dataset_locations SET link=? WHERE dataset_id=? AND is_primary=0 AND link IN (?,?)`, LinkStale, datasetID, LinkVerified, LinkProbable); err != nil {
+			return err
+		}
+	}
 	_, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at) VALUES(?,?,?,?,1,?,?,?,?)
 		ON CONFLICT(host_id,path) DO UPDATE SET
 			sampled_fp=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN sampled_fp ELSE '' END,
@@ -149,6 +165,18 @@ func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
 			full_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN full_by ELSE '' END,
 			size_bytes=excluded.size_bytes, modified_at=excluded.modified_at`,
 		datasetID, d.HostID, d.Path, LocRegistered, LinkRegistered, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix())
+	return err
+}
+
+// SetLink changes why a non-primary location belongs to its dataset (the server re-compares a stale one once the registered
+// file has its fingerprints again).
+func (s *Store) SetLink(locID int64, link string) error {
+	switch link {
+	case LinkVerified, LinkProbable, LinkDeclared, LinkStale:
+	default:
+		return fmt.Errorf("catalog: bad link %q", link)
+	}
+	_, err := s.db.Exec(`UPDATE dataset_locations SET link=? WHERE id=? AND is_primary=0`, link, locID)
 	return err
 }
 
@@ -235,10 +263,11 @@ type Match struct {
 }
 
 // FindSame returns the datasets (other than skip) with a location the evidence is verified or probably equal to, verified
-// first. Only locations of the same size are looked at.
+// first. Only locations of the same size are looked at, and only the registered file and verified locations: what a dataset
+// is, as far as its bytes go, is its registered file; a probable, declared or stale location proves nothing about it.
 func (s *Store) FindSame(ev identity.Evidence, skip int64) ([]Match, error) {
 	rows, err := s.db.Query(`SELECT l.`+strings.ReplaceAll(locCols, ",", ",l.")+`, d.name FROM dataset_locations l JOIN datasets d ON d.id=l.dataset_id
-		WHERE l.size_bytes=? AND l.dataset_id<>? AND (l.full_sha256<>'' OR l.sampled_fp<>'') ORDER BY l.dataset_id, l.id`, ev.Size, skip)
+		WHERE l.size_bytes=? AND l.dataset_id<>? AND (l.full_sha256<>'' OR l.sampled_fp<>'') AND (l.is_primary=1 OR l.link='verified') ORDER BY l.dataset_id, l.id`, ev.Size, skip)
 	if err != nil {
 		return nil, err
 	}
