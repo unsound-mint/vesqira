@@ -2,14 +2,16 @@ import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { GitBranch } from "lucide-react";
 import type { Run } from "../api/runs";
-import { Button, FilterBox, PathField, TreeRow } from "../ui";
+import { Button, FilterBox, PathField, Select, TreeRow } from "../ui";
 import { matchRun } from "./filter";
 import { runVocabulary } from "./vocabulary";
 import s from "./Explorer.module.css";
 
 /** Pipeline runs: import a run folder, open one. A dirty commit is flagged in the list itself. */
-export function RunsList({ runs, onImport, onOpen }: { runs: Run[]; onImport: (path: string) => Promise<string | null>; onOpen: (run: Run) => void }) {
+export function RunsList({ runs, hosts = [], onImport, onOpen }: { runs: Run[]; hosts?: { id: number; name: string }[]; onImport: (path: string, hostId?: number) => Promise<string | null>; onOpen: (run: Run) => void }) {
   const [path, setPath] = useState("");
+  const [hostId, setHostId] = useState(""); // "" is this computer; otherwise a ROHSA fit on that host (ADR 0046)
+  const host = hostId ? Number(hostId) : undefined;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -20,7 +22,7 @@ export function RunsList({ runs, onImport, onOpen }: { runs: Run[]; onImport: (p
     e.preventDefault();
     if (!path.trim()) return;
     setBusy(true);
-    const r = await onImport(path.trim());
+    const r = await onImport(path.trim(), host);
     setBusy(false);
     setErr(r);
     if (!r) setPath("");
@@ -28,7 +30,14 @@ export function RunsList({ runs, onImport, onOpen }: { runs: Run[]; onImport: (p
   return (
     <div className={s.wrap}>
       <form className={s.form} onSubmit={submit}>
-        <PathField label="Import a run (VGT or ROHSA)" kind="dir" placeholder="/path/to/run_folder" value={path} onChange={setPath} />
+        {hosts.length > 0 ? (
+          <Select label="Where the run is" value={hostId} onChange={(e) => { setHostId(e.target.value); setPath(""); }}>
+            <option value="">This computer</option>
+            {hosts.map((h) => <option key={h.id} value={h.id}>{h.name} (a ROHSA fit)</option>)}
+          </Select>
+        ) : null}
+        <PathField label={host ? "Import a ROHSA fit from the host" : "Import a run (VGT or ROHSA)"} kind="dir" hostId={host} hosts={hosts} placeholder={host ? "/shared/home/you/run/region (a folder, or its rohsa_*.dat)" : "/path/to/run_folder"} value={path} onChange={setPath} />
+        {host ? <p className={s.note}>The host reads the fit's small records and the headers of its maps; the .dat stays there and is indexed there when you first open its components.</p> : null}
         <Button type="submit" disabled={busy || !path.trim()}>{busy ? "Importing…" : "Import run"}</Button>
         {err ? <p role="alert" className={s.err}>{err}</p> : null}
       </form>

@@ -75,11 +75,22 @@ describe("jobs", () => {
     expect(JSON.parse(String(call.init!.body))).toEqual({ scriptHash: draft.scriptHash, autoImport: false });
   });
 
-  it("offers no automatic import for a job that has no run to import", async () => {
-    mockFetch([{ ...draft, template: "rohsa", autoImport: false }]);
+  it("offers no automatic import for a custom script, which names no output folder", async () => {
+    mockFetch([{ ...draft, template: "custom", autoImport: false }]);
     render(<JobsView hosts={[host]} onImported={() => {}} onOpenRun={() => {}} />);
     await userEvent.click(await screen.findByRole("button", { name: /vgt-ker8/ }));
     expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("offers automatic import of a ROHSA fit, on by default, says the .dat is not read, and submits the choice", async () => {
+    const calls = mockFetch([{ ...draft, template: "rohsa", autoImport: true }]);
+    render(<JobsView hosts={[host]} onImported={() => {}} onOpenRun={() => {}} />);
+    await userEvent.click(await screen.findByRole("button", { name: /vgt-ker8/ }));
+    const box = screen.getByRole("checkbox", { name: /import its fit as a run.*the \.dat is not read/ });
+    expect(box).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Submit this script" }));
+    const call = calls.find((c) => c.url.endsWith("/submit"))!;
+    expect(JSON.parse(String(call.init!.body))).toEqual({ scriptHash: draft.scriptHash, autoImport: true });
   });
 
   it("explains the notification toggle where jobs are listed", async () => {

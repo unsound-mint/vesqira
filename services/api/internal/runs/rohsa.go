@@ -25,9 +25,12 @@ type RohsaInfo struct {
 	RegionBasis string `json:"regionBasis"` // declared (the trace names it) | inferred (the folder's name)
 	// CropDatasetID is the registered crop the fit used; nil when its FITS file was not found, and then no spectral
 	// calibration exists for this run.
-	CropDatasetID *int64   `json:"cropDatasetId"`
-	CropName      string   `json:"cropName"`
-	Notes         []string `json:"notes"`
+	CropDatasetID *int64 `json:"cropDatasetId"`
+	CropName      string `json:"cropName"`
+	// HostID is the host the fit lives on (0: this machine). The .dat, its crop and the product maps are on that host, the
+	// index of the .dat is built there (ADR 0046, remote fits), and only its pixels and small records travel.
+	HostID int64    `json:"hostId,omitempty"`
+	Notes  []string `json:"notes"`
 	// UnitNotes says, per output role, how the unit shown for a product map relates to its name (see ProposeUnit).
 	UnitNotes map[string]string `json:"unitNotes"`
 }

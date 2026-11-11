@@ -1004,20 +1004,46 @@ def catalog_op(op: str, path, req: dict) -> tuple[dict, bytes]:
         raise Refused("unreadable", str(e))
 
 
+def remote_cache_dir(real_dat: str) -> str:
+    """Where a worker that enforces roots (a remote host) keeps its ROHSA index sidecars: the folder the launcher names in
+    VESQIRA_CACHE (the account's own cache, `~/.cache/vesqira/rohsa`), never one a request names. It is created private
+    (0700), must be a real folder owned by this account (not a link), and must not be inside the folder of the .dat: an
+    index is a rebuildable cache and is never written next to research data or into a project tree.
+    """
+    raw = os.environ.get("VESQIRA_CACHE")
+    if not raw or not os.path.isabs(raw) or "\0" in raw:
+        raise Refused("unsupported", "this host has no cache folder for the ROHSA index")
+    data_dir = os.path.dirname(real_dat)
+    planned = os.path.realpath(raw)
+    if planned == data_dir or planned.startswith(data_dir.rstrip(os.sep) + os.sep):
+        raise Refused("unsupported", "the ROHSA index is never written next to the data")   # checked before anything is created
+    try:
+        if os.path.islink(raw):
+            raise Refused("unsupported", "the host's ROHSA cache folder is a link; it is not used")
+        os.makedirs(raw, mode=0o700, exist_ok=True)
+        st = os.lstat(raw)
+    except OSError:
+        raise Refused("unsupported", "the host's ROHSA cache folder cannot be created")
+    import stat as _stat
+    if not _stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise Refused("unsupported", "the host's ROHSA cache folder is not a folder of this account")
+    return planned
+
+
 def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
     """ROHSA decomposition (ADR 0046): index the raw .dat (resumable), then read one pixel's Gaussians as curves.
 
     The crop FITS (`path`) gives the pixel grid and the spectral axis; the .dat (`dat_path`) holds the fit. The sidecar
-    index goes under `cache_dir`, which the API chooses, so this is the one operation that writes, and only there. A
-    remote worker (roots enforced by this process) refuses it: the index is built on the machine that owns the cache.
+    index goes under a cache folder, so this is the one operation that writes, and only there. Locally the API names the
+    folder (`cache_dir`). A worker that enforces roots (a host) takes none from the request: its own cache folder is fixed
+    by the launcher (remote_cache_dir), the index is built on the machine that owns the data, and the .dat never travels.
     """
-    if ROOTS is not None:
-        raise Refused("unsupported", "ROHSA files on a remote host are not supported yet")
-    for key in ("path", "dat_path", "cache_dir"):
+    for key in ("path", "dat_path") + (("cache_dir",) if ROOTS is None else ()):
         v = req.get(key)
         if not isinstance(v, str) or not os.path.isabs(v) or len(v) > 4096 or "\0" in v:
             raise Refused("bad_request", "bad request")
     real_crop, real_dat = authorize(req["path"]), authorize(req["dat_path"])
+    cache_dir = req["cache_dir"] if ROOTS is None else remote_cache_dir(real_dat)
     c = cube_for(real_crop)
     if c.chan is None or c.channels < 2:
         raise Refused("unsupported", "the crop has no spectral axis of at least two channels")
@@ -1029,11 +1055,11 @@ def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
             if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not 0 < budget <= 20:
                 raise Refused("bad_request", "bad request")
             return {"ok": True, "op": op, "nbytes": 0, "width": nx, "height": ny,
-                    **rohsa.index_step(real_dat, req["cache_dir"], nx, ny, n, float(budget))}, b""
+                    **rohsa.index_step(real_dat, cache_dir, nx, ny, n, float(budget))}, b""
         x, y = as_index(req, "x", nx), as_index(req, "y", ny)
         if nc * (n + 2 if isinstance(n, int) and not isinstance(n, bool) else 2) > rohsa.MAX_CURVE_ELEMENTS:
             raise Refused("unsupported", "too many channels for the curves")
-        amp, mean_raw, sig = rohsa.read_pixel(real_dat, req["cache_dir"], nx, ny, n, x, y)
+        amp, mean_raw, sig = rohsa.read_pixel(real_dat, cache_dir, nx, ny, n, x, y)
     except rohsa.Bad as e:
         raise Refused(e.code, e.message)
     except OSError:

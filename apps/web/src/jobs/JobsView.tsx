@@ -177,7 +177,7 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
         <option value="vgt">VGT run</option>
         <option value="rohsa">ROHSA decomposition</option>
       </Select>
-      {kind === "rohsa" ? <p className={s.note}>Runs the ROHSA build-and-decompose script of the pipeline on a copy of a ROHSA config from the host, with the settings you change applied (every other line as it was). The output folder is set for each job; a fit is read from files on this machine, so copy its folder under a source folder here and import its rohsa_*.dat from Runs. A sizing table for the request appears below.</p> : null}
+      {kind === "rohsa" ? <p className={s.note}>Runs the ROHSA build-and-decompose script of the pipeline on a copy of a ROHSA config from the host, with the settings you change applied (every other line as it was). The output folder is set for each job, inside the host's source folders; when the job completes its fit is imported from there (the .dat stays on the host and is indexed there when you first open its components). A sizing table for the request appears below.</p> : null}
       <p className={s.note}>Start from a configuration that already exists on the host, adjust what you need, and read the generated script before anything is sent. The output folder is set for you inside the host’s source folders so the results can be opened here.</p>
       <Select label="Host" value={hostId} onChange={(e) => setHostId(e.target.value)}>
         {hosts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
@@ -206,6 +206,7 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
       {loaded && kind === "rohsa" ? (
         <fieldset className={s.fields}>
           <legend>Settings (from the config; change what this run needs)</legend>
+          <p className={s.note}>memory_gb is the pipeline's own memory check: it refuses to start a fit whose estimate is above it. A larger n_gauss may need it raised; the job's Slurm memory (Resources, below) is a separate request.</p>
           {ROHSA_SETTINGS.map((st) => {
             const opts = st.kind === "bool" ? ["true", "false"] : st.kind === "kernel" ? KERNELS : null;
             return opts ? (
@@ -281,10 +282,10 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun, onSweep }: { jo
       {draft ? (
         <div className={s.row}>
           <Button disabled={busy || !dirty} onClick={() => act(() => editScript(job.id, script), onChange)}>Save edits</Button>
-          <Button variant="primary" disabled={busy || dirty} onClick={() => act(() => submitJob(job.id, job.scriptHash, job.template === "vgt" ? autoImport : undefined).catch(async (e) => { const j = await getJob(job.id).catch(() => null); if (j) onChange(j); throw e; }), onChange)}>Submit this script</Button>
+          <Button variant="primary" disabled={busy || dirty} onClick={() => act(() => submitJob(job.id, job.scriptHash, job.template === "vgt" || job.template === "rohsa" ? autoImport : undefined).catch(async (e) => { const j = await getJob(job.id).catch(() => null); if (j) onChange(j); throw e; }), onChange)}>Submit this script</Button>
         </div>
       ) : null}
-      {draft && job.template === "vgt" ? <Checkbox label="When the job completes, import its results as a run (reads the output folder; checks nothing)" checked={autoImport} onChange={(e) => setAutoImport(e.target.checked)} /> : null}
+      {draft && (job.template === "vgt" || job.template === "rohsa") ? <Checkbox label={job.template === "rohsa" ? "When the job completes, import its fit as a run (the host reads the fit's small records and map headers; the .dat is not read; checks nothing)" : "When the job completes, import its results as a run (reads the output folder; checks nothing)"} checked={autoImport} onChange={(e) => setAutoImport(e.target.checked)} /> : null}
       {draft ? <p className={s.note}>Submitted from this computer to your own cluster account, so there is no extra approval step: the script above is what runs.{dirty ? " Save your edits before submitting." : ""}</p> : null}
       {!draft ? (
         <div className={s.row}>
@@ -294,10 +295,10 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun, onSweep }: { jo
           <Button disabled={busy} onClick={() => act(() => jobLog(job.id), setLog)}>Show log</Button>
           {job.template === "analysis" && job.state === "completed" ? <Button disabled={busy} onClick={() => act(() => jobResult(job.id), (r) => setLog(JSON.stringify(r.summary, null, 2)))}>Show the result</Button> : null}
           {job.template === "analysis" && job.state === "completed" ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), () => onImported(null))}>Register the result file</Button> : null}
-          {job.template === "vgt" && job.state === "completed" && !job.runId ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), (r) => { setRun(r); onChange({ ...job, runId: r.id }); onImported(r); })}>Import results as a run</Button> : null}
+          {(job.template === "vgt" || job.template === "rohsa") && job.state === "completed" && !job.runId ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), (r) => { setRun(r); onChange({ ...job, runId: r.id }); onImported(r); })}>Import results as a run</Button> : null}
         </div>
       ) : null}
-      {!draft && job.template === "vgt" && !job.runId ? <p className={s.note}>{job.autoImport ? "Its results will be imported as a run when it completes." : "Its results are not imported automatically."}</p> : null}
+      {!draft && (job.template === "vgt" || job.template === "rohsa") && !job.runId ? <p className={s.note}>{job.autoImport ? "Its results will be imported as a run when it completes." : "Its results are not imported automatically."}</p> : null}
       {onSweep ? <div className={s.row}><Button onClick={onSweep}>Sweep from this job…</Button></div> : null}
       {job.runId ? <p className={s.note}>Results imported. {run ? <Button onClick={() => onOpenRun(run)}>Open the run</Button> : "Find the run in the explorer."}</p> : null}
       {log !== null ? <pre className={s.log} aria-label="Job log">{log || "No output yet."}</pre> : null}

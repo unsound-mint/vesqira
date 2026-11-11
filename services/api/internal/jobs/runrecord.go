@@ -33,7 +33,7 @@ const (
 
 var (
 	sbatchRe = regexp.MustCompile(`(?m)^#SBATCH --(cpus-per-task|mem|time|partition|account|nodes|ntasks)=(\S+)$`)
-	cfgBlock = regexp.MustCompile(`(?s)cat > "\$cfg" <<'` + configEnd + `'\n(.*?)\n` + configEnd + `\n`)
+	cfgBlock = regexp.MustCompile(`(?s)cat > "\$(?:cfg|config)" <<'` + configEnd + `'\n(.*?)\n` + configEnd + `\n`)
 )
 
 // StateEvidence says where the state in a record came from and when it was obtained, which is not when the record is
@@ -128,6 +128,7 @@ func RunRecord(j Job, hostName string, inputs []RunInput, ev StateEvidence, now 
 			},
 			"job": map[string]any{
 				"id":            j.ID,
+				"output_dir":    j.OutputDir,
 				"name":          j.Name,
 				"template":      j.Template,
 				"slurm_id":      j.SlurmID,
@@ -193,6 +194,16 @@ func flatten(m map[string]any) [][2]string {
 			case map[string]any:
 				if depth < 1 {
 					walk(name, v, depth+1)
+				}
+			case []any:
+				// a list of one is that value (ROHSA's n_gauss = [16]); a longer list is not one setting
+				if len(v) == 1 {
+					switch e := v[0].(type) {
+					case string:
+						out = append(out, [2]string{name, e})
+					case int64, float64, bool:
+						out = append(out, [2]string{name, fmt.Sprint(e)})
+					}
 				}
 			case string:
 				out = append(out, [2]string{name, v})

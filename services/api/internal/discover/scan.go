@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,6 +55,11 @@ type Run struct {
 	OutputBytes int64     `json:"outputBytes"`
 	MtimeNS     int64     `json:"mtimeNs"` // of the run record
 	RecordSize  int64     `json:"recordSize"`
+
+	// jobID and jobTemplate are the Vesqira job a run.json names (0 and "" when none): what lets a job's record and the fit
+	// it produced be recognised as one run (mergeJobRecords). Not part of the wire.
+	jobID       int64
+	jobTemplate string
 }
 
 type Link struct {
@@ -219,6 +225,7 @@ func finish(r *Result) {
 		}
 	}
 	r.ResultLike = top
+	mergeJobRecords(r)
 	markDiffers(r.Runs)
 	// a folder holding data counts once however many files it holds
 	dirs := map[string]bool{}
@@ -561,8 +568,18 @@ func (s *scanner) readRecord(r *Run, kind recordKind) bool {
 			r.Settings = append(r.Settings, Setting{p.Key, p.Value})
 		}
 		r.Notes = append(r.Notes, "a ROHSA fit: its raw output is "+stem+".dat; other fits in this folder share this run record's folder")
+		// the folder may also hold the record Vesqira wrote for the job that made the fit: the same run, named once
+		if rec, trunc, err := s.fs.ReadFile(joinRel(r.Path, "run.json"), runs.MaxMetadataBytes); err == nil && !trunc {
+			if id, tpl, ok := jobOf(rec); ok && tpl == "rohsa" {
+				r.jobID, r.jobTemplate = id, tpl
+				addJob(r, id, "run.json")
+			}
+		}
 	case recProvenance, recRunJSON:
 		s.fromJSON(r, data)
+		if kind == recRunJSON {
+			r.jobID, r.jobTemplate, _ = jobOf(data)
+		}
 	case recParams:
 		if strings.HasSuffix(r.Record, ".json") {
 			s.fromJSON(r, data)
@@ -931,4 +948,73 @@ func runParents(rs []Run) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// jobOf reads which Vesqira job a run.json was written for. Only a record carrying Vesqira's own marker counts: any other
+// run.json (another program's, a hand-made one) names no job here.
+func jobOf(data []byte) (id int64, template string, ok bool) {
+	var rec struct {
+		Vesqira struct {
+			Record string `json:"record"`
+			Job    struct {
+				ID       int64  `json:"id"`
+				Template string `json:"template"`
+			} `json:"job"`
+		} `json:"vesqira"`
+	}
+	if json.Unmarshal(data, &rec) != nil || rec.Vesqira.Record != "vesqira-run-record" || rec.Vesqira.Job.ID <= 0 {
+		return 0, "", false
+	}
+	return rec.Vesqira.Job.ID, rec.Vesqira.Job.Template, true
+}
+
+func addJob(r *Run, id int64, source string) {
+	if !has2(r.Fields, "job") {
+		r.Fields = append(r.Fields, Field{"job", "Vesqira job " + strconv.FormatInt(id, 10), "declared", source})
+	}
+}
+
+// mergeJobRecords makes a ROHSA job and its fit one run. Vesqira writes run.json in the job's output folder, and the pipeline
+// writes the fit (with its trace) in that folder or a folder below it, so a scan would list two runs for one job: the record
+// and, nested inside it, the fit. When a run.json written for a ROHSA job has ROHSA runs below it, the record is not listed;
+// each fit keeps its own settings (the pipeline's trace) and gains the job it came from. A record with no fit below it (the job
+// has not produced one yet, or failed) is still listed: it is all there is.
+func mergeJobRecords(res *Result) {
+	drop := map[int]bool{}
+	for i := range res.Runs {
+		outer := res.Runs[i]
+		if outer.RecordKind != string(recRunJSON) || outer.jobTemplate != "rohsa" {
+			continue
+		}
+		found := false
+		for j := range res.Runs {
+			in := &res.Runs[j]
+			if j == i || in.RecordKind != string(recROHSA) || in.Path == outer.Path || (outer.Path != "" && !strings.HasPrefix(in.Path, outer.Path+"/")) {
+				continue
+			}
+			found = true
+			src := joinRel(outer.Path, outer.Record)
+			addJob(in, outer.jobID, src)
+			kept := in.Notes[:0]
+			for _, n := range in.Notes {
+				if !strings.HasPrefix(n, "this run is inside the run "+outer.Path) {
+					kept = append(kept, n)
+				}
+			}
+			in.Notes = append(kept, "Vesqira's record of the job that made this fit ("+src+") is part of this run, not a second one")
+		}
+		if found {
+			drop[i] = true
+		}
+	}
+	if len(drop) == 0 {
+		return
+	}
+	kept := res.Runs[:0]
+	for i, r := range res.Runs {
+		if !drop[i] {
+			kept = append(kept, r)
+		}
+	}
+	res.Runs = kept
 }

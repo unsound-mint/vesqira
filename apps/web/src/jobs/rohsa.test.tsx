@@ -7,8 +7,8 @@ import { ROHSA_SETTINGS, ROHSA_SWEEP_KEYS, readRohsaSetting, sameValue } from ".
 describe("ROHSA settings", () => {
   it("never offers the input cube or the output folder, which Vesqira owns, and ties the three smoothing weights for sweeps", () => {
     const keys = ROHSA_SETTINGS.map((s) => s.key);
-    for (const bad of ["output_dir", "input", "reuse", "force_full_cube", "memory_gb"]) expect(keys).not.toContain(bad);
-    expect(keys).toEqual(expect.arrayContaining(["n_gauss", "lambda_amp", "lambda_mu", "lambda_sig", "lb_sig", "ub_sig", "maxiter", "noise", "crop_size", "spectral_kernel"]));
+    for (const bad of ["output_dir", "input", "reuse", "force_full_cube"]) expect(keys).not.toContain(bad);
+    expect(keys).toEqual(expect.arrayContaining(["n_gauss", "lambda_amp", "lambda_mu", "lambda_sig", "lb_sig", "ub_sig", "maxiter", "noise", "memory_gb", "crop_size", "spectral_kernel"]));
     expect(ROHSA_SWEEP_KEYS[0]!.key).toBe("lambda");
     expect(ROHSA_SWEEP_KEYS.map((s) => s.key)).toEqual(expect.arrayContaining(keys));
   });

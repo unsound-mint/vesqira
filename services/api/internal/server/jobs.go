@@ -258,10 +258,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, fmt.Sprintf("the note is at most %d characters", jobs.MaxNote))
 		return
 	}
-	job := jobs.Job{HostID: h.ID, Name: in.Name, Template: in.Template, Note: in.Note, AutoImport: in.Template == "vgt"}
+	job := jobs.Job{HostID: h.ID, Name: in.Name, Template: in.Template, Note: in.Note, AutoImport: autoImports(in.Template)}
 	if in.AutoImport != nil {
-		if *in.AutoImport && in.Template != "vgt" {
-			fail(w, 422, "results are imported automatically for VGT jobs only")
+		if *in.AutoImport && !autoImports(in.Template) {
+			fail(w, 422, "results are imported automatically for VGT and ROHSA jobs only")
 			return
 		}
 		job.AutoImport = *in.AutoImport
@@ -361,8 +361,8 @@ func (s *Server) submitDraft(ctx context.Context, j jobs.Job, h hosts.Host, scri
 	if j.State != jobs.StateDraft {
 		return j, &apiErr{409, "only a draft can be submitted"}
 	}
-	if autoImport != nil && *autoImport && j.Template != "vgt" {
-		return j, &apiErr{422, "results are imported automatically for VGT jobs only"}
+	if autoImport != nil && *autoImport && !autoImports(j.Template) {
+		return j, &apiErr{422, "results are imported automatically for VGT and ROHSA jobs only"}
 	}
 	if scriptHash != j.ScriptHash {
 		return j, &apiErr{409, "the script changed since you reviewed it; review the current script and submit again"}
@@ -549,6 +549,10 @@ func (s *Server) jobLog(w http.ResponseWriter, r *http.Request) {
 
 type hostRef struct{ hosts.Host }
 
+// autoImports says which templates can have their results imported by themselves when the job completes (ADR 0043): the two
+// whose output folder holds a run Vesqira knows how to read, VGT (run_metadata.toml) and ROHSA (the fit, ADR 0046).
+func autoImports(template string) bool { return template == "vgt" || template == "rohsa" }
+
 // registerJobOutputs imports the finished job's run folder from its host and links the Run to the job.
 func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 	j, h, ok := s.jobFrom(w, r)
@@ -562,7 +566,15 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	if j.Template == "rohsa" {
-		fail(w, 409, "a ROHSA fit is read from files on this machine (ADR 0046): copy the fit's folder under a source root here and import its rohsa_*.dat from Runs")
+		rctx, rcancel := context.WithTimeout(r.Context(), remoteImportTimeout) // the same bound as the automatic import
+		defer rcancel()
+		run, code, msg := s.importROHSAJob(rctx, j, h)
+		if code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		_ = s.Jobs.LinkRun(j.ID, run.ID)
+		writeJSON(w, 201, s.runView(run))
 		return
 	}
 	if j.Template == "analysis" {

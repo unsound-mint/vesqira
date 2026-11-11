@@ -240,7 +240,7 @@ export function Shell() {
   const catalog = (
     <>
       <Section title="Runs" meta={String(cat.runs.length)} defaultOpen={cat.runs.length > 0}>
-        <RunsList runs={cat.runs} onImport={cat.importRunFolder} onOpen={(r) => openRun(r.id)} />
+        <RunsList runs={cat.runs} hosts={cat.hosts} onImport={cat.importRunFolder} onOpen={(r) => openRun(r.id)} />
       </Section>
       <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0}>
         <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />

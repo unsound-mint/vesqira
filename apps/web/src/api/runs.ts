@@ -74,8 +74,8 @@ export type Rerun = {
 };
 
 export const listRuns = (opts: { archived?: "all" | "only" } = {}) => call<{ runs: Run[] }>(`/api/runs${opts.archived ? `?archived=${opts.archived}` : ""}`).then((r) => r.runs);
-export const importRun = (path: string) =>
-  call<Run>("/api/runs/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
+export const importRun = (path: string, hostId?: number) =>
+  call<Run>("/api/runs/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(hostId ? { path, hostId } : { path }) });
 
 export type RunReviewRevision = RunReview & { at: string };
 export const runReviewHistory = (id: number) => call<{ history: RunReviewRevision[] }>(`/api/runs/${id}/history`).then((r) => r.history);

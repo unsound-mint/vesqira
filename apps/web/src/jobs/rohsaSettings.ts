@@ -23,6 +23,7 @@ export const ROHSA_SETTINGS: RohsaSetting[] = [
   { key: "maxiter", label: "maxiter (iteration limit)", kind: "text" },
   { key: "maxiter_init", label: "maxiter_init", kind: "text" },
   { key: "noise", label: "noise (use a noise estimate)", kind: "bool" },
+  { key: "memory_gb", label: "memory_gb (the pipeline's memory check: a number or auto)", kind: "text" },
   { key: "spectral_kernel", label: "spectral_kernel", kind: "kernel" },
   { key: "crop_size", label: "crop_size (0 = whole cube)", kind: "text" },
   { key: "crop_x0", label: "crop_x0", kind: "text" },

@@ -186,10 +186,9 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 		if utf8.RuneCountInString(why) > jobs.MaxNote {
 			why = string([]rune(why)[:jobs.MaxNote])
 		}
-		// results are imported by themselves for VGT (ADR 0043); a ROHSA fit is read from local files only (ADR 0046), so there
-		// is nothing to import from the host and the option stays off
+		// results are imported by themselves (ADR 0043), for ROHSA too (ADR 0046): the grid shows each run's metrics
 		p.drafts = append(p.drafts, jobs.Job{HostID: p.host.ID, Name: name, Template: p.base.Template, Script: b.Script, OutputDir: b.OutputDir, Request: b.Request,
-			ParentRunID: p.baseRun, Note: why, AutoImport: !rohsa})
+			ParentRunID: p.baseRun, Note: why, AutoImport: true})
 	}
 	return p, nil
 }

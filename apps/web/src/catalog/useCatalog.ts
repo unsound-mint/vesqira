@@ -72,9 +72,9 @@ export function useCatalog() {
   }, []);
 
   /** Import a run folder; returns an error text, or null. Refreshes datasets, because the import registers outputs and may declare one. */
-  const importRunFolder = useCallback(async (path: string): Promise<string | null> => {
+  const importRunFolder = useCallback(async (path: string, hostId?: number): Promise<string | null> => {
     try {
-      const run = await importRun(path);
+      const run = await importRun(path, hostId);
       setRuns(await listRuns({ archived: "all" }));
       setDatasets(await listDatasets({ archived: "all" }));
       const first = run.outputs.find((o) => o.role === "psi") ?? run.outputs[0];

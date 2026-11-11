@@ -201,5 +201,93 @@ class WorkerOp(unittest.TestCase):
         self.assertEqual(head["code"], "bad_request")
 
 
+class RemoteWorkerOp(unittest.TestCase):
+    """A worker that enforces roots (a host) keeps the ROHSA index in the cache folder its launcher names, never one a request
+    names, never next to the data, and never through a link."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name).resolve()
+        self.dat = g.write_rohsa_run(self.dir / "data" / "run")
+        self.crop = self.dat.parent / f"{g.R_REGION}.fits"
+        self.cache = self.dir / "home" / ".cache" / "vesqira" / "rohsa"
+        self.clients = []
+
+    def tearDown(self):
+        for c in self.clients:
+            c.close()
+        self.tmp.cleanup()
+
+    def client(self, cache="default", roots=None):
+        env = {} if cache is None else {"VESQIRA_CACHE": str(self.cache if cache == "default" else cache)}
+        c = Client(roots=roots or [self.dir / "data"], env_extra=env)
+        self.clients.append(c)
+        return c
+
+    def ask(self, c, op, **kw):
+        return c.ask(op=op, path=str(self.crop), dat_path=str(self.dat), n_gauss=g.RN, **kw)
+
+    def test_the_index_goes_to_the_launchers_cache_and_a_requested_folder_is_ignored(self):
+        c = self.client()
+        evil = self.dir / "evil"
+        head, _ = self.ask(c, "rohsa_index", cache_dir=str(evil))
+        self.assertTrue(head["ok"], head)
+        self.assertEqual(head["state"], "ready")
+        self.assertTrue(head["created"] and head["settled"])
+        self.assertFalse(evil.exists())
+        names = sorted(p.name for p in self.cache.iterdir())
+        self.assertEqual([n.rsplit(".", 1)[1] for n in names], ["json", "offs"])
+        self.assertEqual(self.cache.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(head["cache_file"], str(self.cache / names[1]))
+        self.assertEqual(sorted(p.name for p in self.dat.parent.iterdir() if p.suffix in (".offs", ".tmp")), [])   # never next to the data
+        again, _ = self.ask(c, "rohsa_index")
+        self.assertFalse(again["created"] or again["settled"])                                                    # nothing to audit twice
+        head, payload = self.ask(c, "rohsa_pixel", x=2, y=1)
+        self.assertTrue(head["ok"], head)
+        np.testing.assert_allclose(np.frombuffer(payload, dtype="<f8")[head["channels"]:2 * head["channels"]], g.rohsa_model()[:, 1, 2], rtol=1e-12)
+
+    def test_a_host_without_a_cache_folder_or_with_a_link_or_the_data_folder_refuses(self):
+        for cache, why in ((None, "no cache folder"),):
+            head, _ = self.ask(self.client(cache=cache), "rohsa_index")
+            self.assertEqual((head["ok"], head["code"]), (False, "unsupported"), why)
+        link = self.dir / "link"
+        (self.dir / "real").mkdir()
+        link.symlink_to(self.dir / "real")
+        head, _ = self.ask(self.client(cache=link), "rohsa_index")
+        self.assertEqual(head["code"], "unsupported")
+        self.assertEqual(list((self.dir / "real").iterdir()), [])
+        head, _ = self.ask(self.client(cache=self.dat.parent / "cache"), "rohsa_index")        # inside the data's folder
+        self.assertEqual(head["code"], "unsupported")
+        self.assertFalse((self.dat.parent / "cache").exists())
+
+    def test_a_link_in_the_cache_folder_is_never_written_through(self):
+        c = self.client()
+        head, _ = self.ask(c, "rohsa_index")
+        victim = self.dir / "victim"
+        victim.write_text("do not touch")
+        offs = self.cache / Path(head["cache_file"]).name
+        offs.unlink()
+        offs.symlink_to(victim)
+        head, _ = self.ask(c, "rohsa_index")
+        self.assertEqual((head["ok"], head["code"]), (False, "unsupported"))
+        self.assertEqual(victim.read_text(), "do not touch")
+
+    def test_build_in_a_host_cache_is_chunked_and_resumable(self):
+        old = rohsa.CHUNK_BYTES
+        rohsa.CHUNK_BYTES = 700
+        try:
+            r = rohsa.index_step(str(self.dat), str(self.cache), g.RX, g.RY, g.RN, budget_s=1e-9)
+            self.assertEqual((r["state"], r["created"], r["settled"]), ("building", True, False))
+            steps = 0
+            while r["state"] == "building":
+                r = rohsa.index_step(str(self.dat), str(self.cache), g.RX, g.RY, g.RN, budget_s=1e-9)
+                self.assertFalse(r["created"])
+                steps += 1
+        finally:
+            rohsa.CHUNK_BYTES = old
+        self.assertGreater(steps, 1)
+        self.assertEqual((r["state"], r["settled"]), ("ready", True))
+
+
 if __name__ == "__main__":
     unittest.main()

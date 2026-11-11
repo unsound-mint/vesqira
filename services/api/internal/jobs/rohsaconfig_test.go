@@ -121,7 +121,7 @@ func TestROHSAConfigRoundTripKeepsEverythingElseVerbatim(t *testing.T) {
 }
 
 func TestROHSAWhitelistRefusals(t *testing.T) {
-	for _, k := range []string{"output_dir", "input", "input_file", "reuse", "force_full_cube", "memory_gb", "n-gauss", "dn", ""} {
+	for _, k := range []string{"output_dir", "input", "input_file", "reuse", "force_full_cube", "n-gauss", "dn", ""} {
 		if _, err := SetROHSAConfig(ownerShaped, map[string]string{k: "/shared/home/u/x"}, ""); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%q accepted: %v", k, err)
 		}
@@ -226,5 +226,43 @@ func TestROHSASizingMirrorsTheSubmitScript(t *testing.T) {
 	}
 	if z := cfg.SizingOf(); z.Mem != "140G" || z.CPUs != 32 || z.Time != "1-12:00:00" {
 		t.Errorf("2048 square, N=16: %+v", z)
+	}
+}
+
+// memory_gb is the pipeline's own memory preflight (it refuses a fit whose estimate is above it), a research setting of the
+// config: editable, written as typed (96 stays an integer), "auto" kept as the word, nothing else accepted.
+func TestROHSAMemoryBudgetIsEditableAndKeepsItsType(t *testing.T) {
+	out, err := SetROHSAConfig(ownerShaped, map[string]string{"memory_gb": "96"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "\nmemory_gb = 96\n") || strings.Contains(out, "96.0") {
+		t.Errorf("memory_gb is written as typed:\n%s", out)
+	}
+	if v, ok := decode(t, out)["input"]["memory_gb"].(int64); !ok || v != 96 {
+		t.Errorf("memory_gb reads back as %v", decode(t, out)["input"]["memory_gb"])
+	}
+	if out, err = SetROHSAConfig(ownerShaped, map[string]string{"memory_gb": "auto"}, ""); err != nil || !strings.Contains(out, `memory_gb = "auto"`) {
+		t.Errorf("auto: %v\n%s", err, out)
+	}
+	if out, err = SetROHSAConfig(ownerShaped, map[string]string{"memory_gb": "96.5"}, ""); err != nil || !strings.Contains(out, "memory_gb = 96.5\n") {
+		t.Errorf("a real: %v", err)
+	}
+	for _, bad := range []string{"0", "-4", "1e3", "lots", "100001", "96; rm", "96\nforce_full_cube = true"} {
+		if _, err := SetROHSAConfig(ownerShaped, map[string]string{"memory_gb": bad}, ""); !errors.Is(err, ErrInvalid) {
+			t.Errorf("memory_gb %q accepted: %v", bad, err)
+		}
+	}
+	// a config without the key gets it in [input], where the owner's configs keep it
+	noMem := strings.Replace(ownerShaped, "memory_gb = \"auto\"   # keep this comment\n", "", 1)
+	if out, err = SetROHSAConfig(noMem, map[string]string{"memory_gb": "40"}, ""); err != nil || decode(t, out)["input"]["memory_gb"] == nil {
+		t.Errorf("added: %v", err)
+	}
+	found := false
+	for _, k := range ROHSAEditableKeys() {
+		found = found || k == "memory_gb"
+	}
+	if !found {
+		t.Error("memory_gb is not listed as editable")
 	}
 }

@@ -136,8 +136,14 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Path string `json:"path"`
+		// HostID imports a ROHSA fit that lives on that host (the owner runs ROHSA on the cluster); 0 is this machine.
+		HostID int64 `json:"hostId"`
 	}
 	if !body(w, r, 8<<10, &in, true) {
+		return
+	}
+	if in.HostID != 0 {
+		s.importROHSAFromHost(w, r, in.HostID, in.Path)
 		return
 	}
 	if dat, found, code, msg := s.rohsaTarget(in.Path); found {
@@ -145,7 +151,7 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 			fail(w, code, msg)
 			return
 		}
-		run, code, msg := s.importROHSA(r.Context(), dat)
+		run, code, msg := s.importROHSA(r.Context(), localROHSA{s: s, dat: dat})
 		if code != 0 {
 			fail(w, code, msg)
 			return

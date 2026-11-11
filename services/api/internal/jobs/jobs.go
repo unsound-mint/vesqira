@@ -67,7 +67,7 @@ type Job struct {
 	// folder did not exist yet, a rewrite at a terminal state failed, or the host was unreachable (ADR 0039). Not part of
 	// the job JSON.
 	RecordOwed bool `json:"-"`
-	// AutoImport asks for the finished job's results to be imported as a run by itself, once, when it completes (VGT
+	// AutoImport asks for the finished job's results to be imported as a run by itself, once, when it completes (VGT and ROHSA
 	// jobs only). AutoImportTried is set when that attempt was claimed, so it never runs twice and a failure is not retried.
 	AutoImport      bool `json:"autoImport"`
 	AutoImportTried bool `json:"-"`
@@ -873,10 +873,10 @@ func (s *Store) ApplyStatus(id int64, state, detail string) (bool, error) {
 }
 
 // ClaimAutoImport reports whether the caller may import this job's results now: the option is on, the job is a finished
-// VGT job with an output folder that has not become a run, and nobody claimed it before. One caller can win, once, for the
+// VGT or ROHSA job with an output folder that has not become a run, and nobody claimed it before. One caller can win, once, for the
 // life of the catalog, so a restart or a second refresh never imports twice and a failed import is not retried.
 func (s *Store) ClaimAutoImport(id int64) (bool, error) {
-	res, err := s.db.Exec(`UPDATE jobs SET auto_import_tried=1 WHERE id=? AND auto_import=1 AND auto_import_tried=0 AND template='vgt' AND output_dir<>'' AND run_id IS NULL AND state=?`, id, StateCompleted)
+	res, err := s.db.Exec(`UPDATE jobs SET auto_import_tried=1 WHERE id=? AND auto_import=1 AND auto_import_tried=0 AND template IN ('vgt','rohsa') AND output_dir<>'' AND run_id IS NULL AND state=?`, id, StateCompleted)
 	if err != nil {
 		return false, err
 	}

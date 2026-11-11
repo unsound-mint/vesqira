@@ -37,3 +37,9 @@ Go tests with stand-in `ssh`, `sbatch`, `squeue` and `sacct` (the ssh stand-in l
 
 ## Rollback / Migration
 `-job-watch=0` stops the watcher; the Refresh button and page timer work as before. Remove the `Notes` field from the server wiring to drop the routes and the bell shows nothing. The two job columns and the table can stay; nothing reads them then. Restoring a pre-6 backup (made automatically before the migration) removes them.
+
+## Note: ROHSA jobs import by themselves too (ADR 0046, remote fits)
+Status: implemented, awaiting owner review. Schema unchanged (13).
+- The option's default is on for VGT and ROHSA jobs; `autoImports(template)` is the one place that says which (a custom script names no output folder, so `true` for it is still refused with 422). `ClaimAutoImport` accepts the two templates; its one-winner rule, the single attempt, the notification texts and the "not retried; open the job" failure are unchanged.
+- What `autoImport` runs for a ROHSA job is `importROHSAJob`: the one `rohsa_*.dat` found in the job's output folder or just below it on the host (the pipeline writes `<output>/<region>/`; a search of at most 40 folders, 3 levels deep, that stops descending at a folder holding a fit), imported by the same code as an import by path (ADR 0046). No fit, or several, is one failed-import notification that says which ("no ROHSA fit ... was found", "this folder holds several ROHSA fits (...)"); nothing is guessed, and the button ("Import results as a run", the same routine) works when the folder is fixed. A ROHSA import registers a fit's small files by the host's worker (up to 200 map headers), so its background attempt has 10 minutes instead of 90 seconds.
+- The announcement of a completed ROHSA job says its results are imported now, as for VGT: importing reads the files and checks nothing.
