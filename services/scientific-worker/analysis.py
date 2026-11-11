@@ -33,6 +33,7 @@ from astropy.io import fits
 
 from plane_worker import Cube, Refused, authorize, declared_unit as checked_declared_unit, fits_array
 import orientation as ori
+from memcap import limit_memory, over_cap_message
 
 MAX_OUTPUT_ELEMENTS = 1 << 28
 
@@ -786,6 +787,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--params")               # relorient_*: parameters as a JSON object (relorient.check_params)
     ap.add_argument("--table-out")            # relorient_maps: where the per-pixel CSV goes
     args = ap.parse_args(argv)
+    limit_memory()
     try:
         if args.op != "stats" and not args.out:
             fail("--out is required")
@@ -803,7 +805,11 @@ def main(argv: list[str]) -> int:
         log_failure(args.op, "refused")
         print(json.dumps({"ok": False, "error": e.message}))
         return 2
-    except (OSError, ValueError, KeyError, TypeError, IndexError, MemoryError) as e:
+    except MemoryError:
+        log_failure(args.op, "MemoryError")
+        print(json.dumps({"ok": False, "error": over_cap_message()}))
+        return 2
+    except (OSError, ValueError, KeyError, TypeError, IndexError) as e:
         log_failure(args.op, type(e).__name__)
         print(json.dumps({"ok": False, "error": "cannot read or process this file"}))
         return 2

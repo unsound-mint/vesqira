@@ -116,12 +116,28 @@ func (p *Persistent) init() {
 	})
 }
 
+// passEnv lists the only variables of the API's own environment a worker inherits: settings meant for the worker itself.
+// Everything else stays out, so a worker never sees the API's secrets or ssh agent unless a caller adds them.
+var passEnv = []string{"VESQIRA_WORKER_MEM_MB"}
+
+// BaseEnv is the minimal environment every scientific worker process starts with, plus the worker settings in passEnv
+// when the API was started with them (VESQIRA_WORKER_MEM_MB used to be dropped here, so the documented cap never applied).
+func BaseEnv() []string {
+	env := []string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C.UTF-8"}
+	for _, k := range passEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			env = append(env, k+"="+v)
+		}
+	}
+	return env
+}
+
 func (p *Persistent) start() (*proc, error) {
 	if len(p.Command) == 0 {
 		return nil, ErrUnavailable
 	}
 	cmd := exec.Command(p.Command[0], p.Command[1:]...)
-	cmd.Env = append([]string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C.UTF-8"}, p.ExtraEnv...)
+	cmd.Env = append(BaseEnv(), p.ExtraEnv...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stderr = os.Stderr // the worker's log lines (failures, slow requests) name the API request id
 	in, err := cmd.StdinPipe()
