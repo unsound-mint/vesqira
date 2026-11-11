@@ -130,7 +130,7 @@
   min-width: 0;
 }
 
-@media (max-width: 700px) {
+@media (width <= 700px) {
   .board[data-arranged] {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--sp-6);
