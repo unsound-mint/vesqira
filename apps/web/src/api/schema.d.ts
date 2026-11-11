@@ -6281,6 +6281,27 @@ export interface components {
                     at: string;
                     by: string;
                 } | null;
+                /** @description The declarations in force when the figure was saved (ADR 0042, section 5): the declared unit, the orientation interpretation and a hash of the catalog declaration, each with who declared it. An empty object records that none existed. Absent on figures saved before this was recorded. */
+                declarations?: {
+                    unit?: {
+                        unit: string;
+                        declaredBy: string;
+                    };
+                    orientation?: {
+                        kind: string;
+                        unit: string;
+                        frame: string | null;
+                        quantity: string | null;
+                        /** Format: int64 */
+                        reliabilityId: number | null;
+                        declaredBy: string;
+                    };
+                    catalog?: {
+                        /** @description SHA-256 of the declaration's content (not of its time or staleness) */
+                        hash: string;
+                        declaredBy: string;
+                    };
+                };
             }[];
             /** @description Set on a figure made by "draw again": the figure it redraws, which is never changed (ADR 0042, section 5). Owner API only. */
             redrawnFrom?: {
@@ -6689,6 +6710,13 @@ export interface components {
             readable: boolean;
             /** @description The sentence the owner reads about this file */
             text: string;
+            /**
+             * @description The declarations (unit, orientation interpretation, catalog) in force now against those recorded when the figure was saved. changed and removed are treated like changed data: the owner is asked. not_recorded: the figure was saved before declarations were recorded (not an error). Absent when the dataset is no longer registered.
+             * @enum {string}
+             */
+            declaration?: "unchanged" | "changed" | "removed" | "not_recorded";
+            /** @description The sentence the owner reads about the declarations, e.g. "declaration unchanged" or "declaration changed: unit was K (declared by you), now Jy/beam (declared by you)" */
+            declarationText?: string;
         };
         /** @description What "draw again" must tell the owner before it draws. Reads and changes nothing. */
         RedrawCheck: {

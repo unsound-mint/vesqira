@@ -22,6 +22,7 @@ export function saveBlobAs(blob: Blob, name: string): void {
 const MESSAGES = {
   same: "Drawn again from unchanged data: the picture has the same pixels as the saved one.",
   sameUnproven: "The picture has the same pixels as the saved one, although the data was not proven unchanged: a change, if there is one, is not in what this picture shows.",
+  sameDeclared: "The picture has the same pixels as the saved one, drawn under the declarations in force now. A revision saved from it records those declarations, not the ones the original was drawn under.",
   differs: "The picture drawn now is not the same as the saved one. The saved picture is kept; look at both before you save this as a new revision.",
 };
 
@@ -45,7 +46,7 @@ export function FigureRedraw({ figure, onSaved, addTo, only }: {
   const [intent, setIntent] = useState<"draw" | "svg">("draw");
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [out, setOut] = useState<{ r: Redrawn; url: string; same: boolean; proven: boolean } | null>(null);
+  const [out, setOut] = useState<{ r: Redrawn; url: string; same: boolean; proven: boolean; declared: boolean } | null>(null);
   const [saved, setSaved] = useState<Figure | null>(null);
   const [onBoard, setOnBoard] = useState(false);
   const live = useRef(true);
@@ -62,7 +63,9 @@ export function FigureRedraw({ figure, onSaved, addTo, only }: {
   }
 
   async function draw(refresh: boolean, why: "draw" | "svg") {
-    const proven = !refresh; // draw(true) is only called after the owner agreed to data that is not proven unchanged
+    // draw(true) is only called after the owner agreed to data that is not proven unchanged, or to a changed declaration
+    const proven = !check || check.sources.every((x) => x.status === "unchanged");
+    const declared = !!check?.sources.some((x) => x.declaration === "changed" || x.declaration === "removed");
     setBusy("drawing");
     setErr(null);
     setCheck(null);
@@ -75,7 +78,7 @@ export function FigureRedraw({ figure, onSaved, addTo, only }: {
         return;
       }
       const same = await samePixels(r.blob, await savedPicture(figure)).catch(() => false);
-      if (live.current) setOut({ r, url: URL.createObjectURL(r.blob), same, proven });
+      if (live.current) setOut({ r, url: URL.createObjectURL(r.blob), same, proven, declared });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "The figure could not be drawn again.");
     } finally {
@@ -132,7 +135,7 @@ export function FigureRedraw({ figure, onSaved, addTo, only }: {
       </div>
       {check ? (
         <div className={s.box} role="region" aria-label="What changed since this figure was drawn">
-          <ul className={s.list}>{check.sources.map((x) => <li key={`${x.role}-${x.datasetId}`} data-status={x.status}>{x.text}</li>)}</ul>
+          <ul className={s.list}>{check.sources.map((x) => <li key={`${x.role}-${x.datasetId}`} data-status={x.status} data-declaration={x.declaration}>{x.text}{x.declarationText && x.declaration !== "unchanged" ? ` ${x.declarationText[0].toUpperCase()}${x.declarationText.slice(1)}${x.declarationText.endsWith(".") ? "" : "."}` : ""}</li>)}</ul>
           <p className={s.prompt}>{check.prompt}</p>
           <div className={s.row}>
             {check.state === "ask" ? <Button variant="primary" onClick={() => void draw(true, intent)}>{intent === "svg" ? "Export anyway" : "Draw anyway"}</Button> : null}
@@ -145,7 +148,7 @@ export function FigureRedraw({ figure, onSaved, addTo, only }: {
       {out ? (
         <div className={s.box} role="region" aria-label="The figure drawn again">
           <img className={s.img} src={out.url} alt={`${figure.title}, drawn again`} />
-          <p role="status" className={s.note}>{out.same ? (out.proven ? MESSAGES.same : MESSAGES.sameUnproven) : MESSAGES.differs}</p>
+          <p role="status" className={s.note}>{out.same ? (out.proven ? (out.declared ? MESSAGES.sameDeclared : MESSAGES.same) : MESSAGES.sameUnproven) : MESSAGES.differs}</p>
           {out.r.notes.length ? <ul className={s.list}>{out.r.notes.map((n) => <li key={n}>{n}</li>)}</ul> : null}
           <p className={s.note}>The original picture is kept. Saving makes a new figure, linked to this one; boards and shared reviews keep the figure they hold.</p>
           <div className={s.row}>

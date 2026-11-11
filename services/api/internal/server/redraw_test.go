@@ -379,3 +379,140 @@ func TestAReviewerGetsNoSceneRedrawLinkOrSVGOfAPublishedFigure(t *testing.T) {
 		t.Errorf("owner svg route: %d", code)
 	}
 }
+
+// A declaration is the owner's statement about a file, and drawing again reads the ones in force now. The comparison with what
+// the figure recorded is worded exactly, because the owner decides on those words.
+func TestDeclarationComparisonSentences(t *testing.T) {
+	k := &figureDeclarations{Unit: &declUnit{Unit: "K", DeclaredBy: "user"}}
+	jy := &figureDeclarations{Unit: &declUnit{Unit: "Jy/beam", DeclaredBy: "user"}}
+	none := &figureDeclarations{}
+	pix := &figureDeclarations{Orientation: &declOrientation{Kind: "axial_orientation", Unit: "deg", Frame: strp("pixel"), Quantity: strp("b_field"), DeclaredBy: "user"}}
+	sky := &figureDeclarations{Orientation: &declOrientation{Kind: "axial_orientation", Unit: "deg", Frame: strp("sky"), Quantity: strp("b_field"), DeclaredBy: "user"}}
+	relID := int64(7)
+	pixRel := &figureDeclarations{Orientation: &declOrientation{Kind: "axial_orientation", Unit: "deg", Frame: strp("pixel"), Quantity: strp("b_field"), ReliabilityID: &relID, DeclaredBy: "vgt-run-adapter"}}
+	cat := func(hash, by string) *figureDeclarations {
+		return &figureDeclarations{Catalog: &declCatalog{Hash: hash + "0000000000", DeclaredBy: by}}
+	}
+	for _, c := range []struct {
+		name     string
+		rec, cur *figureDeclarations
+		status   string
+		text     string
+	}{
+		{"nothing recorded, nothing declared", none, none, declUnchanged, "declaration unchanged"},
+		{"same unit", k, &figureDeclarations{Unit: &declUnit{Unit: "K", DeclaredBy: "user"}}, declUnchanged, "declaration unchanged"},
+		{"unit changed", k, jy, declChangedSt, "declaration changed: unit was K (declared by you), now Jy/beam (declared by you)"},
+		{"same unit declared by another", k, &figureDeclarations{Unit: &declUnit{Unit: "K", DeclaredBy: "adapter"}}, declChangedSt, "declaration changed: unit was K (declared by you), now K (declared by adapter)"},
+		{"unit added", none, k, declChangedSt, "declaration changed: unit was not declared, now K (declared by you)"},
+		{"unit removed", k, none, declRemoved, "declaration removed"},
+		{"angle frame changed", pix, sky, declChangedSt, "declaration changed: orientation was axial_orientation in deg, frame pixel, quantity b_field, reliability none (declared by you), now axial_orientation in deg, frame sky, quantity b_field, reliability none (declared by you)"},
+		{"reliability and author changed", pix, pixRel, declChangedSt, "declaration changed: orientation was axial_orientation in deg, frame pixel, quantity b_field, reliability none (declared by you), now axial_orientation in deg, frame pixel, quantity b_field, reliability dataset 7 (declared by vgt-run-adapter)"},
+		{"orientation removed", pix, none, declRemoved, "declaration removed"},
+		{"catalog changed", cat("aaaaaaaa", "user"), cat("bbbbbbbb", "user"), declChangedSt, "declaration changed: catalog declaration was aaaaaaaa (declared by you), now bbbbbbbb (declared by you)"},
+		{"catalog same", cat("aaaaaaaa", "user"), cat("aaaaaaaa", "user"), declUnchanged, "declaration unchanged"},
+		{"one removed, another kept", &figureDeclarations{Unit: k.Unit, Orientation: pix.Orientation}, k, declChangedSt, "declaration changed: orientation was axial_orientation in deg, frame pixel, quantity b_field, reliability none (declared by you), now not declared"},
+		{"not recorded (older figure)", nil, k, declNotRecorded, "declarations at save time were not recorded"},
+	} {
+		st, tx := compareDeclarations(c.rec, c.cur)
+		if st != c.status || tx != c.text {
+			t.Errorf("%s:\n got  %s | %s\n want %s | %s", c.name, st, tx, c.status, c.text)
+		}
+	}
+	// the catalog hash covers content, not the time of the declaration
+	a := catalog.Dataset{CatalogDeclaration: &catalog.CatalogDeclaration{Lon: "RA", Lat: "DEC", Format: "degrees", Frame: "icrs", DeclaredBy: "user"}}
+	b := a
+	cp := *a.CatalogDeclaration
+	cp.DeclaredAt, cp.Stale = time.Now(), true
+	b.CatalogDeclaration = &cp
+	if *declarationsOf(a).Catalog != *declarationsOf(b).Catalog {
+		t.Error("the declaration time and staleness are not part of its content")
+	}
+	cp.Frame = "galactic"
+	if declarationsOf(a).Catalog.Hash == declarationsOf(b).Catalog.Hash {
+		t.Error("a different frame is a different declaration")
+	}
+}
+
+// Through the route: a figure records the declarations in force when it was saved; a changed or removed one is announced and
+// needs agreement even though the file's bytes are unchanged; the new revision records the new declaration; an older figure
+// without the record says so and is not an error.
+func TestRedrawCheckAnnouncesAChangedDeclarationAndTheRedrawingRecordsTheNewOne(t *testing.T) {
+	e := newIDEnv(t)
+	e.srv.Worker = planeWorker{}
+	psiFile := e.write("psi.fits", []byte("orientation map bytes"))
+	psi := e.mustRegister(psiFile)
+	declare := func(unit, frame string) {
+		t.Helper()
+		if code, b := e.call("POST", "/api/datasets/"+itoa(int(psi.ID))+"/interpretation", map[string]any{"kind": "axial_orientation", "unit": unit, "frame": frame, "quantity": "b_field"}); code != 200 {
+			t.Fatalf("declare: %d %s", code, b)
+		}
+	}
+	scene := map[string]any{
+		"schema": "scene/1",
+		"base":   map[string]any{"datasetId": psi.ID, "channel": 3, "display": map[string]any{"mapping": "axial", "colormap": "twilight", "stretch": "linear", "range": "minmax"}},
+		"overlays": []any{map[string]any{"id": "orientation", "kind": "orientation", "datasetId": psi.ID, "visible": true,
+			"sampling": map[string]any{"mode": "step", "step": 2}, "length": "fixed", "opacity": "uniform"}},
+		"view":   map[string]any{"zoom": 1},
+		"render": map[string]any{"canvas": map[string]any{"width": 16, "height": 12}, "nodata": []any{[]any{27, 34, 44}, []any{85, 98, 117}}, "figureWidth": 720},
+	}
+	save := func(extra map[string]any) (int, boards.Figure, []byte) {
+		body := map[string]any{"datasetId": psi.ID, "title": "Lines", "previewPng": testPNG(t), "scene": scene, "view": map[string]any{"kind": "orientation", "channel": 3, "showLines": true}}
+		for k, v := range extra {
+			body[k] = v
+		}
+		code, out := e.call("POST", "/api/figures", body)
+		var f boards.Figure
+		json.Unmarshal(out, &f)
+		return code, f, out
+	}
+	declare("deg", "pixel")
+	code, fig, b := save(nil)
+	if code != 201 {
+		t.Fatalf("figure: %d %s", code, b)
+	}
+	var id figureIdentity
+	json.Unmarshal(fig.Identity, &id)
+	if id.Datasets[0].Declarations == nil || id.Datasets[0].Declarations.Orientation == nil || *id.Datasets[0].Declarations.Orientation.Frame != "pixel" {
+		t.Fatalf("the identity records the declarations: %s", fig.Identity)
+	}
+	if c := e.redrawCheck(fig.ID); c.State != "ready" || c.Sources[0].Declaration != declUnchanged || c.Sources[0].DeclarationText != "declaration unchanged" {
+		t.Fatalf("unchanged: %+v", c)
+	}
+
+	declare("deg", "sky") // same bytes, another meaning of the angles
+	c := e.redrawCheck(fig.ID)
+	want := "declaration changed: orientation was axial_orientation in deg, frame pixel, quantity b_field, reliability none (declared by you), now axial_orientation in deg, frame sky, quantity b_field, reliability none (declared by you)"
+	if c.State != "ask" || c.Prompt != promptDeclared || c.Sources[0].Status != srcUnchanged || c.Sources[0].Declaration != declChangedSt || c.Sources[0].DeclarationText != want {
+		t.Fatalf("changed declaration: %+v", c)
+	}
+	// the redrawing records the declaration in force when it is saved
+	code, re, b := save(map[string]any{"redrawnFrom": fig.ID})
+	if code != 201 {
+		t.Fatalf("redrawing: %d %s", code, b)
+	}
+	if c := e.redrawCheck(re.ID); c.State != "ready" || c.Sources[0].Declaration != declUnchanged {
+		t.Fatalf("the redrawing records the new declaration: %+v", c)
+	}
+	if c := e.redrawCheck(fig.ID); c.Sources[0].Declaration != declChangedSt {
+		t.Fatalf("the original keeps what it recorded: %+v", c)
+	}
+
+	if err := e.srv.Store.ClearInterpretation(psi.ID); err != nil {
+		t.Fatal(err)
+	}
+	if c := e.redrawCheck(re.ID); c.State != "ask" || c.Sources[0].Declaration != declRemoved || c.Sources[0].DeclarationText != "declaration removed" {
+		t.Fatalf("removed: %+v", c)
+	}
+
+	// a figure saved before declarations were recorded: said, not an error, not a reason to ask
+	var old figureIdentity
+	json.Unmarshal(fig.Identity, &old)
+	old.Datasets[0].Declarations = nil
+	raw, _ := json.Marshal(old)
+	if _, err := e.db.Exec(`UPDATE figures SET identity=? WHERE id=?`, string(raw), fig.ID); err != nil {
+		t.Fatal(err)
+	}
+	if c := e.redrawCheck(fig.ID); c.State != "ready" || c.Sources[0].Declaration != declNotRecorded || c.Sources[0].DeclarationText != "declarations at save time were not recorded" {
+		t.Fatalf("not recorded: %+v", c)
+	}
+}

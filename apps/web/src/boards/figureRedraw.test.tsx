@@ -57,6 +57,21 @@ describe("draw again", () => {
     expect(redraw).toHaveBeenCalledWith(expect.anything(), { refresh: true }); // the sigma is measured again, only now
   });
 
+  it("announces a changed declaration with the data unchanged, and draws only after agreement", async () => {
+    const said = "declaration changed: unit was K (declared by you), now Jy/beam (declared by you)";
+    check.mockResolvedValue({ figureId: 7, kind: "scene", state: "ask", prompt: "A declaration (unit, angle frame, quantity or catalog columns) has changed since this figure was drawn.", sources: [{ ...source("unchanged", "cube.fits: unchanged (its SHA-256 equals the one recorded when the figure was drawn)."), declaration: "changed", declarationText: said }] });
+    redraw.mockResolvedValue(drawn());
+    render(<FigureRedraw figure={fig()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Draw again" }));
+    const region = await screen.findByRole("region");
+    expect(region.textContent).toContain("Declaration changed: unit was K (declared by you), now Jy/beam (declared by you).");
+    expect(redraw).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Draw anyway" }));
+    const text = (await screen.findByText(/same pixels as the saved one/)).textContent ?? "";
+    expect(text).toContain("records those declarations");
+    expect(text).not.toContain("not proven unchanged");
+  });
+
   it("does not call the data unchanged when the owner agreed to draw from data that was not proven so, even if the pixels are the same", async () => {
     check.mockResolvedValue({ figureId: 7, kind: "scene", state: "ask", prompt: "p", sources: [source("probable", "x")] });
     redraw.mockResolvedValue(drawn());

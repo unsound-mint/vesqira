@@ -32,6 +32,8 @@ const (
 const (
 	promptChanged  = "Drawing from changed data makes a different figure; the original PNG is kept. Draw it again anyway?"
 	promptProbable = "Some data cannot be proven unchanged. Drawing from different bytes makes a different figure; the original PNG is kept. Draw it again anyway?"
+	promptDeclared = "A declaration (unit, angle frame, quantity or catalog columns) has changed since this figure was drawn. Drawing it again makes a different figure under the new declaration; the original PNG is kept. Draw it again anyway?"
+	promptBoth     = "Both the data and a declaration have changed since this figure was drawn. Drawing it again makes a different figure; the original PNG is kept. Draw it again anyway?"
 	promptBlocked  = "This figure cannot be drawn again until every file it was drawn from can be read. The original PNG is kept."
 	promptNone     = "This figure keeps no description of how it was drawn, so it is shown as the PNG that was saved."
 	promptNoRender = "This figure's description does not record the resolution its picture was drawn at, so it is shown as the PNG that was saved. A drawing at another resolution would not be the same picture."
@@ -45,6 +47,10 @@ type redrawSource struct {
 	Differs   []string `json:"differs"`
 	Readable  bool     `json:"readable"`
 	Text      string   `json:"text"`
+	// Declaration compares the declarations (unit, orientation interpretation, catalog) in force now with those at save time:
+	// unchanged | changed | removed | not_recorded. A changed or removed one is treated like changed data.
+	Declaration     string `json:"declaration,omitempty"`
+	DeclarationText string `json:"declarationText,omitempty"`
 }
 
 type redrawResult struct {
@@ -283,7 +289,7 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 		}
 		return nil
 	}
-	blocked, anyChanged, anyProbable := false, false, false
+	blocked, anyChanged, anyProbable, anyDecl := false, false, false, false
 	for _, id := range ids {
 		role := roles[id]
 		src := recorded(id)
@@ -300,6 +306,14 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 			continue
 		}
 		out.Name = d.Name
+		var recDecl *figureDeclarations
+		if src != nil {
+			recDecl = src.Declarations
+		}
+		out.Declaration, out.DeclarationText = compareDeclarations(recDecl, declarationsOf(d))
+		if out.Declaration == declChangedSt || out.Declaration == declRemoved {
+			anyDecl = true
+		}
 		eff, loc, _, _, status, _ := s.chooseRead(ctx, d, false)
 		_ = eff
 		if status == http.StatusForbidden && d.HostID == 0 {
@@ -334,8 +348,12 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 	switch {
 	case blocked:
 		res.State, res.Prompt = "blocked", promptBlocked
+	case anyChanged && anyDecl:
+		res.State, res.Prompt = "ask", promptBoth
 	case anyChanged:
 		res.State, res.Prompt = "ask", promptChanged
+	case anyDecl:
+		res.State, res.Prompt = "ask", promptDeclared
 	case anyProbable:
 		res.State, res.Prompt = "ask", promptProbable
 	default:

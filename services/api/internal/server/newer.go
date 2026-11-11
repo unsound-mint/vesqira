@@ -225,6 +225,9 @@ type figureDatasetIdentity struct {
 	ModifiedAt time.Time      `json:"modifiedAt"`
 	Sampled    *identityValue `json:"sampledFingerprint"` // null: not computed
 	Full       *identityValue `json:"fullSha256"`         // null: not computed
+	// Declarations are the declared unit, orientation interpretation and catalog declaration in force when the figure was
+	// saved (ADR 0042, section 5). Absent on figures saved before they were recorded.
+	Declarations *figureDeclarations `json:"declarations,omitempty"`
 }
 
 // figureIdentity is the owner-side record of each dataset's identity when a figure is saved (figures.identity). "Draw again"
@@ -265,7 +268,7 @@ func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset
 			return
 		}
 		p, _ := primaryOf(locs)
-		e := figureDatasetIdentity{Role: role, DatasetID: d.ID, Name: d.Name, SizeBytes: d.SizeBytes, ModifiedAt: d.ModifiedAt.UTC()}
+		e := figureDatasetIdentity{Role: role, DatasetID: d.ID, Name: d.Name, SizeBytes: d.SizeBytes, ModifiedAt: d.ModifiedAt.UTC(), Declarations: declarationsOf(d)}
 		if p.Sampled != nil {
 			e.Sampled = &identityValue{Value: p.Sampled.Value, Algorithm: idty.SampledAlgorithm, Covers: idty.Covers, At: p.Sampled.At, By: p.Sampled.By}
 		}
