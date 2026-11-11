@@ -1,0 +1,73 @@
+{
+ "about": "scene/1 documents (ADR 0042) read by both sides: services/api/internal/scene must accept every valid one and refuse every invalid one, and apps/web must round-trip the valid ones unchanged. A raw entry is request text that is not representable as a JSON value here.",
+ "valid": [
+  {
+   "name": "scalar plane with a working region and a saved one, zoomed",
+   "scene": {
+    "schema": "scene/1",
+    "base": {
+     "datasetId": 1,
+     "channel": 3,
+     "spectral": {"value": 8000.5, "unit": "m/s"},
+     "display": {"mapping": "scalar", "colormap": "viridis", "stretch": "asinh", "range": "custom", "limits": [0.5, 2], "limitsUnit": "K", "scaleGroup": "compare"}
+    },
+    "overlays": [
+     {"id": "regions", "kind": "regions", "datasetId": 1, "visible": true, "active": {"shape": "rect", "x0": 2, "y0": 3, "x1": 9, "y1": 7}, "saved": [{"id": 4, "shape": {"shape": "circle", "cx": 21, "cy": 10, "r": 3}, "selected": true}]}
+    ],
+    "view": {"zoom": 2.5, "centre": {"x": 10.5, "y": 4}}
+   }
+  },
+  {
+   "name": "orientation map with its own lines at a recorded step",
+   "scene": {
+    "schema": "scene/1",
+    "base": {
+     "datasetId": 1,
+     "channel": 0,
+     "display": {"mapping": "axial", "colormap": "twilight", "stretch": "linear", "range": "minmax"}
+    },
+    "overlays": [
+     {"id": "orientation", "kind": "orientation", "datasetId": 1, "visible": true, "sampling": {"mode": "step", "step": 3}, "length": "fixed", "opacity": "reliability", "reliabilityId": 2},
+     {"id": "regions", "kind": "regions", "datasetId": 1, "visible": true, "saved": []}
+    ],
+    "view": {"zoom": 1}
+   }
+  },
+  {
+   "name": "live pane: lines sampled by screen gap, hidden",
+   "scene": {
+    "schema": "scene/1",
+    "base": {"datasetId": 7, "channel": 12, "display": {"mapping": "axial", "colormap": "viridis", "stretch": "linear", "range": "percentile"}},
+    "overlays": [
+     {"id": "orientation", "kind": "orientation", "datasetId": 7, "visible": false, "sampling": {"mode": "auto", "gapPx": 16}, "length": "fixed", "opacity": "uniform"}
+    ],
+    "view": {"zoom": 16, "centre": {"x": 0, "y": 0}}
+   }
+  }
+ ],
+ "invalid": [
+  {"name": "unknown overlay kind", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "a", "kind": "heatmap", "datasetId": 1, "visible": true}], "view": {"zoom": 1}}},
+  {"name": "a specified kind that is not drawn yet", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "c", "kind": "contours", "datasetId": 1, "visible": true, "channel": 0, "levels": {"mode": "list", "values": [1]}, "unit": "K"}], "view": {"zoom": 1}}},
+  {"name": "wrong schema version", "scene": {"schema": "scene/2", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [], "view": {"zoom": 1}}},
+  {"name": "unknown key in the base", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "path": "/data/a.fits", "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [], "view": {"zoom": 1}}},
+  {"name": "NaN written as a token", "raw": "{\"schema\":\"scene/1\",\"base\":{\"datasetId\":1,\"channel\":0,\"display\":{\"mapping\":\"scalar\",\"colormap\":\"gray\",\"stretch\":\"linear\",\"range\":\"minmax\"}},\"overlays\":[],\"view\":{\"zoom\":NaN}}"},
+  {"name": "a number beyond float64", "raw": "{\"schema\":\"scene/1\",\"base\":{\"datasetId\":1,\"channel\":0,\"display\":{\"mapping\":\"scalar\",\"colormap\":\"gray\",\"stretch\":\"linear\",\"range\":\"minmax\"}},\"overlays\":[],\"view\":{\"zoom\":1e999}}"},
+  {"name": "NaN as JSON.stringify writes it (null) in a required number", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [], "view": {"zoom": null}}},
+  {"name": "null in the limits", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "custom", "limits": [null, 2]}}, "overlays": [], "view": {"zoom": 1}}},
+  {"name": "zoom beyond 16", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [], "view": {"zoom": 17}}},
+  {"name": "negative channel", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": -1, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [], "view": {"zoom": 1}}},
+  {"name": "custom range without limits", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "custom"}}, "overlays": [], "view": {"zoom": 1}}},
+  {"name": "limits upper first", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "custom", "limits": [3, 1]}}, "overlays": [], "view": {"zoom": 1}}},
+  {"name": "unknown colormap", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "jet", "stretch": "linear", "range": "minmax"}}, "overlays": [], "view": {"zoom": 1}}},
+  {"name": "missing overlays", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "view": {"zoom": 1}}},
+  {"name": "the same overlay id twice", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "r", "kind": "regions", "datasetId": 1, "visible": true, "saved": []}, {"id": "r", "kind": "regions", "datasetId": 1, "visible": true, "saved": []}], "view": {"zoom": 1}}},
+  {"name": "overlay id with markup", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "<b>", "kind": "regions", "datasetId": 1, "visible": true, "saved": []}], "view": {"zoom": 1}}},
+  {"name": "a rectangle inside out", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "r", "kind": "regions", "datasetId": 1, "visible": true, "active": {"shape": "rect", "x0": 5, "y0": 0, "x1": 1, "y1": 3}, "saved": []}], "view": {"zoom": 1}}},
+  {"name": "a circle with rectangle fields", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "r", "kind": "regions", "datasetId": 1, "visible": true, "active": {"shape": "circle", "cx": 1, "cy": 1, "r": 2, "x0": 0}, "saved": []}], "view": {"zoom": 1}}},
+  {"name": "regions without a saved list", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "r", "kind": "regions", "datasetId": 1, "visible": true}], "view": {"zoom": 1}}},
+  {"name": "sampling with both a gap and a step", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "axial", "colormap": "twilight", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "o", "kind": "orientation", "datasetId": 1, "visible": true, "sampling": {"mode": "step", "step": 2, "gapPx": 16}, "length": "fixed", "opacity": "uniform"}], "view": {"zoom": 1}}},
+  {"name": "orientation length scaled by reliability (specified later, not drawn)", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "axial", "colormap": "twilight", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "o", "kind": "orientation", "datasetId": 1, "visible": true, "sampling": {"mode": "step", "step": 2}, "length": "reliability", "opacity": "uniform"}], "view": {"zoom": 1}}},
+  {"name": "a reliability map named for uniform opacity", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "axial", "colormap": "twilight", "stretch": "linear", "range": "minmax"}}, "overlays": [{"id": "o", "kind": "orientation", "datasetId": 1, "visible": true, "sampling": {"mode": "step", "step": 2}, "length": "fixed", "opacity": "uniform", "reliabilityId": 2}], "view": {"zoom": 1}}},
+  {"name": "centre below the image", "scene": {"schema": "scene/1", "base": {"datasetId": 1, "channel": 0, "display": {"mapping": "scalar", "colormap": "gray", "stretch": "linear", "range": "minmax"}}, "overlays": [], "view": {"zoom": 2, "centre": {"x": -1, "y": 3}}}}
+ ]
+}

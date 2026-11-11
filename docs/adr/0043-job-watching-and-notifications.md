@@ -29,7 +29,7 @@ A job's state was read only when the Jobs screen was open (every 15 s for the se
 
 ## Consequences
 - A cluster login node receives at most one `squeue` and one `sacct` per host per minute while jobs are active, and ssh attempts at a decreasing rate while a host is down. A real Slurm may answer a list containing an id it already purged differently from the stand-in; `sacct` is asked for the same ids, and a job missing from both is announced as unknown after 15 minutes.
-- Schema 6: `jobs.auto_import`, `jobs.auto_import_tried`, table `notifications`. An older build refuses a version 6 catalog (ADR 0020). `schema_v6.sql` is the snapshot.
+- Schema 8: `jobs.auto_import`, `jobs.auto_import_tried`, table `notifications`. An older build refuses a version 8 catalog (ADR 0020). `schema_v8.sql` is the snapshot.
 - The `unknown` event can precede a later terminal event for the same job if the job reappears; the two have different keys.
 
 ## Validation

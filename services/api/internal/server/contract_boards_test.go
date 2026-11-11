@@ -101,8 +101,18 @@ func TestResponsesMatchTheSpecForCapabilitiesFiguresAndBoards(t *testing.T) {
 	f2 := map[string]any{"datasetId": noUnit, "title": "Declared", "previewPng": testPNG(t),
 		"view": map[string]any{"kind": "plane", "channel": 1, "spectralValue": 8.5, "spectralUnit": "km/s", "colormap": "gray", "stretch": "asinh", "range": "custom",
 			"limits": []float64{0, 2}, "limitsUnit": "Jy/beam", "showLines": true,
-			"region": map[string]any{"shape": "rect", "x0": 1, "y0": 1, "x1": 4, "y1": 4}}}
+			"region": map[string]any{"shape": "rect", "x0": 1, "y0": 1, "x1": 4, "y1": 4}},
+		// the scene/1 it was drawn from: the stored Figure.scene is validated against the Scene schema on the way out
+		"scene": map[string]any{"schema": "scene/1",
+			"base": map[string]any{"datasetId": noUnit, "channel": 1, "spectral": map[string]any{"value": 8.5, "unit": "km/s"},
+				"display": map[string]any{"mapping": "scalar", "colormap": "gray", "stretch": "asinh", "range": "custom", "limits": []float64{0, 2}, "limitsUnit": "Jy/beam"}},
+			"overlays": []any{map[string]any{"id": "regions", "kind": "regions", "datasetId": noUnit, "visible": true,
+				"active": map[string]any{"shape": "rect", "x0": 1, "y0": 1, "x1": 4, "y1": 4}, "saved": []any{}}},
+			"view": map[string]any{"zoom": 1}}}
 	json.Unmarshal(call("POST", "/api/figures", api+"/api/figures", f2, 201), &fig2)
+	if len(fig2.Scene) == 0 {
+		t.Fatal("the figure did not keep its scene")
+	}
 	call("GET", "/api/figures", api+"/api/figures", nil, 200)
 	call("POST", "/api/figures/{id}/text", api+"/api/figures/"+itoa(int(fig1.ID))+"/text", map[string]any{"title": "Peak", "caption": "edited"}, 200)
 

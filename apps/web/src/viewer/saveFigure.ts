@@ -3,7 +3,9 @@ import { createFigure } from "../api/boards";
 import type { Figure, FigureRequest } from "../api/boards";
 import { lut } from "./colormaps";
 import { blobToBase64, captionLines, composeImageFigure, composeSpectrumFigure, FIGURE_WIDTH } from "./figure";
-import { orientationLinesFor } from "./glyphs";
+import { figureScene, sceneStatable } from "../scene/figureScene";
+import { sceneMarks } from "../scene/overlays";
+import type { Scene } from "../scene/scene";
 import { limits } from "./render";
 import type { Viewer } from "./useViewer";
 
@@ -29,18 +31,24 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
   const captions = captionLines(facts, view, plane, { colormap: v.colormap, stretch: v.stretch, range: v.range, axial, region: v.region, nature: dataset.nature });
   const heading = opts.title?.trim() || defaultFigureTitle(v, dataset);
   let blob: Blob;
+  let scene: Scene | null = null; // a spectrum figure is a plot, not a pane: it has no scene
   if (kind === "spectrum" && v.spectrum) {
     blob = await composeSpectrumFigure({ spectrum: v.spectrum, title: heading, captions, flagged: view.flags.declared ? view.flags.channels : [], channel: plane.head.channel });
   } else {
     const src = v.canvas.current;
     if (!src) throw new Error("The image is not drawn yet.");
     const iw = FIGURE_WIDTH - 40;
+    const scale = iw / plane.head.width;
+    // The figure's overlays are drawn from its own scene, through the same overlay registry as the screen. The scene is
+    // stored only when it states the display fully; the picture is drawn from it either way.
+    if (!v.scene || v.scene.base.datasetId !== dataset.id) throw new Error("The image is not drawn yet.");
+    const drawn = figureScene(v.scene, { plane, axial, scale, bunit: view.bunit, interp: v.interp, reliability: v.reliability });
+    scene = sceneStatable(drawn) ? drawn : null;
     blob = await composeImageFigure({
       source: src,
       planeW: plane.head.width,
       planeH: plane.head.height,
-      lines: axial && v.showLines ? orientationLinesFor(v, iw / plane.head.width) : [],
-      region: v.region,
+      marks: sceneMarks(drawn, { plane, scale, interp: v.interp, reliability: v.reliability }),
       legend: axial ? { kind: "cyclic", lut: lut("twilight") } : { kind: "scalar", lut: lut(v.colormap), limits: lim, unit: view.bunit },
       title: heading,
       captions,
@@ -55,5 +63,5 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
     ...(axial ? { showLines: v.showLines } : {}),
     ...(r ? { region: r.shape === "rect" ? { shape: "rect", x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 } : { shape: "circle", cx: r.cx, cy: r.cy, r: r.r } } : {}),
   };
-  return createFigure({ datasetId: dataset.id, title: heading, caption: opts.caption ?? "", view: viewParams, previewPng: await blobToBase64(blob) });
+  return createFigure({ datasetId: dataset.id, title: heading, caption: opts.caption ?? "", view: viewParams, previewPng: await blobToBase64(blob), ...(scene ? { scene } : {}) });
 }

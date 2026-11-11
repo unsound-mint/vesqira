@@ -70,7 +70,7 @@ func TestFigureBoardReviewPathExposesNoSourceToTheReviewer(t *testing.T) {
 
 	api := func(p string) string { return owner.URL + p }
 	view := map[string]any{"kind": "plane", "channel": 3, "colormap": "viridis", "stretch": "linear", "range": "percentile"}
-	fig := map[string]any{"datasetId": d.ID, "title": "Peak channel", "caption": "H I at 8 km/s", "view": view, "previewPng": testPNG(t)}
+	fig := map[string]any{"datasetId": d.ID, "title": "Peak channel", "caption": "H I at 8 km/s", "view": view, "previewPng": testPNG(t), "scene": planeScene(d.ID)}
 
 	// refusals: unknown keys in the view (nothing else may ride along), a bad preview, a path smuggled as text
 	badView := map[string]any{"datasetId": d.ID, "title": "x", "view": map[string]any{"kind": "plane", "path": file}, "previewPng": testPNG(t)}
@@ -98,6 +98,9 @@ func TestFigureBoardReviewPathExposesNoSourceToTheReviewer(t *testing.T) {
 	if !strings.Contains(string(f.Provenance), "secret-cube-name-not-a-secret.fits") || strings.Contains(string(f.Provenance), root) {
 		t.Fatalf("provenance should name the file but never its path: %s", f.Provenance)
 	}
+	if !strings.Contains(string(f.Scene), `"schema":"scene/1"`) || strings.Contains(string(f.Provenance), "scene/1") {
+		t.Fatalf("the owner's figure keeps its scene beside, not inside, the reviewer-safe provenance: %s", f.Scene)
+	}
 
 	_, bout := postJSON(t, api("/api/boards"), map[string]any{"title": "For review"})
 	var b boards.Board
@@ -121,7 +124,7 @@ func TestFigureBoardReviewPathExposesNoSourceToTheReviewer(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("review: %d", resp.StatusCode)
 	}
-	for _, leak := range []string{root, base, "private-research-root", "datasetId", `"path"`} {
+	for _, leak := range []string{root, base, "private-research-root", "datasetId", `"path"`, "scene/1", `"overlays"`} {
 		if strings.Contains(string(rbody), leak) {
 			t.Errorf("reviewer response leaks %q: %s", leak, rbody)
 		}

@@ -3019,6 +3019,10 @@ components:
         archived:
           type: "boolean"
           description: "Hidden from the lists by default; still resolves by id (ADR 0041)."
+        scene:
+          allOf:
+            - $ref: "#/components/schemas/Scene"
+          description: "The scene the picture was drawn from (ADR 0042); absent for figures saved before scenes. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance."
     FigureList:
       type: "object"
       required:
@@ -3049,6 +3053,8 @@ components:
           type: "string"
           format: "byte"
           description: "The picture as the author's browser drew it, PNG, base64"
+        scene:
+          $ref: "#/components/schemas/Scene"
     FigureTextRequest:
       type: "object"
       description: "Unknown keys are refused."
@@ -3799,4 +3805,557 @@ components:
       additionalProperties: false
       properties:
         resolved:
+          type: "boolean"
+    Scene:
+      type: "object"
+      additionalProperties: false
+      description: "What one pane draws (ADR 0042, section 3): a base plane with its display settings, overlays drawn over it in order, and the part of the image in view. A figure stores the scene it was drawn from. Versioned by schema; a change that is not additive gets a new version."
+      required:
+        - "schema"
+        - "base"
+        - "overlays"
+        - "view"
+      properties:
+        schema:
+          type: "string"
+          enum:
+            - "scene/1"
+        base:
+          $ref: "#/components/schemas/SceneBase"
+        overlays:
+          type: "array"
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/SceneOverlay"
+          description: "Drawn in this order over the base, the first at the bottom"
+        view:
+          $ref: "#/components/schemas/SceneView"
+    SceneBase:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "datasetId"
+        - "channel"
+        - "display"
+      properties:
+        datasetId:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        channel:
+          type: "integer"
+          minimum: 0
+          description: "0-based index along the spectral axis; 0 for a single plane"
+        spectral:
+          $ref: "#/components/schemas/SceneSpectral"
+        display:
+          $ref: "#/components/schemas/SceneDisplay"
+    SceneSpectral:
+      type: "object"
+      additionalProperties: false
+      description: "The channel's spectral world value as the worker reported it for that channel; absent when the axis is unresolved or the plane is not read yet. Never computed in the browser."
+      required:
+        - "value"
+        - "unit"
+      properties:
+        value:
+          type: "number"
+        unit:
+          type: "string"
+          maxLength: 16
+    SceneDisplay:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "mapping"
+        - "colormap"
+        - "stretch"
+        - "range"
+      description: "How base values become colours. For mapping axial (a declared orientation map) the angles are drawn with the cyclic twilight map, 0° = 180°, and stretch, range and limits do not apply."
+      properties:
+        mapping:
+          type: "string"
+          enum:
+            - "scalar"
+            - "axial"
+        colormap:
+          type: "string"
+          enum:
+            - "viridis"
+            - "inferno"
+            - "gray"
+            - "twilight"
+        stretch:
+          type: "string"
+          enum:
+            - "linear"
+            - "sqrt"
+            - "asinh"
+        range:
+          type: "string"
+          enum:
+            - "percentile"
+            - "minmax"
+            - "custom"
+        limits:
+          type: "array"
+          items:
+            type: "number"
+          minItems: 2
+          maxItems: 2
+          description: "The custom limits, lower then upper, finite; required when range is custom. With another range the limits come from the plane's finite pixels, and these, when present, are only remembered for switching back to custom."
+        limitsUnit:
+          type: "string"
+          maxLength: 64
+          description: "The unit of the custom limits: the file's BUNIT, or the unit the author declared for a file without one"
+        scaleGroup:
+          type: "string"
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+          description: "Panes in the same group share one colour scale (ADR 0027)"
+    SceneView:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "zoom"
+      description: "The part of the image in view, independent of the screen: the window of width/zoom by height/zoom image pixels around centre is shown whole and as large as the pane allows."
+      properties:
+        zoom:
+          type: "number"
+          minimum: 1
+          maximum: 16
+          description: "1 is the whole image fitted to the pane"
+        centre:
+          $ref: "#/components/schemas/ScenePoint"
+    ScenePoint:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "x"
+        - "y"
+      description: "Image coordinates: x from the left edge, y from the bottom edge, in pixels (pixel i covers i to i+1). An absent centre means the image centre."
+      properties:
+        x:
+          type: "number"
+          minimum: 0
+          maximum: 1000000
+        y:
+          type: "number"
+          minimum: 0
+          maximum: 1000000
+    SceneRegion:
+      oneOf:
+        - $ref: "#/components/schemas/SceneRect"
+        - $ref: "#/components/schemas/SceneCircle"
+      discriminator:
+        propertyName: "shape"
+        mapping:
+          rect: "#/components/schemas/SceneRect"
+          circle: "#/components/schemas/SceneCircle"
+    SceneRect:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "shape"
+        - "x0"
+        - "y0"
+        - "x1"
+        - "y1"
+      description: "Inclusive 0-based pixel bounds, y from the bottom"
+      properties:
+        shape:
+          type: "string"
+          enum:
+            - "rect"
+        x0:
+          type: "integer"
+          minimum: -1000000
+          maximum: 1000000
+        y0:
+          type: "integer"
+          minimum: -1000000
+          maximum: 1000000
+        x1:
+          type: "integer"
+          minimum: -1000000
+          maximum: 1000000
+        y1:
+          type: "integer"
+          minimum: -1000000
+          maximum: 1000000
+    SceneCircle:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "shape"
+        - "cx"
+        - "cy"
+        - "r"
+      description: "Centre pixel (0-based, y from the bottom) and radius in pixels; holds the pixels whose centres are within r"
+      properties:
+        shape:
+          type: "string"
+          enum:
+            - "circle"
+        cx:
+          type: "integer"
+          minimum: -1000000
+          maximum: 1000000
+        cy:
+          type: "integer"
+          minimum: -1000000
+          maximum: 1000000
+        r:
+          type: "integer"
+          minimum: 0
+          maximum: 1000000
+    SceneOverlay:
+      oneOf:
+        - $ref: "#/components/schemas/OrientationOverlay"
+        - $ref: "#/components/schemas/RegionsOverlay"
+        - $ref: "#/components/schemas/ContoursOverlay"
+        - $ref: "#/components/schemas/CatalogOverlay"
+        - $ref: "#/components/schemas/BeamOverlay"
+        - $ref: "#/components/schemas/GridOverlay"
+      discriminator:
+        propertyName: "kind"
+        mapping:
+          orientation: "#/components/schemas/OrientationOverlay"
+          regions: "#/components/schemas/RegionsOverlay"
+          contours: "#/components/schemas/ContoursOverlay"
+          catalog: "#/components/schemas/CatalogOverlay"
+          beam: "#/components/schemas/BeamOverlay"
+          grid: "#/components/schemas/GridOverlay"
+      description: "One layer over the base. Only orientation (of the base map itself) and regions are drawn in this version; the other kinds are specified for the slices that add them, and a figure refuses them until then."
+    OrientationOverlay:
+      type: "object"
+      additionalProperties: false
+      description: "Orientation lines of an axial map, sampled on its grid. In this version datasetId is the base map."
+      required:
+        - "id"
+        - "kind"
+        - "datasetId"
+        - "visible"
+        - "sampling"
+        - "length"
+        - "opacity"
+      properties:
+        id:
+          type: "string"
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+          description: "Stable within the scene; actions name an overlay by it"
+        kind:
+          type: "string"
+          enum:
+            - "orientation"
+        datasetId:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        visible:
+          type: "boolean"
+        sampling:
+          oneOf:
+            - $ref: "#/components/schemas/SamplingAuto"
+            - $ref: "#/components/schemas/SamplingStep"
+          discriminator:
+            propertyName: "mode"
+            mapping:
+              auto: "#/components/schemas/SamplingAuto"
+              step: "#/components/schemas/SamplingStep"
+        length:
+          type: "string"
+          enum:
+            - "fixed"
+          description: "fixed: 0.8 of the sampling step"
+        opacity:
+          type: "string"
+          enum:
+            - "reliability"
+            - "uniform"
+          description: "reliability: follows a reliability map on the same grid relative to its 99th percentile, faint where unknown; uniform: every line opaque. A figure records which was used."
+        reliabilityId:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+          description: "The reliability map that set the opacities. A figure states it whenever opacity is reliability, and it must be the map declared with the orientation map."
+    SamplingAuto:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "mode"
+        - "gapPx"
+      description: "A step in image pixels chosen so that lines are about gapPx output pixels apart"
+      properties:
+        mode:
+          type: "string"
+          enum:
+            - "auto"
+        gapPx:
+          type: "number"
+          minimum: 4
+          maximum: 256
+    SamplingStep:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "mode"
+        - "step"
+      description: "Every step-th image pixel; a figure records the step it drew"
+      properties:
+        mode:
+          type: "string"
+          enum:
+            - "step"
+        step:
+          type: "integer"
+          minimum: 1
+          maximum: 4096
+    RegionsOverlay:
+      type: "object"
+      additionalProperties: false
+      description: "Pixel regions of the base map: the working region, and saved regions with their shapes as drawn (a saved region can be edited later, so its shape is copied)."
+      required:
+        - "id"
+        - "kind"
+        - "datasetId"
+        - "visible"
+        - "saved"
+      properties:
+        id:
+          type: "string"
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+          description: "Stable within the scene; actions name an overlay by it"
+        kind:
+          type: "string"
+          enum:
+            - "regions"
+        datasetId:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        visible:
+          type: "boolean"
+        active:
+          $ref: "#/components/schemas/SceneRegion"
+        saved:
+          type: "array"
+          maxItems: 256
+          items:
+            $ref: "#/components/schemas/SceneSavedRegion"
+    SceneSavedRegion:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "shape"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        shape:
+          $ref: "#/components/schemas/SceneRegion"
+        selected:
+          type: "boolean"
+    ContoursOverlay:
+      type: "object"
+      additionalProperties: false
+      description: "Specified, not drawn yet: contours of a map traced on its own grid and placed by WCS."
+      required:
+        - "id"
+        - "kind"
+        - "datasetId"
+        - "visible"
+        - "channel"
+        - "levels"
+        - "unit"
+      properties:
+        id:
+          type: "string"
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+          description: "Stable within the scene; actions name an overlay by it"
+        kind:
+          type: "string"
+          enum:
+            - "contours"
+        datasetId:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        visible:
+          type: "boolean"
+        channel:
+          type: "integer"
+          minimum: 0
+        levels:
+          oneOf:
+            - $ref: "#/components/schemas/LevelsList"
+            - $ref: "#/components/schemas/LevelsLinear"
+            - $ref: "#/components/schemas/LevelsGeometric"
+          discriminator:
+            propertyName: "mode"
+            mapping:
+              list: "#/components/schemas/LevelsList"
+              linear: "#/components/schemas/LevelsLinear"
+              geometric: "#/components/schemas/LevelsGeometric"
+        unit:
+          type: "string"
+          maxLength: 64
+          description: "The overlay dataset's own brightness unit"
+    LevelsList:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "mode"
+        - "values"
+      properties:
+        mode:
+          type: "string"
+          enum:
+            - "list"
+        values:
+          type: "array"
+          minItems: 1
+          maxItems: 64
+          items:
+            type: "number"
+    LevelsLinear:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "mode"
+        - "start"
+        - "step"
+        - "count"
+      properties:
+        mode:
+          type: "string"
+          enum:
+            - "linear"
+        start:
+          type: "number"
+        step:
+          type: "number"
+        count:
+          type: "integer"
+          minimum: 1
+          maximum: 64
+    LevelsGeometric:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "mode"
+        - "start"
+        - "factor"
+        - "count"
+      properties:
+        mode:
+          type: "string"
+          enum:
+            - "geometric"
+        start:
+          type: "number"
+        factor:
+          type: "number"
+          minimum: 1
+          exclusiveMinimum: true
+        count:
+          type: "integer"
+          minimum: 1
+          maximum: 64
+    CatalogOverlay:
+      type: "object"
+      additionalProperties: false
+      description: "Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames."
+      required:
+        - "id"
+        - "kind"
+        - "datasetId"
+        - "visible"
+        - "columns"
+      properties:
+        id:
+          type: "string"
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+          description: "Stable within the scene; actions name an overlay by it"
+        kind:
+          type: "string"
+          enum:
+            - "catalog"
+        datasetId:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        visible:
+          type: "boolean"
+        columns:
+          type: "object"
+          additionalProperties: false
+          required:
+            - "lon"
+            - "lat"
+          properties:
+            lon:
+              type: "string"
+              minLength: 1
+              maxLength: 64
+            lat:
+              type: "string"
+              minLength: 1
+              maxLength: 64
+            angle:
+              type: "string"
+              minLength: 1
+              maxLength: 64
+            angleError:
+              type: "string"
+              minLength: 1
+              maxLength: 64
+    BeamOverlay:
+      type: "object"
+      additionalProperties: false
+      description: "Specified, not drawn yet: the beam from the header's BMAJ, BMIN and BPA only, never a default."
+      required:
+        - "id"
+        - "kind"
+        - "datasetId"
+        - "visible"
+      properties:
+        id:
+          type: "string"
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+          description: "Stable within the scene; actions name an overlay by it"
+        kind:
+          type: "string"
+          enum:
+            - "beam"
+        datasetId:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        visible:
+          type: "boolean"
+    GridOverlay:
+      type: "object"
+      additionalProperties: false
+      description: "Specified, not drawn yet: a coordinate grid in the dataset's own celestial frame."
+      required:
+        - "id"
+        - "kind"
+        - "datasetId"
+        - "visible"
+      properties:
+        id:
+          type: "string"
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+          description: "Stable within the scene; actions name an overlay by it"
+        kind:
+          type: "string"
+          enum:
+            - "grid"
+        datasetId:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        visible:
           type: "boolean"

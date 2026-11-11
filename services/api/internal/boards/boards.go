@@ -78,6 +78,10 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS snapshot_outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, at INTEGER NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL, author TEXT NOT NULL)`); err != nil {
 		return nil, err
 	}
+	// a figure may record the scene it was drawn from (ADR 0042); older figures have none
+	if err := schema.AddColumn(db, "figures", "scene", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return nil, err
+	}
 	// comments grew threads, anchors, owner replies and a resolved mark; older catalogs get the columns
 	for _, c := range [][2]string{{"parent_id", "INTEGER NOT NULL DEFAULT 0"}, {"anchor", "TEXT NOT NULL DEFAULT ''"}, {"from_owner", "INTEGER NOT NULL DEFAULT 0"}, {"resolved_at", "INTEGER NOT NULL DEFAULT 0"}} {
 		if err := schema.AddColumn(db, "comments", c[0], c[1]); err != nil {
@@ -110,16 +114,21 @@ type Figure struct {
 	Width      int             `json:"width"`
 	Height     int             `json:"height"`
 	Provenance json.RawMessage `json:"provenance"`
+	// Scene is the scene/1 description the picture was drawn from (ADR 0042), absent for figures saved before scenes. It
+	// names dataset ids, so it is owner-side only: snapshots and published reports copy provenance, never this.
+	Scene json.RawMessage `json:"scene,omitempty"`
 	// Archived figures are hidden from the lists but still resolve by id, on boards, in reports and in reviews (ADR 0041).
 	Archived bool `json:"archived"`
 }
 
-// NewFigure carries what the caller knows. Provenance must already be the reviewer-safe document.
+// NewFigure carries what the caller knows. Provenance must already be the reviewer-safe document; Scene, when set, is a
+// validated scene/1 document (internal/scene).
 type NewFigure struct {
 	DatasetID  int64
 	Title      string
 	Caption    string
 	Provenance json.RawMessage
+	Scene      json.RawMessage
 }
 
 func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
@@ -139,7 +148,9 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 	}
 	sum := sha256.Sum256(pngBytes)
 	sha := hex.EncodeToString(sum[:])
-	rev := sha256.Sum256(append(append([]byte{}, in.Provenance...), sum[:]...))
+	// The scene is part of the evidence. Without one the bytes hashed are what they always were, so a figure saved again
+	// without a scene still finds its older twin.
+	rev := sha256.Sum256(append(append(append([]byte{}, in.Provenance...), in.Scene...), sum[:]...))
 	revision := hex.EncodeToString(rev[:])
 	file := filepath.Join(s.dir, "figures", sha+".png")
 	if _, err := os.Stat(file); err != nil {
@@ -164,8 +175,8 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 		}
 	}
 	now := time.Now()
-	res, err := s.db.Exec(`INSERT INTO figures(dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance) VALUES(?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(revision) DO NOTHING`, in.DatasetID, title, caption, now.Unix(), revision, sha, cfg.Width, cfg.Height, string(in.Provenance))
+	res, err := s.db.Exec(`INSERT INTO figures(dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene) VALUES(?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(revision) DO NOTHING`, in.DatasetID, title, caption, now.Unix(), revision, sha, cfg.Width, cfg.Height, string(in.Provenance), string(in.Scene))
 	if err != nil {
 		return Figure{}, err
 	}
@@ -176,16 +187,19 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 	return s.Figure(id)
 }
 
-var figCols = `id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,` + schema.ArchivedExpr("figure", "figures.id")
+var figCols = `id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,` + schema.ArchivedExpr("figure", "figures.id")
 
 func scanFigure(row interface{ Scan(...any) error }) (Figure, error) {
 	var f Figure
 	var at int64
-	var prov string
-	if err := row.Scan(&f.ID, &f.DatasetID, &f.Title, &f.Caption, &at, &f.Revision, &f.PreviewSHA, &f.Width, &f.Height, &prov, &f.Archived); err != nil {
+	var prov, sc string
+	if err := row.Scan(&f.ID, &f.DatasetID, &f.Title, &f.Caption, &at, &f.Revision, &f.PreviewSHA, &f.Width, &f.Height, &prov, &sc, &f.Archived); err != nil {
 		return Figure{}, err
 	}
 	f.CreatedAt, f.Provenance = time.Unix(at, 0).UTC(), json.RawMessage(prov)
+	if sc != "" {
+		f.Scene = json.RawMessage(sc)
+	}
 	return f, nil
 }
 
