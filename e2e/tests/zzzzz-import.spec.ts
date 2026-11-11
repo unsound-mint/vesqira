@@ -117,7 +117,10 @@ test("scan a folder, write a rule, see what it matches, register, and write it t
   await page.getByRole("button", { name: /to answer/ }).click();
   await expect(page.getByText(/your import rule psi maps: declared by the rule, not by you/).first()).toBeVisible();
 
-  // the rules reach project.toml only after a second click, in a marked section, and nothing else in the file moves
+  // the rules reach project.toml only after a second click, in a marked section, and nothing else in the file moves.
+  // The 390 px shots above closed the explorer (a narrow screen does), and widening again leaves it closed: open it as a person would.
+  const explorerToggle = page.getByRole("button", { name: "Toggle explorer" });
+  if ((await explorerToggle.getAttribute("aria-pressed")) !== "true") await explorerToggle.click();
   await page.getByRole("button", { name: "Import rules…" }).click();
   await page.getByRole("button", { name: "Write the rules to project.toml…" }).click();
   expect(fs.readFileSync(PROJECT_FILE, "utf8")).toBe(theirs);
