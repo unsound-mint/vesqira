@@ -6,7 +6,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -349,12 +351,87 @@ func (s *Server) spectrum(w http.ResponseWriter, r *http.Request) {
 		req[n] = v
 		q += "," + strconv.Itoa(v)
 	}
-	k.op, k.q = "spectrum", q
+	specs, mkey, ok := s.regionMasks(w, r, d, k)
+	if !ok {
+		return
+	}
+	if specs != nil {
+		req["masks"] = specs
+	}
+	k.op, k.q = "spectrum", q+mkey
 	rep, ok := s.ask(w, r, k, req)
 	if !ok {
 		return
 	}
 	writeFrame(w, rep)
+}
+
+// regionHistogram counts the finite values of one channel inside a rectangle or circle, with the masks the request names applied per
+// mask (ADR 0055). The unmasked histogram of a region is counted in the browser from the plane it already holds; this route exists
+// because only the server has the mask bytes.
+func (s *Server) regionHistogram(w http.ResponseWriter, r *http.Request) {
+	d, real, k, ok := s.source(w, r)
+	if !ok {
+		return
+	}
+	if d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+		fail(w, 409, "this dataset is declared as an axial orientation map; a histogram of its angles over a region is not offered here. Use the orientation statistics")
+		return
+	}
+	shape := r.URL.Query().Get("shape")
+	var names []string
+	switch shape {
+	case "rect":
+		names = []string{"x0", "y0", "x1", "y1"}
+	case "circle":
+		names = []string{"cx", "cy", "r"}
+	default:
+		fail(w, 400, "shape must be rect or circle")
+		return
+	}
+	channel, ok := index(w, r, "channel")
+	if !ok {
+		return
+	}
+	var lim [2]float64
+	for i, n := range []string{"min", "max"} {
+		v, err := strconv.ParseFloat(r.URL.Query().Get(n), 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+			fail(w, 400, n+" must be a finite number")
+			return
+		}
+		lim[i] = v
+	}
+	bins, err := strconv.Atoi(r.URL.Query().Get("bins"))
+	if err != nil || bins < 1 || bins > 1024 {
+		fail(w, 400, "bins must be an integer from 1 to 1024")
+		return
+	}
+	req := map[string]any{"op": "region_histogram", "path": real, "shape": shape, "channel": channel, "min": lim[0], "max": lim[1], "bins": bins}
+	q := shape
+	for _, n := range names {
+		v, ok := integer(w, r, n)
+		if !ok {
+			return
+		}
+		req[n] = v
+		q += "," + strconv.Itoa(v)
+	}
+	specs, mkey, ok := s.regionMasks(w, r, d, k)
+	if !ok {
+		return
+	}
+	if specs != nil {
+		req["masks"] = specs
+	}
+	k.op, k.channel, k.q = "region_histogram", channel, q+fmt.Sprintf("|%v,%v,%d", lim[0], lim[1], bins)+mkey
+	rep, ok := s.ask(w, r, k, req)
+	if !ok {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(rep.Head)
 }
 
 func (s *Server) coord(w http.ResponseWriter, r *http.Request) {

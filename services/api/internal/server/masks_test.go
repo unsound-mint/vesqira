@@ -419,3 +419,126 @@ func TestAStaleMaskIsNotApplied(t *testing.T) {
 	}
 	_ = math.NaN
 }
+
+// The region spectrum and the region histogram take the same masks as statistics, by the same rules, answered by the worker (the browser
+// has no mask bytes): a policy per mask, a mask of another dataset or a stale one refused, no-value and masked pixels counted apart.
+func TestRegionSpectrumAndHistogramTakeMasksWithThePerMaskPolicy(t *testing.T) {
+	e := maskServer(t)
+	d := e.reg("zeros_and_holes.fits")
+	id := itoa(int(d.ID))
+	_, sat, b := e.make(t, d.ID, map[string]any{"method": "saturated", "threshold": 100.0, "source": "datasheet"})
+	if sat.ID == 0 {
+		t.Fatal(b)
+	}
+	_, miss, _ := e.make(t, d.ID, map[string]any{"method": "missing"})
+	box := "shape=rect&x0=0&y0=0&x1=7&y1=5"
+	hist := func(masksQ string) (int, map[string]any, string) {
+		r, body := get(t, e.ts.URL+"/api/datasets/"+id+"/region-histogram?"+box+"&channel=0&min=0&max=100&bins=4"+masksQ)
+		var m map[string]any
+		json.Unmarshal(body, &m)
+		return r.StatusCode, m, string(body)
+	}
+	spec := func(masksQ string) (int, map[string]any, []float64, string) {
+		r, fb := get(t, e.ts.URL+"/api/datasets/"+id+"/spectrum?"+box+masksQ)
+		if r.StatusCode != 200 {
+			return r.StatusCode, nil, nil, string(fb)
+		}
+		n := binary.LittleEndian.Uint32(fb)
+		var head map[string]any
+		json.Unmarshal(fb[4:4+n], &head)
+		nc := int(num(head, "channels"))
+		mean := make([]float64, nc)
+		for i := range mean {
+			mean[i] = math.Float64frombits(binary.LittleEndian.Uint64(fb[4+int(n)+8*nc+8*i:]))
+		}
+		return 200, head, mean, ""
+	}
+	ints := func(m map[string]any) []int {
+		var out []int
+		for _, v := range m["counts"].([]any) {
+			out = append(out, int(v.(float64)))
+		}
+		return out
+	}
+	sameInts := func(a, b []int) bool { return fmt.Sprint(a) == fmt.Sprint(b) }
+	satQ, keepQ, missQ := "&mask="+itoa(int(sat.ID))+":exclude", "&mask="+itoa(int(sat.ID))+":keep", "&mask="+itoa(int(miss.ID))+":exclude"
+
+	// 48 pixels: 2 without a value, 46 with, of which one is 100 (saturated) and two are measured zeros
+	st, plain, b := hist("")
+	if st != 200 || num(plain, "pixels") != 48 || num(plain, "no_value") != 2 || !sameInts(ints(plain), []int{45, 0, 0, 1}) {
+		t.Fatalf("unmasked: %d %s", st, b)
+	}
+	if _, has := plain["masks"]; has {
+		t.Fatalf("no mask named, none reported: %s", b)
+	}
+	st, kept, b := hist(keepQ)
+	if st != 200 || !sameInts(ints(kept), ints(plain)) || num(kept, "excluded_by_mask") != 0 || kept["masks"].([]any)[0].(map[string]any)["policy"] != "keep" {
+		t.Fatalf("keep: %d %s", st, b)
+	}
+	st, ex, b := hist(satQ + missQ)
+	if st != 200 || !sameInts(ints(ex), []int{45, 0, 0, 0}) || num(ex, "excluded_by_mask") != 1 || num(ex, "no_value") != 2 {
+		t.Fatalf("exclude: %d %s", st, b)
+	}
+	m0 := ex["masks"].([]any)[0].(map[string]any)
+	if m0["type"] != "saturated" || m0["policy"] != "exclude" || m0["tier"] == "" || m0["fingerprint"] == "" || num(m0, "pixels_flagged_with_value") != 1 || num(m0, "pixels_excluded") != 1 {
+		t.Fatalf("applied list: %s", b)
+	}
+	if m1 := ex["masks"].([]any)[1].(map[string]any); num(m1, "pixels_excluded") != 0 {
+		t.Fatalf("excluding the no-value mask removes nothing that has a value: %s", b)
+	}
+	if strings.Contains(b, e.dir) {
+		t.Fatalf("a path leaked: %s", b)
+	}
+
+	// the same for the spectrum: the mean over the region, the 100 left out only when excluded
+	_, _, plainMean, _ := spec("")
+	_, hk, keptMean, _ := spec(keepQ)
+	_, he, exMean, eb := spec(satQ)
+	if len(plainMean) != 1 || plainMean[0] != keptMean[0] || num(hk, "excluded_by_mask") != 0 {
+		t.Fatalf("keep: %v %v", plainMean, keptMean)
+	}
+	// 46 values: 43 threes, two measured zeros (values, so they count) and one 100
+	if math.Abs(plainMean[0]-(43*3.0+100)/46) > 1e-5 || math.Abs(exMean[0]-(43*3.0)/45) > 1e-5 || num(he, "excluded_by_mask") != 1 || num(he, "no_value") != 2 {
+		t.Fatalf("spectrum means %v %v head %v %s", plainMean, exMean, he, eb)
+	}
+	if ms, ok := he["masks"].([]any); !ok || len(ms) != 1 || ms[0].(map[string]any)["policy"] != "exclude" {
+		t.Fatalf("applied list: %v", he["masks"])
+	}
+
+	// the rules every analysis has: an explicit policy, no keep for no-value, weight refused with a sentence, a bad mask is 4xx
+	for _, c := range []struct {
+		q    string
+		code int
+		word string
+	}{
+		{"&mask=" + itoa(int(sat.ID)), 400, "mask must be"},
+		{"&mask=" + itoa(int(sat.ID)) + ":", 422, "explicit policy"},
+		{"&mask=" + itoa(int(miss.ID)) + ":keep", 422, "no value"},
+		{"&mask=" + itoa(int(sat.ID)) + ":weight", 422, "no weights"},
+		{"&mask=" + itoa(int(sat.ID)) + ":exclude&mask=" + itoa(int(sat.ID)) + ":keep", 422, "twice"},
+		{"&mask=9999:exclude", 422, "not in the catalog"},
+	} {
+		if st, _, b := hist(c.q); st != c.code || !strings.Contains(b, c.word) {
+			t.Fatalf("histogram %s: %d %s", c.q, st, b)
+		}
+		if st, _, _, b := spec(c.q); st != c.code || !strings.Contains(b, c.word) {
+			t.Fatalf("spectrum %s: %d %s", c.q, st, b)
+		}
+	}
+	// a mask of another dataset
+	other := e.reg("hi_cube.fits")
+	_, foreign, _ := e.make(t, other.ID, map[string]any{"method": "missing"})
+	if st, _, b := hist("&mask=" + itoa(int(foreign.ID)) + ":exclude"); st != 422 || !strings.Contains(b, "another dataset") {
+		t.Fatalf("foreign: %d %s", st, b)
+	}
+	// a stale mask is refused, not applied
+	if _, err := e.cat.DB().Exec(`UPDATE masks SET source_size = source_size + 1 WHERE id=?`, sat.ID); err != nil {
+		t.Fatal(err)
+	}
+	if st, _, b := hist(satQ); st != 409 || !strings.Contains(b, "make it again") {
+		t.Fatalf("stale histogram: %d %s", st, b)
+	}
+	if st, _, _, b := spec(satQ); st != 409 || !strings.Contains(b, "make it again") {
+		t.Fatalf("stale spectrum: %d %s", st, b)
+	}
+}

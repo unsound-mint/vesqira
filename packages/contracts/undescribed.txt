@@ -15,7 +15,6 @@ GET /api/datasets/{id}/header-cards
 GET /api/datasets/{id}/impact
 GET /api/datasets/{id}/regions
 GET /api/datasets/{id}/regions.reg
-GET /api/datasets/{id}/spectrum
 GET /api/figures/{id}/impact
 GET /api/files/tree
 GET /api/fs/complete

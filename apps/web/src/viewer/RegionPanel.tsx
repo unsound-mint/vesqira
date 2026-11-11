@@ -5,6 +5,8 @@ import type { RegionShape } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { nominalPixels, sameRegion } from "./region";
+import { MaskPolicies } from "../catalog/MaskPolicies";
+import { AppliedMasks } from "./AppliedMasks";
 import { ds9Url, isLine, previewDs9, savedShape } from "../api/regions";
 import type { ImportItem, SavedRegion } from "../api/regions";
 import type { Tool } from "./region";
@@ -85,9 +87,16 @@ export function RegionPanel({ v }: { v: Viewer }) {
           <dt>Pixel scale</dt>
           <dd className="mono">{info?.size ? `${info.size.pixel_scale_arcsec[0].toFixed(3)} × ${info.size.pixel_scale_arcsec[1].toFixed(3)} arcsec` : EM}</dd>
           <dt>This channel</dt>
-          <dd className="mono">{ch === undefined || !info ? EM : `${ch.toLocaleString("en-US")} of ${info.region.pixels.toLocaleString("en-US")} pixels have a value`}</dd>
+          <dd className="mono">{ch === undefined || !info ? EM : `${ch.toLocaleString("en-US")} of ${info.region.pixels.toLocaleString("en-US")} pixels ${info.masks ? "have a value and are not masked" : "have a value"}`}</dd>
         </dl>
       ) : null}
+      {region && v.datasetMasks && v.datasetMasks.length > 0 ? (
+        <>
+          <MaskPolicies masks={v.datasetMasks} choice={v.maskChoice} onChange={v.setMaskChoice} label="Masks for this region" />
+          <p className={s.note}>The choice applies to this region’s spectrum and to its histogram, which the worker then counts. Nothing is masked unless you choose.</p>
+        </>
+      ) : null}
+      {info?.masks ? <AppliedMasks masks={info.masks} noValue={info.no_value} excluded={info.excluded_by_mask} testId="spectrum-masks" /> : null}
       <SavedList v={v} />
       {info ? <p className={s.note}>{info.mask_policy}{info.size ? ` ${info.size.note}.` : ""}</p> : null}
     </div>

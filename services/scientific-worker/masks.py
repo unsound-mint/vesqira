@@ -267,6 +267,11 @@ def parse_specs(text: str | None) -> list[dict]:
         specs = json.loads(text)
     except ValueError:
         raise MaskError("the masks are not a JSON list") from None
+    return check_specs(specs)
+
+
+def check_specs(specs) -> list[dict]:
+    """The same checks for specs that arrive already parsed (a request to the plane worker)."""
     if not isinstance(specs, list) or len(specs) > 16:
         raise MaskError("at most 16 masks can be applied at once")
     for s in specs:
@@ -317,14 +322,18 @@ class Applied:
         for f in self.files:
             f.close()
 
-    def plane(self, ch: int, p: np.ndarray):
+    def plane(self, ch: int, p: np.ndarray, sel=None):
         """(exclude, weight) for channel `ch` whose values are `p`: a bool plane of pixels to leave out, and a float plane of weights
-        (1 where nothing says otherwise). Counts the flagged pixels that have a value."""
+        (1 where nothing says otherwise). Counts the flagged pixels that have a value. With `sel` = (ys, xs, inside), `p` holds only the
+        pixels of a region (a 1D array, the `inside` pixels of the window ys, xs) and the masks are read at those pixels."""
         ex = np.zeros(p.shape, dtype=bool)
         w = np.ones(p.shape, dtype=float)
         fin = np.isfinite(p)
         for i, (s, a) in enumerate(zip(self.specs, self.arrays)):
-            m = np.asarray(a[ch] if a.ndim == 3 else a) != 0
+            m = np.asarray(a[ch] if a.ndim == 3 else a)
+            if sel is not None:
+                m = m[sel[0], sel[1]][sel[2]]
+            m = m != 0
             self.stats[i]["flagged_with_value"] += int(np.count_nonzero(m & fin))
             if s["policy"] == "exclude":
                 ex |= m

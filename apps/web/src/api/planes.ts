@@ -1,5 +1,6 @@
 import { ApiError, idHeader, requestRaw } from "./http";
 import type { components } from "./schema";
+import type { MaskUse } from "./masks";
 
 type Schemas = components["schemas"];
 
@@ -135,7 +136,13 @@ export type SpectrumHeader = {
   bunit: string | null;
   /** declared: the file's BUNIT; user: a unit you declared for a file with none; unresolved: neither */
   bunit_status?: "declared" | "user" | "unresolved";
+  /** Present when masks were applied (ADR 0055): each with its policy and counts, the region's pixel-channels with no value, and the ones with a value that masks left out. */
+  masks?: AppliedRegionMask[];
+  no_value?: number;
+  excluded_by_mask?: number;
 };
+
+export type AppliedRegionMask = Schemas["RegionMaskApplied"];
 
 /** mean[c] is NaN when the channel has no finite pixel in the region: unknown, never zero. */
 export type Spectrum = { head: SpectrumHeader; axis: Float64Array; mean: Float64Array; count: Uint32Array };
@@ -162,8 +169,17 @@ export function parseSpectrum(buf: ArrayBuffer): Spectrum {
   return { head, axis: f64(at), mean: f64(at + c * 8), count };
 }
 
-export const getSpectrum = (id: number, r: RegionShape, signal?: AbortSignal, requestId?: string) =>
-  requestRaw(`${base(id)}/spectrum?${regionQuery(r)}`, { signal, headers: idHeader(requestId) }).then((x) => x.arrayBuffer()).then(parseSpectrum);
+/** `&mask=<id>:<policy>` for each mask an operation names; none named, nothing is applied. */
+export const maskQuery = (uses: MaskUse[] = []): string => uses.map((u) => `&mask=${u.id}:${u.policy}`).join("");
+
+export const getSpectrum = (id: number, r: RegionShape, signal?: AbortSignal, requestId?: string, masks?: MaskUse[]) =>
+  requestRaw(`${base(id)}/spectrum?${regionQuery(r)}${maskQuery(masks)}`, { signal, headers: idHeader(requestId) }).then((x) => x.arrayBuffer()).then(parseSpectrum);
+
+export type RegionHistogramResult = Schemas["RegionHistogram"];
+
+/** The histogram of a region of one channel with masks applied, counted by the worker (the browser has no mask bytes). */
+export const getRegionHistogram = (id: number, channel: number, r: RegionShape, min: number, max: number, bins: number, masks: MaskUse[], signal?: AbortSignal) =>
+  request(`${base(id)}/region-histogram?channel=${channel}&min=${min}&max=${max}&bins=${bins}&${regionQuery(r)}${maskQuery(masks)}`, signal).then((x) => x.json() as Promise<RegionHistogramResult>);
 
 export type AxialSummary = { n: number; resultant: number | null; mean_deg: number | null; defined: boolean; reason: string | null };
 export type AxialStats = {

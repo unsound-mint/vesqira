@@ -11730,6 +11730,148 @@
      "description": "default false: dataset names and file names are removed from every file"
     }
    }
+  },
+  "RegionMaskApplied": {
+   "type": "object",
+   "description": "One mask a region spectrum or histogram applied (ADR 0055): what it was, the policy, and how many pixels (summed over the channels read) it flagged with a value and left out. Never a path.",
+   "required": [
+    "id",
+    "name",
+    "type",
+    "policy",
+    "pixels_flagged_with_value",
+    "pixels_excluded"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "type": {
+     "type": "string",
+     "enum": [
+      "missing",
+      "invalid",
+      "low_snr",
+      "saturated",
+      "user_excluded",
+      "other"
+     ]
+    },
+    "policy": {
+     "type": "string",
+     "enum": [
+      "exclude",
+      "keep"
+     ]
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ]
+    },
+    "fingerprint": {
+     "type": "string"
+    },
+    "pixels_flagged_with_value": {
+     "type": "integer"
+    },
+    "pixels_excluded": {
+     "type": "integer"
+    }
+   }
+  },
+  "RegionHistogram": {
+   "type": "object",
+   "description": "Counts of the finite values of one channel inside a region, in equal bins from min to max (the largest value falls in the last bin). `no_value` pixels (NaN, BLANK, infinite) are counted apart and before any mask; `excluded_by_mask` counts pixels with a value that a mask left out. Zero is a value. The browser asks for this only when masks are named; the unmasked histogram is counted there.",
+   "required": [
+    "ok",
+    "channel",
+    "min",
+    "max",
+    "bins",
+    "counts",
+    "pixels",
+    "no_value",
+    "region"
+   ],
+   "properties": {
+    "ok": {
+     "type": "boolean"
+    },
+    "channel": {
+     "type": "integer"
+    },
+    "min": {
+     "type": "number"
+    },
+    "max": {
+     "type": "number"
+    },
+    "bins": {
+     "type": "integer"
+    },
+    "counts": {
+     "type": "array",
+     "items": {
+      "type": "integer"
+     }
+    },
+    "pixels": {
+     "type": "integer",
+     "description": "Pixels of the region inside the image"
+    },
+    "no_value": {
+     "type": "integer"
+    },
+    "excluded_by_mask": {
+     "type": "integer",
+     "description": "Present when masks were applied"
+    },
+    "masks": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RegionMaskApplied"
+     },
+     "description": "Present when masks were applied"
+    },
+    "policy": {
+     "type": "string"
+    },
+    "bunit": {
+     "type": "string",
+     "nullable": true
+    },
+    "bunit_status": {
+     "type": "string"
+    },
+    "region": {
+     "type": "object",
+     "required": [
+      "pixels",
+      "requested_pixels",
+      "clipped"
+     ],
+     "properties": {
+      "pixels": {
+       "type": "integer"
+      },
+      "requested_pixels": {
+       "type": "integer"
+      },
+      "clipped": {
+       "type": "boolean"
+      }
+     }
+    }
+   }
   }
  },
  "operations": {
@@ -17232,6 +17374,289 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/region-histogram": {
+   "summary": "Histogram of a region of one channel, with masks applied per mask (ADR 0055)",
+   "description": "Counted by the scientific worker, which is the only side that has the mask bytes. Without a `mask` parameter the answer is the unmasked count (the browser does the same from the plane it holds, and does not call this).",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "channel",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "description": "0-based"
+    },
+    {
+     "name": "min",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "number"
+     }
+    },
+    {
+     "name": "max",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "number"
+     }
+    },
+    {
+     "name": "bins",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1024
+     }
+    },
+    {
+     "name": "shape",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "enum": [
+       "rect",
+       "circle"
+      ]
+     },
+     "description": "rect or circle (a line has no area)"
+    },
+    {
+     "name": "x0",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     },
+     "description": "rect: 0-based pixel, y from the bottom"
+    },
+    {
+     "name": "y0",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "x1",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "y1",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "cx",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     },
+     "description": "circle: centre"
+    },
+    {
+     "name": "cy",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "r",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "mask",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "pattern": "^[0-9]+:(exclude|keep|weight)$"
+      }
+     },
+     "description": "A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). Masks are applied to files read on this computer (409 for a host).",
+     "style": "form",
+     "explode": true
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RegionHistogram"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/spectrum": {
+   "summary": "Mean spectrum of a region, with masks applied per mask (ADR 0055)",
+   "description": "A frame: uint32 little-endian header length n, n bytes of JSON (shape, region, size, axis, mask_policy, bunit and, when masks were applied, masks, no_value and excluded_by_mask), then float64 axis[channels], float64 mean[channels] (NaN: no finite pixel left, never zero) and uint32 count[channels] (pixels that entered the mean), little-endian. Only the transport and the JSON header are described here.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "shape",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "enum": [
+       "rect",
+       "circle"
+      ]
+     },
+     "description": "rect or circle (a line has no area)"
+    },
+    {
+     "name": "x0",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     },
+     "description": "rect: 0-based pixel, y from the bottom"
+    },
+    {
+     "name": "y0",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "x1",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "y1",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "cx",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     },
+     "description": "circle: centre"
+    },
+    {
+     "name": "cy",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "r",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer"
+     }
+    },
+    {
+     "name": "mask",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "pattern": "^[0-9]+:(exclude|keep|weight)$"
+      }
+     },
+     "description": "A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). Masks are applied to files read on this computer (409 for a host).",
+     "style": "form",
+     "explode": true
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "a frame",
+     "content": {
+      "application/vnd.vesqira.plane": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
        }
       }
      }

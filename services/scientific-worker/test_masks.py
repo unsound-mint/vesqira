@@ -334,6 +334,97 @@ class Masks(unittest.TestCase):
         self.assertAlmostEqual(wt["am_weighted"], excl["am"], places=5)
         self.assertIn("weight policy", wt["weighting"])
 
+    # ---- the region spectrum and the region histogram take the same masks, with the same policies -----------------------
+    def _region_fixture(self, name):
+        """A user-excluded import mask over (y2, x2), a measured zero, and (y4, x4), the saturated 50 of channel 3, plus a saturated mask."""
+        flags = np.zeros((10, 8), dtype="<u1")
+        flags[2, 2] = flags[4, 4] = 1
+        p = self.d / f"{name}_flags.fits"
+        fits.PrimaryHDU(flags, header=celestial(8, 10)).writeto(p, overwrite=True)
+        _, r, ue = self.make(f"{name}_ue", method="import", type="user_excluded", path=str(p), nonzero="flagged")
+        _, _, miss = self.make(f"{name}_miss", method="missing", type="missing")
+        return flags.astype(bool), ue, miss
+
+    def test_region_spectrum_exclude_and_keep_match_an_independent_mean(self):
+        import plane_worker as pw
+        flags, ue, miss = self._region_fixture("rs")
+        box = dict(op="spectrum", path=str(self.f), shape="rect", x0=1, y0=1, x1=6, y1=8)
+        region = np.zeros((10, 8), dtype=bool)
+        region[1:9, 1:7] = True
+        v = self.cube32
+
+        def ask(*specs):
+            head, payload = pw.handle({**box, **({"masks": list(specs)} if specs else {})})
+            nc = head["channels"]
+            return head, np.frombuffer(payload, "<f8", nc, 8 * nc), np.frombuffer(payload, "<u4", nc, 16 * nc)
+
+        h0, m0, c0 = ask()
+        self.assertNotIn("masks", h0, "no masks named: the head is the unmasked one")
+        h1, m1, c1 = ask(self.spec(ue, "user_excluded", "keep"))
+        np.testing.assert_array_equal(m1, m0)
+        np.testing.assert_array_equal(c1, c0)
+        self.assertEqual((h1["masks"][0]["policy"], h1["excluded_by_mask"]), ("keep", 0))
+        h2, m2, c2 = ask(self.spec(ue, "user_excluded", "exclude"), self.spec(miss, "missing", "exclude", id=2))
+        for ch in range(6):
+            sel = region & np.isfinite(v[ch])
+            self.assertEqual(int(c0[ch]), int(sel.sum()))
+            sel2 = sel & ~flags
+            self.assertEqual(int(c2[ch]), int(sel2.sum()), ch)
+            self.assertAlmostEqual(m2[ch], float(v[ch][sel2].mean()), places=9)
+            self.assertAlmostEqual(m0[ch], float(v[ch][sel].mean()), places=9)
+        self.assertGreater(abs(m2[3] - m0[3]), 0.1, "excluding the saturated pixel changes channel 3")
+        # the measured zero is a value: kept it counts, excluded by a mask it is counted as excluded and never as no value
+        self.assertEqual(h2["no_value"], int(sum((region & ~np.isfinite(v[ch])).sum() for ch in range(6))), "no-value pixels of the region, whatever is masked")
+        self.assertEqual(h2["excluded_by_mask"], int(sum((flags & region & np.isfinite(v[ch])).sum() for ch in range(6))))
+        byt = {m["type"]: m for m in h2["masks"]}
+        self.assertEqual(byt["user_excluded"]["pixels_excluded"], h2["excluded_by_mask"])
+        self.assertEqual(byt["missing"]["pixels_excluded"], 0, "excluding `missing` removes nothing that has a value")
+        self.assertIn("never treated as masked", h2["mask_policy"])
+
+    def test_region_histogram_exclude_and_keep_match_an_independent_count(self):
+        import plane_worker as pw
+        flags, ue, miss = self._region_fixture("rh")
+        v = self.cube32[3]                              # channel 3 holds the 50, a zero at (2, 2) and NaN at (7, 5)
+        region = np.zeros((10, 8), dtype=bool)
+        region[1:9, 1:7] = True
+        req = dict(op="region_histogram", path=str(self.f), channel=3, shape="rect", x0=1, y0=1, x1=6, y1=8, min=-2.0, max=52.0, bins=9)
+
+        def ask(*specs, **kw):
+            return pw.handle({**req, **kw, **({"masks": list(specs)} if specs else {})})[0]
+
+        def expect(sel):
+            return np.histogram(v[sel].astype(float), bins=9, range=(-2.0, 52.0))[0].tolist()
+
+        fin = region & np.isfinite(v)
+        h0 = ask()
+        self.assertEqual((h0["counts"], h0["pixels"], h0["no_value"]), (expect(fin), int(region.sum()), int((region & ~np.isfinite(v)).sum())))
+        self.assertNotIn("masks", h0)
+        hk = ask(self.spec(ue, "user_excluded", "keep"))
+        self.assertEqual(hk["counts"], h0["counts"])
+        self.assertEqual(hk["excluded_by_mask"], 0)
+        he = ask(self.spec(ue, "user_excluded", "exclude"))
+        self.assertEqual(he["counts"], expect(fin & ~flags))
+        self.assertNotEqual(he["counts"], h0["counts"])
+        self.assertEqual(he["excluded_by_mask"], 2, "the zero and the 50 both have a value")
+        self.assertEqual(he["no_value"], h0["no_value"], "no-value pixels are counted apart from masked ones")
+        self.assertEqual(he["masks"][0]["pixels_flagged_with_value"], 2)
+        # only the saturated pixel left out: the measured zero stays in its bin
+        _, _, sat = self.make("rh_sat", method="saturated", type="saturated", threshold=10.0, source="s")
+        hs = ask(self.spec(sat, "saturated", "exclude"))
+        self.assertEqual(hs["counts"], expect(fin & (v < 10.0)))
+        self.assertEqual(hs["excluded_by_mask"], 1)
+
+    def test_region_masks_refuse_no_policy_missing_keep_and_weight(self):
+        import plane_worker as pw
+        _, ue, miss = self._region_fixture("rr")
+        box = dict(op="region_histogram", path=str(self.f), channel=0, shape="rect", x0=1, y0=1, x1=6, y1=8, min=0.0, max=5.0, bins=4)
+        for op in ({**box}, {**box, "op": "spectrum"}):
+            for specs, word in (([self.spec(miss, "missing", "keep")], "no value"), ([self.spec(ue, "user_excluded", "weight", weight=0.5)], "no weights"),
+                                ([{"path": str(ue), "type": "user_excluded"}], "no default")):
+                with self.assertRaises(pw.Refused) as cm:
+                    pw.handle({**op, "masks": specs})
+                self.assertIn(word, str(cm.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
