@@ -1,4 +1,4 @@
-import { ApiError } from "./catalog";
+import { request as call } from "./http";
 
 export type RunParam = { key: string; value: string; source: "config" | "run_parameters" };
 export type RunOutput = { role: "psi" | "reliability" | "support" | "fit_rbar2"; datasetId: number; name: string };
@@ -59,18 +59,6 @@ export type Rerun = {
   /** The stored config text compared with the file on the host now; null when unknown or the host cannot be reached. */
   configChanged: boolean | null;
 };
-
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API.");
-  }
-  const body = (await res.json().catch(() => null)) as { error?: string } | null;
-  if (!res.ok) throw new ApiError(body?.error ?? `Request failed (${res.status})`);
-  return body as T;
-}
 
 export const listRuns = (opts: { archived?: "all" | "only" } = {}) => call<{ runs: Run[] }>(`/api/runs${opts.archived ? `?archived=${opts.archived}` : ""}`).then((r) => r.runs);
 export const importRun = (path: string) =>

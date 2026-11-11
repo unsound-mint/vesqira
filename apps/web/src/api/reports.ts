@@ -1,4 +1,4 @@
-import { ApiError } from "./catalog";
+import { ApiError, request } from "./http";
 
 /** Owner-side reports (ADR 0036). The reader page never imports this file. */
 
@@ -25,17 +25,15 @@ export class ConflictError extends ApiError {
   }
 }
 
+/** A save refused because someone saved in between (409) carries the report as it is now. */
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let res: Response;
   try {
-    res = await fetch(url, init);
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API.");
+    return await request<T>(url, init);
+  } catch (e) {
+    const b = e instanceof ApiError && e.status === 409 ? (e.body as { current?: Report } | null) : null;
+    if (b?.current) throw new ConflictError((e as ApiError).message || "The report changed.", b.current);
+    throw e;
   }
-  const body = (await res.json().catch(() => null)) as { error?: string; current?: Report } | null;
-  if (res.status === 409 && body?.current) throw new ConflictError(body.error ?? "The report changed.", body.current);
-  if (!res.ok) throw new ApiError(body?.error ?? `Request failed (${res.status})`);
-  return body as T;
 }
 
 const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

@@ -1,4 +1,4 @@
-import { ApiError } from "./catalog";
+import { request as call, postJSON as post } from "./http";
 import type { Dataset } from "./catalog";
 import type { Job } from "./jobs";
 
@@ -19,20 +19,6 @@ export type StatsSummary = {
 };
 
 export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string> }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
-
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API.");
-  }
-  const body = (await res.json().catch(() => null)) as { error?: string } | null;
-  if (!res.ok) throw new ApiError(body?.error ?? `Request failed (${res.status})`);
-  return body as T;
-}
-
-const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 export const runAnalysis = (r: AnalysisRequest) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r);
 export const createAnalysisJob = (r: AnalysisRequest) => post<Job>("/api/analysis/job", r);

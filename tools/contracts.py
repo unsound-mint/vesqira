@@ -7,7 +7,9 @@
 The routes are read from the mux registrations in services/api (the single source of truth for what exists). The
 file lists every path and method with its handler and which listener serves it. Request and response bodies are
 described one route group at a time in packages/contracts/bodies.json (ADR 0032); the generator merges them in.
-Operations without a description stay allowed, and --check reports how many remain so the number only goes down.
+Operations without a description are listed in packages/contracts/undescribed.txt, a ratchet: --check fails for an
+undescribed operation that is not listed (a new route needs a description) and for a listed one that is now described
+(trim the file). Running the generator trims the list; it never adds to it.
 """
 import json
 import re
@@ -23,6 +25,7 @@ LISTENERS = [
     ("publish", ROOT / "services/api/internal/publish"),
 ]
 BODIES = ROOT / "packages" / "contracts" / "bodies.json"
+UNDESCRIBED = ROOT / "packages" / "contracts" / "undescribed.txt"
 ROUTE = re.compile(r'mux\.Handle(?:Func)?\("([A-Z]+) (/[^"]*)"(?:,\s*([A-Za-z_.()]+))?')
 
 
@@ -150,6 +153,30 @@ def body_errors(rs):
     return errs
 
 
+def undescribed_now(rs):
+    return {f"{m.upper()} {u}" for u, m, *_ in rs} - set(load_bodies()["operations"])
+
+
+def baseline():
+    return [l for l in UNDESCRIBED.read_text().splitlines() if l.strip()] if UNDESCRIBED.exists() else []
+
+
+def ratchet_errors(rs):
+    """The undescribed operations may only shrink: no new one, and the baseline file stays exact."""
+    now, base = undescribed_now(rs), set(baseline())
+    errs = [f"{k} is a new route without a described body; describe it in packages/contracts/bodies.json (ADR 0032), do not add it to undescribed.txt"
+            for k in sorted(now - base)]
+    errs += [f"{k} is in undescribed.txt but is now described or gone; remove the line (tools/contracts.py trims the file)" for k in sorted(base - now)]
+    if baseline() != sorted(baseline()):
+        errs.append("packages/contracts/undescribed.txt is not sorted")
+    return errs
+
+
+def trim_baseline(rs):
+    keep = sorted(set(baseline()) & undescribed_now(rs))
+    UNDESCRIBED.write_text("".join(k + "\n" for k in keep))
+
+
 def client_calls():
     """Every /api or /review-api path the web client mentions, with template placeholders normalised."""
     out = set()
@@ -180,9 +207,10 @@ def main():
     if "--check" not in sys.argv:
         OUT.parent.mkdir(parents=True, exist_ok=True)
         OUT.write_text(text)
+        trim_baseline(rs)
         print(f"wrote {OUT.relative_to(ROOT)} ({len({(u, m) for u, m, *_ in rs})} operations)")
         return 0
-    errors = unread_registrations() + body_errors(rs)
+    errors = unread_registrations() + body_errors(rs) + ratchet_errors(rs)
     if not OUT.exists() or OUT.read_text() != text:
         errors.append("packages/contracts/openapi.yaml is out of date: run tools/contracts.py")
     spec_paths = {u for u, *_ in rs}
@@ -193,9 +221,7 @@ def main():
     for e in errors:
         print("contracts:", e)
     if not errors:
-        ops = load_bodies()["operations"]
-        keys = {f"{m.upper()} {u}" for u, m, *_ in rs}
-        print(f"contracts: {len(keys - set(ops))} of {len(keys)} operations still have no described bodies")
+        print(f"contracts: {len(undescribed_now(rs))} of {len({(u, m) for u, m, *_ in rs})} operations still have no described bodies (only goes down: packages/contracts/undescribed.txt)")
     return 1 if errors else 0
 
 

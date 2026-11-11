@@ -1,4 +1,4 @@
-import { ApiError } from "./catalog";
+import { ApiError, request } from "./http";
 
 /** What can be archived or deleted from the catalog (ADR 0041). The names are the route segments. */
 export type EntryKind = "datasets" | "runs" | "figures" | "boards";
@@ -28,17 +28,15 @@ export class ImpactChanged extends ApiError {
   }
 }
 
+/** A refused delete (409) carries the dependents as they are now. */
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let res: Response;
   try {
-    res = await fetch(url, init);
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API.");
+    return await request<T>(url, init);
+  } catch (e) {
+    const b = e instanceof ApiError && e.status === 409 ? (e.body as { impact?: Impact } | null) : null;
+    if (b?.impact) throw new ImpactChanged((e as ApiError).message || "What depends on this changed.", b.impact);
+    throw e;
   }
-  const body = (await res.json().catch(() => null)) as { error?: string; impact?: Impact } | null;
-  if (res.status === 409 && body?.impact) throw new ImpactChanged(body.error ?? "What depends on this changed.", body.impact);
-  if (!res.ok) throw new ApiError(body?.error ?? `Request failed (${res.status})`);
-  return body as T;
 }
 
 const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

@@ -1,4 +1,4 @@
-import { ApiError } from "./catalog";
+import { ApiError, requestRaw } from "./http";
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
@@ -52,20 +52,8 @@ export type Converted = {
 };
 export type ConvertRequest = { spectral: string; convention: string; frame: string; to: string; value: number | null };
 
-async function request(url: string, signal?: AbortSignal): Promise<Response> {
-  let res: Response;
-  try {
-    res = await fetch(url, { signal });
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") throw e;
-    throw new ApiError("Cannot reach the Vesqira API. Is it running on 127.0.0.1:8787?");
-  }
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new ApiError(body?.error ?? `Request failed (${res.status})`);
-  }
-  return res;
-}
+/** The checked Response: these bodies are binary (planes, spectra) or JSON, and the caller reads them. */
+const request = (url: string, signal?: AbortSignal) => requestRaw(url, { signal });
 
 const base = (id: number) => `/api/datasets/${id}`;
 

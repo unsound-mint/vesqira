@@ -1,4 +1,4 @@
-import { ApiError } from "./catalog";
+import { request as call, postJSON as post } from "./http";
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
@@ -12,33 +12,19 @@ export type FigureItem = Schemas["FigureBoardItem"];
 export type JobItem = Schemas["JobBoardItem"];
 export type BoardItem = Schemas["BoardItem"];
 export type Board = Schemas["Board"];
-export type OutcomeValue = "commented" | "changes_requested" | "reviewed";
+export type OutcomeValue = Schemas["OutcomeValue"];
 export const OUTCOME_TEXT: Record<OutcomeValue, string> = { commented: "Commented", changes_requested: "Changes requested", reviewed: "Reviewed" };
 export type Snapshot = Schemas["Snapshot"];
 /** A place on a published picture, in fractions of its width and height from the top left. */
-export type Anchor = { kind: "point"; x: number; y: number } | { kind: "box"; x: number; y: number; x1: number; y1: number };
-export type Comment = { id: number; figureRevision: string; parentId: number; author: string; fromOwner: boolean; body: string; anchor?: Anchor; createdAt: string; resolvedAt?: string };
-
-export type FrozenFigure = { kind?: "figure"; revision: string; title: string; caption: string; note: string; previewSha: string; width: number; height: number; provenance: Provenance };
+export type Anchor = Schemas["Anchor"];
+export type Comment = Schemas["Comment"];
+export type FrozenFigure = Schemas["FrozenFigure"];
 /** A run that had not finished when the board was published: only its name and state at that moment. */
-export type FrozenJob = { kind: "job"; title: string; state: string; at: string; note: string };
-export type FrozenItem = FrozenFigure | FrozenJob;
-export type Review = { snapshot: { boardTitle: string; label: string; question?: string; createdAt: string; expiresAt: string; items: FrozenItem[] }; comments: Comment[]; outcome: { value: "" | OutcomeValue; note?: string; by?: string; at?: string }; superseded?: { reason: string; at: string } };
+export type FrozenJob = Schemas["FrozenJob"];
+export type FrozenItem = Schemas["FrozenItem"];
+/** What a reviewer's browser receives for one link. */
+export type Review = Schemas["Review"];
 export type Preflight = Schemas["Preflight"];
-
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API.");
-  }
-  const body = (await res.json().catch(() => null)) as { error?: string } | null;
-  if (!res.ok) throw new ApiError(res.status === 404 && url.startsWith("/review-api") ? "This review link is not valid, has expired, or was revoked." : (body?.error ?? `Request failed (${res.status})`));
-  return body as T;
-}
-
-const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 export type FigureRequest = Schemas["CreateFigureRequest"];
 
@@ -61,12 +47,12 @@ export const publish = (boardId: number, label: string, hours: number, extra: { 
   post<Schemas["PublishResponse"]>(`/api/boards/${boardId}/publish`, { label, hours, ...extra });
 export const preflight = (boardId: number, question: string) => call<Preflight>(`/api/boards/${boardId}/preflight?question=${encodeURIComponent(question)}`);
 export const listSnapshots = (boardId: number) => call<{ snapshots: Snapshot[] }>(`/api/boards/${boardId}/snapshots`).then((r) => r.snapshots);
-export const revokeSnapshot = (id: number) => post<{ revoked: boolean }>(`/api/snapshots/${id}/revoke`, {});
-export const snapshotComments = (id: number) => call<{ comments: Comment[] }>(`/api/snapshots/${id}/comments`).then((r) => r.comments);
+export const revokeSnapshot = (id: number) => post<Schemas["Revoked"]>(`/api/snapshots/${id}/revoke`, {});
+export const snapshotComments = (id: number) => call<Schemas["CommentList"]>(`/api/snapshots/${id}/comments`).then((r) => r.comments);
 
 export const getReview = (token: string) => call<Review>(`/review-api/${encodeURIComponent(token)}`);
 export const reviewPreviewUrl = (token: string, sha: string) => `/review-api/${encodeURIComponent(token)}/preview/${sha}`;
-export const addReviewComment = (token: string, c: { figureRevision?: string; parentId?: number; author: string; body: string; anchor?: Anchor }) => post<Comment>(`/review-api/${encodeURIComponent(token)}/comments`, c);
+export const addReviewComment = (token: string, c: Schemas["ReviewCommentRequest"]) => post<Comment>(`/review-api/${encodeURIComponent(token)}/comments`, c);
 export const ownerReply = (snapshotId: number, parentId: number, body: string) => post<Comment>(`/api/snapshots/${snapshotId}/comments`, { parentId, body });
-export const resolveComment = (id: number, resolved: boolean) => post<{ resolved: boolean }>(`/api/comments/${id}/resolve`, { resolved });
-export const setOutcome = (token: string, o: { outcome: OutcomeValue; note: string; author: string }) => post<Review["outcome"]>(`/review-api/${encodeURIComponent(token)}/outcome`, o);
+export const resolveComment = (id: number, resolved: boolean) => post<Schemas["Resolved"]>(`/api/comments/${id}/resolve`, { resolved });
+export const setOutcome = (token: string, o: Schemas["OutcomeRequest"]) => post<Review["outcome"]>(`/review-api/${encodeURIComponent(token)}/outcome`, o);

@@ -1,18 +1,4 @@
-import { ApiError } from "./catalog";
-
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API.");
-  }
-  const body = (await res.json().catch(() => null)) as { error?: string } | null;
-  if (!res.ok) throw new ApiError(body?.error ?? `Request failed (${res.status})`);
-  return body as T;
-}
-
-const post = <T,>(url: string, body: unknown = {}) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+import { request as call, postJSON as post } from "./http";
 
 /** One project in the recent list. hostId 0 is this computer. */
 export type ProjectListItem = {
