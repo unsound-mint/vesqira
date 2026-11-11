@@ -3,6 +3,8 @@ import { Button, Input, PathField, Pill, Select } from "../ui";
 import { createJob, readSetting } from "../api/jobs";
 import type { Job } from "../api/jobs";
 import type { Host } from "../api/hosts";
+import { addJobToBoard, listBoards } from "../api/boards";
+import type { Board } from "../api/boards";
 import { getRerun } from "../api/runs";
 import type { Rerun, Run } from "../api/runs";
 import { bytes, EM } from "../catalog/format";
@@ -81,6 +83,15 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
   });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [boardId, setBoardId] = useState(""); // "" is no board
+  // the draft exists once created; it is kept so a failed board add is retried without creating a second draft
+  const [draft, setDraft] = useState<{ job: Job; board: Board | null; error: string | null } | null>(null);
+  useEffect(() => {
+    let live = true;
+    listBoards().then((b) => live && Array.isArray(b) && setBoards(b)).catch(() => {}); // the board choice is optional: without the list it is simply not offered
+    return () => { live = false; };
+  }, []);
 
   const changed = (key: string) => (vals[key] ?? "").trim() !== (base[key] ?? "").trim();
   const nChanged = SETTINGS.filter((st) => changed(st.key)).length;
@@ -115,11 +126,26 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
           account: res.account.trim(),
         },
       });
-      onPrepared(job);
+      const board = boards.find((b) => String(b.id) === boardId) ?? null;
+      if (!board) {
+        onPrepared(job);
+        return;
+      }
+      await addToChosen(job, board);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not prepare the job.");
       setBusy(false);
     }
+  }
+
+  async function addToChosen(job: Job, board: Board) {
+    try {
+      await addJobToBoard(board.id, job.id);
+      setDraft({ job, board, error: null });
+    } catch (e) {
+      setDraft({ job, board, error: e instanceof Error ? e.message : "Could not add the job to the board." });
+    }
+    setBusy(false);
   }
 
   return (
@@ -195,12 +221,33 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
       {run.elapsedSeconds !== null && run.elapsedSeconds !== undefined ? <p className={s.note}>The last run took {duration(run.elapsedSeconds)}.</p> : null}
 
       <Input label="Job name" value={name} onChange={(e) => setName(e.target.value)} required />
+      {boards.length > 0 ? (
+        <Select label="Add to a board (optional)" value={boardId} onChange={(e) => setBoardId(e.target.value)} disabled={draft !== null}>
+          <option value="">No board</option>
+          {boards.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
+        </Select>
+      ) : null}
 
       <div className={s.row}>
-        <Button type="submit" variant="primary" disabled={busy || missing}>Prepare the job</Button>
+        <Button type="submit" variant="primary" disabled={busy || missing || draft !== null}>Prepare the job</Button>
         <span className={s.note}>Nothing is submitted until you press Submit on the next screen.</span>
       </div>
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
+      {draft?.error ? (
+        <div role="alert" className={s.err}>
+          <p>The draft was created but was not added to the board {draft.board?.title}: {draft.error}</p>
+          <div className={s.row}>
+            <Button type="button" disabled={busy || !draft.board} onClick={() => { setBusy(true); void addToChosen(draft.job, draft.board!); }}>Try adding again</Button>
+            <Button type="button" onClick={() => onPrepared(draft.job)}>Open the draft without a board</Button>
+          </div>
+        </div>
+      ) : null}
+      {draft && !draft.error ? (
+        <div className={s.row}>
+          <span className={s.note} role="status">The draft was added to the board {draft.board?.title}.</span>
+          <Button type="button" onClick={() => onPrepared(draft.job)}>Open the job</Button>
+        </div>
+      ) : null}
     </form>
   );
 }

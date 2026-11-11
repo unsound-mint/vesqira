@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { Button, Checkbox, IconButton, Input, Select } from "../ui";
-import { addToBoard as _unused, createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
+import { createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
 import { Threads } from "./Threads";
 // loaded when someone presents: it brings the modal primitives (ADR 0033), which the rest of the app does not need
 const PresentView = lazy(() => import("./PresentView").then((m) => ({ default: m.PresentView })));
@@ -17,7 +17,6 @@ import { RunLine } from "./RunLine";
 import { BoardCompare } from "./BoardCompare";
 import s from "./BoardsView.module.css";
 
-void _unused;
 const BASE_KEY = "vesqira.reviewBase";
 const readBase = () => {
   try {

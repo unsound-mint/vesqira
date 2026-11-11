@@ -25,13 +25,16 @@ const imported: Rerun = {
 };
 const created: Job = { id: 9, hostId: 1, name: "x", template: "vgt", script: "", scriptHash: "", state: "draft", detail: "", slurmId: "", workDir: "", outputDir: "", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: 1, note: "" };
 
-function mockFetch(rerun: Rerun) {
+const boardList = { boards: [{ id: 5, title: "LMC paper", createdAt: "", updatedAt: "", items: [] }] };
+function mockFetch(rerun: Rerun, addFails = false) {
   const posts: { url: string; body: any }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
       posts.push({ url, body: JSON.parse(String(init.body)) });
-      return new Response(JSON.stringify(created), { status: 201 });
+      if (url.startsWith("/api/boards/") && addFails) return new Response(JSON.stringify({ error: "board is locked" }), { status: 409 });
+      return new Response(JSON.stringify(url.startsWith("/api/boards/") ? boardList.boards[0] : created), { status: url.startsWith("/api/boards/") ? 200 : 201 });
     }
+    if (url === "/api/boards") return new Response(JSON.stringify(boardList), { status: 200 });
     return new Response(JSON.stringify(rerun), { status: 200 });
   }));
   return posts;
@@ -97,10 +100,45 @@ describe("run again with…", () => {
 
   it("shows the API message when the draft cannot be prepared", async () => {
     vi.stubGlobal("fetch", vi.fn(async (_u: string, init?: RequestInit) =>
-      init?.method === "POST" ? new Response(JSON.stringify({ error: "the note is at most 500 characters" }), { status: 422 }) : new Response(JSON.stringify(fromJob), { status: 200 })));
+      init?.method === "POST" ? new Response(JSON.stringify({ error: "the note is at most 500 characters" }), { status: 422 }) : new Response(JSON.stringify(_u === "/api/boards" ? boardList : fromJob), { status: 200 })));
     render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);
     await userEvent.click(await screen.findByRole("button", { name: "Prepare the job" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("the note is at most 500 characters");
+  });
+
+  it("does not touch a board unless one is chosen", async () => {
+    const posts = mockFetch(fromJob);
+    const done = vi.fn();
+    render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={done} />);
+    expect(await screen.findByLabelText("Add to a board (optional)")).toHaveValue("");
+    await userEvent.click(screen.getByRole("button", { name: "Prepare the job" }));
+    await waitFor(() => expect(done).toHaveBeenCalledWith(created));
+    expect(posts.map((p) => p.url)).toEqual(["/api/jobs"]);
+  });
+
+  it("adds the new draft to the chosen board and names it", async () => {
+    const posts = mockFetch(fromJob);
+    const done = vi.fn();
+    render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={done} />);
+    await userEvent.selectOptions(await screen.findByLabelText("Add to a board (optional)"), "LMC paper");
+    await userEvent.click(screen.getByRole("button", { name: "Prepare the job" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("The draft was added to the board LMC paper.");
+    expect(posts.map((p) => p.url)).toEqual(["/api/jobs", "/api/boards/5/items"]);
+    expect(posts[1]!.body).toEqual({ jobId: 9 });
+    expect(done).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Open the job" }));
+    expect(done).toHaveBeenCalledWith(created);
+  });
+
+  it("says the draft exists when it could not be added to the board, and retries only the add", async () => {
+    const posts = mockFetch(fromJob, true);
+    render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);
+    await userEvent.selectOptions(await screen.findByLabelText("Add to a board (optional)"), "LMC paper");
+    await userEvent.click(screen.getByRole("button", { name: "Prepare the job" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The draft was created but was not added to the board LMC paper: board is locked");
+    await userEvent.click(screen.getByRole("button", { name: "Try adding again" }));
+    await waitFor(() => expect(posts.filter((p) => p.url === "/api/boards/5/items")).toHaveLength(2));
+    expect(posts.filter((p) => p.url === "/api/jobs")).toHaveLength(1);
   });
 
   it("formats durations", () => {
