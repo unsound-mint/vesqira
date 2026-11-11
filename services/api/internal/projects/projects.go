@@ -2,8 +2,8 @@
 // the answers given to its "needs your input" list. A project row is a reference (host and canonical path): the files
 // stay where they are. The scan entries are a cache that a rescan replaces; the answers are the researcher's and stay.
 //
-// Tables are created here, idempotently, like the other stores; no existing table changes, so the catalog schema
-// version is not bumped (see internal/schema).
+// Tables are created here, idempotently, like the other stores (the import rule tables from the DDL shared with schema 18; see
+// internal/schema).
 package projects
 
 import (
@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 )
 
 var ErrNotFound = errors.New("project not found")
@@ -58,6 +60,7 @@ func Open(db *sql.DB) (*Store, error) {
 			project_id INTEGER NOT NULL, grp TEXT NOT NULL, parent TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL,
 			path TEXT NOT NULL, format TEXT NOT NULL DEFAULT '', data TEXT NOT NULL, PRIMARY KEY(project_id, grp, parent, name))`,
 		`CREATE INDEX IF NOT EXISTS project_entries_format ON project_entries(project_id, format)`,
+		schema.ImportRulesTables,
 		`CREATE TABLE IF NOT EXISTS project_answers(
 			project_id INTEGER NOT NULL, need TEXT NOT NULL, answer TEXT NOT NULL, value TEXT NOT NULL, declared_by TEXT NOT NULL,
 			date TEXT NOT NULL, written INTEGER NOT NULL, PRIMARY KEY(project_id, need))`,

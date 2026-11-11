@@ -36,7 +36,9 @@ import (
 // Version 18: interpretation tiers (tier, mapping_version on interpretations, dataset_units and catalog_declarations, existing
 // rows migrated from declared_by) and typed masks (masks; ADR 0055).
 // Version 19: the exploration history, a bounded list of viewer scenes per project (exploration_steps; ADR 0057).
-const Version = 19
+// Version 20: a project keeps the researcher's import rules and a record of what each was applied to (import_rules, import_applied;
+// ADR 0058).
+const Version = 20
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -64,6 +66,7 @@ var migrations = []Migration{
 	{To: 17, Name: "host VPN commands", Up: hostVPNCommands},
 	{To: 18, Name: "interpretation tiers and typed masks", Up: tiersAndMasks},
 	{To: 19, Name: "exploration history", Up: explorationHistory},
+	{To: 20, Name: "import rules", Up: importRules},
 }
 
 // MasksTable is the table of typed masks (ADR 0055): one row per derived mask file, with what the mask is for (the dataset), what
@@ -195,6 +198,23 @@ func hostVPNCommands(tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+// ImportRulesTables is the DDL of the researcher's import rules and of the record of what they were applied to (ADR 0058),
+// shared by the projects package (a fresh catalog) and the migration (an upgraded one). import_rules is the ordered list of one
+// project (rule: JSON of discover.Rule; the first matching rule wins). import_applied has one row per file a rule's application
+// registered, skipped or failed on, with the size and modification time it had, so a rescan does not count it as new again.
+const ImportRulesTables = `CREATE TABLE IF NOT EXISTS import_rules(
+	project_id INTEGER NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL, rule TEXT NOT NULL, saved_at INTEGER NOT NULL,
+	PRIMARY KEY(project_id, position));
+CREATE TABLE IF NOT EXISTS import_applied(
+	project_id INTEGER NOT NULL, path TEXT NOT NULL, rule TEXT NOT NULL, size_bytes INTEGER NOT NULL, mtime_ns INTEGER NOT NULL,
+	outcome TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', applied_at INTEGER NOT NULL, PRIMARY KEY(project_id, path))`
+
+// importRules adds the two tables. No row to carry over: no rule existed before.
+func importRules(tx *sql.Tx) error {
+	_, err := tx.Exec(ImportRulesTables)
+	return err
 }
 
 // SweepsTables is the DDL of both sweep tables (ADR 0048), shared by the sweeps package (a fresh catalog) and the migration
