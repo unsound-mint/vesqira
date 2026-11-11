@@ -550,6 +550,17 @@ func (s *scanner) readRecord(r *Run, kind recordKind) bool {
 		for _, p := range p.Params {
 			r.Settings = append(r.Settings, Setting{p.Key, p.Value})
 		}
+	case recROHSA:
+		stem := strings.TrimSuffix(r.Record, "_run_trace.toml")
+		p, err := runs.ParseROHSA(data, nil, nil, stem, path.Base(r.Path))
+		if err != nil {
+			r.Notes = append(r.Notes, r.Record+" could not be read as a ROHSA run trace: "+err.Error())
+			return true
+		}
+		for _, p := range p.Params {
+			r.Settings = append(r.Settings, Setting{p.Key, p.Value})
+		}
+		r.Notes = append(r.Notes, "a ROHSA fit: its raw output is "+stem+".dat; other fits in this folder share this run record's folder")
 	case recProvenance, recRunJSON:
 		s.fromJSON(r, data)
 	case recParams:

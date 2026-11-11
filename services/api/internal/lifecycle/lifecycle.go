@@ -546,9 +546,9 @@ func tableOf(st string) string {
 // writes to must exist: a missing or renamed one is an error, not a silent skip. TestEveryKeyedTableIsHandled runs
 // against the full schema, so a rename fails there.
 var optionalTables = map[string]bool{
-	"saved_regions": true,                                                  // regions store
-	"derived":       true,                                                  // derived store
-	"run_review":    true, "run_review_history": true, "run_outputs": true, // runs store
+	"saved_regions": true,                                                                      // regions store
+	"derived":       true,                                                                      // derived store
+	"run_review":    true, "run_review_history": true, "run_outputs": true, "rohsa_runs": true, // runs store
 	"jobs":        true, // jobs store
 	"board_items": true, // boards store
 }
@@ -566,7 +566,7 @@ func deleteSteps(kind string) []string {
 	case KindRun:
 		return []string{
 			`UPDATE jobs SET run_id=NULL WHERE run_id=?`, `UPDATE jobs SET parent_run_id=NULL WHERE parent_run_id=?`,
-			`DELETE FROM run_outputs WHERE run_id=?`, `DELETE FROM run_review WHERE run_id=?`, `DELETE FROM run_review_history WHERE run_id=?`,
+			`DELETE FROM run_outputs WHERE run_id=?`, `DELETE FROM rohsa_runs WHERE run_id=?`, `DELETE FROM run_review WHERE run_id=?`, `DELETE FROM run_review_history WHERE run_id=?`,
 			`DELETE FROM runs WHERE id=?`}
 	case KindFigure:
 		return []string{`DELETE FROM figures WHERE id=?`}

@@ -16,6 +16,30 @@ export function runFor(runs: Run[], datasetId: number | null): { run: Run; role:
   return null;
 }
 
+/**
+ * What a ROHSA run records beyond the common run model, each with where it comes from. The crop is the run's input, found by
+ * name beside the .dat; a missing one is said, never replaced by another file.
+ */
+export function RohsaFacts({ run, role }: { run: Run; role?: string }) {
+  const r = run.rohsa;
+  if (!r) return null;
+  const unitNote = role ? r.unitNotes[role] : undefined;
+  return (
+    <div className={s.wrap}>
+      <dl className={s.facts}>
+        <dt>Gaussians per pixel</dt>
+        <dd>{r.nGauss > 0 ? `${r.nGauss} (${r.nGaussBasis})` : "not declared"}</dd>
+        <dt>Region</dt>
+        <dd className="mono">{r.region} <span className={s.note}>({r.regionBasis})</span></dd>
+        <dt>Crop FITS</dt>
+        <dd className="mono">{r.cropDatasetId !== null ? r.cropName : "not found: no spectral calibration"}</dd>
+      </dl>
+      {unitNote ? <p className={s.note}>Unit: {unitNote}</p> : null}
+      {r.notes.map((n) => <p key={n} className={s.note}>{n}</p>)}
+    </div>
+  );
+}
+
 /** Compact summary in the inspector; the run itself opens as a page. */
 export function RunPanel({ run, role, job, onOpenPage, onRunAgain }: { run: Run; role: string; job?: { name: string; slurmId: string; state: string } | null; onOpenPage: () => void; onRunAgain?: () => void }) {
   return (
@@ -32,6 +56,7 @@ export function RunPanel({ run, role, job, onOpenPage, onRunAgain }: { run: Run;
           </>
         ) : null}
       </dl>
+      <RohsaFacts run={run} role={role} />
       {run.reproducibleFromCommit ? (
         <Pill tone="ok">Commit recorded</Pill>
       ) : (

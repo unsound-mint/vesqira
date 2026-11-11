@@ -25,7 +25,8 @@ import (
 // Version 9: a figure may record the scene it was drawn from (figures.scene; ADR 0042).
 // Version 10: a point catalog's declared columns (catalog_declarations; ADR 0044).
 // Version 11: a finished job keeps what sacct reported it used (jobs.usage, JSON; ADR 0045).
-const Version = 11
+// Version 12: a ROHSA run keeps its decomposition record (rohsa_runs; ADR 0046).
+const Version = 12
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -45,6 +46,7 @@ var migrations = []Migration{
 	{To: 9, Name: "figure scene", Up: figureScene},
 	{To: 10, Name: "catalog declarations", Up: catalogDeclarations},
 	{To: 11, Name: "job usage", Up: jobUsage},
+	{To: 12, Name: "ROHSA runs", Up: rohsaRuns},
 }
 
 // jobUsage adds jobs.usage. Every existing job gets ” (nothing was recorded; its use is not known, not zero). A catalog
@@ -55,6 +57,13 @@ func jobUsage(tx *sql.Tx) error {
 		return err
 	}
 	return AddColumn(tx, "jobs", "usage", "TEXT NOT NULL DEFAULT ''")
+}
+
+// rohsaRuns adds the side table of ROHSA decomposition runs. The runs package creates it for a fresh install; creating it
+// here keeps an upgraded catalog identical, with no row to carry over.
+func rohsaRuns(tx *sql.Tx) error {
+	_, err := tx.Exec(`CREATE TABLE IF NOT EXISTS rohsa_runs(run_id INTEGER PRIMARY KEY, dat_path TEXT NOT NULL, info TEXT NOT NULL)`)
+	return err
 }
 
 // autoImportAndNotifications adds the two job columns. Every existing job gets 0 for both: a job submitted before the

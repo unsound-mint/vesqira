@@ -3,6 +3,7 @@ package discover
 import (
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -177,6 +178,7 @@ type recordKind string
 
 const (
 	recVGT        recordKind = "vgt"        // run_metadata.toml
+	recROHSA      recordKind = "rohsa"      // rohsa_<label>_run_trace.toml
 	recProvenance recordKind = "provenance" // provenance.json
 	recRunJSON    recordKind = "run-json"   // run.json
 	recParams     recordKind = "params"     // params.yaml|params.json with metrics.json
@@ -189,6 +191,8 @@ func detectRecord(names map[string]bool) (file string, kind recordKind, ok bool)
 	switch {
 	case names["run_metadata.toml"]:
 		return "run_metadata.toml", recVGT, true
+	case rohsaTrace(names) != "":
+		return rohsaTrace(names), recROHSA, true
 	case names["provenance.json"]:
 		return "provenance.json", recProvenance, true
 	case names["run.json"]:
@@ -201,6 +205,23 @@ func detectRecord(names map[string]bool) (file string, kind recordKind, ok bool)
 		return "meta.yaml", recMLflow, true // confirmed by its content (a run_id) when read
 	}
 	return "", "", false
+}
+
+var rohsaTraceName = regexp.MustCompile(`^rohsa_[A-Za-z0-9._-]+_run_trace\.toml$`)
+
+// rohsaTrace is the first (by name) ROHSA run trace among the names of a folder, or "".
+func rohsaTrace(names map[string]bool) string {
+	var found []string
+	for n := range names {
+		if rohsaTraceName.MatchString(n) {
+			found = append(found, n)
+		}
+	}
+	if len(found) == 0 {
+		return ""
+	}
+	sort.Strings(found)
+	return found[0]
 }
 
 var stampSha = regexp.MustCompile(`^(\d{4})-?(\d{2})-?(\d{2})t(\d{2}):?(\d{2}):?(\d{2})z?_([0-9a-f]{7,40})$`)
