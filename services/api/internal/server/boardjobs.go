@@ -126,6 +126,7 @@ func (s *Server) boardView(ctx context.Context, b boards.Board, live bool) board
 				}
 			}
 		}
+		info.Label, info.SweepID = s.sweepLabel(id)
 		it.Job = &info
 	}
 	return b

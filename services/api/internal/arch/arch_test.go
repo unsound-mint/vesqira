@@ -23,12 +23,13 @@ var allowed = map[string][]string{
 	"reports":  {"publish"},
 	"catalog":  {"schema"},
 	"jobs":     {"schema"},
+	"sweeps":   {"schema"},
 	"runs":     {"schema"},
 	"discover": {"runs"},
 	"projects": {"discover"},
 	"hosts":    {"worker"},
 	"review":   {"boards"},
-	"server":   {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "imgmeta", "jobs", "lifecycle", "notify", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "vgtlog", "worker"},
+	"server":   {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "imgmeta", "jobs", "lifecycle", "notify", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "sweeps", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a

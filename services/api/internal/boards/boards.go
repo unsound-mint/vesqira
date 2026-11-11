@@ -297,6 +297,10 @@ type JobInfo struct {
 	FinishedAt  *time.Time   `json:"finishedAt"`
 	RunID       *int64       `json:"runId"`
 	Progress    *JobProgress `json:"progress,omitempty"`
+	// Label and SweepID are set for a job that belongs to a parameter sweep ("N = 12, λ = 10"). They are the owner's:
+	// a snapshot freezes only a job's name and state, so neither reaches a reviewer.
+	Label   string `json:"label,omitempty"`
+	SweepID *int64 `json:"sweepId,omitempty"`
 }
 
 type JobProgress struct {

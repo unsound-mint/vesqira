@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 )
 
 // Tables are created idempotently by the package that owns them, so nothing else forces a column change to be
@@ -37,6 +38,7 @@ func TestCatalogSchemaSnapshot(t *testing.T) {
 		"runs":    func() error { _, e := runs.Open(db); return e },
 		"hosts":   func() error { _, e := hosts.Open(db); return e },
 		"jobs":    func() error { _, e := jobs.Open(db); return e },
+		"sweeps":  func() error { _, e := sweeps.Open(db); return e },
 		"audit":   func() error { _, e := audit.Open(db); return e },
 		"notify":  func() error { _, e := notify.Open(db); return e },
 		"regions": func() error { _, e := regions.Open(db); return e },

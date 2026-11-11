@@ -2283,6 +2283,215 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/sweeps:
+    get:
+      operationId: owner_s_listSweeps_get_api_sweeps
+      x-listener: owner
+      summary: "List sweeps"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SweepList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: owner_s_createSweep_post_api_sweeps
+      x-listener: owner
+      summary: "Create a sweep: one draft job per grid combination, linked to it; nothing is submitted"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SweepRequest"
+      responses:
+        "201":
+          description: "created"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Sweep"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/sweeps/preview:
+    post:
+      operationId: owner_s_previewSweep_post_api_sweeps_preview
+      x-listener: owner
+      summary: "How many jobs a sweep would make and what they request; stores and submits nothing"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SweepRequest"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SweepPreview"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/sweeps/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_getSweep_get_api_sweeps_id
+      x-listener: owner
+      summary: "One sweep with its jobs and where each stands"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Sweep"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/sweeps/{id}/board:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_boardFromSweep_post_api_sweeps_id_board
+      x-listener: owner
+      summary: "Make a board whose panels follow each job in parameter order; 409 with boardId when one exists"
+      responses:
+        "201":
+          description: "created"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Board"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/sweeps/{id}/cancel:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_cancelSweep_post_api_sweeps_id_cancel
+      x-listener: owner
+      summary: "Stop scheduling; drafts not yet submitted stay drafts"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SweepCancelRequest"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Sweep"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/sweeps/{id}/grid:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_sweepGrid_get_api_sweeps_id_grid
+      x-listener: owner
+      summary: "The grid as a table of declared run metrics, and a metric against one parameter"
+      parameters:
+        - name: "metric"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+        - name: "x"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "The parameter on the x axis; default the first"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SweepGrid"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/sweeps/{id}/review:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_reviewSweep_get_api_sweeps_id_review
+      x-listener: owner
+      summary: "The scripts approving would send, their difference from the base, and the total request"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SweepReview"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/sweeps/{id}/submit:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_submitSweep_post_api_sweeps_id_submit
+      x-listener: owner
+      summary: "Approve the sweep: quote the hash of the scripts shown, set the concurrency limit; jobs are then submitted one at a time as slots free"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SweepSubmitRequest"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Sweep"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /publish-api/assets/{sha}:
     parameters:
       - {name: sha, in: path, required: true, schema: {type: string}}
@@ -3796,6 +4005,13 @@ components:
         progress:
           $ref: "#/components/schemas/JobProgress"
           description: "Present only when the job's log says how far it is"
+        label:
+          type: "string"
+          description: "For a job of a parameter sweep: N = 12, λ = 10. Owner only; a snapshot never carries it"
+        sweepId:
+          type: "integer"
+          format: "int64"
+          description: "The sweep the job belongs to, if any"
     FigureBoardItem:
       type: "object"
       required:
@@ -6783,3 +6999,644 @@ components:
         - "layout"
         - "conventions"
       description: "The JSON header of a rohsa components frame."
+    SweepParam:
+      type: "object"
+      description: "One swept setting. A sweep varies one to three of them; the product of the list lengths is at most 64."
+      required:
+        - "key"
+        - "values"
+      properties:
+        key:
+          type: "string"
+          description: "A config setting the VGT template can change (dn, ker, noise, ...)"
+        label:
+          type: "string"
+          description: "How the owner's screen names it (for example the Greek letter); empty means the key"
+        values:
+          type: "array"
+          items:
+            type: "string"
+          description: "The explicit list, as typed; never reparsed. Letters, digits and . _ + - only"
+    SweepRequest:
+      type: "object"
+      description: "A sweep to create or preview. Nothing is submitted by either."
+      required:
+        - "name"
+        - "params"
+      properties:
+        name:
+          type: "string"
+          description: "Starts each job's name (letters, digits, . _ -, up to 32)"
+        baseJobId:
+          type: "integer"
+          format: "int64"
+        baseRunId:
+          type: "integer"
+          format: "int64"
+          description: "A run made by one of our jobs; its job is the base. Give baseJobId or baseRunId, not both"
+        params:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepParam"
+        note:
+          type: "string"
+          description: "Why, kept with every draft (at most 500 characters)"
+    Requested:
+      type: "object"
+      description: "What a script asks the scheduler for, read from its #SBATCH lines; zero means the script does not say"
+      required:
+        - "cpus"
+        - "memBytes"
+        - "timeSeconds"
+      properties:
+        cpus:
+          type: "integer"
+        memBytes:
+          type: "integer"
+          format: "int64"
+        timeSeconds:
+          type: "integer"
+          format: "int64"
+    SweepTotals:
+      type: "object"
+      description: "The requested resources of the drafts. Each is the largest single request; the total is the sum"
+      required:
+        - "jobs"
+        - "cpusEach"
+        - "cpusTotal"
+        - "memBytesEach"
+        - "memBytesTotal"
+        - "timeLimitSecondsEach"
+        - "timeLimitSecondsTotal"
+        - "cpuSecondsAtLimit"
+      properties:
+        jobs:
+          type: "integer"
+        cpusEach:
+          type: "integer"
+        cpusTotal:
+          type: "integer"
+        memBytesEach:
+          type: "integer"
+          format: "int64"
+        memBytesTotal:
+          type: "integer"
+          format: "int64"
+        timeLimitSecondsEach:
+          type: "integer"
+          format: "int64"
+        timeLimitSecondsTotal:
+          type: "integer"
+          format: "int64"
+        cpuSecondsAtLimit:
+          type: "integer"
+          format: "int64"
+          description: "Sum of CPUs x time limit: the most the requests could use"
+    SweepEstimate:
+      type: "object"
+      description: "What the base job measured (ADR 0045). A guide, not a prediction: a changed parameter can change time and memory"
+      required:
+        - "baseJobId"
+        - "baseJobName"
+        - "elapsedSeconds"
+        - "maxRssBytes"
+        - "totalCpuSeconds"
+        - "basis"
+      properties:
+        baseJobId:
+          type: "integer"
+          format: "int64"
+        baseJobName:
+          type: "string"
+        elapsedSeconds:
+          type: "integer"
+          format: "int64"
+        maxRssBytes:
+          type: "integer"
+          format: "int64"
+          nullable: true
+        totalCpuSeconds:
+          type: "number"
+          nullable: true
+        basis:
+          type: "string"
+    SweepDraftName:
+      type: "object"
+      required:
+        - "name"
+        - "label"
+        - "values"
+      properties:
+        name:
+          type: "string"
+        label:
+          type: "string"
+          description: "For example N = 12, λ = 10"
+        values:
+          type: "object"
+          additionalProperties:
+            type: "string"
+    SweepPreview:
+      type: "object"
+      description: "What creating the sweep would make; nothing is stored"
+      required:
+        - "count"
+        - "max"
+        - "baseJob"
+        - "jobs"
+        - "totals"
+        - "estimate"
+      properties:
+        count:
+          type: "integer"
+        max:
+          type: "integer"
+        baseJob:
+          type: "object"
+          required:
+            - "id"
+            - "name"
+            - "hostId"
+          properties:
+            id:
+              type: "integer"
+              format: "int64"
+            name:
+              type: "string"
+            hostId:
+              type: "integer"
+              format: "int64"
+        jobs:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepDraftName"
+        totals:
+          $ref: "#/components/schemas/SweepTotals"
+        estimate:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/SweepEstimate"
+    SweepMember:
+      type: "object"
+      required:
+        - "jobId"
+        - "name"
+        - "label"
+        - "values"
+        - "state"
+        - "detail"
+        - "runId"
+        - "held"
+        - "usage"
+        - "requested"
+      properties:
+        jobId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        label:
+          type: "string"
+        values:
+          type: "object"
+          additionalProperties:
+            type: "string"
+        state:
+          type: "string"
+          enum:
+            - "draft"
+            - "submitting"
+            - "submitted"
+            - "running"
+            - "completed"
+            - "failed"
+            - "cancelled"
+        detail:
+          type: "string"
+        runId:
+          type: "integer"
+          format: "int64"
+          nullable: true
+        held:
+          type: "boolean"
+          description: "A draft edited after the owner approved the sweep: it is not submitted"
+        usage:
+          type: "object"
+          nullable: true
+          additionalProperties: true
+          description: "What sacct reported when the job ended (the Job usage object); null before"
+        requested:
+          $ref: "#/components/schemas/Requested"
+    Sweep:
+      type: "object"
+      description: "A grid of linked draft jobs and where it stands"
+      required:
+        - "id"
+        - "name"
+        - "hostId"
+        - "baseJobId"
+        - "baseRunId"
+        - "params"
+        - "note"
+        - "state"
+        - "detail"
+        - "concurrency"
+        - "stopOnFailure"
+        - "boardId"
+        - "createdAt"
+        - "startedAt"
+        - "jobs"
+        - "counts"
+        - "waitingOn"
+        - "pending"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        hostId:
+          type: "integer"
+          format: "int64"
+        baseJobId:
+          type: "integer"
+          format: "int64"
+        baseRunId:
+          type: "integer"
+          format: "int64"
+          nullable: true
+        params:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepParam"
+        note:
+          type: "string"
+        state:
+          type: "string"
+          enum:
+            - "draft"
+            - "running"
+            - "stopped"
+            - "finished"
+          description: "What the owner authorised: draft nothing is submitted; running approved and being submitted; stopped cancelled or stopped on a failure; finished every submittable job has been submitted. Not whether the jobs succeeded"
+        detail:
+          type: "string"
+          description: "Why a sweep was stopped"
+        concurrency:
+          type: "integer"
+        stopOnFailure:
+          type: "boolean"
+        boardId:
+          type: "integer"
+          format: "int64"
+          nullable: true
+        createdAt:
+          type: "string"
+          format: "date-time"
+        startedAt:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        jobs:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepMember"
+        counts:
+          type: "object"
+          additionalProperties:
+            type: "integer"
+        waitingOn:
+          type: "array"
+          items:
+            type: "string"
+          description: "Jobs that hold a slot or are held, in words, so a stall is visible"
+        pending:
+          type: "integer"
+          description: "Drafts that will still be submitted"
+    SweepList:
+      type: "object"
+      required:
+        - "sweeps"
+      properties:
+        sweeps:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Sweep"
+    SweepDiffLine:
+      type: "object"
+      required:
+        - "op"
+        - "kind"
+        - "text"
+      properties:
+        op:
+          type: "string"
+          enum:
+            - "-"
+            - "+"
+        kind:
+          type: "string"
+          enum:
+            - "parameter"
+            - "output"
+            - "name"
+            - "other"
+          description: "Why the line differs from the base; other is never expected"
+        text:
+          type: "string"
+    SweepReviewJob:
+      type: "object"
+      required:
+        - "jobId"
+        - "name"
+        - "label"
+        - "values"
+        - "scriptHash"
+        - "script"
+        - "diff"
+        - "unexpected"
+        - "requested"
+      properties:
+        jobId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        label:
+          type: "string"
+        values:
+          type: "object"
+          additionalProperties:
+            type: "string"
+        scriptHash:
+          type: "string"
+        script:
+          type: "string"
+        diff:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepDiffLine"
+        unexpected:
+          type: "integer"
+          description: "Differing lines that are not a swept setting, the output folder or the job name"
+        requested:
+          $ref: "#/components/schemas/Requested"
+    SweepReview:
+      type: "object"
+      description: "The scripts of the drafts still to be submitted, how each differs from the base, and what they request"
+      required:
+        - "sweep"
+        - "baseJobId"
+        - "baseName"
+        - "baseScript"
+        - "keys"
+        - "jobs"
+        - "sweepHash"
+        - "totals"
+        - "estimate"
+        - "maxConcurrency"
+      properties:
+        sweep:
+          $ref: "#/components/schemas/Sweep"
+        baseJobId:
+          type: "integer"
+          format: "int64"
+        baseName:
+          type: "string"
+        baseScript:
+          type: "string"
+        keys:
+          type: "array"
+          items:
+            type: "string"
+        jobs:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepReviewJob"
+        sweepHash:
+          type: "string"
+          description: "Names the exact scripts shown; approval must quote it"
+        totals:
+          $ref: "#/components/schemas/SweepTotals"
+        estimate:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/SweepEstimate"
+        maxConcurrency:
+          type: "integer"
+    SweepSubmitRequest:
+      type: "object"
+      required:
+        - "sweepHash"
+        - "concurrency"
+      properties:
+        sweepHash:
+          type: "string"
+        concurrency:
+          type: "integer"
+          minimum: 1
+          description: "At most this many of the sweep's jobs queued or running; 1 is sequential"
+        stopOnFailure:
+          type: "boolean"
+          description: "Stop scheduling when a job fails; default false: a failure changes nothing for the others and nothing is retried"
+    SweepCancelRequest:
+      type: "object"
+      required: []
+      properties:
+        cancelRunning:
+          type: "boolean"
+          description: "Also ask Slurm to cancel the sweep's queued and running jobs"
+    SweepMetric:
+      type: "object"
+      description: "A declared number of a run; value null is not recorded, never zero"
+      required:
+        - "key"
+        - "value"
+        - "unit"
+        - "uncertainty"
+        - "definition"
+      properties:
+        key:
+          type: "string"
+        value:
+          type: "number"
+          nullable: true
+        unit:
+          type: "string"
+        uncertainty:
+          type: "number"
+          nullable: true
+        definition:
+          type: "string"
+    SweepRow:
+      type: "object"
+      required:
+        - "jobId"
+        - "name"
+        - "label"
+        - "values"
+        - "state"
+        - "runId"
+        - "runName"
+        - "metrics"
+      properties:
+        jobId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        label:
+          type: "string"
+        values:
+          type: "object"
+          additionalProperties:
+            type: "string"
+        state:
+          type: "string"
+        runId:
+          type: "integer"
+          format: "int64"
+          nullable: true
+        runName:
+          type: "string"
+        metrics:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepMetric"
+    SweepMetricInfo:
+      type: "object"
+      required:
+        - "key"
+        - "unit"
+        - "units"
+        - "unitsDiffer"
+        - "definitionsDiffer"
+        - "runs"
+        - "values"
+      properties:
+        key:
+          type: "string"
+        unit:
+          type: "string"
+          description: "Empty when the runs declared different units"
+        units:
+          type: "array"
+          items:
+            type: "string"
+        unitsDiffer:
+          type: "boolean"
+          description: "The runs declared different units: not one quantity, so not plotted"
+        definitionsDiffer:
+          type: "boolean"
+        runs:
+          type: "integer"
+        values:
+          type: "integer"
+    SweepPoint:
+      type: "object"
+      required:
+        - "x"
+        - "xNum"
+        - "value"
+        - "uncertainty"
+        - "jobId"
+      properties:
+        x:
+          type: "string"
+        xNum:
+          type: "number"
+          nullable: true
+        value:
+          type: "number"
+          nullable: true
+          description: "Null is a gap: no recorded value or no run yet, never zero"
+        uncertainty:
+          type: "number"
+          nullable: true
+        jobId:
+          type: "integer"
+          format: "int64"
+    SweepLine:
+      type: "object"
+      required:
+        - "label"
+        - "points"
+      properties:
+        label:
+          type: "string"
+        points:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepPoint"
+    SweepPlot:
+      type: "object"
+      description: "A metric against one parameter, one line per combination of the other parameters"
+      required:
+        - "metric"
+        - "unit"
+        - "xKey"
+        - "xName"
+        - "numeric"
+        - "xValues"
+        - "lines"
+        - "notes"
+      properties:
+        metric:
+          type: "string"
+        unit:
+          type: "string"
+        xKey:
+          type: "string"
+        xName:
+          type: "string"
+        numeric:
+          type: "boolean"
+          description: "The x values are numbers on a numeric axis; otherwise categories in list order"
+        xValues:
+          type: "array"
+          items:
+            type: "string"
+        lines:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepLine"
+        notes:
+          type: "array"
+          items:
+            type: "string"
+    SweepGrid:
+      type: "object"
+      description: "The grid as a table: one row per job in parameter order with what its run declared. No row is labelled best"
+      required:
+        - "sweepId"
+        - "name"
+        - "params"
+        - "rows"
+        - "metrics"
+        - "plot"
+        - "plotNote"
+      properties:
+        sweepId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        params:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepParam"
+        rows:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepRow"
+        metrics:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SweepMetricInfo"
+        plot:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/SweepPlot"
+        plotNote:
+          type: "string"
+          description: "Why no plot was drawn"

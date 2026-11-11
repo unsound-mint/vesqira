@@ -551,6 +551,7 @@ var optionalTables = map[string]bool{
 	"run_review":    true, "run_review_history": true, "run_outputs": true, "rohsa_runs": true, // runs store
 	"jobs":        true, // jobs store
 	"board_items": true, // boards store
+	"sweeps":      true, // sweeps store (ADR 0048)
 }
 
 // deleteSteps are the statements that forget what is keyed to an entry, each taking the entry id; the entry's own row
@@ -565,13 +566,13 @@ func deleteSteps(kind string) []string {
 			`DELETE FROM datasets WHERE id=?`}
 	case KindRun:
 		return []string{
-			`UPDATE jobs SET run_id=NULL WHERE run_id=?`, `UPDATE jobs SET parent_run_id=NULL WHERE parent_run_id=?`,
+			`UPDATE jobs SET run_id=NULL WHERE run_id=?`, `UPDATE jobs SET parent_run_id=NULL WHERE parent_run_id=?`, `UPDATE sweeps SET base_run_id=NULL WHERE base_run_id=?`,
 			`DELETE FROM run_outputs WHERE run_id=?`, `DELETE FROM rohsa_runs WHERE run_id=?`, `DELETE FROM run_review WHERE run_id=?`, `DELETE FROM run_review_history WHERE run_id=?`,
 			`DELETE FROM runs WHERE id=?`}
 	case KindFigure:
 		return []string{`DELETE FROM figures WHERE id=?`}
 	case KindBoard:
-		return []string{`DELETE FROM board_items WHERE board_id=?`, `DELETE FROM boards WHERE id=?`}
+		return []string{`DELETE FROM board_items WHERE board_id=?`, `UPDATE sweeps SET board_id=NULL WHERE board_id=?`, `DELETE FROM boards WHERE id=?`}
 	}
 	return nil
 }

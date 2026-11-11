@@ -11,6 +11,7 @@ import { listDatasets } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
 import { listRuns } from "../api/runs";
 import type { Run } from "../api/runs";
+import { SweepGrid } from "../sweeps/SweepGrid";
 import { defaultOutput, JobFrame, JobLines, jobIsActive, LiveResult } from "./JobPanel";
 import { EM } from "../catalog/format";
 import { EntryActions } from "../catalog/EntryActions";
@@ -169,6 +170,10 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
       {presenting && board ? <Suspense fallback={null}><PresentView board={board} onClose={() => setPresenting(false)} /></Suspense> : null}
       {picked.length === 1 ? <p className={s.note} role="status">Tick a second panel to see what differs between the two.</p> : null}
       {picked.length === 2 ? <BoardCompare a={picked[0]!.figure} b={picked[1]!.figure} {...(onCompare ? { onCompare } : {})} /> : null}
+      {board ? (() => {
+        const sid = board.items.find((x) => x.kind === "job" && x.job.sweepId != null);
+        return sid && sid.kind === "job" && sid.job.sweepId != null ? <SweepGrid sweepId={sid.job.sweepId} refreshKey={board.items.filter((x) => x.kind === "job" && x.job.runId != null).length} /> : null;
+      })() : null}
       <ol className={s.items} aria-label="Figures on the board">
         {board?.items.map((it, i) => {
           const f = it.kind === "job" ? null : it.figure;
@@ -197,7 +202,7 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
               ) : null}
               {job ? (
                 <>
-                  <h3 className={s.title}>Run {job.name}</h3>
+                  <h3 className={s.title}>{job.label ? `${job.label} · ` : ""}Run {job.name}</h3>
                   <JobLines job={job} now={now} />
                   {job.state === "completed" && job.runId === null ? <p className={s.cap}>Finished; import its results on the Jobs screen to pin the result.</p> : null}
                   {job.state === "completed" && job.runId !== null && !(jobRun && outData) ? <p className={s.src}>Finished. Loading the result to pin it…</p> : null}

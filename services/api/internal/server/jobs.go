@@ -89,6 +89,81 @@ func (s *Server) hostText(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"text": text})
 }
 
+// apiErr is a refusal with the status the handler answers it with.
+type apiErr struct {
+	Code int
+	Msg  string
+}
+
+func (e *apiErr) Error() string { return e.Msg }
+
+func (s *Server) failAPI(w http.ResponseWriter, e *apiErr) { fail(w, e.Code, e.Msg) }
+
+// jobAPIErr turns a jobs-package error into the refusal a handler would answer.
+func jobAPIErr(err error) *apiErr {
+	switch {
+	case errors.Is(err, jobs.ErrInvalid):
+		return &apiErr{422, err.Error()}
+	case errors.Is(err, jobs.ErrNotFound):
+		return &apiErr{404, "job not found"}
+	}
+	log.Printf("jobs: %v", err)
+	return &apiErr{500, "internal error"}
+}
+
+// vgtInput is everything a VGT draft is rendered from.
+type vgtInput struct {
+	RepoDir, ConfigPath, ConfigText string
+	Set                             map[string]string
+	CPUs                            int
+	Mem, Time, Partition, Account   string
+}
+
+type vgtBuilt struct{ Script, OutputDir, Request string }
+
+// buildVGT renders a VGT job from its settings: the config text (read from the host unless given), the editable settings
+// applied through the whitelist, a fresh output folder inside the host's source roots, the script, and the request kept so a
+// rerun can start from an exact copy. Nothing is stored. createJob and sweeps both call it, so a sweep's drafts are rendered by
+// exactly the code that renders any other draft.
+func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgtInput) (vgtBuilt, *apiErr) {
+	cfg := in.ConfigText
+	if cfg == "" && in.ConfigPath != "" {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		text, code, msg := s.remoteText(ctx, h, in.ConfigPath)
+		cancel()
+		if code != 0 {
+			return vgtBuilt{}, &apiErr{code, "config: " + msg}
+		}
+		cfg = text
+	}
+	var suffix [4]byte
+	_, _ = rand.Read(suffix[:])
+	// results go inside the host's source roots so Vesqira can read them afterwards
+	out := path.Join(h.Roots[0], "vesqira_runs", name+"-"+hex.EncodeToString(suffix[:]))
+	baseCfg := cfg
+	vals := map[string]string{}
+	for k, v := range in.Set {
+		vals[k] = v
+	}
+	vals["output_dir"] = out
+	cfg, err := jobs.SetConfigValues(cfg, vals)
+	if err != nil {
+		return vgtBuilt{}, jobAPIErr(err)
+	}
+	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: name, RepoDir: in.RepoDir, Config: cfg, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
+	if err != nil {
+		return vgtBuilt{}, jobAPIErr(err)
+	}
+	// The base text and the overrides are kept apart so a rerun can change one setting on the same base, without
+	// reading a file that may have changed on the host since.
+	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: baseCfg, Set: in.Set,
+		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
+	if !h.InRoots(out) {
+		return vgtBuilt{}, &apiErr{422, "the output folder must be inside a source root of the host"}
+	}
+	return vgtBuilt{Script: script, OutputDir: out, Request: string(rq)}, nil
+}
+
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		HostID   int64  `json:"hostId"`
@@ -161,47 +236,13 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	case "custom":
 		job.Script = in.Script
 	case "vgt":
-		cfg := in.VGT.ConfigText
-		if cfg == "" && in.VGT.ConfigPath != "" {
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			text, code, msg := s.remoteText(ctx, h, in.VGT.ConfigPath)
-			cancel()
-			if code != 0 {
-				fail(w, code, "config: "+msg)
-				return
-			}
-			cfg = text
-		}
-		var suffix [4]byte
-		_, _ = rand.Read(suffix[:])
-		// results go inside the host's source roots so Vesqira can read them afterwards
-		out := path.Join(h.Roots[0], "vesqira_runs", in.Name+"-"+hex.EncodeToString(suffix[:]))
-		baseCfg := cfg
-		vals := map[string]string{}
-		for k, v := range in.VGT.Set {
-			vals[k] = v
-		}
-		vals["output_dir"] = out
-		cfg, err = jobs.SetConfigValues(cfg, vals)
-		if err != nil {
-			s.jobErr(w, err)
-			return
-		}
-		script, err := jobs.RenderVGT(jobs.VGTSettings{Name: in.Name, RepoDir: in.VGT.RepoDir, Config: cfg, CPUs: in.VGT.CPUs, Mem: in.VGT.Mem, Time: in.VGT.Time, Partition: in.VGT.Partition, Account: in.VGT.Account})
-		if err != nil {
-			s.jobErr(w, err)
-			return
-		}
-		job.Script, job.OutputDir = script, out
-		// The base text and the overrides are kept apart so a rerun can change one setting on the same base, without
-		// reading a file that may have changed on the host since.
-		rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.VGT.RepoDir, ConfigPath: in.VGT.ConfigPath, BaseConfigText: baseCfg, Set: in.VGT.Set,
+		v, aerr := s.buildVGT(r.Context(), h, in.Name, vgtInput{RepoDir: in.VGT.RepoDir, ConfigPath: in.VGT.ConfigPath, ConfigText: in.VGT.ConfigText, Set: in.VGT.Set,
 			CPUs: in.VGT.CPUs, Mem: in.VGT.Mem, Time: in.VGT.Time, Partition: in.VGT.Partition, Account: in.VGT.Account})
-		job.Request = string(rq)
-		if !h.InRoots(out) {
-			fail(w, 422, "the output folder must be inside a source root of the host")
+		if aerr != nil {
+			s.failAPI(w, aerr)
 			return
 		}
+		job.Script, job.OutputDir, job.Request = v.Script, v.OutputDir, v.Request
 	case "rohsa":
 		script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: in.Name, RepoDir: in.ROHSA.RepoDir, ConfigPath: in.ROHSA.ConfigPath, CPUs: in.ROHSA.CPUs, Mem: in.ROHSA.Mem, Time: in.ROHSA.Time, Partition: in.ROHSA.Partition, Account: in.ROHSA.Account})
 		if err != nil {
@@ -254,43 +295,47 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
+	out, aerr := s.submitDraft(r.Context(), j, h, in.ScriptHash, in.AutoImport)
+	if aerr != nil {
+		s.failAPI(w, aerr)
+		return
+	}
+	writeJSON(w, 200, out)
+}
+
+// submitDraft is the one way a draft reaches Slurm, for the Submit button and for a sweep's scheduler alike. It sends the
+// stored script only if scriptHash is its hash, records the attempt before sbatch runs (BeginSubmit has one winner, so a
+// double click, a retry or a racing scheduler cannot submit one job twice), and never retries after an unconfirmed answer.
+func (s *Server) submitDraft(ctx context.Context, j jobs.Job, h hosts.Host, scriptHash string, autoImport *bool) (jobs.Job, *apiErr) {
 	if j.State != jobs.StateDraft {
-		fail(w, 409, "only a draft can be submitted")
-		return
+		return j, &apiErr{409, "only a draft can be submitted"}
 	}
-	if in.AutoImport != nil && *in.AutoImport && j.Template != "vgt" {
-		fail(w, 422, "results are imported automatically for VGT jobs only")
-		return
+	if autoImport != nil && *autoImport && j.Template != "vgt" {
+		return j, &apiErr{422, "results are imported automatically for VGT jobs only"}
 	}
-	if in.ScriptHash != j.ScriptHash {
-		fail(w, 409, "the script changed since you reviewed it; review the current script and submit again")
-		return
+	if scriptHash != j.ScriptHash {
+		return j, &apiErr{409, "the script changed since you reviewed it; review the current script and submit again"}
 	}
 	if n, err := s.Jobs.Active(); err == nil && n >= jobs.MaxActive {
-		fail(w, 429, "too many jobs are already queued or running from here")
-		return
+		return j, &apiErr{429, "too many jobs are already queued or running from here"}
 	}
 	cmd, err := jobs.SubmitCommand(j.WorkDir)
 	if err != nil {
-		s.jobErr(w, err)
-		return
+		return j, jobAPIErr(err)
 	}
-	if in.AutoImport != nil && *in.AutoImport != j.AutoImport { // after every refusal above: a refused submit changes nothing
-		if err := s.Jobs.SetAutoImport(j.ID, *in.AutoImport); err != nil {
-			s.jobErr(w, err)
-			return
+	if autoImport != nil && *autoImport != j.AutoImport { // after every refusal above: a refused submit changes nothing
+		if err := s.Jobs.SetAutoImport(j.ID, *autoImport); err != nil {
+			return j, jobAPIErr(err)
 		}
 	}
 	// Record the attempt first: from here on the record says "submitting" until Slurm's answer is seen, so a timeout
 	// or a second click cannot submit the same job twice.
 	if won, err := s.Jobs.BeginSubmit(j.ID); err != nil {
-		s.jobErr(w, err)
-		return
+		return j, jobAPIErr(err)
 	} else if !won {
-		fail(w, 409, "this job is already being submitted")
-		return
+		return j, &apiErr{409, "this job is already being submitted"}
 	}
-	out, err := s.Remote.RunShell(r.Context(), h, cmd, []byte(j.Script), 45*time.Second)
+	out, err := s.Remote.RunShell(ctx, h, cmd, []byte(j.Script), 45*time.Second)
 	answered := time.Now()
 	var id string
 	if err == nil {
@@ -298,19 +343,17 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		_ = s.Jobs.NoteSubmitting(j.ID, "Slurm's answer was not seen ("+err.Error()+"). The job may already be queued: use Check on the host.")
-		fail(w, 502, "the host did not confirm the submission ("+err.Error()+"). The job may already be queued, so it is not submitted again: use Check on the host.")
-		return
+		return j, &apiErr{502, "the host did not confirm the submission (" + err.Error() + "). The job may already be queued, so it is not submitted again: use Check on the host."}
 	}
 	if err := s.Jobs.MarkSubmitted(j.ID, id); err != nil {
-		s.jobErr(w, err)
-		return
+		return j, jobAPIErr(err)
 	}
 	s.Audit.Record("job submitted", "job", j.ID, "Slurm job "+id+", script sha256 "+j.ScriptHash[:12])
 	j, _ = s.Jobs.Get(j.ID)
 	// Settings are known now. The record is written in the background (the answer does not wait for ssh), and only once the
 	// job has created its output folder; a refresh completes it and adds the end state.
 	s.recordRunAsync(j.ID, h, jobs.SubmittedEvidence(id, answered))
-	writeJSON(w, 200, j)
+	return j, nil
 }
 
 // reconcile looks for the Slurm job behind a record stuck in "submitting". found is meaningful only when err is nil:
@@ -334,6 +377,7 @@ func (s *Server) checkSubmitting(ctx context.Context, j jobs.Job, h hosts.Host, 
 	if err != nil {
 		return err
 	}
+	defer s.kickSweeps() // an unconfirmed submission was a slot a sweep could not use; it is settled now
 	seen := time.Now()
 	switch {
 	case found:
@@ -405,23 +449,29 @@ func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if j.SlurmID == "" || (j.State != jobs.StateSubmitted && j.State != jobs.StateRunning) {
-		fail(w, 409, "only a queued or running job can be cancelled")
+	if aerr := s.cancelSlurm(r.Context(), j, h); aerr != nil {
+		s.failAPI(w, aerr)
 		return
+	}
+	j, _ = s.Jobs.Get(j.ID)
+	writeJSON(w, 200, j)
+}
+
+// cancelSlurm asks the host to cancel a queued or running job and notes it.
+func (s *Server) cancelSlurm(ctx context.Context, j jobs.Job, h hosts.Host) *apiErr {
+	if j.SlurmID == "" || (j.State != jobs.StateSubmitted && j.State != jobs.StateRunning) {
+		return &apiErr{409, "only a queued or running job can be cancelled"}
 	}
 	cmd, err := jobs.CancelCommand(j.SlurmID)
 	if err != nil {
-		s.jobErr(w, err)
-		return
+		return jobAPIErr(err)
 	}
-	if _, err := s.Remote.RunShell(r.Context(), h, cmd, nil, 30*time.Second); err != nil {
-		fail(w, 502, err.Error())
-		return
+	if _, err := s.Remote.RunShell(ctx, h, cmd, nil, 30*time.Second); err != nil {
+		return &apiErr{502, err.Error()}
 	}
 	s.Audit.Record("job cancel requested", "job", j.ID, "Slurm job "+j.SlurmID)
 	_, _ = s.Jobs.ApplyStatus(j.ID, j.State, "cancel requested") // guarded: never over an end state a refresh just read
-	j, _ = s.Jobs.Get(j.ID)
-	writeJSON(w, 200, j)
+	return nil
 }
 
 func (s *Server) jobLog(w http.ResponseWriter, r *http.Request) {

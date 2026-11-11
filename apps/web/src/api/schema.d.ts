@@ -2565,6 +2565,155 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sweeps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List sweeps */
+        get: operations["owner_s_listSweeps_get_api_sweeps"];
+        put?: never;
+        /** Create a sweep: one draft job per grid combination, linked to it; nothing is submitted */
+        post: operations["owner_s_createSweep_post_api_sweeps"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sweeps/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** How many jobs a sweep would make and what they request; stores and submits nothing */
+        post: operations["owner_s_previewSweep_post_api_sweeps_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sweeps/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One sweep with its jobs and where each stands */
+        get: operations["owner_s_getSweep_get_api_sweeps_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sweeps/{id}/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make a board whose panels follow each job in parameter order; 409 with boardId when one exists */
+        post: operations["owner_s_boardFromSweep_post_api_sweeps_id_board"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sweeps/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop scheduling; drafts not yet submitted stay drafts */
+        post: operations["owner_s_cancelSweep_post_api_sweeps_id_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sweeps/{id}/grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The grid as a table of declared run metrics, and a metric against one parameter */
+        get: operations["owner_s_sweepGrid_get_api_sweeps_id_grid"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sweeps/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The scripts approving would send, their difference from the base, and the total request */
+        get: operations["owner_s_reviewSweep_get_api_sweeps_id_review"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sweeps/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve the sweep: quote the hash of the scripts shown, set the concurrency limit; jobs are then submitted one at a time as slots free */
+        post: operations["owner_s_submitSweep_post_api_sweeps_id_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/publish-api/assets/{sha}": {
         parameters: {
             query?: never;
@@ -3400,6 +3549,13 @@ export interface components {
             runId: number | null;
             /** @description Present only when the job's log says how far it is */
             progress?: components["schemas"]["JobProgress"];
+            /** @description For a job of a parameter sweep: N = 12, λ = 10. Owner only; a snapshot never carries it */
+            label?: string;
+            /**
+             * Format: int64
+             * @description The sweep the job belongs to, if any
+             */
+            sweepId?: number;
         };
         FigureBoardItem: {
             position: number;
@@ -4730,6 +4886,274 @@ export interface components {
             conventions: {
                 [key: string]: string;
             };
+        };
+        /** @description One swept setting. A sweep varies one to three of them; the product of the list lengths is at most 64. */
+        SweepParam: {
+            /** @description A config setting the VGT template can change (dn, ker, noise, ...) */
+            key: string;
+            /** @description How the owner's screen names it (for example the Greek letter); empty means the key */
+            label?: string;
+            /** @description The explicit list, as typed; never reparsed. Letters, digits and . _ + - only */
+            values: string[];
+        };
+        /** @description A sweep to create or preview. Nothing is submitted by either. */
+        SweepRequest: {
+            /** @description Starts each job's name (letters, digits, . _ -, up to 32) */
+            name: string;
+            /** Format: int64 */
+            baseJobId?: number;
+            /**
+             * Format: int64
+             * @description A run made by one of our jobs; its job is the base. Give baseJobId or baseRunId, not both
+             */
+            baseRunId?: number;
+            params: components["schemas"]["SweepParam"][];
+            /** @description Why, kept with every draft (at most 500 characters) */
+            note?: string;
+        };
+        /** @description What a script asks the scheduler for, read from its #SBATCH lines; zero means the script does not say */
+        Requested: {
+            cpus: number;
+            /** Format: int64 */
+            memBytes: number;
+            /** Format: int64 */
+            timeSeconds: number;
+        };
+        /** @description The requested resources of the drafts. Each is the largest single request; the total is the sum */
+        SweepTotals: {
+            jobs: number;
+            cpusEach: number;
+            cpusTotal: number;
+            /** Format: int64 */
+            memBytesEach: number;
+            /** Format: int64 */
+            memBytesTotal: number;
+            /** Format: int64 */
+            timeLimitSecondsEach: number;
+            /** Format: int64 */
+            timeLimitSecondsTotal: number;
+            /**
+             * Format: int64
+             * @description Sum of CPUs x time limit: the most the requests could use
+             */
+            cpuSecondsAtLimit: number;
+        };
+        /** @description What the base job measured (ADR 0045). A guide, not a prediction: a changed parameter can change time and memory */
+        SweepEstimate: {
+            /** Format: int64 */
+            baseJobId: number;
+            baseJobName: string;
+            /** Format: int64 */
+            elapsedSeconds: number;
+            /** Format: int64 */
+            maxRssBytes: number | null;
+            totalCpuSeconds: number | null;
+            basis: string;
+        };
+        SweepDraftName: {
+            name: string;
+            /** @description For example N = 12, λ = 10 */
+            label: string;
+            values: {
+                [key: string]: string;
+            };
+        };
+        /** @description What creating the sweep would make; nothing is stored */
+        SweepPreview: {
+            count: number;
+            max: number;
+            baseJob: {
+                /** Format: int64 */
+                id: number;
+                name: string;
+                /** Format: int64 */
+                hostId: number;
+            };
+            jobs: components["schemas"]["SweepDraftName"][];
+            totals: components["schemas"]["SweepTotals"];
+            estimate: components["schemas"]["SweepEstimate"] | null;
+        };
+        SweepMember: {
+            /** Format: int64 */
+            jobId: number;
+            name: string;
+            label: string;
+            values: {
+                [key: string]: string;
+            };
+            /** @enum {string} */
+            state: "draft" | "submitting" | "submitted" | "running" | "completed" | "failed" | "cancelled";
+            detail: string;
+            /** Format: int64 */
+            runId: number | null;
+            /** @description A draft edited after the owner approved the sweep: it is not submitted */
+            held: boolean;
+            /** @description What sacct reported when the job ended (the Job usage object); null before */
+            usage: {
+                [key: string]: unknown;
+            } | null;
+            requested: components["schemas"]["Requested"];
+        };
+        /** @description A grid of linked draft jobs and where it stands */
+        Sweep: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int64 */
+            hostId: number;
+            /** Format: int64 */
+            baseJobId: number;
+            /** Format: int64 */
+            baseRunId: number | null;
+            params: components["schemas"]["SweepParam"][];
+            note: string;
+            /**
+             * @description What the owner authorised: draft nothing is submitted; running approved and being submitted; stopped cancelled or stopped on a failure; finished every submittable job has been submitted. Not whether the jobs succeeded
+             * @enum {string}
+             */
+            state: "draft" | "running" | "stopped" | "finished";
+            /** @description Why a sweep was stopped */
+            detail: string;
+            concurrency: number;
+            stopOnFailure: boolean;
+            /** Format: int64 */
+            boardId: number | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt: string | null;
+            jobs: components["schemas"]["SweepMember"][];
+            counts: {
+                [key: string]: number;
+            };
+            /** @description Jobs that hold a slot or are held, in words, so a stall is visible */
+            waitingOn: string[];
+            /** @description Drafts that will still be submitted */
+            pending: number;
+        };
+        SweepList: {
+            sweeps: components["schemas"]["Sweep"][];
+        };
+        SweepDiffLine: {
+            /** @enum {string} */
+            op: "-" | "+";
+            /**
+             * @description Why the line differs from the base; other is never expected
+             * @enum {string}
+             */
+            kind: "parameter" | "output" | "name" | "other";
+            text: string;
+        };
+        SweepReviewJob: {
+            /** Format: int64 */
+            jobId: number;
+            name: string;
+            label: string;
+            values: {
+                [key: string]: string;
+            };
+            scriptHash: string;
+            script: string;
+            diff: components["schemas"]["SweepDiffLine"][];
+            /** @description Differing lines that are not a swept setting, the output folder or the job name */
+            unexpected: number;
+            requested: components["schemas"]["Requested"];
+        };
+        /** @description The scripts of the drafts still to be submitted, how each differs from the base, and what they request */
+        SweepReview: {
+            sweep: components["schemas"]["Sweep"];
+            /** Format: int64 */
+            baseJobId: number;
+            baseName: string;
+            baseScript: string;
+            keys: string[];
+            jobs: components["schemas"]["SweepReviewJob"][];
+            /** @description Names the exact scripts shown; approval must quote it */
+            sweepHash: string;
+            totals: components["schemas"]["SweepTotals"];
+            estimate: components["schemas"]["SweepEstimate"] | null;
+            maxConcurrency: number;
+        };
+        SweepSubmitRequest: {
+            sweepHash: string;
+            /** @description At most this many of the sweep's jobs queued or running; 1 is sequential */
+            concurrency: number;
+            /** @description Stop scheduling when a job fails; default false: a failure changes nothing for the others and nothing is retried */
+            stopOnFailure?: boolean;
+        };
+        SweepCancelRequest: {
+            /** @description Also ask Slurm to cancel the sweep's queued and running jobs */
+            cancelRunning?: boolean;
+        };
+        /** @description A declared number of a run; value null is not recorded, never zero */
+        SweepMetric: {
+            key: string;
+            value: number | null;
+            unit: string;
+            uncertainty: number | null;
+            definition: string;
+        };
+        SweepRow: {
+            /** Format: int64 */
+            jobId: number;
+            name: string;
+            label: string;
+            values: {
+                [key: string]: string;
+            };
+            state: string;
+            /** Format: int64 */
+            runId: number | null;
+            runName: string;
+            metrics: components["schemas"]["SweepMetric"][];
+        };
+        SweepMetricInfo: {
+            key: string;
+            /** @description Empty when the runs declared different units */
+            unit: string;
+            units: string[];
+            /** @description The runs declared different units: not one quantity, so not plotted */
+            unitsDiffer: boolean;
+            definitionsDiffer: boolean;
+            runs: number;
+            values: number;
+        };
+        SweepPoint: {
+            x: string;
+            xNum: number | null;
+            /** @description Null is a gap: no recorded value or no run yet, never zero */
+            value: number | null;
+            uncertainty: number | null;
+            /** Format: int64 */
+            jobId: number;
+        };
+        SweepLine: {
+            label: string;
+            points: components["schemas"]["SweepPoint"][];
+        };
+        /** @description A metric against one parameter, one line per combination of the other parameters */
+        SweepPlot: {
+            metric: string;
+            unit: string;
+            xKey: string;
+            xName: string;
+            /** @description The x values are numbers on a numeric axis; otherwise categories in list order */
+            numeric: boolean;
+            xValues: string[];
+            lines: components["schemas"]["SweepLine"][];
+            notes: string[];
+        };
+        /** @description The grid as a table: one row per job in parameter order with what its run declared. No row is labelled best */
+        SweepGrid: {
+            /** Format: int64 */
+            sweepId: number;
+            name: string;
+            params: components["schemas"]["SweepParam"][];
+            rows: components["schemas"]["SweepRow"][];
+            metrics: components["schemas"]["SweepMetricInfo"][];
+            plot: components["schemas"]["SweepPlot"] | null;
+            /** @description Why no plot was drawn */
+            plotNote: string;
         };
     };
     responses: never;
@@ -8606,6 +9030,299 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Revoked"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listSweeps_get_api_sweeps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SweepList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createSweep_post_api_sweeps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SweepRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sweep"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_previewSweep_post_api_sweeps_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SweepRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SweepPreview"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_getSweep_get_api_sweeps_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sweep"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_boardFromSweep_post_api_sweeps_id_board: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_cancelSweep_post_api_sweeps_id_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SweepCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sweep"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_sweepGrid_get_api_sweeps_id_grid: {
+        parameters: {
+            query?: {
+                metric?: string;
+                /** @description The parameter on the x axis; default the first */
+                x?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SweepGrid"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_reviewSweep_get_api_sweeps_id_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SweepReview"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_submitSweep_post_api_sweeps_id_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SweepSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sweep"];
                 };
             };
             /** @description Error */

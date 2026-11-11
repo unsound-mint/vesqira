@@ -144,6 +144,7 @@ func (s *Server) watchOnce(ctx context.Context, w *jobWatcher, now time.Time) {
 			}
 		}
 	}
+	s.advanceSweeps(ctx) // a restart, or a job that ended while nobody looked, must not leave a sweep waiting
 }
 
 // watchHost makes the one status call for a host and applies each job's answer through the shared refresh path.
@@ -218,6 +219,7 @@ func (s *Server) applyJobStatus(j jobs.Job, h hosts.Host, st jobs.Status, obtain
 	if st.State == jobs.StateCompleted && j.AutoImport {
 		s.autoImportAsync(j, h)
 	}
+	s.kickSweeps() // a slot may be free for the next job of a sweep
 }
 
 // retryOwedRecord writes the run record of a finished job again, from what was stored when its end was read.
