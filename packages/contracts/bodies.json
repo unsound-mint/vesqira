@@ -187,7 +187,9 @@
     "quantity",
     "declaredBy",
     "declaredAt",
-    "stale"
+    "stale",
+    "tier",
+    "mappingVersion"
    ],
    "properties": {
     "kind": {
@@ -238,6 +240,20 @@
     },
     "stale": {
      "type": "boolean"
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ],
+     "description": "How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: \"declared\" there means the file says it."
+    },
+    "mappingVersion": {
+     "type": "string",
+     "description": "The version of the rule's mapping, for an inferred interpretation; empty for any other tier"
     }
    }
   },
@@ -733,7 +749,9 @@
     "unit",
     "declaredBy",
     "declaredAt",
-    "stale"
+    "stale",
+    "tier",
+    "mappingVersion"
    ],
    "properties": {
     "unit": {
@@ -751,6 +769,20 @@
     "stale": {
      "type": "boolean",
      "description": "The file's size or modification time differs from when the unit was declared: it may no longer describe these bytes."
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ],
+     "description": "How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: \"declared\" there means the file says it."
+    },
+    "mappingVersion": {
+     "type": "string",
+     "description": "The version of the rule's mapping, for an inferred interpretation; empty for any other tier"
     }
    }
   },
@@ -1120,6 +1152,20 @@
     },
     "hasReliabilityMap": {
      "type": "boolean"
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ],
+     "description": "How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: \"declared\" there means the file says it. Absent on a figure saved before tiers existed."
+    },
+    "mappingVersion": {
+     "type": "string",
+     "description": "The version of the rule's mapping, for an inferred interpretation; empty for any other tier"
     }
    }
   },
@@ -1136,6 +1182,20 @@
     },
     "declaredBy": {
      "type": "string"
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ],
+     "description": "How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: \"declared\" there means the file says it. Absent on a figure saved before tiers existed."
+    },
+    "mappingVersion": {
+     "type": "string",
+     "description": "The version of the rule's mapping, for an inferred interpretation; empty for any other tier"
     }
    }
   },
@@ -1418,6 +1478,13 @@
      "items": {
       "type": "string"
      }
+    },
+    "tiers": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/FigureTier"
+     },
+     "description": "Absent on a figure saved before tiers existed"
     }
    }
   },
@@ -3823,6 +3890,20 @@
     "stale": {
      "type": "boolean",
      "description": "True when the file's size or modification time differs from when this was declared. A stale declaration is not applied: positions are refused until it is confirmed again."
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ],
+     "description": "How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: \"declared\" there means the file says it."
+    },
+    "mappingVersion": {
+     "type": "string",
+     "description": "The version of the rule's mapping, for an inferred interpretation; empty for any other tier"
     }
    },
    "required": [
@@ -3835,7 +3916,9 @@
     "values",
     "declaredBy",
     "declaredAt",
-    "stale"
+    "stale",
+    "tier",
+    "mappingVersion"
    ],
    "description": "An overlay: the file and the columns the worker read are never changed."
   },
@@ -4872,6 +4955,20 @@
     },
     "params": {
      "$ref": "#/components/schemas/RelativeOrientationParams"
+    },
+    "masks": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/MaskReference"
+     },
+     "description": "Masks of the first map, each with its own policy (ADR 0055); refused for a comparison with a catalog"
+    },
+    "otherMasks": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/MaskReference"
+     },
+     "description": "Masks of the second map"
     }
    }
   },
@@ -9924,6 +10021,296 @@
      "description": "for example: VPN client started; the host became reachable after 12 s"
     }
    }
+  },
+  "MaskReference": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "policy"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "policy": {
+     "type": "string",
+     "enum": [
+      "exclude",
+      "keep",
+      "weight"
+     ],
+     "description": "Stated for every mask: there is no default and no global policy. `weight` only where the analysis has weights (relative orientation); the policy for a no-value mask is exclude."
+    },
+    "weight": {
+     "type": "number",
+     "nullable": true,
+     "minimum": 0,
+     "maximum": 1,
+     "description": "With the weight policy: the factor a flagged pixel counts with"
+    }
+   }
+  },
+  "Mask": {
+   "type": "object",
+   "description": "A typed mask (ADR 0055): a derived uint8 FITS file flagging pixels of a dataset for a stated reason. It changes nothing in the dataset and is applied only where an operation names it with a policy.",
+   "required": [
+    "id",
+    "datasetId",
+    "type",
+    "name",
+    "width",
+    "height",
+    "channels",
+    "flagged",
+    "total",
+    "tier",
+    "mappingVersion",
+    "method",
+    "rule",
+    "meaning",
+    "author",
+    "createdAt",
+    "sourceIdentity",
+    "fileSize",
+    "sha256",
+    "stale"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "type": {
+     "type": "string",
+     "enum": [
+      "missing",
+      "invalid",
+      "low_snr",
+      "saturated",
+      "user_excluded",
+      "other"
+     ],
+     "description": "missing: no value in the file (NaN, BLANK), computed and never declared. Zero is a value and is never `missing`."
+    },
+    "name": {
+     "type": "string"
+    },
+    "width": {
+     "type": "integer"
+    },
+    "height": {
+     "type": "integer"
+    },
+    "channels": {
+     "type": "integer",
+     "description": "0: one plane that applies to every channel; otherwise one plane per channel"
+    },
+    "flagged": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "total": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ],
+     "description": "How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: \"declared\" there means the file says it."
+    },
+    "mappingVersion": {
+     "type": "string",
+     "description": "The version of the rule's mapping, for an inferred interpretation; empty for any other tier"
+    },
+    "method": {
+     "type": "string",
+     "enum": [
+      "computed",
+      "regions",
+      "import"
+     ]
+    },
+    "rule": {
+     "type": "object",
+     "additionalProperties": true,
+     "description": "How the mask was made, as the worker described it: the rule, the estimator, the threshold and where sigma or the threshold came from, the regions, or the file imported"
+    },
+    "meaning": {
+     "type": "string"
+    },
+    "author": {
+     "type": "string"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "sourceIdentity": {
+     "type": "string",
+     "description": "What is recorded about the bytes the mask was made from: sha256:<hex>, sampled:<fingerprint> (not proof) or empty"
+    },
+    "fileSize": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "sha256": {
+     "type": "string",
+     "description": "SHA-256 of the mask file"
+    },
+    "stale": {
+     "type": "boolean",
+     "description": "The dataset's size or modification time differs from when the mask was made: it is not applied until it is made again"
+    }
+   }
+  },
+  "MaskList": {
+   "type": "object",
+   "required": [
+    "masks"
+   ],
+   "properties": {
+    "masks": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/Mask"
+     }
+    }
+   }
+  },
+  "CreateMaskRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "method"
+   ],
+   "properties": {
+    "method": {
+     "type": "string",
+     "enum": [
+      "missing",
+      "low_snr",
+      "saturated",
+      "regions",
+      "import"
+     ],
+     "description": "missing: computed from the data (type missing). low_snr: value / sigma < k. saturated: value >= threshold. regions: user_excluded from saved regions. import: a registered image of the same grid, with its declared type and the meaning of nonzero"
+    },
+    "type": {
+     "type": "string",
+     "enum": [
+      "invalid",
+      "low_snr",
+      "saturated",
+      "user_excluded",
+      "other"
+     ],
+     "description": "Only for an import"
+    },
+    "name": {
+     "type": "string"
+    },
+    "k": {
+     "type": "number"
+    },
+    "sigma": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind"
+     ],
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "value",
+        "mad",
+        "map"
+       ]
+      },
+      "value": {
+       "type": "number"
+      },
+      "datasetId": {
+       "type": "integer",
+       "format": "int64"
+      }
+     }
+    },
+    "threshold": {
+     "type": "number"
+    },
+    "source": {
+     "type": "string",
+     "description": "Where the saturation threshold comes from (required)"
+    },
+    "regionIds": {
+     "type": "array",
+     "items": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    "importDatasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "nonzero": {
+     "type": "string",
+     "enum": [
+      "flagged",
+      "valid"
+     ],
+     "description": "What a nonzero pixel of the imported file means"
+    },
+    "meaning": {
+     "type": "string",
+     "description": "Required for type other"
+    }
+   }
+  },
+  "FigureTier": {
+   "type": "object",
+   "required": [
+    "what",
+    "tier",
+    "note"
+   ],
+   "description": "How far one interpretation behind a figure is established (ADR 0055): the brightness unit, the orientation declaration, or a mask that was applied to the result. No id and no path.",
+   "properties": {
+    "what": {
+     "type": "string"
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ]
+    },
+    "rule": {
+     "type": "string",
+     "description": "For an inferred interpretation: the rule that proposed it"
+    },
+    "mappingVersion": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
   }
  },
  "operations": {
@@ -14559,6 +14946,181 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/masks": {
+   "summary": "The masks of a dataset",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MaskList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/masks": {
+   "summary": "Make a typed mask of a dataset as a derived file",
+   "description": "The dataset's file is never changed. 409 for a file on another host. A mask of type other needs a description; the type missing is computed from the data and cannot be declared.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CreateMaskRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Mask"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/masks/{id}/delete": {
+   "summary": "Forget a mask (its file is kept)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "removed"
+        ],
+        "properties": {
+         "removed": {
+          "type": "integer",
+          "format": "int64"
+         }
+        }
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/masks/{id}/plane": {
+   "summary": "One plane of a mask, for the viewer's hatch overlay",
+   "description": "The same frame as a data plane (uint32 header length, JSON header, payload) with a uint8 payload, row 0 = FITS y 1, 1 = flagged. A mask of one plane answers the same for every channel.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "channel",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "a frame",
+     "content": {
+      "application/vnd.vesqira.plane": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
        }
       }
      }

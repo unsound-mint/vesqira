@@ -209,6 +209,12 @@ func (s *Server) Handler() http.Handler {
 	if s.analysisDeps() {
 		mux.HandleFunc("POST /api/analysis", s.analyze)
 		mux.HandleFunc("GET /api/datasets/{id}/derived", s.getDerived)
+		if s.Masks != nil {
+			mux.HandleFunc("GET /api/datasets/{id}/masks", s.listMasks)
+			mux.HandleFunc("POST /api/datasets/{id}/masks", s.createMask)
+			mux.HandleFunc("POST /api/masks/{id}/delete", s.deleteMask)
+			mux.HandleFunc("GET /api/masks/{id}/plane", s.maskPlane)
+		}
 		mux.HandleFunc("POST /api/analysis/relative-orientation", s.relativeOrientation)
 		mux.HandleFunc("GET /api/datasets/{id}/relative-orientation.csv", s.relativeOrientationTable)
 		if s.HostDB != nil && s.Remote != nil && s.Jobs != nil {

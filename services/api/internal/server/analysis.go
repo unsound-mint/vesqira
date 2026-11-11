@@ -44,6 +44,8 @@ type analysisReq struct {
 	DatasetID   int64             `json:"datasetId"`
 	ReferenceID int64             `json:"referenceId"`
 	Params      map[string]string `json:"params"`
+	// Masks to apply, each with its own explicit policy (ADR 0055): statistics and moment maps, on a file read here.
+	Masks []maskUse `json:"masks"`
 	// remote analyses become Slurm jobs
 	CPUs int    `json:"cpus"`
 	Mem  string `json:"mem"`
@@ -110,6 +112,20 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	sources := []int64{d.ID}
 	if ax != nil {
 		args = append(args, ax.args...)
+	}
+	var maskSafe []map[string]any // what the result's provenance keeps of the masks applied: no ids, no paths
+	if len(in.Masks) > 0 {
+		if in.Op != "stats" && in.Op != "moment" {
+			fail(w, 422, "masks are applied by statistics, moment maps and relative orientation; this analysis does not take them")
+			return
+		}
+		specs, safe, _, code, msg := s.maskSpecs(in.Masks, d, false)
+		if code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		args = append(args, "--masks", specs)
+		maskSafe = safe
 	}
 	// A unit the person declared for a file with no BUNIT goes with the request, so the result says it, labelled as theirs. The
 	// worker uses it only when the file has no unit of its own. The "=" form keeps a unit that starts with "-" a value.
@@ -200,6 +216,9 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pm := map[string]any{"options": opts}
+	if len(maskSafe) > 0 {
+		pm["masks"] = maskSafe // the reviewer sees these (type, rule, policy, tier, fingerprint); the summary keeps the ids for the owner
+	}
 	if len(declared) > 0 {
 		pm["declaredUnits"] = declared // offered to the worker; whether it was used (the file may state its own unit) is in the summary's unit_source
 	}
@@ -293,6 +312,10 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if d.HostID == 0 {
 		fail(w, 409, "this file is on this computer: run the analysis directly")
+		return
+	}
+	if len(in.Masks) > 0 {
+		fail(w, 409, "masks are applied to files on this computer; an analysis job on a host does not take them yet")
 		return
 	}
 	ax, code, msg := s.axialAnalysis(r.Context(), in.Op, d, true)
