@@ -575,12 +575,13 @@ type RsyncResult struct {
 }
 
 // RsyncExitRetryable says whether an exit code is a lost or stalled connection (worth another attempt that resumes) rather
-// than a refusal. 20 is rsync's exit for a SIGTERM or SIGINT it received (something outside Vesqira stopped it, for example the
+// than a refusal. 16 ("sibling process terminated abnormally") is how rsync 3.4 reports the other end vanishing mid-copy, which
+// is what a dropped VPN or a killed ssh looks like there; older versions report 12 or 255 for the same event. 20 is rsync's exit for a SIGTERM or SIGINT it received (something outside Vesqira stopped it, for example the
 // host's login node killing it; a cancel by the owner is recognised before this is asked). 23 and 24 (a file could not be read,
 // or vanished) and 11 (a full disk) are not retried: they repeat.
 func RsyncExitRetryable(code int) bool {
 	switch code {
-	case -1, 5, 10, 12, 14, 20, 30, 35, 255:
+	case -1, 5, 10, 12, 14, 16, 20, 30, 35, 255:
 		return true
 	}
 	return false

@@ -116,7 +116,7 @@ func TestParseProgressReadsBothRsyncGenerations(t *testing.T) {
 }
 
 func TestExitCodesClassifyNetworkLossFromRefusal(t *testing.T) {
-	for code, want := range map[int]bool{12: true, 20: true, 30: true, 255: true, 10: true, -1: true, 0: false, 1: false, 11: false, 23: false, 24: false, 3: false} {
+	for code, want := range map[int]bool{12: true, 16: true, 20: true, 30: true, 255: true, 10: true, -1: true, 0: false, 1: false, 11: false, 23: false, 24: false, 3: false} {
 		if RsyncExitRetryable(code) != want {
 			t.Errorf("exit %d: retryable=%v", code, !want)
 		}
