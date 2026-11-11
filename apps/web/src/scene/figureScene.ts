@@ -3,6 +3,8 @@ import type { Plane } from "../api/planes";
 import { glyphStride } from "../viewer/glyphs";
 import { limits } from "../viewer/render";
 import { reliabilityFor } from "./overlays";
+import { needsGeometry } from "./geometry";
+import type { GeometryMap } from "./geometry";
 import type { Scene, SceneDisplay, SceneOverlay } from "./scene";
 
 /**
@@ -16,7 +18,7 @@ import type { Scene, SceneDisplay, SceneOverlay } from "./scene";
  * - only the working region is drawn on a figure, so saved regions are left out;
  * - the figure shows the whole plane, so the view is the fitted one.
  */
-export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scale: number; bunit: string | null; interp: Dataset["interpretation"]; reliability: Plane | null }): Scene {
+export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scale: number; bunit: string | null; interp: Dataset["interpretation"]; reliability: Plane | null; geometry?: GeometryMap; datasets?: Dataset[] }): Scene {
   const { head } = o.plane;
   const d = live.base.display;
   let display: SceneDisplay;
@@ -32,7 +34,25 @@ export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scal
   }
   const overlays: SceneOverlay[] = [];
   for (const ov of live.overlays) {
-    if (ov.kind === "orientation" && o.axial) {
+    if (needsGeometry(ov, live)) {
+      // contours, a beam, the grid, another map's orientation lines: drawn from the worker's geometry
+      if (!ov.visible) {
+        overlays.push(ov); // kept as set; not drawn
+        continue;
+      }
+      const e = o.geometry?.[ov.id];
+      if (!e || e.status !== "ready") continue; // refused: not in the picture, so not in its scene (saveFigure waits for any still computing)
+      if (ov.kind === "contours" && ov.levels.mode === "sigma" && e.g.kind === "contours" && e.g.head.sigma?.value) {
+        overlays.push({ ...ov, levels: { ...ov.levels, sigma: e.g.head.sigma.value } }); // the sigma the levels were drawn with
+      } else if (ov.kind === "orientation" && e.g.kind === "orientation") {
+        const relId = o.datasets?.find((d) => d.id === ov.datasetId)?.interpretation?.reliabilityId ?? null;
+        const rel = ov.opacity === "reliability" && !!e.g.head.reliability && relId !== null;
+        const { reliabilityId: _r, ...rest } = ov;
+        overlays.push({ ...rest, sampling: { mode: "step", step: e.g.head.step ?? 1 }, opacity: rel ? "reliability" : "uniform", ...(rel ? { reliabilityId: relId } : {}) });
+      } else {
+        overlays.push(ov);
+      }
+    } else if (ov.kind === "orientation" && o.axial) {
       const step = ov.sampling.mode === "step" ? ov.sampling.step : glyphStride(o.scale, ov.sampling.gapPx);
       const relId = o.interp?.reliabilityId ?? null;
       const rel = ov.opacity === "reliability" && relId !== null && reliabilityFor(o.plane, o.reliability) !== null;
@@ -54,6 +74,10 @@ export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scal
     view: { zoom: 1 },
   };
 }
+
+/** The visible overlays whose geometry is still being computed: a figure waits for them rather than leave them out. */
+export const overlaysPending = (live: Scene, geometry: GeometryMap | undefined): string[] =>
+  live.overlays.filter((ov) => ov.visible && needsGeometry(ov, live) && geometry?.[ov.id]?.status !== "ready" && geometry?.[ov.id]?.status !== "refused").map((ov) => ov.id);
 
 /** Whether a figure scene states its display fully; a custom range without valid limits does not, and is not stored. */
 export const sceneStatable = (s: Scene): boolean => !(s.base.display.mapping === "scalar" && s.base.display.range === "custom" && !s.base.display.limits);

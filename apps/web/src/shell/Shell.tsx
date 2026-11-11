@@ -43,6 +43,7 @@ import { CoordinateReadout, DisplayControls } from "../viewer/Panels";
 import { PlaneViewer } from "../viewer/PlaneViewer";
 import { InterpretationPanel, OrientationStats } from "../viewer/OrientationPanels";
 import { RegionPanel } from "../viewer/RegionPanel";
+import { OverlayPanel } from "../viewer/OverlayPanel";
 import { SpectrumPlot } from "../viewer/SpectrumPlot";
 import { flagState } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
@@ -398,6 +399,9 @@ export function Shell() {
           <Section title="Display">
             {actDs ? <DisplayControls v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
+          <Section title="Overlays" meta={viewer.scene ? String(viewer.scene.overlays.length) : undefined}>
+            {actDs ? <OverlayPanel scene={viewer.scene} dispatch={viewer.dispatch} geometry={viewer.geometry} datasets={cat.allDatasets} /> : <p className={s.empty}>{EM}</p>}
+          </Section>
           <Section title="Region">
             {actDs ? <RegionPanel v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
@@ -440,7 +444,7 @@ export function Shell() {
             </Section>
           ) : null}
           <Section title="Figure" defaultOpen={false}>
-            {actDs ? <FigurePanel v={viewer} dataset={actDs} /> : <p className={s.empty}>{EM}</p>}
+            {actDs ? <FigurePanel v={viewer} dataset={actDs} datasets={cat.allDatasets} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Dataset">
             {actDs ? <DatasetInspector d={actDs} problem={cat.problems[String(actDs.id)]} onReread={() => { void cat.register(actDs.path); }} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}

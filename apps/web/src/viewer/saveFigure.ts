@@ -3,7 +3,9 @@ import { createFigure } from "../api/boards";
 import type { Figure, FigureRequest } from "../api/boards";
 import { lut } from "./colormaps";
 import { blobToBase64, captionLines, composeImageFigure, composeSpectrumFigure, FIGURE_WIDTH } from "./figure";
-import { figureScene, sceneStatable } from "../scene/figureScene";
+import { figureScene, overlaysPending, sceneStatable } from "../scene/figureScene";
+import { overlayBasis } from "../scene/basis";
+import { needsGeometry } from "../scene/geometry";
 import { sceneMarks } from "../scene/overlays";
 import type { Scene } from "../scene/scene";
 import { limits } from "./render";
@@ -20,7 +22,7 @@ export function defaultFigureTitle(v: Viewer, dataset: Dataset): string {
  * picture is composed in the browser from the drawn canvas, so the viewer must have drawn the full plane. Throws an
  * Error with a sentence for the user when it cannot.
  */
-export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?: string; caption?: string; kind?: "plane" | "spectrum" } = {}): Promise<Figure> {
+export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?: string; caption?: string; kind?: "plane" | "spectrum"; datasets?: Dataset[] } = {}): Promise<Figure> {
   const { view, plane } = v;
   const kind = opts.kind ?? "plane";
   if (!view || !plane) throw new Error("The image is not drawn yet.");
@@ -42,16 +44,23 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
     // The figure's overlays are drawn from its own scene, through the same overlay registry as the screen. The scene is
     // stored only when it states the display fully; the picture is drawn from it either way.
     if (!v.scene || v.scene.base.datasetId !== dataset.id) throw new Error("The image is not drawn yet.");
-    const drawn = figureScene(v.scene, { plane, axial, scale, bunit: view.bunit, interp: v.interp, reliability: v.reliability });
+    if (overlaysPending(v.scene, v.geometry).length) throw new Error("Some overlays are still being computed. The figure can be saved once they are drawn.");
+    const drawn = figureScene(v.scene, { plane, axial, scale, bunit: view.bunit, interp: v.interp, reliability: v.reliability, geometry: v.geometry, datasets: opts.datasets });
     scene = sceneStatable(drawn) ? drawn : null;
+    // every overlay drawn from another file (or the grid) states its basis in the caption, as its row does on screen
+    const nameOf = (id: number) => (id === dataset.id ? dataset.name : opts.datasets?.find((d) => d.id === id)?.name ?? `dataset ${id}`);
+    const overlayLines = drawn.overlays
+      .filter((o) => o.visible && needsGeometry(o, drawn))
+      .map((o) => overlayBasis(o, drawn, v.geometry[o.id], nameOf))
+      .filter((t): t is string => t !== null);
     blob = await composeImageFigure({
       source: src,
       planeW: plane.head.width,
       planeH: plane.head.height,
-      marks: sceneMarks(drawn, { plane, scale, interp: v.interp, reliability: v.reliability }),
+      marks: sceneMarks(drawn, { plane, scale, interp: v.interp, reliability: v.reliability, geometry: v.geometry }),
       legend: axial ? { kind: "cyclic", lut: lut("twilight") } : { kind: "scalar", lut: lut(v.colormap), limits: lim, unit: view.bunit },
       title: heading,
-      captions,
+      captions: [...captions, ...overlayLines],
     });
   }
   const r = v.region;

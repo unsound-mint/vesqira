@@ -95,7 +95,7 @@ export async function composeImageFigure(o: {
   ctx.drawImage(o.source, pad, top, iw, ih);
   ctx.save();
   ctx.translate(pad, top);
-  strokeMarks(ctx, o.marks, iw / o.planeW, ih / o.planeH, INK);
+  strokeMarks(ctx, o.marks, iw / o.planeW, ih / o.planeH, INK, { w: o.planeW, h: o.planeH });
   ctx.restore();
   // legend bar
   const by = top + ih + 14;

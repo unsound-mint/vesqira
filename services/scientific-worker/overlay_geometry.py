@@ -346,10 +346,11 @@ def orientation_samples(base_cube, ov_cube, rel_cube, spec: dict, interp: dict, 
         ang = ori.wrap_axial(ori.sky_pa_to_pixel(base.w, xb, yb, pa))
     keep = _inside(xb, yb, base.shape) & np.isfinite(ang)
     out = np.column_stack([xb[keep], yb[keep], ang[keep], weight[keep]]).astype("<f4")
-    how = {"pixel": f"stored counter-clockwise from the map's +x axis, turned into east of north with its WCS in {src.label}",
-           "sky": f"stored east of north in {src.label}"}[interp["frame"]]
-    conversion = (f"{how}; {interp['quantity'].replace('_', ' ')}" + (f" rotated by {rot:g} degrees to the B-field" if rot else " (the B-field direction)")
-                  + ("" if src.same_frame(base) else f"; rotated into {base.label}") + "; then into the base's pixel frame with its WCS")
+    how = {"pixel": f"angles counter-clockwise from the map's +x axis, turned into east of north with its WCS in {src.label}",
+           "sky": f"angles east of north in {src.label}"}[interp["frame"]]
+    what = {"b_field": "declared as the B-field", "starlight_polarization": "declared as starlight polarization, parallel to B",
+            "gradient": f"declared as a gradient, rotated by {rot:g} degrees to B", "dust_polarization": f"declared as dust polarization, rotated by {rot:g} degrees to B"}[interp["quantity"]]
+    conversion = f"{how}; {what}" + ("" if src.same_frame(base) else f"; rotated into {base.label}") + "; then into the base's pixel frame with its WCS"
     head = {"kind": "orientation", "segments": int(len(out)), "step": step, "spacing_px": step * ratio, "capped": capped,
             "conversion": conversion, "reliability": rel_info, "placement": placement(src, base, same_dataset),
             "method": "single pixels of the orientation map on its own grid (no averaging of angles)"}
@@ -446,6 +447,35 @@ def _label(value: float, axis: str, frame: str, step: float) -> str:
     return Angle(value, u.deg).to_string(unit=u.deg, sep="dms", fields=fields, precision=0, alwayssign=True, pad=True)
 
 
+EDGE_PREFERENCE = {"lon": ("bottom", "top", "left", "right"), "lat": ("left", "right", "bottom", "top")}
+LABEL_GAP = 0.15                # fraction of an edge's length kept between two labels on it
+
+
+def _label_point(runs, shape, axis, placed):
+    """Where a grid line's label goes: where the line leaves the image, on the edge such lines are labelled on (longitude at
+    the bottom, latitude at the left, else the opposite edge, else any), and not within LABEL_GAP of a label already on that
+    edge. None when no such place is free."""
+    W, H = shape
+    ends = []
+    for r in runs:
+        ok = _inside(r[:, 0], r[:, 1], shape)
+        idx = np.flatnonzero(ok)
+        if len(idx):
+            ends += [r[idx[0]], r[idx[-1]]]
+    def edge_of(p):
+        d = {"left": p[0] + 0.5, "right": W - 0.5 - p[0], "bottom": p[1] + 0.5, "top": H - 0.5 - p[1]}
+        e = min(d, key=d.get)
+        return e if d[e] <= 1.0 else None
+    for want in EDGE_PREFERENCE[axis]:
+        for p in ends:
+            if edge_of(p) != want:
+                continue
+            along, size = (p[0], W) if want in ("bottom", "top") else (p[1], H)
+            if all(lab["edge"] != want or abs((lab["x"] if want in ("bottom", "top") else lab["y"]) - along) > LABEL_GAP * size for lab in placed):
+                return float(p[0]), float(p[1]), want
+    return None
+
+
 def grid(base_cube, spec: dict) -> tuple[dict, bytes]:
     from astropy.coordinates import SkyCoord
     import astropy.units as u
@@ -488,11 +518,9 @@ def grid(base_cube, spec: dict) -> tuple[dict, bytes]:
         if not runs:
             return
         paths.extend((group, r) for r in runs)
-        pts = np.concatenate(runs)
-        inside = pts[_inside(pts[:, 0], pts[:, 1], base.shape)]
-        if len(inside):
-            at = inside[np.argmin(inside[:, 1])] if axis == "lon" else inside[np.argmin(inside[:, 0])]   # bottom edge, left edge
-            labels.append({"text": _label(value, axis, name, step), "x": float(at[0]), "y": float(at[1]), "axis": axis})
+        at = _label_point(runs, base.shape, axis, labels)
+        if at is not None:
+            labels.append({"text": _label(value, axis, name, step), "x": at[0], "y": at[1], "axis": axis, "edge": at[2]})
 
     pad_lat = 0.05 * max(lat_hi - lat_lo, s_lat)
     lat_samples = np.linspace(max(-90.0, lat_lo - pad_lat), min(90.0, lat_hi + pad_lat), GRID_SAMPLES)

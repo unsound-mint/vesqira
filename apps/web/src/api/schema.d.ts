@@ -781,6 +781,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/overlay-geometry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Geometry of one overlay on this dataset as base, as a binary frame
+         * @description Both datasets must be readable and unchanged, and on the same machine. Frame layout as for a plane: uint32 little-endian header length n, n bytes of JSON (an OverlayGeometryHeader, padded so the payload is 8-byte aligned), then little-endian float32 numbers laid out as the header says. A refusal (frames that cannot be related, footprints that do not overlap, an undeclared angle convention, no beam in the header) is a 422 with the reason.
+         */
+        post: operations["owner_s_overlayGeometry_post_api_datasets_id_overlay_geometry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/plane": {
         parameters: {
             query?: never;
@@ -3975,7 +3997,13 @@ export interface components {
             spacing_px?: number;
             /** @description orientation: how the stored angles became B-field orientation in the base pixel frame */
             conversion?: string;
-            reliability?: Record<string, never> | null;
+            /** @description orientation: present when the declared reliability map was read (for length, opacity or a threshold) */
+            reliability?: {
+                p99?: number | null;
+                threshold?: number | null;
+                dropped_below_threshold?: number;
+                scale?: string;
+            } | null;
             beam?: {
                 bmaj_arcsec?: number;
                 bmin_arcsec?: number;
@@ -5620,6 +5648,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_overlayGeometry_post_api_datasets_id_overlay_geometry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OverlayGeometryRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.geometry": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
