@@ -14,7 +14,7 @@ const W = 320;
 const H = 176;
 const HR = 72;
 // the left margin holds the value labels and the unit, so no text sits on a curve; the top one holds the component numbers
-const M = { l: 64, r: 10, t: 18, b: 40 };
+const M = { l: 76, r: 10, t: 18, b: 40 };
 const num = (v: number) => Number(v.toPrecision(4)).toString();
 
 function Legend({ showData }: { showData: boolean }) {
