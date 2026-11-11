@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from astropy.io import fits
 
-from plane_worker import Cube, Refused, authorize, fits_array
+from plane_worker import Cube, Refused, authorize, declared_unit as checked_declared_unit, fits_array
 
 MAX_OUTPUT_ELEMENTS = 1 << 28
 
@@ -91,6 +91,46 @@ def image_header(c: Cube, extra: dict) -> fits.Header:
     for key, v in extra.items():
         h[key] = v
     return h
+
+
+def unit_of(c: Cube, declared: str | None) -> tuple[str | None, str]:
+    """The brightness unit of a file and where it comes from: ("file"), a unit its author declared for a file without one
+    ("user"), or none ("unresolved"). What the file says always wins; a declared unit only fills a gap. It is text, carried
+    as typed: nothing here parses or converts it."""
+    if "BUNIT" in c.h:
+        v = c.h.get("BUNIT")
+        text = v.strip() if isinstance(v, str) else ""
+        if not text:
+            return None, "unresolved"                 # a blank card says nothing; it is not a unit, and a declaration does not replace it
+        # A file made by an earlier analysis of a declared unit keeps saying whose the unit is, however many steps follow.
+        return text, "user" if c.h.get("VESQBUNS") == "user" else "file"
+    if declared is not None:
+        text = checked_declared_unit({"declared_bunit": declared})
+        if not text.isascii():
+            # a FITS header holds ASCII only: say so, instead of failing as if the input file were unreadable
+            fail("the declared brightness unit has characters a FITS header cannot hold (such as µ or °); "
+                 "declare it in plain ASCII (for example uJy/beam), which a result file can carry")
+        return text, "user"
+    return None, "unresolved"
+
+
+def stamp_user_unit(h: fits.Header, unit: str, what: str = "the input"):
+    """Give a result the unit its author declared for the input, marked as theirs (VESQBUNS) so it is never mistaken for a
+    unit the input file stated."""
+    if h.get("VESQBUNS") == "user" and h.get("BUNIT") == unit:
+        return                                         # already marked by an earlier step, with its history
+    h["BUNIT"] = unit
+    h["VESQBUNS"] = "user"
+    h["HISTORY"] = f"Vesqira: brightness unit {unit} was declared by the author for {what}; the file has no BUNIT"
+
+
+def note_unit(summary: dict, source: str, unit: str | None, what: str = "the input"):
+    """Say in the result's summary (which travels with figures and reviews) whose unit it is."""
+    summary["unit_source"] = source
+    if source == "user":
+        prior = summary.get("policy", "").rstrip()
+        summary["policy"] = (prior + ("" if prior.endswith(".") or not prior else ".") + f" The brightness unit ({unit}) was declared by the author for {what}; the file it comes from has no BUNIT. "
+                             "It is carried as typed and was not checked against the data.").strip()
 
 
 def write_fits(path: str, data: np.ndarray, header: fits.Header):
@@ -171,9 +211,10 @@ def op_moment(args) -> dict:
         s1 += w * vals[ch]
         count += ok
     none = count == 0
+    bu, bu_src = unit_of(c, args.declared_unit)
     if order == 0:
         out = np.where(none, np.nan, s0)
-        bunit = f"{c.h.get('BUNIT')} {unit}".strip() if "BUNIT" in c.h else f"(brightness unit unresolved) {unit}"
+        bunit = f"{bu} {unit}".strip() if bu else f"(brightness unit unresolved) {unit}"
     else:
         with np.errstate(all="ignore"):
             m1 = np.where((s0 > 0) & ~none, s1 / np.where(s0 > 0, s0, 1.0), np.nan)
@@ -191,10 +232,16 @@ def op_moment(args) -> dict:
             bunit = unit
     h = image_header(c, {"BUNIT": bunit, "VESQOP": f"moment{order}"})
     h["HISTORY"] = f"Vesqira moment {order} over channels {c0}-{c1}" + (f", values >= {thr}" if thr is not None else "")
+    summary = {"order": order, "channels": [c0, c1], "threshold": thr, "unit": bunit,
+               "axis": name, "pixels_without_data": int(np.isnan(out).sum()),
+               "policy": "NaN, BLANK and values below the threshold are excluded; a pixel with no selected value is NaN, never 0; moments 1 and 2 need a positive total"}
+    if order == 0:                                    # moments 1 and 2 are velocities: the brightness unit is not in them
+        if bu_src == "user":
+            h["VESQBUNS"] = "user"                              # the BUNIT written above is that brightness unit times the spectral one
+            h["HISTORY"] = f"Vesqira: brightness unit {bu} was declared by the author for the input; the file has no BUNIT"
+        note_unit(summary, bu_src, bu)
     write_fits(args.out, out.astype("<f4"), h)
-    return {"ok": True, "op": "moment", "summary": {"order": order, "channels": [c0, c1], "threshold": thr, "unit": bunit,
-            "axis": name, "pixels_without_data": int(np.isnan(out).sum()),
-            "policy": "NaN, BLANK and values below the threshold are excluded; a pixel with no selected value is NaN, never 0; moments 1 and 2 need a positive total"}}
+    return {"ok": True, "op": "moment", "summary": summary}
 
 
 def shifted_header(c: Cube, drop: set[int], shifts: dict[int, float], shape_new: dict[int, int]) -> fits.Header:
@@ -244,9 +291,14 @@ def _write_cube(c: Cube, data: np.ndarray, h: fits.Header, op: str, summary: dic
             del h[k]
     h["VESQOP"] = op
     h["HISTORY"] = f"Vesqira {op} {json.dumps(summary)}"
+    bu, bu_src = unit_of(c, args.declared_unit)
+    if bu_src == "user":
+        stamp_user_unit(h, bu)
     write_fits(args.out, arr, h)
-    return {"ok": True, "op": op, "summary": {**summary, "shape": list(arr.shape),
-            "policy": "values are copied unchanged; the WCS reference pixel is shifted so coordinates stay exact"}}
+    out = {**summary, "shape": list(arr.shape),
+           "policy": "values are copied unchanged; the WCS reference pixel is shifted so coordinates stay exact"}
+    note_unit(out, bu_src, bu)
+    return {"ok": True, "op": op, "summary": out}
 
 
 def op_align(args) -> dict:
@@ -294,12 +346,17 @@ def op_align(args) -> dict:
             h[key] = src.h[key]
     h["VESQOP"] = "align"
     h["HISTORY"] = f"Vesqira align: {method} reprojection onto the grid of the reference; resolution is NOT matched"
+    bu, bu_src = unit_of(src, args.declared_unit)
+    if bu_src == "user":
+        stamp_user_unit(h, bu)
     write_fits(args.out, data, h)
-    return {"ok": True, "op": "align", "summary": {"method": method, "shape": list(data.shape),
-            "source_frame": src.sky_facts().get("frame"), "reference_frame": ref.sky_facts().get("frame"),
-            "pixels_without_data": int(np.isnan(data).sum()),
-            "policy": "Pixel values are interpolated onto the reference grid, which changes noise correlation and does not match angular resolution; "
-                      "pixels outside the input's footprint are NaN, never 0"}}
+    summary = {"method": method, "shape": list(data.shape),
+               "source_frame": src.sky_facts().get("frame"), "reference_frame": ref.sky_facts().get("frame"),
+               "pixels_without_data": int(np.isnan(data).sum()),
+               "policy": "Pixel values are interpolated onto the reference grid, which changes noise correlation and does not match angular resolution; "
+                         "pixels outside the input's footprint are NaN, never 0"}
+    note_unit(summary, bu_src, bu)
+    return {"ok": True, "op": "align", "summary": summary}
 
 
 def op_axial_diff(args) -> dict:
@@ -353,28 +410,34 @@ def op_scalar_diff(args) -> dict:
     b = open_cube(args.reference)
     if a.channels != 1 or b.channels != 1 or (a.shape[a.y], a.shape[a.x]) != (b.shape[b.y], b.shape[b.x]):
         fail("both maps must be single planes of the same shape")
-    ua, ub = a.h.get("BUNIT"), b.h.get("BUNIT")
-    if not isinstance(ua, str) or not isinstance(ub, str) or not ua.strip() or not ub.strip():
-        fail("both maps must declare their brightness unit (BUNIT); none is assumed")
-    if ua.strip() != ub.strip():
-        fail("the maps declare different brightness units; convert one first, nothing is converted here")
+    ua, sa = unit_of(a, args.declared_unit)
+    ub, sb = unit_of(b, args.declared_unit_ref)
+    if not ua or not ub:
+        fail("both maps must have a brightness unit, from their BUNIT or declared by you; none is assumed")
+    if ua != ub:
+        fail("the maps have different brightness units; convert one first, nothing is converted here")
     _, pa = next(planes(a, 0, 0))
     _, pb = next(planes(b, 0, 0))
     with np.errstate(all="ignore"):
         d = pa - pb
     ok = np.isfinite(d)
     n = int(ok.sum())
-    summary = {"pixels_compared": n, "pixels_without_data": int((~ok).sum()), "unit": ua.strip(),
+    summary = {"pixels_compared": n, "pixels_without_data": int((~ok).sum()), "unit": ua,
                "mean": None, "median": None, "rms": None, "min": None, "max": None}
     if n:
         v = d[ok]
         summary.update(mean=float(v.mean()), median=float(np.median(v)), rms=float(np.sqrt((v ** 2).mean())), min=float(v.min()), max=float(v.max()))
-    h = image_header(a, {"BUNIT": ua.strip(), "VESQOP": "scalar_diff"})
+    h = image_header(a, {"BUNIT": ua, "VESQOP": "scalar_diff"})
     h["HISTORY"] = "Vesqira scalar difference (input minus reference), same grid, same declared unit"
+    by = [w for w, sr in (("the input", sa), ("the reference", sb)) if sr == "user"]
+    if by:
+        h["VESQBUNS"] = "user"
+        h["HISTORY"] = f"Vesqira: brightness unit {ua} was declared by the author for {' and '.join(by)}; that file has no BUNIT"
     write_fits(args.out, d.astype("<f4"), h)
     summary["policy"] = ("Input minus reference. A pixel without a value in either map is NaN, never 0; a recorded 0 is a value. The grids were checked "
                          "for agreement before this ran, but different resolution (beam) between the maps is not corrected: a difference of maps with "
                          "different beams mixes resolution with signal. The mean is a plain arithmetic mean of the finite differences.")
+    note_unit(summary, "user" if by else "file", ua, " and ".join(by))
     return {"ok": True, "op": "scalar_diff", "summary": summary}
 
 
@@ -434,8 +497,8 @@ def op_convolve(args) -> dict:
         kernel /= kernel.sum()
         n_pix = half
     area = 1.0
-    bunit = str(h.get("BUNIT", ""))
-    per_beam = "beam" in bunit.lower()
+    bunit, bu_src = unit_of(c, args.declared_unit)
+    per_beam = "beam" in (bunit or "").lower()
     if per_beam:
         area = (tmaj * tmin) / (smaj * smin)
     n = len(c.shape)
@@ -468,12 +531,23 @@ def op_convolve(args) -> dict:
     summary = {"from_beam_arcsec": [smaj, smin, spa], "to_beam_arcsec": [tmaj, tmin, tpa], "kernel_half_width_pixels": n_pix,
                "rescaled_by_beam_area": per_beam, "area_ratio": area}
     nh["HISTORY"] = f"Vesqira convolve {json.dumps(summary)}"
+    if bu_src == "user":
+        stamp_user_unit(nh, bunit)
     write_fits(args.out, data, nh)
-    return {"ok": True, "op": "convolve", "summary": {**summary, "shape": list(data.shape),
-            "pixels_without_data": int(np.isnan(data).sum()),
-            "policy": "Smoothed with a Gaussian kernel to the target beam; pixels without a value stay without a value and neighbours are "
-                      "averaged over the finite pixels the kernel reaches. Noise becomes correlated over the new beam. "
-                      "Units in K are smoothed as they are; Jy/beam values are rescaled by the beam-area ratio."}}
+    out = {**summary, "shape": list(data.shape),
+           "pixels_without_data": int(np.isnan(data).sum()),
+           "policy": "Smoothed with a Gaussian kernel to the target beam; pixels without a value stay without a value and neighbours are "
+                     "averaged over the finite pixels the kernel reaches. Noise becomes correlated over the new beam. "
+                     "Units in K are smoothed as they are; Jy/beam values are rescaled by the beam-area ratio."}
+    if bu_src == "unresolved":
+        # not rescaled is an assumption of surface brightness, and nothing says so: the result says it
+        out["policy"] += (" The file has no BUNIT and none was declared, so the values were smoothed as they are, as if in a surface-brightness unit; "
+                          "if they are per beam, they need rescaling by the beam-area ratio.")
+    note_unit(out, bu_src, bunit)
+    if bu_src == "user":
+        out["policy"] += (" Whether the values are per beam was read from that text (a unit containing \"beam\" is rescaled by the beam-area ratio): "
+                          f"{'rescaled' if per_beam else 'not rescaled'}.")
+    return {"ok": True, "op": "convolve", "summary": out}
 
 
 OPS = {"convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
@@ -499,6 +573,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--target-bmin", type=float)
     ap.add_argument("--target-bpa", type=float, default=0.0)
     ap.add_argument("--method", choices=["interp", "nearest", "exact"], default="interp")
+    ap.add_argument("--declared-unit")        # the brightness unit its author declared for the input, only for a file without BUNIT
+    ap.add_argument("--declared-unit-ref")    # the same for the reference
     args = ap.parse_args(argv)
     try:
         if args.op != "stats" and not args.out:
