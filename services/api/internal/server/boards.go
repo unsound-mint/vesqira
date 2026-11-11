@@ -828,9 +828,19 @@ func (s *Server) boardItem(op string) http.HandlerFunc {
 		var err error
 		switch op {
 		case "remove":
-			err = s.Boards.RemoveItem(id, int(pos))
+			// the body is optional: a client that does not guard sends {} (or nothing)
+			var in struct {
+				Expect *boards.Expect `json:"expect"`
+			}
+			if r.ContentLength != 0 && !body(w, r, 4<<10, &in, true) {
+				return
+			}
+			err = s.Boards.RemoveItem(id, int(pos), in.Expect)
 		case "move":
-			var in struct{ Delta int }
+			var in struct {
+				Delta  int
+				Expect *boards.Expect `json:"expect"`
+			}
 			if !body(w, r, 4<<10, &in, true) {
 				return
 			}
@@ -838,13 +848,23 @@ func (s *Server) boardItem(op string) http.HandlerFunc {
 				fail(w, 400, "delta must be -1 or 1")
 				return
 			}
-			err = s.Boards.MoveItem(id, int(pos), in.Delta)
+			err = s.Boards.MoveItem(id, int(pos), in.Delta, in.Expect)
 		case "note":
-			var in struct{ Note string }
+			var in struct {
+				Note   string
+				Expect *boards.Expect `json:"expect"`
+			}
 			if !body(w, r, 16<<10, &in, true) {
 				return
 			}
-			err = s.Boards.SetNote(id, int(pos), in.Note)
+			err = s.Boards.SetNote(id, int(pos), in.Note, in.Expect)
+		}
+		var ce boards.ConflictError
+		if errors.As(err, &ce) {
+			// the guard failed: nothing was changed; the reply carries the board as it is now
+			cur, _ := s.boardByID(r.Context(), id, false)
+			writeJSON(w, 409, map[string]any{"error": ce.Error(), "board": cur})
+			return
 		}
 		if err != nil {
 			s.boardErr(w, err)

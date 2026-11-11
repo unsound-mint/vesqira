@@ -20,6 +20,7 @@ var allowed = map[string][]string{
 	"arch": {}, "audit": {}, "lifecycle": {}, "backup": {}, "notify": {}, "compat": {}, "derived": {}, "regions": {}, "masks": {"schema"}, "sourceroot": {}, "identity": {}, "worker": {}, "schema": {}, "vgtlog": {}, "scene": {},
 	"notionimport": {}, "publish": {}, "imgmeta": {},
 	"transfers":  {"schema"},
+	"history":    {"schema"},
 	"boards":     {"schema"},
 	"reports":    {"publish"},
 	"catalog":    {"identity", "schema"},
@@ -28,10 +29,10 @@ var allowed = map[string][]string{
 	"runs":       {"schema"},
 	"discover":   {"runs"},
 	"projects":   {"discover"},
-	"fullschema": {"audit", "boards", "derived", "hosts", "jobs", "masks", "notify", "projects", "regions", "reports", "runs", "sweeps", "transfers"},
+	"fullschema": {"audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "projects", "regions", "reports", "runs", "sweeps", "transfers"},
 	"hosts":      {"worker"},
 	"review":     {"boards"},
-	"server":     {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "sweeps", "transfers", "vgtlog", "worker"},
+	"server":     {"audit", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "sweeps", "transfers", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a

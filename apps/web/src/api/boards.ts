@@ -44,9 +44,11 @@ export const addToBoard = (boardId: number, figureId: number) => post<Board>(`/a
 export const addJobToBoard = (boardId: number, jobId: number) => post<Board>(`/api/boards/${boardId}/items`, { jobId });
 /** Replaces a job panel with the figure saved from its result, in the same place and with the same note. */
 export const pinJobItem = (boardId: number, pos: number, figureId: number) => post<Board>(`/api/boards/${boardId}/items/${pos}/pin`, { figureId });
-export const removeItem = (boardId: number, pos: number) => post<Board>(`/api/boards/${boardId}/items/${pos}/remove`, {});
-export const moveItem = (boardId: number, pos: number, delta: -1 | 1) => post<Board>(`/api/boards/${boardId}/items/${pos}/move`, { delta });
-export const setNote = (boardId: number, pos: number, note: string) => post<Board>(`/api/boards/${boardId}/items/${pos}/note`, { note });
+/** What the client last saw at the position: the server applies the edit only if the panel there still matches, else 409 (ADR 0057). */
+export type BoardExpect = Schemas["BoardExpect"];
+export const removeItem = (boardId: number, pos: number, expect?: BoardExpect) => post<Board>(`/api/boards/${boardId}/items/${pos}/remove`, expect ? { expect } : {});
+export const moveItem = (boardId: number, pos: number, delta: -1 | 1, expect?: BoardExpect) => post<Board>(`/api/boards/${boardId}/items/${pos}/move`, { delta, ...(expect ? { expect } : {}) });
+export const setNote = (boardId: number, pos: number, note: string, expect?: BoardExpect) => post<Board>(`/api/boards/${boardId}/items/${pos}/note`, { note, ...(expect ? { expect } : {}) });
 export const publish = (boardId: number, label: string, hours: number, extra: { question?: string; supersedes?: number; reason?: string } = {}) =>
   post<Schemas["PublishResponse"]>(`/api/boards/${boardId}/publish`, { label, hours, ...extra });
 export const preflight = (boardId: number, question: string) => call<Preflight>(`/api/boards/${boardId}/preflight?question=${encodeURIComponent(question)}`);

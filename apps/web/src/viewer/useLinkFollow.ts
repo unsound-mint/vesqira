@@ -54,7 +54,7 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
         : followWcs(group, scenes[from], scenes[to], { sky: sky[dir].map, channels: chan[dir].map, fromImage: images[from], toImage: images[to] }, only);
       for (const a of actions) {
         mine.current[facet][to] = true;
-        v[to].dispatch(a);
+        v[to].dispatchFact(a); // a pane following its partner is not a command of the person's: its undo stays its own
       }
       if (facet === "view") led.current = from;
     };

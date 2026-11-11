@@ -15,6 +15,7 @@ const datasets = (page: Page) => page.getByRole("list", { name: "Datasets" });
 
 async function ensureRegistered(page: Page, file: string) {
   const row = datasets(page).getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}`) }).first();
+  await expect(page.getByText("Loading datasets…")).toHaveCount(0); // an unloaded list looks empty: registering twice races the first reply
   if (await row.count()) return;
   await page.getByLabel("Register a FITS file").fill(path.join(data, file));
   await page.getByRole("button", { name: "Register", exact: true }).click();

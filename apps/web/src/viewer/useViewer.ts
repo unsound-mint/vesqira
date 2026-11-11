@@ -11,8 +11,9 @@ import type { PickedSource } from "./SourceRow";
 import { savedShape } from "../api/regions";
 import type { ColormapId } from "./colormaps";
 import type { RangeMode, Stretch } from "./render";
-import { initialPane, orientationOf, paneReducer, regionsOf, ORIENTATION_ID, REGIONS_ID } from "../scene/scene";
-import type { PaneAction, SceneRegion, ScenePoint } from "../scene/scene";
+import { initialPane, orientationOf, regionsOf, ORIENTATION_ID, REGIONS_ID } from "../scene/scene";
+import type { PaneAction, Scene, SceneRegion, ScenePoint } from "../scene/scene";
+import { initialViewer, redoLabel, undoLabel, viewerReducer } from "../undo/sceneCommands";
 
 export type Pixel = { x: number; y: number };
 
@@ -46,8 +47,19 @@ export function useViewer(dataset: Dataset | null) {
   const [planeError, setPlaneError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [pane, dispatch] = useReducer(paneReducer, null, () => initialPane(datasetId, interp !== null));
+  const [vstate, dispatchViewer] = useReducer(viewerReducer, null, () => initialViewer(initialPane(datasetId, interp !== null)));
+  const pane = vstate.pane;
   const scene = pane.scene;
+  // Every person's change to the scene is a command with an undo (undo/sceneCommands.ts); the time lets a drag or a scrub be one command.
+  const dispatch = useCallback((a: PaneAction) => dispatchViewer({ ...a, at: Date.now() }), []);
+  /** For what follows other state (a linked pane, a shared scale): applied, not a command of the person's. */
+  const dispatchFact = useCallback((a: PaneAction) => dispatchViewer({ type: "fact", action: a }), []);
+  const undo = useCallback(() => dispatchViewer({ type: "undo" }), []);
+  const redo = useCallback(() => dispatchViewer({ type: "redo" }), []);
+  /** Replaces the whole scene (continue from a history step); undoable like any command. */
+  const applyScene = useCallback((s: Scene, name: string) => dispatchViewer({ type: "applyScene", scene: s, name, at: Date.now() }), []);
+  const undoName = undoLabel(vstate.undo);
+  const redoName = redoLabel(vstate.undo);
   const [hover, setHover] = useState<Pixel | null>(null);
   const [pinned, setPinned] = useState<Pixel | null>(null);
   // the catalog row picked on the map or in the overlay's list (ephemeral, like the pinned pixel)
@@ -383,7 +395,7 @@ export function useViewer(dataset: Dataset | null) {
   const pixelValue = pixelNumber;
 
   return {
-    scene, dispatch: dispatch as (a: PaneAction) => void, datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
+    scene, dispatch, dispatchFact, undo, redo, undoName, redoName, applyScene, datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
     zoom, setZoom, setCentre, colormap, setColormap, stretch, setStretch, range, setRange, customLimits, setCustomLimits, setScaleGroup,
     hover, setHover, mirror, setMirror, pinned, setPinned, picked, setPicked, probe, pixelValue, coord, coordError,
     conv, setConv, offers, convError, convertedNow: converted && converted.key === convKey ? converted.r : null,

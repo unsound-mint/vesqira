@@ -35,7 +35,8 @@ import (
 // Version 17: a host may carry the argv of the user's VPN client (hosts.vpn_command, hosts.vpn_disconnect; ADR 0029 step 3).
 // Version 18: interpretation tiers (tier, mapping_version on interpretations, dataset_units and catalog_declarations, existing
 // rows migrated from declared_by) and typed masks (masks; ADR 0055).
-const Version = 18
+// Version 19: the exploration history, a bounded list of viewer scenes per project (exploration_steps; ADR 0057).
+const Version = 19
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -62,6 +63,7 @@ var migrations = []Migration{
 	{To: 16, Name: "run environment and controls", Up: runEnvironmentAndControls},
 	{To: 17, Name: "host VPN commands", Up: hostVPNCommands},
 	{To: 18, Name: "interpretation tiers and typed masks", Up: tiersAndMasks},
+	{To: 19, Name: "exploration history", Up: explorationHistory},
 }
 
 // MasksTable is the table of typed masks (ADR 0055): one row per derived mask file, with what the mask is for (the dataset), what
@@ -229,6 +231,27 @@ const TransfersTable = `CREATE TABLE IF NOT EXISTS transfers(
 -- until the end, so the destination folder alone cannot say that a name is taken.
 CREATE UNIQUE INDEX IF NOT EXISTS transfers_live_name ON transfers(CASE direction WHEN 'download' THEN 0 ELSE host_id END, dest_dir, final_name)
 	WHERE final_name<>'' AND state IN ('queued','waiting','running','verifying')`
+
+// ExplorationStepsTable is the viewer's exploration history (ADR 0057): per project (0 = none open), one row per meaningful
+// scene state. parent_id is the step it was reached from (NULL for the first of a branch, or when that step was pruned); it is
+// deliberately not a foreign key, because pruning the oldest rows must not rewrite or delete their descendants. scene is the
+// scene/1 JSON, validated before it is stored. The history package creates it for a fresh install and the migration for an
+// upgraded one.
+const ExplorationStepsTable = `CREATE TABLE IF NOT EXISTS exploration_steps(
+	id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL DEFAULT 0, parent_id INTEGER,
+	dataset_id INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, scene TEXT NOT NULL, at INTEGER NOT NULL)`
+
+// ExplorationStepsIndex serves "the newest steps of a project" and pruning.
+const ExplorationStepsIndex = `CREATE INDEX IF NOT EXISTS exploration_steps_project ON exploration_steps(project_id, id)`
+
+// explorationHistory adds the history table. Nothing to carry over: no step was kept before.
+func explorationHistory(tx *sql.Tx) error {
+	if _, err := tx.Exec(ExplorationStepsTable); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ExplorationStepsIndex)
+	return err
+}
 
 // transfersTable adds the queue table. There is nothing to carry over: no transfer existed before.
 func transfersTable(tx *sql.Tx) error {
