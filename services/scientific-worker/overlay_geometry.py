@@ -24,7 +24,8 @@ import orientation as ori
 
 MAX_VERTICES = 200_000          # contour or grid vertices sent to the browser (1.6 MB of float32)
 MAX_SEGMENTS = 20_000           # orientation samples
-MAX_TRACE_WORK = 1 << 28        # overlay pixels x levels traced for one request (a few seconds of contourpy at most)
+MAX_TRACED_VERTICES = 2_000_000 # traced on the overlay grid, before the WCS transform (a few seconds of astropy at most)
+MAX_TRACE_WORK = 1 << 27       # overlay pixels x levels traced for one request: 8 levels of a 4096^2 plane, about 2 s each when noisy (measured)
 SIMPLIFY_TOLERANCES = (0.1, 0.25, 0.5, 1.0, 2.0, 4.0)   # base pixels, tried in order when over the vertex budget
 FOOTPRINT_SAMPLES = 33          # per axis, when testing whether two footprints overlap
 CLIP_MARGIN = 2.0               # base pixels kept outside the image so a line leaves the edge cleanly
@@ -57,21 +58,23 @@ def frame_label(f) -> str:
 class Sky:
     """A file's two-axis celestial WCS and the celestial frame it is in, refused when either is not established."""
 
-    def __init__(self, c, who: str):
+    def __init__(self, c, who: str, relate: bool = True):
+        """relate: the frame is used to relate this file to another file or another frame. A file drawn on itself (its own
+        beam or contours) needs no declared frame, since nothing is converted."""
         try:
             self.w = ori.celestial_wcs(c)
         except ori.Undeclared as e:
             raise Refusal(f"{who}: {e}") from e
         facts = c.sky_facts()
         self.status = facts.get("frame_status")
-        if self.status not in ("declared", "inferred"):
+        if relate and self.status not in ("declared", "inferred"):
             # wcslib would assume ICRS (or FK4/FK5 from EQUINOX); relating two files on an assumed frame is not done
             raise Refusal(f"{who}: the celestial frame is not declared (RADESYS, or EQUINOX for FK4/FK5), so it cannot be related to another file")
         try:
             self.frame = ori.sky_frame(self.w)
         except ori.Undeclared as e:
             raise Refusal(f"{who}: {e}") from e
-        self.label = frame_label(self.frame)
+        self.label = frame_label(self.frame) if self.status in ("declared", "inferred") else "its own frame (not declared)"
         self.shape = (c.shape[c.x], c.shape[c.y])   # (width, height)
 
     def same_frame(self, other: "Sky") -> bool:
@@ -179,9 +182,10 @@ def rdp(pts: np.ndarray, tol: float) -> np.ndarray:
     return pts[keep]
 
 
-def within_budget(paths: list, budget: int = MAX_VERTICES):
+def within_budget(paths: list, budget: int | None = None):
     """(paths, simplified): paths as they are when within the budget, otherwise simplified with the smallest tolerance that
     fits. Refused when even the largest tolerance does not."""
+    budget = MAX_VERTICES if budget is None else budget
     before = sum(len(p) for _, p in paths)
     if before <= budget:
         return paths, None
@@ -235,8 +239,8 @@ def contours(base_cube, ov_cube, spec: dict, ov_unit: tuple, same_dataset: bool)
     want = spec.get("unit")
     if (want or None) != (unit or None):
         raise Refusal(f"the levels are written in {want or 'no unit'}, but the overlay's unit is {unit or 'not stated'}; set the levels again")
-    base = Sky(base_cube, "the base map")
-    src = Sky(ov_cube, "the contoured map")
+    base = Sky(base_cube, "the base map", relate=not same_dataset)
+    src = Sky(ov_cube, "the contoured map", relate=not same_dataset)
     check_overlap(src, base, "the contoured map")
     try:
         import contourpy
@@ -253,6 +257,9 @@ def contours(base_cube, ov_cube, spec: dict, ov_unit: tuple, same_dataset: bool)
         lines = gen.lines(lev)
         per_level.append(len(lines))
         traced.extend((i, np.asarray(ln, dtype=float)) for ln in lines if len(ln) >= 2)
+        raw = sum(len(p) for _, p in traced)
+        if raw > MAX_TRACED_VERTICES:     # before the WCS transform, which costs far more per vertex than tracing
+            raise Refusal(f"the levels trace more than {MAX_TRACED_VERTICES} vertices (a level close to the noise traces every pixel); use levels further from it or fewer levels")
     paths = []
     if traced:
         allpts = np.concatenate([p for _, p in traced])
@@ -290,8 +297,8 @@ def orientation_samples(base_cube, ov_cube, rel_cube, spec: dict, interp: dict, 
         raise Refusal(f"orientation map: {e}") from e
     if ov_cube.channels != 1:
         raise Refusal("an orientation map is a single plane")
-    base = Sky(base_cube, "the base map")
-    src = Sky(ov_cube, "the orientation map")
+    base = Sky(base_cube, "the base map", relate=not same_dataset)
+    src = Sky(ov_cube, "the orientation map", relate=not same_dataset)
     check_overlap(src, base, "the orientation map")
     needs_rel = spec.get("opacity") == "reliability" or spec.get("length") == "reliability" or spec.get("threshold") is not None
     if needs_rel and rel_cube is None and (spec.get("length") == "reliability" or spec.get("threshold") is not None):
@@ -380,7 +387,7 @@ def beam(base_cube, src_cube, spec: dict, same_dataset: bool, who: str) -> tuple
         if bmaj != bmin:
             raise Refusal(f"the header of {who} gives an elliptical beam without BPA, so its orientation is unknown")
         bpa, note = 0.0, "circular beam: the header has no BPA and none is needed"
-    base = Sky(base_cube, "the base map")
+    base = Sky(base_cube, "the base map", relate=not same_dataset and bmaj != bmin)
     pa = bpa
     if not same_dataset and bmaj != bmin:
         src = Sky(src_cube, who)

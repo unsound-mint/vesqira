@@ -6,7 +6,7 @@ import { blobToBase64, captionLines, composeImageFigure, composeSpectrumFigure, 
 import { figureScene, overlaysPending, sceneStatable } from "../scene/figureScene";
 import { overlayBasis } from "../scene/basis";
 import { needsGeometry } from "../scene/geometry";
-import { sceneMarks } from "../scene/overlays";
+import { sceneLayers } from "../scene/overlays";
 import type { Scene } from "../scene/scene";
 import { limits } from "./render";
 import type { Viewer } from "./useViewer";
@@ -57,7 +57,7 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
       source: src,
       planeW: plane.head.width,
       planeH: plane.head.height,
-      marks: sceneMarks(drawn, { plane, scale, interp: v.interp, reliability: v.reliability, geometry: v.geometry }),
+      layers: sceneLayers(drawn, { plane, scale, interp: v.interp, reliability: v.reliability, geometry: v.geometry }).map((l) => l.marks),
       legend: axial ? { kind: "cyclic", lut: lut("twilight") } : { kind: "scalar", lut: lut(v.colormap), limits: lim, unit: view.bunit },
       title: heading,
       captions: [...captions, ...overlayLines],

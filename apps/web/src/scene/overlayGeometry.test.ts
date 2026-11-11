@@ -144,7 +144,7 @@ describe("a figure of overlays from other datasets", () => {
   const beam: SceneOverlay = { id: "beam", kind: "beam", datasetId: 2, visible: true };
   const hidden: SceneOverlay = { id: "grid", kind: "grid", datasetId: 1, visible: false, frame: "galactic" };
 
-  it("records the sigma and the step it drew with, leaves out a refused overlay and keeps a hidden one", () => {
+  it("records the sigma and the step it drew with, and leaves out a refused or hidden overlay", () => {
     let s = baseScene();
     for (const o of [co, vgt, beam, hidden]) s = sceneReducer(s, { type: "addOverlay", overlay: o });
     const og = parseGeometry(frame({ kind: "orientation", dtype: "<f4", coords: "", placement, segments: 0, step: 6, spacing_px: 4.2, reliability: { p99: 1 } }, []));
@@ -160,7 +160,7 @@ describe("a figure of overlays from other datasets", () => {
     expect(byId.co).toMatchObject({ levels: { mode: "sigma", multiples: [-3, 3, 5, 10], sigma: 0.17 } });
     expect(byId.vgt).toMatchObject({ sampling: { mode: "step", step: 6 }, opacity: "reliability", reliabilityId: 5 });
     expect(byId.beam).toBeUndefined();
-    expect(byId.grid).toEqual(hidden);
+    expect(byId.grid).toBeUndefined();
   });
 
   it("states each overlay's basis, or the reason it is not drawn", () => {

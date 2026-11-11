@@ -25,7 +25,7 @@ Axis order, direction and meaning come from the header, not from habit.
 
 ## 3. It will not quietly combine measurements that do not match
 
-Two maps are compared only when their grids, units and definitions agree. Every difference is listed. Putting a cube on another grid (reprojection) is a separate, visible step and not the same as matching resolution; convolution to a common beam refuses what it cannot do.
+Two maps are compared only when their grids, units and definitions agree. Every difference is listed. Putting a cube on another grid (reprojection) is a separate, visible step and not the same as matching resolution; convolution to a common beam refuses what it cannot do. Drawing another map's contours, orientation lines or beam over a map is not a comparison of values: they are placed by WCS geometry, converting celestial frames, and the other map is never resampled onto the grid (ADR 0042).
 
 - Grid and unit comparison: `services/api/internal/compat/compat_test.go` (`TestEveryDifferenceIsReported`, `TestMissingUnitOnBothSidesIsNotAMatch`, `TestUnresolvedOnBothSidesIsNotAMatch`).
 - Comparison is offered only for the same definition and unit: `apps/web/src/viewer/compareInspector.test.tsx`.

@@ -195,28 +195,42 @@ class Geometry(unittest.TestCase):
         self.assertIn("orientation map", head["error"])
 
     def test_vertex_budget_is_kept_by_simplifying_and_reported(self):
-        n = 400
-        rng = np.random.default_rng(3)
-        data = rng.normal(0.0, 1.0, size=(n, n))                 # noise: very many contour vertices at level 0
-        h = header(n=n, scale=SCALE / 10, extra={"RADESYS": "ICRS"})
-        f = self.file("busy.fits", data, h)
-        old = og.MAX_VERTICES
+        paths = [(0, np.column_stack([np.arange(50.0), np.sin(np.arange(50.0)) * 0.01]))] * 10
+        out, simplified = og.within_budget(paths, budget=100)
+        self.assertLessEqual(simplified["vertices_after"], 100)
+        self.assertEqual(simplified["vertices_before"], 500)
+        for _, p in out:                                         # within the reported tolerance of the original
+            self.assertLessEqual(np.max(np.abs(p[:, 1])), 0.01 + 1e-12)
+        # through the operation itself, with the budgets lowered in this process
+        import plane_worker as pw
+        n = 120
+        data = np.random.default_rng(3).normal(0.0, 1.0, size=(n, n))     # noise: very many vertices at level 0
+        f = self.file("busy.fits", data, header(n=n, scale=SCALE / 10, extra={"RADESYS": "ICRS"}))
+        cube = pw.Cube(str(f))
+        spec = {"kind": "contours", "channel": 0, "levels": {"mode": "list", "values": [-0.5, 0.0, 0.5]}}
+        old = (og.MAX_VERTICES, og.MAX_TRACED_VERTICES)
         try:
-            paths = [(0, np.column_stack([np.arange(50.0), np.sin(np.arange(50.0)) * 0.01]))] * 10
-            out, simplified = og.within_budget(paths, budget=100)
-            self.assertIsNotNone(simplified)
-            self.assertLessEqual(simplified["vertices_after"], 100)
-            self.assertEqual(simplified["vertices_before"], 500)
-            for _, p in out:                                     # within the reported tolerance of the original
-                self.assertLessEqual(np.max(np.abs(p[:, 1])), 0.01 + 1e-12)
-        finally:
-            og.MAX_VERTICES = old
-        head, payload = self.ask(f, f, {"kind": "contours", "channel": 0, "levels": {"mode": "list", "values": [-0.5, 0.0, 0.5]}})
-        self.assertTrue(head["ok"], head)
-        if head["simplified"] is not None:
-            self.assertLessEqual(head["vertices"], og.MAX_VERTICES)
-            self.assertGreater(head["simplified"]["vertices_before"], og.MAX_VERTICES)
+            og.MAX_VERTICES = 15000
+            head, _ = og.contours(cube, cube, spec, (None, "unresolved"), True)
+            self.assertLessEqual(head["vertices"], 15000)
+            self.assertGreater(head["simplified"]["vertices_before"], 15000)
             self.assertGreater(head["simplified"]["tolerance_px"], 0)
+            og.MAX_TRACED_VERTICES = 1000                         # refused before any vertex is transformed
+            with self.assertRaisesRegex(og.Refusal, "trace more than 1000 vertices"):
+                og.contours(cube, cube, spec, (None, "unresolved"), True)
+        finally:
+            og.MAX_VERTICES, og.MAX_TRACED_VERTICES = old
+
+    def test_a_file_drawn_on_itself_needs_no_declared_frame(self):
+        h = header(n=41, extra={"BUNIT": "K", "BMAJ": 3 / 60.0, "BMIN": 2 / 60.0, "BPA": 10.0})    # RA/Dec, no RADESYS or EQUINOX
+        f = self.file("own.fits", blob(41, 20, 20), h)
+        head, _ = self.ask(f, f, {"kind": "contours", "channel": 0, "levels": {"mode": "list", "values": [5.0]}, "unit": "K"})
+        self.assertTrue(head["ok"], head)
+        head, _ = self.ask(f, f, {"kind": "beam"})
+        self.assertTrue(head["ok"], head)
+        head, _ = self.ask(f, f, {"kind": "grid", "frame": "icrs"})       # a grid relates it to a named frame
+        self.assertFalse(head["ok"])
+        self.assertIn("RADESYS", head["error"])
 
     def test_rdp_keeps_shape_within_tolerance(self):
         t = np.linspace(0, 2 * np.pi, 500)

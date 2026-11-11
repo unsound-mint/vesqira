@@ -17,7 +17,7 @@ import type { Scene, SceneDisplay, SceneOverlay } from "./scene";
  *   reliability map set their opacity, naming that map;
  * - only the working region is drawn on a figure, so saved regions are left out;
  * - overlays placed by the worker (contours, a beam, the grid, another map's lines) are kept only when their geometry was
- *   drawn: a refused one is left out, k x sigma levels record the sigma used, and another map's lines record the step the
+ *   drawn: a hidden or refused one is left out, k x sigma levels record the sigma used, and another map's lines record the step the
  *   worker sampled at and whether its declared reliability set their opacity;
  * - the figure shows the whole plane, so the view is the fitted one.
  */
@@ -39,10 +39,8 @@ export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scal
   for (const ov of live.overlays) {
     if (needsGeometry(ov, live)) {
       // contours, a beam, the grid, another map's orientation lines: drawn from the worker's geometry
-      if (!ov.visible) {
-        overlays.push(ov); // kept as set; not drawn
-        continue;
-      }
+      // hidden or refused: not in the picture, so not in its scene (a hidden one is not checked or authorized either)
+      if (!ov.visible) continue;
       const e = o.geometry?.[ov.id];
       if (!e || e.status !== "ready") continue; // refused: not in the picture, so not in its scene (saveFigure waits for any still computing)
       if (ov.kind === "contours" && ov.levels.mode === "sigma" && e.g.kind === "contours" && e.g.head.sigma?.value) {
