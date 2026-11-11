@@ -102,7 +102,7 @@ PATH=%s:$PATH exec sh -c "$cmd"
 	os.WriteFile(sshBin, []byte(sshScript), 0o755)
 
 	files := map[string][]byte{}
-	for _, f := range []string{"plane_worker.py", "fits_header.py", "convert.py", "orientation.py"} {
+	for _, f := range []string{"plane_worker.py", "fits_header.py", "convert.py", "orientation.py", "overlay_geometry.py"} {
 		b, _ := os.ReadFile(filepath.Join(repo, "services/scientific-worker", f))
 		files[f] = b
 	}

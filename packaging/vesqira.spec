@@ -13,6 +13,7 @@ Source0:        vesqira-%{version}.tar.gz
 BuildArch:      x86_64
 Requires:       python3 >= 3.11
 Requires:       python3-astropy
+Requires:       python3-contourpy
 Requires:       python3-numpy
 Requires:       python3-reproject
 Requires:       openssh-clients

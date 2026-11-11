@@ -53,7 +53,7 @@ func TestRemoteProjectIsWalkedByTheHostWorkerWithFakeSSH(t *testing.T) {
 	put(t, outside, "secret.txt", "s")
 
 	files := map[string][]byte{}
-	for _, f := range []string{"plane_worker.py", "fits_header.py", "convert.py", "orientation.py"} {
+	for _, f := range []string{"plane_worker.py", "fits_header.py", "convert.py", "orientation.py", "overlay_geometry.py"} {
 		b, err := os.ReadFile(filepath.Join(repo, "services/scientific-worker", f))
 		if err != nil {
 			t.Fatal(err)
