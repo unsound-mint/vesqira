@@ -10884,6 +10884,7 @@
       "dataset",
       "orientation",
       "catalog",
+      "mask",
       "ignore"
      ]
     },
@@ -10941,6 +10942,42 @@
      "items": {
       "type": "string"
      }
+    },
+    "maskType": {
+     "type": "string",
+     "enum": [
+      "low_snr",
+      "saturated",
+      "invalid",
+      "user_excluded",
+      "other",
+      ""
+     ],
+     "description": "mask (required): what the file flags. Never missing: pixels with no value are computed from the data, not declared."
+    },
+    "maskNonzero": {
+     "type": "string",
+     "enum": [
+      "flagged",
+      "valid",
+      ""
+     ],
+     "description": "mask (required): what a nonzero pixel of the file means. Never defaulted."
+    },
+    "maskMeaning": {
+     "type": "string",
+     "maxLength": 300,
+     "description": "mask: what the file flags in words; required for type other."
+    },
+    "maskTarget": {
+     "type": "string",
+     "maxLength": 300,
+     "description": "mask (required): the project-relative path of the dataset the mask belongs to, with {dir} (the mask's folder, only at the start) and {stem} (its name without extension and without maskStrip), for example {dir}/{stem}.fits."
+    },
+    "maskStrip": {
+     "type": "string",
+     "maxLength": 64,
+     "description": "mask: a suffix removed from the mask file's name to get {stem}, for example _mask; the file is left alone when its name lacks it."
     }
    },
    "required": [

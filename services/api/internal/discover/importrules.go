@@ -21,10 +21,11 @@ const (
 	RoleDataset     = "dataset"     // a FITS image registered as a dataset; may declare a brightness unit
 	RoleOrientation = "orientation" // an axial orientation map: angle unit required, frame and quantity optional
 	RoleCatalog     = "catalog"     // a point catalog: columns, coordinate format and frame declared
+	RoleMask        = "mask"        // a FITS image that is a typed mask of another dataset (ADR 0055): type, meaning of nonzero and target declared
 	RoleIgnore      = "ignore"      // listed, never offered for registration
 )
 
-var ruleRoles = map[string]bool{RoleDataset: true, RoleOrientation: true, RoleCatalog: true, RoleIgnore: true}
+var ruleRoles = map[string]bool{RoleDataset: true, RoleOrientation: true, RoleCatalog: true, RoleMask: true, RoleIgnore: true}
 
 // Rule limits: a rule file is untrusted text.
 const (
@@ -60,6 +61,16 @@ type Rule struct {
 	AngleColumn string   `json:"angleColumn,omitempty" toml:"angle_column,omitempty"`
 	SigmaColumn string   `json:"sigmaColumn,omitempty" toml:"sigma_column,omitempty"`
 	Values      []string `json:"values,omitempty" toml:"values,omitempty"`
+
+	// mask: what the files flag (MaskType, required), what a nonzero pixel of the file means (MaskNonzero, flagged|valid,
+	// required: never assumed), a description (MaskMeaning, required for type other), and which dataset the mask belongs to,
+	// found from the mask file's own path: MaskTarget is a project-relative path with {dir} (the mask's folder) and {stem}
+	// (its file name without extension and without MaskStrip), for example "{dir}/{stem}.fits" with MaskStrip "_mask".
+	MaskType    string `json:"maskType,omitempty" toml:"mask_type,omitempty"`
+	MaskNonzero string `json:"maskNonzero,omitempty" toml:"mask_nonzero,omitempty"`
+	MaskMeaning string `json:"maskMeaning,omitempty" toml:"mask_meaning,omitempty"`
+	MaskTarget  string `json:"maskTarget,omitempty" toml:"mask_target,omitempty"`
+	MaskStrip   string `json:"maskStrip,omitempty" toml:"mask_strip,omitempty"`
 }
 
 // DeclaredBy is the author label a rule's declarations carry in the catalog. It reads "rule:<name>", which no person, adapter
@@ -71,6 +82,12 @@ const RulePrefix = "rule:"
 
 // RuleName returns the rule's name when by is a rule label.
 func RuleName(by string) (string, bool) { return strings.CutPrefix(by, RulePrefix) }
+
+// MaxMaskMeaning bounds a mask's description (the same bound the mask route applies).
+const MaxMaskMeaning = 300
+
+// maskTypes are the types a rule may declare: the one type left out, `missing`, is computed from the data and never declared.
+var maskTypes = map[string]bool{"low_snr": true, "saturated": true, "invalid": true, "user_excluded": true, "other": true}
 
 var (
 	angleUnits   = map[string]bool{"deg": true, "rad": true}
@@ -92,7 +109,7 @@ func (r Rule) Validate() []string {
 		add("pattern: %v", err)
 	}
 	if !ruleRoles[r.Role] {
-		add("role must be dataset, orientation, catalog or ignore")
+		add("role must be dataset, orientation, catalog, mask or ignore")
 		return bad
 	}
 	type f struct{ name, val string }
@@ -108,6 +125,7 @@ func (r Rule) Validate() []string {
 	}
 	onlyFor(RoleDataset, f{"unit", r.Unit})
 	onlyFor(RoleOrientation, f{"angle frame", r.AngleFrame})
+	onlyFor(RoleMask, f{"mask type", r.MaskType}, f{"mask nonzero", r.MaskNonzero}, f{"mask description", r.MaskMeaning}, f{"mask target", r.MaskTarget}, f{"mask strip", r.MaskStrip})
 	onlyFor(RoleCatalog, f{"lon", r.Lon}, f{"lat", r.Lat}, f{"coordinate format", r.CoordFormat}, f{"coordinate frame", r.CoordFrame},
 		f{"equinox", r.Equinox}, f{"angle column", r.AngleColumn}, f{"sigma column", r.SigmaColumn})
 	if r.Role != RoleCatalog && len(r.Values) > 0 {
@@ -118,7 +136,10 @@ func (r Rule) Validate() []string {
 			add("angle unit and quantity are declarations for an orientation or catalog rule, not a %s rule", r.Role)
 		}
 	}
-	checked := []f{{"unit", r.Unit}, {"lon", r.Lon}, {"lat", r.Lat}, {"angle column", r.AngleColumn}, {"sigma column", r.SigmaColumn}}
+	if len([]rune(r.MaskMeaning)) > MaxMaskMeaning || strings.ContainsAny(r.MaskMeaning, "\x00\n\r") {
+		add("mask description is longer than %d characters or has a control character", MaxMaskMeaning)
+	}
+	checked := []f{{"mask strip", r.MaskStrip}, {"unit", r.Unit}, {"lon", r.Lon}, {"lat", r.Lat}, {"angle column", r.AngleColumn}, {"sigma column", r.SigmaColumn}}
 	for _, v := range r.Values {
 		checked = append(checked, f{"value column", v})
 	}
@@ -171,10 +192,79 @@ func (r Rule) Validate() []string {
 		if len(r.Values) > MaxRuleFields {
 			add("at most %d value columns", MaxRuleFields)
 		}
+	case RoleMask:
+		if !maskTypes[r.MaskType] {
+			add("mask type is required and must be low_snr, saturated, invalid, user_excluded or other (pixels with no value are computed from the data, never declared)")
+		}
+		if r.MaskNonzero != "flagged" && r.MaskNonzero != "valid" {
+			add("say what a nonzero pixel of the mask file means: flagged, or valid (Vesqira does not guess it)")
+		}
+		if r.MaskType == "other" && strings.TrimSpace(r.MaskMeaning) == "" {
+			add("a mask of type other needs a description of what it flags")
+		}
+		if err := r.checkMaskTarget(); err != nil {
+			add("mask target: %v", err)
+		}
 	case RoleIgnore:
 		// nothing to declare: the generic check above refused every declaration
 	}
 	return bad
+}
+
+// checkMaskTarget checks the target template: a path inside the project made of {dir} and {stem} and plain text.
+func (r Rule) checkMaskTarget() error {
+	t := r.MaskTarget
+	switch {
+	case t == "":
+		return errors.New("is required: say which dataset the mask belongs to, for example {dir}/{stem}.fits")
+	case len(t) > MaxPatternLen || strings.ContainsAny(t, "\x00\n\r\\"):
+		return errors.New("is too long or has a control character or a backslash")
+	case !strings.Contains(t, "{stem}"):
+		return errors.New("must contain {stem}, the mask's file name without its extension")
+	}
+	rest := strings.NewReplacer("{dir}", "", "{stem}", "").Replace(t)
+	if strings.ContainsAny(rest, "{}") {
+		return errors.New("may only use the placeholders {dir} and {stem}")
+	}
+	if strings.HasPrefix(t, "/") || strings.Contains(t, "..") || (strings.Contains(t, "{dir}") && !strings.HasPrefix(t, "{dir}/") && t != "{dir}") || strings.Count(t, "{dir}") > 1 {
+		return errors.New("must stay inside the project: {dir} only at the start, no .. and no leading /")
+	}
+	return nil
+}
+
+// MaskTargetPath is the project-relative path of the dataset a mask file belongs to, by the rule's template: the mask's folder,
+// and its file name without the extension and without MaskStrip. It refuses a mask whose name does not end with MaskStrip, or that
+// would be its own target.
+func (r Rule) MaskTargetPath(maskRel string) (string, error) {
+	if err := r.checkMaskTarget(); err != nil {
+		return "", err
+	}
+	dir := path.Dir(maskRel)
+	if dir == "." {
+		dir = ""
+	}
+	base := path.Base(maskRel)
+	stem := strings.TrimSuffix(base, Ext(base))
+	if r.MaskStrip != "" {
+		if !strings.HasSuffix(stem, r.MaskStrip) || stem == r.MaskStrip {
+			return "", fmt.Errorf("the file name does not end with %q, so the dataset it belongs to cannot be named", r.MaskStrip)
+		}
+		stem = strings.TrimSuffix(stem, r.MaskStrip)
+	}
+	t := strings.ReplaceAll(r.MaskTarget, "{stem}", stem)
+	if dir == "" {
+		t = strings.TrimPrefix(strings.Replace(t, "{dir}", "", 1), "/")
+	} else {
+		t = strings.Replace(t, "{dir}", dir, 1)
+	}
+	t = path.Clean(t)
+	if t == "." || strings.HasPrefix(t, "../") || t == ".." || strings.HasPrefix(t, "/") {
+		return "", errors.New("the dataset it names is outside the project")
+	}
+	if t == maskRel {
+		return "", errors.New("the mask would be the dataset itself")
+	}
+	return t, nil
 }
 
 // ValidateRules checks a whole list: each rule, the count and that names are unique (a name is what the declarations point at).
@@ -512,7 +602,8 @@ func sameDeclaration(a, b Rule) bool {
 	a.Name, a.Kind, a.Pattern, b.Name, b.Kind, b.Pattern = "", "", "", "", "", ""
 	return a.Role == b.Role && a.Unit == b.Unit && a.AngleUnit == b.AngleUnit && a.AngleFrame == b.AngleFrame && a.Quantity == b.Quantity &&
 		a.Lon == b.Lon && a.Lat == b.Lat && a.CoordFormat == b.CoordFormat && a.CoordFrame == b.CoordFrame && a.Equinox == b.Equinox &&
-		a.AngleColumn == b.AngleColumn && a.SigmaColumn == b.SigmaColumn && strings.Join(a.Values, "\x00") == strings.Join(b.Values, "\x00")
+		a.AngleColumn == b.AngleColumn && a.SigmaColumn == b.SigmaColumn && strings.Join(a.Values, "\x00") == strings.Join(b.Values, "\x00") &&
+		a.MaskType == b.MaskType && a.MaskNonzero == b.MaskNonzero && a.MaskMeaning == b.MaskMeaning && a.MaskTarget == b.MaskTarget && a.MaskStrip == b.MaskStrip
 }
 
 // describe says in words what the rule declares, each statement marked as the rule's.
@@ -537,6 +628,9 @@ func (r Rule) describe() []string {
 		if r.AngleColumn != "" {
 			out = append(out, "angle column "+r.AngleColumn+" in "+r.AngleUnit+by)
 		}
+	case RoleMask:
+		meaning := map[string]string{"flagged": "nonzero pixels are flagged", "valid": "nonzero pixels are valid, zero pixels are flagged"}[r.MaskNonzero]
+		out = append(out, "mask of type "+r.MaskType+": "+meaning+by, "belongs to the dataset at "+r.MaskTarget+" (stem of the mask's name"+map[bool]string{true: " without " + r.MaskStrip, false: ""}[r.MaskStrip != ""]+")")
 	case RoleIgnore:
 		out = append(out, "not offered for registration")
 	}
@@ -546,7 +640,7 @@ func (r Rule) describe() []string {
 func ruleWarnings(r Rule, it Item) []string {
 	var w []string
 	switch r.Role {
-	case RoleDataset, RoleOrientation:
+	case RoleDataset, RoleOrientation, RoleMask:
 		if it.Format != "FITS" && !fitsName(strings.ToLower(path.Base(it.Path))) {
 			w = append(w, "the name is not a FITS name; registering it needs the worker to read it as FITS")
 		}
@@ -665,7 +759,8 @@ func RulesBlock(rules []Rule) string {
 	for _, r := range rules {
 		b.WriteString("[[import.rules]]\nname = " + tomlString(r.Name) + "\nkind = " + tomlString(r.Kind) + "\npattern = " + tomlString(r.Pattern) + "\nrole = " + tomlString(r.Role) + "\n")
 		for _, kv := range [][2]string{{"unit", r.Unit}, {"angle_unit", r.AngleUnit}, {"angle_frame", r.AngleFrame}, {"quantity", r.Quantity}, {"lon", r.Lon}, {"lat", r.Lat},
-			{"coord_format", r.CoordFormat}, {"coord_frame", r.CoordFrame}, {"equinox", r.Equinox}, {"angle_column", r.AngleColumn}, {"sigma_column", r.SigmaColumn}} {
+			{"coord_format", r.CoordFormat}, {"coord_frame", r.CoordFrame}, {"equinox", r.Equinox}, {"angle_column", r.AngleColumn}, {"sigma_column", r.SigmaColumn},
+			{"mask_type", r.MaskType}, {"mask_nonzero", r.MaskNonzero}, {"mask_meaning", r.MaskMeaning}, {"mask_target", r.MaskTarget}, {"mask_strip", r.MaskStrip}} {
 			if kv[1] != "" {
 				b.WriteString(kv[0] + " = " + tomlString(kv[1]) + "\n")
 			}

@@ -234,11 +234,16 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 // killed with its children when the request ends, and reads its one JSON reply. code is the HTTP status to answer with when it
 // is not 0; the caller removes any output it named.
 func (s *Server) runAnalysisProgram(r *http.Request, args []string) (analysisOutcome, int, string) {
-	ctx, cancel := context.WithTimeout(r.Context(), s.Analysis.Timeout)
+	return s.runAnalysisProgramCtx(r.Context(), args)
+}
+
+// runAnalysisProgramCtx is runAnalysisProgram for a caller with a context and no request (an import rule applying a mask).
+func (s *Server) runAnalysisProgramCtx(parent context.Context, args []string) (analysisOutcome, int, string) {
+	ctx, cancel := context.WithTimeout(parent, s.Analysis.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, s.Analysis.Python, args...)
 	cmd.Env = worker.BaseEnv()
-	if id := RequestID(r.Context()); id != "" { // already validated as a plain token
+	if id := RequestID(parent); id != "" { // already validated as a plain token
 		cmd.Env = append(cmd.Env, "VESQIRA_REQUEST_ID="+id)
 	}
 	cmd.Stderr = os.Stderr
@@ -249,7 +254,7 @@ func (s *Server) runAnalysisProgram(r *http.Request, args []string) (analysisOut
 	cmd.Stdout = &limited{w: &out, max: 1 << 20}
 	runErr := cmd.Run()
 	if ctx.Err() != nil {
-		if r.Context().Err() != nil {
+		if parent.Err() != nil {
 			return analysisOutcome{}, 499, "request cancelled"
 		}
 		return analysisOutcome{}, 504, "the analysis took too long and was stopped"

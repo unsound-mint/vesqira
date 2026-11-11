@@ -2,7 +2,7 @@ import { useId } from "react";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import type { ImportPreview, ImportRule, RuleRole } from "../api/projects";
 import { Button, Input, Select } from "../ui";
-import { COORD_FORMATS, COORD_FRAMES, forRole, localProblems, QUANTITIES, RULE_ROLES } from "./importFormat";
+import { COORD_FORMATS, COORD_FRAMES, forRole, localProblems, MASK_NONZERO, MASK_TYPES, QUANTITIES, RULE_ROLES } from "./importFormat";
 import { num } from "./format";
 import s from "./Projects.module.css";
 
@@ -22,10 +22,10 @@ export function RuleEditor({ rule, index, count, report, onChange, onMove, onRem
 }) {
   const id = useId();
   const problems = localProblems(rule);
-  const text = (label: string, key: "unit" | "lon" | "lat" | "equinox" | "angleColumn" | "sigmaColumn", hint?: string) => (
+  const text = (label: string, key: "unit" | "lon" | "lat" | "equinox" | "angleColumn" | "sigmaColumn" | "maskMeaning" | "maskTarget" | "maskStrip", hint?: string) => (
     <Input label={label} hint={hint} value={rule[key] ?? ""} onChange={(e) => onChange(set(rule, key, e.target.value))} spellCheck={false} />
   );
-  const choice = (label: string, key: "angleUnit" | "angleFrame" | "quantity" | "coordFormat" | "coordFrame", options: string[], blank: string) => (
+  const choice = (label: string, key: "angleUnit" | "angleFrame" | "quantity" | "coordFormat" | "coordFrame" | "maskType", options: string[], blank: string) => (
     <Select label={label} value={rule[key] ?? ""} onChange={(e) => onChange(set(rule, key, e.target.value as never))}>
       <option value="">{blank}</option>
       {options.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -80,6 +80,18 @@ export function RuleEditor({ rule, index, count, report, onChange, onMove, onRem
               onChange={(e) => onChange(set(rule, "values", e.target.value.split(",").map((v) => v.trim()).filter(Boolean)))} spellCheck={false} />
           </div>
         </>
+      ) : null}
+      {rule.role === "mask" ? (
+        <div className={s.ruleGrid}>
+          {choice("What the mask flags", "maskType", MASK_TYPES, "Choose (required)")}
+          <Select label="What a nonzero pixel means" value={rule.maskNonzero ?? ""} onChange={(e) => onChange(set(rule, "maskNonzero", e.target.value as ImportRule["maskNonzero"]))}>
+            <option value="">Choose (required)</option>
+            {MASK_NONZERO.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </Select>
+          {text(rule.maskType === "other" ? "Description (required)" : "Description (optional)", "maskMeaning")}
+          {text("Dataset it belongs to", "maskTarget", "{dir} is the mask's folder, {stem} its name without the extension and the suffix below")}
+          {text("Suffix to remove from the name (optional)", "maskStrip", "for example _mask")}
+        </div>
       ) : null}
       {problems.length > 0 ? <ul className={s.ruleProblems} aria-label="To fix before saving">{problems.map((p) => <li key={p}>{p}</li>)}</ul> : null}
       <div id={`${id}-live`} className={s.ruleLive} role="status">

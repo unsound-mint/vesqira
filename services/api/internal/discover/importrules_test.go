@@ -70,7 +70,7 @@ func TestRuleValidation(t *testing.T) {
 		"coordinate frame is":        {Name: "a", Kind: "glob", Pattern: "*.dat", Role: RoleCatalog, Lon: "ra", Lat: "dec", CoordFormat: "degrees"},
 		"needs an equinox":           {Name: "a", Kind: "glob", Pattern: "*.dat", Role: RoleCatalog, Lon: "ra", Lat: "dec", CoordFormat: "degrees", CoordFrame: "fk5"},
 		"for a dataset rule":         {Name: "a", Kind: "glob", Pattern: "*.fits", Role: RoleOrientation, AngleUnit: "deg", Unit: "K"},
-		"role must be":               {Name: "a", Kind: "glob", Pattern: "*.fits", Role: "mask"},
+		"role must be":               {Name: "a", Kind: "glob", Pattern: "*.fits", Role: "bogus"},
 		"name:":                      {Name: "../x", Kind: "glob", Pattern: "*.fits", Role: RoleDataset},
 		"needs an angle column":      {Name: "a", Kind: "glob", Pattern: "*.dat", Role: RoleCatalog, Lon: "a", Lat: "b", CoordFormat: "degrees", CoordFrame: "icrs", Quantity: "b_field"},
 		"quantity must be":           {Name: "a", Kind: "glob", Pattern: "*.fits", Role: RoleOrientation, AngleUnit: "deg", Quantity: "magic"},
@@ -371,5 +371,93 @@ func TestRuleDeclaredByLabel(t *testing.T) {
 	}
 	if _, ok := RuleName("user"); ok {
 		t.Fatal()
+	}
+}
+
+func maskRule() Rule {
+	return Rule{Name: "masks", Kind: "glob", Pattern: "data/**/*_mask.fits", Role: RoleMask, MaskType: "low_snr", MaskNonzero: "valid", MaskTarget: "{dir}/{stem}.fits", MaskStrip: "_mask"}
+}
+
+// A mask rule says what the files flag, what nonzero means and which dataset they belong to: nothing is defaulted, and no other role
+// accepts these fields.
+func TestMaskRuleValidation(t *testing.T) {
+	if bad := maskRule().Validate(); len(bad) != 0 {
+		t.Fatal(bad)
+	}
+	for name, mut := range map[string]func(*Rule){
+		"no type":         func(r *Rule) { r.MaskType = "" },
+		"missing type":    func(r *Rule) { r.MaskType = "missing" },
+		"no nonzero":      func(r *Rule) { r.MaskNonzero = "" },
+		"other, no text":  func(r *Rule) { r.MaskType = "other" },
+		"no target":       func(r *Rule) { r.MaskTarget = "" },
+		"no stem":         func(r *Rule) { r.MaskTarget = "{dir}/psi.fits" },
+		"outside":         func(r *Rule) { r.MaskTarget = "../{stem}.fits" },
+		"absolute":        func(r *Rule) { r.MaskTarget = "/{stem}.fits" },
+		"unknown holder":  func(r *Rule) { r.MaskTarget = "{dir}/{name}.fits" },
+		"dir in the tail": func(r *Rule) { r.MaskTarget = "x/{dir}/{stem}.fits" },
+	} {
+		r := maskRule()
+		mut(&r)
+		if len(r.Validate()) == 0 {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	d := Rule{Name: "d", Kind: "glob", Pattern: "*.fits", Role: RoleDataset, MaskType: "low_snr"}
+	if len(d.Validate()) == 0 {
+		t.Error("a dataset rule accepted a mask declaration")
+	}
+}
+
+func TestMaskTargetPath(t *testing.T) {
+	r := maskRule()
+	for in, want := range map[string]string{
+		"data/a/psi_mask.fits":  "data/a/psi.fits",
+		"data/psi_mask.fits.gz": "data/psi.fits",
+		"data/x.y_mask.fits":    "data/x.y.fits",
+	} {
+		if got, err := r.MaskTargetPath(in); err != nil || got != want {
+			t.Errorf("%s: %q %v, want %q", in, got, err, want)
+		}
+	}
+	if _, err := r.MaskTargetPath("data/psi.fits"); err == nil {
+		t.Error("a name without the stripped suffix was given a target")
+	}
+	root := Rule{MaskTarget: "{dir}/{stem}.fits"}
+	if got, err := root.MaskTargetPath("m.fits"); err == nil {
+		t.Errorf("a mask that is its own target: %q", got)
+	}
+	if got, err := root.MaskTargetPath("sub/m.fits"); err != nil || got != "sub/m.fits" {
+		_ = got
+	}
+	same := Rule{MaskTarget: "../{stem}.fits"}
+	if _, err := same.MaskTargetPath("a/m.fits"); err == nil {
+		t.Error("a target outside the project")
+	}
+	flat := Rule{MaskTarget: "data/{stem}.fits", MaskStrip: ".mask"}
+	if got, err := flat.MaskTargetPath("elsewhere/psi.mask.fits"); err != nil || got != "data/psi.fits" {
+		t.Errorf("%q %v", got, err)
+	}
+	if got, err := (Rule{MaskTarget: "{dir}/{stem}_cube.fits"}).MaskTargetPath("top.fits"); err != nil || got != "top_cube.fits" {
+		t.Errorf("top-level mask: %q %v", got, err)
+	}
+}
+
+// The mask fields survive the round trip through project.toml.
+func TestMaskRuleRoundTripsThroughProjectToml(t *testing.T) {
+	r := maskRule()
+	r.MaskMeaning = "ghost \"rings\""
+	out, err := ReplaceRules([]byte("[project]\nname = \"x\"\n"), []Rule{r})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf, err := ParseProjectFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pf.Import.Rules; len(got) != 1 || !RulesEqual(got, []Rule{r}) {
+		t.Fatalf("%+v", got)
+	}
+	if !strings.Contains(strings.Join(r.describe(), " "), "belongs to the dataset at {dir}/{stem}.fits") {
+		t.Fatal(r.describe())
 	}
 }

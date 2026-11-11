@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -145,7 +146,7 @@ func (s *Server) inventory(ctx context.Context, p projects.Project, folder strin
 }
 
 func registerableRole(role string) bool {
-	return role == discover.RoleDataset || role == discover.RoleOrientation || role == discover.RoleCatalog
+	return role == discover.RoleDataset || role == discover.RoleOrientation || role == discover.RoleCatalog || role == discover.RoleMask
 }
 
 // finalOutcomes are the application records that settle a file at the size and time they were made for; "failed" and "pending"
@@ -490,6 +491,7 @@ type applyResult struct {
 	DatasetID *int64          `json:"datasetId"`
 	Declared  []string        `json:"declared"`
 	Matches   []catalog.Match `json:"matches,omitempty"`
+	retry     bool            // the declaration could not be made yet (a mask's dataset is not registered): reported as failed so a later apply tries again
 }
 
 type applySummary struct {
@@ -584,6 +586,10 @@ func (s *Server) importApplyRoute(w http.ResponseWriter, r *http.Request) {
 		}
 		todo = append(todo, pr)
 	}
+	// a mask is made for a dataset that must be registered by then: files of the mask role go last
+	sort.SliceStable(todo, func(i, j int) bool {
+		return todo[i].ProposedRole != discover.RoleMask && todo[j].ProposedRole == discover.RoleMask
+	})
 	for x := range want {
 		if !selected[x] {
 			fail(w, 422, "no saved rule selects "+x+"; save the rule and preview again")
@@ -661,6 +667,9 @@ func (s *Server) applyOne(ctx context.Context, p projects.Project, h hosts.Host,
 	if rule.Role == discover.RoleCatalog && remote {
 		return skip("point catalogs are read from this computer only (ADR 0044), so a catalog on a host is not registered")
 	}
+	if rule.Role == discover.RoleMask && remote {
+		return skip("a mask is made on this computer from files read here, so a mask file on a host is not imported (copy it here first)")
+	}
 	var d catalog.Dataset
 	registered := false
 	if fa, ok := facts[abs]; ok && fa.Size == pr.Size && fa.MtimeNS == pr.MtimeNS {
@@ -729,7 +738,11 @@ func (s *Server) applyOne(ctx context.Context, p projects.Project, h hosts.Host,
 	}
 	id := d.ID
 	res.DatasetID = &id
-	notes := s.declareByRule(&res, d, rule)
+	notes := s.declareByRule(ctx, p, &res, d, rule)
+	if res.retry {
+		res.Outcome, res.Detail = "failed", strings.Join(notes, "; ")
+		return res
+	}
 	switch {
 	case registered:
 		res.Outcome = "registered"
@@ -748,7 +761,7 @@ func (s *Server) applyOne(ctx context.Context, p projects.Project, h hosts.Host,
 
 // declareByRule applies the rule's declarations to d through the existing setters. A declaration made by the researcher is
 // never replaced; one made by an adapter or an earlier run of a rule may be. Each refusal is a note, never an error.
-func (s *Server) declareByRule(res *applyResult, d catalog.Dataset, rule discover.Rule) (notes []string) {
+func (s *Server) declareByRule(ctx context.Context, p projects.Project, res *applyResult, d catalog.Dataset, rule discover.Rule) (notes []string) {
 	by := rule.DeclaredBy()
 	label := " (declared by your rule " + rule.Name + ")"
 	switch rule.Role {
@@ -806,6 +819,8 @@ func (s *Server) declareByRule(res *applyResult, d catalog.Dataset, rule discove
 				}
 			}
 		}
+	case discover.RoleMask:
+		notes = s.maskByRule(ctx, p, res, d, rule)
 	case discover.RoleCatalog:
 		if d.Kind != catalog.KindCatalog {
 			notes = append(notes, "the worker did not read this file as a table, so its columns were not declared")

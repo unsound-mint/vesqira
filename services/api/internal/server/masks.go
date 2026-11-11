@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -104,14 +105,24 @@ func (s *Server) createMask(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 16<<10, &in, true) {
 		return
 	}
-	if d.HostID != 0 {
-		fail(w, 409, "this file lives on another host: a mask is made on this computer, from a file read here (copy the file here first)")
+	v, code, msg := s.makeMask(r.Context(), d, in, "user")
+	if code != 0 {
+		fail(w, code, msg)
 		return
 	}
-	real, _, status, msg := s.authorize(r.Context(), d)
+	writeJSON(w, 201, v)
+}
+
+// makeMask makes one mask of d from a request and records it, written by `author` ("user" for the researcher's own request, "rule:<name>"
+// for an import rule of theirs: either way the tier is declared, because the mask's type and meaning are the researcher's word). The
+// file the mask is made from is read by the worker; d is never changed. It returns an HTTP-style code and a message on refusal.
+func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, author string) (maskView, int, string) {
+	if d.HostID != 0 {
+		return maskView{}, 409, "this file lives on another host: a mask is made on this computer, from a file read here (copy the file here first)"
+	}
+	real, _, status, msg := s.authorize(ctx, d)
 	if status != 0 {
-		fail(w, status, msg)
-		return
+		return maskView{}, status, msg
 	}
 	mtype := ""
 	switch in.Method {
@@ -126,73 +137,61 @@ func (s *Server) createMask(w http.ResponseWriter, r *http.Request) {
 	case "import":
 		mtype = in.Type
 		if !masks.ValidType(mtype) || mtype == masks.Missing {
-			fail(w, 422, "an imported mask is invalid, low_snr, saturated, user_excluded or other: pixels with no value are computed from the data, never declared")
-			return
+			return maskView{}, 422, "an imported mask is invalid, low_snr, saturated, user_excluded or other: pixels with no value are computed from the data, never declared"
 		}
 	default:
-		fail(w, 422, "the method is missing, low_snr, saturated, regions or import")
-		return
+		return maskView{}, 422, "the method is missing, low_snr, saturated, regions or import"
 	}
 	if mtype == masks.Other && cleanText(in.Meaning, 300) == "" {
-		fail(w, 422, "a mask of type other needs a description of what it flags")
-		return
+		return maskView{}, 422, "a mask of type other needs a description of what it flags"
 	}
 	isAxial := d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation"
 	if isAxial && (in.Method == "low_snr" || in.Method == "saturated") {
-		fail(w, 422, "this map is declared as an axial orientation map: its values are angles, so a signal-to-noise or saturation threshold on them means nothing")
-		return
+		return maskView{}, 422, "this map is declared as an axial orientation map: its values are angles, so a signal-to-noise or saturation threshold on them means nothing"
 	}
 	params := map[string]any{"method": in.Method, "type": mtype}
 	byShapeOnly := false // a second file whose WCS cannot confirm that it shares the grid
 	switch in.Method {
 	case "low_snr":
 		if in.K == nil || in.Sigma == nil {
-			fail(w, 422, "low signal-to-noise needs the threshold k and where sigma comes from")
-			return
+			return maskView{}, 422, "low signal-to-noise needs the threshold k and where sigma comes from"
 		}
 		params["k"] = *in.K
 		sg := map[string]any{"kind": in.Sigma.Kind}
 		switch in.Sigma.Kind {
 		case "value":
 			if in.Sigma.Value == nil {
-				fail(w, 422, "give the value of sigma")
-				return
+				return maskView{}, 422, "give the value of sigma"
 			}
 			sg["value"] = *in.Sigma.Value
 		case "mad":
 		case "map":
 			nm, code, msg := s.imageDataset(in.Sigma.DatasetID)
 			if code != 0 {
-				fail(w, 422, "noise map: "+msg)
-				return
+				return maskView{}, 422, "noise map: " + msg
 			}
-			p, shapeOnly, code, msg := s.sameGridLocal(r, d, nm)
+			p, shapeOnly, code, msg := s.sameGridLocal(ctx, d, nm)
 			if code != 0 {
-				fail(w, code, "noise map: "+msg)
-				return
+				return maskView{}, code, "noise map: " + msg
 			}
 			sg["path"] = p
 			byShapeOnly = byShapeOnly || shapeOnly
 		default:
-			fail(w, 422, "sigma is a value, a noise map or the robust estimate")
-			return
+			return maskView{}, 422, "sigma is a value, a noise map or the robust estimate"
 		}
 		params["sigma"] = sg
 	case "saturated":
 		if in.Threshold == nil {
-			fail(w, 422, "give the saturation threshold")
-			return
+			return maskView{}, 422, "give the saturation threshold"
 		}
 		params["threshold"], params["source"] = *in.Threshold, in.Source
 	case "regions":
 		if len(in.RegionIDs) == 0 || s.Regions == nil {
-			fail(w, 422, "name at least one saved region")
-			return
+			return maskView{}, 422, "name at least one saved region"
 		}
 		all, err := s.Regions.List(d.ID)
 		if err != nil {
-			fail(w, 500, "internal error")
-			return
+			return maskView{}, 500, "internal error"
 		}
 		byID := map[int64]int{}
 		for i, g := range all {
@@ -202,13 +201,11 @@ func (s *Server) createMask(w http.ResponseWriter, r *http.Request) {
 		for _, id := range in.RegionIDs {
 			i, ok := byID[id]
 			if !ok {
-				fail(w, 422, "a region does not belong to this dataset")
-				return
+				return maskView{}, 422, "a region does not belong to this dataset"
 			}
 			g := all[i]
 			if g.Shape.Shape == "line" {
-				fail(w, 422, "a line has no area: it cannot exclude pixels")
-				return
+				return maskView{}, 422, "a line has no area: it cannot exclude pixels"
 			}
 			regs = append(regs, map[string]any{"name": g.Name, "shape": g.Shape.Shape, "x0": g.Shape.X0, "y0": g.Shape.Y0, "x1": g.Shape.X1, "y1": g.Shape.Y1,
 				"cx": g.Shape.CX, "cy": g.Shape.CY, "r": g.Shape.R})
@@ -216,22 +213,18 @@ func (s *Server) createMask(w http.ResponseWriter, r *http.Request) {
 		params["regions"] = regs
 	case "import":
 		if in.Nonzero != "flagged" && in.Nonzero != "valid" {
-			fail(w, 422, "say what a nonzero pixel of the mask file means: flagged, or valid")
-			return
+			return maskView{}, 422, "say what a nonzero pixel of the mask file means: flagged, or valid"
 		}
 		src, code, msg := s.imageDataset(in.ImportDatasetID)
 		if code != 0 {
-			fail(w, 422, "mask file: "+msg)
-			return
+			return maskView{}, 422, "mask file: " + msg
 		}
 		if src.ID == d.ID {
-			fail(w, 422, "the mask file is the dataset itself")
-			return
+			return maskView{}, 422, "the mask file is the dataset itself"
 		}
-		p, shapeOnly, code, msg := s.sameGridLocal(r, d, src)
+		p, shapeOnly, code, msg := s.sameGridLocal(ctx, d, src)
 		if code != 0 {
-			fail(w, code, "mask file: "+msg)
-			return
+			return maskView{}, code, "mask file: " + msg
 		}
 		byShapeOnly = byShapeOnly || shapeOnly
 		params["path"], params["nonzero"] = p, in.Nonzero
@@ -243,11 +236,10 @@ func (s *Server) createMask(w http.ResponseWriter, r *http.Request) {
 	var b [4]byte
 	_, _ = rand.Read(b[:])
 	out := filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("mask-%d-%s-%s.fits", d.ID, mtype, hex.EncodeToString(b[:])))
-	res, code, msg := s.runAnalysisProgram(r, []string{"-P", s.Analysis.Script, "mask", "--input", real, "--out", out, "--params", string(pj)})
+	res, code, msg := s.runAnalysisProgramCtx(ctx, []string{"-P", s.Analysis.Script, "mask", "--input", real, "--out", out, "--params", string(pj)})
 	if code != 0 {
 		_ = os.Remove(out)
-		fail(w, code, msg)
-		return
+		return maskView{}, code, msg
 	}
 	var sum struct {
 		Flagged  int64           `json:"flagged"`
@@ -260,8 +252,7 @@ func (s *Server) createMask(w http.ResponseWriter, r *http.Request) {
 	}
 	if json.Unmarshal(res.Summary, &sum) != nil {
 		_ = os.Remove(out)
-		fail(w, 502, "the mask program returned an unreadable summary")
-		return
+		return maskView{}, 502, "the mask program returned an unreadable summary"
 	}
 	if byShapeOnly { // the rule says so: the match of the two files is by pixel shape, not by a confirmed WCS
 		var rule map[string]any
@@ -274,8 +265,7 @@ func (s *Server) createMask(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		_ = os.Remove(out)
 		log.Printf("masks: %v", err)
-		fail(w, 500, "internal error")
-		return
+		return maskView{}, 500, "internal error"
 	}
 	// Verified is a check the app ran: only the no-value mask, computed from the data. Every other rule (a threshold, a region, a file) is
 	// the researcher's word, which the app applied faithfully but did not establish.
@@ -288,16 +278,15 @@ func (s *Server) createMask(w http.ResponseWriter, r *http.Request) {
 		name = defaultMaskName(mtype, in)
 	}
 	m, err := s.Masks.Add(masks.Mask{DatasetID: d.ID, Type: mtype, Name: name, Path: out, Width: sum.Width, Height: sum.Height, Channels: sum.Channels,
-		Flagged: sum.Flagged, Total: sum.Total, Tier: tier, Mapping: mapping, Method: sum.Method, Rule: sum.Rule, Meaning: cleanText(in.Meaning, 300), Author: "user",
+		Flagged: sum.Flagged, Total: sum.Total, Tier: tier, Mapping: mapping, Method: sum.Method, Rule: sum.Rule, Meaning: cleanText(in.Meaning, 300), Author: author,
 		SourceSize: d.SizeBytes, SourceMtime: d.ModifiedAt.UnixNano(), SourceIdentity: sourceIdentity(d), FileSize: size, FileMtime: mtime, SHA256: digest})
 	if err != nil {
 		_ = os.Remove(out)
 		log.Printf("masks: %v", err)
-		fail(w, 500, "internal error")
-		return
+		return maskView{}, 500, "internal error"
 	}
 	s.audit("mask created", "dataset", d.ID, mtype+" mask, "+strconv.FormatInt(sum.Flagged, 10)+" pixels flagged")
-	writeJSON(w, 201, s.viewOf(m, d))
+	return s.viewOf(m, d), 0, ""
 }
 
 func defaultMaskName(mtype string, in maskReq) string {
@@ -326,11 +315,11 @@ func defaultMaskName(mtype string, in maskReq) string {
 // shape, and no declared axis that differs. A grid whose WCS one of the files does not state cannot be confirmed equal; a mask or a
 // noise map is still usable then (the worker checks the shape), and the second result says the match is by pixel shape only so the
 // mask's rule can say it.
-func (s *Server) sameGridLocal(r *http.Request, d, other catalog.Dataset) (real string, byShapeOnly bool, code int, msg string) {
+func (s *Server) sameGridLocal(ctx context.Context, d, other catalog.Dataset) (real string, byShapeOnly bool, code int, msg string) {
 	if other.HostID != 0 {
 		return "", false, 409, "that file lives on another host; both files must be on this computer"
 	}
-	real, _, status, m := s.authorize(r.Context(), other)
+	real, _, status, m := s.authorize(ctx, other)
 	if status != 0 {
 		return "", false, status, m
 	}

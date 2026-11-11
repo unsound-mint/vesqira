@@ -51,6 +51,16 @@ describe("the editor helpers", () => {
     expect(tidy(forRole(psi, "ignore"))).toEqual({ name: "psi maps", kind: "glob", pattern: "vda/*/vgt/psi_*.fits", role: "ignore" });
   });
 
+  it("asks for the type, the meaning of nonzero and the target of a mask rule, and keeps them only for that role", () => {
+    const m = forRole({ name: "m", kind: "glob", pattern: "*_mask.fits", role: "dataset" }, "mask");
+    expect(m.maskTarget).toBe("{dir}/{stem}.fits");
+    expect(localProblems(m)).toEqual(["Choose what the mask flags.", "Say what a nonzero pixel of the mask file means: Vesqira does not guess it."]);
+    expect(localProblems({ ...m, maskType: "other", maskNonzero: "flagged" })).toEqual(["A mask of type other needs a description of what it flags."]);
+    expect(localProblems({ ...m, maskType: "saturated", maskNonzero: "valid", maskTarget: "{dir}/x.fits" })).toHaveLength(1);
+    expect(localProblems({ ...m, maskType: "saturated", maskNonzero: "valid" })).toEqual([]);
+    expect(tidy(forRole({ ...m, maskType: "saturated", maskNonzero: "flagged" }, "ignore"))).toEqual({ name: "m", kind: "glob", pattern: "*_mask.fits", role: "ignore" });
+  });
+
   it("compares rule lists by what they say, in order", () => {
     expect(sameRules([psi], [{ ...psi, quantity: "" }])).toBe(false);
     expect(sameRules([psi, { ...psi, name: "b" }], [psi, { ...psi, name: "b", unit: "" }])).toBe(true);

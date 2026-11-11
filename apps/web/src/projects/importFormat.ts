@@ -5,6 +5,7 @@ const ROLE_LABELS: Record<string, string> = {
   dataset: "Dataset (FITS)",
   orientation: "Orientation map",
   catalog: "Point catalog",
+  mask: "Typed mask",
   ignore: "Ignored by your rule",
   run_record: "Run record",
   vgt_psi: "VGT output: psi",
@@ -27,10 +28,17 @@ export const RULE_ROLES: { id: RuleRole; label: string }[] = [
   { id: "dataset", label: "Dataset (FITS image)" },
   { id: "orientation", label: "Orientation map" },
   { id: "catalog", label: "Point catalog" },
+  { id: "mask", label: "Typed mask of another dataset" },
   { id: "ignore", label: "Ignore" },
 ];
 
 export const QUANTITIES = ["b_field", "gradient", "dust_polarization", "starlight_polarization", "unspecified"];
+/** The types a rule may declare for a mask. `missing` is not one: pixels with no value are computed from the data, never declared. */
+export const MASK_TYPES = ["low_snr", "saturated", "invalid", "user_excluded", "other"];
+export const MASK_NONZERO: { id: "flagged" | "valid"; label: string }[] = [
+  { id: "flagged", label: "Nonzero pixels are flagged" },
+  { id: "valid", label: "Nonzero pixels are valid (zero is flagged)" },
+];
 export const COORD_FORMATS = ["degrees", "hours_degrees", "sexagesimal_hours_degrees", "sexagesimal_degrees"];
 export const COORD_FRAMES = ["icrs", "fk5", "fk4", "galactic"];
 
@@ -53,6 +61,8 @@ export function forRole(r: ImportRule, role: RuleRole): ImportRule {
       return { ...base, angleUnit: r.angleUnit, angleFrame: r.angleFrame, quantity: r.quantity };
     case "catalog":
       return { ...base, lon: r.lon, lat: r.lat, coordFormat: r.coordFormat, coordFrame: r.coordFrame, equinox: r.equinox, angleColumn: r.angleColumn, angleUnit: r.angleUnit, quantity: r.quantity, sigmaColumn: r.sigmaColumn, values: r.values };
+    case "mask":
+      return { ...base, maskType: r.maskType, maskNonzero: r.maskNonzero, maskMeaning: r.maskMeaning, maskTarget: r.maskTarget ?? "{dir}/{stem}.fits", maskStrip: r.maskStrip };
     default:
       return base;
   }
@@ -75,6 +85,12 @@ export function localProblems(r: ImportRule): string[] {
   const bad: string[] = [];
   if (!r.pattern.trim()) bad.push("Give a pattern.");
   if (r.role === "orientation" && !r.angleUnit) bad.push("Choose the angle unit: Vesqira does not guess degrees or radians.");
+  if (r.role === "mask") {
+    if (!r.maskType) bad.push("Choose what the mask flags.");
+    if (!r.maskNonzero) bad.push("Say what a nonzero pixel of the mask file means: Vesqira does not guess it.");
+    if (r.maskType === "other" && !r.maskMeaning?.trim()) bad.push("A mask of type other needs a description of what it flags.");
+    if (!r.maskTarget?.includes("{stem}")) bad.push("Name the dataset the mask belongs to, with {stem} for the mask's file name (for example {dir}/{stem}.fits).");
+  }
   if (r.role === "catalog") {
     if (!r.lon || !r.lat) bad.push("Name the longitude and latitude columns.");
     if (!r.coordFormat) bad.push("Choose how the positions are written.");

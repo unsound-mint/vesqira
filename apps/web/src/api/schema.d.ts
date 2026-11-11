@@ -7174,7 +7174,7 @@ export interface components {
             kind: "glob" | "regex";
             pattern: string;
             /** @enum {string} */
-            role: "dataset" | "orientation" | "catalog" | "ignore";
+            role: "dataset" | "orientation" | "catalog" | "mask" | "ignore";
             /** @description dataset: the unit the files are declared to have. A file that states its own BUNIT keeps it. */
             unit?: string;
             /**
@@ -7199,6 +7199,22 @@ export interface components {
             angleColumn?: string;
             sigmaColumn?: string;
             values?: string[];
+            /**
+             * @description mask (required): what the file flags. Never missing: pixels with no value are computed from the data, not declared.
+             * @enum {string}
+             */
+            maskType?: "low_snr" | "saturated" | "invalid" | "user_excluded" | "other" | "";
+            /**
+             * @description mask (required): what a nonzero pixel of the file means. Never defaulted.
+             * @enum {string}
+             */
+            maskNonzero?: "flagged" | "valid" | "";
+            /** @description mask: what the file flags in words; required for type other. */
+            maskMeaning?: string;
+            /** @description mask (required): the project-relative path of the dataset the mask belongs to, with {dir} (the mask's folder, only at the start) and {stem} (its name without extension and without maskStrip), for example {dir}/{stem}.fits. */
+            maskTarget?: string;
+            /** @description mask: a suffix removed from the mask file's name to get {stem}, for example _mask; the file is left alone when its name lacks it. */
+            maskStrip?: string;
         };
         ImportRulesFile: {
             /**

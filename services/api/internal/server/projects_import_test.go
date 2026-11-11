@@ -407,6 +407,9 @@ func TestImportApplyRegistersAndDeclaresWithProvenance(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 	d, _ := e.srv.Store.Get(*r.DatasetID)
+	if d.Interpretation != nil && (d.Interpretation.Tier != catalog.TierDeclared || d.Interpretation.MappingVersion != "") {
+		t.Fatalf("a rule's declaration is declared, authored by the rule: %+v", d.Interpretation)
+	}
 	if d.Interpretation == nil || d.Interpretation.DeclaredBy != "rule:psi maps" || d.Interpretation.Unit != "rad" || *d.Interpretation.Frame != "pixel" || *d.Interpretation.Quantity != "b_field" {
 		t.Fatalf("%+v", d.Interpretation)
 	}

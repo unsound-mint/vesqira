@@ -227,6 +227,15 @@ func identityNote(d catalog.Dataset) string {
 	return "its bytes were not hashed"
 }
 
+// declaredNote words a declared tier for a reviewer: the author's own word, or the word of an import rule the author saved (its name
+// stays with the author). Both are declared; neither is from the file.
+func declaredNote(by, own string) string {
+	if strings.HasPrefix(by, discover.RulePrefix) {
+		return "declared through an import rule the author saved"
+	}
+	return own
+}
+
 // ruleOf names the rule behind an inferred interpretation (never for a declared one: the author is not a rule).
 func ruleOf(tier, by string) string {
 	if tier == catalog.TierInferred {
@@ -265,7 +274,7 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 	case declaredUnit != "":
 		t, mv := tierOf(d.UnitDeclaration.Tier, d.UnitDeclaration.MappingVersion, d.UnitDeclaration.DeclaredBy)
 		pr.Tiers = append(pr.Tiers, safeTier{What: "brightness unit", Tier: t, MappingVersion: mv, Rule: ruleOf(t, d.UnitDeclaration.DeclaredBy),
-			Note: "the file has no BUNIT; the unit is " + map[string]string{catalog.TierDeclared: "the author's declaration", catalog.TierInferred: "proposed by a rule"}[t]})
+			Note: "the file has no BUNIT; the unit is " + map[string]string{catalog.TierDeclared: declaredNote(d.UnitDeclaration.DeclaredBy, "the author's declaration"), catalog.TierInferred: "proposed by a rule"}[t]})
 	default:
 		pr.Tiers = append(pr.Tiers, safeTier{What: "brightness unit", Tier: catalog.TierUnresolved, Note: "the file has no BUNIT and none was declared"})
 	}
@@ -279,7 +288,7 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		it, imv := tierOf(d.Interpretation.Tier, d.Interpretation.MappingVersion, d.Interpretation.DeclaredBy)
 		pr.Interpretation = &safeInterpretation{Kind: d.Interpretation.Kind, Unit: d.Interpretation.Unit, DeclaredBy: by, Tier: it, MappingVersion: imv, HasReliability: d.Interpretation.ReliabilityID != nil}
 		pr.Tiers = append(pr.Tiers, safeTier{What: "orientation (axial angle, its unit and meaning)", Tier: it, MappingVersion: imv, Rule: ruleOf(it, d.Interpretation.DeclaredBy),
-			Note: "not from the file; " + map[string]string{catalog.TierDeclared: "declared by the author", catalog.TierInferred: "proposed by a rule and not confirmed"}[it]})
+			Note: "not from the file; " + map[string]string{catalog.TierDeclared: declaredNote(d.Interpretation.DeclaredBy, "declared by the author"), catalog.TierInferred: "proposed by a rule and not confirmed"}[it]})
 		pr.Statements = append(pr.Statements, "The orientation unit and meaning were declared by "+by+", not by the file. Angles are axial (0° and 180° are the same orientation) and statistics use the doubled-angle method.")
 	}
 	pr.Tiers = append(pr.Tiers, masksTiers(der)...)
