@@ -16,6 +16,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
+	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/scene"
@@ -277,7 +278,9 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		by := "the author of this board"
 		if d.Interpretation.DeclaredBy != "user" {
 			by = "the run import adapter (" + d.Interpretation.DeclaredBy + "), not the file"
-			if d.Interpretation.DeclaredBy != "vgt-run-adapter" {
+			if _, isRule := discover.RuleName(d.Interpretation.DeclaredBy); isRule {
+				by = "an import rule of the author's project, not the file"
+			} else if d.Interpretation.DeclaredBy != "vgt-run-adapter" {
 				by = "the analysis that made this map (" + d.Interpretation.DeclaredBy + "), not the file"
 			}
 		}

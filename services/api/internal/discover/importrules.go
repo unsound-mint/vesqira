@@ -641,6 +641,23 @@ const (
 // researcher's own and are never rewritten.
 var ErrForeignRules = errors.New("project.toml has [[import.rules]] that Vesqira did not write; edit them there (the first matching rule wins), or delete them to let Vesqira write the saved rules")
 
+// HasRulesSection says whether the file text holds the rules section Vesqira wrote (so [[import.rules]] outside it are the
+// researcher's own).
+func HasRulesSection(text string) bool { return strings.Contains(text, rulesBegin) }
+
+// RulesEqual says whether two rule lists are the same rules in the same order.
+func RulesEqual(a, b []Rule) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Kind != b[i].Kind || a[i].Pattern != b[i].Pattern || !sameDeclaration(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // RulesBlock is the TOML text of the rules section, markers included.
 func RulesBlock(rules []Rule) string {
 	var b strings.Builder

@@ -196,7 +196,7 @@ func (s *Server) computeNeeds(p projects.Project) ([]need, error) {
 			id := fa.ID
 			out = append(out, need{
 				ID: "axial:" + r.Path, Kind: "axial_unconfirmed", DatasetID: &id, Scope: needScope{Paths: []string{r.Path}, Count: 1},
-				Message: fmt.Sprintf("%s is proposed as an axial orientation map in %s by %s. You have not confirmed it.", path.Base(r.Path), in.Unit, in.DeclaredBy),
+				Message: fmt.Sprintf("%s is proposed as an axial orientation map in %s by %s. You have not confirmed it.", path.Base(r.Path), in.Unit, authorText(in.DeclaredBy)),
 				Source:  proposalSource(in.DeclaredBy),
 				Answers: []needOption{{ID: "confirm", Label: "Confirm: it is an axial orientation map", Input: "choice", Choices: []string{"deg", "rad"}, Hint: "leave the unit empty to keep the proposed one (" + in.Unit + ")"},
 					{ID: "not_axial", Label: "It is not an orientation map"}, unknownOpt},
@@ -554,8 +554,19 @@ func (s *Server) recordAnswer(ctx context.Context, p projects.Project, n need, i
 
 // proposalSource says who proposed an orientation declaration nobody has confirmed: a run import or an analysis.
 func proposalSource(by string) string {
+	if n, ok := discover.RuleName(by); ok {
+		return "your import rule " + n + ": declared by the rule, not by you; confirm it to make it your own declaration"
+	}
 	if by == analysisAuthor {
 		return "the analysis that made this map (" + by + "): a proposal, not your declaration"
 	}
 	return "the run import (" + by + "): a proposal, not your declaration"
+}
+
+// authorText names who made a declaration that is not the researcher's own: a rule of theirs, or an adapter or analysis by its label.
+func authorText(by string) string {
+	if n, ok := discover.RuleName(by); ok {
+		return "your rule " + n
+	}
+	return by
 }

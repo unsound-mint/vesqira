@@ -16,6 +16,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
+	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -115,7 +116,8 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 	}
 	if psi, ok := byRole["psi"]; ok {
 		cur, _ := s.Store.Get(psi.ID)
-		if cur.Interpretation == nil || cur.Interpretation.DeclaredBy != "user" {
+		// a rule's declaration is the researcher's standing statement: a re-import does not replace it
+		if _, byRule := discover.RuleName(curBy(cur)); cur.Interpretation == nil || (cur.Interpretation.DeclaredBy != "user" && !byRule) {
 			var rel *int64
 			if rd, ok := byRole["reliability"]; ok && rd.HostID == psi.HostID {
 				if why, err := compat.Grids(psi.Header, rd.Header); err == nil && len(why) == 0 {
@@ -530,4 +532,11 @@ func (s *Server) rohsaSizing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, jobs.SuggestROHSASizing(crop, n, haveCrop, haveN))
+}
+
+func curBy(d catalog.Dataset) string {
+	if d.Interpretation == nil {
+		return ""
+	}
+	return d.Interpretation.DeclaredBy
 }

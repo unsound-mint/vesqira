@@ -115,6 +115,8 @@ type Options struct {
 	Inventory bool
 	// MaxDepth stops the walk below that many folder levels (0 means no depth limit) and says so (Truncated).
 	MaxDepth int
+	// Start is the folder (relative to the project folder, "" for all of it) the walk starts in. Paths stay relative to the project.
+	Start string
 	// Dirty counts changed files in the git work tree; nil leaves it unknown. Never called when there is no .git.
 	Dirty func(ctx context.Context) (int, bool)
 }
@@ -226,7 +228,11 @@ func Scan(ctx context.Context, fsys FS, opt Options) *Result {
 	s.layDat, s.layCfg, s.layJob = clean(opt.Layout.Data), clean(opt.Layout.Configs), clean(opt.Layout.Jobs)
 	s.opt.Layout.Skip = clean(opt.Layout.Skip)
 	s.git()
-	s.walk("", nil)
+	start := ""
+	if p := clean([]string{opt.Start}); len(p) == 1 {
+		start = p[0]
+	}
+	s.walk(start, nil)
 	r := s.res
 	r.Canceled = ctx.Err() != nil
 	finish(r)

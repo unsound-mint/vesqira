@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 )
 
 // What a figure records about the declarations it was drawn under (ADR 0042, section 5). A declared unit, an orientation's
@@ -86,6 +87,9 @@ const (
 func declBy(who string) string {
 	if who == "user" || who == "" {
 		return "declared by you"
+	}
+	if n, ok := discover.RuleName(who); ok {
+		return "declared by your rule " + n
 	}
 	return "declared by " + who
 }
