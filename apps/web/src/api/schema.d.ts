@@ -897,6 +897,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/rohsa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** ROHSA decomposition runs whose Gaussian components can be drawn over this dataset */
+        get: operations["owner_s_rohsaRuns_get_api_datasets_id_rohsa"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/rohsa/components": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The Gaussian components of one pixel as a binary frame
+         * @description Frame layout as for a plane: uint32 little-endian header length n, then n bytes of JSON (a RohsaComponentsHeader, padded with spaces), then little-endian float64 axis[channels] (km/s, or channel numbers when the spectral axis is not a resolved velocity), model[channels] (the sum of the valid components) and component[n_gauss][channels]. 409 until the .dat is indexed (see the index route) or when the dataset is not on the run's grid.
+         */
+        get: operations["owner_s_rohsaComponents_get_api_datasets_id_rohsa_components"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/rohsa/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Advance (or confirm) the index of a run's .dat; each call works for a bounded time */
+        post: operations["owner_s_rohsaIndex_post_api_datasets_id_rohsa_index"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/spectrum": {
         parameters: {
             query?: never;
@@ -4394,6 +4454,97 @@ export interface components {
             frame?: string;
             note?: string;
         };
+        /** @description A ROHSA decomposition run whose components could be drawn over a dataset: the dataset is the run's crop or exactly on its grid. A cube with the crop's axis lengths but another (or unconfirmed) grid is listed with the reason it is refused. */
+        RohsaRunView: {
+            /** Format: int64 */
+            runId: number;
+            name: string;
+            /** @description Gaussians per pixel, as the run's records declare; 0 when they do not */
+            nGauss: number;
+            nGaussBasis: string;
+            /** Format: int64 */
+            cropDatasetId: number;
+            cropName: string;
+            cropBunit: string | null;
+            /** @description the dataset is the crop the fit used */
+            isCrop: boolean;
+            usable: boolean;
+            /** @description why the components cannot be drawn over this dataset */
+            refusal: string | null;
+        };
+        RohsaRunList: {
+            runs: components["schemas"]["RohsaRunView"][];
+        };
+        RohsaIndexRequest: {
+            /** Format: int64 */
+            runId: number;
+        };
+        /** @description Progress of the index of a ROHSA .dat. building: call again; ready: pixels can be read; refused: the file is not the ROHSA row layout, with the reason and example lines. */
+        RohsaIndexState: {
+            ok?: boolean;
+            op?: string;
+            /** @enum {string} */
+            state: "building" | "ready" | "refused";
+            done_bytes: number;
+            size_bytes: number;
+            rows: number;
+            malformed: number;
+            reason: string | null;
+            examples: {
+                line: number;
+                problem: string;
+            }[];
+            /** @description size of the sidecar index: 8 bytes per pixel */
+            index_bytes: number;
+            width?: number;
+            height?: number;
+        };
+        RohsaComponent: {
+            /** @description 1-based Gaussian number within the pixel, in file order */
+            k: number;
+            /** @description fitted amplitude in the crop's brightness unit; 0 is a real value */
+            amp: number;
+            /** @description the file's 1-based channel number */
+            mean_channel_file: number;
+            /** @description 0-based channel index: the file's value minus 1 */
+            mean_channel: number;
+            sigma_channel: number;
+            /** @description false when sigma is not positive and finite; such a component is not drawn */
+            valid: boolean;
+            /** @description km/s on the crop's spectral axis; null without a resolved velocity axis */
+            centre: number | null;
+            /** @description km/s */
+            sigma: number | null;
+            /** @description 2 sqrt(2 ln 2) sigma, km/s */
+            fwhm: number | null;
+            /** @description 121.1 K (km/s)^-2 x sigma^2: an upper limit on the kinetic temperature */
+            t_doppler_k: number | null;
+        };
+        /** @description The JSON header of a rohsa components frame. */
+        RohsaComponentsHeader: {
+            ok?: boolean;
+            x: number;
+            y: number;
+            channels: number;
+            n_gauss: number;
+            components: components["schemas"]["RohsaComponent"][];
+            axis: {
+                /** @enum {string} */
+                kind: "velocity" | "channel";
+                name: string | null;
+                unit: string | null;
+                source_unit: string | null;
+                /** @enum {string|null} */
+                unit_status: "declared" | "inferred" | "unresolved" | null;
+                note: string | null;
+            };
+            bunit: string | null;
+            layout: string;
+            /** @description the conventions applied, in words: columns, 1-based mean, sigma, model, invalid components, FWHM, T_D */
+            conventions: {
+                [key: string]: string;
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -5822,6 +5973,126 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_rohsaRuns_get_api_datasets_id_rohsa: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RohsaRunList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_rohsaComponents_get_api_datasets_id_rohsa_components: {
+        parameters: {
+            query: {
+                run: number;
+                x: number;
+                y: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.plane": string;
+                };
+            };
+            /** @description not indexed yet, or the dataset is not on the run's grid */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_rohsaIndex_post_api_datasets_id_rohsa_index: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RohsaIndexRequest"];
+            };
+        };
+        responses: {
+            /** @description the index state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RohsaIndexState"];
+                };
+            };
+            /** @description the dataset is not on the run's grid (the reasons are listed), or the run has no crop */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

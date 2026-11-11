@@ -5,7 +5,7 @@ Protocol on stdin/stdout. One JSON request per line:
     {"op": "view"  | "plane" | "coord", "path": "/abs/file.fits", "channel": int, "x": int, "y": int}
 Each request gets one JSON header line, then exactly header["nbytes"] raw bytes (0 unless op is "plane").
 Pixel and channel indices are 0-based on the wire. The path is authorized by the caller; this process still
-treats the file as untrusted. It never writes, and never prints anything but protocol lines to stdout.
+treats the file as untrusted. It never writes (except the ROHSA index sidecar under a cache folder the caller names, ADR 0046), and never prints anything but protocol lines to stdout.
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 import convert
+import rohsa
 from fits_header import axes_shape, clean, read_header
 
 MAX_PLANE_ELEMENTS = 1 << 24      # 16.7M pixels = 64 MiB as float32
@@ -969,8 +970,88 @@ def catalog_op(op: str, path, req: dict) -> tuple[dict, bytes]:
         raise Refused("unreadable", str(e))
 
 
+def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
+    """ROHSA decomposition (ADR 0046): index the raw .dat (resumable), then read one pixel's Gaussians as curves.
+
+    The crop FITS (`path`) gives the pixel grid and the spectral axis; the .dat (`dat_path`) holds the fit. The sidecar
+    index goes under `cache_dir`, which the API chooses, so this is the one operation that writes, and only there. A
+    remote worker (roots enforced by this process) refuses it: the index is built on the machine that owns the cache.
+    """
+    if ROOTS is not None:
+        raise Refused("unsupported", "ROHSA files on a remote host are not supported yet")
+    for key in ("path", "dat_path", "cache_dir"):
+        v = req.get(key)
+        if not isinstance(v, str) or not os.path.isabs(v) or len(v) > 4096 or "\0" in v:
+            raise Refused("bad_request", "bad request")
+    real_crop, real_dat = authorize(req["path"]), authorize(req["dat_path"])
+    c = cube_for(real_crop)
+    if c.chan is None or c.channels < 2:
+        raise Refused("unsupported", "the crop has no spectral axis of at least two channels")
+    nx, ny, nc = c.shape[c.x], c.shape[c.y], c.channels
+    n = req.get("n_gauss")
+    try:
+        if op == "rohsa_index":
+            budget = req.get("budget_s", 15)
+            if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not 0 < budget <= 20:
+                raise Refused("bad_request", "bad request")
+            return {"ok": True, "op": op, "nbytes": 0, "width": nx, "height": ny,
+                    **rohsa.index_step(real_dat, req["cache_dir"], nx, ny, n, float(budget))}, b""
+        x, y = as_index(req, "x", nx), as_index(req, "y", ny)
+        if nc * (n + 2 if isinstance(n, int) and not isinstance(n, bool) else 2) > rohsa.MAX_CURVE_ELEMENTS:
+            raise Refused("unsupported", "too many channels for the curves")
+        amp, mean_raw, sig = rohsa.read_pixel(real_dat, req["cache_dir"], nx, ny, n, x, y)
+    except rohsa.Bad as e:
+        raise Refused(e.code, e.message)
+    except OSError:
+        raise Refused("unsupported", "the .dat cannot be read")
+    from astropy import units as u
+    facts = c.spectral_facts()
+    world, dv = None, None
+    axis = {"kind": "channel", "name": None, "unit": None, "source_unit": None, "unit_status": None,
+            "note": "the spectral axis is not a resolved velocity axis, so centres and widths stay in channels"}
+    if facts and facts["resolved"] and facts.get("velocity") == "declared":
+        try:
+            factor = float(u.Unit(facts["unit"]).to(u.km / u.s))
+        except Exception:
+            factor = None
+        if factor is not None:
+            def world(ch, factor=factor):
+                pix = np.zeros((len(ch), len(c.shape)))
+                pix[:, c.chan] = ch
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    return np.asarray(c.wcs.all_pix2world(pix, 0)[:, c.spec], dtype=np.float64) * factor
+            w = world(np.array([0.0, 1.0, nc - 1.0]))
+            dv = abs(float(w[1] - w[0]))
+            span = float(w[2] - w[0])
+            if dv > 0 and abs(span - (nc - 1) * float(w[1] - w[0])) <= 1e-6 * max(abs(span), dv):
+                axis = {"kind": "velocity", "name": facts["name"], "unit": "km/s", "source_unit": facts["unit"],
+                        "unit_status": facts["unit_status"], "note": None}
+            else:
+                world = dv = None
+                axis["note"] = "the spectral axis is not uniformly spaced, so widths in km/s are not defined"
+    comps, curves, model = rohsa.components_at(amp, mean_raw, sig, nc, world, dv)
+    chan = np.arange(nc, dtype=np.float64)
+    ax = world(chan) if world is not None else chan
+    payload = (np.asarray(ax, dtype="<f8").tobytes() + model.astype("<f8").tobytes() + curves.astype("<f8").tobytes())
+    head = {"ok": True, "op": op, "nbytes": len(payload), "x": x, "y": y, "channels": nc, "n_gauss": n, "components": comps,
+            "axis": axis, "bunit": clean(c.h.get("BUNIT")) if "BUNIT" in c.h else None,
+            "layout": "float64 axis[channels], float64 model[channels], float64 component[n_gauss][channels], little-endian",
+            "conventions": {
+                "file_columns": "i j amp mean sigma; i = zero-based row (FITS axis 2), j = zero-based column (FITS axis 1)",
+                "mean": "1-based channel number in the file; mean_channel = file mean - 1 is the 0-based channel index",
+                "sigma": "channels; centre and width in km/s use the crop's spectral axis (astropy WCS), no hand-rolled conversion",
+                "model": "sum of the valid components, each amp * exp(-(channel - mean_channel)^2 / (2 sigma^2)) at every channel",
+                "invalid": "a component whose sigma is not positive and finite is listed as invalid and is not drawn; no floor is applied; amplitude 0 is a real value",
+                "fwhm": "2 sqrt(2 ln 2) sigma",
+                "t_doppler": f"T_D = {rohsa.DOPPLER_K_PER_KMS2} K (km/s)^-2 x sigma^2: the pipeline's constant, m_H sigma^2 / k_B for atomic hydrogen; an upper limit on the kinetic temperature (thermal broadening only)"}}
+    return head, payload
+
+
 def handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
+    if op in ("rohsa_index", "rohsa_pixel"):
+        return rohsa_op(op, req)
     if op == "cards":
         if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
             raise Refused("bad_request", "bad request")

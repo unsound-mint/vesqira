@@ -38,7 +38,19 @@ jobs:
         working-directory: apps/web
       - run: npm ci
         working-directory: e2e
-      - run: npx playwright install --with-deps chromium
+      # The browser is cached per Playwright version so a run does not depend on downloading it. Its system libraries
+      # come from apt, which has failed when the runner could not resolve the Ubuntu mirrors; the ubuntu-24.04 image
+      # already carries Chromium's libraries, so that step is best effort and a broken mirror no longer blocks a merge.
+      - id: pw
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+        working-directory: e2e
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - run: npx playwright install chromium
+        working-directory: e2e
+      - run: timeout 300 npx playwright install-deps chromium || echo "::warning::apt could not install Chromium's libraries; using the runner image's"
         working-directory: e2e
       - run: make e2e
       - if: failure()

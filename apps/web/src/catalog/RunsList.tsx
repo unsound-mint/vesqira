@@ -28,11 +28,11 @@ export function RunsList({ runs, onImport, onOpen }: { runs: Run[]; onImport: (p
   return (
     <div className={s.wrap}>
       <form className={s.form} onSubmit={submit}>
-        <PathField label="Import a VGT run" kind="dir" placeholder="/path/to/run_folder" value={path} onChange={setPath} />
+        <PathField label="Import a run (VGT or ROHSA)" kind="dir" placeholder="/path/to/run_folder" value={path} onChange={setPath} />
         <Button type="submit" disabled={busy || !path.trim()}>{busy ? "Importing…" : "Import run"}</Button>
         {err ? <p role="alert" className={s.err}>{err}</p> : null}
       </form>
-      {runs.length === 0 ? <p className={s.note}>No runs yet. Point this at a folder holding run_metadata.toml and its output maps.</p> : null}
+      {runs.length === 0 ? <p className={s.note}>No runs yet. Point this at a folder holding run_metadata.toml and its output maps, or at a ROHSA fit (its rohsa_*.dat, or the folder holding it).</p> : null}
       {runs.length > 3 || runs.length > active ? <FilterBox label="Filter runs" placeholder="Filter runs" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={active} noun="runs" /> : null}
       {runs.length > 0 && shown.length === 0 ? <p className={s.note}>No run matches. Remove a filter above to widen the list.</p> : null}
       <div role="list" aria-label="Runs">

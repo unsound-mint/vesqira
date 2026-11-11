@@ -1002,6 +1002,133 @@ paths:
       operationId: owner_s_lifecycleArchive_post_api_datasets_id_restore
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/datasets/{id}/rohsa:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_rohsaRuns_get_api_datasets_id_rohsa
+      x-listener: owner
+      summary: "ROHSA decomposition runs whose Gaussian components can be drawn over this dataset"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/RohsaRunList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/datasets/{id}/rohsa/components:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_rohsaComponents_get_api_datasets_id_rohsa_components
+      x-listener: owner
+      summary: "The Gaussian components of one pixel as a binary frame"
+      description: "Frame layout as for a plane: uint32 little-endian header length n, then n bytes of JSON (a RohsaComponentsHeader, padded with spaces), then little-endian float64 axis[channels] (km/s, or channel numbers when the spectral axis is not a resolved velocity), model[channels] (the sum of the valid components) and component[n_gauss][channels]. 409 until the .dat is indexed (see the index route) or when the dataset is not on the run's grid."
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+        - name: "run"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+        - name: "x"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+            minimum: 0
+        - name: "y"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+            minimum: 0
+      responses:
+        "200":
+          description: "ok"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/vnd.vesqira.plane":
+              schema:
+                type: "string"
+                format: "binary"
+              x-frame-header:
+                $ref: "#/components/schemas/RohsaComponentsHeader"
+        "409":
+          description: "not indexed yet, or the dataset is not on the run's grid"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/datasets/{id}/rohsa/index:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_rohsaIndex_post_api_datasets_id_rohsa_index
+      x-listener: owner
+      summary: "Advance (or confirm) the index of a run's .dat; each call works for a bounded time"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/RohsaIndexRequest"
+      responses:
+        "200":
+          description: "the index state"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/RohsaIndexState"
+        "409":
+          description: "the dataset is not on the run's grid (the reasons are listed), or the run has no crop"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/datasets/{id}/spectrum:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -6009,3 +6136,234 @@ components:
           type: "string"
         note:
           type: "string"
+    RohsaRunView:
+      type: "object"
+      properties:
+        runId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        nGauss:
+          type: "integer"
+          description: "Gaussians per pixel, as the run's records declare; 0 when they do not"
+        nGaussBasis:
+          type: "string"
+        cropDatasetId:
+          type: "integer"
+          format: "int64"
+        cropName:
+          type: "string"
+        cropBunit:
+          type: "string"
+          nullable: true
+        isCrop:
+          type: "boolean"
+          description: "the dataset is the crop the fit used"
+        usable:
+          type: "boolean"
+        refusal:
+          type: "string"
+          description: "why the components cannot be drawn over this dataset"
+          nullable: true
+      required:
+        - "runId"
+        - "name"
+        - "nGauss"
+        - "nGaussBasis"
+        - "cropDatasetId"
+        - "cropName"
+        - "cropBunit"
+        - "isCrop"
+        - "usable"
+        - "refusal"
+      description: "A ROHSA decomposition run whose components could be drawn over a dataset: the dataset is the run's crop or exactly on its grid. A cube with the crop's axis lengths but another (or unconfirmed) grid is listed with the reason it is refused."
+    RohsaRunList:
+      type: "object"
+      properties:
+        runs:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/RohsaRunView"
+      required:
+        - "runs"
+    RohsaIndexRequest:
+      type: "object"
+      properties:
+        runId:
+          type: "integer"
+          format: "int64"
+      required:
+        - "runId"
+    RohsaIndexState:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        op:
+          type: "string"
+        state:
+          type: "string"
+          enum:
+            - "building"
+            - "ready"
+            - "refused"
+        done_bytes:
+          type: "integer"
+        size_bytes:
+          type: "integer"
+        rows:
+          type: "integer"
+        malformed:
+          type: "integer"
+        reason:
+          type: "string"
+          nullable: true
+        examples:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              line:
+                type: "integer"
+              problem:
+                type: "string"
+            required:
+              - "line"
+              - "problem"
+        index_bytes:
+          type: "integer"
+          description: "size of the sidecar index: 8 bytes per pixel"
+        width:
+          type: "integer"
+        height:
+          type: "integer"
+      required:
+        - "state"
+        - "done_bytes"
+        - "size_bytes"
+        - "rows"
+        - "malformed"
+        - "reason"
+        - "examples"
+        - "index_bytes"
+      description: "Progress of the index of a ROHSA .dat. building: call again; ready: pixels can be read; refused: the file is not the ROHSA row layout, with the reason and example lines."
+    RohsaComponent:
+      type: "object"
+      properties:
+        k:
+          type: "integer"
+          description: "1-based Gaussian number within the pixel, in file order"
+        amp:
+          type: "number"
+          description: "fitted amplitude in the crop's brightness unit; 0 is a real value"
+        mean_channel_file:
+          type: "number"
+          description: "the file's 1-based channel number"
+        mean_channel:
+          type: "number"
+          description: "0-based channel index: the file's value minus 1"
+        sigma_channel:
+          type: "number"
+        valid:
+          type: "boolean"
+          description: "false when sigma is not positive and finite; such a component is not drawn"
+        centre:
+          type: "number"
+          description: "km/s on the crop's spectral axis; null without a resolved velocity axis"
+          nullable: true
+        sigma:
+          type: "number"
+          description: "km/s"
+          nullable: true
+        fwhm:
+          type: "number"
+          description: "2 sqrt(2 ln 2) sigma, km/s"
+          nullable: true
+        t_doppler_k:
+          type: "number"
+          description: "121.1 K (km/s)^-2 x sigma^2: an upper limit on the kinetic temperature"
+          nullable: true
+      required:
+        - "k"
+        - "amp"
+        - "mean_channel_file"
+        - "mean_channel"
+        - "sigma_channel"
+        - "valid"
+        - "centre"
+        - "sigma"
+        - "fwhm"
+        - "t_doppler_k"
+    RohsaComponentsHeader:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+        x:
+          type: "integer"
+        y:
+          type: "integer"
+        channels:
+          type: "integer"
+        n_gauss:
+          type: "integer"
+        components:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/RohsaComponent"
+        axis:
+          type: "object"
+          properties:
+            kind:
+              type: "string"
+              enum:
+                - "velocity"
+                - "channel"
+            name:
+              type: "string"
+              nullable: true
+            unit:
+              type: "string"
+              nullable: true
+            source_unit:
+              type: "string"
+              nullable: true
+            unit_status:
+              type: "string"
+              enum:
+                - "declared"
+                - "inferred"
+                - "unresolved"
+              nullable: true
+            note:
+              type: "string"
+              nullable: true
+          required:
+            - "kind"
+            - "name"
+            - "unit"
+            - "source_unit"
+            - "unit_status"
+            - "note"
+        bunit:
+          type: "string"
+          nullable: true
+        layout:
+          type: "string"
+        conventions:
+          type: "object"
+          additionalProperties:
+            type: "string"
+          description: "the conventions applied, in words: columns, 1-based mean, sigma, model, invalid components, FWHM, T_D"
+      required:
+        - "components"
+        - "axis"
+        - "channels"
+        - "n_gauss"
+        - "x"
+        - "y"
+        - "bunit"
+        - "layout"
+        - "conventions"
+      description: "The JSON header of a rohsa components frame."
