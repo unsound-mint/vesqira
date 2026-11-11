@@ -947,6 +947,27 @@ def overlay_geometry(base: "Cube", req: dict) -> tuple[dict, bytes]:
     return {**head, "nbytes": len(payload), "dtype": "<f4", "coords": og.COORDS}, payload
 
 
+def overlay_catalog(req: dict) -> tuple[dict, bytes]:
+    """Markers of a point catalog on the base map (overlay_geometry.catalog). A separate op from overlay_geometry because the table
+    is read on the heavy lane (ADR 0044), and the declaration that says which columns are the position and the angle comes from the
+    API's stored declaration, never from the browser."""
+    import overlay_geometry as og
+    import catalog_table as ct
+    spec = req.get("overlay")
+    if not isinstance(spec, dict) or spec.get("kind") != "catalog" or not isinstance(req.get("declaration"), dict):
+        raise Refused("bad_request", "bad request")
+    base_path, table_path = abs_path(req.get("path")), abs_path(req.get("overlay_path"))
+    base = cube_for(authorize(base_path))
+    try:
+        head, payload = og.catalog(base, ct.load(authorize(table_path)), req["declaration"], spec)
+    except og.Refusal as e:
+        raise Refused("unsupported", str(e))
+    except ct.Bad as e:
+        raise Refused("unreadable", str(e))
+    return {"ok": True, "op": "overlay_catalog", **head, "nbytes": len(payload), "dtype": "<f4", "coords": og.COORDS,
+            "bunit": None, "bunit_status": None}, payload
+
+
 def declared_unit(req: dict):
     """The unit the person declared for a file without BUNIT, sent with the request, or None. Text only: it is shown and
     compared as typed and never parsed or converted here."""
@@ -1061,6 +1082,8 @@ def handle(req: dict) -> tuple[dict, bytes]:
         return host_op(op, req)
     if isinstance(op, str) and op.startswith("catalog_"):
         return catalog_op(op, path, req)
+    if op == "overlay_catalog":
+        return overlay_catalog(req)
     file_ops = ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky", "overlay_geometry")
     if op in file_ops:
         authorize(path)                                          # also enforces the roots on a remote host

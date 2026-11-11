@@ -166,3 +166,5 @@ Every result carries `label: "agreement statistic"` and a policy saying that it 
 
 ## Rollback / Migration
 Nothing is migrated. Removing the feature leaves the registered result files and their derived records, which read as an ordinary catalog or map with a record whose operation is `relorient_*`.
+
+- **Shared row filter.** The optional P/σP filter on catalog runs (`snr_column`, `snr_sigma_column`, `snr_min`) calls `catalog_table.snr_filter(value, sigma, k)`, the same function the catalog overlay's row filter uses (ADR 0042, fourth slice; its wire names are `filter.column`, `filter.sigmaColumn`, `filter.min`). Rule: keep when `P/σP >= k`; a missing or unreadable P or σP, or σP <= 0, has no ratio and is excluded with its own reason (`snr_missing`), a known ratio under k with `snr`. Tests: `test_snr_filter.py`.

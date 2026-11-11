@@ -138,6 +138,16 @@
   stroke: var(--canvas);
 }
 
+/* catalog sources: a dark halo under a ring in the overlay's colour */
+.sourceHalo {
+  fill: none;
+  stroke: var(--canvas);
+}
+
+.source {
+  paint-order: stroke;
+}
+
 .label {
   font-family: var(--font-data);
   paint-order: stroke;

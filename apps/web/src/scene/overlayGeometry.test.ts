@@ -50,7 +50,7 @@ describe("overlay geometry frames", () => {
   it("parse paths and segments, and refuse a frame of the wrong size", () => {
     const g = parseGeometry(frame(contoursHead(), [0, 2, 3, 2, 1, 2, 3, 4, 5, 6, 7, 8]));
     expect(g.kind).toBe("contours");
-    if (g.kind === "orientation") throw new Error("kind");
+    if (g.kind === "orientation" || g.kind === "catalog") throw new Error("kind");
     expect(g.paths.map((p) => [p.group, Array.from(p.xy)])).toEqual([[0, [1, 2, 3, 4]], [3, [5, 6, 7, 8]]]);
     const o = parseGeometry(frame({ kind: "orientation", dtype: "<f4", coords: "", placement, segments: 1 }, [1, 2, 90, 0.5]));
     expect(o.kind === "orientation" && Array.from(o.segments)).toEqual([1, 2, 90, 0.5]);

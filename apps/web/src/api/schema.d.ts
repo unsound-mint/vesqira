@@ -3961,7 +3961,7 @@ export interface components {
             cy: number;
             r: number;
         };
-        /** @description One layer over the base. Orientation, regions, contours, beam and grid are drawn; catalog is specified for a later slice, and a figure refuses it until then. Overlays from another dataset are placed by WCS geometry, never by resampling its data. */
+        /** @description One layer over the base. Orientation, regions, contours, catalog, beam and grid are drawn. Overlays from another dataset are placed by WCS geometry, never by resampling its data. */
         SceneOverlay: components["schemas"]["OrientationOverlay"] | components["schemas"]["RegionsOverlay"] | components["schemas"]["ContoursOverlay"] | components["schemas"]["CatalogOverlay"] | components["schemas"]["BeamOverlay"] | components["schemas"]["GridOverlay"];
         /** @description Orientation lines of an axial map, sampled on its own grid. When datasetId is the base map the lines are drawn from the plane on screen; from another dataset the worker samples that map on its own grid, converts each sample to sky-frame B-field orientation from its declared frame and quantity, and carries position and angle into the base's pixel frame by WCS (never resampled). */
         OrientationOverlay: {
@@ -4107,7 +4107,7 @@ export interface components {
             factor: number;
             count: number;
         };
-        /** @description Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames. A figure refuses it. */
+        /** @description Markers of a point catalog (ADR 0044) over the base, one per row, placed by WCS from the celestial frame the person declared for the catalog (never assumed) to the base's frame with astropy. The position columns, the frame and the meaning of the angle come from the catalog's stored declaration, never from the scene. Optional vectors (headless segments) are the declared angle turned into sky-frame B-field orientation (starlight unrotated, dust polarization and gradients rotated by 90 degrees; refused, naming the missing declaration, when the quantity is not declared) and carried into the base's pixel frame. Rows outside the base's footprint, rows removed by the filter and rows with no readable position are counted, not drawn. */
         CatalogOverlay: {
             /** @description Stable within the scene; actions name an overlay by it */
             id: string;
@@ -4119,12 +4119,34 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             visible: boolean;
-            columns: {
-                lon: string;
-                lat: string;
-                angle?: string;
-                angleError?: string;
+            /** @description Draw an orientation vector at each row from the declared angle column. Absent: markers only. */
+            vectors?: boolean;
+            /** @description Vector length from this column. Needs vectors. Absent: every vector has the same length. A missing, unreadable, zero or negative value draws no vector. */
+            lengthColumn?: string;
+            /** @description Base pixels per unit of the length column. Absent: chosen so that the 99th percentile of the drawn values is 6% of the base's shorter side; the overlay states the scale it used. */
+            lengthScale?: number;
+            /** @description Colour each marker by this column, linearly between the smallest and largest value drawn (a legend states them). A row with no value is drawn hollow. */
+            colorColumn?: string;
+            /** @description Keep rows whose column (divided by sigmaColumn when given, for example P / sigma_P >= 3) is at least min. A row whose value or uncertainty is missing, unreadable or (for an uncertainty) not positive does not pass and is counted as unknown. */
+            filter?: {
+                /** @description A table column with one value per row */
+                column: string;
+                /** @description The column holding the uncertainty of column */
+                sigmaColumn?: string;
+                min: number;
             };
+            /**
+             * @description Stroke colour from the overlay palette (design tokens --overlay-*; the image canvas is dark in both themes). Absent: white.
+             * @enum {string}
+             */
+            color?: "white" | "cyan" | "amber" | "magenta" | "lime";
+            /** @description Stroke width in output pixels. Absent: the kind's default. */
+            width?: number;
+            /**
+             * @description So overlays can be told apart without colour. Absent: solid.
+             * @enum {string}
+             */
+            dash?: "solid" | "dashed";
         };
         /** @description The beam of a dataset (the base or another one) drawn as an ellipse in a corner of the base, from that file's BMAJ, BMIN and BPA only (degrees, FITS standard), never a default. The ellipse is built on the sky and placed by WCS. Without BMAJ and BMIN, or with an elliptical beam and no BPA, it is refused. */
         BeamOverlay: {
@@ -4731,7 +4753,7 @@ export interface components {
         /** @description The JSON header of an overlay geometry frame. Every position is in base pixels: 0-based, pixel centres at integers, y up (FITS order). Extra keys may be present and are not part of the contract. */
         OverlayGeometryHeader: {
             /** @enum {string} */
-            kind: "contours" | "orientation" | "beam" | "grid";
+            kind: "contours" | "orientation" | "beam" | "grid" | "catalog";
             /** @enum {string} */
             dtype: "<f4";
             coords: string;
@@ -4771,7 +4793,7 @@ export interface components {
             step?: number;
             /** @description orientation: the distance between samples in base pixels */
             spacing_px?: number;
-            /** @description orientation: how the stored angles became B-field orientation in the base pixel frame */
+            /** @description orientation, catalog with vectors: how the stored angles became B-field orientation in the base pixel frame */
             conversion?: string;
             /** @description orientation: present when the declared reliability map was read (for length, opacity or a threshold) */
             reliability?: {
@@ -4795,6 +4817,60 @@ export interface components {
             }[];
             frame?: string;
             note?: string;
+            /** @description catalog: the payload is markers rows of six numbers (x, y, vector angle, vector length, colour value, row): x, y in base pixels; vector angle in degrees counter-clockwise from the base's +x pixel axis towards +y, in [0, 180), and vector length in base pixels (NaN: no vector at this row); the colour value as in the catalog (NaN: unknown); row is the 1-based row number in the table. */
+            markers?: number;
+            /** @description catalog: every row of the table is in exactly one of no_position, outside, filtered and drawn. */
+            counts?: {
+                rows?: number;
+                no_position?: number;
+                no_position_missing?: number;
+                no_position_unreadable?: number;
+                outside?: number;
+                filtered?: number;
+                drawn?: number;
+            };
+            /** @description catalog: the row filter as applied, counted over the rows on the base. */
+            filter?: {
+                rule?: string;
+                column?: string;
+                sigma_column?: string | null;
+                min?: number;
+                kept?: number;
+                removed?: number;
+                unknown?: number;
+                note?: string;
+            } | null;
+            /** @description catalog: the orientation vectors, when drawn. */
+            vectors?: {
+                quantity?: string;
+                drawn?: number;
+                no_angle?: number;
+                no_length?: number;
+                length?: {
+                    column?: string | null;
+                    unit?: string | null;
+                    px_per_unit?: number | null;
+                    fixed_px?: number | null;
+                    method?: string;
+                };
+            } | null;
+            /** @description catalog: the colour column and the range its legend states. */
+            color?: {
+                column?: string;
+                unit?: string | null;
+                min?: number | null;
+                max?: number | null;
+                unknown?: number;
+                scale?: string;
+            } | null;
+            /** @description catalog: how the table was read. */
+            catalog?: {
+                format?: string;
+                frame?: string;
+                frame_status?: string;
+                /** @description Lines of the file that were not rows (see the catalog's parse report). */
+                skipped_lines?: number;
+            };
         };
         /** @description A ROHSA decomposition run whose components could be drawn over a dataset: the dataset is the run's crop or exactly on its grid. A cube with the crop's axis lengths but another (or unconfirmed) grid is listed with the reason it is refused. */
         RohsaRunView: {

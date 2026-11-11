@@ -5,16 +5,19 @@ import type { Dataset } from "../api/catalog";
 import { overlayBasis, overlayTitle } from "../scene/basis";
 import { needsGeometry } from "../scene/geometry";
 import { OVERLAY_COLOR_NAMES } from "../scene/palette";
-import { candidates, channelsOf, draftToOverlay, emptyDraft, imageDatasets, newOverlayId, overlayToDraft, unitOf } from "../scene/overlayForm";
+import { candidates, catalogCandidates, channelsOf, draftToOverlay, emptyDraft, imageDatasets, newOverlayId, numericColumns, overlayToDraft, unitOf } from "../scene/overlayForm";
 import type { AddableKind, Draft } from "../scene/overlayForm";
 import { ORIENTATION_ID, REGIONS_ID } from "../scene/scene";
 import type { PaneAction, Scene, SceneOverlay } from "../scene/scene";
 import type { GeometryMap } from "../scene/geometry";
+import { CatalogSources } from "./CatalogSources";
+import type { PickedSource } from "./SourceRow";
 import s from "./OverlayPanel.module.css";
 
 const KINDS: { id: AddableKind; label: string }[] = [
   { id: "contours", label: "Contours" },
   { id: "orientation", label: "Orientation lines" },
+  { id: "catalog", label: "Catalog (point sources)" },
   { id: "beam", label: "Beam" },
   { id: "grid", label: "Coordinate grid" },
 ];
@@ -25,7 +28,9 @@ const BUILT_IN = new Set([ORIENTATION_ID, REGIONS_ID]);
  * registered dataset. Every change is a scene action. Each row says what it draws and how it was placed, or why it is not
  * drawn. The base map's own orientation lines and regions can be hidden and moved but not removed: other controls drive them.
  */
-export function OverlayPanel({ scene, dispatch, geometry, datasets }: { scene: Scene | null; dispatch: (a: PaneAction) => void; geometry: GeometryMap; datasets: Dataset[] }) {
+export function OverlayPanel({ scene, dispatch, geometry, datasets, picked = null, onPick = () => {} }: {
+  scene: Scene | null; dispatch: (a: PaneAction) => void; geometry: GeometryMap; datasets: Dataset[]; picked?: PickedSource | null; onPick?: (p: PickedSource | null) => void;
+}) {
   const [editing, setEditing] = useState<{ id: string | null; draft: Draft } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   if (!scene) return null;
@@ -60,7 +65,7 @@ export function OverlayPanel({ scene, dispatch, geometry, datasets }: { scene: S
       {n === 0 ? <p className={s.note}>No overlays.</p> : (
         <ol className={s.list} aria-label="Overlays, drawn in this order (the last on top)">
           {scene.overlays.map((o, i) => (
-            <Row key={o.id} o={o} i={i} n={n} scene={scene} geometry={geometry} nameOf={nameOf} dispatch={dispatch}
+            <Row key={o.id} o={o} i={i} n={n} scene={scene} geometry={geometry} nameOf={nameOf} dispatch={dispatch} picked={picked} onPick={onPick}
               onEdit={() => { const d = overlayToDraft(o); if (d) { setEditing({ id: o.id, draft: d }); setProblem(null); } }}
               editing={editing?.id === o.id} />
           ))}
@@ -81,8 +86,9 @@ export function OverlayPanel({ scene, dispatch, geometry, datasets }: { scene: S
   );
 }
 
-function Row({ o, i, n, scene, geometry, nameOf, dispatch, onEdit, editing }: {
+function Row({ o, i, n, scene, geometry, nameOf, dispatch, onEdit, editing, picked, onPick }: {
   o: SceneOverlay; i: number; n: number; scene: Scene; geometry: GeometryMap; nameOf: (id: number) => string; dispatch: (a: PaneAction) => void; onEdit: () => void; editing: boolean;
+  picked: PickedSource | null; onPick: (p: PickedSource | null) => void;
 }) {
   const title = overlayTitle(o, scene, nameOf);
   const entry = geometry[o.id];
@@ -90,7 +96,7 @@ function Row({ o, i, n, scene, geometry, nameOf, dispatch, onEdit, editing }: {
   const refused = o.visible && entry?.status === "refused";
   const computing = o.visible && needsGeometry(o, scene) && (!entry || entry.status === "loading");
   const removable = !BUILT_IN.has(o.id);
-  const editable = removable && o.kind !== "regions" && o.kind !== "catalog";
+  const editable = removable && o.kind !== "regions";
   const color = (o as { color?: string }).color;
   return (
     <li className={s.row} data-overlay={o.id} aria-current={editing ? "true" : undefined}>
@@ -107,6 +113,7 @@ function Row({ o, i, n, scene, geometry, nameOf, dispatch, onEdit, editing }: {
       {computing ? <p className={s.basis} role="status">Computing its placement on this map…</p>
         : refused ? <p className={s.refused} role="status">{basis}</p>
           : basis ? <p className={s.basis}>{basis}</p> : null}
+      {o.kind === "catalog" && o.visible ? <CatalogSources o={o} entry={entry} picked={picked} onPick={onPick} /> : null}
     </li>
   );
 }
@@ -115,8 +122,13 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
   draft: Draft; adding: boolean; datasets: Dataset[]; baseId: number; problem: string | null; onChange: (d: Draft) => void; onApply: () => void; onCancel: () => void;
 }) {
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
-  const pool = candidates(draft.kind, datasets, baseId);
+  const isCat = draft.kind === "catalog";
+  const pool: { id: number; name: string }[] = isCat ? catalogCandidates(datasets) : candidates(draft.kind, datasets, baseId);
+  const cat = isCat ? catalogCandidates(datasets).find((d) => d.id === draft.datasetId) : undefined;
   const ds = imageDatasets(datasets).find((d) => d.id === (draft.kind === "grid" ? baseId : draft.datasetId));
+  const numeric = cat ? numericColumns(cat) : [];
+  const angle = cat?.catalogDeclaration?.angle;
+  const vectorsOk = !!angle && !!angle.quantity && angle.quantity !== "unspecified";
   const hasRel = ds?.interpretation?.reliabilityId != null;
   const unit = ds ? unitOf(ds) : undefined;
   return (
@@ -124,15 +136,15 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
       {adding ? (
         <Select label="Kind" value={draft.kind} onChange={(e) => {
           const kind = e.target.value as AddableKind;
-          const next = candidates(kind, datasets, baseId);
+          const next: { id: number }[] = kind === "catalog" ? catalogCandidates(datasets) : candidates(kind, datasets, baseId);
           onChange({ ...emptyDraft(kind, next.some((d) => d.id === draft.datasetId) ? draft.datasetId : next[0]?.id ?? null) });
         }}>
           {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
         </Select>
       ) : null}
       {draft.kind !== "grid" ? (
-        <Select label={draft.kind === "beam" ? "Beam of" : "From dataset"} value={draft.datasetId ?? ""} disabled={!adding} onChange={(e) => set({ datasetId: e.target.value ? Number(e.target.value) : null })}>
-          {pool.length === 0 ? <option value="">{draft.kind === "orientation" ? "No other map is declared as an orientation map" : "No dataset"}</option> : null}
+        <Select label={draft.kind === "beam" ? "Beam of" : isCat ? "Catalog" : "From dataset"} value={draft.datasetId ?? ""} disabled={!adding} onChange={(e) => set({ datasetId: e.target.value ? Number(e.target.value) : null })}>
+          {pool.length === 0 ? <option value="">{draft.kind === "orientation" ? "No other map is declared as an orientation map" : isCat ? "No catalog has its columns declared" : "No dataset"}</option> : null}
           {pool.map((d) => <option key={d.id} value={d.id}>{d.id === baseId ? `${d.name} (this map)` : d.name}</option>)}
         </Select>
       ) : null}
@@ -180,6 +192,42 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
           </div>
           <Input label="Only reliability at least (optional)" inputMode="decimal" value={draft.threshold} disabled={!hasRel} onChange={(e) => set({ threshold: e.target.value })} />
           {!hasRel ? <p className={s.hint}>That map declares no reliability map, so lines are drawn with fixed length and uniform opacity.</p> : null}
+        </>
+      ) : null}
+      {isCat && cat ? (
+        <>
+          <label className={s.check}>
+            <input type="checkbox" checked={draft.vectors} disabled={!vectorsOk} onChange={(e) => set({ vectors: e.target.checked, ...(e.target.checked ? {} : { lengthColumn: "", lengthScale: "" }) })} />
+            <span>Orientation vectors from the declared angle{angle ? ` (${angle.column})` : ""}</span>
+          </label>
+          {!angle ? <p className={s.hint}>This catalog declares no angle column.</p>
+            : !vectorsOk ? <p className={s.hint}>Declare what the angle column {angle.column} is (B-field, gradient, dust polarization or starlight polarization) to draw vectors.</p>
+              : <p className={s.hint}>Angles are east of north in the catalog's declared frame, turned into B-field orientation by what you declared ({angle.quantity?.replace(/_/g, " ")}), then into this map's pixel frame.</p>}
+          {draft.vectors ? (
+            <div className={s.fields}>
+              <Select label="Vector length" value={draft.lengthColumn} onChange={(e) => set({ lengthColumn: e.target.value })}>
+                <option value="">The same for all</option>
+                {numeric.map((c) => <option key={c.name} value={c.name}>{c.name}{c.unit ? ` (${c.unit})` : ""}</option>)}
+              </Select>
+              <Input label="Base pixels per unit (optional)" inputMode="decimal" value={draft.lengthScale} disabled={!draft.lengthColumn} onChange={(e) => set({ lengthScale: e.target.value })} />
+            </div>
+          ) : null}
+          <Select label="Colour markers by" value={draft.colorColumn} onChange={(e) => set({ colorColumn: e.target.value })}>
+            <option value="">One colour</option>
+            {numeric.map((c) => <option key={c.name} value={c.name}>{c.name}{c.unit ? ` (${c.unit})` : ""}</option>)}
+          </Select>
+          <div className={s.fields}>
+            <Select label="Keep rows where" value={draft.filterColumn} onChange={(e) => set({ filterColumn: e.target.value })}>
+              <option value="">All rows</option>
+              {numeric.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+            </Select>
+            <Select label="divided by" value={draft.filterSigma} disabled={!draft.filterColumn} onChange={(e) => set({ filterSigma: e.target.value })}>
+              <option value="">nothing</option>
+              {numeric.filter((c) => c.name !== draft.filterColumn).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+            </Select>
+            <Input label="is at least" inputMode="decimal" value={draft.filterMin} disabled={!draft.filterColumn} onChange={(e) => set({ filterMin: e.target.value })} />
+          </div>
+          <p className={s.hint}>A row whose value or uncertainty is missing does not pass the filter; the overlay counts such rows, and rows outside this map.</p>
         </>
       ) : null}
       {draft.kind === "beam" ? (

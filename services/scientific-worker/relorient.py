@@ -479,11 +479,9 @@ def op_catalog(args, params: dict) -> dict:
         pv = ct.number_field(L, p["snr_column"], "").values
         sv = ct.number_field(L, p["snr_sigma_column"], "").values
         todo = reason == ""
-        unusable = ~(np.isfinite(pv) & np.isfinite(sv) & (sv > 0))
-        reason[todo & unusable] = "snr_missing"
-        with np.errstate(all="ignore"):
-            ratio = pv / sv
-        reason[todo & ~unusable & ~(ratio >= p["snr_min"])] = "snr"
+        _, st = ct.snr_filter(pv, sv, p["snr_min"])      # the one shared P/σP rule (catalog_table.snr_filter)
+        reason[todo & (st == "missing")] = "snr_missing"
+        reason[todo & (st == "below")] = "snr"
         snr_filter = {"p_column": p["snr_column"], "sigma_column": p["snr_sigma_column"], "min": p["snr_min"],
                       "rule": f"keep a row when P/σP >= {p['snr_min']:g} (the script's `keep = p / sp >= min_snr`, vgt_phase_vs_stars.py:87)",
                       "excluded_below": int((reason == "snr").sum()), "excluded_missing": int((reason == "snr_missing").sum())}

@@ -8,6 +8,8 @@ axis and y along its second, y up (FITS order). The browser turns them into pict
 - orientation: single pixels of the overlay's orientation map, picked on its own grid (never block means), converted to
   sky-frame B-field orientation from the declared frame and quantity (orientation.py), carried into the base's celestial
   frame and from there into the base's pixel frame.
+- catalog: rows of a point catalog (ADR 0044) placed from the frame the person declared for it; optional orientation vectors
+  from its declared angle, carried through the sky like an orientation map's; counts of every row that is not drawn.
 - beam: an ellipse built on the sky from a header's BMAJ, BMIN and BPA (never a default), placed by the base's WCS.
 - grid: lines of constant longitude and latitude in a chosen frame, generated on the sky and carried to base pixels.
 
@@ -129,6 +131,22 @@ def to_base(src: Sky, base: Sky, x, y):
         sc = sc.transform_to(base.frame)
     xb, yb = base.w.world_to_pixel(sc)
     return np.asarray(xb, dtype=float), np.asarray(yb, dtype=float)
+
+
+def carry_to_base(base: Sky, origin, pa, same_frame: bool):
+    """(x, y, angle) in base pixels of points `origin` (a SkyCoord in the frame the data is in) and, when `pa` is not None, of
+    the axial sky position angles at them (degrees east of north in that frame). A direction is carried through the sky: rotated
+    into the base's frame when the frames differ (north differs), then turned into the base pixel grid's own direction
+    (counter-clockwise from +x, [0, 180)) by its WCS, so a rotated grid is honoured. Orientation maps and catalogs share this."""
+    with np.errstate(all="ignore"):
+        if not same_frame:
+            if pa is not None:
+                pa = ori.rotate_pa_frame(origin, pa, base.frame)
+            origin = origin.transform_to(base.frame)
+        xb, yb = base.w.world_to_pixel(origin)
+        xb, yb = np.asarray(xb, dtype=float), np.asarray(yb, dtype=float)
+        ang = None if pa is None else ori.wrap_axial(ori.sky_pa_to_pixel(base.w, xb, yb, pa))
+    return xb, yb, ang
 
 
 def _inside(x, y, shape, margin=0.0):
@@ -368,13 +386,7 @@ def orientation_samples(base_cube, ov_cube, rel_cube, spec: dict, interp: dict, 
     xs, ys, deg, weight = xs[ok], ys[ok], deg[ok], weight[ok]
     with np.errstate(all="ignore"):
         pa = ori.to_sky_b_field(src.w, xs, ys, deg, interp["frame"], interp["quantity"])   # east of north in the overlay's frame
-        origin = src.w.pixel_to_world(xs, ys)
-        if not src.same_frame(base):
-            pa = ori.rotate_pa_frame(origin, pa, base.frame)
-            origin = origin.transform_to(base.frame)
-        xb, yb = base.w.world_to_pixel(origin)
-        xb, yb = np.asarray(xb, dtype=float), np.asarray(yb, dtype=float)
-        ang = ori.wrap_axial(ori.sky_pa_to_pixel(base.w, xb, yb, pa))
+        xb, yb, ang = carry_to_base(base, src.w.pixel_to_world(xs, ys), pa, src.same_frame(base))
     keep = _inside(xb, yb, base.shape) & np.isfinite(ang)
     out = np.column_stack([xb[keep], yb[keep], ang[keep], weight[keep]]).astype("<f4")
     how = {"pixel": f"angles counter-clockwise from the map's +x axis, turned into east of north with its WCS in {src.label}",
@@ -584,3 +596,169 @@ def grid(base_cube, spec: dict) -> tuple[dict, bytes]:
                           "from_frame": frame_label(gf), "to_frame": base.label, "from_status": "declared", "to_status": base.status,
                           "same_frame": bool(base.frame.is_equivalent_frame(gf)), "same_dataset": True}}
     return head, payload
+
+
+# ---------- point catalog ----------
+
+MAX_CATALOG_ROWS = 200_000        # rows of the table read for one overlay (astropy transforms them in about a second)
+MAX_MARKERS = 20_000              # markers sent to the browser (6 float32 each: 480 KB) and drawn as SVG
+VECTOR_FRACTION = 0.06            # of the base's shorter side: a fixed vector's length, and the length of the 99th percentile value when the scale is automatic
+DECLARED_BY_YOU = "declared by you in the catalog's column declaration"
+
+
+def _catalog_column(L, name, what: str) -> str:
+    import catalog_table as ct
+    if not isinstance(name, str) or name not in L.table.colnames:
+        raise Refusal(f"{what}: there is no column named {ct.clean(name, 40)!r} in the catalog")
+    if not ct.is_scalar(L.table[name]):
+        raise Refusal(f"{what}: column {ct.clean(name, 40)!r} holds arrays, not one value per row")
+    return name
+
+
+def _column_values(L, name: str) -> np.ndarray:
+    import catalog_table as ct
+    return ct.number_field(L, name, "deg").values.astype(float)      # "deg": no unit conversion; text that is not a number is NaN (unknown)
+
+
+def _column_unit(L, name: str):
+    import catalog_table as ct
+    for c in ct.column_info(L.table):
+        if c["name"] == name:
+            return c.get("unit")
+    return None
+
+
+def _angle_quantity(decl: dict) -> str:
+    a = decl.get("angle")
+    if not a:
+        raise Refusal("orientation vectors need an angle column, and the catalog declares none")
+    q = a.get("quantity")
+    if q is None:
+        raise Refusal(f"the catalog does not declare what its angle column {a['column']!r} is (the B-field, a gradient, dust polarization or starlight polarization), so it cannot be turned into a B-field orientation; declare its quantity first")
+    if q == "unspecified":
+        raise Refusal(f"the quantity of the catalog's angle column {a['column']!r} is declared as 'unspecified': say whether it is the B-field, a gradient, dust polarization or starlight polarization")
+    return q
+
+
+def catalog(base_cube, L, declaration: dict, spec: dict) -> tuple[dict, bytes]:
+    """Markers (and optionally vectors) of a point catalog on the base map, in base pixels.
+
+    Rows are placed from the frame the person declared for the catalog (never assumed), converted to the base's frame with
+    astropy and placed by the base's WCS. Every row ends in exactly one place: no position (empty or unreadable cell), outside the
+    base's footprint, removed by the row filter, or drawn. Payload: six float32 per drawn row, in row order: x, y, vector angle in
+    base pixels (NaN: no vector), vector length in base pixels (NaN: no vector), colour value (NaN: unknown), row number (1-based)."""
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+    import catalog_table as ct
+    try:
+        decl = ct.validate_declaration(declaration, L)
+    except ct.Bad as e:
+        raise Refusal(f"the catalog's declaration: {e}") from e
+    n = len(L.table)
+    if n > MAX_CATALOG_ROWS:
+        raise Refusal(f"the catalog has {n:,} rows; at most {MAX_CATALOG_ROWS:,} are placed on a map at once")
+    base = Sky(base_cube, "the base map")
+    vectors = bool(spec.get("vectors"))
+    quantity = _angle_quantity(decl) if vectors else None
+    len_col = _catalog_column(L, spec["lengthColumn"], "length column") if spec.get("lengthColumn") is not None else None
+    if len_col is not None and not vectors:
+        raise Refusal("a length column needs orientation vectors to be on")
+    col_col = _catalog_column(L, spec["colorColumn"], "colour column") if spec.get("colorColumn") is not None else None
+    flt = spec.get("filter")
+    flt_cols = None
+    if flt is not None:
+        f_val = _catalog_column(L, flt.get("column"), "filter column")
+        f_sig = _catalog_column(L, flt["sigmaColumn"], "filter uncertainty column") if flt.get("sigmaColumn") is not None else None
+        flt_cols = (f_val, f_sig, float(flt["min"]))
+    try:
+        c = ct.convert(L, decl)
+    except ct.Bad as e:
+        raise Refusal(str(e)) from e
+    report = ct.parse_report(c, L)
+    idx = np.flatnonzero(c.valid)
+    src_frame = ct.astropy_frame(decl["frame"], decl["equinox"])
+    same = bool(src_frame.is_equivalent_frame(base.frame))
+    origin = SkyCoord(c.lon_deg[idx] * u.deg, c.lat_deg[idx] * u.deg, frame=src_frame)
+    pa = None
+    if vectors:
+        pa = ori.to_sky_b_field(None, None, None, c.angle_deg[idx], "sky", quantity)     # B-field, east of north in the catalog's frame
+    xb, yb, ang = carry_to_base(base, origin, pa, same)
+    inside = _inside(xb, yb, base.shape)
+    # the row filter: value / sigma >= min (sigma given), or value >= min; a missing, unreadable or non-positive-sigma value does not pass
+    passes = np.ones(len(idx), dtype=bool)
+    flt_info = None
+    if flt_cols is not None:
+        f_val, f_sig, k = flt_cols
+        v = _column_values(L, f_val)[idx]
+        sg = None if f_sig is None else _column_values(L, f_sig)[idx]
+        text = f"{f_val} >= {k:g}" if f_sig is None else f"{f_val} / {f_sig} >= {k:g}"
+        passes, st = ct.snr_filter(v, sg, k)       # the one shared rule (catalog_table.snr_filter)
+        known = st != "missing"
+        flt_info = {"rule": text, "column": f_val, "sigma_column": f_sig, "min": k,
+                    "kept": int(np.count_nonzero(inside & passes)), "removed": int(np.count_nonzero(inside & known & ~passes)),
+                    "unknown": int(np.count_nonzero(inside & ~known)),
+                    "note": "a row whose value" + (" or uncertainty" if f_sig else "") + " is missing or unreadable" + (", or whose uncertainty is not positive," if f_sig else "") + " does not pass and is counted as unknown"}
+    draw = inside & passes
+    n_draw = int(np.count_nonzero(draw))
+    if n_draw > MAX_MARKERS:
+        raise Refusal(f"{n_draw:,} rows fall on the base map, more than the {MAX_MARKERS:,} markers one overlay draws; add a row filter")
+    X, Y = xb[draw], yb[draw]
+    rows = idx[draw] + 1
+    angle = np.full(n_draw, np.nan)
+    length = np.full(n_draw, np.nan)
+    side = float(min(base.shape))
+    vec_info = None
+    if vectors:
+        a = ang[draw]
+        if len_col is None:
+            ln = np.where(np.isfinite(a), VECTOR_FRACTION * side, np.nan)
+            length_info = {"column": None, "unit": None, "px_per_unit": None, "fixed_px": VECTOR_FRACTION * side,
+                           "method": f"every vector is {VECTOR_FRACTION * 100:g}% of the base's shorter side ({VECTOR_FRACTION * side:.3g} base pixels) long"}
+        else:
+            lv = _column_values(L, len_col)[idx][draw]
+            pos = np.isfinite(lv) & (lv > 0)
+            given = spec.get("lengthScale")
+            if given is not None:
+                per = float(given)
+                how = f"{per:g} base pixels per unit of {len_col}, as you set it"
+            else:
+                p99 = float(np.percentile(lv[pos], 99)) if pos.any() else float("nan")
+                per = VECTOR_FRACTION * side / p99 if math.isfinite(p99) and p99 > 0 else float("nan")
+                how = (f"{per:.4g} base pixels per unit of {len_col}: the 99th percentile of the drawn values is {VECTOR_FRACTION * 100:g}% of the base's shorter side"
+                       if math.isfinite(per) else f"no drawn row has a positive {len_col}")
+            with np.errstate(all="ignore"):
+                ln = np.where(np.isfinite(a) & pos, lv * per, np.nan)
+            length_info = {"column": len_col, "unit": _column_unit(L, len_col), "px_per_unit": per if math.isfinite(per) else None, "fixed_px": None,
+                           "method": how + "; a missing, unreadable, zero or negative value draws no vector"}
+        ok = np.isfinite(a) & np.isfinite(ln)
+        angle[ok], length[ok] = a[ok], ln[ok]
+        vec_info = {"quantity": quantity, "drawn": int(ok.sum()), "no_angle": int(np.count_nonzero(~np.isfinite(a))),
+                    "no_length": int(np.count_nonzero(np.isfinite(a) & ~np.isfinite(ln))), "length": length_info}
+    colour = np.full(n_draw, np.nan)
+    col_info = None
+    if col_col is not None:
+        colour = _column_values(L, col_col)[idx][draw]
+        fin = colour[np.isfinite(colour)]
+        col_info = {"column": col_col, "unit": _column_unit(L, col_col), "min": float(fin.min()) if fin.size else None, "max": float(fin.max()) if fin.size else None,
+                    "unknown": int(n_draw - fin.size), "scale": "linear between the smallest and largest value drawn; a row with no value is drawn hollow"}
+    out = np.column_stack([X, Y, angle, length, colour, rows]).astype("<f4") if n_draw else np.zeros((0, 6), dtype="<f4")
+    counts = {"rows": n, "no_position": int(n - len(idx)), "no_position_missing": report["missing"], "no_position_unreadable": report["unreadable"],
+              "outside": int(np.count_nonzero(~inside)), "filtered": int(np.count_nonzero(inside & ~passes)), "drawn": n_draw}
+    assert counts["no_position"] + counts["outside"] + counts["filtered"] + counts["drawn"] == n
+    src_label = frame_label(src_frame)
+    conversion = None
+    if vectors:
+        rot = ori.b_rotation_deg(quantity)
+        what = {"b_field": "declared as the B-field", "starlight_polarization": "declared as starlight polarization, parallel to B",
+                "gradient": f"declared as a gradient, rotated by {rot:g} degrees to B",
+                "dust_polarization": f"declared as dust polarization, rotated by {rot:g} degrees to B"}[quantity]
+        conversion = (f"angles east of north in {src_label}, {what}" + ("" if same else f"; rotated into {base.label}") + "; then into the base's pixel frame with its WCS")
+    method = (f"{PLACED}; both in {base.label}" if same else f"{PLACED}; converted from {src_label} to the base's {base.label} frame")
+    head = {"kind": "catalog", "markers": n_draw, "counts": counts, "filter": flt_info, "vectors": vec_info, "color": col_info,
+            "catalog": {"format": L.fmt, "frame": src_label, "frame_status": "declared", "skipped_lines": L.skipped_total},
+            "placement": {"method": f"{method}; catalog frame {src_label} ({DECLARED_BY_YOU}); base frame {base.basis}", "from_frame": src_label, "to_frame": base.label,
+                          "from_status": "declared", "to_status": base.status, "same_frame": same, "same_dataset": False},
+            "method": "one marker per row at its declared position; rows are never moved, merged or interpolated"}
+    if conversion:
+        head["conversion"] = conversion
+    return head, out.tobytes()

@@ -2,11 +2,11 @@ import type { OverlayGeometry } from "../api/overlays";
 import type { Scene, SceneOverlay } from "./scene";
 
 /**
- * What the worker computes for an overlay (ADR 0042, section 3): contours, the beam and the grid always, orientation lines
+ * What the worker computes for an overlay (ADR 0042, section 3): contours, the beam, the grid and catalog markers always, orientation lines
  * only from another dataset (the base map's own lines are drawn from the plane on screen). Regions need nothing.
  */
 export function needsGeometry(o: SceneOverlay, scene: Scene): boolean {
-  return o.kind === "contours" || o.kind === "beam" || o.kind === "grid" || (o.kind === "orientation" && o.datasetId !== scene.base.datasetId);
+  return o.kind === "contours" || o.kind === "beam" || o.kind === "grid" || o.kind === "catalog" || (o.kind === "orientation" && o.datasetId !== scene.base.datasetId);
 }
 
 /**
@@ -36,7 +36,7 @@ export type GeometryEntry =
 export type GeometryMap = Readonly<Record<string, GeometryEntry>>;
 
 /** The ready geometry of an overlay of the given kind, or null. */
-type GeometryOf<K extends OverlayGeometry["kind"]> = K extends "orientation" ? Extract<OverlayGeometry, { kind: "orientation" }> : Exclude<OverlayGeometry, { kind: "orientation" }>;
+type GeometryOf<K extends OverlayGeometry["kind"]> = Extract<OverlayGeometry, { kind: K }> | (K extends "contours" | "beam" | "grid" ? Extract<OverlayGeometry, { kind: "contours" | "beam" | "grid" }> : never);
 export function readyGeometry<K extends OverlayGeometry["kind"]>(map: GeometryMap | undefined, id: string, kind: K): GeometryOf<K> | null {
   const e = map?.[id];
   return e && e.status === "ready" && e.g.kind === kind ? (e.g as GeometryOf<K>) : null;
