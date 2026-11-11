@@ -30,8 +30,8 @@ export function matchEntry(e: TreeEntry, q: string): boolean {
   return words.every((w) => hay.includes(w));
 }
 
-/** `onEditFile` is given only when the server has the editor on (ADR 0029); it receives the file's absolute path. */
-type Handlers = { selectedDatasetId: number | null; onOpenRun: (runId: number) => void; onSelectDataset: (id: number) => void; onEditFile?: (path: string) => void };
+/** `onEditFile` is given only when the server has the editor on (ADR 0029); it receives the file's absolute path and the project's host (0: this computer). */
+type Handlers = { selectedDatasetId: number | null; onOpenRun: (runId: number) => void; onSelectDataset: (id: number) => void; onEditFile?: (path: string, hostId: number) => void };
 
 /** One page of a group, or of one folder in it; more pages on request. Children are fetched when the folder is opened. */
 function Listing({ project, version, group, path, level, filter, ...h }: Handlers & { project: ProjectSummary; version: number; group: TreeGroup; path: string; level: number; filter: string }) {
@@ -102,8 +102,8 @@ function Entry({ project, version, group, entry: e, level, filter, selectedDatas
     );
   }
   const f = e.file;
-  // Only a config or job file of a project on this computer, that is not marked read-only, and that the server would open as text.
-  const editPath = onEditFile && project.hostId === 0 && (e.kind === "config" || e.kind === "job") && !f?.readOnly && looksEditable(e.name) ? `${project.path.replace(/\/+$/, "")}/${e.path}` : null;
+  // Only a config or job file of a project (on this computer or on a host), that is not marked read-only, and that the server would open as text.
+  const editPath = onEditFile && (e.kind === "config" || e.kind === "job") && !f?.readOnly && looksEditable(e.name) ? `${project.path.replace(/\/+$/, "")}/${e.path}` : null;
   const datasetId = f?.datasetId ?? null;
   const trailing = !f ? "" : !f.viewer ? "no viewer yet" : datasetId === null ? "header not read" : bytes(f.size);
   return (
@@ -112,7 +112,7 @@ function Entry({ project, version, group, entry: e, level, filter, selectedDatas
       level={level}
       selected={datasetId !== null && datasetId === selectedDatasetId}
       title={`${e.path}${editPath ? " · opens in the editor" : ""}${f?.role ? ` · ${f.role}${f.readOnly ? ", read-only" : ""}` : ""}${f && f.viewer && datasetId === null ? "\nFITS header not registered yet or changed since the scan." : ""}`}
-      onSelect={datasetId !== null ? () => onSelectDataset(datasetId) : editPath ? () => onEditFile?.(editPath) : undefined}
+      onSelect={datasetId !== null ? () => onSelectDataset(datasetId) : editPath ? () => onEditFile?.(editPath, project.hostId) : undefined}
       trailing={e.kind === "data" ? trailing : f ? bytes(f.size) : undefined}
     >
       {e.name}

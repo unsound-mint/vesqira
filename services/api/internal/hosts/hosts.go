@@ -410,6 +410,11 @@ func (h Host) InRoots(p string) bool {
 // its output, capped. The command text is built by Vesqira from validated pieces; anything caller-supplied (a job
 // script) is passed on stdin.
 func (m *Manager) RunShell(ctx context.Context, h Host, inner string, stdin []byte, timeout time.Duration) ([]byte, error) {
+	return m.runShellCap(ctx, h, inner, stdin, timeout, maxShellOutput)
+}
+
+// runShellCap is RunShell with its own bound on the output kept (the text editor reads files of up to 2 MiB).
+func (m *Manager) runShellCap(ctx context.Context, h Host, inner string, stdin []byte, timeout time.Duration, maxOut int) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, m.Ssh, append(m.sshArgs(h), "bash -lc "+quote(inner))...)
@@ -417,7 +422,7 @@ func (m *Manager) RunShell(ctx context.Context, h Host, inner string, stdin []by
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
 	}
-	var out capped
+	out := capped{max: maxOut}
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
@@ -430,11 +435,14 @@ func (m *Manager) RunShell(ctx context.Context, h Host, inner string, stdin []by
 
 const maxShellOutput = 256 << 10
 
-// capped is a writer that keeps at most maxShellOutput bytes and drops the rest.
-type capped struct{ b bytes.Buffer }
+// capped is a writer that keeps at most max bytes and drops the rest.
+type capped struct {
+	b   bytes.Buffer
+	max int
+}
 
 func (c *capped) Write(p []byte) (int, error) {
-	if room := maxShellOutput - c.b.Len(); room > 0 {
+	if room := c.max - c.b.Len(); room > 0 {
 		if len(p) > room {
 			c.b.Write(p[:room])
 		} else {

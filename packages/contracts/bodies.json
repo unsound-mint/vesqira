@@ -2229,11 +2229,11 @@
     "mtime",
     "sha256"
    ],
-   "description": "A text file inside a source root, opened for editing.",
+   "description": "A text file inside a source root of this computer, or of a host (hostId, host), opened for editing.",
    "properties": {
     "path": {
      "type": "string",
-     "description": "canonical path, symbolic links resolved"
+     "description": "canonical path, symbolic links resolved (on a host: the path as sent, which the host's script has checked holds no link)"
     },
     "name": {
      "type": "string"
@@ -2247,10 +2247,20 @@
      "format": "int64"
     },
     "mtime": {
-     "type": "string"
+     "type": "string",
+     "description": "nanoseconds since the epoch as a decimal string; for a file on a host, whole seconds from the host, informational (a save is checked against sha256)"
     },
     "sha256": {
      "type": "string"
+    },
+    "hostId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "set when the file is on this host (ADR 0029, host files)"
+    },
+    "host": {
+     "type": "string",
+     "description": "that host's name"
     }
    }
   },
@@ -2271,6 +2281,11 @@
     },
     "base": {
      "$ref": "#/components/schemas/TextVersion"
+    },
+    "hostId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "save a file on this host instead of on this computer; only base.sha256 is checked there (the host's script refuses when the file's sha256 differs and answers 409 with the current file)"
     }
    }
   },
@@ -2280,7 +2295,7 @@
     "error",
     "current"
    ],
-   "description": "The file changed on disk since it was opened. Nothing was written; current is what is on disk now.",
+   "description": "The file changed on disk (or on the host) since it was opened. Nothing was written; current is what is there now.",
    "properties": {
     "error": {
      "type": "string"
@@ -11529,6 +11544,16 @@
      "schema": {
       "type": "string"
      }
+    },
+    {
+     "name": "hostId",
+     "in": "query",
+     "required": false,
+     "description": "open the file on this host (a path inside one of its declared source roots) instead of on this computer",
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
     }
    ],
    "responses": {
@@ -11542,8 +11567,18 @@
       }
      }
     },
+    "400": {
+     "description": "bad hostId",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
     "403": {
-     "description": "foreign Host, cross-site or cross-origin request",
+     "description": "foreign Host, cross-site or cross-origin request, or the file is under data/raw or data/external (read-only source data)",
      "content": {
       "application/json": {
        "schema": {
@@ -11553,7 +11588,7 @@
      }
     },
     "404": {
-     "description": "not an existing file inside a readable folder (also: outside the roots, symbolic-link escape, credential folders)",
+     "description": "not an existing plain file inside a readable folder (also: outside the roots or the host's declared roots, symbolic link on the way, credential folders, unknown host)",
      "content": {
       "application/json": {
        "schema": {
@@ -11574,6 +11609,26 @@
     },
     "415": {
      "description": "not editable text: FITS, binary, invalid UTF-8, or an extension the editor does not open",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "501": {
+     "description": "remote hosts are not configured (hostId given)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "502": {
+     "description": "the host could not be reached or answered unexpectedly; nothing was written",
      "content": {
       "application/json": {
        "schema": {
@@ -11618,7 +11673,7 @@
      }
     },
     "400": {
-     "description": "bad request (missing base)",
+     "description": "bad request (missing base; for a host, missing base.sha256)",
      "content": {
       "application/json": {
        "schema": {
@@ -11628,7 +11683,7 @@
      }
     },
     "403": {
-     "description": "foreign Host, cross-site or cross-origin request",
+     "description": "foreign Host, cross-site or cross-origin request, or the file is under data/raw or data/external (read-only source data)",
      "content": {
       "application/json": {
        "schema": {
@@ -11638,7 +11693,7 @@
      }
     },
     "404": {
-     "description": "not an existing file inside a readable folder (also: outside the roots, symbolic-link escape, credential folders)",
+     "description": "not an existing plain file inside a readable folder (also: outside the roots or the host's declared roots, symbolic link on the way, credential folders, unknown host)",
      "content": {
       "application/json": {
        "schema": {
@@ -11648,7 +11703,7 @@
      }
     },
     "409": {
-     "description": "changed on disk since it was opened; nothing written",
+     "description": "changed on disk (or on the host) since it was opened; nothing written",
      "content": {
       "application/json": {
        "schema": {
@@ -11669,6 +11724,26 @@
     },
     "415": {
      "description": "not editable text: FITS, binary, invalid UTF-8, or an extension the editor does not open",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "501": {
+     "description": "remote hosts are not configured (hostId given)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "502": {
+     "description": "the host could not be reached or answered unexpectedly; nothing was written",
      "content": {
       "application/json": {
        "schema": {

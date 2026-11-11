@@ -114,8 +114,8 @@ func TestEditorRoutesAreNotOnTheReviewListener(t *testing.T) {
 	target := filepath.Join(dir, "secret.txt")
 	before, _ := os.ReadFile(target)
 	for _, method := range []string{"GET", "PUT", "POST", "DELETE"} {
-		body := `{"path":` + `"` + target + `","content":"owned","base":{"size":1,"mtime":"1","sha256":"a"}}`
-		req, _ := http.NewRequest(method, ts.URL+"/api/files/text?path="+target, strings.NewReader(body))
+		body := `{"path":` + `"` + target + `","hostId":1,"content":"owned","base":{"size":1,"mtime":"1","sha256":"a"}}`
+		req, _ := http.NewRequest(method, ts.URL+"/api/files/text?hostId=1&path="+target, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

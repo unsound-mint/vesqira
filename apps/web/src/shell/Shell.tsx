@@ -82,7 +82,7 @@ export function Shell() {
   const proj = useProject(useCallback(() => { void refreshDatasets(); void refreshRuns(); }, [refreshDatasets, refreshRuns]));
   const project = proj.project;
   const [editor, setEditor] = useState(false); // the server was started with --enable-editor
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ path: string; hostId: number } | null>(null);
   const [terminal, setTerminal] = useState(false); // the server was started with --enable-terminal
   const [terminalOpen, setTerminalOpen] = useState(false);
   useEffect(() => {
@@ -369,7 +369,7 @@ export function Shell() {
               selectedDatasetId={cat.selectedId}
               onOpenRun={openRun}
               onSelectDataset={selectDataset}
-              onEditFile={editor ? setEditing : undefined}
+              onEditFile={editor ? (path, hostId) => setEditing({ path, hostId }) : undefined}
               onOverview={() => setMode("look")}
               onCancel={() => void proj.cancel()}
             />
@@ -609,7 +609,7 @@ export function Shell() {
       ) : null}
       {editor && editing ? (
         <Suspense fallback={null}>
-          <EditorScreen key={editing} path={editing} onClose={() => setEditing(null)} />
+          <EditorScreen key={`${editing.hostId}:${editing.path}`} path={editing.path} host={editing.hostId > 0 ? { id: editing.hostId, name: hostName(editing.hostId) } : undefined} onClose={() => setEditing(null)} />
         </Suspense>
       ) : null}
     </div>

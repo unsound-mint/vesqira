@@ -4296,25 +4296,38 @@ export interface components {
             /** @description hex SHA-256 of the file bytes */
             sha256: string;
         };
-        /** @description A text file inside a source root, opened for editing. */
+        /** @description A text file inside a source root of this computer, or of a host (hostId, host), opened for editing. */
         TextFile: {
-            /** @description canonical path, symbolic links resolved */
+            /** @description canonical path, symbolic links resolved (on a host: the path as sent, which the host's script has checked holds no link) */
             path: string;
             name: string;
             /** @description UTF-8 text, at most 2 MiB */
             content: string;
             /** Format: int64 */
             size: number;
+            /** @description nanoseconds since the epoch as a decimal string; for a file on a host, whole seconds from the host, informational (a save is checked against sha256) */
             mtime: string;
             sha256: string;
+            /**
+             * Format: int64
+             * @description set when the file is on this host (ADR 0029, host files)
+             */
+            hostId?: number;
+            /** @description that host's name */
+            host?: string;
         };
         TextSave: {
             /** @description absolute path of an existing file; a save never creates one */
             path: string;
             content: string;
             base: components["schemas"]["TextVersion"];
+            /**
+             * Format: int64
+             * @description save a file on this host instead of on this computer; only base.sha256 is checked there (the host's script refuses when the file's sha256 differs and answers 409 with the current file)
+             */
+            hostId?: number;
         };
-        /** @description The file changed on disk since it was opened. Nothing was written; current is what is on disk now. */
+        /** @description The file changed on disk (or on the host) since it was opened. Nothing was written; current is what is there now. */
         TextConflict: {
             error: string;
             current: components["schemas"]["TextFile"];
@@ -9373,6 +9386,8 @@ export interface operations {
         parameters: {
             query: {
                 path: string;
+                /** @description open the file on this host (a path inside one of its declared source roots) instead of on this computer */
+                hostId?: number;
             };
             header?: never;
             path?: never;
@@ -9389,7 +9404,16 @@ export interface operations {
                     "application/json": components["schemas"]["TextFile"];
                 };
             };
-            /** @description foreign Host, cross-site or cross-origin request */
+            /** @description bad hostId */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description foreign Host, cross-site or cross-origin request, or the file is under data/raw or data/external (read-only source data) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9398,7 +9422,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description not an existing file inside a readable folder (also: outside the roots, symbolic-link escape, credential folders) */
+            /** @description not an existing plain file inside a readable folder (also: outside the roots or the host's declared roots, symbolic link on the way, credential folders, unknown host) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9418,6 +9442,24 @@ export interface operations {
             };
             /** @description not editable text: FITS, binary, invalid UTF-8, or an extension the editor does not open */
             415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description remote hosts are not configured (hostId given) */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the host could not be reached or answered unexpectedly; nothing was written */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9458,7 +9500,7 @@ export interface operations {
                     "application/json": components["schemas"]["TextFile"];
                 };
             };
-            /** @description bad request (missing base) */
+            /** @description bad request (missing base; for a host, missing base.sha256) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -9467,7 +9509,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description foreign Host, cross-site or cross-origin request */
+            /** @description foreign Host, cross-site or cross-origin request, or the file is under data/raw or data/external (read-only source data) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -9476,7 +9518,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description not an existing file inside a readable folder (also: outside the roots, symbolic-link escape, credential folders) */
+            /** @description not an existing plain file inside a readable folder (also: outside the roots or the host's declared roots, symbolic link on the way, credential folders, unknown host) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9485,7 +9527,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description changed on disk since it was opened; nothing written */
+            /** @description changed on disk (or on the host) since it was opened; nothing written */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -9505,6 +9547,24 @@ export interface operations {
             };
             /** @description not editable text: FITS, binary, invalid UTF-8, or an extension the editor does not open */
             415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description remote hosts are not configured (hostId given) */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the host could not be reached or answered unexpectedly; nothing was written */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

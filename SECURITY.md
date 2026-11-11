@@ -36,7 +36,7 @@ Lets the person at this computer open and save text files from the app (`GET` an
 - A save is refused with both versions shown when the file changed since it was opened, and is atomic (temporary file, fsync, rename; mode kept).
 - Saves are in the audit log with the path and the SHA-256 before and after, never the contents.
 - Requests must be same-origin: foreign `Host`, `Sec-Fetch-Site` other than same-origin or none, a different `Origin`, and non-JSON bodies are refused.
-- It does not read or write files on remote hosts, and does not run anything.
+- With a `hostId` it opens and saves files on a configured host through that host's ssh (the user's own configuration), inside the host's declared source roots only, by the same rules plus: the host refuses links at any level, paths that leave the root and anything that is not an existing regular file, and refuses a save when the file's SHA-256 is no longer the one opened (the current file comes back as the conflict). It never creates files, and does not run anything else.
 
 ### `--enable-terminal`
 
