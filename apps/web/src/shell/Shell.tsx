@@ -44,6 +44,7 @@ import { PlaneViewer } from "../viewer/PlaneViewer";
 import { InterpretationPanel, OrientationStats } from "../viewer/OrientationPanels";
 import { RegionPanel } from "../viewer/RegionPanel";
 import { SpectrumPlot } from "../viewer/SpectrumPlot";
+import { GaussianComponents } from "../viewer/GaussianComponents";
 import { flagState } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
 import { limits } from "../viewer/render";
@@ -402,7 +403,7 @@ export function Shell() {
             {actDs ? <RegionPanel v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Spectrum">
-            {actDs ? <SpectrumPlot v={viewer} /> : <p className={s.empty}>{EM}</p>}
+            {actDs ? <><SpectrumPlot v={viewer} /><GaussianComponents v={viewer} /></> : <p className={s.empty}>{EM}</p>}
           </Section>
           {actDs ? (
             <Section title="Made from" defaultOpen={false}>

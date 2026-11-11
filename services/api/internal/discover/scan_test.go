@@ -501,3 +501,27 @@ func TestProposalKeepsDiscoveredAsComments(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A ROHSA fit folder is a run whose record is its run trace: settings are declared by it, paths of the machine it ran on are not shown.
+func TestROHSATraceIsARunRecord(t *testing.T) {
+	root := canonical(t)
+	write(t, root, "full/rohsa_n4_run_trace.toml", "n_gauss = 4\nregion = \"full\"\nstatus = \"ran\"\nrohsa_output = \"a/b/rohsa_n4.dat\"\n[config]\nlambda_amp = 10.0\nconfig_path = \"/x/y.toml\"\n")
+	write(t, root, "full/rohsa_n4.dat", "# i, j, A, mean, sigma\n")
+	r := scan(t, LocalFS{root}, Options{})
+	run := runByPath(r, "full")
+	if run == nil || run.RecordKind != "rohsa" || run.Record != "rohsa_n4_run_trace.toml" {
+		t.Fatalf("run: %+v", run)
+	}
+	got := map[string]string{}
+	for _, s := range run.Settings {
+		got[s.Key] = s.Value
+	}
+	if got["lambda_amp"] != "10" || got["n_gauss"] != "4" {
+		t.Fatalf("settings: %v", got)
+	}
+	for k, v := range got {
+		if strings.Contains(v, "/") || k == "rohsa_output" || k == "config_path" {
+			t.Fatalf("a location leaked: %s=%s", k, v)
+		}
+	}
+}

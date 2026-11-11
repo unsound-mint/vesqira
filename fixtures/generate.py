@@ -371,6 +371,132 @@ noise = 0.37
     return directory / "run_metadata.toml"
 
 
+# ---- a ROHSA decomposition: raw .dat, the crop it fitted, traces, and the pipeline's product maps ----
+RX, RY, RC, RN = 6, 4, 40, 3                 # crop columns, rows, channels; Gaussians per pixel (not square: x and y differ)
+R_CRVAL, R_CDELT, R_CRPIX = -12000.0, 800.0, 3.0   # VRAD m/s; reference pixel is not 1, so a wrong channel origin shows
+R_REGION, R_LABEL = "region_a", "rohsa_n3"
+
+
+def rohsa_truth() -> dict[str, np.ndarray]:
+    """Per-pixel Gaussian parameters, (RY, RX, RN), in the file's own conventions: mean is 1-BASED channels."""
+    y, x, k = np.meshgrid(np.arange(RY), np.arange(RX), np.arange(RN), indexing="ij")
+    amp = 1.0 + 0.5 * k + 0.1 * x + 0.01 * y
+    mean_file = 8.0 + 11.0 * k + 0.25 * x + 0.5 * y + 1.0
+    sigma = 1.2 + 0.7 * k + 0.05 * x
+    amp[0, 0, 2] = 0.0                       # a fitted amplitude of exactly zero is a value, not a gap
+    return {"amp": amp, "mean_file": mean_file, "sigma": sigma}
+
+
+def rohsa_velocity_ms(channel0) -> np.ndarray:
+    """Independent of astropy: FITS linear axis, 0-based channel c is pixel c+1."""
+    return R_CRVAL + (np.asarray(channel0, dtype=float) + 1.0 - R_CRPIX) * R_CDELT
+
+
+def rohsa_model() -> np.ndarray:
+    """(RC, RY, RX) sum of the components, evaluated directly from the 0-based means."""
+    t = rohsa_truth()
+    c = np.arange(RC)[:, None, None, None]
+    m0 = t["mean_file"] - 1.0
+    return (t["amp"][None] * np.exp(-((c - m0[None]) ** 2) / (2 * t["sigma"][None] ** 2))).sum(axis=3)
+
+
+def _rohsa_header(shape_yx, with_spectral: bool) -> fits.Header:
+    ny, nx = shape_yx
+    h = fits.PrimaryHDU(np.zeros((RC, ny, nx) if with_spectral else (ny, nx), dtype=np.float32)).header
+    ax = [("RA---TAN", CRVAL_RA, -CDELT_DEG, (nx + 1) / 2, "deg"), ("DEC--TAN", CRVAL_DEC, CDELT_DEG, (ny + 1) / 2, "deg")]
+    if with_spectral:
+        ax.append(("VRAD", R_CRVAL, R_CDELT, R_CRPIX, None))      # like the real crop: no CUNIT3 (m/s is the FITS default)
+    for i, (ct, cv, cd, cp, cu) in enumerate(ax, start=1):
+        h[f"CTYPE{i}"], h[f"CRVAL{i}"], h[f"CDELT{i}"], h[f"CRPIX{i}"] = ct, cv, cd, cp
+        if cu:
+            h[f"CUNIT{i}"] = cu
+    h["RADESYS"] = "ICRS"
+    return h
+
+
+def write_rohsa_dat(path: Path, truth: dict | None = None, header_lines: int = 3) -> None:
+    t = truth or rohsa_truth()
+    lines = [" # ", " # ______Parameters_____", " # i, j, A, mean, sigma"][:header_lines]
+    for y in range(RY):
+        for x in range(RX):
+            for k in range(RN):
+                lines.append(f"{y:12d}{x:12d}{t['amp'][y, x, k]:26.17g}{t['mean_file'][y, x, k]:26.17g}{t['sigma'][y, x, k]:26.17g}")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def write_rohsa_run(directory: Path, with_crop: bool = True) -> Path:
+    """<directory>/<region>/rohsa_n3.dat beside its crop <region>.fits, namelist, two traces and the product tree.
+
+    Product maps keep the real pipeline's habit of inheriting the crop's BUNIT (so a file can say K on a map whose
+    name says km/s): _mu_kms has no BUNIT, _sigma_kms says K, _amp_k says K, model_nhi_cm2 has none.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    region_dir = directory / R_REGION
+    region_dir.mkdir(exist_ok=True)
+    truth = rohsa_truth()
+    write_rohsa_dat(region_dir / f"{R_LABEL}.dat")
+    if with_crop:
+        rng = np.random.default_rng(20261110)
+        cube = (rohsa_model() + rng.normal(0.0, 0.05, size=(RC, RY, RX))).astype(np.float32)
+        cube[5, 1, 2] = np.nan                           # a channel with no value at one pixel
+        h = _rohsa_header((RY, RX), True)
+        h["BUNIT"] = "K"
+        fits.PrimaryHDU(cube, header=h).writeto(region_dir / f"{R_REGION}.fits", overwrite=True)
+    (region_dir / "parameters_n3.txt").write_text(f"""&user_parameters
+    filename = '/shared/home/someone/run/{R_REGION}.bin'
+    ,fileout = '/shared/home/someone/run/{R_LABEL}.dat'
+    ,n_gauss = {RN}
+    ,lambda_amp = 10.0d0
+    ,lb_sig = 1.0d0
+    ,init_option = 'mean'
+    ,noise = .true.
+    /
+""")
+    (region_dir / f"{R_LABEL}_run_trace.toml").write_text(f"""candidate_id = ""
+n_gauss = {RN}
+parameters = "validation_output/rohsa/x/{R_REGION}/parameters_n3.txt"
+region = "{R_REGION}"
+rohsa_output = "validation_output/rohsa/x/{R_REGION}/{R_LABEL}.dat"
+stage = "rohsa_decomposition"
+status = "ran"
+
+[config]
+config_path = "/shared/home/someone/vgt/configs/rohsa/x.toml"
+lambda_amp = 10.0
+lb_sig = 1.0
+n_gauss = {RN}
+init_option = "mean"
+""")
+    (region_dir / f"{R_LABEL}_products_trace.toml").write_text(f"""n_gauss = {RN}
+region = "{R_REGION}"
+run_label = "{R_LABEL}"
+stage = "rohsa_product_derivation"
+
+[fit_metrics]
+total_model_over_data = 0.99
+voxel_rmse = 0.05
+""")
+    maps = region_dir / "rohsa" / R_LABEL / "maps"
+    maps.mkdir(parents=True, exist_ok=True)
+    cubes = region_dir / "rohsa" / R_LABEL / "cubes"
+    cubes.mkdir(parents=True, exist_ok=True)
+
+    def put(name: str, arr: np.ndarray, bunit: str | None, folder: Path = maps) -> None:
+        hh = _rohsa_header(arr.shape[-2:], arr.ndim == 3)
+        if bunit is not None:
+            hh["BUNIT"] = bunit
+        fits.PrimaryHDU(arr.astype(np.float32), header=hh).writeto(folder / f"{R_LABEL}_{name}.fits", overwrite=True)
+
+    v_kms = rohsa_velocity_ms(truth["mean_file"] - 1.0) / 1000.0
+    put("component_g1_amp_k", truth["amp"][:, :, 0], "K")
+    put("component_g1_mu_kms", v_kms[:, :, 0], None)
+    put("component_g1_sigma_kms", truth["sigma"][:, :, 0] * R_CDELT / 1000.0, "K")
+    put("model_nhi_cm2", rohsa_model().sum(axis=0), None)
+    put("residual_moment0_kkms", np.zeros((RY, RX)), "K km/s")
+    put("model", rohsa_model(), "K", cubes)
+    return region_dir / f"{R_LABEL}.dat"
+
+
 def write_all(directory: Path) -> dict[str, Path]:
     directory.mkdir(parents=True, exist_ok=True)
     out = {}
@@ -396,6 +522,7 @@ def write_all(directory: Path) -> dict[str, Path]:
         hdul.writeto(path, overwrite=True)
         out[name] = path
     write_vgt_run(directory / "vgt_run_demo", metrics=True)
+    write_rohsa_run(directory / "rohsa_run_demo")
     return out
 
 

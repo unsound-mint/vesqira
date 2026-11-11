@@ -1,14 +1,16 @@
 import { request as call } from "./http";
 import type { JobUsage } from "./jobs";
 
-export type RunParam = { key: string; value: string; source: "config" | "run_parameters" };
-export type RunOutput = { role: "psi" | "reliability" | "support" | "fit_rbar2"; datasetId: number; name: string };
+export type RunParam = { key: string; value: string; source: "config" | "run_parameters" | "parameters" | "run_trace" };
+/** psi, reliability, support, fit_rbar2 for a VGT run; the product name (component_g1_mu_kms, cube_model, ...) for a ROHSA run. */
+export type RunOutput = { role: string; datasetId: number; name: string };
 
 export type RunReview = { qc: "not_assessed" | "passed" | "failed" | "inconclusive"; interpretation: "not_interpreted" | "supports" | "challenges" | "inconclusive"; note: string };
 
 export type RunFact = { key: string; label: string; status: "declared" | "inferred" | "unresolved"; detail: string };
 
 import type { Metric } from "./metrics";
+import type { RohsaRecord } from "./rohsa";
 
 export type Run = {
   review: RunReview;
@@ -35,6 +37,8 @@ export type Run = {
   parentRunId: number | null;
   /** Archived runs are hidden from lists by default but still resolve (ADR 0041). */
   archived?: boolean;
+  /** The decomposition record of a ROHSA run (ADR 0046); null for other kinds. */
+  rohsa?: RohsaRecord | null;
 };
 
 /** The settings a new VGT draft starts from. A null is unknown, never a default: imported runs do not say how they ran. */

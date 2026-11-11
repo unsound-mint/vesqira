@@ -4,7 +4,7 @@ import type { Job } from "../api/jobs";
 import { jobLog } from "../api/jobs";
 import { metricText } from "../api/metrics";
 import type { Run } from "../api/runs";
-import { Assessment, ROLE } from "../catalog/RunPanel";
+import { Assessment, ROLE, RohsaFacts } from "../catalog/RunPanel";
 import { bytes, EM } from "../catalog/format";
 import { TONE } from "../jobs/JobsView";
 import { PlaneViewer } from "../viewer/PlaneViewer";
@@ -75,6 +75,12 @@ export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInV
           </Section>
         ) : null}
 
+        {run.rohsa ? (
+          <Section title="Decomposition">
+            <RohsaFacts run={run} role={output?.role} />
+          </Section>
+        ) : null}
+
         <Section title={`Result${output ? ` · ${ROLE[output.role] ?? output.role}` : ""}`} meta={output && output === first ? "default" : undefined}>
           {output ? (
             dataset ? (
@@ -94,7 +100,7 @@ export function RunPage({ run, runs, datasets, job, onBack, onOpenRun, onOpenInV
         </Section>
 
         {others.length > 0 ? (
-          <Section title={`More results (${others.length})`} meta={others.map((o) => ROLE[o.role] ?? o.role).join(" · ")}>
+          <Section title={`More results (${others.length})`} meta={others.length <= 6 ? others.map((o) => ROLE[o.role] ?? o.role).join(" · ") : undefined}>
             <ul className={s.chips}>
               {others.map((o) => (
                 <li key={o.datasetId} className={s.chipRow}>
