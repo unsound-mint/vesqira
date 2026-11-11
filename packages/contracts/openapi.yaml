@@ -1010,6 +1010,51 @@ paths:
       operationId: owner_s_interpret_post_api_datasets_id_interpretation
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/datasets/{id}/link:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_link_post_api_datasets_id_link
+      x-listener: owner
+      summary: "What linking this map to another needs: the sky transform over a region and the channel correspondence"
+      description: "Both datasets must be readable, unchanged and on the same machine; a point catalog is refused (409). The worker computes everything with astropy. `sky` is an affine approximation of this map's pixels to the other's over the region with its measured error in the other map's pixels, plus exact positions of `points`; `spectral` maps every channel to the other map's nearest channel by spectral world value, or refuses with the reason (spectral frames differ or are not stated, a velocity convention or rest frequency that does not allow it). A pair that cannot be related is a 200 with `refused` set, not an error."
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/LinkRequest"
+      responses:
+        "200":
+          description: "ok"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+            X-Content-Type-Options:
+              schema:
+                type: "string"
+                enum:
+                  - "nosniff"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/LinkReply"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/datasets/{id}/locations:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -5588,6 +5633,8 @@ components:
           description: "Drawn in this order over the base, the first at the bottom"
         view:
           $ref: "#/components/schemas/SceneView"
+        link:
+          $ref: "#/components/schemas/SceneLink"
     SceneBase:
       type: "object"
       additionalProperties: false
@@ -10000,3 +10047,299 @@ components:
         lifetimeSeconds:
           type: "integer"
           description: "longest a session runs"
+    SceneLink:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "name"
+        - "basis"
+        - "facets"
+        - "datasets"
+      description: "The link group this pane was in when the scene was made (ADR 0042, section 4): how its panes followed each other. Panes belong to one group by id; the group's name is the person's."
+      properties:
+        id:
+          type: "string"
+          minLength: 1
+          maxLength: 32
+          pattern: "^[a-z0-9-]+$"
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 60
+          description: "Named by the person; printable text without line breaks"
+        basis:
+          type: "string"
+          enum:
+            - "same-grid"
+            - "wcs"
+          description: "same-grid: the server confirmed one pixel grid, so a pixel, a channel index and an image point mean the same in each pane. wcs: positions and channels are carried through the worker's WCS transformation (astropy), with the spectral part refused when the frames differ."
+        facets:
+          $ref: "#/components/schemas/SceneLinkFacets"
+        datasets:
+          type: "array"
+          minItems: 2
+          maxItems: 8
+          uniqueItems: true
+          items:
+            type: "integer"
+            format: "int64"
+          description: "The datasets of the group's panes, this scene's own included"
+    SceneLinkFacets:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "cursor"
+        - "channel"
+        - "view"
+      description: "What the group links: the cursor (sky position), the channel (spectral world value) and the view (the sky region in view)."
+      properties:
+        cursor:
+          type: "boolean"
+        channel:
+          type: "boolean"
+        view:
+          type: "boolean"
+    LinkRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "otherId"
+      description: "What to compute for linking the dataset in the path (the first map) to another (the second). At least one of region, points and channels."
+      properties:
+        otherId:
+          type: "integer"
+          format: "int64"
+        region:
+          type: "object"
+          additionalProperties: false
+          required:
+            - "x0"
+            - "y0"
+            - "x1"
+            - "y1"
+          description: "A window of this map in pixels: 0-based, pixel centres at integers, y up (FITS order). Widened to a half-pixel grid before it is used."
+          properties:
+            x0:
+              type: "number"
+            y0:
+              type: "number"
+            x1:
+              type: "number"
+            y1:
+              type: "number"
+        points:
+          type: "array"
+          maxItems: 64
+          items:
+            type: "array"
+            minItems: 2
+            maxItems: 2
+            items:
+              type: "number"
+          description: "Pixels of the first map to map exactly (in the region's pixel convention); only with a region"
+        channels:
+          type: "boolean"
+          description: "Also map every channel of the first map to the second map's nearest channel by spectral world value"
+    LinkSky:
+      type: "object"
+      required:
+        - "refused"
+      description: "How the first map's pixels land in the second's. Either refused (the reason) or an affine approximation over the region with its measured error, plus exact positions of the points asked for. Every number comes from astropy in the worker."
+      properties:
+        refused:
+          type: "string"
+          nullable: true
+          description: "Why the maps cannot be related on the sky (no celestial WCS, a frame that cannot be built, a region where the transform is undefined)"
+        affine:
+          type: "array"
+          minItems: 6
+          maxItems: 6
+          items:
+            type: "number"
+          description: "[a, b, tx, c, d, ty]: x' = a x + b y + tx and y' = c x + d y + ty, in the maps' pixel convention"
+        region:
+          type: "object"
+          additionalProperties: false
+          required:
+            - "x0"
+            - "y0"
+            - "x1"
+            - "y1"
+          description: "A window of this map in pixels: 0-based, pixel centres at integers, y up (FITS order). Widened to a half-pixel grid before it is used."
+          properties:
+            x0:
+              type: "number"
+            y0:
+              type: "number"
+            x1:
+              type: "number"
+            y1:
+              type: "number"
+        max_error_px:
+          type: "number"
+          description: "The worst distance in second-map pixels between the affine and the exact transform, measured on a grid other than the one it was fitted on, corners included"
+        rms_error_px:
+          type: "number"
+        scale:
+          type: "number"
+          description: "Second-map pixels per first-map pixel (square root of the affine's determinant)"
+        a_shape:
+          type: "array"
+          minItems: 2
+          maxItems: 2
+          items:
+            type: "integer"
+        b_shape:
+          type: "array"
+          minItems: 2
+          maxItems: 2
+          items:
+            type: "integer"
+          description: "[width, height] of the second map"
+        exact:
+          type: "array"
+          items:
+            type: "object"
+            required:
+              - "x"
+              - "y"
+              - "bx"
+              - "by"
+              - "inside"
+            properties:
+              x:
+                type: "number"
+              "y":
+                type: "number"
+              bx:
+                type: "number"
+                nullable: true
+              by:
+                type: "number"
+                nullable: true
+              inside:
+                type: "boolean"
+                description: "Within the second map's footprint"
+        frames:
+          type: "object"
+          properties:
+            from:
+              type: "string"
+            to:
+              type: "string"
+            from_status:
+              type: "string"
+              enum:
+                - "declared"
+                - "inferred"
+                - "assumed"
+            to_status:
+              type: "string"
+              enum:
+                - "declared"
+                - "inferred"
+                - "assumed"
+            same_frame:
+              type: "boolean"
+        basis:
+          type: "string"
+        method:
+          type: "string"
+    LinkSpectral:
+      type: "object"
+      required:
+        - "refused"
+      description: "How the first map's channels land in the second's. Either refused (the reason: spectral frames differ or are not stated, a convention or rest frequency that does not allow it, no spectral axis) or one entry per channel of the first map."
+      properties:
+        refused:
+          type: "string"
+          nullable: true
+        unit:
+          type: "string"
+          nullable: true
+          description: "The first map's axis unit; residuals are in it"
+        a:
+          type: "object"
+          nullable: true
+          properties:
+            ctype:
+              type: "string"
+            unit:
+              type: "string"
+            specsys:
+              type: "string"
+              nullable: true
+            channels:
+              type: "integer"
+        b:
+          type: "object"
+          nullable: true
+          properties:
+            ctype:
+              type: "string"
+            unit:
+              type: "string"
+            specsys:
+              type: "string"
+              nullable: true
+            channels:
+              type: "integer"
+        index:
+          type: "array"
+          nullable: true
+          items:
+            type: "integer"
+            nullable: true
+          description: "The second map's nearest channel for each channel of the first (null where the first map's value is not finite)"
+        residual:
+          type: "array"
+          nullable: true
+          items:
+            type: "number"
+            nullable: true
+          description: "Second map's channel value minus the first's, in the first map's axis unit"
+        outside:
+          type: "array"
+          nullable: true
+          items:
+            type: "boolean"
+          description: "True where the value lies beyond the second map's range by more than half a channel: that channel is not followed"
+        basis:
+          type: "string"
+          nullable: true
+        specsys:
+          type: "string"
+          nullable: true
+    LinkReply:
+      type: "object"
+      required:
+        - "ok"
+        - "op"
+        - "sky"
+        - "spectral"
+      description: "The worker's reply, as it is: two independent parts, each null when not asked for."
+      properties:
+        ok:
+          type: "boolean"
+        op:
+          type: "string"
+          enum:
+            - "link"
+        nbytes:
+          type: "integer"
+        bunit:
+          type: "string"
+          nullable: true
+        bunit_status:
+          type: "string"
+        origin:
+          type: "integer"
+        sky:
+          allOf:
+            - $ref: "#/components/schemas/LinkSky"
+          nullable: true
+        spectral:
+          allOf:
+            - $ref: "#/components/schemas/LinkSpectral"
+          nullable: true

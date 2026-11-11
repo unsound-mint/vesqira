@@ -938,6 +938,39 @@ def abs_path(v) -> str:
     return v
 
 
+def link(a: "Cube", req: dict) -> dict:
+    """What linking map A to map B needs, in two independent parts so a refused one never blocks the other (ADR 0042,
+    section 4). `sky`: an affine approximation of A pixel -> B pixel over the visible region of A, with its measured error, and
+    exact positions of a few points (only when a region or points are sent). `spectral`: A channel -> B's nearest channel by
+    world value (only when `channels` is true). Each part is null when not asked for, or carries `refused` and the reason.
+    The browser never computes WCS: it applies the affine the worker states, and says its error."""
+    import overlay_geometry as og
+    b = cube_for(abs_path(req.get("other_path")))
+    out = {"sky": None, "spectral": None}
+    region, points = req.get("region"), req.get("points")
+    if region is not None or points is not None:
+        def num(v):
+            return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+        if region is None:
+            region = {"x0": -0.5, "x1": a.shape[a.x] - 0.5, "y0": -0.5, "y1": a.shape[a.y] - 0.5}
+        if not (isinstance(region, dict) and all(num(region.get(k)) for k in ("x0", "x1", "y0", "y1"))):
+            raise Refused("bad_request", "region must have finite x0, x1, y0 and y1")
+        if points is None:
+            points = []
+        if not (isinstance(points, list) and len(points) <= og.LINK_MAX_POINTS
+                and all(isinstance(p, list) and len(p) == 2 and num(p[0]) and num(p[1]) for p in points)):
+            raise Refused("bad_request", f"points must be at most {og.LINK_MAX_POINTS} pairs of finite numbers")
+        try:
+            out["sky"] = og.link_sky(a, b, region, points)
+        except og.Refusal as e:
+            out["sky"] = {"refused": str(e)}
+    if req.get("channels") is True:
+        out["spectral"] = convert.link_channels(a, b)
+    elif req.get("channels") not in (None, False):
+        raise Refused("bad_request", "channels must be true or false")
+    return out
+
+
 def overlay_geometry(base: "Cube", req: dict) -> tuple[dict, bytes]:
     """Geometry of one overlay on `base`, in base pixels (overlay_geometry.py). The caller (the API) sends the overlay as the
     scene states it, already validated, plus what the catalog declares about the overlay dataset: its unit for a file without
@@ -1138,11 +1171,13 @@ def handle(req: dict) -> tuple[dict, bytes]:
     if op == "overlay_catalog":
         return overlay_catalog(req)
     file_ops = ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky", "overlay_geometry",
-                "slab", "channel_grid", "pv")
+                "slab", "channel_grid", "pv", "link")
     if op in file_ops:
         authorize(path)                                          # also enforces the roots on a remote host
         if op == "axial" and req.get("weights_path") is not None:
             authorize(req.get("weights_path"))
+        if op == "link":                                         # the other map of a linked pair
+            authorize(req.get("other_path"))
         if op == "overlay_geometry":                             # every file the overlay reads, not only the base
             authorize(req.get("overlay_path"))
             if req.get("reliability_path") is not None:
@@ -1155,6 +1190,8 @@ def handle(req: dict) -> tuple[dict, bytes]:
     if op == "overlay_geometry":
         head, payload = overlay_geometry(c, req)
         return {**base, **head}, payload
+    if op == "link":
+        return {**base, "nbytes": 0, **link(c, req)}, b""
     if op in ("slab", "channel_grid", "pv"):
         import cube_slices as cs
         try:

@@ -273,6 +273,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/{id}/rohsa/components", s.rohsaComponents)
 	mux.HandleFunc("GET /api/datasets/{id}/axial", s.axial)
 	mux.HandleFunc("POST /api/datasets/{id}/overlay-geometry", s.overlayGeometry)
+	mux.HandleFunc("POST /api/datasets/{id}/link", s.link)
 	if s.Regions != nil {
 		mux.HandleFunc("GET /api/datasets/{id}/regions", s.listRegions)
 		mux.HandleFunc("POST /api/datasets/{id}/regions", s.createRegion)

@@ -331,6 +331,114 @@ def convert_sky(c, x: int, y: int, channel: int, target_id) -> dict:
     return out
 
 
+# ----- linked channels: A's spectral world value -> B's nearest channel (ADR 0042, section 4) -----
+MAX_LINK_CHANNELS = 100_000
+REST_TOLERANCE = 1e-9
+
+
+def _spec_refusal(c, who):
+    axis, why = _axis(c)
+    return axis, (None if axis is not None else f"{who}: {why}")
+
+
+def link_channels(a, b) -> dict:
+    """For every channel of map A, the nearest channel of map B by spectral world value, and the residual in A's axis unit.
+
+    Only what ADR 0040 allows, by astropy equivalencies: the two axes must be in the same reference frame (SPECSYS stated in
+    both and equal: a missing one is not "the same", and a frame change is not offered), and the conversion between the two
+    kinds of axis must be defined. Two velocity axes of the same convention are compared as velocities (a unit change only;
+    each file's own line, so H I and CO link by velocity); a velocity against a frequency or wavelength goes through the rest
+    frequency of the velocity file and its convention, and is refused when the other file states a different rest frequency.
+    A legacy velocity spelling (VELO-LSR) has no declared convention, so it links only to another one. The nearest channel is
+    found by value over B's channels (never by CRVAL and CDELT arithmetic: axes may run backwards); a value beyond B's range
+    is `outside`, never clamped to an end channel."""
+    ax, why = _spec_refusal(a, "the first map")
+    bx, why_b = _spec_refusal(b, "the second map")
+    out = {"refused": why or why_b, "unit": None, "a": None, "b": None, "index": None, "residual": None, "outside": None, "basis": None, "specsys": None}
+    if ax is not None:
+        out["a"] = {"ctype": ax["ctype"], "unit": ax["unit_text"], "specsys": ax["specsys"], "channels": a.channels}
+    if bx is not None:
+        out["b"] = {"ctype": bx["ctype"], "unit": bx["unit_text"], "specsys": bx["specsys"], "channels": b.channels}
+    if out["refused"]:
+        return out
+
+    def refuse(text):
+        return {**out, "refused": text}
+    sa, sb = ax["specsys"], bx["specsys"]
+    if not sa or not sb:
+        who = "either map" if not sa and not sb else "the first map" if not sa else "the second map"
+        return refuse(f"spectral frame not stated by {who} (SPECSYS): the frames cannot be compared, so the channels are not linked")
+    if sa.strip().upper() != sb.strip().upper():
+        return refuse(f"spectral frames differ ({sa} vs {sb}); changing frame is not offered")
+    if a.channels > MAX_LINK_CHANNELS or b.channels > MAX_LINK_CHANNELS:
+        return refuse(f"more than {MAX_LINK_CHANNELS} channels: not linked")
+    ka, kb = ax["kind"], bx["kind"]
+    ra, srca = rest_of(a.h)
+    rb, srcb = rest_of(b.h)
+    if ka == "vel" and kb == "vel":
+        if ax["legacy"] != bx["legacy"]:
+            return refuse(f"{ax['ctype'] if ax['legacy'] else bx['ctype']} is a legacy spelling that does not declare its velocity convention: it links only to another legacy velocity axis")
+        if not ax["legacy"] and ax["convention"] != bx["convention"]:
+            return refuse(f"velocity conventions differ ({ax['convention']} vs {bx['convention']}): a velocity in one is not the other's, and converting needs the rest frequency of one line")
+        def to_a(q):
+            return q.to(ax["unit"])
+        basis = (f"velocity compared as velocity, a unit change only (astropy.units); both axes are {ax['convention'] or 'of an undeclared convention'}, "
+                 "each file's own line, so no rest frequency is used")
+    elif ka == "vel" or kb == "vel":
+        v, vr, vsrc, fr, who_v = (ax, ra, srca, rb, "first map") if ka == "vel" else (bx, rb, srcb, ra, "second map")
+        if v["legacy"]:
+            return refuse(f"{v['ctype']} is a legacy spelling that does not declare its velocity convention: it is not related to a frequency or wavelength axis")
+        if vr is None:
+            return refuse(f"the {who_v} is a velocity axis and has no rest frequency or wavelength (RESTFRQ, RESTFREQ, RESTWAV): it cannot be related to a frequency axis")
+        if fr is not None and abs(fr.value - vr.value) > REST_TOLERANCE * vr.value:
+            return refuse(f"the two files state different rest frequencies ({vr.value:.12g} Hz and {fr.value:.12g} Hz): a velocity in one is not a frequency in the other")
+        conv = CONVENTIONS[v["convention"]](vr)
+        if ka == "vel":
+            def to_a(q):
+                return q.to(u.Hz, u.spectral()).to(ax["unit"], conv)
+        else:
+            def to_a(q):
+                return q.to(u.Hz, conv).to(ax["unit"], u.spectral())
+        basis = (f"astropy.units doppler_{v['convention']} with the {who_v}'s {vsrc} = {vr.value:.12g} Hz (its CTYPE {v['ctype']} declares the "
+                 f"{v['convention']} convention); the other map " + ("states the same rest frequency" if fr is not None else "states none, so this one is used"))
+    else:
+        def to_a(q):
+            return q.to(ax["unit"], u.spectral())
+        basis = "astropy.units.spectral(): c = 299792458 m/s, vacuum wavelength; no rest frequency or convention involved"
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        va = native_values(a, range(a.channels))
+        vb = native_values(b, range(b.channels))
+        try:
+            vb_in_a = np.asarray(to_a(vb * bx["unit"]).value, dtype=float)
+        except Exception:
+            return refuse("the conversion between the two spectral axes is not defined for these values")
+    ids = np.flatnonzero(np.isfinite(vb_in_a))
+    if len(ids) == 0:
+        return refuse("no channel of the second map has a finite spectral value")
+    order = ids[np.argsort(vb_in_a[ids], kind="stable")]
+    sv = vb_in_a[order]
+    n = len(sv)
+    if n > 1:
+        pos = np.clip(np.searchsorted(sv, va), 1, n - 1)
+        pick = np.where(np.abs(va - sv[pos - 1]) <= np.abs(sv[pos] - va), pos - 1, pos)
+        gaps = np.abs(np.diff(sv))
+        local = np.concatenate([[gaps[0]], np.maximum(gaps[:-1], gaps[1:]), [gaps[-1]]]) if n > 2 else np.array([gaps[0], gaps[0]])
+    else:
+        pick, local = np.zeros(len(va), dtype=int), np.array([0.0])
+    res = sv[pick] - va
+    index, residual, outside = [], [], []
+    for i in range(len(va)):
+        if not np.isfinite(va[i]):
+            index.append(None), residual.append(None), outside.append(False)
+            continue
+        j = pick[i]
+        index.append(int(order[j]))
+        residual.append(float(res[i]))
+        outside.append(bool(abs(res[i]) > 0.5 * local[j] * (1 + 1e-9)) if n > 1 else bool(res[i] != 0.0))
+    return {**out, "refused": None, "unit": ax["unit_text"], "index": index, "residual": residual, "outside": outside, "basis": basis, "specsys": sa}
+
+
 # ----- brightness / pixel values -----
 def _family(un):
     if un is None:

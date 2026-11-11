@@ -244,6 +244,12 @@
   white-space: nowrap;
 }
 
+.paneNote {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
 .paneBtn {
   height: var(--ctl-sm);
   padding: 0 var(--sp-2);
