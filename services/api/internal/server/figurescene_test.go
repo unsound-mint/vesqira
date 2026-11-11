@@ -87,6 +87,12 @@ func TestAFigureSceneIsValidatedAgainstTheContractAndTheFigure(t *testing.T) {
 		"a centre outside the image": fig(with(func(s map[string]any) {
 			s["view"] = map[string]any{"zoom": 2, "centre": map[string]any{"x": 9, "y": 1}}
 		}), view),
+		"a link group that leaves out the figure's own dataset": fig(with(func(s map[string]any) {
+			s["link"] = map[string]any{"id": "compare", "name": "Compare", "basis": "wcs", "facets": map[string]any{"cursor": true, "channel": true, "view": false}, "datasets": []any{other.ID, other.ID + 1}}
+		}), view),
+		"a link group with an unknown basis": fig(with(func(s map[string]any) {
+			s["link"] = map[string]any{"id": "compare", "name": "Compare", "basis": "pixels", "facets": map[string]any{"cursor": true, "channel": true, "view": false}, "datasets": []any{d.ID, other.ID}}
+		}), view),
 		"a scene on a spectrum figure": fig(planeScene(d.ID), map[string]any{"kind": "spectrum", "channel": 3}),
 		"a region the view does not have": fig(with(func(s map[string]any) {
 			ov(s)[0].(map[string]any)["active"] = map[string]any{"shape": "circle", "cx": 1, "cy": 1, "r": 1}
@@ -152,6 +158,19 @@ func TestAFigureSceneIsValidatedAgainstTheContractAndTheFigure(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "Overlay drawn from another file, co.fits") || strings.Contains(string(lf.Provenance), `"datasetId"`) {
 		t.Errorf("provenance of the overlay file: %s", lf.Provenance)
+	}
+	// how the pane was linked is part of the scene (owner side), never of the provenance a reviewer sees
+	linked := with(func(s map[string]any) {
+		s["link"] = map[string]any{"id": "compare", "name": "H I and CO", "basis": "wcs", "facets": map[string]any{"cursor": true, "channel": false, "view": true}, "datasets": []any{d.ID, other.ID}}
+	})
+	r, out = postJSON(t, owner.URL+"/api/figures", fig(linked, view))
+	var kf boards.Figure
+	json.Unmarshal(out, &kf)
+	if r.StatusCode != 201 || !strings.Contains(string(kf.Scene), `"link":{"id":"compare","name":"H I and CO","basis":"wcs","facets":{"cursor":true,"channel":false,"view":true},"datasets":[`) {
+		t.Fatalf("a linked scene: %d %s", r.StatusCode, out)
+	}
+	if strings.Contains(string(kf.Provenance), "H I and CO") || strings.Contains(string(kf.Provenance), `"datasets"`) {
+		t.Errorf("the link group reached the provenance: %s", kf.Provenance)
 	}
 	r, out = postJSON(t, owner.URL+"/api/figures", fig(planeScene(d.ID), view))
 	var withScene boards.Figure

@@ -246,5 +246,8 @@ func (s *Server) compatibility(w http.ResponseWriter, r *http.Request) {
 	if why == nil {
 		why = []string{}
 	}
-	writeJSON(w, 200, map[string]any{"compatible": len(why) == 0, "reasons": why})
+	// The channel link is its own question: SPECSYS is not a grid reason, but channels are linked by index only when the
+	// spectral frames are known to be the same.
+	chOK, chWhy := compat.SpectralFrames(da.Header, db.Header)
+	writeJSON(w, 200, map[string]any{"compatible": len(why) == 0, "reasons": why, "channelLink": map[string]any{"ok": chOK, "reason": chWhy}})
 }

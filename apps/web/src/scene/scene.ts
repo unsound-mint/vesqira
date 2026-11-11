@@ -8,6 +8,7 @@ export type SceneBase = S["SceneBase"];
 export type SceneSpectral = S["SceneSpectral"];
 export type SceneDisplay = S["SceneDisplay"];
 export type SceneView = S["SceneView"];
+export type SceneLink = S["SceneLink"];
 export type ScenePoint = S["ScenePoint"];
 export type SceneRegion = S["SceneRegion"];
 export type SceneOverlay = S["SceneOverlay"];
@@ -60,7 +61,8 @@ export type SceneAction =
   | { type: "updateOverlay"; id: string; patch: OverlayPatch }
   | { type: "removeOverlay"; id: string }
   | { type: "moveOverlay"; id: string; to: number }
-  | { type: "setView"; view: { zoom?: number; centre?: ScenePoint | null } };
+  | { type: "setView"; view: { zoom?: number; centre?: ScenePoint | null } }
+  | { type: "setLink"; link: SceneLink | null };
 
 /** Pane-level actions: they start a scene over or change what the dataset is, so they need more than the scene. */
 export type PaneAction =
@@ -132,6 +134,11 @@ export function sceneReducer(s: Scene, a: SceneAction): Scene {
       const [o] = overlays.splice(from, 1);
       overlays.splice(to, 0, o!);
       return { ...s, overlays };
+    }
+    case "setLink": {
+      if (same(s.link ?? null, a.link)) return s;
+      const { link: _old, ...rest } = s; // null leaves the group: the scene then says nothing about links
+      return a.link ? { ...rest, link: a.link } : rest;
     }
     case "setView": {
       const zoom = a.view.zoom === undefined ? s.view.zoom : clampZoom(a.view.zoom);

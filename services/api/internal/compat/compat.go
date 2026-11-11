@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 )
 
 type axis struct {
@@ -20,6 +21,7 @@ type axis struct {
 type header struct {
 	Axes   []axis             `json:"axes"`
 	RadeSy *string            `json:"radesys"`
+	SpecSy *string            `json:"specsys"`
 	Extra  map[string]float64 `json:"wcs_extra"` // PC/CD/CROTA/LONPOLE/LATPOLE/EQUINOX as declared
 }
 
@@ -83,4 +85,56 @@ func Grids(a, b json.RawMessage) ([]string, error) {
 		why = append(why, "celestial frame (RADESYS) differs or is unresolved")
 	}
 	return why, nil
+}
+
+var spectralBases = map[string]bool{"FREQ": true, "WAVE": true, "AWAV": true, "VRAD": true, "VOPT": true, "VELO": true, "FELO": true, "ZOPT": true, "BETA": true, "ENER": true, "WAVN": true}
+
+// spectralFrame is the spectral reference frame a header states for its spectral axis: has is false when it has no
+// spectral axis; frame is "" when the frame is not stated. SPECSYS wins. A legacy CTYPE suffix (VELO-LSR, FELO-HEL, ...)
+// counts as a statement of its frame only when SPECSYS is absent, and as a label distinct from every SPECSYS value
+// ("LSR" is not "LSRK"), the same reading the worker's channel link uses, so the two paths never disagree.
+func spectralFrame(h header) (has bool, frame string) {
+	for _, x := range h.Axes {
+		if x.CType == nil || len(*x.CType) < 4 || !spectralBases[(*x.CType)[:4]] {
+			continue
+		}
+		if h.SpecSy != nil && strings.TrimSpace(*h.SpecSy) != "" {
+			return true, strings.ToUpper(strings.TrimSpace(*h.SpecSy))
+		}
+		if len(*x.CType) >= 8 {
+			switch (*x.CType)[4:8] {
+			case "-LSR", "-HEL", "-OBS":
+				return true, "legacy CTYPE suffix " + (*x.CType)[5:8]
+			}
+		}
+		return true, ""
+	}
+	return false, ""
+}
+
+// SpectralFrames says whether two maps' channels may be linked by index: the spectral reference frame (SPECSYS) must be
+// stated by both and equal. Maps without a spectral axis have no channel to link, so that is ok. This is separate from
+// Grids on purpose: many images carry no SPECSYS, and the cursor and view links concern sky position only.
+func SpectralFrames(a, b json.RawMessage) (ok bool, reason string) {
+	var ha, hb header
+	if json.Unmarshal(a, &ha) != nil || json.Unmarshal(b, &hb) != nil {
+		return false, "the headers could not be read, so channels are not linked by index"
+	}
+	hasA, fa := spectralFrame(ha)
+	hasB, fb := spectralFrame(hb)
+	switch {
+	case !hasA && !hasB:
+		return true, ""
+	case hasA != hasB:
+		return false, "only one file has a spectral axis, so channels are not linked by index"
+	case fa == "" && fb == "":
+		return false, "spectral reference frame (SPECSYS) is not declared in either file, so channels are not linked by index"
+	case fa == "":
+		return false, "spectral reference frame (SPECSYS) is not declared in file A, so channels are not linked by index"
+	case fb == "":
+		return false, "spectral reference frame (SPECSYS) is not declared in file B, so channels are not linked by index"
+	case fa != fb:
+		return false, fmt.Sprintf("spectral frames differ (%s vs %s); changing frame is not offered", fa, fb)
+	}
+	return true, ""
 }

@@ -12,7 +12,12 @@ import { EM } from "../catalog/format";
 import { axialText, degrees, limitText, precisionNote, provenanceNote, spectralText, unitLabel, valueText } from "./format";
 import s from "./Panels.module.css";
 
-function otherValue(o: Viewer, p: { x: number; y: number }): string {
+/** What the other map holds at the pixel the pointer maps to: the same pixel on one grid, `at` (from the worker's transform) otherwise. */
+type OtherAt = { x: number; y: number } | "outside" | "pending";
+function otherValue(o: Viewer, probe: { x: number; y: number }, at?: OtherAt): string {
+  if (at === "outside") return "outside this map's footprint";
+  if (at === "pending") return "computing the link…";
+  const p = at ?? probe;
   if (!o.plane || p.x >= o.plane.head.width || p.y >= o.plane.head.height) return EM;
   const v = o.plane.data[p.y * o.plane.head.width + p.x] ?? null;
   return o.interp ? axialText(v, o.interp.unit) : valueText(v, o.view?.bunit ?? null);
@@ -143,7 +148,7 @@ function frameCaveat(status: string | undefined, assumed: boolean): { short: str
   return null;
 }
 
-export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: string; v: Viewer } | null }) {
+export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: string; v: Viewer; at?: OtherAt } | null }) {
   const { view, probe, plane } = v;
   // a readout is shown only for the pixel and channel it was computed for; otherwise it is still loading
   const coord = v.coord && probe && plane && v.coord.x === probe.x && v.coord.y === probe.y && v.coord.channel === plane.head.channel ? v.coord : null;
@@ -167,7 +172,7 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
         {other && probe ? (
           <>
             <dt title={other.name}>Other map</dt>
-            <dd className="mono">{otherValue(other.v, probe)}</dd>
+            <dd className="mono">{otherValue(other.v, probe, other.at)}</dd>
           </>
         ) : null}
         {sky.kind === "celestial" ? (

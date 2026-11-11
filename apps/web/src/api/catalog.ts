@@ -70,7 +70,7 @@ export const putCatalogDeclaration = (id: number, body: CatalogDeclarationReques
   call<CatalogDataset>(`/api/datasets/${id}/catalog/declaration`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 export const deleteCatalogDeclaration = (id: number) => call<CatalogDataset>(`/api/datasets/${id}/catalog/declaration`, { method: "DELETE" });
 
-export type Compat = { compatible: boolean; reasons: string[] };
+export type Compat = Schemas["Compat"];
 export const getCompat = (a: number, b: number) => call<Compat>(`/api/compat?a=${a}&b=${b}`);
 
 export type AngleFrame = NonNullable<Interpretation["frame"]>;

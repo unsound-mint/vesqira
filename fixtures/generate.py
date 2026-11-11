@@ -63,6 +63,37 @@ def cube_other_frame() -> fits.HDUList:
     return hdul
 
 
+def cube_galactic_overlap() -> fits.HDUList:
+    """The field of hi_cube on a Galactic frame, pixels 1.25x larger: the two grids overlap, so a cursor maps across frames
+    (hi_cube_galactic.fits is elsewhere on the sky and does not overlap)."""
+    from astropy import units as u
+    from astropy.coordinates import SkyCoord
+    hdul = hi_cube()
+    h = hdul[0].header
+    g = SkyCoord(CRVAL_RA * u.deg, CRVAL_DEC * u.deg, frame="icrs").galactic
+    h["CTYPE1"], h["CTYPE2"] = "GLON-TAN", "GLAT-TAN"
+    h["CRVAL1"], h["CRVAL2"] = float(g.l.deg), float(g.b.deg)
+    h["CDELT1"], h["CDELT2"] = -1.25 * CDELT_DEG, 1.25 * CDELT_DEG
+    del h["RADESYS"]
+    return hdul
+
+
+def cube_topocentric() -> fits.HDUList:
+    """hi_cube_coarser with its spectral axis in the topocentric frame: a different grid from hi_cube whose channels must not be
+    linked to hi_cube's (LSRK) by value, because a frame change is out of scope (ADR 0040)."""
+    hdul = cube_coarser_pixels()
+    hdul[0].header["SPECSYS"] = "TOPOCENT"
+    return hdul
+
+
+def cube_topocentric_same_grid() -> fits.HDUList:
+    """hi_cube with only SPECSYS changed (TOPOCENT): the same grid on every axis, so the grid check passes, but channel i is not
+    the same spectral value in both frames and must not be linked by index."""
+    hdul = hi_cube()
+    hdul[0].header["SPECSYS"] = "TOPOCENT"
+    return hdul
+
+
 def cube_coarser_pixels() -> fits.HDUList:
     """Same frame and field but 2x coarser pixel scale: resolution differs, so a match must be explicit."""
     hdul = hi_cube()
@@ -506,6 +537,9 @@ def write_all(directory: Path) -> dict[str, Path]:
         "hi_cube_no_celestial_wcs.fits": cube_unlabelled_pixels(),
         "hi_cube_galactic.fits": cube_other_frame(),
         "hi_cube_coarser.fits": cube_coarser_pixels(),
+        "hi_cube_galactic_overlap.fits": cube_galactic_overlap(),
+        "hi_cube_topocentric.fits": cube_topocentric(),
+        "hi_cube_topocentric_same_grid.fits": cube_topocentric_same_grid(),
         "hi_cube_reverse_spectral.fits": cube_reverse_spectral(),
         "hi_cube_rotated.fits": cube_rotated_wcs(),
         "cube_int16_scaled.fits": cube_int16_scaled(),

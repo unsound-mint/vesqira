@@ -27,7 +27,7 @@ function token(name: string, fallback: Rgb): Rgb {
 }
 
 /** The plane on screen: native aspect, square pixels, sharp edges, north up, "no value" pixels hatched. */
-export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: Pt | null) => void; onDrawn?: (plane: NonNullable<Viewer["plane"]>) => void }) {
+export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProbe?: (p: Pt | null) => void; onDrawn?: (plane: NonNullable<Viewer["plane"]>) => void; onSize?: (size: { w: number; h: number }) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const frameEl = useRef<HTMLDivElement>(null);
   const chromeEls = useRef<(HTMLElement | null)[]>([]); // the zoom bar, the channel caption and the warning: drawn over the picture, so labels keep clear of them
@@ -43,11 +43,17 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
   const gl = useRef<GlPlaneRenderer | null>(null);
   const drawn = useRef(onDrawn); // told when a plane has been put on the canvas, so a caller can save exactly what is shown
   drawn.current = onDrawn;
+  const sized = useRef(onSize); // told the pane's size, so a linked pane can say which part of the sky it shows
+  sized.current = onSize;
 
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    const measure = () => {
+      const next = { w: el.clientWidth, h: el.clientHeight };
+      setSize(next);
+      sized.current?.(next);
+    };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(measure);

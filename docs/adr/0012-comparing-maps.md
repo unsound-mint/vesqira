@@ -8,7 +8,7 @@ Researchers compare a map with another (a scalar map with an orientation map, or
 
 ## Decision
 - Two maps are shown side by side, each with its own display settings; the inspector follows the pane the user chooses.
-- Cursor and channel are linked only when `compat.Grids` (ADR 0010) confirms the same shape, axis types, units, reference values, reference pixels, steps, rotation keywords and celestial frame. A value unresolved on either side is a reason, never a match.
+- Cursor and channel are linked only when `compat.Grids` (ADR 0010) confirms the same shape, axis types, units, reference values, reference pixels, steps, rotation keywords and celestial frame. A value unresolved on either side is a reason, never a match. (ADR 0042, section 4: different grids can now be linked on request through the WCS; this check still decides the same-grid fast path.)
 - When the grids differ or cannot be confirmed, the panes stay side by side and unlinked, the reasons are listed, and nothing is resampled, reprojected or averaged together. The inspector's "Other map" value appears only when linked.
 - Linking compares pixel to pixel on the shared grid; there is no sky-coordinate matching between different grids in v0.1.
 

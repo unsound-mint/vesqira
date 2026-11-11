@@ -176,6 +176,64 @@ def check_overlap(src: Sky, base: Sky, who: str) -> None:
     raise Refusal(f"{who} does not overlap the base map on the sky (compared by WCS in {base.label}), so there is nothing to draw")
 
 
+# ---------- linked views: the sky transform between two maps (ADR 0042, section 4) ----------
+
+LINK_FIT = 7                    # samples per axis the affine approximation is fitted on
+LINK_CHECK = 21                 # samples per axis its error is measured on (a different grid, edges and corners included)
+LINK_MAX_POINTS = 64            # points mapped exactly in one request
+LINKED = "positions linked through the sky (astropy)"
+
+
+def link_sky(a, b, region: dict, points: list) -> dict:
+    """How a pixel of map A lands in map B, for the cursor and the view: an affine approximation over `region` of A (0-based
+    pixel centres at integers, y up) with its measured worst error in B pixels, and the exact mapping of `points`.
+
+    Every position goes A pixel -> world (A's frame) -> B's frame -> B pixel through astropy (to_base), so the browser never
+    computes WCS. The affine is fitted on a LINK_FIT grid and its error is measured on a different LINK_CHECK grid that
+    includes the corners; the error is reported, never assumed small. A region over which the sky transform is not defined
+    (a point with no position, say beyond a TAN horizon) is refused rather than approximated."""
+    A, B = Sky(a, "the first map"), Sky(b, "the second map")
+    wa, ha = A.shape
+    x0, x1 = max(-0.5, region["x0"]), min(wa - 0.5, region["x1"])
+    y0, y1 = max(-0.5, region["y0"]), min(ha - 0.5, region["y1"])
+    if not (x1 > x0 and y1 > y0):
+        raise Refusal("the visible region does not intersect the first map")
+    undefined = "the sky transform is not defined over the whole visible region (a position has no counterpart in the other map's frame)"
+
+    def grid(n):
+        gx, gy = np.meshgrid(np.linspace(x0, x1, n), np.linspace(y0, y1, n))
+        return gx.ravel(), gy.ravel()
+    with np.errstate(all="ignore"):
+        fx, fy = grid(LINK_FIT)
+        bx, by = to_base(A, B, fx, fy)
+        if not (np.all(np.isfinite(bx)) and np.all(np.isfinite(by))):
+            raise Refusal(undefined)
+        design = np.column_stack([fx, fy, np.ones_like(fx)])
+        cx, *_ = np.linalg.lstsq(design, bx, rcond=None)
+        cy, *_ = np.linalg.lstsq(design, by, rcond=None)
+        gx, gy = grid(LINK_CHECK)
+        tx, ty = to_base(A, B, gx, gy)
+        if not (np.all(np.isfinite(tx)) and np.all(np.isfinite(ty))):
+            raise Refusal(undefined)
+        err = np.hypot(cx[0] * gx + cx[1] * gy + cx[2] - tx, cy[0] * gx + cy[1] * gy + cy[2] - ty)
+    exact = []
+    if points:
+        ex, ey = to_base(A, B, np.array([p[0] for p in points], dtype=float), np.array([p[1] for p in points], dtype=float))
+        for p, u_, v_ in zip(points, ex, ey):
+            ok = bool(np.isfinite(u_) and np.isfinite(v_))
+            exact.append({"x": p[0], "y": p[1], "bx": float(u_) if ok else None, "by": float(v_) if ok else None,
+                          "inside": bool(ok and _inside(np.array([u_]), np.array([v_]), B.shape)[0])})
+    same = A.same_frame(B)
+    return {"refused": None, "affine": [float(cx[0]), float(cx[1]), float(cx[2]), float(cy[0]), float(cy[1]), float(cy[2])],
+            "region": {"x0": float(x0), "x1": float(x1), "y0": float(y0), "y1": float(y1)},
+            "max_error_px": float(err.max()), "rms_error_px": float(math.sqrt(float(np.mean(err ** 2)))),
+            "scale": math.sqrt(abs(float(cx[0] * cy[1] - cx[1] * cy[0]))), "a_shape": [wa, ha], "b_shape": list(B.shape), "exact": exact,
+            "frames": {"from": A.label, "to": B.label, "from_status": A.status, "to_status": B.status, "same_frame": same},
+            "basis": (f"{LINKED}; both in {A.label}" if same else f"{LINKED}; converted from {A.label} to {B.label}")
+                     + f"; first map {A.basis}; second map {B.basis}",
+            "method": f"affine fitted on a {LINK_FIT} x {LINK_FIT} grid over the visible region; its error is measured on {LINK_CHECK} x {LINK_CHECK} other points, corners included"}
+
+
 # ---------- polylines ----------
 
 def split_runs(x, y, keep):
