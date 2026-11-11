@@ -11994,10 +11994,9 @@ components:
           format: "int64"
           description: "The open project the step belongs to; 0 when no project was open"
         parentId:
-          type:
-            - "integer"
-            - "null"
+          type: "integer"
           format: "int64"
+          nullable: true
           description: "The step this one was reached from. Null for the first step of a branch, or when that step was pruned. Several steps with the same parent are branches"
         datasetId:
           type: "integer"
@@ -12053,10 +12052,9 @@ components:
           format: "int64"
           description: "The open project the step belongs to; 0 when no project was open"
         parentId:
-          type:
-            - "integer"
-            - "null"
+          type: "integer"
           format: "int64"
+          nullable: true
           description: "The step this one was reached from. Null for the first step of a branch, or when that step was pruned. Several steps with the same parent are branches"
         datasetId:
           type: "integer"
@@ -12094,10 +12092,9 @@ components:
           format: "int64"
           minimum: 0
         parentId:
-          type:
-            - "integer"
-            - "null"
+          type: "integer"
           format: "int64"
+          nullable: true
           description: "A step of the same project; continuing from an earlier step makes a branch"
         kind:
           type: "string"
