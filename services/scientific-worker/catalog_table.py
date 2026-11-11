@@ -906,6 +906,28 @@ def transform(lon, lat, angle, decl, to, quantity):
     return olon, olat, oang
 
 
+def snr_filter(value, sigma, k: float):
+    """The one row filter for catalogs: keep a row when value / sigma >= k, or value >= k when `sigma` is None.
+    `value` and `sigma` are float arrays (NaN = missing or unreadable, never read as 0). Returns (keep, status): `keep` is a
+    bool array; `status` is an object array with "" for a kept row, "below" for a known value under k, and "missing" when the
+    value (or sigma) is missing or sigma <= 0 (no ratio exists): such a row does not pass. Callers map the status to their own wording."""
+    v = np.asarray(value, dtype=float)
+    if sigma is None:
+        known = np.isfinite(v)
+        stat = v
+    else:
+        sg = np.asarray(sigma, dtype=float)
+        with np.errstate(all="ignore"):
+            known = np.isfinite(v) & np.isfinite(sg) & (sg > 0)
+            stat = np.where(known, v / np.where(known, sg, 1.0), np.nan)
+    with np.errstate(invalid="ignore"):
+        keep = known & (stat >= k)
+    status = np.full(v.shape, "", dtype=object)
+    status[~known] = "missing"
+    status[known & ~keep] = "below"
+    return keep, status
+
+
 def handle(op: str, path: str, req: dict):
     """(head fields, payload bytes). The payload is a JSON document: the head line of a worker reply is read into a small buffer."""
     if op == "catalog_describe":

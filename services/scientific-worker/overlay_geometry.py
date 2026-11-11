@@ -690,16 +690,10 @@ def catalog(base_cube, L, declaration: dict, spec: dict) -> tuple[dict, bytes]:
     if flt_cols is not None:
         f_val, f_sig, k = flt_cols
         v = _column_values(L, f_val)[idx]
-        if f_sig is None:
-            stat, text = v, f"{f_val} >= {k:g}"
-        else:
-            sg = _column_values(L, f_sig)[idx]
-            with np.errstate(all="ignore"):
-                stat = np.where(np.isfinite(v) & np.isfinite(sg) & (sg > 0), v / sg, np.nan)
-            text = f"{f_val} / {f_sig} >= {k:g}"
-        known = np.isfinite(stat)
-        with np.errstate(invalid="ignore"):
-            passes = known & (stat >= k)
+        sg = None if f_sig is None else _column_values(L, f_sig)[idx]
+        text = f"{f_val} >= {k:g}" if f_sig is None else f"{f_val} / {f_sig} >= {k:g}"
+        passes, st = ct.snr_filter(v, sg, k)       # the one shared rule (catalog_table.snr_filter)
+        known = st != "missing"
         flt_info = {"rule": text, "column": f_val, "sigma_column": f_sig, "min": k,
                     "kept": int(np.count_nonzero(inside & passes)), "removed": int(np.count_nonzero(inside & known & ~passes)),
                     "unknown": int(np.count_nonzero(inside & ~known)),
