@@ -12,6 +12,9 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -38,6 +41,22 @@ type Scene struct {
 	Base     Base      `json:"base"`
 	Overlays []Overlay `json:"overlays"`
 	View     View      `json:"view"`
+	Link     *Link     `json:"link,omitempty"`
+}
+
+// Link is the link group a pane was in (ADR 0042, section 4): how its panes followed each other when the scene was made.
+type Link struct {
+	ID       string     `json:"id"`
+	Name     string     `json:"name"`
+	Basis    string     `json:"basis"`
+	Facets   LinkFacets `json:"facets"`
+	Datasets []int64    `json:"datasets"`
+}
+
+type LinkFacets struct {
+	Cursor  bool `json:"cursor"`
+	Channel bool `json:"channel"`
+	View    bool `json:"view"`
 }
 
 type Base struct {
@@ -278,6 +297,7 @@ func Parse(raw []byte) (Scene, error) {
 		Base     *json.RawMessage  `json:"base"`
 		Overlays []json.RawMessage `json:"overlays"`
 		View     *json.RawMessage  `json:"view"`
+		Link     json.RawMessage   `json:"link"`
 	}
 	if err := strict(raw, &in); err != nil {
 		return Scene{}, bad("not a scene object: %v", err)
@@ -296,6 +316,16 @@ func Parse(raw []byte) (Scene, error) {
 	}
 	if s.View, err = parseView(*in.View); err != nil {
 		return Scene{}, err
+	}
+	if in.Link != nil { // present: a null is refused too (json.RawMessage keeps the literal)
+		l, err := parseLink(in.Link)
+		if err != nil {
+			return Scene{}, err
+		}
+		if !slices.Contains(l.Datasets, s.Base.DatasetID) {
+			return Scene{}, bad("link: the group's datasets must include the scene's own")
+		}
+		s.Link = &l
 	}
 	if len(in.Overlays) > MaxOverlays {
 		return Scene{}, bad("at most %d overlays", MaxOverlays)
@@ -369,6 +399,59 @@ func parseBase(raw []byte) (Base, error) {
 	}
 	b.Display = Display{Mapping: *d.Mapping, Colormap: *d.Colormap, Stretch: *d.Stretch, Range: *d.Range, Limits: limits, LimitsUnit: d.LimitsUnit, ScaleGroup: d.ScaleGroup}
 	return b, nil
+}
+
+var linkID = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
+
+// MaxLinkName is the longest group name, in characters.
+const MaxLinkName = 60
+
+// parseLink reads the link group strictly: a name of printable text (no control characters), the basis, every facet stated,
+// and two to eight distinct datasets.
+func parseLink(raw []byte) (Link, error) {
+	var in struct {
+		ID     *string `json:"id"`
+		Name   *string `json:"name"`
+		Basis  *string `json:"basis"`
+		Facets *struct {
+			Cursor  *bool `json:"cursor"`
+			Channel *bool `json:"channel"`
+			View    *bool `json:"view"`
+		} `json:"facets"`
+		Datasets []*int64 `json:"datasets"`
+	}
+	if err := strict(raw, &in); err != nil {
+		return Link{}, bad("link: %v", err)
+	}
+	if in.ID == nil || !linkID.MatchString(*in.ID) {
+		return Link{}, bad("link: id is 1 to 32 characters of a-z, 0-9 and -")
+	}
+	if in.Name == nil || *in.Name == "" || utf8.RuneCountInString(*in.Name) > MaxLinkName || !utf8.ValidString(*in.Name) {
+		return Link{}, bad("link: name is 1 to %d characters", MaxLinkName)
+	}
+	for _, r := range *in.Name {
+		if unicode.IsControl(r) || !unicode.IsPrint(r) {
+			return Link{}, bad("link: name must be printable text without line breaks")
+		}
+	}
+	if in.Basis == nil || !isOneOf(*in.Basis, "same-grid", "wcs") {
+		return Link{}, bad("link: basis must be same-grid or wcs")
+	}
+	f := in.Facets
+	if f == nil || f.Cursor == nil || f.Channel == nil || f.View == nil {
+		return Link{}, bad("link: facets must state cursor, channel and view")
+	}
+	if len(in.Datasets) < 2 || len(in.Datasets) > 8 {
+		return Link{}, bad("link: two to eight datasets")
+	}
+	ds := make([]int64, 0, len(in.Datasets))
+	for _, d := range in.Datasets {
+		if d == nil || *d < 1 || slices.Contains(ds, *d) {
+			return Link{}, bad("link: datasets are distinct positive ids")
+		}
+		ds = append(ds, *d)
+	}
+	return Link{ID: *in.ID, Name: *in.Name, Basis: *in.Basis, Facets: LinkFacets{*f.Cursor, *f.Channel, *f.View}, Datasets: ds}, nil
 }
 
 func parseView(raw []byte) (View, error) {

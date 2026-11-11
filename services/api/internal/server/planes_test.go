@@ -518,18 +518,35 @@ func TestCompatibilityEndpointLinksOnlyKnownSameGrids(t *testing.T) {
 		json.NewDecoder(post(t, ts, filepath.Join(root, name), nil).Body).Decode(&d)
 		return int(d.ID)
 	}
-	cube, same, gal, coarse := reg("hi_cube.fits"), reg("hi_cube.fits"), reg("hi_cube_galactic.fits"), reg("hi_cube_coarser.fits")
+	cube, same, gal, coarse, topo := reg("hi_cube.fits"), reg("hi_cube.fits"), reg("hi_cube_galactic.fits"), reg("hi_cube_coarser.fits"), reg("hi_cube_topocentric_same_grid.fits")
+	var channel struct {
+		OK     bool
+		Reason string
+	}
 	check := func(a, b int) (bool, string) {
 		_, body := get(t, ts.URL+"/api/compat?a="+itoa(a)+"&b="+itoa(b))
+		conforms(t, responseSchema(t, loadSpec(t), "/api/compat", "GET", "application/json"), "compat reply", body)
 		var out struct {
-			Compatible bool
-			Reasons    []string
+			Compatible  bool
+			Reasons     []string
+			ChannelLink struct {
+				OK     bool
+				Reason string
+			}
 		}
 		json.Unmarshal(body, &out)
+		channel = out.ChannelLink
 		return out.Compatible, strings.Join(out.Reasons, "; ")
 	}
 	if ok, why := check(cube, same); !ok {
 		t.Errorf("a file with itself must be compatible: %s", why)
+	}
+	if !channel.OK || channel.Reason != "" {
+		t.Errorf("the same file's channels link by index: %+v", channel)
+	}
+	// one grid, spectral frames LSRK and TOPOCENT: the grid is compatible (the cursor links), the channel link is refused
+	if ok, why := check(cube, topo); !ok || channel.OK || channel.Reason != "spectral frames differ (LSRK vs TOPOCENT); changing frame is not offered" {
+		t.Errorf("same grid, different spectral frame: grid %v %q, channel %+v", ok, why, channel)
 	}
 	if ok, why := check(cube, gal); ok || !strings.Contains(why, "type") {
 		t.Errorf("Galactic vs ICRS must be refused with a reason: %v %q", ok, why)

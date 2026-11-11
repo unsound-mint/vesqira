@@ -73,6 +73,7 @@ export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scal
     },
     overlays,
     view: { zoom: 1 },
+    ...(live.link ? { link: live.link } : {}), // how the pane was linked to the other map(s) when this was drawn (ADR 0042, section 4)
   };
 }
 

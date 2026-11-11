@@ -52,10 +52,15 @@ import { SpectrumPlot } from "../viewer/SpectrumPlot";
 import { ChannelGrid } from "../viewer/ChannelGrid";
 import { PvPanel } from "../viewer/PvPanel";
 import { GaussianComponents } from "../viewer/GaussianComponents";
-import { flagState } from "../viewer/format";
+import { flagState, spectralText } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
+import type { Pixel } from "../viewer/useViewer";
 import { limits } from "../viewer/render";
-import { compareGroup, follow, links } from "../scene/link";
+import { channelTarget, defaultPrefs, linkGroup, linkPills, links, mapPixel, sceneLink } from "../scene/link";
+import type { LinkPrefs, PaneId } from "../scene/link";
+import { useChannelLink, useSkyLink } from "../viewer/useLinkTransform";
+import { useLinkFollow } from "../viewer/useLinkFollow";
+import type { LinkControls } from "../viewer/CompareBar";
 import { Button, IconButton, Pill, ResizeHandle, Section } from "../ui";
 import { LIMITS, useLayout } from "./useLayout";
 import s from "./Shell.module.css";
@@ -105,10 +110,77 @@ export function Shell() {
   const viewer = useB ? viewerB : viewerA;
   const actDs = useB ? compareDs : cat.selectedImage;
   const other = useB ? viewerA : viewerB;
-  // The two panes are one link group when their grids are confirmed identical (ADR 0042: linking by WCS comes later).
-  const group = compareGroup(compareDs !== null && linkState(compat, compatLoading).linked);
+  // The two panes are one link group (ADR 0042, section 4): on the same grid on their own, on different grids once the person
+  // links them by WCS, and only while both are in it. Who has left, the name and the facets belong to this pair of datasets.
+  const sameGrid = compareDs !== null && linkState(compat, compatLoading).linked;
+  const pairKey = `${cat.selectedImage?.id ?? ""}:${compareDs?.id ?? ""}`;
+  const [prefsFor, setPrefsFor] = useState<{ key: string; p: LinkPrefs }>(() => ({ key: pairKey, p: defaultPrefs() }));
+  const linkPrefs = prefsFor.key === pairKey ? prefsFor.p : defaultPrefs();
+  const updatePrefs = (patch: Partial<LinkPrefs>) => setPrefsFor({ key: pairKey, p: { ...linkPrefs, ...patch } });
+  const group = compareDs !== null ? linkGroup(linkPrefs, sameGrid, compat?.channelLink.ok === false ? compat.channelLink.reason : null) : null;
   const linked = group !== null;
+  const idA = cat.selectedImage?.id ?? null;
+  const idB = compareDs?.id ?? null;
+  const stamp = `${cat.selectedImage?.modifiedAt ?? ""}|${compareDs?.modifiedAt ?? ""}`;
+  const imageA = viewerA.view ? { w: viewerA.view.width, h: viewerA.view.height } : null;
+  const imageB = viewerB.view ? { w: viewerB.view.width, h: viewerB.view.height } : null;
+  const [paneA, setPaneA] = useState<{ w: number; h: number } | null>(null);
+  const [paneB, setPaneB] = useState<{ w: number; h: number } | null>(null);
+  const byWcs = group !== null && group.basis === "wcs";
+  const wantSky = byWcs && (group.facets.cursor || group.facets.view);
+  const skyAB = useSkyLink(wantSky, idA, idB, viewerA.scene, imageA, paneA, stamp);
+  const skyBA = useSkyLink(wantSky, idB, idA, viewerB.scene, imageB, paneB, stamp);
+  const wantChannels = byWcs && group.facets.channel;
+  const chAB = useChannelLink(wantChannels, idA, idB, stamp);
+  const chBA = useChannelLink(wantChannels, idB, idA, stamp);
+  useLinkFollow(group, { a: viewerA, b: viewerB }, active, { ab: skyAB, ba: skyBA }, { ab: chAB, ba: chBA }, { a: idA, b: idB });
+  // a scene records how its pane was linked, so a figure says how its panes followed each other
+  const linkKey = JSON.stringify(sceneLink(group, { a: idA, b: idB }));
+  useEffect(() => {
+    const l = sceneLink(group, { a: idA, b: idB });
+    viewerA.dispatch({ type: "setLink", link: l });
+    viewerB.dispatch({ type: "setLink", link: l });
+  }, [linkKey, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // where the hovered pixel of one pane is in the other: the same pixel on one grid, the worker's transform otherwise
+  const [outsideIn, setOutsideIn] = useState<PaneId | null>(null);
+  function mirror(from: PaneId, p: Pixel | null) {
+    if (!group || !group.facets.cursor) return;
+    const to: PaneId = from === "a" ? "b" : "a";
+    const dest = to === "a" ? viewerA : viewerB;
+    if (!p || group.basis === "same-grid") {
+      dest.setMirror(p);
+      setOutsideIn(null);
+      return;
+    }
+    const m = mapPixel((from === "a" ? skyAB : skyBA).map, p);
+    dest.setMirror(m.kind === "inside" ? m.at : null);
+    setOutsideIn(m.kind === "outside" ? to : null);
+  }
   const flag = flagState(viewer.view, viewer.plane);
+  const activeSky = useB ? skyBA : skyAB;
+  const activeChannels = useB ? chBA : chAB;
+  const lead: PaneId = useB ? "b" : "a";
+  const channelLine = (() => {
+    if (!byWcs || !group.facets.channel || !activeChannels.map) return null;
+    const t = channelTarget(activeChannels.map, viewer.channel);
+    const here = viewer.scene?.base.spectral;
+    if (!t || !here) return null;
+    const there = lead === "a" ? "B" : "A";
+    const here_ = lead === "a" ? "A" : "B";
+    const at = `${here_}'s ${spectralText(here.value, here.unit)}`;
+    return "channel" in t
+      ? `${there} channel ${t.channel + 1} is ${spectralText(Math.abs(t.residual), t.unit)} from ${at}`
+      : `${at} is outside ${there}'s spectral range: the nearest ${there} channel is ${spectralText(Math.abs(t.residual), t.unit)} away, so ${there} does not follow`;
+  })();
+  const linkControls: LinkControls = { group, prefs: linkPrefs, onPrefs: updatePrefs, pills: group ? linkPills(group, activeSky, activeChannels) : [], channelLine };
+  const readoutOther = (() => {
+    if (!group || !other.view) return null;
+    const name = (useB ? cat.selectedImage : compareDs)?.name ?? "";
+    if (group.basis === "same-grid") return { name, v: other };
+    if (!group.facets.cursor) return null;
+    const m = viewer.probe ? mapPixel(activeSky.map, viewer.probe) : null;
+    return { name, v: other, at: m === null || m.kind === "stale" ? ("pending" as const) : m.kind === "inside" ? m.at : ("outside" as const) };
+  })();
 
   // One colour scale for both maps: only for scalar maps in the same brightness unit. The limits start from the two
   // maps' 1st to 99th percentiles together and then follow whatever the person sets on the map they are working in.
@@ -180,13 +252,9 @@ export function Shell() {
       toggle("sideOpen");
     }
   }, [compareDs?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  // the pane you are working in drives the other one, for the facets its group links
   useEffect(() => {
-    for (const a of follow(group, viewer.scene, other.scene, { from: viewer.channels, to: other.channels })) other.dispatch(a);
-  }, [linked, viewer.channel, viewer.channels, other.channels, viewer.scene?.view]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null);
-  }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null), setOutsideIn(null);
+  }, [linked, group?.facets.cursor, group?.basis]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
   const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "run" | "rerun" | "open" | "look" | "needs" | "health">("viewer");
   const [runId, setRunId] = useState<number | null>(null);
@@ -360,16 +428,16 @@ export function Shell() {
               <ChannelGrid key={cat.selectedImage.id} v={viewerA} dataset={cat.selectedImage} />
             ) : (
           <div className={s.compare}>
-            <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} />
+            <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} link={linkControls} />
             <div className={compareDs ? s.panes2 : s.panes1}>
               <section className={s.pane} aria-label={`Map: ${cat.selectedImage.name}`}>
-                {compareDs ? <PaneHeader name={cat.selectedImage.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} /> : null}
-                <div className={s.paneBody}><PlaneViewer v={viewerA} onProbe={(p) => links(group, "cursor") && viewerB.setMirror(p)} /></div>
+                {compareDs ? <PaneHeader name={cat.selectedImage.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} note={outsideIn === "a" ? OUTSIDE_NOTE : null} /> : null}
+                <div className={s.paneBody}><PlaneViewer v={viewerA} onProbe={(p) => mirror("a", p)} onSize={setPaneA} /></div>
               </section>
               {compareDs ? (
                 <section className={s.pane} aria-label={`Map: ${compareDs.name}`}>
-                  <PaneHeader name={compareDs.name} axial={viewerB.interp !== null} active={useB} onActivate={() => setActive("b")} />
-                  <div className={s.paneBody}><PlaneViewer v={viewerB} onProbe={(p) => links(group, "cursor") && viewerA.setMirror(p)} /></div>
+                  <PaneHeader name={compareDs.name} axial={viewerB.interp !== null} active={useB} onActivate={() => setActive("b")} note={outsideIn === "b" ? OUTSIDE_NOTE : null} />
+                  <div className={s.paneBody}><PlaneViewer v={viewerB} onProbe={(p) => mirror("b", p)} onSize={setPaneB} /></div>
                 </section>
               ) : null}
             </div>
@@ -425,7 +493,7 @@ export function Shell() {
             </Section>
           ) : null}
           <Section title="Coordinates">
-            {actDs ? <CoordinateReadout v={viewer} other={linked && other.view ? { name: (useB ? cat.selectedImage : compareDs)?.name ?? "", v: other } : null} /> : <p className={s.empty}>{EM}</p>}
+            {actDs ? <CoordinateReadout v={viewer} other={readoutOther} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           {actDs && (viewer.view === null || viewer.view.channels === 1) ? (
             <Section title="Interpretation">
@@ -542,11 +610,14 @@ export function Shell() {
   );
 }
 
-function PaneHeader({ name, axial, active, onActivate }: { name: string; axial: boolean; active: boolean; onActivate: () => void }) {
+const OUTSIDE_NOTE = "Cursor is outside this map's footprint";
+
+function PaneHeader({ name, axial, active, onActivate, note = null }: { name: string; axial: boolean; active: boolean; onActivate: () => void; note?: string | null }) {
   return (
     <div className={s.paneHead}>
       <span className={s.paneName} title={name}>{name}</span>
       <Pill>{axial ? "Axial orientation" : "Scalar"}</Pill>
+      {note ? <span className={s.paneNote} role="status">{note}</span> : null}
       <button type="button" className={s.paneBtn} aria-pressed={active} onClick={onActivate}>{active ? "Inspector shows this map" : "Show in inspector"}</button>
     </div>
   );

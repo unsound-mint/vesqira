@@ -444,6 +444,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * Whether two maps are known to share a grid, and whether their channels may be linked by index
+         * @description Query `a` and `b` are dataset ids. Nothing is resampled. `channelLink` is about the spectral axis only and is not a grid reason.
+         */
         get: operations["owner_s_compatibility_get_api_compat"];
         put?: never;
         post?: never;
@@ -816,6 +820,28 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_interpret_post_api_datasets_id_interpretation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What linking this map to another needs: the sky transform over a region and the channel correspondence
+         * @description Both datasets must be readable, unchanged and on the same machine; a point catalog is refused (409). The worker computes everything with astropy. `sky` is an affine approximation of this map's pixels to the other's over the region with its measured error in the other map's pixels, plus exact positions of `points`; `spectral` maps every channel to the other map's nearest channel by spectral world value, or refuses with the reason (spectral frames differ or are not stated, a velocity convention or rest frequency that does not allow it). A pair that cannot be related is a 200 with `refused` set, not an error.
+         */
+        post: operations["owner_s_link_post_api_datasets_id_link"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4276,6 +4302,7 @@ export interface components {
             /** @description Drawn in this order over the base, the first at the bottom */
             overlays: components["schemas"]["SceneOverlay"][];
             view: components["schemas"]["SceneView"];
+            link?: components["schemas"]["SceneLink"];
         };
         SceneBase: {
             /** Format: int64 */
@@ -6323,6 +6350,133 @@ export interface components {
             messages: string[];
             notes: string[];
         };
+        /** @description The link group this pane was in when the scene was made (ADR 0042, section 4): how its panes followed each other. Panes belong to one group by id; the group's name is the person's. */
+        SceneLink: {
+            id: string;
+            /** @description Named by the person; printable text without line breaks */
+            name: string;
+            /**
+             * @description same-grid: the server confirmed one pixel grid, so a pixel, a channel index and an image point mean the same in each pane. wcs: positions and channels are carried through the worker's WCS transformation (astropy), with the spectral part refused when the frames differ.
+             * @enum {string}
+             */
+            basis: "same-grid" | "wcs";
+            facets: components["schemas"]["SceneLinkFacets"];
+            /** @description The datasets of the group's panes, this scene's own included */
+            datasets: number[];
+        };
+        /** @description What the group links: the cursor (sky position), the channel (spectral world value) and the view (the sky region in view). */
+        SceneLinkFacets: {
+            cursor: boolean;
+            channel: boolean;
+            view: boolean;
+        };
+        /** @description What to compute for linking the dataset in the path (the first map) to another (the second). At least one of region, points and channels. */
+        LinkRequest: {
+            /** Format: int64 */
+            otherId: number;
+            /** @description A window of this map in pixels: 0-based, pixel centres at integers, y up (FITS order). Widened to a half-pixel grid before it is used. */
+            region?: {
+                x0: number;
+                y0: number;
+                x1: number;
+                y1: number;
+            };
+            /** @description Pixels of the first map to map exactly (in the region's pixel convention); only with a region */
+            points?: number[][];
+            /** @description Also map every channel of the first map to the second map's nearest channel by spectral world value */
+            channels?: boolean;
+        };
+        /** @description How the first map's pixels land in the second's. Either refused (the reason) or an affine approximation over the region with its measured error, plus exact positions of the points asked for. Every number comes from astropy in the worker. */
+        LinkSky: {
+            /** @description Why the maps cannot be related on the sky (no celestial WCS, a frame that cannot be built, a region where the transform is undefined) */
+            refused: string | null;
+            /** @description [a, b, tx, c, d, ty]: x' = a x + b y + tx and y' = c x + d y + ty, in the maps' pixel convention */
+            affine?: number[];
+            /** @description A window of this map in pixels: 0-based, pixel centres at integers, y up (FITS order). Widened to a half-pixel grid before it is used. */
+            region?: {
+                x0: number;
+                y0: number;
+                x1: number;
+                y1: number;
+            };
+            /** @description The worst distance in second-map pixels between the affine and the exact transform, measured on a grid other than the one it was fitted on, corners included */
+            max_error_px?: number;
+            rms_error_px?: number;
+            /** @description Second-map pixels per first-map pixel (square root of the affine's determinant) */
+            scale?: number;
+            a_shape?: number[];
+            /** @description [width, height] of the second map */
+            b_shape?: number[];
+            exact?: {
+                x: number;
+                y: number;
+                bx: number | null;
+                by: number | null;
+                /** @description Within the second map's footprint */
+                inside: boolean;
+            }[];
+            frames?: {
+                from?: string;
+                to?: string;
+                /** @enum {string} */
+                from_status?: "declared" | "inferred" | "assumed";
+                /** @enum {string} */
+                to_status?: "declared" | "inferred" | "assumed";
+                same_frame?: boolean;
+            };
+            basis?: string;
+            method?: string;
+        };
+        /** @description How the first map's channels land in the second's. Either refused (the reason: spectral frames differ or are not stated, a convention or rest frequency that does not allow it, no spectral axis) or one entry per channel of the first map. */
+        LinkSpectral: {
+            refused: string | null;
+            /** @description The first map's axis unit; residuals are in it */
+            unit?: string | null;
+            a?: {
+                ctype?: string;
+                unit?: string;
+                specsys?: string | null;
+                channels?: number;
+            } | null;
+            b?: {
+                ctype?: string;
+                unit?: string;
+                specsys?: string | null;
+                channels?: number;
+            } | null;
+            /** @description The second map's nearest channel for each channel of the first (null where the first map's value is not finite) */
+            index?: (number | null)[] | null;
+            /** @description Second map's channel value minus the first's, in the first map's axis unit */
+            residual?: (number | null)[] | null;
+            /** @description True where the value lies beyond the second map's range by more than half a channel: that channel is not followed */
+            outside?: boolean[] | null;
+            basis?: string | null;
+            specsys?: string | null;
+        };
+        /** @description The worker's reply, as it is: two independent parts, each null when not asked for. */
+        LinkReply: {
+            ok: boolean;
+            /** @enum {string} */
+            op: "link";
+            nbytes?: number;
+            bunit?: string | null;
+            bunit_status?: string;
+            origin?: number;
+            sky: components["schemas"]["LinkSky"] | null;
+            spectral: components["schemas"]["LinkSpectral"] | null;
+        };
+        /** @description Whether the two maps' channels may be linked by index on one grid: the spectral reference frame (SPECSYS) must be declared by both and equal. Separate from grid compatibility, which guards sky position only. */
+        ChannelLink: {
+            ok: boolean;
+            /** @description Why not, empty when ok */
+            reason: string;
+        };
+        Compat: {
+            /** @description Shape, axis types, units, reference values, steps, rotation and the celestial frame all match: pixels correspond one to one */
+            compatible: boolean;
+            reasons: string[];
+            channelLink: components["schemas"]["ChannelLink"];
+        };
     };
     responses: never;
     parameters: never;
@@ -7070,7 +7224,10 @@ export interface operations {
     };
     owner_s_compatibility_get_api_compat: {
         parameters: {
-            query?: never;
+            query: {
+                a: number;
+                b: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7082,7 +7239,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Compat"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -7694,6 +7862,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_link_post_api_datasets_id_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkReply"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
