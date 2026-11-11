@@ -340,3 +340,180 @@ class Convolve(unittest.TestCase):
         code, r, _ = self.convolve("nobeam", cov0, None, (6 * F, 6 * F, 0.0))
         self.assertEqual(code, 2)
         self.assertIn("beam", r["error"])
+
+
+class DeclaredUnit(unittest.TestCase):
+    """A unit the author declared for a file without BUNIT reaches the results, labelled as theirs; the file's own BUNIT always wins."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.dir = Path(cls.tmp.name)
+        cls.f = g.write_all(cls.dir / "in")
+        with fits.open(cls.f["hi_cube.fits"]) as hd:                 # the same cube with its BUNIT taken out
+            hd[0].header.remove("BUNIT")
+            hd.writeto(cls.dir / "nounit.fits")
+        cls.nounit = str(cls.dir / "nounit.fits")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def out(self, name):
+        return str(self.dir / name)
+
+    def test_moment_zero_carries_the_declared_unit_as_the_authors_and_the_values_do_not_change(self):
+        code, r = run("moment", "--input", self.nounit, "--order", 0, "--out", self.out("u0.fits"))
+        self.assertEqual(code, 0, r)
+        self.assertEqual(fits.getheader(self.out("u0.fits"))["BUNIT"], "(brightness unit unresolved) m/s")
+        self.assertEqual(r["summary"]["unit_source"], "unresolved")
+        code, r = run("moment", "--input", self.nounit, "--order", 0, "--declared-unit", "K", "--out", self.out("u1.fits"))
+        self.assertEqual(code, 0, r)
+        h = fits.getheader(self.out("u1.fits"))
+        self.assertEqual((h["BUNIT"], h["VESQBUNS"]), ("K m/s", "user"))
+        self.assertTrue(any("declared by the author" in str(x) for x in h["HISTORY"]))
+        self.assertEqual(r["summary"]["unit_source"], "user")
+        self.assertIn("declared by the author for the input", r["summary"]["policy"])
+        self.assertIn("total. The brightness unit", r["summary"]["policy"])               # the added sentence starts a sentence of its own
+        np.testing.assert_array_equal(fits.getdata(self.out("u0.fits")), fits.getdata(self.out("u1.fits")))   # a label, not a calibration
+        # moment 1 is a velocity: no brightness unit is in it, and none is claimed
+        code, r = run("moment", "--input", self.nounit, "--order", 1, "--threshold", 1.0, "--declared-unit", "K", "--out", self.out("u2.fits"))
+        self.assertEqual(code, 0, r)
+        self.assertNotIn("VESQBUNS", fits.getheader(self.out("u2.fits")))
+        self.assertNotIn("unit_source", r["summary"])
+
+    def test_the_files_own_bunit_wins_over_a_declared_unit(self):
+        code, r = run("moment", "--input", self.f["hi_cube.fits"], "--order", 0, "--declared-unit", "Jy/beam", "--out", self.out("w.fits"))
+        self.assertEqual(code, 0, r)
+        h = fits.getheader(self.out("w.fits"))
+        self.assertEqual(h["BUNIT"], "K m/s")
+        self.assertNotIn("VESQBUNS", h)
+        self.assertEqual(r["summary"]["unit_source"], "file")
+        self.assertNotIn("declared by the author", r["summary"]["policy"])
+
+    def test_cutout_slab_and_align_keep_the_unit_the_author_declared_and_say_so(self):
+        runs = {"cutout": ("--x0", 0, "--x1", 3, "--y0", 0, "--y1", 3), "slab": ("--chan-start", 2, "--chan-end", 5),
+                "align": ("--reference", self.f["hi_cube_coarser.fits"])}
+        for op, extra in runs.items():
+            code, bare = run(op, "--input", self.nounit, *extra, "--out", self.out(f"{op}0.fits"))
+            self.assertEqual(code, 0, bare)
+            self.assertNotIn("BUNIT", fits.getheader(self.out(f"{op}0.fits")), op)                    # nothing is invented without a declaration
+            code, r = run(op, "--input", self.nounit, *extra, "--declared-unit", "K", "--out", self.out(f"{op}1.fits"))
+            self.assertEqual(code, 0, r)
+            h = fits.getheader(self.out(f"{op}1.fits"))
+            self.assertEqual((h["BUNIT"], h["VESQBUNS"]), ("K", "user"), op)
+            self.assertEqual(r["summary"]["unit_source"], "user", op)
+            self.assertIn("declared by the author", r["summary"]["policy"], op)
+            np.testing.assert_array_equal(fits.getdata(self.out(f"{op}0.fits")), fits.getdata(self.out(f"{op}1.fits")))
+        code, r = run("cutout", "--input", self.f["hi_cube.fits"], "--x0", 0, "--x1", 3, "--y0", 0, "--y1", 3, "--declared-unit", "Jy", "--out", self.out("cf.fits"))
+        self.assertEqual(code, 0, r)
+        self.assertEqual(fits.getheader(self.out("cf.fits"))["BUNIT"], "K")                         # the file's unit, not the declared one
+        self.assertNotIn("VESQBUNS", fits.getheader(self.out("cf.fits")))
+
+    def scalar_map(self, name, unit):
+        hd = fits.PrimaryHDU(np.arange(16, dtype=float).reshape(4, 4), header=g._map_header((4, 4)))
+        if unit is not None:
+            hd.header["BUNIT"] = unit
+        path = self.out(name)
+        fits.HDUList([hd]).writeto(path, overwrite=True)
+        return path
+
+    def test_scalar_difference_takes_declared_units_but_only_when_both_have_one_and_they_agree(self):
+        bare_a, bare_b, k, jy = self.scalar_map("da.fits", None), self.scalar_map("db.fits", None), self.scalar_map("dk.fits", "K"), self.scalar_map("djy.fits", "Jy")
+        code, r = run("scalar_diff", "--input", bare_a, "--reference", bare_b, "--declared-unit", "K", "--declared-unit-ref", "K", "--out", self.out("d1.fits"))
+        self.assertEqual(code, 0, r)
+        h = fits.getheader(self.out("d1.fits"))
+        self.assertEqual((h["BUNIT"], h["VESQBUNS"]), ("K", "user"))
+        self.assertIn("for the input and the reference", r["summary"]["policy"])
+        code, r = run("scalar_diff", "--input", bare_a, "--reference", k, "--declared-unit", "K", "--out", self.out("d2.fits"))     # one from the file, one declared
+        self.assertEqual(code, 0, r)
+        self.assertIn("for the input;", r["summary"]["policy"])
+        self.assertEqual(r["summary"]["unit_source"], "user")
+        code, r = run("scalar_diff", "--input", k, "--reference", k, "--declared-unit", "Jy", "--declared-unit-ref", "Jy", "--out", self.out("d3.fits"))
+        self.assertEqual(code, 0, r)                                                                 # both files state K: the declared Jy is ignored
+        self.assertEqual((r["summary"]["unit"], r["summary"]["unit_source"]), ("K", "file"))
+        self.assertNotIn("VESQBUNS", fits.getheader(self.out("d3.fits")))
+        for args in (("--input", bare_a, "--reference", bare_b, "--declared-unit", "K"),            # the reference has no unit at all
+                     ("--input", bare_a, "--reference", bare_b, "--declared-unit", "K", "--declared-unit-ref", "Jy"),   # declared units differ
+                     ("--input", bare_a, "--reference", jy, "--declared-unit", "K")):                # a declared unit against a file's other unit
+            code, r = run("scalar_diff", *args, "--out", self.out("never.fits"))
+            self.assertEqual(code, 2, r)
+            self.assertFalse(Path(self.out("never.fits")).exists())
+
+    def test_a_declared_per_beam_unit_rescales_a_convolution_like_the_files_own_would(self):
+        cov0 = np.eye(2) * 4.0
+        bare = self.dir / "cbare.fits"
+        beam_image(bare, cov0, beam=(2 * F, 2 * F, 0.0), bunit="Jy/beam")
+        with fits.open(bare) as hd:
+            hd[0].header.remove("BUNIT")
+            hd.writeto(self.dir / "cbare_nounit.fits")
+        own = self.dir / "cown.fits"
+        beam_image(own, cov0, beam=(2 * F, 2 * F, 0.0), bunit="Jy/beam")
+        target = ("--target-bmaj", 3 * F, "--target-bmin", 3 * F, "--target-bpa", 0.0)
+        _, r_own = run("convolve", "--input", own, *target, "--out", self.out("c_own.fits"))
+        code, r_decl = run("convolve", "--input", self.dir / "cbare_nounit.fits", *target, "--declared-unit", "Jy/beam", "--out", self.out("c_decl.fits"))
+        self.assertEqual(code, 0, r_decl)
+        np.testing.assert_array_equal(fits.getdata(self.out("c_own.fits")), fits.getdata(self.out("c_decl.fits")))
+        self.assertTrue(r_decl["summary"]["rescaled_by_beam_area"])
+        self.assertEqual(fits.getheader(self.out("c_decl.fits"))["VESQBUNS"], "user")
+        # with no unit anywhere the values are smoothed as they are, and the result says that this is an assumption
+        code, r = run("convolve", "--input", self.dir / "cbare_nounit.fits", *target, "--out", self.out("c_none.fits"))
+        self.assertEqual(code, 0, r)
+        self.assertFalse(r["summary"]["rescaled_by_beam_area"])
+        self.assertEqual(r["summary"]["unit_source"], "unresolved")
+        self.assertIn("no BUNIT and none was declared", r["summary"]["policy"])
+        self.assertNotIn("BUNIT", fits.getheader(self.out("c_none.fits")))
+
+    def test_a_malformed_declared_unit_is_refused_and_leaves_nothing(self):
+        for bad in ("", " K", "K ", "x" * 41, "K\nm"):
+            code, r = run("moment", "--input", self.nounit, "--order", 0, f"--declared-unit={bad}", "--out", self.out("bad.fits"))
+            self.assertEqual(code, 2, (bad, r))
+            self.assertFalse(Path(self.out("bad.fits")).exists())
+        code, r = run("moment", "--input", self.nounit, "--order", 0, "--declared-unit=-K", "--out", self.out("dash.fits"))   # a leading dash is a value, not an option
+        self.assertEqual(code, 0, r)
+        self.assertEqual(fits.getheader(self.out("dash.fits"))["BUNIT"], "-K m/s")
+
+    def test_the_unit_stays_the_authors_through_a_chain_of_analyses(self):
+        code, r = run("cutout", "--input", self.nounit, "--x0", 0, "--x1", 9, "--y0", 0, "--y1", 9, "--declared-unit", "K", "--out", self.out("ch1.fits"))
+        self.assertEqual(code, 0, r)
+        for op, extra in (("moment", ("--order", 0)), ("slab", ("--chan-start", 1, "--chan-end", 4)), ("cutout", ("--x0", 0, "--x1", 4, "--y0", 0, "--y1", 4))):
+            out = self.out(f"ch2_{op}.fits")
+            code, r = run(op, "--input", self.out("ch1.fits"), *extra, "--out", out)          # no declaration is sent: the derived file has its own BUNIT
+            self.assertEqual(code, 0, r)
+            h = fits.getheader(out)
+            self.assertEqual(h["VESQBUNS"], "user", op)
+            self.assertEqual(r["summary"]["unit_source"], "user", op)
+            self.assertIn("declared by the author", r["summary"]["policy"], op)
+            self.assertEqual(sum("declared by the author" in str(x) for x in h["HISTORY"]), 1, op)      # said once, not once per step
+        self.assertEqual(fits.getheader(self.out("ch2_moment.fits"))["BUNIT"], "K m/s")
+        code, r = run("scalar_diff", "--input", self.out("ch1.fits"), "--reference", self.out("ch1.fits"), "--out", self.out("ch2_diff.fits"))
+        self.assertNotEqual(code, 0)                                                    # cubes, not maps; the chain through a map is below
+        m0 = self.out("ch2_moment.fits")
+        code, r = run("scalar_diff", "--input", m0, "--reference", m0, "--out", self.out("ch3_diff.fits"))
+        self.assertEqual(code, 0, r)
+        self.assertEqual((r["summary"]["unit_source"], fits.getheader(self.out("ch3_diff.fits"))["VESQBUNS"]), ("user", "user"))
+
+    def test_a_blank_bunit_is_unresolved_and_a_non_ascii_declared_unit_is_refused_by_name(self):
+        with fits.open(self.nounit) as hd:
+            hd[0].header["BUNIT"] = ""
+            hd.writeto(self.dir / "blank.fits")
+        code, r = run("moment", "--input", self.dir / "blank.fits", "--order", 0, "--declared-unit", "K", "--out", self.out("bl.fits"))
+        self.assertEqual(code, 0, r)
+        self.assertEqual(r["summary"]["unit_source"], "unresolved")                      # a blank card is no unit and the file's card still wins
+        self.assertTrue(fits.getheader(self.out("bl.fits"))["BUNIT"].startswith("(brightness unit unresolved)"))
+        code, r = run("moment", "--input", self.nounit, "--order", 0, "--declared-unit", "µJy/beam", "--out", self.out("nonascii.fits"))
+        self.assertEqual(code, 2)
+        self.assertIn("plain ASCII", r["error"])                                         # the declared text is named as the cause, not the file
+        self.assertFalse(Path(self.out("nonascii.fits")).exists())
+
+    def test_a_declared_per_beam_reading_is_stated_in_the_convolution_policy(self):
+        bare = self.dir / "pb.fits"
+        beam_image(bare, np.eye(2) * 4.0, beam=(2 * F, 2 * F, 0.0))
+        with fits.open(bare) as hd:
+            hd[0].header.remove("BUNIT")
+            hd.writeto(self.dir / "pb_nounit.fits")
+        target = ("--target-bmaj", 3 * F, "--target-bmin", 3 * F, "--target-bpa", 0.0)
+        for unit, word in (("Jy/beam", "rescaled"), ("K", "not rescaled")):
+            code, r = run("convolve", "--input", self.dir / "pb_nounit.fits", *target, "--declared-unit", unit, "--out", self.out("pbo.fits"))
+            self.assertEqual(code, 0, r)
+            self.assertIn(f'beam-area ratio): {word}.', r["summary"]["policy"])

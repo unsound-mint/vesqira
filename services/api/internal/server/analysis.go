@@ -101,6 +101,13 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	}
 	args := []string{"-P", s.Analysis.Script, in.Op, "--input", real}
 	sources := []int64{d.ID}
+	// A unit the person declared for a file with no BUNIT goes with the request, so the result says it, labelled as theirs. The
+	// worker uses it only when the file has no unit of its own. The "=" form keeps a unit that starts with "-" a value.
+	declared := map[string]string{}
+	if u := declaredUnitOf(d); u != "" && in.Op != "stats" && in.Op != "axial_diff" { // an orientation map has no brightness unit
+		args = append(args, "--declared-unit="+u)
+		declared["input"] = u
+	}
 	if in.Op == "align" || in.Op == "axial_diff" || in.Op == "scalar_diff" {
 		ref, code, msg := s.dataset(in.ReferenceID)
 		if code != 0 {
@@ -142,6 +149,10 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		}
 		args = append(args, "--reference", rreal)
 		sources = append(sources, ref.ID)
+		if u := declaredUnitOf(ref); u != "" && in.Op == "scalar_diff" {
+			args = append(args, "--declared-unit-ref="+u)
+			declared["reference"] = u
+		}
 	}
 	for k, v := range opts {
 		args = append(args, "--"+k, v)
@@ -194,7 +205,11 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	params, _ := json.Marshal(map[string]any{"options": opts})
+	pm := map[string]any{"options": opts}
+	if len(declared) > 0 {
+		pm["declaredUnits"] = declared // offered to the worker; whether it was used (the file may state its own unit) is in the summary's unit_source
+	}
+	params, _ := json.Marshal(pm)
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: in.Op, Params: params, Sources: sources, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
