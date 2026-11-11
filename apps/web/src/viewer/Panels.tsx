@@ -9,13 +9,126 @@ import type { RangeMode, Stretch } from "./render";
 import { Histogram } from "./Histogram";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
-import { axialText, degrees, precisionNote, provenanceNote, spectralText, valueText } from "./format";
+import { axialText, degrees, precisionNote, provenanceNote, spectralText, unitLabel, valueText } from "./format";
 import s from "./Panels.module.css";
 
 function otherValue(o: Viewer, p: { x: number; y: number }): string {
   if (!o.plane || p.x >= o.plane.head.width || p.y >= o.plane.head.height) return EM;
   const v = o.plane.data[p.y * o.plane.head.width + p.x] ?? null;
   return o.interp ? axialText(v, o.interp.unit) : valueText(v, o.view?.bunit ?? null);
+}
+
+const sig = (v: number, digits = 9) => v.toLocaleString("en-US", { maximumSignificantDigits: digits, useGrouping: false });
+const CONVENTION_LABEL: Record<string, string> = { radio: "radio", optical: "optical", relativistic: "relativistic" };
+
+/** Show the readout in another unit or frame. Only what the file allows is enabled; the reason for the rest is written out. */
+function ConversionControls({ v }: { v: Viewer }) {
+  const { offers, conv, setConv } = v;
+  if (!offers) return null;
+  const spec = offers.spectral;
+  const specTarget = spec?.targets.find((t) => t.unit === conv.spectral);
+  const needsConvention = !!specTarget?.needs_convention;
+  const reasons = (list: { reason: string | null; enabled: boolean }[]) => [...new Set(list.filter((t) => !t.enabled && t.reason).map((t) => t.reason as string))];
+  const specReasons = spec ? reasons(spec.targets) : [];
+  const valueReasons = v.interp ? [] : reasons(offers.value.targets);
+  const skyOff = offers.sky ? reasons(offers.sky.targets) : [];
+  const anyValue = !v.interp && offers.value.targets.length > 0;
+  if (!spec && !offers.sky && !anyValue && !offers.value.reason) return null;
+  return (
+    <div className={s.convert}>
+      <p className={s.convertHead}>Show as <span className={s.convertHint}>(native values stay listed above)</span></p>
+      {spec ? (
+        <>
+          <Select label="Spectral unit" value={conv.spectral} onChange={(e) => setConv({ ...conv, spectral: e.target.value })}>
+            <option value="">Native ({spec.native_unit ?? "unresolved"})</option>
+            {spec.targets.map((t) => (
+              <option key={t.unit} value={t.unit} disabled={!t.enabled}>{t.unit}{t.enabled ? "" : " (unavailable)"}</option>
+            ))}
+          </Select>
+          {needsConvention ? (
+            <Select label="Velocity convention (your choice; the file declares none)" value={conv.convention} onChange={(e) => setConv({ ...conv, convention: e.target.value })}>
+              {Object.entries(CONVENTION_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </Select>
+          ) : null}
+          {specReasons.map((r) => <p key={r} className={s.note}>{r}.</p>)}
+        </>
+      ) : null}
+      {offers.sky ? (
+        <>
+          <Select label="Sky frame" value={conv.frame} onChange={(e) => setConv({ ...conv, frame: e.target.value })}>
+            <option value="">Native ({offers.sky.source ?? offers.sky.frame ?? "unresolved"})</option>
+            {offers.sky.targets.map((t) => <option key={t.id} value={t.id} disabled={!t.enabled}>{t.label}{t.enabled ? "" : " (unavailable)"}</option>)}
+          </Select>
+          {skyOff.map((r) => <p key={r} className={s.note}>{r}.</p>)}
+        </>
+      ) : null}
+      {anyValue ? (
+        <>
+          <Select label="Value unit" value={conv.to} onChange={(e) => setConv({ ...conv, to: e.target.value })}>
+            <option value="">Native ({unitLabel(offers.value.unit, offers.value.unit_status)})</option>
+            {offers.value.targets.map((t) => <option key={t.unit} value={t.unit} disabled={!t.enabled}>{t.unit}{t.enabled ? "" : " (unavailable)"}</option>)}
+          </Select>
+          {valueReasons.map((r) => <p key={r} className={s.note}>{r}.</p>)}
+        </>
+      ) : !v.interp && offers.value.reason ? <p className={s.note}>Value unit: {offers.value.reason}.</p> : null}
+      {spec ? <p className={s.note}>{spec.reference_frame_note}</p> : null}
+    </div>
+  );
+}
+
+/** The converted rows, each with the basis that made the conversion valid, or the reason it was refused. */
+function ConvertedRows({ v }: { v: Viewer }) {
+  const r = v.convertedNow;
+  const { conv } = v;
+  if (v.convError) return <p className={s.note} role="status">{v.convError}</p>;
+  if (!r) return null;
+  const sp = r.spectral, sk = r.sky, va = r.value;
+  const basis: string[] = [];
+  if (sp?.basis) basis.push(sp.basis);
+  if (sk?.basis) basis.push(sk.basis);
+  if (va?.basis) basis.push(va.basis);
+  if (sk?.frame_note) basis.push(sk.frame_note);
+  return (
+    <>
+      {sp ? (
+        <>
+          <dt>{`As ${conv.spectral}`}</dt>
+          <dd className="mono">
+            {sp.converted ? `${sig(sp.converted.value)} ${sp.converted.unit}` : EM}
+            {sp.converted && sp.convention ? ` (${sp.convention} convention, ${sp.convention_source === "user" ? "chosen by you" : "the file's"})` : ""}
+            {sp.refused ? <span className={s.refused}>not converted: {sp.refused}</span> : null}
+          </dd>
+        </>
+      ) : null}
+      {sk ? (
+        <>
+          <dt>{sk.converted ? `${sk.converted.lon_name} (${sk.converted.frame})` : "Sky frame"}</dt>
+          <dd className="mono">{sk.converted ? degrees(sk.converted.lon) : EM}{sk.refused ? <span className={s.refused}>not converted: {sk.refused}</span> : null}</dd>
+          {sk.converted ? (
+            <>
+              <dt>{`${sk.converted.lat_name} (${sk.converted.frame})`}</dt>
+              <dd className="mono">{degrees(sk.converted.lat)}</dd>
+            </>
+          ) : null}
+        </>
+      ) : null}
+      {va ? (
+        <>
+          <dt>{`Value as ${conv.to}`}</dt>
+          <dd className="mono">
+            {va.converted ? `${valueText(va.converted.value, va.converted.unit)}${va.converted.unit_status === "user" ? " (declared by you)" : ""}` : EM}
+            {va.refused ? <span className={s.refused}>not converted: {va.refused}</span> : null}
+          </dd>
+        </>
+      ) : null}
+      {basis.length ? (
+        <>
+          <dt>Basis</dt>
+          <dd>{basis.map((b) => <span key={b} className={s.basis}>{b}</span>)}</dd>
+        </>
+      ) : null}
+    </>
+  );
 }
 
 /** Pixel, world and spectral readout for the pointer (or pinned) pixel. World values come from the worker's WCS. */
@@ -52,7 +165,12 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
             <dt>{sky.lat_name}</dt>
             <dd className="mono">{coord?.sky ? degrees(coord.sky.lat) : EM}</dd>
             <dt>Frame</dt>
-            <dd className="mono">{sky.frame ?? EM}{sky.frame_status === "unresolved" ? " (unresolved)" : sky.frame_status === "inferred" ? " (inferred from EQUINOX)" : ""}</dd>
+            <dd className="mono">
+              {sky.frame ?? (sky.frame_status === "unresolved" && v.offers?.sky?.frame_status === "assumed" ? v.offers.sky.source : null) ?? EM}
+              {sky.frame_status === "unresolved"
+                ? v.offers?.sky?.frame_status === "assumed" && v.offers.sky.source ? " (assumed: the header declares none, so the FITS standard default applies)" : " (unresolved)"
+                : sky.frame_status === "inferred" ? " (inferred from EQUINOX)" : ""}
+            </dd>
           </>
         ) : (
           <>
@@ -74,7 +192,9 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
             ) : null}
           </>
         ) : null}
+        <ConvertedRows v={v} />
       </dl>
+      <ConversionControls v={v} />
       <p className={s.note}>
         {view.bunit_status === "unresolved" ? "Brightness unit unresolved: the header has no BUNIT. " : ""}
         {view.bunit_status === "user" ? `Brightness unit (${view.bunit}) declared by you: the header has no BUNIT. ` : ""}

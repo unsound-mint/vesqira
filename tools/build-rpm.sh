@@ -13,7 +13,7 @@ mkdir -p "$src/worker" "$work/rpm"
 (cd "$root/apps/desktop" && cargo build --release --locked >/dev/null)
 cp "$root/apps/desktop/target/release/vesqira-desktop" "$src/"
 cp -a "$root/apps/web/dist" "$src/web"
-for f in fits_header.py plane_worker.py analysis.py; do cp "$root/services/scientific-worker/$f" "$src/worker/"; done
+for f in fits_header.py plane_worker.py analysis.py convert.py; do cp "$root/services/scientific-worker/$f" "$src/worker/"; done
 cp "$root/packaging/vesqira" "$root/packaging/vesqira.desktop" "$root/packaging/vesqira.svg" "$root/packaging/io.github.unsound_mint.Vesqira.metainfo.xml" \
    "$root/LICENSE" "$root/THIRD_PARTY_NOTICES.md" "$src/"
 tar -C "$work" -czf "$work/vesqira-$version.tar.gz" "vesqira-$version"

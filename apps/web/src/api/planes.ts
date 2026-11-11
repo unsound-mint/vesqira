@@ -22,6 +22,36 @@ export type Coord = {
   spectral: { value: number | null } | null;
 };
 
+/** What the file allows (ADR 0040): facts only; the browser offers what is enabled and says why the rest is not. */
+export type ConvTarget = { unit: string; enabled: boolean; reason: string | null; kind?: string; needs_convention?: boolean; cross?: boolean };
+export type Conversions = {
+  spectral: {
+    native_unit: string | null;
+    native_kind: "freq" | "wave" | "vel" | null;
+    ctype: string | null;
+    file_convention: string | null;
+    specsys: string | null;
+    rest: { value: number; unit: string; source: string } | null;
+    reference_frame_note: string;
+    targets: ConvTarget[];
+  } | null;
+  sky: { frame: string | null; frame_status: "declared" | "inferred" | "assumed"; source: string | null; refused: string | null; targets: { id: string; label: string; enabled: boolean; reason: string | null }[] } | null;
+  value: { unit: string | null; unit_status: string; targets: ConvTarget[]; reason: string | null };
+};
+
+type Part<N, C> = { native: N | null; converted: C | null; refused: string | null; basis: string | null };
+export type Converted = {
+  x: number;
+  y: number;
+  channel: number;
+  spectral: (Part<{ value: number | null; unit: string; unit_status: string }, { value: number; unit: string }> & {
+    convention?: string | null; convention_source?: "file" | "user" | null; rest?: { value: number; unit: string; source: string } | null; specsys?: string | null; reference_frame_note?: string;
+  }) | null;
+  sky: (Part<{ lon: number; lat: number; frame: string; frame_status: string; lon_name: string; lat_name: string }, { lon: number; lat: number; frame: string; lon_name: string; lat_name: string }> & { frame_note?: string | null }) | null;
+  value: Part<{ value: number | null; unit: string | null; unit_status: string }, { value: number; unit: string; unit_status: string }> | null;
+};
+export type ConvertRequest = { spectral: string; convention: string; frame: string; to: string; value: number | null };
+
 async function request(url: string, signal?: AbortSignal): Promise<Response> {
   let res: Response;
   try {
@@ -43,6 +73,18 @@ export const getView = (id: number, signal?: AbortSignal) => request(`${base(id)
 
 export const getCoord = (id: number, x: number, y: number, channel: number, signal?: AbortSignal) =>
   request(`${base(id)}/coord?x=${x}&y=${y}&channel=${channel}`, signal).then((r) => r.json() as Promise<Coord>);
+
+export const getConversions = (id: number, signal?: AbortSignal) => request(`${base(id)}/conversions`, signal).then((r) => r.json() as Promise<Conversions>);
+
+export function getConvert(id: number, x: number, y: number, channel: number, c: ConvertRequest, signal?: AbortSignal) {
+  const q = new URLSearchParams({ x: String(x), y: String(y), channel: String(channel) });
+  if (c.spectral) q.set("spectral", c.spectral);
+  if (c.spectral && c.convention) q.set("convention", c.convention);
+  if (c.frame) q.set("frame", c.frame);
+  if (c.to) q.set("to", c.to);
+  if (c.to && c.value !== null && Number.isFinite(c.value)) q.set("value", String(c.value));
+  return request(`${base(id)}/convert?${q}`, signal).then((r) => r.json() as Promise<Converted>);
+}
 
 const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 

@@ -482,6 +482,20 @@ paths:
       operationId: owner_s_axial_get_api_datasets_id_axial
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/datasets/{id}/conversions:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_conversions_get_api_datasets_id_conversions
+      x-listener: owner
+      responses: {'200': {description: ok}}
+  /api/datasets/{id}/convert:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_convert_get_api_datasets_id_convert
+      x-listener: owner
+      responses: {'200': {description: ok}}
   /api/datasets/{id}/coord:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}

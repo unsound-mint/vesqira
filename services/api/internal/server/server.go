@@ -162,6 +162,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
 	mux.HandleFunc("GET /api/datasets/{id}/plane", s.plane)
 	mux.HandleFunc("GET /api/datasets/{id}/coord", s.coord)
+	mux.HandleFunc("GET /api/datasets/{id}/conversions", s.conversions)
+	mux.HandleFunc("GET /api/datasets/{id}/convert", s.convert)
 	mux.HandleFunc("GET /api/datasets/{id}/spectrum", s.spectrum)
 	mux.HandleFunc("GET /api/datasets/{id}/axial", s.axial)
 	if s.Regions != nil {
