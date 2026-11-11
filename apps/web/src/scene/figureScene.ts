@@ -16,6 +16,9 @@ import type { Scene, SceneDisplay, SceneOverlay } from "./scene";
  * - orientation lines record the sampling step the figure used (the screen chooses it from the zoom), and whether a
  *   reliability map set their opacity, naming that map;
  * - only the working region is drawn on a figure, so saved regions are left out;
+ * - overlays placed by the worker (contours, a beam, the grid, another map's lines) are kept only when their geometry was
+ *   drawn: a refused one is left out, k x sigma levels record the sigma used, and another map's lines record the step the
+ *   worker sampled at and whether its declared reliability set their opacity;
  * - the figure shows the whole plane, so the view is the fitted one.
  */
 export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scale: number; bunit: string | null; interp: Dataset["interpretation"]; reliability: Plane | null; geometry?: GeometryMap; datasets?: Dataset[] }): Scene {

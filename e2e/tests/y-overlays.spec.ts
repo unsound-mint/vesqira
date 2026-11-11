@@ -88,6 +88,7 @@ test("overlays from other datasets are placed by WCS, listed with their basis, a
   // orientation lines of the declared map, sampled on its own grid and turned into this map's pixel frame
   await add(page, async () => {
     await insp.getByLabel("Kind").selectOption("orientation");
+    await insp.getByLabel("From dataset").selectOption({ label: "vgt_tangential_deg.fits" });
   });
   await expect(rows(page).filter({ hasText: "Orientation lines of vgt_tangential_deg.fits" })).toContainText(/B-field orientation, sampled at every (\d+(st|nd|rd|th) )?pixel of its grid/);
 
