@@ -87,6 +87,7 @@ func (s *Server) WatchJobs(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+		case <-s.reach.wakeCh(): // a VPN connect succeeded: look at once
 		}
 	}
 }
@@ -131,6 +132,9 @@ func (s *Server) watchOnce(ctx context.Context, w *jobWatcher, now time.Time) {
 		if err != nil {
 			continue // the host was removed: nothing to ask
 		}
+		if s.reach.takeKick(hostID) { // the VPN is back: the backoff of the time it was down no longer applies
+			hw.next, hw.fails = now, 0
+		}
 		due := !now.Before(hw.next)
 		if len(g.active) > 0 && due {
 			s.watchHost(ctx, w, hw, h, g.active, now)
@@ -162,6 +166,7 @@ func (s *Server) watchHost(ctx context.Context, w *jobWatcher, hw *hostWatch, h 
 	hw.next = now.Add(w.interval) // the slot is taken before the call, so a slow answer cannot cause a second call
 	st, err := s.hostStatus(ctx, h, slurm, now)
 	if err != nil {
+		s.reach.set(h.ID, false)
 		hw.fails++
 		hw.next = now.Add(w.backoff(hw.fails))
 		if hw.fails == 1 {
@@ -169,6 +174,7 @@ func (s *Server) watchHost(ctx context.Context, w *jobWatcher, hw *hostWatch, h 
 		}
 		return
 	}
+	s.reach.set(h.ID, true)
 	if hw.fails > 0 {
 		log.Printf("jobs: %s answers again", h.Name)
 	}

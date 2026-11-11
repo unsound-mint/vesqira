@@ -108,29 +108,49 @@ func (s *Server) hostErr(w http.ResponseWriter, err error) {
 	}
 }
 
+// hostView is a host with what this session last learned about reaching it (a host check or the job watcher; not stored).
+type hostView struct {
+	hosts.Host
+	Reachable   string         `json:"reachable"`            // "yes", "no" or "unknown"
+	ReachableAt time.Time      `json:"reachableAt,omitzero"` // when that was learned
+	VPNClient   *vpnClientView `json:"vpnClient,omitempty"`  // the VPN client Vesqira started for this host in this session
+}
+
 func (s *Server) listHosts(w http.ResponseWriter, r *http.Request) {
 	hs, err := s.HostDB.List()
 	if err != nil {
 		s.hostErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"hosts": hs})
+	out := make([]hostView, len(hs))
+	for i, h := range hs {
+		out[i] = hostView{Host: h}
+		out[i].Reachable, out[i].ReachableAt = s.reach.get(h.ID)
+		out[i].VPNClient = s.vpnClientView(h.ID)
+	}
+	writeJSON(w, 200, map[string]any{"hosts": out})
 }
 
 func (s *Server) createHost(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name   string   `json:"name"`
-		Dest   string   `json:"dest"`
-		Python string   `json:"python"`
-		Roots  []string `json:"roots"`
+		Name                 string   `json:"name"`
+		Dest                 string   `json:"dest"`
+		Python               string   `json:"python"`
+		Roots                []string `json:"roots"`
+		VPNCommand           []string `json:"vpnCommand"`
+		VPNDisconnectCommand []string `json:"vpnDisconnectCommand"`
 	}
 	if !body(w, r, 8<<10, &in, true) {
+		return
+	}
+	if (len(in.VPNCommand) > 0 || len(in.VPNDisconnectCommand) > 0) && !s.VPNEnabled {
+		fail(w, 403, "VPN commands are off: start Vesqira with --enable-vpn to set one")
 		return
 	}
 	if strings.TrimSpace(in.Python) == "" {
 		in.Python = "python3" // the app does not ask for it; the host check reports a missing astropy
 	}
-	h, err := s.HostDB.Create(hosts.Host{Name: in.Name, Dest: in.Dest, Python: in.Python, Roots: in.Roots})
+	h, err := s.HostDB.Create(hosts.Host{Name: in.Name, Dest: in.Dest, Python: in.Python, Roots: in.Roots, VPNCommand: in.VPNCommand, VPNDisconnectCommand: in.VPNDisconnectCommand})
 	if err != nil {
 		s.hostErr(w, err)
 		return
@@ -174,14 +194,9 @@ func (s *Server) checkHost(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "ping"})
-	if err != nil {
-		var re *worker.RequestError
-		if errors.As(err, &re) {
-			fail(w, 422, re.Message)
-			return
-		}
-		fail(w, 502, "could not run the worker on the host: check that ssh works for it without a prompt, the VPN is up, and the Python command has astropy")
+	rep, status, msg, _ := s.pingHost(ctx, h)
+	if status != 0 {
+		fail(w, status, msg)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

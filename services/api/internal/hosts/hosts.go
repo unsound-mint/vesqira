@@ -49,6 +49,10 @@ type Host struct {
 	Python    string    `json:"python"`
 	Roots     []string  `json:"roots"`
 	CreatedAt time.Time `json:"createdAt"`
+	// VPNCommand and VPNDisconnectCommand are the user's own VPN client as an argv (ADR 0029 step 3), stored verbatim and run
+	// without a shell (vpn.go). Empty means none.
+	VPNCommand           []string `json:"vpnCommand,omitempty"`
+	VPNDisconnectCommand []string `json:"vpnDisconnectCommand,omitempty"`
 }
 
 // Validate checks everything that ends up on an ssh command line.
@@ -73,6 +77,16 @@ func (h Host) Validate() error {
 			return fmt.Errorf("%w: the root directory is not an acceptable source root", ErrInvalid)
 		}
 	}
+	if len(h.VPNCommand) > 0 {
+		if err := ValidateVPNArgv(h.VPNCommand); err != nil {
+			return err
+		}
+	}
+	if len(h.VPNDisconnectCommand) > 0 {
+		if err := ValidateVPNArgv(h.VPNDisconnectCommand); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -81,7 +95,7 @@ type Store struct{ db *sql.DB }
 func Open(db *sql.DB) (*Store, error) {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS hosts(
 		id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, dest TEXT NOT NULL, python TEXT NOT NULL,
-		roots TEXT NOT NULL, created_at INTEGER NOT NULL)`)
+		roots TEXT NOT NULL, created_at INTEGER NOT NULL, vpn_command TEXT NOT NULL DEFAULT '', vpn_disconnect TEXT NOT NULL DEFAULT '')`)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +111,8 @@ func (s *Store) Create(h Host) (Host, error) {
 		return Host{}, err
 	}
 	rj, _ := json.Marshal(h.Roots)
-	res, err := s.db.Exec(`INSERT INTO hosts(name,dest,python,roots,created_at) VALUES(?,?,?,?,?)`, h.Name, h.Dest, h.Python, string(rj), time.Now().Unix())
+	res, err := s.db.Exec(`INSERT INTO hosts(name,dest,python,roots,created_at,vpn_command,vpn_disconnect) VALUES(?,?,?,?,?,?,?)`,
+		h.Name, h.Dest, h.Python, string(rj), time.Now().Unix(), encodeArgv(h.VPNCommand), encodeArgv(h.VPNDisconnectCommand))
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return Host{}, fmt.Errorf("%w: a host with that name exists", ErrInvalid)
@@ -110,18 +125,19 @@ func (s *Store) Create(h Host) (Host, error) {
 
 func scan(row interface{ Scan(...any) error }) (Host, error) {
 	var h Host
-	var rj string
+	var rj, vc, vd string
 	var at int64
-	if err := row.Scan(&h.ID, &h.Name, &h.Dest, &h.Python, &rj, &at); err != nil {
+	if err := row.Scan(&h.ID, &h.Name, &h.Dest, &h.Python, &rj, &at, &vc, &vd); err != nil {
 		return Host{}, err
 	}
 	_ = json.Unmarshal([]byte(rj), &h.Roots)
+	h.VPNCommand, h.VPNDisconnectCommand = decodeArgv(vc), decodeArgv(vd)
 	h.CreatedAt = time.Unix(at, 0).UTC()
 	return h, nil
 }
 
 func (s *Store) Get(id int64) (Host, error) {
-	h, err := scan(s.db.QueryRow(`SELECT id,name,dest,python,roots,created_at FROM hosts WHERE id=?`, id))
+	h, err := scan(s.db.QueryRow(`SELECT id,name,dest,python,roots,created_at,vpn_command,vpn_disconnect FROM hosts WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Host{}, ErrNotFound
 	}
@@ -129,7 +145,7 @@ func (s *Store) Get(id int64) (Host, error) {
 }
 
 func (s *Store) List() ([]Host, error) {
-	rows, err := s.db.Query(`SELECT id,name,dest,python,roots,created_at FROM hosts ORDER BY name`)
+	rows, err := s.db.Query(`SELECT id,name,dest,python,roots,created_at,vpn_command,vpn_disconnect FROM hosts ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}

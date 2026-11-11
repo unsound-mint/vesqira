@@ -1,0 +1,76 @@
+.vpn,
+.fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.vpn {
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font-size: var(--text-sm);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.state {
+  margin: 0;
+}
+
+.hint,
+.note {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.note,
+.cmds p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cmds {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.ok,
+.warn,
+.err {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.err {
+  color: var(--err);
+}
+
+.output {
+  max-height: 14rem;
+  margin: var(--sp-1) 0 0;
+  padding: var(--sp-2);
+  overflow: auto;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

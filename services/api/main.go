@@ -59,6 +59,7 @@ func main() {
 	sshConfig := flag.String("ssh-config", "~/.ssh/config", "ssh_config read only to offer its host aliases when adding a host (empty offers none)")
 	enableEditor := flag.Bool("enable-editor", false, "let the owner edit text files inside the source roots from the app (ADR 0029); off by default, never on the review address")
 	enableTerminal := flag.Bool("enable-terminal", false, "let the owner open a shell on this computer or on a registered host from the app (ADR 0029); runs commands as you; off by default, never on the review address")
+	enableVPN := flag.Bool("enable-vpn", false, "let the owner set a VPN client command per host and run it from the app (ADR 0029); runs that command as you, without a shell; off by default, never on the review address")
 	allowOthers := flag.Bool("allow-other-local-users", false, "DANGEROUS: do not check which user account connects to the owner address; on a shared computer any other account can then use the app as you (and open a shell with --enable-terminal)")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
@@ -79,8 +80,8 @@ func main() {
 		log.Printf("WARNING: --allow-other-local-users: any user account on this computer can reach the owner API on %s and act as you", *addr)
 	case runtime.GOOS != "linux":
 		gateOwner = false
-		if *enableTerminal || *enableEditor {
-			log.Fatalf("--enable-terminal and --enable-editor need the check that only your own user account reaches the owner address, which exists on Linux only; on %s pass --allow-other-local-users to accept that any local account can use them", runtime.GOOS)
+		if *enableTerminal || *enableEditor || *enableVPN {
+			log.Fatalf("--enable-terminal, --enable-editor and --enable-vpn need the check that only your own user account reaches the owner address, which exists on Linux only; on %s pass --allow-other-local-users to accept that any local account can use them", runtime.GOOS)
 		}
 		log.Printf("WARNING: on %s any user account on this computer can reach the owner API on %s; the same-user check is Linux only (SECURITY.md)", runtime.GOOS, *addr)
 	default:
@@ -190,7 +191,7 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
+	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, VPNEnabled: *enableVPN, VPNLogDir: filepath.Join(dir, "vpn"), Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
@@ -209,6 +210,9 @@ func main() {
 	}()
 	if *enableEditor {
 		log.Printf("editor enabled: text files inside the source roots can be changed from the app (loopback only)")
+	}
+	if *enableVPN {
+		log.Printf("vpn enabled: a host can carry a VPN client command that the app runs as this user, without a shell (loopback only)")
 	}
 	if *enableTerminal {
 		log.Printf("terminal enabled: the app can open a shell as this user, here or over ssh (loopback only)")

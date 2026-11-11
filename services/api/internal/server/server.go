@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -30,6 +31,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
+	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
 type HeaderReader interface {
@@ -89,6 +91,15 @@ type Server struct {
 	TerminalLimits  TerminalLimits // zero values take the defaults
 	terms           termRegistry
 
+	// VPNEnabled mounts the VPN routes (--enable-vpn, ADR 0029 step 3) and lets a host carry a VPN command. Off by default.
+	VPNEnabled bool
+	VPNTimeout time.Duration // how long connect waits for the host to answer, and a disconnect command may run; zero means hosts.DefaultVPNRun
+	VPNPoll    time.Duration // how often connect asks the host check meanwhile; zero means three seconds
+	VPNLogDir  string        // where a started VPN client writes its output (0600 files); empty means a per-user folder under the temp dir
+	vpn        vpnRuns
+	reach      reachability                                                                      // whether each host last answered (vpn.go)
+	pingHook   func(ctx context.Context, h hosts.Host, req map[string]any) (worker.Reply, error) // test stand-in for the host check
+
 	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
 
 	records      sync.WaitGroup // background run-record writes in flight (hostwrite.go)
@@ -142,6 +153,10 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/hosts/browse", s.browseHost)
 		mux.HandleFunc("POST /api/hosts", s.createHost)
 		mux.HandleFunc("POST /api/hosts/{id}/check", s.checkHost)
+		if s.VPNEnabled {
+			mux.HandleFunc("POST /api/hosts/{id}/vpn", s.hostVPN)
+			mux.HandleFunc("POST /api/hosts/{id}/vpn-config", s.setHostVPN)
+		}
 		mux.HandleFunc("POST /api/hosts/{id}/delete", s.deleteHost)
 		mux.HandleFunc("GET /api/hosts/{id}/list", s.listRemote)
 		mux.HandleFunc("GET /api/hosts/{id}/complete", s.completeRemote)

@@ -32,7 +32,8 @@ import (
 // identity of the datasets it was drawn from (figures.identity; ADR 0053).
 // Version 16: a run keeps what its job observed about the environment and the controls stated for it (runs.environment,
 // runs.controls; ADR 0054).
-const Version = 16
+// Version 17: a host may carry the argv of the user's VPN client (hosts.vpn_command, hosts.vpn_disconnect; ADR 0029 step 3).
+const Version = 17
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -57,6 +58,7 @@ var migrations = []Migration{
 	{To: 14, Name: "transfers", Up: transfersTable},
 	{To: 15, Name: "dataset locations and figure identity", Up: datasetIdentity},
 	{To: 16, Name: "run environment and controls", Up: runEnvironmentAndControls},
+	{To: 17, Name: "host VPN commands", Up: hostVPNCommands},
 }
 
 // DatasetLocationsTable is where a dataset's files are (ADR 0053). Every dataset has one primary row (the file it was
@@ -113,6 +115,21 @@ func datasetIdentity(tx *sql.Tx) error {
 		return err
 	}
 	return AddColumn(tx, "figures", "identity", "TEXT NOT NULL DEFAULT ''")
+}
+
+// hostVPNCommands adds the two VPN command columns to hosts: empty text (no command) for every existing host. A catalog that never had
+// the hosts table needs nothing.
+func hostVPNCommands(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='hosts'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, c := range []string{"vpn_command", "vpn_disconnect"} {
+		if err := AddColumn(tx, "hosts", c, "TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SweepsTables is the DDL of both sweep tables (ADR 0048), shared by the sweeps package (a fresh catalog) and the migration

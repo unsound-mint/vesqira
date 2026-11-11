@@ -1446,8 +1446,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Hosts, each with what this session last learned about reaching it (owner listener only) */
         get: operations["owner_s_listHosts_get_api_hosts"];
         put?: never;
+        /** Add a host (owner listener only); a VPN command needs --enable-vpn */
         post: operations["owner_s_createHost_post_api_hosts"];
         delete?: never;
         options?: never;
@@ -1665,6 +1667,47 @@ export interface paths {
         get: operations["owner_s_hostText_get_api_hosts_id_text"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{id}/vpn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the host's stored VPN connect or disconnect command, then check whether the host is reachable (owner listener only, --enable-vpn)
+         * @description Runs the stored argv with exec, no shell, as the user, with a time limit; one run at a time per host. Audited with host, action, exit status and duration, never the output. The body carries only the action.
+         */
+        post: operations["owner_s_hostVPN_post_api_hosts_id_vpn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{id}/vpn-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace a host's VPN commands (owner listener only, --enable-vpn) */
+        post: operations["owner_s_setHostVPN_post_api_hosts_id_vpn_config"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3722,6 +3765,8 @@ export interface components {
                 transfers: boolean;
                 /** @description the integrated terminal (--enable-terminal, ADR 0029) */
                 terminal: boolean;
+                /** @description the VPN companion (--enable-vpn, ADR 0029 step 3): a host may carry a VPN client command that the owner runs from the app */
+                vpn: boolean;
             };
             limits: {
                 previewStepMax: number;
@@ -6477,6 +6522,98 @@ export interface components {
             reasons: string[];
             channelLink: components["schemas"]["ChannelLink"];
         };
+        /** @description A remote machine reached with the user's own ssh. */
+        Host: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description ssh destination or alias */
+            dest: string;
+            python: string;
+            roots: string[];
+            /** Format: date-time */
+            createdAt: string;
+            /** @description The VPN client's argv, stored and run exactly as written, without a shell, as the user. First element: an absolute path or a bare program name found in PATH; at most 16 parts of 512 bytes (2048 in all); no NUL or line breaks. Empty or absent means none. */
+            vpnCommand?: string[];
+            /** @description Optional argv that disconnects the VPN; same rules. */
+            vpnDisconnectCommand?: string[];
+        };
+        /** @description A host with what this session last learned about reaching it. */
+        HostListEntry: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description ssh destination or alias */
+            dest: string;
+            python: string;
+            roots: string[];
+            /** Format: date-time */
+            createdAt: string;
+            /** @description The VPN client's argv, stored and run exactly as written, without a shell, as the user. First element: an absolute path or a bare program name found in PATH; at most 16 parts of 512 bytes (2048 in all); no NUL or line breaks. Empty or absent means none. */
+            vpnCommand?: string[];
+            /** @description Optional argv that disconnects the VPN; same rules. */
+            vpnDisconnectCommand?: string[];
+            /**
+             * @description what this session last learned (a host check, the job watcher or a VPN command); not stored, unknown until asked
+             * @enum {string}
+             */
+            reachable: "yes" | "no" | "unknown";
+            /**
+             * Format: date-time
+             * @description when that was learned; absent while unknown
+             */
+            reachableAt?: string;
+            /** @description The VPN client Vesqira started for this host in this session (in memory; a restart forgets it, the client keeps running). Absent when none was started. */
+            vpnClient?: {
+                running: boolean;
+                pid: number;
+                /** Format: date-time */
+                startedAt: string;
+                /** @description once the client ended; -1 when ended by a signal */
+                exitCode?: number;
+                /** @description the end of what the client printed (at most 16 KiB, control sequences removed); never written to the audit log */
+                output: string;
+            };
+        };
+        HostCreate: {
+            name: string;
+            dest: string;
+            python?: string;
+            roots: string[];
+            /** @description The VPN client's argv, stored and run exactly as written, without a shell, as the user. First element: an absolute path or a bare program name found in PATH; at most 16 parts of 512 bytes (2048 in all); no NUL or line breaks. Empty or absent means none. Refused with 403 unless the server runs with --enable-vpn. */
+            vpnCommand?: string[];
+            /** @description Optional argv that disconnects the VPN; same rules. */
+            vpnDisconnectCommand?: string[];
+        };
+        /** @description Replaces both commands; leaving one out clears it. */
+        HostVpnConfig: {
+            /** @description The VPN client's argv, stored and run exactly as written, without a shell, as the user. First element: an absolute path or a bare program name found in PATH; at most 16 parts of 512 bytes (2048 in all); no NUL or line breaks. Empty or absent means none. */
+            vpnCommand?: string[];
+            /** @description Optional argv that disconnects the VPN; same rules. */
+            vpnDisconnectCommand?: string[];
+        };
+        /** @description The only thing the page may send: which stored command to run. Any other field is refused. */
+        HostVpnAction: {
+            /** @enum {string} */
+            action: "connect" | "disconnect";
+        };
+        HostVpnResult: {
+            /** @enum {string} */
+            action: "connect" | "disconnect";
+            /** @description the program's exit status; -1 when it did not start, is still running or was ended by a signal */
+            exitCode: number;
+            /** @description connect: the host did not become reachable within the wait (about two minutes); the client keeps running. disconnect: the command did not finish in time and was stopped with everything it started */
+            timedOut: boolean;
+            /** Format: int64 */
+            durationMs: number;
+            /** @description stdout and stderr together (a client's log file, last 16 KiB), control sequences removed; why the program did not start when it did not. Never written to the audit log. */
+            output: string;
+            outputTruncated: boolean;
+            /** @description the result of the host reachability check run after the command */
+            reachable: boolean;
+            /** @description for example: VPN client started; the host became reachable after 12 s */
+            message: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -9026,7 +9163,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        hosts: components["schemas"]["HostListEntry"][];
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -9037,14 +9187,56 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostCreate"];
+            };
+        };
         responses: {
-            /** @description ok */
-            200: {
+            /** @description created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Host"];
+                };
+            };
+            /** @description bad request (not JSON, unknown field, a command element that is not a string) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a VPN command was sent but the server runs without --enable-vpn */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description invalid host or VPN command */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -9374,6 +9566,139 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_hostVPN_post_api_hosts_id_vpn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostVpnAction"];
+            };
+        };
+        responses: {
+            /** @description the command ran (whatever its exit status); see exitCode, reachable and message */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostVpnResult"];
+                };
+            };
+            /** @description bad request (unknown field) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such host */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such command is stored for this host, or a VPN command is already running for it */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description action is not connect or disconnect */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_setHostVPN_post_api_hosts_id_vpn_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostVpnConfig"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Host"];
+                };
+            };
+            /** @description bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such host */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description invalid VPN command */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
