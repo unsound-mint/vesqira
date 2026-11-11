@@ -2400,6 +2400,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rohsa/sizing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The owner's ROHSA sizing table applied to a crop size and a Gaussian count */
+        get: operations["owner_s_rohsaSizing_get_api_rohsa_sizing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/roots": {
         parameters: {
             query?: never;
@@ -3577,7 +3594,7 @@ export interface components {
             /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
             archived?: boolean;
             /** @description The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. */
-            scene?: components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"];
+            scene?: components["schemas"]["Scene"] & (components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"]);
         };
         FigureList: {
             figures: components["schemas"]["Figure"][];
@@ -5186,6 +5203,8 @@ export interface components {
             waitingOn: string[];
             /** @description Drafts that will still be submitted */
             pending: number;
+            /** @description The base job's template: vgt or rohsa; empty when the base job is gone */
+            template: string;
         };
         SweepList: {
             sweeps: components["schemas"]["Sweep"][];
@@ -5214,6 +5233,8 @@ export interface components {
             /** @description Differing lines that are not a swept setting, the output folder or the job name */
             unexpected: number;
             requested: components["schemas"]["Requested"];
+            /** @description ROHSA only: what the owner's sizing table suggests for this draft's crop and Gaussian count, beside what it requests (every draft requests what the base job did) */
+            sizing: components["schemas"]["RohsaSizing"] | null;
         };
         /** @description The scripts of the drafts still to be submitted, how each differs from the base, and what they request */
         SweepReview: {
@@ -5229,11 +5250,17 @@ export interface components {
             totals: components["schemas"]["SweepTotals"];
             estimate: components["schemas"]["SweepEstimate"] | null;
             maxConcurrency: number;
+            /** @description The base job's template: vgt or rohsa */
+            template: string;
+            /** @description The limit used when approval names none: 1, one job at a time */
+            defaultConcurrency: number;
+            /** @description Why one at a time matters for this kind of sweep; empty when there is nothing specific to say (ROHSA: the shared, rebuilt source folder) */
+            concurrencyNote: string;
         };
         SweepSubmitRequest: {
             sweepHash: string;
-            /** @description At most this many of the sweep's jobs queued or running; 1 is sequential */
-            concurrency: number;
+            /** @description At most this many of the sweep's jobs queued or running; 1 is sequential. Absent means 1; 0 is refused */
+            concurrency?: number;
             /** @description Stop scheduling when a job fails; default false: a failure changes nothing for the others and nothing is retried */
             stopOnFailure?: boolean;
         };
@@ -5536,6 +5563,24 @@ export interface components {
             max: number | null;
             p01: number | null;
             p99: number | null;
+        };
+        /** @description A resource request suggested for a ROHSA run by the table in the owner's hpc/irgetas/submit_rohsa.sh. It is a suggestion; nothing applies it */
+        RohsaSizing: {
+            /** @description The crop size used (0 is the whole cube) */
+            cropSize: number;
+            /** @description The number of Gaussians used */
+            nGauss: number;
+            /** @description Inputs not given, so the script's own default was used (crop_size 0, n_gauss 6) */
+            assumed: string[];
+            cpus: number;
+            /** @description Slurm memory, e.g. 140G */
+            mem: string;
+            /** @description Slurm time limit, e.g. 1-12:00:00 */
+            time: string;
+            /** @description The partition that script submits to; a site setting shown for information and never applied */
+            scriptPartition: string;
+            /** @description Where the numbers come from, in words */
+            basis: string;
         };
     };
     responses: never;
@@ -9236,6 +9281,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_rohsaSizing_get_api_rohsa_sizing: {
+        parameters: {
+            query?: {
+                /** @description crop_size of the config; 0 or absent is read as the whole cube */
+                cropSize?: number;
+                /** @description n_gauss of the config; absent is read as 6, as the script reads it */
+                nGauss?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RohsaSizing"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

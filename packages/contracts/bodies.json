@@ -1451,6 +1451,11 @@
       {
        "$ref": "#/components/schemas/ChannelGrid"
       }
+     ],
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/Scene"
+      }
      ]
     }
    }
@@ -6278,7 +6283,8 @@
     "jobs",
     "counts",
     "waitingOn",
-    "pending"
+    "pending",
+    "template"
    ],
    "properties": {
     "id": {
@@ -6366,6 +6372,10 @@
     "pending": {
      "type": "integer",
      "description": "Drafts that will still be submitted"
+    },
+    "template": {
+     "type": "string",
+     "description": "The base job's template: vgt or rohsa; empty when the base job is gone"
     }
    }
   },
@@ -6424,7 +6434,8 @@
     "script",
     "diff",
     "unexpected",
-    "requested"
+    "requested",
+    "sizing"
    ],
    "properties": {
     "jobId": {
@@ -6461,6 +6472,15 @@
     },
     "requested": {
      "$ref": "#/components/schemas/Requested"
+    },
+    "sizing": {
+     "nullable": true,
+     "description": "ROHSA only: what the owner's sizing table suggests for this draft's crop and Gaussian count, beside what it requests (every draft requests what the base job did)",
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/RohsaSizing"
+      }
+     ]
     }
    }
   },
@@ -6477,7 +6497,10 @@
     "sweepHash",
     "totals",
     "estimate",
-    "maxConcurrency"
+    "maxConcurrency",
+    "template",
+    "defaultConcurrency",
+    "concurrencyNote"
    ],
    "properties": {
     "sweep": {
@@ -6522,14 +6545,25 @@
     },
     "maxConcurrency": {
      "type": "integer"
+    },
+    "template": {
+     "type": "string",
+     "description": "The base job's template: vgt or rohsa"
+    },
+    "defaultConcurrency": {
+     "type": "integer",
+     "description": "The limit used when approval names none: 1, one job at a time"
+    },
+    "concurrencyNote": {
+     "type": "string",
+     "description": "Why one at a time matters for this kind of sweep; empty when there is nothing specific to say (ROHSA: the shared, rebuilt source folder)"
     }
    }
   },
   "SweepSubmitRequest": {
    "type": "object",
    "required": [
-    "sweepHash",
-    "concurrency"
+    "sweepHash"
    ],
    "properties": {
     "sweepHash": {
@@ -6538,7 +6572,7 @@
     "concurrency": {
      "type": "integer",
      "minimum": 1,
-     "description": "At most this many of the sweep's jobs queued or running; 1 is sequential"
+     "description": "At most this many of the sweep's jobs queued or running; 1 is sequential. Absent means 1; 0 is refused"
     },
     "stopOnFailure": {
      "type": "boolean",
@@ -7651,6 +7685,56 @@
     "p99": {
      "type": "number",
      "nullable": true
+    }
+   }
+  },
+  "RohsaSizing": {
+   "type": "object",
+   "description": "A resource request suggested for a ROHSA run by the table in the owner's hpc/irgetas/submit_rohsa.sh. It is a suggestion; nothing applies it",
+   "required": [
+    "cropSize",
+    "nGauss",
+    "assumed",
+    "cpus",
+    "mem",
+    "time",
+    "scriptPartition",
+    "basis"
+   ],
+   "properties": {
+    "cropSize": {
+     "type": "integer",
+     "description": "The crop size used (0 is the whole cube)"
+    },
+    "nGauss": {
+     "type": "integer",
+     "description": "The number of Gaussians used"
+    },
+    "assumed": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Inputs not given, so the script's own default was used (crop_size 0, n_gauss 6)"
+    },
+    "cpus": {
+     "type": "integer"
+    },
+    "mem": {
+     "type": "string",
+     "description": "Slurm memory, e.g. 140G"
+    },
+    "time": {
+     "type": "string",
+     "description": "Slurm time limit, e.g. 1-12:00:00"
+    },
+    "scriptPartition": {
+     "type": "string",
+     "description": "The partition that script submits to; a site setting shown for information and never applied"
+    },
+    "basis": {
+     "type": "string",
+     "description": "Where the numbers come from, in words"
     }
    }
   }
@@ -10878,6 +10962,53 @@
        },
        "x-frame-header": {
         "$ref": "#/components/schemas/PvHeader"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/rohsa/sizing": {
+   "summary": "The owner's ROHSA sizing table applied to a crop size and a Gaussian count",
+   "parameters": [
+    {
+     "name": "cropSize",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "description": "crop_size of the config; 0 or absent is read as the whole cube"
+    },
+    {
+     "name": "nGauss",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "description": "n_gauss of the config; absent is read as 6, as the script reads it"
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RohsaSizing"
        }
       }
      }

@@ -154,13 +154,13 @@ func TestParseLookupFindsOnlyThisRecordsJob(t *testing.T) {
 }
 
 func TestRenderROHSAFollowsThePipelineScriptAndIsValidShell(t *testing.T) {
-	good := ROHSASettings{Name: "rohsa-n8", RepoDir: "/shared/home/u/vgt", ConfigPath: "/shared/home/u/vgt/configs/rohsa/lmc.toml", CPUs: 32, Mem: "100G", Time: "1-00:00:00", Partition: "ZEN4"}
+	good := ROHSASettings{Name: "rohsa-n8", RepoDir: "/shared/home/u/vgt", ConfigPath: "/shared/home/u/vgt/configs/rohsa/lmc.toml", Config: "[rohsa]\nn_gauss = [8]\n", CPUs: 32, Mem: "100G", Time: "1-00:00:00", Partition: "ZEN4"}
 	s, err := RenderROHSA(good)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"#!/bin/bash -l", "#SBATCH --cpus-per-task=32", "#SBATCH --mem=100G", "#SBATCH --partition=ZEN4", "module load GCC", "flock \"$rohsa_src/.build.lock\"",
-		"OMP_NUM_THREADS=\"${SLURM_CPUS_PER_TASK:-1}\"", "ulimit -s unlimited", "rohsa/cli/preprocess.jl --config \"$config\"", "config=/shared/home/u/vgt/configs/rohsa/lmc.toml"} {
+		"OMP_NUM_THREADS=\"${SLURM_CPUS_PER_TASK:-1}\"", "ulimit -s unlimited", "rohsa/cli/preprocess.jl --config \"$config\"", "config=\"$jobdir/config.toml\"", "cat > \"$config\" <<'VESQIRA_CONFIG_END'\n[rohsa]\nn_gauss = [8]\nVESQIRA_CONFIG_END"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("script lacks %q", want)
 		}
@@ -175,9 +175,13 @@ func TestRenderROHSAFollowsThePipelineScriptAndIsValidShell(t *testing.T) {
 		"name":      {Name: "a b", RepoDir: good.RepoDir, ConfigPath: good.ConfigPath, CPUs: 1, Mem: "1G", Time: "01:00:00"},
 		"repo":      {Name: "x", RepoDir: "/a; rm -rf ~", ConfigPath: good.ConfigPath, CPUs: 1, Mem: "1G", Time: "01:00:00"},
 		"config":    {Name: "x", RepoDir: good.RepoDir, ConfigPath: "/a/$(id).toml", CPUs: 1, Mem: "1G", Time: "01:00:00"},
+		"no config": {Name: "x", RepoDir: good.RepoDir, ConfigPath: good.ConfigPath, CPUs: 1, Mem: "1G", Time: "01:00:00"},
 		"cpus":      {Name: "x", RepoDir: good.RepoDir, ConfigPath: good.ConfigPath, CPUs: 0, Mem: "1G", Time: "01:00:00"},
 		"partition": {Name: "x", RepoDir: good.RepoDir, ConfigPath: good.ConfigPath, CPUs: 1, Mem: "1G", Time: "01:00:00", Partition: "a;b"},
 	} {
+		if name != "no config" {
+			bad.Config = good.Config // every other case fails for its own field, not for the missing config
+		}
 		if _, err := RenderROHSA(bad); err == nil {
 			t.Errorf("%s: accepted", name)
 		}

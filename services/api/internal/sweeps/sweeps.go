@@ -12,12 +12,13 @@ import (
 )
 
 const (
-	MaxJobs        = 64 // the cartesian product of the value lists
-	MaxParams      = 3
-	MaxValueLen    = 40
-	MaxLabelLen    = 20
-	MaxConcurrency = 16
-	maxNameLen     = 40 // a job name (jobs package): letters, digits, . _ -
+	MaxJobs            = 64 // the cartesian product of the value lists
+	MaxParams          = 3
+	MaxValueLen        = 40
+	MaxLabelLen        = 20
+	MaxConcurrency     = 16
+	DefaultConcurrency = 1  // one job at a time unless the owner raises it
+	maxNameLen         = 40 // a job name (jobs package): letters, digits, . _ -
 )
 
 var (

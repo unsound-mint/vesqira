@@ -133,6 +133,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/hosts/{id}/folders/size", s.measureFolder)
 		if s.Jobs != nil {
 			mux.HandleFunc("GET /api/jobs", s.listJobs)
+			mux.HandleFunc("GET /api/rohsa/sizing", s.rohsaSizing)
 			mux.HandleFunc("POST /api/jobs", s.createJob)
 			mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
 			mux.HandleFunc("POST /api/jobs/{id}/script", s.editJobScript)

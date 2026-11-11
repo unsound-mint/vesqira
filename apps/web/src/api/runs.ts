@@ -41,24 +41,30 @@ export type Run = {
   rohsa?: RohsaRecord | null;
 };
 
-/** The settings a new VGT draft starts from. A null is unknown, never a default: imported runs do not say how they ran. */
+export type RerunRequest = {
+  repoDir: string | null;
+  configPath: string | null;
+  baseConfigText: string | null;
+  set: Record<string, string>;
+  cpus: number | null;
+  mem: string | null;
+  time: string | null;
+  partition: string | null;
+  account: string | null;
+};
+
+/** The settings a new VGT or ROHSA draft starts from. A null is unknown, never a default: imported runs do not say how they ran. */
 export type Rerun = {
   parentRunId: number;
   source: "job" | "imported";
   hostId: number | null;
-  template: "vgt";
+  template: "vgt" | "rohsa";
   name: string;
-  vgt: {
-    repoDir: string | null;
-    configPath: string | null;
-    baseConfigText: string | null;
-    set: Record<string, string>;
-    cpus: number | null;
-    mem: string | null;
-    time: string | null;
-    partition: string | null;
-    account: string | null;
-  };
+  vgt: RerunRequest;
+  /** The same record for a ROHSA run; null for a VGT run. */
+  rohsa?: RerunRequest | null;
+  /** ROHSA only: the editable settings as they were, as a person types them (the config's own values with the job's changes over them, or what an imported run's trace declares). A setting the records do not give is absent. */
+  settings?: Record<string, string>;
   params: RunParam[];
   notes: string[];
   /** The stored config text compared with the file on the host now; null when unknown or the host cannot be reached. */

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Checkbox, Input, PathField, Pill, Select } from "../ui";
 import { NotifyToggle } from "../notifications/NotifyToggle";
 import { jobResult } from "../api/analysis";
+import { KERNELS, ROHSA_SETTINGS, readRohsaSetting, sameValue } from "./rohsaSettings";
+import { RohsaSizingHint } from "./RohsaSizingHint";
 import { cancelJob, createJob, editScript, getJob, hostText, jobLog, listJobs, readSetting, refreshJob, registerOutputs, reopenJob, submitJob } from "../api/jobs";
 import type { Job, JobState } from "../api/jobs";
 import type { Host } from "../api/hosts";
@@ -97,7 +99,7 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { ho
           ) : sweep ? (
             <SweepView sweep={sweep} onChange={replaceSweep} onOpenJob={pickJob} />
           ) : job ? (
-            <JobDetail job={job} host={hosts.find((h) => h.id === job.hostId) ?? null} onChange={replace} onImported={onImported} onOpenRun={onOpenRun} onSweep={job.template === "vgt" ? () => { setSel(null); setNewSweep({ base: job.id }); } : undefined} />
+            <JobDetail job={job} host={hosts.find((h) => h.id === job.hostId) ?? null} onChange={replace} onImported={onImported} onOpenRun={onOpenRun} onSweep={job.template === "vgt" || job.template === "rohsa" ? () => { setSel(null); setNewSweep({ base: job.id }); } : undefined} />
           ) : (
             <NewJob hosts={hosts} jobs={jobs} onCreated={(j) => { replace(j); setSel(j.id); }} />
           )}
@@ -123,6 +125,7 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
   const [configPath, setConfigPath] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [vals, setVals] = useState<Record<string, string>>({});
+  const [loadedVals, setLoadedVals] = useState<Record<string, string>>({}); // ROHSA: what the config said, so only what the person changed is sent
   const [res, setRes] = useState({ cpus: "32", mem: "64G", time: "1-00:00:00", partition: "", account: "" });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -134,8 +137,10 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
     try {
       const text = await hostText(Number(hostId), configPath);
       const v: Record<string, string> = {};
-      for (const st of SETTINGS) v[st.key] = readSetting(text, st.key);
+      if (kind === "rohsa") for (const st of ROHSA_SETTINGS) v[st.key] = readRohsaSetting(text, st.key);
+      else for (const st of SETTINGS) v[st.key] = readSetting(text, st.key);
       setVals(v);
+      setLoadedVals(v);
       setLoaded(true);
       setErr(null);
     } catch (e) {
@@ -150,7 +155,9 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
       const set: Record<string, string> = {};
       for (const st of SETTINGS) if (vals[st.key]) set[st.key] = vals[st.key]!;
       if (kind === "rohsa") {
-        onCreated(await createJob({ hostId: Number(hostId), template: "rohsa", name, rohsa: { repoDir, configPath, cpus: Number(res.cpus), mem: res.mem, time: res.time, partition: res.partition, account: res.account } }));
+        const rset: Record<string, string> = {};
+        for (const st of ROHSA_SETTINGS) { const x = (vals[st.key] ?? "").trim(); if (x && !sameValue(x, loadedVals[st.key] ?? "")) rset[st.key] = x; }
+        onCreated(await createJob({ hostId: Number(hostId), template: "rohsa", name, rohsa: { repoDir, configPath, set: rset, cpus: Number(res.cpus), mem: res.mem, time: res.time, partition: res.partition, account: res.account } }));
         setBusy(false);
         return;
       }
@@ -169,18 +176,15 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
         <option value="vgt">VGT run</option>
         <option value="rohsa">ROHSA decomposition</option>
       </Select>
-      {kind === "rohsa" ? <p className={s.note}>Runs the ROHSA build-and-decompose script of the pipeline on an existing ROHSA config on the host. Typical sizes from the pipeline notes: crop up to 512 → 16 CPUs, 12G, 3 h; up to 1024 → 16 CPUs, 40G, 12 h; up to 2048 → 32 CPUs, 100G, 1 day. Results go where the config&rsquo;s output folder says and are not imported as a run.</p> : null}
+      {kind === "rohsa" ? <p className={s.note}>Runs the ROHSA build-and-decompose script of the pipeline on a copy of a ROHSA config from the host, with the settings you change applied (every other line as it was). The output folder is set for each job; a fit is read from files on this machine, so copy its folder under a source folder here and import its rohsa_*.dat from Runs. A sizing table for the request appears below.</p> : null}
       <p className={s.note}>Start from a configuration that already exists on the host, adjust what you need, and read the generated script before anything is sent. The output folder is set for you inside the host’s source folders so the results can be opened here.</p>
       <Select label="Host" value={hostId} onChange={(e) => setHostId(e.target.value)}>
         {hosts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
       </Select>
       <Input label="Job name" value={name} onChange={(e) => setName(e.target.value)} />
       <PathField label="VGT folder on the host" kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} placeholder="/shared/home/you/vgt" />
-      {kind === "rohsa" ? (
-        <PathField label="ROHSA config on the host" kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} placeholder="/shared/home/you/vgt/configs/rohsa/run.toml" />
-      ) : null}
-      <div className={s.inline} hidden={kind === "rohsa"}>
-        <PathField label="Base config on the host" kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} placeholder="/shared/home/you/vgt/configs/run.toml" />
+      <div className={s.inline}>
+        <PathField label={kind === "rohsa" ? "ROHSA config on the host" : "Base config on the host"} kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} placeholder={kind === "rohsa" ? "/shared/home/you/vgt/configs/rohsa/run.toml" : "/shared/home/you/vgt/configs/run.toml"} />
         <Button type="button" disabled={busy || !configPath || !hostId} onClick={load}>Load settings</Button>
       </div>
       {loaded && kind === "vgt" ? (
@@ -198,6 +202,23 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
           )}
         </fieldset>
       ) : null}
+      {loaded && kind === "rohsa" ? (
+        <fieldset className={s.fields}>
+          <legend>Settings (from the config; change what this run needs)</legend>
+          {ROHSA_SETTINGS.map((st) => {
+            const opts = st.kind === "bool" ? ["true", "false"] : st.kind === "kernel" ? KERNELS : null;
+            return opts ? (
+              <Select key={st.key} label={st.label} value={vals[st.key] ?? ""} onChange={(e) => setVals({ ...vals, [st.key]: e.target.value })}>
+                <option value="">(keep)</option>
+                {opts.map((m) => <option key={m} value={m}>{m}</option>)}
+              </Select>
+            ) : (
+              <Input key={st.key} label={st.label} value={vals[st.key] ?? ""} onChange={(e) => setVals({ ...vals, [st.key]: e.target.value })} spellCheck={false} />
+            );
+          })}
+        </fieldset>
+      ) : null}
+      {kind === "rohsa" ? <RohsaSizingHint cropSize={vals.crop_size ?? ""} nGauss={vals.n_gauss ?? ""} cpus={res.cpus} mem={res.mem} time={res.time} onUse={(r) => setRes((x) => ({ ...x, ...r }))} /> : null}
       {(() => {
         const prev = previousUse(jobs, hostNum, kind);
         return prev?.usage ? <SizingHint jobId={prev.id} jobName={prev.name} usage={prev.usage} mem={res.mem} time={res.time} onUseMem={(mem) => setRes((r) => ({ ...r, mem }))} onUseTime={(time) => setRes((r) => ({ ...r, time }))} /> : null;

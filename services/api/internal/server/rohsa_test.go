@@ -164,9 +164,9 @@ func TestROHSAImportDeclaresSettingsLinksProductsAndNeverGuessesUnits(t *testing
 	if mu.UnitDeclaration == nil || mu.UnitDeclaration.DeclaredBy != "user" {
 		t.Errorf("the user's declaration was replaced: %+v", mu.UnitDeclaration)
 	}
-	// running a ROHSA run again is not a VGT job
-	if r, _ := get(t, e.ts.URL+"/api/runs/"+itoa(int(run.ID))+"/rerun"); r.StatusCode != 422 {
-		t.Errorf("rerun of a ROHSA run must be refused")
+	// running a ROHSA run again is offered (ADR 0046, 0048 follow-up); what it says is tested in rohsa_rerun_test.go
+	if r, _ := get(t, e.ts.URL+"/api/runs/"+itoa(int(run.ID))+"/rerun"); r.StatusCode != 200 {
+		t.Errorf("rerun of a ROHSA run: %d", r.StatusCode)
 	}
 }
 

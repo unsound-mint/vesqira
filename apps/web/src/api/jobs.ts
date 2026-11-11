@@ -1,4 +1,5 @@
 import { request as call, postJSON as post } from "./http";
+import type { components } from "./schema";
 import type { Run } from "./runs";
 
 /** What the scheduler recorded a finished job used (ADR 0045). null is "not reported", never 0. */
@@ -53,8 +54,16 @@ export type RohsaJobRequest = {
   hostId: number;
   template: "rohsa";
   name: string;
-  rohsa: { repoDir: string; configPath: string; cpus: number; mem: string; time: string; partition: string; account: string };
+  /** Why, kept with the job (at most 500 characters). */
+  note?: string;
+  /** The run this draft repeats with changes. */
+  parentRunId?: number;
+  /** The config is read from configPath on the host unless configText is given (a rerun passes the text the parent started from). set holds only the settings that change; the output folder is never one of them. */
+  rohsa: { repoDir: string; configPath: string; configText?: string; set?: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string };
 };
+
+/** What the owner's sizing table (the pipeline's submit_rohsa.sh) suggests for a crop and a Gaussian count. A suggestion: nothing applies it. */
+export type RohsaSizing = components["schemas"]["RohsaSizing"];
 
 export type VgtJobRequest = {
   hostId: number;
@@ -68,6 +77,13 @@ export type VgtJobRequest = {
   vgt: { repoDir: string; configPath: string; configText?: string; set: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string };
 };
 
+export const rohsaSizing = (cropSize: string, nGauss: string) => {
+  const q = new URLSearchParams();
+  if (/^\d+$/.test(cropSize.trim())) q.set("cropSize", cropSize.trim());
+  if (/^\d+$/.test(nGauss.trim())) q.set("nGauss", nGauss.trim());
+  const qs = q.toString();
+  return call<RohsaSizing>(`/api/rohsa/sizing${qs ? `?${qs}` : ""}`);
+};
 export const listJobs = () => call<{ jobs: Job[] }>("/api/jobs").then((r) => r.jobs);
 export const getJob = (id: number) => call<Job>(`/api/jobs/${id}`);
 export const createJob = (r: VgtJobRequest | RohsaJobRequest) => post<Job>("/api/jobs", r);

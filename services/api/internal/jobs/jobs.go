@@ -91,9 +91,16 @@ type VGTRequest struct {
 }
 
 // VGTRequest returns the stored request, or false for a job that has none (not VGT, or made before it was recorded).
-func (j Job) VGTRequest() (VGTRequest, bool) {
+func (j Job) VGTRequest() (VGTRequest, bool) { return j.configRequest("vgt") }
+
+// ROHSARequest is the same record for a ROHSA job: the config text it started from (before the settings and the output
+// folder were applied), the settings it changed and the resources it asked for. A ROHSA job drafted before it kept its
+// settings (it ran a config by path) has none.
+func (j Job) ROHSARequest() (VGTRequest, bool) { return j.configRequest("rohsa") }
+
+func (j Job) configRequest(template string) (VGTRequest, bool) {
 	var r VGTRequest
-	if j.Template != "vgt" || j.Request == "" || json.Unmarshal([]byte(j.Request), &r) != nil {
+	if j.Template != template || j.Request == "" || json.Unmarshal([]byte(j.Request), &r) != nil {
 		return VGTRequest{}, false
 	}
 	return r, true
@@ -189,7 +196,8 @@ func RenderVGT(p VGTSettings) (string, error) {
 type ROHSASettings struct {
 	Name       string
 	RepoDir    string // the VGT checkout on the host, which holds the ROHSA sources and its command line
-	ConfigPath string // an existing ROHSA run config on the host
+	ConfigPath string // the config on the host the settings started from (recorded; the job runs Config)
+	Config     string // the full ROHSA config text, written into the job directory by the script
 	CPUs       int
 	Mem        string
 	Time       string
@@ -197,16 +205,19 @@ type ROHSASettings struct {
 	Account    string
 }
 
-// RenderROHSA renders the batch script for one ROHSA run, following the pipeline's own ROHSA cluster script: build
-// the OpenMP Fortran source when it is newer than the binary, then run the preprocessing command on the given config
-// with one OpenMP thread per allocated CPU. The results go where the config's output_dir says; they are not imported
-// as a run, because there is no ROHSA run description to read.
+// RenderROHSA renders the batch script for one ROHSA run, following the pipeline's own ROHSA cluster script: write the
+// config (text embedded here, as the VGT template does, so the script read is the config that runs), build the OpenMP
+// Fortran source when it is newer than the binary, then run the preprocessing command on that config with one OpenMP
+// thread per allocated CPU. The results go where the config's output_dir says, which Vesqira sets per job. They are not
+// imported automatically: a ROHSA fit is read from local files only (ADR 0046).
 func RenderROHSA(p ROHSASettings) (string, error) {
 	switch {
 	case !nameRe.MatchString(p.Name):
 		return "", fmt.Errorf("%w: the job name may use letters, digits, . _ - (up to 40)", ErrInvalid)
-	case !ValidPath(p.RepoDir), !ValidPath(p.ConfigPath):
+	case !ValidPath(p.RepoDir), p.ConfigPath != "" && !ValidPath(p.ConfigPath):
 		return "", fmt.Errorf("%w: the folder and the config must be absolute paths without spaces or quotes", ErrInvalid)
+	case len(p.Config) == 0 || len(p.Config) > MaxScript/2 || strings.Contains(p.Config, configEnd) || strings.ContainsRune(p.Config, 0):
+		return "", fmt.Errorf("%w: the config text is empty, too large or malformed", ErrInvalid)
 	case p.CPUs < 1 || p.CPUs > 256:
 		return "", fmt.Errorf("%w: CPUs must be between 1 and 256", ErrInvalid)
 	case !memRe.MatchString(p.Mem):
@@ -228,8 +239,9 @@ func RenderROHSA(p ROHSASettings) (string, error) {
 	b.WriteString("#SBATCH --output=%x-%j.out\n#SBATCH --error=%x-%j.err\n\n")
 	b.WriteString("# Rendered by Vesqira from the settings in the job record. This exact text is what is submitted.\n")
 	b.WriteString("set -euo pipefail\n")
+	b.WriteString("jobdir=\"$SLURM_SUBMIT_DIR\"\nconfig=\"$jobdir/config.toml\"\n")
+	fmt.Fprintf(&b, "cat > \"$config\" <<'%s'\n%s\n%s\n\n", configEnd, strings.TrimRight(p.Config, "\n"), configEnd)
 	fmt.Fprintf(&b, "cd %s\n", p.RepoDir)
-	fmt.Fprintf(&b, "config=%s\n", p.ConfigPath)
 	fmt.Fprintf(&b, "export JULIA_DEPOT_PATH=\"${JULIA_DEPOT_PATH:-%s/.julia-vesqira}\"\n", p.RepoDir)
 	b.WriteString("echo \"job_id=$SLURM_JOB_ID host=$(hostname) config=$config\"\ndate --iso-8601=seconds\n")
 	b.WriteString("module purge\nmodule load GCC\n")

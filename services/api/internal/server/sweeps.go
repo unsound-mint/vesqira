@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -87,10 +88,18 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 	if p.baseRun == nil {
 		p.baseRun = p.base.RunID
 	}
-	req, ok := p.base.VGTRequest()
-	if !ok {
-		return p, &apiErr{422, "only a VGT job that kept its settings can be swept: its config settings are the parameters (ROHSA and custom scripts have no editable settings yet)"}
+	var req jobs.VGTRequest
+	var ok bool
+	switch p.base.Template {
+	case "vgt":
+		req, ok = p.base.VGTRequest()
+	case "rohsa":
+		req, ok = p.base.ROHSARequest()
 	}
+	if !ok {
+		return p, &apiErr{422, "only a VGT or ROHSA job that kept its settings can be swept: its config settings are the parameters (custom scripts, and ROHSA jobs drafted before settings were kept, have none)"}
+	}
+	rohsa := p.base.Template == "rohsa"
 	if !sweepNameRe.MatchString(in.Name) {
 		return p, &apiErr{422, "the sweep name may use letters, digits, . _ - (up to 40); it starts each job's name"}
 	}
@@ -101,12 +110,25 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 	if err := sweeps.Validate(p.params); err != nil {
 		return p, &apiErr{422, err.Error()}
 	}
+	if rohsa {
+		for i, a := range p.params {
+			for _, b := range p.params[i+1:] {
+				if jobs.ROHSAOverlap(a.Key, b.Key) {
+					return p, &apiErr{422, a.Key + " and " + b.Key + " change the same config lines (lambda sets lambda_amp, lambda_mu and lambda_sig together); sweep one of them"}
+				}
+			}
+		}
+	}
 	for _, sp := range p.params {
 		if sp.Key == "output_dir" || sp.Key == "input_file" {
 			return p, &apiErr{422, sp.Key + " is set by Vesqira or is a path; it cannot be swept"}
 		}
 		for _, v := range sp.Values {
-			if err := jobs.CheckSetting(sp.Key, v); err != nil {
+			check := jobs.CheckSetting
+			if rohsa {
+				check = jobs.CheckROHSASetting
+			}
+			if err := check(sp.Key, v); err != nil {
 				return p, &apiErr{422, err.Error()}
 			}
 		}
@@ -131,14 +153,28 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 	for i, c := range p.combos {
 		set := map[string]string{}
 		for k, v := range req.Set {
-			set[k] = v
+			// a setting of the base job that changes a line a swept setting changes would fight it; the swept value is the draft's
+			swept := false
+			for _, sp := range p.params {
+				swept = swept || (rohsa && jobs.ROHSAOverlap(k, sp.Key)) || k == sp.Key
+			}
+			if !swept {
+				set[k] = v
+			}
 		}
 		for k, v := range c {
 			set[k] = v
 		}
 		name := sweeps.JobName(in.Name, p.params, c, i)
-		b, aerr := s.buildVGT(ctx, p.host, name, vgtInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
-			CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account})
+		var b builtJob
+		var aerr *apiErr
+		if rohsa {
+			b, aerr = s.buildROHSA(ctx, p.host, name, rohsaInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
+				CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account})
+		} else {
+			b, aerr = s.buildVGT(ctx, p.host, name, vgtInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
+				CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account})
+		}
 		if aerr != nil {
 			return p, &apiErr{aerr.Code, name + ": " + aerr.Msg}
 		}
@@ -150,8 +186,10 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 		if utf8.RuneCountInString(why) > jobs.MaxNote {
 			why = string([]rune(why)[:jobs.MaxNote])
 		}
-		p.drafts = append(p.drafts, jobs.Job{HostID: p.host.ID, Name: name, Template: "vgt", Script: b.Script, OutputDir: b.OutputDir, Request: b.Request,
-			ParentRunID: p.baseRun, Note: why, AutoImport: true})
+		// results are imported by themselves for VGT (ADR 0043); a ROHSA fit is read from local files only (ADR 0046), so there
+		// is nothing to import from the host and the option stays off
+		p.drafts = append(p.drafts, jobs.Job{HostID: p.host.ID, Name: name, Template: p.base.Template, Script: b.Script, OutputDir: b.OutputDir, Request: b.Request,
+			ParentRunID: p.baseRun, Note: why, AutoImport: !rohsa})
 	}
 	return p, nil
 }
@@ -303,10 +341,15 @@ type sweepOut struct {
 	// "vgt-dn16 is submitting: Slurm's answer was not seen".
 	WaitingOn []string `json:"waitingOn"`
 	Pending   int      `json:"pending"`
+	// Template is the base job's: "vgt" or "rohsa" (empty when the base job is gone).
+	Template string `json:"template"`
 }
 
 func (s *Server) sweepView(sw sweeps.Sweep) sweepOut {
 	out := sweepOut{Sweep: sw, Jobs: []memberView{}, Counts: map[string]int{}, WaitingOn: []string{}}
+	if b, err := s.Jobs.Get(sw.BaseJobID); err == nil {
+		out.Template = b.Template
+	}
 	ms, err := s.Sweeps.Members(sw.ID)
 	if err != nil {
 		log.Printf("sweeps: %v", err)
@@ -363,6 +406,9 @@ type reviewJob struct {
 	Diff       []sweeps.DiffLine `json:"diff"`
 	Unexpected int               `json:"unexpected"` // differing lines that are not a swept setting, the output folder or the job name
 	Requested  jobs.Requested    `json:"requested"`
+	// Sizing is what the owner's own ROHSA sizing table suggests for this draft's crop and Gaussian count (null for VGT):
+	// a parameter such as N can cross a row of that table, and every draft requests what the base job requested.
+	Sizing *jobs.Sizing `json:"sizing"`
 }
 
 // pendingDrafts are the sweep's drafts the owner would be approving now, in grid order.
@@ -414,19 +460,60 @@ func (s *Server) reviewSweep(w http.ResponseWriter, r *http.Request) {
 	}
 	keys := make([]string, 0, len(sw.Params))
 	for _, p := range sw.Params {
-		keys = append(keys, p.Key)
+		if base.Template == "rohsa" {
+			keys = append(keys, jobs.ROHSALineKeys(p.Key)...) // the tied "lambda" is three lines of the config
+		} else {
+			keys = append(keys, p.Key)
+		}
 	}
 	list := make([]reviewJob, 0, len(pj))
 	scripts := make([]string, 0, len(pj))
 	for i, j := range pj {
 		d := sweeps.Diff(base.Script, j.Script, keys)
 		list = append(list, reviewJob{JobID: j.ID, Name: j.Name, Label: sweeps.Label(sw.Params, pm[i].Values), Values: pm[i].Values, ScriptHash: j.ScriptHash,
-			Script: j.Script, Diff: d, Unexpected: sweeps.Unexpected(d), Requested: jobs.RequestedOf(j.Script)})
+			Script: j.Script, Diff: d, Unexpected: sweeps.Unexpected(d), Requested: jobs.RequestedOf(j.Script), Sizing: rohsaSizingOf(j)})
 		scripts = append(scripts, j.Script)
 	}
+	note := ""
+	if base.Template == "rohsa" {
+		note = rohsaConcurrencyNote
+	}
 	writeJSON(w, 200, map[string]any{"sweep": s.sweepView(sw), "baseJobId": base.ID, "baseName": base.Name, "baseScript": base.Script, "keys": keys, "jobs": list,
-		"sweepHash": sweepHash(pj), "totals": sumRequested(scripts), "estimate": estimateFrom(base), "maxConcurrency": sweeps.MaxConcurrency})
+		"sweepHash": sweepHash(pj), "totals": sumRequested(scripts), "estimate": estimateFrom(base), "maxConcurrency": sweeps.MaxConcurrency,
+		"template": base.Template, "defaultConcurrency": sweeps.DefaultConcurrency, "concurrencyNote": note})
 }
+
+// rohsaConcurrencyNote is shown with the review of a ROHSA sweep. The default of one job at a time holds for every sweep; for
+// ROHSA there is a known reason, which the owner met on the cluster.
+const rohsaConcurrencyNote = "ROHSA jobs share one source folder on the host (rohsa/upstream/ROHSA/src). A job rebuilds the binary there when a source is newer, and a rebuild replaces the binary while another job may be starting it; the script's lock keeps two builds apart but not a build from a start. Run one job at a time unless you know the binary is current. Each fit of a large crop also asks for 100G or more."
+
+// rohsaSizingOf is the owner's sizing table applied to a draft's own config (base text with the sweep's settings), or nil for a
+// job that is not a ROHSA job or whose config cannot be read.
+func rohsaSizingOf(j jobs.Job) *jobs.Sizing {
+	req, ok := j.ROHSARequest()
+	if !ok {
+		return nil
+	}
+	cfg, err := jobs.ReadROHSAConfig(req.BaseConfigText)
+	if err != nil {
+		return nil
+	}
+	for k, v := range jobs.ROHSAExpand(req.Set) { // the draft's own settings win over the base text
+		cfg.Values[k] = v
+	}
+	size, hasCrop := cfg.CropSize, cfg.HasCrop
+	if v, ok := cfg.Values["crop_size"]; ok {
+		size, hasCrop = atoi(v), true
+	}
+	n, hasN := cfg.NGauss, cfg.HasNGauss
+	if v, ok := cfg.Values["n_gauss"]; ok {
+		n, hasN = atoi(strings.SplitN(v, ",", 2)[0]), true
+	}
+	z := jobs.SuggestROHSASizing(size, n, hasCrop, hasN)
+	return &z
+}
+
+func atoi(s string) int { n, _ := strconv.Atoi(s); return n }
 
 // submitSweep is the owner's go-ahead: it names the hash of the scripts they read, a concurrency limit and what a failure
 // does. Nothing is sent from here beyond what the scheduler then sends one job at a time.
@@ -437,13 +524,17 @@ func (s *Server) submitSweep(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		SweepHash     string `json:"sweepHash"`
-		Concurrency   int    `json:"concurrency"`
+		Concurrency   *int   `json:"concurrency"` // absent means one at a time
 		StopOnFailure bool   `json:"stopOnFailure"`
 	}
 	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
-	if in.Concurrency < 1 || in.Concurrency > sweeps.MaxConcurrency {
+	limit := sweeps.DefaultConcurrency
+	if in.Concurrency != nil {
+		limit = *in.Concurrency
+	}
+	if limit < 1 || limit > sweeps.MaxConcurrency {
 		fail(w, 422, fmt.Sprintf("the concurrency limit is 1 to %d", sweeps.MaxConcurrency))
 		return
 	}
@@ -469,7 +560,7 @@ func (s *Server) submitSweep(w http.ResponseWriter, r *http.Request) {
 	for _, j := range pj {
 		hashes[j.ID] = j.ScriptHash
 	}
-	won, err := s.Sweeps.Approve(sw.ID, in.Concurrency, in.StopOnFailure, hashes)
+	won, err := s.Sweeps.Approve(sw.ID, limit, in.StopOnFailure, hashes)
 	s.sweepMu.Unlock()
 	if err != nil {
 		if errors.Is(err, sweeps.ErrInvalid) {
@@ -484,7 +575,7 @@ func (s *Server) submitSweep(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "this sweep is already running")
 		return
 	}
-	s.Audit.Record("sweep approved", "sweep", sw.ID, fmt.Sprintf("%d scripts, at most %d at a time, stop on failure %v, hash %s", len(pj), in.Concurrency, in.StopOnFailure, in.SweepHash[:12]))
+	s.Audit.Record("sweep approved", "sweep", sw.ID, fmt.Sprintf("%d scripts, at most %d at a time, stop on failure %v, hash %s", len(pj), limit, in.StopOnFailure, in.SweepHash[:12]))
 	s.kickSweeps()
 	sw, _ = s.Sweeps.Get(sw.ID)
 	writeJSON(w, 200, s.sweepView(sw))

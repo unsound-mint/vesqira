@@ -4,6 +4,7 @@ import { Modal } from "../ui/Modal";
 import { cancelSweep, getSweep, gib, reviewSweep, span, submitSweep, sweepBoard } from "../api/sweeps";
 import type { Sweep, SweepReview } from "../api/sweeps";
 import { TONE } from "../jobs/JobsView";
+import { parseMem } from "../jobs/usageText";
 import { SweepGrid } from "./SweepGrid";
 import s from "./Sweeps.module.css";
 
@@ -67,6 +68,24 @@ export function SweepView({ sweep, onChange, onOpenJob, onBoard }: { sweep: Swee
   );
 }
 
+type ReviewJob = SweepReview["jobs"][number];
+
+/** The draft asks for less memory than the table gives for its crop and N (nothing is said when either is not known). */
+function shortOfTable(j: ReviewJob): boolean {
+  const want = j.sizing ? parseMem(j.sizing.mem) : null;
+  return want !== null && j.requested.memBytes > 0 && j.requested.memBytes < want;
+}
+
+/** A draft's request beside what the owner's sizing table gives for its own crop and N. The drafts all request what the base job did. */
+function SizingLine({ sizing, requested, short }: { sizing: NonNullable<ReviewJob["sizing"]>; requested: { cpus: number; memBytes: number }; short: boolean }) {
+  return (
+    <p className={short ? s.warn : s.note} role={short ? "alert" : "note"}>
+      For crop_size {sizing.cropSize} and n_gauss {sizing.nGauss} your sizing table suggests {sizing.cpus} CPUs, {sizing.mem}, {sizing.time}; this draft requests {requested.cpus} CPUs and {gib(requested.memBytes)}.
+      {short ? " That is less memory than the table gives for this size." : ""}{sizing.assumed.length > 0 ? ` Not in the config, read as the script reads it: ${sizing.assumed.join("; ")}.` : ""}
+    </p>
+  );
+}
+
 /** What approving sends: every script (or its difference from the base), the total request, a concurrency limit. Submitting is one explicit act. */
 export function SubmitDialog({ sweep, onClose, onSubmitted }: { sweep: Sweep; onClose: () => void; onSubmitted: (s: Sweep) => void }) {
   const [rev, setRev] = useState<SweepReview | null>(null);
@@ -74,11 +93,14 @@ export function SubmitDialog({ sweep, onClose, onSubmitted }: { sweep: Sweep; on
   const [stop, setStop] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { reviewSweep(sweep.id).then(setRev).catch((e) => setErr(e instanceof Error ? e.message : "Could not read the scripts.")); }, [sweep.id]);
+  useEffect(() => {
+    reviewSweep(sweep.id).then((r) => { setRev(r); setConc(String(r.defaultConcurrency)); }).catch((e) => setErr(e instanceof Error ? e.message : "Could not read the scripts."));
+  }, [sweep.id]);
 
   const n = Number(conc);
   const valid = Number.isInteger(n) && n >= 1 && n <= (rev?.maxConcurrency ?? 16);
   const unexpected = rev?.jobs.reduce((a, j) => a + j.unexpected, 0) ?? 0;
+  const tooSmall = rev?.jobs.filter(shortOfTable).length ?? 0;
   const t = rev?.totals;
 
   async function go() {
@@ -97,13 +119,16 @@ export function SubmitDialog({ sweep, onClose, onSubmitted }: { sweep: Sweep; on
             {rev.jobs.length} scripts will be submitted, one job at a time through the same path as the Submit button. Each differs from the base job <span className="mono">{rev.baseName}</span> only on the lines below. Requested in total: {t.cpusTotal} CPUs, {gib(t.memBytesTotal)}, up to {span(t.timeLimitSecondsTotal)} of time limits ({t.cpusEach} CPUs and {gib(t.memBytesEach)} each).
           </p>
           {rev.estimate ? <p className={s.note}>{rev.estimate.baseJobName} took {span(rev.estimate.elapsedSeconds)}: {Math.ceil(rev.jobs.length / Math.max(1, valid ? n : 1))} rounds at this limit would take about {span(rev.estimate.elapsedSeconds * Math.ceil(rev.jobs.length / Math.max(1, valid ? n : 1)))} if each job took as long. A guide only.</p> : null}
+          {tooSmall > 0 ? <p className={s.warn} role="alert">{tooSmall} of {rev.jobs.length} drafts request less memory than your sizing table gives for their size (every draft requests what the base job did). Open a draft below for the numbers; a job that runs out of memory is lost time.</p> : null}
           {unexpected > 0 ? <p className={s.warn} role="alert">{unexpected} differing lines are not a swept setting, the output folder or the job name. Read them below before submitting.</p> : <p className={s.note}>No other line differs.</p>}
           <Input label={`Jobs at the same time (1 to ${rev.maxConcurrency})`} value={conc} inputMode="numeric" onChange={(e) => setConc(e.target.value)} aria-invalid={!valid} />
+          {rev.concurrencyNote ? <p className={n > 1 ? s.warn : s.note} role={n > 1 ? "alert" : "note"}>{rev.concurrencyNote}</p> : null}
           <p className={s.note}>{n === 1 ? "1 runs the jobs one after another: the next is submitted when the previous has ended. Use this when jobs share a source folder (a build step in it would collide)." : `Up to ${valid ? n : "?"} jobs at once. Make sure they do not share a folder they write to.`}</p>
           <Checkbox label="Stop the sweep when a job fails (otherwise a failure changes nothing for the others, and nothing is retried)" checked={stop} onChange={(e) => setStop(e.target.checked)} />
           {rev.jobs.map((j) => (
             <details key={j.jobId}>
-              <summary>{j.label} <span className="mono">{j.name}</span> · {j.diff.length} lines differ</summary>
+              <summary>{j.label} <span className="mono">{j.name}</span> · {j.diff.length} lines differ{j.sizing ? ` · asks ${gib(j.requested.memBytes)}, table suggests ${j.sizing.mem}` : ""}</summary>
+              {j.sizing ? <SizingLine sizing={j.sizing} requested={j.requested} short={shortOfTable(j)} /> : null}
               <pre className={s.diff} aria-label={`Differences for ${j.label}`}>
                 {j.diff.map((l, i) => <span key={i} className={`${l.op === "-" ? s.del : s.add} ${l.kind === "other" ? s.other : ""}`}>{l.op} {l.text}   [{KIND_TEXT[l.kind]}]{"\n"}</span>)}
               </pre>
