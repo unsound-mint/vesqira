@@ -1,0 +1,174 @@
+/* The text editor screen (ADR 0029). Same surface, borders and type as the project screens; no new tokens. */
+.dialog {
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+.screen {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.title {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--w-strong);
+  overflow-wrap: anywhere;
+}
+
+.where {
+  margin: 0;
+  color: var(--text-3);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  color: var(--text-2);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.body {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+}
+
+.surface {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.monaco {
+  width: 100%;
+  height: 100%;
+}
+
+.loading {
+  margin: 0;
+  padding: var(--sp-3);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.surface .loading {
+  position: absolute;
+}
+
+.plain,
+.readonly {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 12rem;
+  resize: none;
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  tab-size: 2;
+}
+
+.error {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--err);
+  border-radius: var(--r-md);
+  background: var(--err-bg);
+  font-size: var(--text-sm);
+}
+
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--warn);
+  border-radius: var(--r-md);
+  background: var(--warn-bg);
+  font-size: var(--text-sm);
+}
+
+.notice p {
+  margin: 0;
+}
+
+.conflict {
+  flex: 1 1 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  min-width: 0;
+  min-height: 0;
+  font-size: var(--text-sm);
+}
+
+.conflict p {
+  margin: 0;
+}
+
+.conflictTitle {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--w-strong);
+}
+
+.versions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--sp-3);
+  min-height: 0;
+}
+
+.versions > div {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--sp-1);
+  min-width: 0;
+  min-height: 0;
+}
+
+.versionTitle {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: var(--w-medium);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}

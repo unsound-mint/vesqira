@@ -93,3 +93,20 @@ func (r Roots) contains(real string) bool {
 
 // ResolveDirOK reports whether a canonical directory is already a root or lies below one.
 func (r Roots) ResolveDirOK(real string) bool { return r.contains(real) }
+
+// Placement is a canonical path seen from one root that holds it: the root and the slash-separated path below it.
+type Placement struct{ Root, Rel string }
+
+// Under lists, for every root that holds the canonical path, that root and the path below it. A path inside nested roots
+// has several placements; a caller that must refuse on any of them checks all, one that needs a root to confine a write
+// to takes the first.
+func (r Roots) Under(real string) []Placement {
+	var out []Placement
+	for _, root := range r {
+		rel, err := filepath.Rel(root, real)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+			out = append(out, Placement{Root: root, Rel: filepath.ToSlash(rel)})
+		}
+	}
+	return out
+}

@@ -811,6 +811,113 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/files/text:
+    get:
+      operationId: owner_s_getText_get_api_files_text
+      x-listener: owner
+      summary: "Open a text file for editing (only with --enable-editor)"
+      parameters:
+        - name: "path"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TextFile"
+        "403":
+          description: "foreign Host, cross-site or cross-origin request"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "not an existing file inside a readable folder (also: outside the roots, symbolic-link escape, credential folders)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: "larger than 2 MiB"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: "not editable text: FITS, binary, invalid UTF-8, or an extension the editor does not open"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      operationId: owner_s_putText_put_api_files_text
+      x-listener: owner
+      summary: "Save a text file atomically, only if it is unchanged since it was opened (only with --enable-editor)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/TextSave"
+      responses:
+        "200":
+          description: "saved; the answer is the new base"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TextFile"
+        "400":
+          description: "bad request (missing base)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "foreign Host, cross-site or cross-origin request"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "not an existing file inside a readable folder (also: outside the roots, symbolic-link escape, credential folders)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "changed on disk since it was opened; nothing written"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TextConflict"
+        "413":
+          description: "larger than 2 MiB"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: "not editable text: FITS, binary, invalid UTF-8, or an extension the editor does not open"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/files/tree:
     get:
       operationId: owner_s_fileTree_get_api_files_tree
@@ -1955,6 +2062,7 @@ components:
             - "boards"
             - "regions"
             - "audit"
+            - "editor"
           properties:
             planes:
               type: "boolean"
@@ -1978,6 +2086,9 @@ components:
               type: "boolean"
             audit:
               type: "boolean"
+            editor:
+              type: "boolean"
+              description: "The text editor for local files is on (--enable-editor, ADR 0029)."
           description: "True when this running server was started with what the feature needs"
         limits:
           type: "object"
@@ -2807,3 +2918,72 @@ components:
           type: "string"
         note:
           type: "string"
+    TextVersion:
+      type: "object"
+      required:
+        - "size"
+        - "mtime"
+        - "sha256"
+      description: "A text file as the editor saw it (ADR 0029). A save must send these three values from when the file was opened; all three must still match the file on disk."
+      properties:
+        size:
+          type: "integer"
+          format: "int64"
+          description: "bytes"
+        mtime:
+          type: "string"
+          description: "modification time in nanoseconds since the epoch, as a decimal string (a JSON number would lose digits in a browser)"
+        sha256:
+          type: "string"
+          description: "hex SHA-256 of the file bytes"
+    TextFile:
+      type: "object"
+      required:
+        - "path"
+        - "name"
+        - "content"
+        - "size"
+        - "mtime"
+        - "sha256"
+      description: "A text file inside a source root, opened for editing."
+      properties:
+        path:
+          type: "string"
+          description: "canonical path, symbolic links resolved"
+        name:
+          type: "string"
+        content:
+          type: "string"
+          description: "UTF-8 text, at most 2 MiB"
+        size:
+          type: "integer"
+          format: "int64"
+        mtime:
+          type: "string"
+        sha256:
+          type: "string"
+    TextSave:
+      type: "object"
+      required:
+        - "path"
+        - "content"
+        - "base"
+      properties:
+        path:
+          type: "string"
+          description: "absolute path of an existing file; a save never creates one"
+        content:
+          type: "string"
+        base:
+          $ref: "#/components/schemas/TextVersion"
+    TextConflict:
+      type: "object"
+      required:
+        - "error"
+        - "current"
+      description: "The file changed on disk since it was opened. Nothing was written; current is what is on disk now."
+      properties:
+        error:
+          type: "string"
+        current:
+          $ref: "#/components/schemas/TextFile"

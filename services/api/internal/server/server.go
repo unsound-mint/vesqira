@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -67,6 +68,10 @@ type Server struct {
 	projScans map[int64]*scanState
 	laneOnce  sync.Once
 	heavy     chan struct{} // one FITS header registration at a time, across projects
+
+	// EditorEnabled mounts the text editor routes (--enable-editor, ADR 0029). Off by default.
+	EditorEnabled bool
+	editMu        sync.Mutex // one editor save at a time
 
 	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
 
@@ -161,6 +166,10 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/projects/{id}/answers", s.answerProject)
 		mux.HandleFunc("POST /api/projects/{id}/project-file", s.writeProject)
 	}
+	if s.EditorEnabled {
+		mux.HandleFunc("GET /api/files/text", s.getText)
+		mux.HandleFunc("PUT /api/files/text", s.putText)
+	}
 	mux.HandleFunc("GET /api/datasets/{id}/header-cards", s.headerCards)
 	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
 	mux.HandleFunc("GET /api/datasets/{id}/plane", s.plane)
@@ -231,7 +240,16 @@ func localOnly(next http.Handler) http.Handler {
 			http.Error(w, "cross-site request refused", http.StatusForbidden)
 			return
 		}
-		if r.Method == http.MethodPost {
+		// A page on another origin must not write, whatever Sec-Fetch-Site a client sends or omits.
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if o := r.Header.Get("Origin"); o != "" {
+				if u, err := url.Parse(o); err != nil || u.Host != r.Host {
+					http.Error(w, "cross-origin request refused", http.StatusForbidden)
+					return
+				}
+			}
+		}
+		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
 			if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 				http.Error(w, "content type must be application/json", http.StatusUnsupportedMediaType)
 				return

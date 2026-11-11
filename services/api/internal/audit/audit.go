@@ -13,7 +13,7 @@ type Entry struct {
 	ID     int64     `json:"id"`
 	At     time.Time `json:"at"`
 	Action string    `json:"action"`
-	Kind   string    `json:"kind"`   // host | job | run | board | snapshot | dataset
+	Kind   string    `json:"kind"`   // host | job | run | board | snapshot | dataset | file
 	Target int64     `json:"target"` // the id of that object, 0 when none
 	Detail string    `json:"detail"`
 }

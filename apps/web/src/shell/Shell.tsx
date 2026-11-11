@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { FileText, FolderOpen, FolderPlus, LayoutGrid, Server, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
@@ -25,6 +25,7 @@ import { ProjectExplorer } from "../projects/ProjectExplorer";
 import { healthScore, location } from "../projects/format";
 import { useProject } from "../projects/useProject";
 import { writeProjectFile } from "../api/projects";
+import { editorEnabled } from "../api/editor";
 import { getCompat } from "../api/catalog";
 import type { Compat } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
@@ -45,6 +46,9 @@ import { Button, IconButton, Pill, ResizeHandle, Section } from "../ui";
 import { LIMITS, useLayout } from "./useLayout";
 import s from "./Shell.module.css";
 
+// Loaded when a file is first opened for editing: it brings Monaco (ADR 0029).
+const EditorScreen = lazy(() => import("../editor/EditorScreen"));
+
 /** Workbench frame (ADR 0005). Panels hold honest empty states until datasets exist. */
 export function Shell() {
   const { layout: L, set, toggle } = useLayout();
@@ -53,6 +57,15 @@ export function Shell() {
   const { refreshDatasets, refreshRuns } = cat;
   const proj = useProject(useCallback(() => { void refreshDatasets(); void refreshRuns(); }, [refreshDatasets, refreshRuns]));
   const project = proj.project;
+  const [editor, setEditor] = useState(false); // the server was started with --enable-editor
+  const [editing, setEditing] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void editorEnabled().then((on) => live && setEditor(on));
+    return () => {
+      live = false;
+    };
+  }, []);
   const hostName = (id: number) => cat.hosts.find((h) => h.id === id)?.name ?? "host";
   const viewerA = useViewer(cat.selected);
   const [compareId, setCompareId] = useState<number | null>(null);
@@ -247,6 +260,7 @@ export function Shell() {
               selectedDatasetId={cat.selectedId}
               onOpenRun={openRun}
               onSelectDataset={selectDataset}
+              onEditFile={editor ? setEditing : undefined}
               onOverview={() => setMode("look")}
               onCancel={() => void proj.cancel()}
             />
@@ -412,6 +426,11 @@ export function Shell() {
         {rendererNote ? <Pill>{rendererNote}</Pill> : null}
         <Pill tone={actDs ? flag.tone : "neutral"}>{actDs ? (viewer.view ? flag.text : "Reading layout") : "No dataset"}</Pill>
       </footer>
+      {editor && editing ? (
+        <Suspense fallback={null}>
+          <EditorScreen key={editing} path={editing} onClose={() => setEditing(null)} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }
