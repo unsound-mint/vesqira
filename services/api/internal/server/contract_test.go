@@ -45,15 +45,30 @@ func conforms(t *testing.T, schema *openapi3.SchemaRef, label string, body []byt
 // responseSchema is the schema the spec declares for the 200 response of an operation in one content type.
 func responseSchema(t *testing.T, doc *openapi3.T, path, method, contentType string) *openapi3.SchemaRef {
 	t.Helper()
+	return responseSchemaAt(t, doc, path, method, 200, contentType)
+}
+
+func responseSchemaAt(t *testing.T, doc *openapi3.T, path, method string, status int, contentType string) *openapi3.SchemaRef {
+	t.Helper()
 	op := doc.Paths.Find(path).GetOperation(method)
 	if op == nil {
 		t.Fatalf("the spec has no %s %s", method, path)
 	}
-	r := op.Responses.Status(200)
+	r := op.Responses.Status(status)
 	if r == nil || r.Value == nil || r.Value.Content.Get(contentType) == nil {
-		t.Fatalf("the spec describes no %s response for %s %s", contentType, method, path)
+		t.Fatalf("the spec describes no %s response with status %d for %s %s", contentType, status, method, path)
 	}
 	return r.Value.Content.Get(contentType).Schema
+}
+
+// requestSchema is the JSON body schema the spec declares for an operation.
+func requestSchema(t *testing.T, doc *openapi3.T, path, method string) *openapi3.SchemaRef {
+	t.Helper()
+	op := doc.Paths.Find(path).GetOperation(method)
+	if op == nil || op.RequestBody == nil || op.RequestBody.Value.Content.Get("application/json") == nil {
+		t.Fatalf("the spec describes no JSON request body for %s %s", method, path)
+	}
+	return op.RequestBody.Value.Content.Get("application/json").Schema
 }
 
 func TestResponsesMatchTheSpecForTheViewerRoutes(t *testing.T) {

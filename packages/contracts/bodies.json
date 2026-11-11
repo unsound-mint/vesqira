@@ -695,6 +695,1251 @@
      "description": "The file's size or modification time differs from when the unit was declared: it may no longer describe these bytes."
     }
    }
+  },
+  "Capabilities": {
+   "type": "object",
+   "description": "What this running server can do, so a client can show a feature as unavailable instead of failing on a 404.",
+   "required": [
+    "app",
+    "protocol",
+    "schema",
+    "features",
+    "limits"
+   ],
+   "properties": {
+    "app": {
+     "type": "object",
+     "required": [
+      "name",
+      "version"
+     ],
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "version": {
+       "type": "string",
+       "description": "\"dev\" for a plain build"
+      }
+     }
+    },
+    "protocol": {
+     "type": "integer",
+     "description": "Changes only when an existing route or field changes meaning in a way an older client would misread"
+    },
+    "schema": {
+     "type": "integer",
+     "description": "Version of the local data schema"
+    },
+    "features": {
+     "type": "object",
+     "required": [
+      "planes",
+      "planeCache",
+      "preview",
+      "hosts",
+      "jobs",
+      "analysis",
+      "remoteAnalysis",
+      "runs",
+      "boards",
+      "regions",
+      "audit"
+     ],
+     "properties": {
+      "planes": {
+       "type": "boolean"
+      },
+      "planeCache": {
+       "type": "boolean"
+      },
+      "preview": {
+       "type": "boolean"
+      },
+      "hosts": {
+       "type": "boolean"
+      },
+      "jobs": {
+       "type": "boolean"
+      },
+      "analysis": {
+       "type": "boolean"
+      },
+      "remoteAnalysis": {
+       "type": "boolean"
+      },
+      "runs": {
+       "type": "boolean"
+      },
+      "boards": {
+       "type": "boolean"
+      },
+      "regions": {
+       "type": "boolean"
+      },
+      "audit": {
+       "type": "boolean"
+      }
+     },
+     "description": "True when this running server was started with what the feature needs"
+    },
+    "limits": {
+     "type": "object",
+     "required": [
+      "previewStepMax",
+      "metricsPerRunMax"
+     ],
+     "properties": {
+      "previewStepMax": {
+       "type": "integer"
+      },
+      "metricsPerRunMax": {
+       "type": "integer"
+      }
+     }
+    }
+   }
+  },
+  "FigureAxis": {
+   "type": "object",
+   "description": "An axis as the file declared it; null means the file did not say.",
+   "required": [
+    "axis",
+    "length",
+    "ctype",
+    "cunit",
+    "crval",
+    "cdelt"
+   ],
+   "properties": {
+    "axis": {
+     "type": "integer"
+    },
+    "length": {
+     "type": "integer"
+    },
+    "ctype": {
+     "type": "string",
+     "nullable": true
+    },
+    "cunit": {
+     "type": "string",
+     "nullable": true
+    },
+    "crval": {
+     "type": "number",
+     "nullable": true
+    },
+    "cdelt": {
+     "type": "number",
+     "nullable": true
+    }
+   }
+  },
+  "FigureHeader": {
+   "type": "object",
+   "description": "Header facts declared by the file and not verified; null means absent.",
+   "required": [
+    "axes",
+    "bunit",
+    "radesys",
+    "specsys",
+    "bitpix"
+   ],
+   "properties": {
+    "axes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/FigureAxis"
+     }
+    },
+    "bunit": {
+     "type": "string",
+     "nullable": true
+    },
+    "radesys": {
+     "type": "string",
+     "nullable": true
+    },
+    "specsys": {
+     "type": "string",
+     "nullable": true
+    },
+    "bitpix": {
+     "type": "integer",
+     "nullable": true
+    }
+   }
+  },
+  "FigureRegion": {
+   "type": "object",
+   "description": "Pixel region; rect uses x0,y0,x1,y1 and circle uses cx,cy,r.",
+   "required": [
+    "shape"
+   ],
+   "properties": {
+    "shape": {
+     "type": "string",
+     "enum": [
+      "rect",
+      "circle"
+     ]
+    },
+    "x0": {
+     "type": "integer"
+    },
+    "y0": {
+     "type": "integer"
+    },
+    "x1": {
+     "type": "integer"
+    },
+    "y1": {
+     "type": "integer"
+    },
+    "cx": {
+     "type": "integer"
+    },
+    "cy": {
+     "type": "integer"
+    },
+    "r": {
+     "type": "integer"
+    }
+   }
+  },
+  "FigureView": {
+   "type": "object",
+   "description": "What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view.",
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "plane",
+      "spectrum",
+      "orientation"
+     ]
+    },
+    "channel": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "spectralValue": {
+     "type": "number"
+    },
+    "spectralUnit": {
+     "type": "string",
+     "description": "At most 16 characters of letters, digits and / * ^ . - space"
+    },
+    "region": {
+     "$ref": "#/components/schemas/FigureRegion"
+    },
+    "colormap": {
+     "type": "string",
+     "enum": [
+      "viridis",
+      "inferno",
+      "gray",
+      "twilight"
+     ]
+    },
+    "stretch": {
+     "type": "string",
+     "enum": [
+      "linear",
+      "sqrt",
+      "asinh"
+     ]
+    },
+    "range": {
+     "type": "string",
+     "enum": [
+      "percentile",
+      "minmax",
+      "custom"
+     ]
+    },
+    "limits": {
+     "type": "array",
+     "items": {
+      "type": "number"
+     },
+     "maxItems": 2
+    },
+    "limitsUnit": {
+     "type": "string",
+     "description": "Must be the file's BUNIT, or the unit the author declared for a file without one"
+    },
+    "showLines": {
+     "type": "boolean"
+    }
+   }
+  },
+  "FigureInterpretation": {
+   "type": "object",
+   "description": "The orientation meaning declared for the file, said to be the author's or the import adapter's, never the file's.",
+   "required": [
+    "kind",
+    "unit",
+    "declaredBy",
+    "hasReliabilityMap"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string"
+    },
+    "unit": {
+     "type": "string"
+    },
+    "declaredBy": {
+     "type": "string"
+    },
+    "hasReliabilityMap": {
+     "type": "boolean"
+    }
+   }
+  },
+  "FigureUnitDeclaration": {
+   "type": "object",
+   "description": "The brightness unit the author declared because the file has no BUNIT.",
+   "required": [
+    "unit",
+    "declaredBy"
+   ],
+   "properties": {
+    "unit": {
+     "type": "string"
+    },
+    "declaredBy": {
+     "type": "string"
+    }
+   }
+  },
+  "RunParam": {
+   "type": "object",
+   "required": [
+    "key",
+    "value",
+    "source"
+   ],
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    },
+    "source": {
+     "type": "string",
+     "enum": [
+      "config",
+      "run_parameters"
+     ]
+    }
+   }
+  },
+  "RunMetric": {
+   "type": "object",
+   "description": "One measured result of a run, as the run's metadata declares it.",
+   "required": [
+    "key",
+    "value",
+    "unit",
+    "uncertainty",
+    "uncertaintyKind",
+    "n",
+    "definition",
+    "status"
+   ],
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "value": {
+     "type": "number",
+     "nullable": true,
+     "description": "Null when not recorded; never zero"
+    },
+    "unit": {
+     "type": "string"
+    },
+    "uncertainty": {
+     "type": "number",
+     "nullable": true
+    },
+    "uncertaintyKind": {
+     "type": "string",
+     "enum": [
+      "",
+      "standard_deviation",
+      "standard_error",
+      "confidence_68",
+      "confidence_95",
+      "other"
+     ],
+     "description": "Empty when the run did not say; it is not guessed"
+    },
+    "n": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true
+    },
+    "definition": {
+     "type": "string"
+    },
+    "status": {
+     "type": "string",
+     "enum": [
+      "declared"
+     ]
+    }
+   }
+  },
+  "RunReview": {
+   "type": "object",
+   "description": "The researcher's own assessment, kept apart from whether the computation finished.",
+   "required": [
+    "qc",
+    "interpretation",
+    "note"
+   ],
+   "properties": {
+    "qc": {
+     "type": "string",
+     "enum": [
+      "not_assessed",
+      "passed",
+      "failed",
+      "inconclusive"
+     ]
+    },
+    "interpretation": {
+     "type": "string",
+     "enum": [
+      "not_interpreted",
+      "supports",
+      "challenges",
+      "inconclusive"
+     ]
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "RunSummary": {
+   "type": "object",
+   "description": "The run that produced a dataset, without paths, ids or locations.",
+   "required": [
+    "name",
+    "kind",
+    "role",
+    "gitCommit",
+    "dirty",
+    "reproducibleFromCommit",
+    "generatedAt",
+    "params",
+    "metrics",
+    "review"
+   ],
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "kind": {
+     "type": "string"
+    },
+    "role": {
+     "type": "string"
+    },
+    "gitCommit": {
+     "type": "string"
+    },
+    "dirty": {
+     "type": "boolean"
+    },
+    "reproducibleFromCommit": {
+     "type": "boolean"
+    },
+    "generatedAt": {
+     "type": "string"
+    },
+    "params": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RunParam"
+     }
+    },
+    "metrics": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RunMetric"
+     }
+    },
+    "review": {
+     "$ref": "#/components/schemas/RunReview"
+    }
+   }
+  },
+  "DerivedSummary": {
+   "type": "object",
+   "description": "How a derived dataset was made; sources are file names.",
+   "required": [
+    "op",
+    "params",
+    "sources",
+    "policy",
+    "software",
+    "createdAt"
+   ],
+   "properties": {
+    "op": {
+     "type": "string"
+    },
+    "params": {
+     "description": "Operation parameters, as recorded; free-form JSON"
+    },
+    "sources": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "policy": {
+     "type": "string"
+    },
+    "software": {
+     "description": "Software identity, as recorded; free-form JSON"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "FigureProvenance": {
+   "type": "object",
+   "description": "Reviewer-safe account of where a figure came from. It has no path and no dataset id.",
+   "required": [
+    "source",
+    "view",
+    "statements"
+   ],
+   "properties": {
+    "source": {
+     "type": "object",
+     "description": "The source file by name only; no path and no dataset id.",
+     "required": [
+      "name",
+      "sizeBytes",
+      "modifiedAt",
+      "identity",
+      "headerDeclaredByFile"
+     ],
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "sizeBytes": {
+       "type": "integer",
+       "format": "int64"
+      },
+      "modifiedAt": {
+       "type": "string",
+       "format": "date-time"
+      },
+      "identity": {
+       "type": "string"
+      },
+      "headerDeclaredByFile": {
+       "$ref": "#/components/schemas/FigureHeader"
+      }
+     }
+    },
+    "interpretation": {
+     "$ref": "#/components/schemas/FigureInterpretation"
+    },
+    "unitDeclaration": {
+     "$ref": "#/components/schemas/FigureUnitDeclaration"
+    },
+    "nature": {
+     "type": "string",
+     "enum": [
+      "observed",
+      "simulated",
+      "constructed_control"
+     ],
+     "description": "As declared by the author; absent when not declared"
+    },
+    "run": {
+     "$ref": "#/components/schemas/RunSummary"
+    },
+    "derived": {
+     "$ref": "#/components/schemas/DerivedSummary"
+    },
+    "view": {
+     "$ref": "#/components/schemas/FigureView"
+    },
+    "statements": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "Figure": {
+   "type": "object",
+   "description": "Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited.",
+   "required": [
+    "id",
+    "datasetId",
+    "title",
+    "caption",
+    "createdAt",
+    "revision",
+    "previewSha",
+    "width",
+    "height",
+    "provenance"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "title": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "revision": {
+     "type": "string"
+    },
+    "previewSha": {
+     "type": "string"
+    },
+    "width": {
+     "type": "integer"
+    },
+    "height": {
+     "type": "integer"
+    },
+    "provenance": {
+     "$ref": "#/components/schemas/FigureProvenance"
+    }
+   }
+  },
+  "FigureList": {
+   "type": "object",
+   "required": [
+    "figures"
+   ],
+   "properties": {
+    "figures": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/Figure"
+     }
+    }
+   }
+  },
+  "CreateFigureRequest": {
+   "type": "object",
+   "required": [
+    "datasetId",
+    "title",
+    "view",
+    "previewPng"
+   ],
+   "properties": {
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "title": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    },
+    "view": {
+     "$ref": "#/components/schemas/FigureView"
+    },
+    "previewPng": {
+     "type": "string",
+     "format": "byte",
+     "description": "The picture as the author's browser drew it, PNG, base64"
+    }
+   }
+  },
+  "FigureTextRequest": {
+   "type": "object",
+   "description": "Unknown keys are refused.",
+   "required": [
+    "title"
+   ],
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    }
+   }
+  },
+  "JobProgress": {
+   "type": "object",
+   "required": [
+    "done",
+    "total",
+    "etaSeconds"
+   ],
+   "properties": {
+    "done": {
+     "type": "integer"
+    },
+    "total": {
+     "type": "integer"
+    },
+    "etaSeconds": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true,
+     "description": "An estimate at the rate so far; null when there is nothing to base it on"
+    }
+   }
+  },
+  "JobInfo": {
+   "type": "object",
+   "description": "What the owner's board shows about a followed job. A reviewer never gets it.",
+   "required": [
+    "id",
+    "name",
+    "state",
+    "submittedAt",
+    "finishedAt",
+    "runId"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "draft",
+      "submitting",
+      "submitted",
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+      "unknown"
+     ],
+     "description": "unknown when the job no longer exists"
+    },
+    "submittedAt": {
+     "type": "string",
+     "format": "date-time",
+     "nullable": true
+    },
+    "finishedAt": {
+     "type": "string",
+     "format": "date-time",
+     "nullable": true
+    },
+    "runId": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true
+    },
+    "progress": {
+     "$ref": "#/components/schemas/JobProgress",
+     "description": "Present only when the job's log says how far it is"
+    }
+   }
+  },
+  "FigureBoardItem": {
+   "type": "object",
+   "required": [
+    "position",
+    "kind",
+    "figure",
+    "note"
+   ],
+   "properties": {
+    "position": {
+     "type": "integer"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "figure"
+     ]
+    },
+    "figure": {
+     "$ref": "#/components/schemas/Figure"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "JobBoardItem": {
+   "type": "object",
+   "description": "A panel that follows a job and becomes its result when pinned.",
+   "required": [
+    "position",
+    "kind",
+    "job",
+    "note"
+   ],
+   "properties": {
+    "position": {
+     "type": "integer"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "job"
+     ]
+    },
+    "job": {
+     "$ref": "#/components/schemas/JobInfo"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "BoardItem": {
+   "oneOf": [
+    {
+     "$ref": "#/components/schemas/FigureBoardItem"
+    },
+    {
+     "$ref": "#/components/schemas/JobBoardItem"
+    }
+   ],
+   "discriminator": {
+    "propertyName": "kind",
+    "mapping": {
+     "figure": "#/components/schemas/FigureBoardItem",
+     "job": "#/components/schemas/JobBoardItem"
+    }
+   }
+  },
+  "Board": {
+   "type": "object",
+   "required": [
+    "id",
+    "title",
+    "createdAt",
+    "updatedAt",
+    "items"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "title": {
+     "type": "string"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "updatedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "items": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/BoardItem"
+     }
+    }
+   }
+  },
+  "BoardList": {
+   "type": "object",
+   "required": [
+    "boards"
+   ],
+   "properties": {
+    "boards": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/Board"
+     }
+    }
+   }
+  },
+  "CreateBoardRequest": {
+   "type": "object",
+   "description": "Unknown keys are refused.",
+   "required": [
+    "title"
+   ],
+   "properties": {
+    "title": {
+     "type": "string"
+    }
+   }
+  },
+  "BoardAddItemRequest": {
+   "type": "object",
+   "description": "Give exactly one of figureId and jobId; both or neither is refused with 422.",
+   "properties": {
+    "figureId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "jobId": {
+     "type": "integer",
+     "format": "int64"
+    }
+   }
+  },
+  "BoardPinRequest": {
+   "type": "object",
+   "description": "The figure made from the result of the job a panel follows.",
+   "required": [
+    "figureId"
+   ],
+   "properties": {
+    "figureId": {
+     "type": "integer",
+     "format": "int64"
+    }
+   }
+  },
+  "BoardMoveRequest": {
+   "type": "object",
+   "required": [
+    "delta"
+   ],
+   "properties": {
+    "delta": {
+     "type": "integer",
+     "enum": [
+      -1,
+      1
+     ]
+    }
+   }
+  },
+  "BoardNoteRequest": {
+   "type": "object",
+   "required": [
+    "note"
+   ],
+   "properties": {
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "Snapshot": {
+   "type": "object",
+   "description": "A frozen, published version of a board. Optional fields are omitted when empty.",
+   "required": [
+    "id",
+    "boardId",
+    "label",
+    "createdAt",
+    "expiresAt",
+    "revoked",
+    "items",
+    "outcome",
+    "comments"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "boardId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "label": {
+     "type": "string"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "expiresAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "revoked": {
+     "type": "boolean"
+    },
+    "items": {
+     "type": "integer"
+    },
+    "question": {
+     "type": "string"
+    },
+    "outcome": {
+     "type": "string",
+     "enum": [
+      "",
+      "commented",
+      "changes_requested",
+      "reviewed"
+     ],
+     "description": "What the reviewer said about this version; empty means not yet reviewed. Not a scientific assessment of any run."
+    },
+    "outcomeNote": {
+     "type": "string"
+    },
+    "outcomeBy": {
+     "type": "string"
+    },
+    "outcomeAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "supersededBy": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "comments": {
+     "type": "integer",
+     "description": "Reviewers' comments, not the author's replies"
+    },
+    "lastActivity": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "SnapshotList": {
+   "type": "object",
+   "required": [
+    "snapshots"
+   ],
+   "properties": {
+    "snapshots": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/Snapshot"
+     }
+    }
+   }
+  },
+  "FrozenFigure": {
+   "type": "object",
+   "description": "A figure as a reviewer sees it. kind is omitted for a figure.",
+   "required": [
+    "revision",
+    "title",
+    "caption",
+    "note",
+    "previewSha",
+    "width",
+    "height",
+    "provenance"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "figure"
+     ]
+    },
+    "revision": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "previewSha": {
+     "type": "string"
+    },
+    "width": {
+     "type": "integer"
+    },
+    "height": {
+     "type": "integer"
+    },
+    "provenance": {
+     "$ref": "#/components/schemas/FigureProvenance"
+    }
+   }
+  },
+  "FrozenJob": {
+   "type": "object",
+   "description": "A run that had not finished: only its name and state at that moment.",
+   "required": [
+    "kind",
+    "title",
+    "state",
+    "at",
+    "note"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "job"
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "state": {
+     "type": "string",
+     "description": "As of at; it never changes"
+    },
+    "at": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "FrozenItem": {
+   "oneOf": [
+    {
+     "$ref": "#/components/schemas/FrozenFigure"
+    },
+    {
+     "$ref": "#/components/schemas/FrozenJob"
+    }
+   ]
+  },
+  "Frozen": {
+   "type": "object",
+   "description": "Everything a reviewer may see of a board: there is no path, dataset id or credential field.",
+   "required": [
+    "boardTitle",
+    "label",
+    "createdAt",
+    "expiresAt",
+    "items"
+   ],
+   "properties": {
+    "boardTitle": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "question": {
+     "type": "string"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "expiresAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "items": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/FrozenItem"
+     }
+    }
+   }
+  },
+  "Preflight": {
+   "type": "object",
+   "description": "What publishing would expose and what a careful author would want to know first. Creates nothing.",
+   "required": [
+    "frozen",
+    "warnings"
+   ],
+   "properties": {
+    "frozen": {
+     "$ref": "#/components/schemas/Frozen"
+    },
+    "warnings": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "PublishRequest": {
+   "type": "object",
+   "description": "Unknown keys are refused.",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "question": {
+     "type": "string"
+    },
+    "hours": {
+     "type": "number",
+     "description": "Lifetime of the link; 0 or absent means 14 days; beyond 90 days is refused"
+    },
+    "supersedes": {
+     "type": "integer",
+     "format": "int64",
+     "description": "The snapshot this one replaces"
+    },
+    "reason": {
+     "type": "string"
+    }
+   }
+  },
+  "PublishResponse": {
+   "type": "object",
+   "required": [
+    "snapshot",
+    "token",
+    "reviewPath",
+    "note"
+   ],
+   "properties": {
+    "snapshot": {
+     "$ref": "#/components/schemas/Snapshot"
+    },
+    "token": {
+     "type": "string",
+     "description": "Shown once; only its hash is kept"
+    },
+    "reviewPath": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
   }
  },
  "operations": {
@@ -868,6 +2113,724 @@
        },
        "x-frame-header": {
         "$ref": "#/components/schemas/PlaneHeader"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/capabilities": {
+   "summary": "What this server can do",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Capabilities"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/figures": {
+   "summary": "List figures, newest first",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FigureList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/figures": {
+   "summary": "Save a figure from a view and the picture the browser drew",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CreateFigureRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Figure"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/figures/{id}/text": {
+   "summary": "Edit a figure's title and caption; the evidence is unchanged",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/FigureTextRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Figure"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/figures/{id}/preview": {
+   "summary": "The figure's picture",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "headers": {
+      "X-Content-Type-Options": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "nosniff"
+        ]
+       }
+      }
+     },
+     "content": {
+      "image/png": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/figures/{id}/download": {
+   "summary": "The figure's picture as a PNG that carries its title and provenance inside the file",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "headers": {
+      "X-Content-Type-Options": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "nosniff"
+        ]
+       }
+      },
+      "Content-Disposition": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     },
+     "content": {
+      "image/png": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/boards": {
+   "summary": "List boards, most recently updated first (job panels use cached state)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BoardList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/boards": {
+   "summary": "Create a board",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CreateBoardRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Board"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/boards/{id}": {
+   "summary": "One board with the live state of its job panels (reads their logs; the list does not)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Board"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/boards/{id}/items": {
+   "summary": "Add a figure, or a panel that follows a job, to a board",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/BoardAddItemRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Board"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/boards/{id}/items/{pos}/remove": {
+   "summary": "Remove a panel",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "pos",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Board"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/boards/{id}/items/{pos}/move": {
+   "summary": "Move a panel one place up or down",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "pos",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/BoardMoveRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Board"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/boards/{id}/items/{pos}/note": {
+   "summary": "Set a panel's note",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "pos",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/BoardNoteRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Board"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/boards/{id}/items/{pos}/pin": {
+   "summary": "Replace a job panel with the figure made from its result",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "pos",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/BoardPinRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Board"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/boards/{id}/preflight": {
+   "summary": "Show what publishing would expose, without publishing",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "question",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Preflight"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/boards/{id}/publish": {
+   "summary": "Freeze the board and return the review token once",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/PublishRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PublishResponse"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/boards/{id}/snapshots": {
+   "summary": "Published versions of a board, newest first",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SnapshotList"
        }
       }
      }

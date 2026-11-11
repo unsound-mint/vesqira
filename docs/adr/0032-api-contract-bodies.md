@@ -1,6 +1,6 @@
 # ADR 0032: Request and response bodies in the API contract
 
-- Status: accepted; first slice implemented (datasets list, dataset, view, plane header). The rest is specified, not implemented
+- Status: accepted; implemented for the datasets group (list, dataset, view, plane header), `GET /api/capabilities`, and every figures and boards operation (16: figure list, create, text, preview, download; board list, create, get, add item, move, note, pin, remove, preflight, publish, snapshots). The remaining groups are specified, not implemented
 - Date: 2026-11-10
 
 ## Context

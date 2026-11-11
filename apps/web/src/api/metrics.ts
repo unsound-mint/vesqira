@@ -1,15 +1,7 @@
+import type { components } from "./schema";
+
 /** One measured result of a run. A value that was not recorded is null and reads as unknown, never as zero. */
-export type Metric = {
-  key: string;
-  value: number | null;
-  unit: string;
-  uncertainty: number | null;
-  /** Empty when the run did not say what kind of uncertainty it is; it is not guessed. */
-  uncertaintyKind: "" | "standard_deviation" | "standard_error" | "confidence_68" | "confidence_95" | "other";
-  n: number | null;
-  definition: string;
-  status: "declared";
-};
+export type Metric = components["schemas"]["RunMetric"];
 
 const KIND: Record<string, string> = {
   standard_deviation: "standard deviation",

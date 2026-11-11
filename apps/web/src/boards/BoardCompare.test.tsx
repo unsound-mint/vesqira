@@ -10,10 +10,10 @@ import { listBoards } from "../api/boards";
 
 const metric = (o: Partial<Metric>): Metric => ({ key: "alignment_measure", value: 0.344, unit: "", uncertainty: 0.02, uncertaintyKind: "standard_deviation", n: 2695, definition: "mean of cos 2θ", status: "declared", ...o });
 const prov = (name: string | null, ker: string, extra: Partial<NonNullable<Figure["provenance"]["run"]>> = {}, channel = 3): Figure["provenance"] => ({
-  source: { name: "lmc_hi_cube.fits", sizeBytes: 1000, modifiedAt: "", identity: "a reference by name, size and modification time" },
+  source: { name: "lmc_hi_cube.fits", sizeBytes: 1000, modifiedAt: "", identity: "a reference by name, size and modification time", headerDeclaredByFile: { axes: [], bunit: null, radesys: null, specsys: null, bitpix: null } },
   view: { kind: "plane", channel },
   statements: [],
-  ...(name ? { run: { name, kind: "vgt", role: "psi", gitCommit: "bcbaed4ec980ffff", dirty: true, reproducibleFromCommit: false, generatedAt: "", params: [{ key: "ker", value: ker }, { key: "dn", value: "10" }], metrics: [metric({})], ...extra } } : {}),
+  ...(name ? { run: { name, kind: "vgt", role: "psi", gitCommit: "bcbaed4ec980ffff", dirty: true, reproducibleFromCommit: false, generatedAt: "", review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, params: [{ key: "ker", value: ker, source: "config" }, { key: "dn", value: "10", source: "config" }], metrics: [metric({})], ...extra } } : {}),
 });
 const fig = (id: number, title: string, p: Figure["provenance"]): Figure => ({ id, datasetId: id * 10, title, caption: "", createdAt: "", revision: `r${id}`, previewSha: "a".repeat(64), width: 4, height: 3, provenance: p });
 const A = fig(1, "Ker 8", prov("vgt-ker8", "8"));
@@ -62,7 +62,7 @@ describe("what differs between two panels", () => {
 describe("ticking panels on the board", () => {
   it("shows the table for two ticks and a third tick replaces the oldest", async () => {
     const C = fig(3, "Ker 16", prov("vgt-ker16", "16"));
-    const board: Board = { id: 1, title: "Kernels", createdAt: "", updatedAt: "", items: [A, B, C].map((f, i) => ({ position: i, figure: f, note: "" })) };
+    const board: Board = { id: 1, title: "Kernels", createdAt: "", updatedAt: "", items: [A, B, C].map((f, i) => ({ position: i, kind: "figure" as const, figure: f, note: "" })) };
     vi.mocked(listBoards).mockResolvedValue([board]);
     render(<BoardsView />);
     await userEvent.click(await screen.findByRole("checkbox", { name: "Compare Ker 8" }));
