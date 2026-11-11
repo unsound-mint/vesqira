@@ -36,6 +36,34 @@ var (
 	cfgBlock = regexp.MustCompile(`(?s)cat > "\$cfg" <<'` + configEnd + `'\n(.*?)\n` + configEnd + `\n`)
 )
 
+// StateEvidence says where the state in a record came from and when it was obtained, which is not when the record is
+// written: the write may come later (the output folder did not exist yet, or a retry).
+type StateEvidence struct {
+	Value  string    // the state as of AsOf
+	Detail string    // the scheduler's detail line, if any
+	Source string    // what produced it, e.g. "sbatch returned job id 4242" or "reported by squeue/sacct"
+	Label  string    // the provenance label for it ("verified: ...")
+	AsOf   time.Time // when the state was obtained
+}
+
+// SubmittedEvidence is the state right after sbatch answered: all that is known is that Slurm accepted the script.
+func SubmittedEvidence(slurmID string, at time.Time) StateEvidence {
+	return StateEvidence{Value: StateSubmitted, Detail: "submitted", Source: "sbatch returned job id " + slurmID, AsOf: at,
+		Label: "verified: sbatch returned this job id at as_of; the job's progress has not been read since, so this is not a queue or run state"}
+}
+
+// ReportedEvidence is a state read from squeue or sacct.
+func ReportedEvidence(state, detail string, at time.Time) StateEvidence {
+	return StateEvidence{Value: state, Detail: detail, Source: "reported by squeue/sacct on the host", AsOf: at,
+		Label: "verified: reported by squeue/sacct at as_of; not a scientific validation"}
+}
+
+// FoundEvidence is the state of a job that squeue/sacct listed after an unconfirmed submission.
+func FoundEvidence(slurmID string, at time.Time) StateEvidence {
+	return StateEvidence{Value: StateSubmitted, Detail: "submitted", Source: "found by squeue/sacct on the host as job id " + slurmID + " after an unconfirmed submission", AsOf: at,
+		Label: "verified: squeue/sacct listed the job at as_of; its progress was not read"}
+}
+
 // RunRecord renders the run.json for a job. Everything in it is either something Vesqira did itself and can state
 // (the script it submitted, what Slurm answered, the state it last read) or something the researcher declared (the
 // settings, as they appear in the script that was submitted). Nothing is inferred: the commit of the code on the host is
@@ -43,7 +71,7 @@ var (
 // the scheduler finished the job and nothing about whether its result is scientifically valid.
 //
 // Top-level keys are limited to `settings` on purpose: discovery would show any other top-level scalar as a setting.
-func RunRecord(j Job, hostName string, inputs []RunInput, now time.Time) ([]byte, error) {
+func RunRecord(j Job, hostName string, inputs []RunInput, ev StateEvidence, now time.Time) ([]byte, error) {
 	settings := map[string]string{}
 	add := func(k, v string) {
 		if k == "" || len(k) > 80 || len(settings) >= maxRecordSettings {
@@ -84,7 +112,6 @@ func RunRecord(j Job, hostName string, inputs []RunInput, now time.Time) ([]byte
 	for _, m := range sbatchRe.FindAllStringSubmatch(j.Script, -1) {
 		add("slurm."+m[1], m[2])
 	}
-	st := j.State
 	rec := map[string]any{
 		"settings": settings,
 		"vesqira": map[string]any{
@@ -92,10 +119,11 @@ func RunRecord(j Job, hostName string, inputs []RunInput, now time.Time) ([]byte
 			"version":    1,
 			"written_at": now.UTC().Format(time.RFC3339),
 			"state": map[string]any{
-				"value":  st,
-				"as_of":  now.UTC().Format(time.RFC3339),
-				"detail": j.Detail,
-				"meaning": "the state the scheduler reported when Vesqira last looked; " +
+				"value":  ev.Value,
+				"as_of":  ev.AsOf.UTC().Format(time.RFC3339),
+				"source": ev.Source,
+				"detail": ev.Detail,
+				"meaning": "the last state Vesqira obtained, when (as_of) and from what (source), not necessarily the state now; " +
 					"a finished job says only that it ran to its end, not that its result is scientifically valid",
 			},
 			"job": map[string]any{
@@ -114,7 +142,7 @@ func RunRecord(j Job, hostName string, inputs []RunInput, now time.Time) ([]byte
 				"settings":      "declared: read from the script that was submitted (and the analysis options); the program may have changed or ignored them",
 				"script_sha256": "verified: computed over the exact script text sent to the host",
 				"slurm_id":      "verified: returned by sbatch",
-				"state":         "verified: reported by Slurm at as_of; not a scientific validation",
+				"state":         ev.Label,
 				"inputs":        "declared: paths named in the job; the files were not hashed and may have changed",
 				"code":          "unresolved: the commit of the code on the host was not read",
 			},

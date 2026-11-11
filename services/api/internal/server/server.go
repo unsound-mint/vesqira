@@ -70,6 +70,9 @@ type Server struct {
 
 	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
 
+	records     sync.WaitGroup // background run-record writes in flight (hostwrite.go)
+	recordLocks sync.Map       // job id -> *sync.Mutex: one record write per job at a time
+
 	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
 }

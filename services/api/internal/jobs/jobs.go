@@ -62,6 +62,10 @@ type Job struct {
 	// Request is the JSON of the VGT request the script was rendered from (see VGTRequest). It holds the owner's config
 	// text, so it is not part of the job JSON: only the owner-only rerun route returns it, parsed.
 	Request string `json:"-"`
+	// RecordOwed means the run record next to the outputs on the host still has to be written or rewritten: the output
+	// folder did not exist yet, a rewrite at a terminal state failed, or the host was unreachable (ADR 0039). Not part of
+	// the job JSON.
+	RecordOwed bool `json:"-"`
 }
 
 // VGTRequest is what a VGT job was asked to do, kept so a later run can start from an exact copy. BaseConfigText is
@@ -485,21 +489,26 @@ func Open(db *sql.DB) (*Store, error) {
 	if err == nil {
 		err = schema.AddColumn(db, "jobs", "note", "TEXT NOT NULL DEFAULT ''")
 	}
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "record_owed", "INTEGER NOT NULL DEFAULT 0")
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &Store{db}, nil
 }
 
-const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params,request,parent_run_id,note`
+const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params,request,parent_run_id,note,record_owed`
 
 func scan(row interface{ Scan(...any) error }) (Job, error) {
 	var j Job
 	var c int64
 	var sub, fin, run, parent sql.NullInt64
-	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params, &j.Request, &parent, &j.Note); err != nil {
+	var owed int
+	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params, &j.Request, &parent, &j.Note, &owed); err != nil {
 		return Job{}, err
 	}
+	j.RecordOwed = owed != 0
 	j.CreatedAt = time.Unix(c, 0).UTC()
 	if sub.Valid {
 		t := time.Unix(sub.Int64, 0).UTC()
@@ -609,6 +618,19 @@ func (s *Store) SetState(id int64, state, detail string) error {
 		fin = time.Now().Unix()
 	}
 	_, err := s.db.Exec(`UPDATE jobs SET state=?, detail=?, finished_at=COALESCE(finished_at, ?) WHERE id=?`, state, detail, fin, id)
+	return err
+}
+
+// SetRecordOwed marks whether the run record on the host still has to be written (see Job.RecordOwed).
+func (s *Store) SetRecordOwed(id int64, owed bool) error {
+	_, err := s.db.Exec(`UPDATE jobs SET record_owed=? WHERE id=?`, owed, id)
+	return err
+}
+
+// AppendDetail adds text to the job's detail line unless it already mentions run.json. It is one statement, so it cannot
+// overwrite a state a refresh set at the same moment.
+func (s *Store) AppendDetail(id int64, text string) error {
+	_, err := s.db.Exec(`UPDATE jobs SET detail=detail || ? WHERE id=? AND detail NOT LIKE '%run.json%'`, text, id)
 	return err
 }
 

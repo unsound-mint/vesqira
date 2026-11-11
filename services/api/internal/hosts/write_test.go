@@ -10,16 +10,26 @@ import (
 	"testing"
 )
 
-// fakeSSH stands in for the ssh client: it drops the ssh options and the destination and runs the remote command on this
-// machine (plain bash, no profile).
-func fakeSSH(t *testing.T) string {
+// fakeSSHWith stands in for the ssh client: it drops the ssh options and the destination and runs the remote command on
+// this machine (plain sh, no profile). The remote umask, the number of stdin bytes that arrive (-1: all) and the remote
+// PATH (empty: unchanged) can be set.
+func fakeSSHWith(t *testing.T, umask string, stdinCut int, remotePath string) string {
 	t.Helper()
-	script := `#!/bin/sh
+	feed := "cat"
+	if stdinCut >= 0 {
+		feed = fmt.Sprintf("head -c %d", stdinCut)
+	}
+	pathSet := ""
+	if remotePath != "" {
+		pathSet = "PATH=" + remotePath + " "
+	}
+	script := fmt.Sprintf(`#!/bin/sh
 while [ $# -gt 0 ]; do case "$1" in -o) shift 2;; -T) shift;; *) break;; esac; done
 shift
-cmd=$(printf '%s' "$*" | sed -e 's#bash -lc#bash -c#')
-exec sh -c "$cmd"
-`
+cmd=$(printf '%%s' "$*" | sed -e 's#bash -lc#bash -c#')
+umask %s
+%s | %s sh -c "$cmd"
+`, umask, feed, pathSet)
 	p := filepath.Join(t.TempDir(), "ssh")
 	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -27,22 +37,29 @@ exec sh -c "$cmd"
 	return p
 }
 
-func writeEnv(t *testing.T) (*Manager, Host, string) {
+func fakeSSH(t *testing.T) string { return fakeSSHWith(t, "022", -1, "") }
+
+func envWith(t *testing.T, ssh string) (*Manager, Host, string) {
 	t.Helper()
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	root := filepath.Join(base, "proj")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(fakeSSH(t), nil)
+	m := NewManager(ssh, nil)
 	m.ControlDir = t.TempDir()
 	return m, Host{Name: "h", Dest: "login1", Python: "python3", Roots: []string{root}}, root
+}
+
+func writeEnv(t *testing.T) (*Manager, Host, string) {
+	t.Helper()
+	return envWith(t, fakeSSH(t))
 }
 
 const mk = "# Written by Vesqira"
 
 func spec(root, rel, name, body string) WriteSpec {
-	return WriteSpec{Root: root, Rel: rel, Name: name, Marker: mk, Data: []byte(mk + "\n" + body)}
+	return WriteSpec{Root: root, Rel: rel, Name: name, Marker: mk, Create: true, Data: []byte(mk + "\n" + body)}
 }
 
 func TestWriteFileCreatesAtomicallyAndReplacesItsOwnFile(t *testing.T) {
@@ -67,7 +84,7 @@ func TestWriteFileCreatesAtomicallyAndReplacesItsOwnFile(t *testing.T) {
 		t.Fatalf("no temporary file may remain: %v", ents)
 	}
 	if fi, _ := os.Stat(filepath.Join(root, ".vesqira", "project.toml")); fi.Mode().Perm() != 0o644 {
-		t.Fatalf("mode %v", fi.Mode())
+		t.Fatalf("a new file follows the umask (022): %v", fi.Mode())
 	}
 }
 
@@ -140,7 +157,7 @@ func TestWriteFileStaysInsideTheFolder(t *testing.T) {
 	}
 }
 
-// Names with spaces, quotes, command substitutions and a newline reach the host as arguments, never as shell syntax.
+// Names with spaces, quotes, command substitutions and a trailing semicolon reach the host as arguments, never as shell syntax.
 func TestWriteFileQuotesHostileNames(t *testing.T) {
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Chdir(base) // a command substitution that ran would create ./PWNED here
@@ -153,7 +170,7 @@ func TestWriteFileQuotesHostileNames(t *testing.T) {
 	m := NewManager(fakeSSH(t), nil)
 	m.ControlDir = t.TempDir()
 	h := Host{Name: "h", Dest: "login1", Python: "python3", Roots: []string{hostileRoot}}
-	rel := "a b/$(touch " + pwn + ")/it's\nnew line/\"x\""
+	rel := "a b/$(touch " + pwn + ")/it's new line/\"x\""
 	name := "run $(touch " + pwn + ") 'one' \"two\" `three`;&|<>.json"
 	if err := m.WriteFile(context.Background(), h, spec(hostileRoot, rel, name, "{}")); err != nil {
 		t.Fatal(err)
@@ -173,7 +190,7 @@ func TestWriteFileQuotesHostileNames(t *testing.T) {
 		t.Fatal("a name was executed as shell syntax")
 	}
 	// a marker that looks like an option or a pattern is data
-	m2 := WriteSpec{Root: hostileRoot, Name: "o.json", Marker: "-e .*", Data: []byte("x -e .* y")}
+	m2 := WriteSpec{Root: hostileRoot, Name: "o.json", Marker: "-e .*", Data: []byte("-e .* y")}
 	if err := m.WriteFile(context.Background(), h, m2); err != nil {
 		t.Fatal(err)
 	}
