@@ -178,46 +178,15 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		relPath = strings.TrimSuffix(outPath, ".fits") + "-reliability.fits"
 		args = append(args, "--rel-out", relPath)
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), s.Analysis.Timeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, s.Analysis.Python, args...)
-	cmd.Env = []string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C.UTF-8"}
-	if id := RequestID(r.Context()); id != "" { // already validated as a plain token
-		cmd.Env = append(cmd.Env, "VESQIRA_REQUEST_ID="+id)
-	}
-	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-	cmd.WaitDelay = time.Second
-	var out bytes.Buffer
-	cmd.Stdout = &limited{w: &out, max: 1 << 20}
-	runErr := cmd.Run()
-	if ctx.Err() != nil {
-		_ = os.Remove(outPath)
-		if relPath != "" {
-			_ = os.Remove(relPath)
-		}
-		fail(w, 504, "the analysis took too long and was stopped")
-		return
-	}
-	var res struct {
-		OK       bool            `json:"ok"`
-		Error    string          `json:"error"`
-		Summary  json.RawMessage `json:"summary"`
-		Software json.RawMessage `json:"software"`
-	}
-	if json.Unmarshal(out.Bytes(), &res) != nil || runErr != nil || !res.OK {
+	res, code, msg := s.runAnalysisProgram(r, args)
+	if code != 0 {
 		if outPath != "" {
 			_ = os.Remove(outPath)
 		}
 		if relPath != "" {
 			_ = os.Remove(relPath)
 		}
-		if res.Error != "" {
-			fail(w, 422, res.Error)
-		} else {
-			fail(w, 422, "the analysis could not be run on this file")
-		}
+		fail(w, code, msg)
 		return
 	}
 	if in.Op == "stats" {
@@ -239,6 +208,45 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	}
 	nd = s.finishAxialResult(analysisOutcome{res.Summary, res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(r.Context(), p) }, in.Op, sources, params)
 	writeJSON(w, 201, map[string]any{"dataset": nd, "summary": res.Summary})
+}
+
+// runAnalysisProgram runs the analysis program (python and args) in its own process group, bounded by the configured timeout and
+// killed with its children when the request ends, and reads its one JSON reply. code is the HTTP status to answer with when it
+// is not 0; the caller removes any output it named.
+func (s *Server) runAnalysisProgram(r *http.Request, args []string) (analysisOutcome, int, string) {
+	ctx, cancel := context.WithTimeout(r.Context(), s.Analysis.Timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, s.Analysis.Python, args...)
+	cmd.Env = []string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C.UTF-8"}
+	if id := RequestID(r.Context()); id != "" { // already validated as a plain token
+		cmd.Env = append(cmd.Env, "VESQIRA_REQUEST_ID="+id)
+	}
+	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = time.Second
+	var out bytes.Buffer
+	cmd.Stdout = &limited{w: &out, max: 1 << 20}
+	runErr := cmd.Run()
+	if ctx.Err() != nil {
+		if r.Context().Err() != nil {
+			return analysisOutcome{}, 499, "request cancelled"
+		}
+		return analysisOutcome{}, 504, "the analysis took too long and was stopped"
+	}
+	var res struct {
+		OK       bool            `json:"ok"`
+		Error    string          `json:"error"`
+		Summary  json.RawMessage `json:"summary"`
+		Software json.RawMessage `json:"software"`
+	}
+	if json.Unmarshal(out.Bytes(), &res) != nil || runErr != nil || !res.OK {
+		if res.Error != "" {
+			return analysisOutcome{}, 422, res.Error
+		}
+		return analysisOutcome{}, 422, "the analysis could not be run on this file"
+	}
+	return analysisOutcome{res.Summary, res.Software}, 0, ""
 }
 
 type limited struct {

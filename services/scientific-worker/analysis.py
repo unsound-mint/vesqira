@@ -724,7 +724,23 @@ def op_convolve(args) -> dict:
     return {"ok": True, "op": "convolve", "summary": out}
 
 
-OPS = {"convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
+def op_relorient(args) -> dict:
+    """Relative orientation (ADR 0047): a declared orientation map against a point catalog or another map. The statistics live in
+    relorient.py; this only parses the parameters and turns its refusals into this program's."""
+    import relorient
+    try:
+        params = json.loads(args.params) if args.params else {}
+        if not isinstance(params, dict):
+            raise ValueError
+    except ValueError:
+        fail("the parameters are not a JSON object")
+    try:
+        return relorient.op_catalog(args, params) if args.op == "relorient_catalog" else relorient.op_maps(args, params)
+    except relorient.Refusal as e:
+        fail(str(e))
+
+
+OPS = {"relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
 
 
 def log_failure(op: str, what: str) -> None:
@@ -760,11 +776,20 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--rel-out")                                 # where an orientation result's companion reliability map goes
     ap.add_argument("--declared-unit")        # the brightness unit its author declared for the input, only for a file without BUNIT
     ap.add_argument("--declared-unit-ref")    # the same for the reference
+    ap.add_argument("--axial-quantity")       # what the declared angle describes (ADR 0042); relative orientation needs it
+    ap.add_argument("--ref-axial-unit", choices=["deg", "rad"])  # the reference map's declaration, for relorient_maps
+    ap.add_argument("--ref-axial-frame", choices=["pixel", "sky"])
+    ap.add_argument("--ref-axial-quantity")
+    ap.add_argument("--ref-weights")
+    ap.add_argument("--catalog")              # relorient_catalog: the catalog file, and its declaration as JSON
+    ap.add_argument("--declaration")
+    ap.add_argument("--params")               # relorient_*: parameters as a JSON object (relorient.check_params)
+    ap.add_argument("--table-out")            # relorient_maps: where the per-pixel CSV goes
     args = ap.parse_args(argv)
     try:
         if args.op != "stats" and not args.out:
             fail("--out is required")
-        if args.op in ("align", "axial_diff", "scalar_diff") and not args.reference:
+        if args.op in ("align", "axial_diff", "scalar_diff", "relorient_maps") and not args.reference:
             fail("--reference is required")
         result = OPS[args.op](args)
         import astropy

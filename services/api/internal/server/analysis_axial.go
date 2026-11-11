@@ -56,31 +56,40 @@ func (s *Server) axialAnalysis(ctx context.Context, op string, d catalog.Dataset
 		a.args = append(a.args, "--axial-frame", a.frame)
 	}
 	if in.ReliabilityID != nil {
-		rel, code, msg := s.imageDataset(*in.ReliabilityID)
+		p, code, msg := s.reliabilityPath(ctx, d, remote)
 		if code != 0 {
-			return nil, 409, "the declared reliability dataset: " + msg
+			return nil, code, msg
 		}
-		if rel.HostID != d.HostID {
-			return nil, 409, "the reliability map is on another host: both maps must be on the same machine to be used together"
-		}
-		if rel.Interpretation != nil && rel.Interpretation.Kind == "axial_orientation" {
-			return nil, 409, "the declared reliability dataset is itself declared as angles"
-		}
-		if why, err := compat.Grids(d.Header, rel.Header); err != nil || len(why) > 0 {
-			return nil, 409, "the reliability map no longer shares this map's grid: " + strings.Join(why, "; ")
-		}
-		if remote {
-			a.weights = rel.Path
-		} else {
-			real, _, status, m := s.authorize(ctx, rel)
-			if status != 0 {
-				return nil, status, "reliability map: " + m
-			}
-			a.weights = real
-		}
+		a.weights = p
 		a.args = append(a.args, "--weights", a.weights)
 	}
 	return a, 0, ""
+}
+
+// reliabilityPath is the path of the reliability map declared for an axial map d, checked: still a scalar map on d's grid and on
+// the same machine. remote is true when the path is read on d's host (its path there), otherwise it is authorised here.
+func (s *Server) reliabilityPath(ctx context.Context, d catalog.Dataset, remote bool) (string, int, string) {
+	rel, code, msg := s.imageDataset(*d.Interpretation.ReliabilityID)
+	if code != 0 {
+		return "", 409, "the declared reliability dataset: " + msg
+	}
+	if rel.HostID != d.HostID {
+		return "", 409, "the reliability map is on another host: both maps must be on the same machine to be used together"
+	}
+	if rel.Interpretation != nil && rel.Interpretation.Kind == "axial_orientation" {
+		return "", 409, "the declared reliability dataset is itself declared as angles"
+	}
+	if why, err := compat.Grids(d.Header, rel.Header); err != nil || len(why) > 0 {
+		return "", 409, "the reliability map no longer shares this map's grid: " + strings.Join(why, "; ")
+	}
+	if remote {
+		return rel.Path, 0, ""
+	}
+	real, _, status, m := s.authorize(ctx, rel)
+	if status != 0 {
+		return "", status, "reliability map: " + m
+	}
+	return real, 0, ""
 }
 
 // finishAxialResult runs after an analysis of an axial map succeeded and its result is registered. When the worker wrote a
