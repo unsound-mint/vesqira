@@ -68,7 +68,8 @@ export function SweepForm({ jobs, baseJobId, onCreated }: { jobs: Job[]; baseJob
       {template === "rohsa" ? <p className={s.note}>ROHSA jobs share one source folder on the host, so the sweep is approved to run one job at a time unless you raise that (the approval says why). Every draft requests what the base job did: the approval shows what your sizing table suggests for each N.</p> : null}
       <Input label="Sweep name (starts each job's name)" value={name} maxLength={32} onChange={(e) => { setName(e.target.value); setPreview(null); }} />
       <fieldset className={s.params}>
-        <legend>Parameters (1 to {MAX_PARAMS}; each an explicit list of values, the first changes slowest)</legend>
+        <legend>Parameters</legend>
+        <p className={s.note}>1 to {MAX_PARAMS} settings, each an explicit list of values; the first changes slowest.</p>
         {rows.map((r, i) => (
           <div key={i} className={s.prow}>
             <Select label={`Setting ${i + 1}`} value={r.key} onChange={(e) => edit(i, { key: e.target.value })}>
@@ -86,9 +87,11 @@ export function SweepForm({ jobs, baseJobId, onCreated }: { jobs: Job[]; baseJob
       <Input label="Why (kept with every draft)" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
       <div className={s.row}>
         <Button type="button" disabled={busy || !ready} onClick={() => act(() => previewSweep(request()), setPreview)}>Count the jobs</Button>
-        <Button type="button" variant="primary" disabled={busy || !ready || !preview} onClick={() => act(() => createSweep(request()), onCreated)}>Create {preview ? preview.count : ""} drafts</Button>
       </div>
-      {preview ? <Facts preview={preview} /> : null}
+      {preview ? <Facts preview={preview} /> : <p className={s.note}>First count the jobs: that shows how many drafts the grid makes and what they request. Then create them.</p>}
+      <div className={s.row}>
+        <Button type="button" variant="primary" disabled={busy || !ready || !preview} onClick={() => act(() => createSweep(request()), onCreated)}>{preview ? `Create ${preview.count} drafts` : "Create drafts"}</Button>
+      </div>
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
     </form>
   );

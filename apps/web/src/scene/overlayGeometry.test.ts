@@ -116,7 +116,7 @@ describe("renderers of overlays placed by the worker", () => {
     expect(beam[1]).toMatchObject({ type: "text", text: "108″ × 72″, PA 45°", baseline: "bottom" });
     const grid = layers.find((l) => l.id === "grid")!.marks;
     expect(grid[0]).toMatchObject({ type: "path", stroke: { dashed: true }, points: [5.5, H - 0.5, 5.5, H - 29.5] });
-    expect(grid.slice(1)).toMatchObject([{ type: "text", text: "10h00m", anchor: "start", baseline: "bottom" }, { type: "text", text: "+02°", anchor: "start", baseline: "middle" }]);
+    expect(grid.slice(1)).toMatchObject([{ type: "text", text: "RA 10h00m", anchor: "start", baseline: "bottom" }, { type: "text", text: "Dec +02°", anchor: "start", baseline: "middle" }]);
   });
 });
 

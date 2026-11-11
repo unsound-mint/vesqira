@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Icon } from "./Icon";
 import s from "./Button.module.css";
@@ -19,6 +19,23 @@ export function Button({
       {icon ? <Icon icon={icon} /> : null}
       {children}
     </button>
+  );
+}
+
+/** A link (a download, another page) that looks and sizes like a Button, so actions read as one family. */
+export function LinkButton({
+  variant = "default",
+  size = "sm",
+  icon,
+  children,
+  className,
+  ...rest
+}: Common & { icon?: LucideIcon; children: ReactNode } & AnchorHTMLAttributes<HTMLAnchorElement>) {
+  return (
+    <a className={[s.btn, s[variant], s[size], className].filter(Boolean).join(" ")} {...rest}>
+      {icon ? <Icon icon={icon} /> : null}
+      {children}
+    </a>
   );
 }
 

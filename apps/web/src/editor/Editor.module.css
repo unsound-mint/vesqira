@@ -39,7 +39,6 @@
   font-family: var(--font-data);
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
-  overflow-wrap: anywhere;
 }
 
 .meta {

@@ -35,10 +35,11 @@ export function RohsaSizingHint({ cropSize, nGauss, cpus, mem, time, onUse }: {
   const same = cpus.trim() === String(z.cpus) && mem.trim() === z.mem && time.trim() === z.time;
   return (
     <section className={s.box} aria-label="Suggested size from your sizing table">
+      <h3 className={s.h}>Sizing</h3>
       <p className={s.lead}>
         For crop_size <strong>{z.cropSize}</strong> and n_gauss <strong>{z.nGauss}</strong> your table suggests <span className="mono">{z.cpus} CPUs, {z.mem}, {z.time}</span>.
-        {" "}You are asking for {cpus.trim() || "no"} CPUs, {mem.trim() || "no memory"} and {time.trim() || "no time limit"}.
       </p>
+      <p className={s.note}>You are asking for {cpus.trim() || "no"} CPUs, {mem.trim() || "no memory"} and {time.trim() || "no time limit"}.</p>
       {z.assumed.length > 0 ? <p className={s.warn} role="note">Not given, so read the way the script reads it: {z.assumed.join("; ")}.</p> : null}
       {short ? <p className={s.warn} role="note">This memory request is smaller than the {z.mem} the table gives for this size.</p> : null}
       <Basis summary="From your sizing table, for this crop and N.">

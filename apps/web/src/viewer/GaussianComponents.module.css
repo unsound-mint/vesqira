@@ -74,6 +74,7 @@
   fill: var(--text);
 }
 
+/* one short row: the lines differ by weight and dash, and the fuller names are in the note under the plot */
 .legend {
   display: flex;
   flex-wrap: wrap;

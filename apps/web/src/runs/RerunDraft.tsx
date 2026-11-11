@@ -223,8 +223,12 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
           <option value="">{imported ? "(choose; the run does not say)" : "(choose)"}</option>
           {hosts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
         </Select>
-        <PathField label="VGT folder on the host" kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} required placeholder="/shared/home/you/vgt" />
-        <PathField label={rohsa ? "ROHSA config on the host" : "Config on the host"} kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} required placeholder="/shared/home/you/vgt/configs/run.toml" />
+        <div className={s.wide}>
+          <PathField label="VGT folder on the host" kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} required placeholder="/shared/home/you/vgt" />
+        </div>
+        <div className={s.wide}>
+          <PathField label={rohsa ? "ROHSA config on the host" : "Config on the host"} kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} required placeholder="/shared/home/you/vgt/configs/run.toml" />
+        </div>
         <Input label="CPUs" value={res.cpus} onChange={(e) => setRes({ ...res, cpus: e.target.value })} inputMode="numeric" required />
         <Input label="Memory" value={res.mem} onChange={(e) => setRes({ ...res, mem: e.target.value })} required />
         <Input label="Time limit" hint={slurmLimitGloss(res.time)} value={res.time} onChange={(e) => setRes({ ...res, time: e.target.value })} required />

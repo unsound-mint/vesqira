@@ -38,12 +38,13 @@ export function SizingHint({ jobId, jobName, usage, mem, time, onUseMem, onUseTi
   const timeShort = usage.state === "COMPLETED" && wantTime !== null && wantTime < usage.elapsedSeconds;
   return (
     <section className={s.box} aria-label={`Measured use of job ${jobId}`}>
+      <h3 className={s.h}>Sizing</h3>
       <p className={s.lead}>
         Measured in job {jobId} <span className="mono">{jobName}</span>:{" "}
         {usage.maxRssBytes === null ? "memory use not recorded" : <>peak memory <strong>{bytes(usage.maxRssBytes)}</strong>{usage.reqMemBytes !== null ? ` (requested ${bytes(usage.reqMemBytes)})` : ""}</>}
         {"; "}ran <strong>{formatDuration(usage.elapsedSeconds)}</strong>{usage.timelimitSeconds !== null ? ` (limit ${formatDuration(usage.timelimitSeconds)})` : ""}.
-        {" "}You are asking for {mem.trim() || "no memory"} and {time.trim() || "no time limit"}.
       </p>
+      <p className={s.note}>You are asking for {mem.trim() || "no memory"} and {time.trim() || "no time limit"}.</p>
       {memShort ? <p className={s.warn} role="note">This memory request is smaller than the {bytes(usage.maxRssBytes!)} that job reached.</p> : null}
       {timeShort ? <p className={s.warn} role="note">This time limit is shorter than the {formatDuration(usage.elapsedSeconds)} that job needed.</p> : null}
       {usage.oomKilled ? <p className={s.warn} role="note">That job was stopped for exceeding its memory, so its peak understates what the work needs.</p> : null}

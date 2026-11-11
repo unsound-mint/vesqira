@@ -9,7 +9,7 @@ import type { RangeMode, Stretch } from "./render";
 import { Histogram } from "./Histogram";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
-import { axialText, degrees, precisionNote, provenanceNote, spectralText, unitLabel, valueText } from "./format";
+import { axialText, degrees, limitText, precisionNote, provenanceNote, spectralText, unitLabel, valueText } from "./format";
 import s from "./Panels.module.css";
 
 function otherValue(o: Viewer, p: { x: number; y: number }): string {
@@ -36,7 +36,7 @@ function ConversionControls({ v }: { v: Viewer }) {
   if (!spec && !offers.sky && !anyValue && !offers.value.reason) return null;
   return (
     <div className={s.convert}>
-      <p className={s.convertHead}>Show as <span className={s.convertHint}>(native values stay listed above)</span></p>
+      <p className={s.convertHead}>Also show as <span className={s.convertHint}>(adds a row for each choice; the native rows above stay as the file gives them)</span></p>
       {spec ? (
         <>
           <Select label="Spectral unit" value={conv.spectral} onChange={(e) => setConv({ ...conv, spectral: e.target.value })}>
@@ -158,10 +158,10 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
         <dd className="mono">{probe ? `x ${probe.x + 1}, y ${probe.y + 1}` : EM}</dd>
         <dt>Value</dt>
         <dd className="mono">{plane && probe ? (plane.head.preview ? "preview only, full plane loading" : v.interp ? axialText(v.pixelValue, v.interp.unit) : valueText(v.pixelValue, view.bunit)) : EM}</dd>
-        {v.interp ? (
+        {v.interp && v.interp.reliabilityId !== null ? (
           <>
             <dt>Reliability</dt>
-            <dd className="mono">{v.interp.reliabilityId === null ? "no map declared" : probe && v.reliability ? valueText(v.reliability.data[probe.y * v.reliability.head.width + probe.x] ?? null, null) : EM}</dd>
+            <dd className="mono">{probe && v.reliability ? valueText(v.reliability.data[probe.y * v.reliability.head.width + probe.x] ?? null, null) : EM}</dd>
           </>
         ) : null}
         {other && probe ? (
@@ -308,8 +308,8 @@ export function DisplayControls({ v }: { v: Viewer }) {
       <div className={s.legend}>
         <canvas ref={bar} className={s.bar} width={256} height={1} role="img" aria-label={`${v.colormap} colour bar from low to high`} />
         <div className={s.ends}>
-          <span className="mono">{lim ? valueText(lim[0], unit) : EM}</span>
-          <span className="mono">{lim ? valueText(lim[1], unit) : EM}</span>
+          <span className="mono">{lim ? limitText(lim[0], unit) : EM}</span>
+          <span className="mono">{lim ? limitText(lim[1], unit) : EM}</span>
         </div>
         <div className={s.nodata}>
           <span className={s.swatch} aria-hidden="true" />

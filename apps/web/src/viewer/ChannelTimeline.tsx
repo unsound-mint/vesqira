@@ -52,7 +52,7 @@ export function ChannelTimeline({ v }: { v: Viewer }) {
       ) : null}
       {view.flags.declared && flagged.length > 0 ? (
         <p className={s.line}>
-          Provider-flagged: {flagged.slice(0, LISTED_FLAGS).map((c) => c + 1).join(", ")}
+          <span className={s.flagMark} aria-hidden="true">▲</span> Flagged in the file: {flagged.slice(0, LISTED_FLAGS).map((c) => c + 1).join(", ")}
           {flagged.length > LISTED_FLAGS ? ` and ${flagged.length - LISTED_FLAGS} more` : ""} (data kept)
         </p>
       ) : null}

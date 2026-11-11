@@ -85,7 +85,7 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
       {!data && !error ? <span className={s.state}>{want ? "Loading…" : EM}</span> : null}
       {error ? <span className={s.state} role="alert">{error}</span> : null}
       {none ? <span className={s.state}>No value in any pixel</span> : null}
-      {panel.flagged ? <span className={s.flag} title="The data provider flagged a channel of this panel; its data are shown.">flagged</span> : null}
+      {panel.flagged ? <span className={s.flag} title="The file flags a channel of this panel; its data are shown.">▲ flagged</span> : null}
     </figure>
   );
 }

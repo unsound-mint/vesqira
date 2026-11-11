@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import type { Dataset, Header, ImageDataset } from "../api/catalog";
 import { lut } from "./colormaps";
 import { glyphStride, orientationLines } from "./glyphs";
-import { axialMeanText, InterpretationPanel, suggestCompanion } from "./OrientationPanels";
+import { axialMeanText, InterpretationPanel, meanText, reliabilityChoices, suggestCompanion } from "./OrientationPanels";
+import type { AxialSummary } from "../api/planes";
 import { axialDegrees, renderPlane } from "./render";
 import type { Viewer } from "./useViewer";
 
@@ -82,7 +83,7 @@ describe("orientation lines", () => {
 });
 
 describe("declaring an interpretation", () => {
-  const ds = (id: number, name: string): ImageDataset => ({ id, name, path: `/d/${name}`, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: {} as Header });
+  const ds = (id: number, name: string, size = 4, path = `/d/${name}`): ImageDataset => ({ id, name, path, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: { axes: [{ axis: 1, length: size }, { axis: 2, length: size }] } as unknown as Header });
   const viewer = { view: { channels: 1 }, plane: { head: { stats: { min: 0, max: 3.1 } } } } as unknown as Viewer;
 
   it("suggests a reliability map by file name only", () => {
@@ -96,7 +97,7 @@ describe("declaring an interpretation", () => {
     await userEvent.selectOptions(screen.getByLabelText("Treat this map as"), "axial");
     const apply = screen.getByRole("button", { name: "Declare axial" });
     expect(apply).toBeDisabled();
-    expect(screen.getByText(/never infers the unit/)).toBeInTheDocument();
+    expect(screen.getAllByText(/never infers the unit/).length).toBeGreaterThan(0);
     expect(screen.getByText(/may be its reliability map/)).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText("Angle unit (required)"), "rad");
     await userEvent.click(apply);
@@ -107,12 +108,12 @@ describe("declaring an interpretation", () => {
     const calls: unknown[] = [];
     render(<InterpretationPanel v={viewer} dataset={ds(1, "psi.fits")} datasets={[ds(1, "psi.fits")]} declare={async (_id, b) => (calls.push(b), null)} />);
     await userEvent.selectOptions(screen.getByLabelText("Treat this map as"), "axial");
-    expect(screen.getByText(/does not declare which direction the angle is measured from/)).toBeInTheDocument();
-    expect(screen.getByText(/does not declare what the angle describes/)).toBeInTheDocument();
+    expect(screen.getAllByText(/does not declare which direction the angle is measured from/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/does not declare what the angle describes/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/assumes/)).not.toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText("Angle unit (required)"), "deg");
     await userEvent.selectOptions(screen.getByLabelText("Angle frame"), "sky");
-    expect(screen.getByText(/position angle east of north \(IAU\)/)).toBeInTheDocument();
+    expect(screen.getAllByText(/position angle east of north \(IAU\)/).length).toBeGreaterThan(0);
     for (const [value, text] of [
       ["b_field", /the angle of the field itself/],
       ["gradient", /perpendicular to B, as raw velocity gradients/],
@@ -121,7 +122,7 @@ describe("declaring an interpretation", () => {
       ["unspecified", /refused for comparison with other datasets/],
     ] as const) {
       await userEvent.selectOptions(screen.getByLabelText("What the angle is"), value);
-      expect(screen.getByText(text)).toBeInTheDocument();
+      expect(screen.getAllByText(text).length).toBeGreaterThan(0);
     }
     await userEvent.selectOptions(screen.getByLabelText("What the angle is"), "dust_polarization");
     await userEvent.click(screen.getByRole("button", { name: "Declare axial" }));
@@ -144,5 +145,36 @@ describe("declaring an interpretation", () => {
     const old: Dataset = { ...ds(1, "psi.fits"), interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: null, quantity: null, declaredBy: "user", declaredAt: "", stale: false } };
     render(<InterpretationPanel v={viewer} dataset={old} datasets={[old]} declare={async () => null} />);
     expect(screen.getByText(/Frame: not declared\. Quantity: not declared\./)).toBeInTheDocument();
+  });
+});
+
+describe("reliability map choices", () => {
+  const ds = (id: number, name: string, size: number, path: string, hostId = 0, extra: object = {}): Dataset =>
+    ({ id, name, path, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: { axes: [{ axis: 1, length: size }, { axis: 2, length: size }] } as unknown as Header, ...extra }) as Dataset;
+
+  it("lists only maps of the same size on the same host, never itself or an archived one", () => {
+    const self = ds(1, "psi.fits", 64, "/a/psi.fits");
+    const all = [self, ds(2, "rel.fits", 64, "/a/rel.fits"), ds(3, "small.fits", 32, "/a/small.fits"), ds(4, "old.fits", 64, "/a/old.fits", 0, { archived: true }), ds(5, "far.fits", 64, "/b/far.fits", 7)];
+    expect(reliabilityChoices(self, all, null).map((c) => c.id)).toEqual([2]);
+  });
+
+  it("keeps an already declared choice listed even when it no longer fits", () => {
+    const self = ds(1, "psi.fits", 64, "/a/psi.fits");
+    expect(reliabilityChoices(self, [self, ds(3, "small.fits", 32, "/a/small.fits")], 3).map((c) => c.id)).toEqual([3]);
+  });
+
+  it("tells two files of one name apart by their folder, and by host when it is not this computer", () => {
+    const self = ds(1, "psi.fits", 64, "/a/psi.fits");
+    const labels = reliabilityChoices(self, [self, ds(2, "rel.fits", 64, "/run1/rel.fits"), ds(3, "rel.fits", 64, "/run2/rel.fits"), ds(4, "alone.fits", 64, "/x/alone.fits")], null).map((c) => c.label);
+    expect(labels).toEqual(["rel.fits (…/run1)", "rel.fits (…/run2)", "alone.fits"]);
+  });
+});
+
+describe("mean orientation wording", () => {
+  const a = (over: Partial<AxialSummary>): AxialSummary => ({ defined: false, mean_deg: null, resultant: null, n: 5, reason: null, ...over }) as AxialSummary;
+  it("says orientations cancel when the resultant vanishes, and not when there is nothing to average", () => {
+    expect(meanText(a({ resultant: 0 }))).toBe("no mean orientation (the orientations cancel)");
+    expect(meanText(a({ n: 0 }))).toBe("no mean orientation (no pixel has a value)");
+    expect(meanText(a({ defined: true, mean_deg: 12.345, resultant: 0.9 }))).toBe("12.35°");
   });
 });

@@ -3,6 +3,39 @@
   gap: var(--sp-1);
 }
 
+.plotRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-1);
+  align-items: stretch;
+}
+
+.plotRow > svg {
+  grid-column: 2;
+}
+
+/* the vertical axis title, read bottom to top */
+.yLabel {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  white-space: nowrap;
+  grid-column: 1;
+  grid-row: 1;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: center;
+}
+
+.xAxis {
+  display: flex;
+  grid-column: 2;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
 .plot {
   width: 100%;
   height: 64px;

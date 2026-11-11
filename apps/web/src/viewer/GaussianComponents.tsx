@@ -13,22 +13,23 @@ import s from "./GaussianComponents.module.css";
 const W = 320;
 const H = 176;
 const HR = 72;
-const M = { l: 8, r: 8, t: 8, b: 40 };
+// the left margin holds the value labels and the unit, so no text sits on a curve; the top one holds the component numbers
+const M = { l: 64, r: 10, t: 18, b: 40 };
 const num = (v: number) => Number(v.toPrecision(4)).toString();
 
 function Legend({ showData }: { showData: boolean }) {
   const item = (cls: string, label: string) => (
     <li>
-      <svg viewBox="0 0 28 8" width="28" height="8" aria-hidden="true"><line x1="1" x2="27" y1="4" y2="4" className={cls} /></svg>
+      <svg viewBox="0 0 20 8" width="20" height="8" aria-hidden="true"><line x1="1" x2="19" y1="4" y2="4" className={cls} /></svg>
       {label}
     </li>
   );
   return (
     <ul className={s.legend} aria-label="Legend">
-      {showData ? item(s.data!, "data (this pixel)") : null}
-      {item(s.model!, "model: sum of components")}
-      {item(s.cnm!, "CNM component (dashed)")}
-      {item(s.other!, "other component (dotted)")}
+      {showData ? item(s.data!, "data") : null}
+      {item(s.model!, "sum")}
+      {item(s.cnm!, "CNM")}
+      {item(s.other!, "other")}
     </ul>
   );
 }
@@ -70,20 +71,22 @@ function Plot({ comps, data, cut, phases, drawData }: { comps: Components; data:
           const comp = comps.head.components[k]!;
           if (!c || !(comp.amp > 0)) return null;
           const at = velocity ? comp.centre : comp.mean_channel;
-          return at === null ? null : <text key={`t${k}`} className={s.tag} x={px(at)} y={py(comp.amp) - 3} textAnchor="middle">{comp.k}</text>;
+          return at === null ? null : <text key={`t${k}`} className={s.tag} x={px(at)} y={Math.max(11, py(comp.amp) - 4)} textAnchor="middle">{comp.k}</text>;
         })}
         <text className={s.tick} x={M.l} y={H - M.b + 18}>{num(xlo)}</text>
         <text className={s.tick} x={W - M.r} y={H - M.b + 18} textAnchor="end">{num(xhi)}</text>
         <text className={s.tick} x={W / 2} y={H - 4} textAnchor="middle">{xName}</text>
-        <text className={s.tick} x={M.l + 2} y={M.t + 10}>{num(yhi)} {unit}</text>
-        <text className={s.tick} x={M.l + 2} y={H - M.b - 4}>{num(ylo)}</text>
+        <text className={s.tick} x={M.l - 5} y={py(yhi) + 4} textAnchor="end">{num(yhi)}</text>
+        <text className={s.tick} x={M.l - 5} y={py(ylo) + 4} textAnchor="end">{num(ylo)}</text>
+        <text className={s.tick} transform={`translate(11 ${(M.t + H - M.b) / 2}) rotate(-90)`} textAnchor="middle">{unit}</text>
       </svg>
       {res ? (
         <svg viewBox={`0 0 ${W} ${HR}`} className={s.svg} role="img" aria-label={`Residual, data minus model, within ±${num(rmax)} ${unit}`}>
           <line className={s.zero} x1={M.l} x2={W - M.r} y1={pr(0)} y2={pr(0)} />
           {segments(xs.map(px), Array.from(res, pr)).map((l, i) => <polyline key={i} className={s.resid} points={l.join(" ")} />)}
-          <text className={s.tick} x={M.l + 2} y={10}>{`+${num(rmax)}`}</text>
-          <text className={s.tick} x={M.l + 2} y={HR - 4}>{`−${num(rmax)}`}</text>
+          <text className={s.tick} x={M.l - 5} y={14} textAnchor="end">{`+${num(rmax)}`}</text>
+          <text className={s.tick} x={M.l - 5} y={HR - 6} textAnchor="end">{`−${num(rmax)}`}</text>
+          <text className={s.tick} transform={`translate(11 ${HR / 2}) rotate(-90)`} textAnchor="middle">residual</text>
         </svg>
       ) : null}
     </>
@@ -144,7 +147,7 @@ export function GaussianComponents({ v }: { v: Viewer }) {
               <p className={s.pixel}>Pixel <span className="mono">{comps.head.x + 1}, {comps.head.y + 1}</span> <span className={s.note}>(FITS numbering, from 1)</span></p>
               <Plot comps={comps} data={st.data} cut={cut} phases={phases} drawData={st.data !== null && unitProblem === null} />
               <Legend showData={st.data !== null && unitProblem === null} />
-              {unitProblem ? <p className={s.note}>{unitProblem}</p> : <p className={s.note}>{SIGN_NOTE}.</p>}
+              {unitProblem ? <p className={s.note}>{unitProblem}</p> : <p className={s.note}>data: this pixel&rsquo;s spectrum · sum: the sum of the components · CNM (dashed) and other (dotted): single components. {SIGN_NOTE}.</p>}
               <Input
                 label="CNM width cut σ (km/s)"
                 inputMode="decimal"

@@ -65,6 +65,20 @@ describe("sweep form", () => {
     await userEvent.click(add);
     expect(add).toBeDisabled();
   });
+
+  it("says Count before Create inline, and the Create button reads cleanly before and after counting", async () => {
+    mock({ "/api/sweeps/preview": () => ({ count: 4, max: 64, baseJob: { id: 3, name: "b", hostId: 1 }, jobs: [], totals, estimate: null }) });
+    render(<SweepForm jobs={[base]} onCreated={() => {}} />);
+    expect(screen.getByText(/First count the jobs/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create drafts" }).textContent).not.toMatch(/\s\s/);
+    await userEvent.type(screen.getByLabelText(/Values/), "8, 16");
+    const count = screen.getByRole("button", { name: "Count the jobs" });
+    await userEvent.click(count);
+    const create = await screen.findByRole("button", { name: "Create 4 drafts" });
+    // the explanation of what will be made sits between the two buttons
+    expect(count.compareDocumentPosition(screen.getByText(/4 jobs/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/4 jobs/).compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
 
 const review: SweepReview = {

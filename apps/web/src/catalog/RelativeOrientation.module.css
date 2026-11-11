@@ -4,10 +4,31 @@
   gap: var(--sp-3);
 }
 
+/* one column when the inspector is narrow, two when each field gets room for its label */
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
   gap: var(--sp-2);
+}
+
+.filter {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.sub {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+.scaleBar {
+  stroke: var(--text);
+  stroke-width: 2px;
 }
 
 .kicker {

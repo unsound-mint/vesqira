@@ -2,7 +2,7 @@ import { useRef } from "react";
 import type { PointerEvent } from "react";
 import type { PlaneStats, RegionShape } from "../api/planes";
 import { useHistogram } from "./useHistogram";
-import { valueText } from "./format";
+import { limitNumber, limitText } from "./format";
 import s from "./Histogram.module.css";
 
 const BINS = 64;
@@ -62,6 +62,8 @@ export function Histogram({ data, stats, limits, unit, onChange, scope = null }:
   return (
     <div className={s.wrap}>
       <p className={s.note} data-testid="histogram-scope">{label}</p>
+      <div className={s.plotRow}>
+      <span className={s.yLabel} aria-hidden="true">pixels per bin (√)</span>
       <svg
         ref={svg}
         className={s.plot}
@@ -69,7 +71,7 @@ export function Histogram({ data, stats, limits, unit, onChange, scope = null }:
         preserveAspectRatio="none"
         role="img"
         aria-busy={counted === null}
-        aria-label={`Histogram of ${fmt(finite)} finite pixels${scope ? " in the region" : ""} from ${valueText(min, unit)} to ${valueText(max, unit)}${limits ? `; display limits ${valueText(limits[0], unit)} to ${valueText(limits[1], unit)}` : ""}`}
+        aria-label={`Histogram of ${fmt(finite)} finite pixels${scope ? " in the region" : ""} from ${limitText(min, unit)} to ${limitText(max, unit)}${limits ? `; display limits ${limitText(limits[0], unit)} to ${limitText(limits[1], unit)}` : ""}`}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={() => { drag.current = null; }}
@@ -83,11 +85,17 @@ export function Histogram({ data, stats, limits, unit, onChange, scope = null }:
           </>
         ) : null}
       </svg>
+      <div className={s.xAxis} aria-hidden="true">
+        <span className="mono">{limitText(min, unit)}</span>
+        <span>pixel value</span>
+        <span className="mono">{limitText(max, unit)}</span>
+      </div>
+      </div>
       <p className={s.note}>Counts are drawn on a square-root scale. {fmt(nonfinite)} pixels with no value are not counted.</p>
       {limits ? (
         <div className={s.inputs}>
-          <label>Lower limit<input key={`lo${limits[0]}`} className={s.num} inputMode="decimal" defaultValue={Number(limits[0].toPrecision(6))} onBlur={(e) => set(0, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") set(0, e.currentTarget.value); }} /></label>
-          <label>Upper limit<input key={`hi${limits[1]}`} className={s.num} inputMode="decimal" defaultValue={Number(limits[1].toPrecision(6))} onBlur={(e) => set(1, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") set(1, e.currentTarget.value); }} /></label>
+          <label>Lower limit<input key={`lo${limits[0]}`} aria-label={`Lower limit${unit ? ` (${unit})` : ""}`} className={s.num} inputMode="decimal" defaultValue={limitNumber(limits[0])} onBlur={(e) => set(0, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") set(0, e.currentTarget.value); }} /></label>
+          <label>Upper limit<input key={`hi${limits[1]}`} aria-label={`Upper limit${unit ? ` (${unit})` : ""}`} className={s.num} inputMode="decimal" defaultValue={limitNumber(limits[1])} onBlur={(e) => set(1, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") set(1, e.currentTarget.value); }} /></label>
         </div>
       ) : null}
     </div>

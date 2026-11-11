@@ -37,6 +37,7 @@ test("compare a declared orientation map with a starlight catalog and read the a
   await inspector.getByRole("button", { name: "Compare orientation" }).click();
   await inspector.getByLabel("Compare orientation with").selectOption({ label: "stars_tangential.csv (catalog)" });
   await inspector.getByLabel("Disk radius (arcmin)").fill("1.5");
+  await inspector.getByText("Advanced settings").click(); // the shortest shift and the other settings that rarely change sit behind it
   await inspector.getByLabel("Shortest shift (deg)").fill("0.05");
   await inspector.getByLabel("Shifts in the null").fill("200");
   await expectNoAxeViolations(page);

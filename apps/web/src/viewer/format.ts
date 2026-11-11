@@ -26,6 +26,19 @@ export function valueText(v: number | null, bunit: string | null): string {
   return bunit ? `${n} ${bunit}` : n;
 }
 
+/** Significant digits of a display limit: the same in the limit boxes, under the histogram and on the colour bar, so one number never reads two ways. */
+export const LIMIT_DIGITS = 6;
+
+/** A display limit as a number with LIMIT_DIGITS significant digits (what the limit box holds and what is shown with it). */
+export const limitNumber = (v: number): number => Number(v.toPrecision(LIMIT_DIGITS));
+
+/** A display limit for reading: LIMIT_DIGITS significant digits, then the unit when there is one. */
+export function limitText(v: number, unit: string | null): string {
+  if (!Number.isFinite(v)) return "no value";
+  const n = String(limitNumber(v));
+  return unit ? `${n} ${unit}` : n;
+}
+
 export const degrees = (v: number) => `${v.toFixed(5)}°`;
 
 export function provenanceNote(p: Provenance): string {
@@ -39,7 +52,7 @@ export function flagState(view: View | null, plane: Plane | null): FlagState {
   if (!view || !plane) return { tone: "neutral", text: EM };
   if (view.channels === 1) return { tone: "neutral", text: "Single plane" };
   if (!view.flags.declared) return { tone: "neutral", text: "No channel flags declared" };
-  return plane.head.flagged ? { tone: "warn", text: "Channel flagged by provider" } : { tone: "neutral", text: "Channel not flagged" };
+  return plane.head.flagged ? { tone: "warn", text: "Channel flagged in the file" } : { tone: "neutral", text: "Channel not flagged" };
 }
 
 export function channelLabel(channel: number, count: number, s: SpectralFacts | null, value: number | null): string {

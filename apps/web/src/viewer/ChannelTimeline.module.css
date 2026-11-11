@@ -5,11 +5,12 @@
 
 .strip {
   position: relative;
-  height: var(--sp-2);
+  height: var(--sp-3);
   top: calc(-1 * var(--sp-1));
   margin: 0 var(--sp-2);
 }
 
+/* a flagged channel is a mark with a shape (a stem under a triangle), listed in words below: not a colour difference alone */
 .tick {
   position: absolute;
   top: 0;
@@ -17,6 +18,23 @@
   width: 2px;
   background: var(--warn);
   transform: translateX(-50%);
+}
+
+.tick::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  width: 8px;
+  height: 6px;
+  background: var(--warn);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  transform: translateX(-50%);
+}
+
+.flagMark {
+  color: var(--warn);
+  font-size: var(--text-xs);
 }
 
 .head {
