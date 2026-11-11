@@ -128,9 +128,10 @@ export function useCatalog() {
     }
   }, []);
 
+  const catalogCount = useMemo(() => allDatasets.filter((d) => !d.archived && isCatalog(d)).length, [allDatasets]);
   const selected = allDatasets.find((d) => d.id === selectedId) ?? null;
   const selectedImage = selected && !isCatalog(selected) ? selected : null;
   const selectedCatalog = selected && isCatalog(selected) ? selected : null;
 
-  return { problems, declareNature, declareCatalog, selectedImage, selectedCatalog, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
+  return { problems, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
 }

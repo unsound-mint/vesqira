@@ -87,7 +87,7 @@ Project discovery offers catalogs instead of "files of other disciplines without
 - Go tests: registration authorisation (outside root, symlink, relative path), declaration validation with reasons, staleness after the file changes and after re-registration, withdrawing, cascade on delete, the migration from schema 7, FITS-only routes refusing a catalog and the reverse, a FITS table registered as a catalog and an image still an image, responses conforming to the OpenAPI spec.
 - Web tests: the inspector (columns and units as read, labelled proposal, equinox only for fk5/fk4, reasons from a refusal, parse report with lines, stale declaration) and the paged table.
 - Measured: a 47 MB CSV of 1.4 million rows loads in 4.4 s at a 775 MB peak, and a report and a 100,000-row transform each take well under a second once it is loaded. Cells are shown as astropy reads them (numbers are numbers: `00123` shows as 123); the file is the record of the original text.
-- Not verified: a design review of the new inspector sections and the table (the workbench direction is approved, ADR 0005, but these screens have had no screenshot or keyboard review at the three viewports);.
+- Looked at, not reviewed: screenshots of the table and inspector at 1440x900 dark (undeclared) and 1280x800 light (declared) were read and one defect fixed (the dataset count ignored catalogs). Not done: the phone width (390x844), keyboard-only use beyond the axe scan in the e2e spec, and the design gate (three directions and human approval) for these screens.
 
 ## Rollback / Migration
 - `catalog_declarations` is additive. An older program refuses a catalog with schema 9 ("newer than this program"), and the pre-migration backup written by the guard restores schema 7.

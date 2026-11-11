@@ -234,7 +234,7 @@ export function Shell() {
       <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0}>
         <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
       </Section>
-      <Section title="Datasets" meta={String(cat.datasets.length)}>
+      <Section title="Datasets" meta={String(cat.datasets.length + cat.catalogCount)}>
         <Explorer hosts={cat.hosts} datasets={cat.allDatasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={selectDataset} onRegister={cat.register} />
       </Section>
     </>
@@ -288,7 +288,7 @@ export function Shell() {
               <Button onClick={() => setMode("open")}>Open a project…</Button>
             </div>
           )}
-          {project ? <Section key={project.id} title="Everything registered" meta={String(cat.datasets.length)} defaultOpen={false}>{catalog}</Section> : catalog}
+          {project ? <Section key={project.id} title="Everything registered" meta={String(cat.datasets.length + cat.catalogCount)} defaultOpen={false}>{catalog}</Section> : catalog}
         </div>
         <ResizeHandle orientation="vertical" label="Resize explorer" value={L.side} min={LIMITS.side.min} max={LIMITS.side.max} onChange={(v) => set("side", v)} />
       </aside>
@@ -452,7 +452,7 @@ export function Shell() {
       <section className={s.timeline} aria-label="Channels" hidden={!timelineShown}>
         <ResizeHandle orientation="horizontal" direction={-1} label="Resize timeline" value={L.timeline} min={LIMITS.timeline.min} max={LIMITS.timeline.max} onChange={(v) => set("timeline", v)} />
         <div className={s.scroll}>
-          {actDs ? <ChannelTimeline v={viewer} /> : <p className={s.empty}>No spectral axis. Channels appear here once a cube is open.</p>}
+          {actDs ? <ChannelTimeline v={viewer} /> : <p className={s.empty}>{cat.selectedCatalog ? "A catalog has rows, not channels." : "No spectral axis. Channels appear here once a cube is open."}</p>}
         </div>
       </section>
 
