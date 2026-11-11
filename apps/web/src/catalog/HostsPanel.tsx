@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { File, Folder, X } from "lucide-react";
 import { Button, Input, PathField, Select } from "../ui";
-import { browseHostDirs, checkHost, createHost, deleteHost, listRemote, registerRemote, sshConfigHosts } from "../api/hosts";
+import { browseHostDirs, checkHost, createHost, deleteHost, listRemote, registerRemote, sshConfigHosts, vpnEnabled } from "../api/hosts";
 import type { Host, HostCheck, RemoteEntry, SshAlias } from "../api/hosts";
 import { bytes } from "./format";
 import { HostStorage } from "../hosts/HostStorage";
+import { HostVpn, VpnFields, parseArgv } from "../hosts/HostVpn";
 import { Transfers } from "../hosts/Transfers";
 import s from "./HostsPanel.module.css";
 
@@ -23,11 +24,15 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
   const [busy, setBusy] = useState(false);
   const [aliases, setAliases] = useState<SshAlias[]>([]);
   const [other, setOther] = useState(false);
+  const [vpnOn, setVpnOn] = useState(false);
+  const [vpnConnect, setVpnConnect] = useState("");
+  const [vpnDisconnect, setVpnDisconnect] = useState("");
 
   // Names that already work with `ssh <name>`, offered while typing the destination. Failing to read them offers none.
   useEffect(() => {
     let live = true;
     sshConfigHosts().then((a) => live && setAliases(a)).catch(() => undefined);
+    void vpnEnabled().then((on) => live && setVpnOn(on)); // the server decides (--enable-vpn); any failure means off
     return () => { live = false; };
   }, []);
 
@@ -40,8 +45,11 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
     e.preventDefault();
     setBusy(true);
     try {
-      await createHost({ name: form.name.trim(), dest: form.dest.trim(), roots });
+      const vpn = vpnOn ? { vpnCommand: parseArgv(vpnConnect, "Connect command"), vpnDisconnectCommand: parseArgv(vpnDisconnect, "Disconnect command") } : {};
+      await createHost({ name: form.name.trim(), dest: form.dest.trim(), roots, ...vpn });
       setForm({ name: "", dest: "" });
+      setVpnConnect("");
+      setVpnDisconnect("");
       setRoots([]);
       setChoosing(false);
       setErr(null);
@@ -54,7 +62,7 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
 
   return (
     <div className={s.wrap}>
-      {hosts.map((h) => <HostRow key={h.id} host={h} onChange={onChange} onRegistered={onRegistered} />)}
+      {hosts.map((h) => <HostRow key={h.id} host={h} vpn={vpnOn} onChange={onChange} onRegistered={onRegistered} />)}
       {hosts.length === 0 ? <p className={s.note}>No hosts yet. Files stay on the host and only planes travel, unless you start a transfer.</p> : null}
       {hosts.length > 0 ? <Transfers hosts={hosts} onRegistered={onRegistered} /> : null}
       <form className={s.form} onSubmit={add} aria-label="Add a host">
@@ -83,15 +91,16 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
             <Button type="button" disabled={!form.dest.trim() || roots.length >= 8} onClick={() => setChoosing(true)}>{roots.length ? "Add another folder…" : "Choose folder…"}</Button>
           )}
         </div>
+        {vpnOn ? <VpnFields connect={vpnConnect} disconnect={vpnDisconnect} onConnect={setVpnConnect} onDisconnect={setVpnDisconnect} /> : null}
         <Button type="submit" disabled={busy || !form.name.trim() || !form.dest.trim() || roots.length === 0}>Add host</Button>
         {err ? <p role="alert" className={s.err}>{err}</p> : null}
       </form>
-      <p className={s.note}>Vesqira runs your own <span className="mono">ssh</span> without prompts: bring the VPN up first (for example gpclient), make sure <span className="mono">ssh &lt;destination&gt;</span> works, and install astropy for the host's python3. Keys and passwords are never read by Vesqira.</p>
+      <p className={s.note}>Vesqira runs your own <span className="mono">ssh</span> without prompts: bring the VPN up first (for example gpclient, or set a VPN command for the host if this server was started with --enable-vpn), make sure <span className="mono">ssh &lt;destination&gt;</span> works, and install astropy for the host's python3. Keys and passwords are never read by Vesqira.</p>
     </div>
   );
 }
 
-function HostRow({ host, onChange, onRegistered }: { host: Host; onChange: () => Promise<void>; onRegistered: () => Promise<void> }) {
+function HostRow({ host, vpn, onChange, onRegistered }: { host: Host; vpn: boolean; onChange: () => Promise<void>; onRegistered: () => Promise<void> }) {
   const [check, setCheck] = useState<HostCheck | null>(null);
   const [state, setState] = useState<string | null>(null);
   const [dir, setDir] = useState<string | null>(null);
@@ -137,7 +146,7 @@ function HostRow({ host, onChange, onRegistered }: { host: Host; onChange: () =>
         <span className="mono">{host.dest}</span>
       </div>
       <div className={s.row}>
-        <Button type="button" disabled={busy} onClick={async () => setCheck(await run(() => checkHost(host.id)))}>Check connection</Button>
+        <Button type="button" disabled={busy} onClick={async () => { setCheck(await run(() => checkHost(host.id))); if (vpn) await onChange(); /* the server noted whether the host answered */ }}>Check connection</Button>
         <Button type="button" disabled={busy} onClick={() => open()}>Browse</Button>
         <Button type="button" disabled={busy} onClick={async () => { if (await run(() => deleteHost(host.id))) await onChange(); }}>Remove</Button>
       </div>
@@ -146,6 +155,7 @@ function HostRow({ host, onChange, onRegistered }: { host: Host; onChange: () =>
         <Button type="submit" disabled={busy || !regPath.trim()}>Register</Button>
       </form>
       {state ? <p role="alert" className={s.err}>{state}</p> : null}
+      {vpn ? <HostVpn host={host} onChange={onChange} /> : null}
       <HostStorage host={host} />
       {check ? (
         <p className={s.note} role="status">

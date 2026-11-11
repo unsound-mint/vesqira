@@ -1,4 +1,4 @@
-import { request as call, postJSON as post } from "./http";
+import { getJSON, request as call, postJSON as post } from "./http";
 import type { Dataset } from "./catalog";
 import type { components } from "./schema";
 
@@ -9,7 +9,14 @@ export type HostFilesystem = components["schemas"]["HostFilesystem"];
 export type RunFolder = components["schemas"]["RunFolder"];
 export type DiskUsage = components["schemas"]["DiskUsage"];
 
-export type Host = { id: number; name: string; dest: string; python: string; roots: string[]; createdAt: string };
+export type VpnResult = components["schemas"]["HostVpnResult"];
+export type Host = {
+  id: number; name: string; dest: string; python: string; roots: string[]; createdAt: string;
+  /** The user's own VPN client as an argv, run without a shell (ADR 0029). Absent when none is set. */
+  vpnCommand?: string[]; vpnDisconnectCommand?: string[];
+  /** What this session last learned about reaching the host (a check, the job watcher or a VPN command). */
+  reachable?: "yes" | "no" | "unknown"; reachableAt?: string;
+};
 export type HostCheck = { python: string; astropy: string; numpy: string; roots: string[] | null; enforces_roots: boolean };
 export type RemoteEntry = { name: string; kind: "dir" | "file"; size?: number };
 
@@ -20,7 +27,20 @@ export const sshConfigHosts = () => call<{ found: boolean; hosts: SshAlias[] }>(
 export const browseHostDirs = (dest: string, path?: string) =>
   call<{ path: string; entries: { name: string }[] }>(`/api/hosts/browse?dest=${encodeURIComponent(dest)}${path ? `&path=${encodeURIComponent(path)}` : ""}`);
 export const listHosts = () => call<{ hosts: Host[] }>("/api/hosts").then((r) => r.hosts);
-export const createHost = (h: { name: string; dest: string; python?: string; roots: string[] }) => post<Host>("/api/hosts", h);
+export const createHost = (h: { name: string; dest: string; python?: string; roots: string[]; vpnCommand?: string[]; vpnDisconnectCommand?: string[] }) => post<Host>("/api/hosts", h);
+/** Whether the server was started with --enable-vpn (ADR 0029). Any failure to find out means off. */
+export async function vpnEnabled(): Promise<boolean> {
+  try {
+    const body = await getJSON<{ features?: Record<string, boolean> } | null>("/api/capabilities");
+    return body?.features?.vpn === true;
+  } catch {
+    return false;
+  }
+}
+/** Runs the host's stored VPN command. The page sends only the action; the server owns the command and checks the host afterwards. */
+export const runHostVpn = (id: number, action: "connect" | "disconnect") => post<VpnResult>(`/api/hosts/${id}/vpn`, { action });
+/** Replaces both stored VPN commands of a host (a missing one is cleared). */
+export const setHostVpn = (id: number, c: { vpnCommand?: string[]; vpnDisconnectCommand?: string[] }) => post<Host>(`/api/hosts/${id}/vpn-config`, c);
 export const checkHost = (id: number) => post<HostCheck>(`/api/hosts/${id}/check`, {});
 export const deleteHost = (id: number) => post<{ deleted: boolean }>(`/api/hosts/${id}/delete`, {});
 export const listRemote = (id: number, path?: string) =>

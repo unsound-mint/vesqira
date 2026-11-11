@@ -19,7 +19,6 @@ GET /api/datasets/{id}/spectrum
 GET /api/figures/{id}/impact
 GET /api/files/tree
 GET /api/fs/complete
-GET /api/hosts
 GET /api/hosts/browse
 GET /api/hosts/ssh-config
 GET /api/hosts/{id}/complete
@@ -77,7 +76,6 @@ POST /api/figures/{id}/archive
 POST /api/figures/{id}/delete
 POST /api/figures/{id}/restore
 POST /api/fs/choose
-POST /api/hosts
 POST /api/hosts/{id}/check
 POST /api/hosts/{id}/delete
 POST /api/hosts/{id}/register
