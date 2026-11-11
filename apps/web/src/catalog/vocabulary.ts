@@ -44,6 +44,14 @@ function build(key: string, kind: VocabKey["kind"], tally: Tally, total: number,
 /** Keys that narrow the list first; keys with the same value everywhere are offered last. */
 const rank = (a: VocabKey, b: VocabKey) => Number(a.same) - Number(b.same) || b.count - a.count || a.key.localeCompare(b.key);
 
+/** `archived:yes` is offered only when something is archived: the filter would otherwise suggest a list that is empty. */
+function archivedVocab(items: { archived?: boolean }[]): VocabKey | null {
+  const n = items.filter((x) => x.archived).length;
+  if (n === 0) return null;
+  const t: Tally = new Map([["yes", n]]);
+  return build("archived", "archived", t, items.length, { sep: ":", labels: { yes: "archived (hidden by default)" } });
+}
+
 /**
  * What can be asked of a list of runs, from what actually occurs: parameter keys and values, declared result keys with
  * their recorded values only (an unrecorded result is not a value and is never offered), and the QC states in use
@@ -69,6 +77,8 @@ export function runVocabulary(runs: Run[]): Vocabulary {
     ...results.entries().map((e) => build(e.key.toLowerCase(), "result", e.tally, runs.length)),
   ];
   if (qc.size > 0) keys.push(build("qc", "qc", qc, runs.length, { sep: ":", labels: { not_assessed: "not assessed" } }));
+  const archivedKey = archivedVocab(runs);
+  if (archivedKey) keys.push(archivedKey);
   return { keys: keys.sort(rank), names: runs.map((r) => r.name) };
 }
 
@@ -91,5 +101,7 @@ export function datasetVocabulary(datasets: Dataset[], hosts: { id: number; name
     build("host", "host", host, n, { sep: ":" }),
     build("nature", "nature", nature, n, { sep: ":", labels: { none: "not declared" } }),
   ].filter((k) => k.values.length > 0);
+  const archivedKey = archivedVocab(datasets);
+  if (archivedKey) keys.push(archivedKey);
   return { keys: keys.sort(rank), names: datasets.map((d) => d.name) };
 }

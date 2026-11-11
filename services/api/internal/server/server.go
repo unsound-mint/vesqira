@@ -91,6 +91,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/availability", s.availability)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
 	mux.HandleFunc("POST /api/datasets", s.register)
+	mux.HandleFunc("GET /api/datasets/{id}/impact", s.lifecycleImpact("dataset"))
+	mux.HandleFunc("POST /api/datasets/{id}/archive", s.lifecycleArchive("dataset", true))
+	mux.HandleFunc("POST /api/datasets/{id}/restore", s.lifecycleArchive("dataset", false))
+	mux.HandleFunc("POST /api/datasets/{id}/delete", s.lifecycleDelete("dataset"))
 	mux.HandleFunc("GET /api/fs/complete", s.completeLocal)
 	mux.HandleFunc("POST /api/fs/choose", s.choose)
 	if s.HostDB != nil && s.Remote != nil {
@@ -132,6 +136,10 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/runs/{id}/rerun", s.rerunRun)
 		mux.HandleFunc("POST /api/runs/{id}/review", s.setRunReview)
 		mux.HandleFunc("GET /api/runs/{id}/history", s.runHistory)
+		mux.HandleFunc("GET /api/runs/{id}/impact", s.lifecycleImpact("run"))
+		mux.HandleFunc("POST /api/runs/{id}/archive", s.lifecycleArchive("run", true))
+		mux.HandleFunc("POST /api/runs/{id}/restore", s.lifecycleArchive("run", false))
+		mux.HandleFunc("POST /api/runs/{id}/delete", s.lifecycleDelete("run"))
 	}
 	if s.Boards != nil {
 		mux.HandleFunc("POST /api/figures", s.createFigure)
@@ -139,6 +147,14 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/figures/{id}/preview", s.figurePreview)
 		mux.HandleFunc("GET /api/figures/{id}/download", s.figureDownload)
 		mux.HandleFunc("POST /api/figures/{id}/text", s.figureText)
+		mux.HandleFunc("GET /api/figures/{id}/impact", s.lifecycleImpact("figure"))
+		mux.HandleFunc("POST /api/figures/{id}/archive", s.lifecycleArchive("figure", true))
+		mux.HandleFunc("POST /api/figures/{id}/restore", s.lifecycleArchive("figure", false))
+		mux.HandleFunc("POST /api/figures/{id}/delete", s.lifecycleDelete("figure"))
+		mux.HandleFunc("GET /api/boards/{id}/impact", s.lifecycleImpact("board"))
+		mux.HandleFunc("POST /api/boards/{id}/archive", s.lifecycleArchive("board", true))
+		mux.HandleFunc("POST /api/boards/{id}/restore", s.lifecycleArchive("board", false))
+		mux.HandleFunc("POST /api/boards/{id}/delete", s.lifecycleDelete("board"))
 		mux.HandleFunc("GET /api/boards", s.listBoards)
 		mux.HandleFunc("POST /api/boards", s.createBoard)
 		mux.HandleFunc("GET /api/boards/{id}", s.getBoard)
@@ -288,7 +304,14 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"datasets": ds})
+	mode := archivedMode(r)
+	shown := ds[:0]
+	for _, d := range ds {
+		if keepArchived(mode, d.Archived) {
+			shown = append(shown, d)
+		}
+	}
+	writeJSON(w, 200, map[string]any{"datasets": shown})
 }
 
 // availability says, for each registered file on this computer, whether it is still what was registered: available, modified

@@ -17,7 +17,8 @@ import (
 // (publish_comments.quote).
 // Version 4: a person may declare the unit of a file that has no BUNIT (dataset_units; ADR 0038).
 // Version 5: a job remembers that its run record on the host is still owed (jobs.record_owed; ADR 0039).
-const Version = 5
+// Version 6: entries may be archived (archived_entries; ADR 0039).
+const Version = 6
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -31,6 +32,7 @@ var migrations = []Migration{
 	{To: 3, Name: "report pages and quoted comments", Up: reportPagesAndQuotes},
 	{To: 4, Name: "declared units", Up: declaredUnits},
 	{To: 5, Name: "run record owed", Up: runRecordOwed},
+	{To: 6, Name: "archived entries", Up: archivedEntries},
 }
 
 // runRecordOwed adds jobs.record_owed. Every existing job gets 0: no record is owed for a job submitted before records
@@ -41,6 +43,27 @@ func runRecordOwed(tx *sql.Tx) error {
 		return err
 	}
 	return AddColumn(tx, "jobs", "record_owed", "INTEGER NOT NULL DEFAULT 0")
+}
+
+// archivedEntries adds the side table that marks a dataset, run, figure or board as archived. No row to carry over.
+func archivedEntries(tx *sql.Tx) error {
+	_, err := tx.Exec(archiveTable)
+	return err
+}
+
+const archiveTable = `CREATE TABLE IF NOT EXISTS archived_entries(
+	kind TEXT NOT NULL, entity_id INTEGER NOT NULL, archived_at INTEGER NOT NULL, PRIMARY KEY(kind, entity_id))`
+
+// EnsureArchive creates the archive table for a fresh install; every store that reads ArchivedExpr calls it from Open.
+func EnsureArchive(db *sql.DB) error {
+	_, err := db.Exec(archiveTable)
+	return err
+}
+
+// ArchivedExpr is the SQL that tells whether the row of a table (idCol such as "datasets.id") is archived, for a select
+// list. kind is one of "dataset", "run", "figure", "board".
+func ArchivedExpr(kind, idCol string) string {
+	return `EXISTS(SELECT 1 FROM archived_entries WHERE kind='` + kind + `' AND entity_id=` + idCol + `)`
 }
 
 // declaredUnits adds the overlay table for a unit a person declared for a dataset with no BUNIT (ADR 0038). The catalog

@@ -239,7 +239,11 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	hints := s.hintsFor(rs) // one read of the catalog for every run, not one per run
 	out := make([]runJSON, 0, len(rs))
+	mode := archivedMode(r)
 	for _, x := range rs {
+		if !keepArchived(mode, x.Archived) {
+			continue
+		}
 		out = append(out, s.runViewWith(x, lin, hints))
 	}
 	writeJSON(w, 200, map[string]any{"runs": out})

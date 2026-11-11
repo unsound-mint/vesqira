@@ -17,7 +17,7 @@ const mod = "github.com/unsound-mint/vesqira/services/api/internal/"
 // allowed lists, for every internal package, the internal packages it may import directly. A new import is a design
 // decision: add it here on purpose, and if the importing package faces a reviewer, re-read the reviewer boundary below.
 var allowed = map[string][]string{
-	"arch": {}, "audit": {}, "backup": {}, "compat": {}, "derived": {}, "regions": {}, "sourceroot": {}, "worker": {}, "schema": {}, "vgtlog": {},
+	"arch": {}, "audit": {}, "lifecycle": {}, "backup": {}, "compat": {}, "derived": {}, "regions": {}, "sourceroot": {}, "worker": {}, "schema": {}, "vgtlog": {},
 	"notionimport": {}, "publish": {}, "imgmeta": {},
 	"boards":   {"schema"},
 	"reports":  {"publish"},
@@ -28,7 +28,7 @@ var allowed = map[string][]string{
 	"projects": {"discover"},
 	"hosts":    {"worker"},
 	"review":   {"boards"},
-	"server":   {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "imgmeta", "jobs", "projects", "publish", "regions", "reports", "runs", "schema", "sourceroot", "vgtlog", "worker"},
+	"server":   {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "imgmeta", "jobs", "lifecycle", "projects", "publish", "regions", "reports", "runs", "schema", "sourceroot", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a

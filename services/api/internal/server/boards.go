@@ -300,9 +300,16 @@ func (s *Server) listFigures(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
+	mode := archivedMode(r)
+	shown := fs[:0]
+	for _, f := range fs {
+		if keepArchived(mode, f.Archived) {
+			shown = append(shown, f)
+		}
+	}
 	writeJSON(w, 200, struct {
 		Figures []boards.Figure `json:"figures"`
-	}{fs})
+	}{shown})
 }
 
 func (s *Server) figurePreview(w http.ResponseWriter, r *http.Request) {
@@ -384,12 +391,16 @@ func (s *Server) listBoards(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
-	for i := range bs {
-		bs[i] = s.boardView(r.Context(), bs[i], false)
+	mode := archivedMode(r)
+	shown := bs[:0]
+	for _, b := range bs {
+		if keepArchived(mode, b.Archived) {
+			shown = append(shown, s.boardView(r.Context(), b, false))
+		}
 	}
 	writeJSON(w, 200, struct {
 		Boards []boards.Board `json:"boards"`
-	}{bs})
+	}{shown})
 }
 
 func (s *Server) createBoard(w http.ResponseWriter, r *http.Request) {

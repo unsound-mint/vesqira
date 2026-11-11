@@ -32,6 +32,8 @@ type Dataset struct {
 	// UnitDeclaration is the unit the user declared for a file whose header has no BUNIT (see unit.go). The header
 	// facts themselves are never changed.
 	UnitDeclaration *UnitDeclaration `json:"unitDeclaration"`
+	// Archived entries are hidden from the lists but still resolve by id (ADR 0039).
+	Archived bool `json:"archived"`
 }
 
 // Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).
@@ -77,6 +79,10 @@ func Open(dsn string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	if err := schema.Guard(db, dsn); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := schema.EnsureArchive(db); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -160,7 +166,7 @@ func scan(row interface{ Scan(...any) error }) (Dataset, error) {
 	var d Dataset
 	var mod, add int64
 	var hdr string
-	if err := row.Scan(&d.ID, &d.Path, &d.Name, &d.SizeBytes, &mod, &add, &hdr, &d.HostID); err != nil {
+	if err := row.Scan(&d.ID, &d.Path, &d.Name, &d.SizeBytes, &mod, &add, &hdr, &d.HostID, &d.Archived); err != nil {
 		return Dataset{}, err
 	}
 	if d.HostID != 0 {
@@ -170,7 +176,7 @@ func scan(row interface{ Scan(...any) error }) (Dataset, error) {
 	return d, nil
 }
 
-const cols = `id,path,name,size_bytes,modified_at,added_at,header,host_id`
+var cols = `id,path,name,size_bytes,modified_at,added_at,header,host_id,` + schema.ArchivedExpr("dataset", "datasets.id")
 
 func (s *Store) byPath(p string) (Dataset, error) {
 	return scan(s.db.QueryRow(`SELECT `+cols+` FROM datasets WHERE path=?`, p))

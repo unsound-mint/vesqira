@@ -46,6 +46,9 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(dataDir, "figures"), 0o700); err != nil {
 		return nil, err
 	}
+	if err := schema.EnsureArchive(db); err != nil {
+		return nil, err
+	}
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS figures(
 			id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, title TEXT NOT NULL, caption TEXT NOT NULL,
@@ -107,6 +110,8 @@ type Figure struct {
 	Width      int             `json:"width"`
 	Height     int             `json:"height"`
 	Provenance json.RawMessage `json:"provenance"`
+	// Archived figures are hidden from the lists but still resolve by id, on boards, in reports and in reviews (ADR 0039).
+	Archived bool `json:"archived"`
 }
 
 // NewFigure carries what the caller knows. Provenance must already be the reviewer-safe document.
@@ -171,13 +176,13 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 	return s.Figure(id)
 }
 
-const figCols = `id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance`
+var figCols = `id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,` + schema.ArchivedExpr("figure", "figures.id")
 
 func scanFigure(row interface{ Scan(...any) error }) (Figure, error) {
 	var f Figure
 	var at int64
 	var prov string
-	if err := row.Scan(&f.ID, &f.DatasetID, &f.Title, &f.Caption, &at, &f.Revision, &f.PreviewSHA, &f.Width, &f.Height, &prov); err != nil {
+	if err := row.Scan(&f.ID, &f.DatasetID, &f.Title, &f.Caption, &at, &f.Revision, &f.PreviewSHA, &f.Width, &f.Height, &prov, &f.Archived); err != nil {
 		return Figure{}, err
 	}
 	f.CreatedAt, f.Provenance = time.Unix(at, 0).UTC(), json.RawMessage(prov)
@@ -232,6 +237,14 @@ func (s *Store) SetText(id int64, title, caption string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// RemovePreview deletes a figure preview file that nothing refers to any more (see lifecycle.Deleted).
+func (s *Store) RemovePreview(sha string) error {
+	if _, err := s.Preview(sha); err != nil {
+		return err
+	}
+	return os.Remove(filepath.Join(s.dir, "figures", sha+".png"))
 }
 
 func (s *Store) Preview(sha string) ([]byte, error) {
@@ -289,6 +302,8 @@ type Board struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	Items     []Item    `json:"items"`
+	// Archived boards are hidden from the lists but still open by id (ADR 0039).
+	Archived bool `json:"archived"`
 }
 
 func (s *Store) CreateBoard(title string) (Board, error) {
@@ -334,7 +349,7 @@ func (s *Store) Boards() ([]Board, error) {
 func (s *Store) Board(id int64) (Board, error) {
 	var b Board
 	var c, u int64
-	err := s.db.QueryRow(`SELECT id,title,created_at,updated_at FROM boards WHERE id=?`, id).Scan(&b.ID, &b.Title, &c, &u)
+	err := s.db.QueryRow(`SELECT id,title,created_at,updated_at,`+schema.ArchivedExpr("board", "boards.id")+` FROM boards WHERE id=?`, id).Scan(&b.ID, &b.Title, &c, &u, &b.Archived)
 	if errors.Is(err, sql.ErrNoRows) {
 		return b, ErrNotFound
 	}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, getAvailability, listDatasets, registerDataset, setInterpretation, setNature, setUnit } from "../api/catalog";
 import type { Dataset, InterpretationRequest, Nature, Problem } from "../api/catalog";
 import { listHosts } from "../api/hosts";
@@ -9,7 +9,10 @@ import { importRun, listRuns } from "../api/runs";
 import type { Run } from "../api/runs";
 
 export function useCatalog() {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  // Every dataset, archived ones included: an archived one still opens and still resolves for what refers to it. `datasets`
+  // below is what lists and pickers offer.
+  const [allDatasets, setDatasets] = useState<Dataset[]>([]);
+  const datasets = useMemo(() => allDatasets.filter((d) => !d.archived), [allDatasets]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -31,10 +34,10 @@ export function useCatalog() {
 
   useEffect(() => {
     let live = true;
-    listRuns().then((r) => live && setRuns(r)).catch(() => undefined);
+    listRuns({ archived: "all" }).then((r) => live && setRuns(r)).catch(() => undefined);
     listHosts().then((h) => live && setHosts(h)).catch(() => undefined);
     listJobs().then((j) => live && setJobs(j)).catch(() => undefined);
-    listDatasets()
+    listDatasets({ archived: "all" })
       .then((d) => live && (setDatasets(d), setError(null)))
       .catch((e: unknown) => live && setError(e instanceof ApiError ? e.message : "Could not load datasets."))
       .finally(() => live && setLoading(false));
@@ -71,8 +74,8 @@ export function useCatalog() {
   const importRunFolder = useCallback(async (path: string): Promise<string | null> => {
     try {
       const run = await importRun(path);
-      setRuns(await listRuns());
-      setDatasets(await listDatasets());
+      setRuns(await listRuns({ archived: "all" }));
+      setDatasets(await listDatasets({ archived: "all" }));
       const first = run.outputs.find((o) => o.role === "psi") ?? run.outputs[0];
       if (first) setSelectedId(first.datasetId);
       return null;
@@ -83,12 +86,12 @@ export function useCatalog() {
 
   const refreshHosts = useCallback(async () => setHosts(await listHosts()), []);
   const refreshDatasets = useCallback(async () => {
-    const d = await listDatasets();
+    const d = await listDatasets({ archived: "all" });
     setDatasets(d);
   }, []);
 
   const refreshRuns = useCallback(async () => {
-    setRuns(await listRuns());
+    setRuns(await listRuns({ archived: "all" }));
     setJobs(await listJobs());
   }, []);
 
@@ -113,5 +116,5 @@ export function useCatalog() {
     }
   }, []);
 
-  return { problems, declareNature, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, selectedId, select: setSelectedId, loading, error, register, selected: datasets.find((d) => d.id === selectedId) ?? null };
+  return { problems, declareNature, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected: allDatasets.find((d) => d.id === selectedId) ?? null };
 }
