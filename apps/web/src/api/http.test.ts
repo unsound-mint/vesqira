@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, postJSON, request, requestRaw } from "./http";
+import { ApiError, newRequestId, onApiError, postJSON, request, requestRaw } from "./http";
 
 const answer = (body: string | null, status: number, type?: string) => vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status, headers: type ? { "Content-Type": type } : {} })));
 const failure = async (p: Promise<unknown>) => (await p.then(() => null, (e: unknown) => e)) as ApiError;
@@ -72,5 +72,57 @@ describe("requestRaw and postJSON", () => {
     await postJSON("/api/x", { k: 1 });
     const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
     expect([init.method, init.body, (init.headers as Record<string, string>)["Content-Type"]]).toEqual(["POST", '{"k":1}', "application/json"]);
+  });
+});
+
+describe("request id", () => {
+  const withId = (body: string | null, status: number, type: string, rid: string) => vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status, headers: { "Content-Type": type, "X-Request-Id": rid } })));
+
+  it("reads X-Request-Id from JSON and text/plain errors, and from a review link that is not valid", async () => {
+    withId('{"error":"no good"}', 409, "application/json", "json-id-0001");
+    expect((await failure(request("/api/x"))).requestId).toBe("json-id-0001");
+    withId("slow down", 429, "text/plain", "text-id-0002");
+    expect((await failure(request("/review-api/t"))).requestId).toBe("text-id-0002");
+    withId("nope", 404, "text/plain", "gone-id-0003");
+    expect((await failure(request("/review-api/t"))).requestId).toBe("gone-id-0003");
+    answer("x", 500, "text/plain");
+    expect((await failure(request("/api/x"))).requestId).toBeUndefined();
+  });
+
+  it("tells subscribers about each failed response, but not about aborts, unreachable errors or quiet requests", async () => {
+    const seen: string[] = [];
+    const off = onApiError((e) => seen.push(e.requestId));
+    withId("boom", 500, "text/plain", "sub-id-00001");
+    await failure(request("/api/x"));
+    await failure(requestRaw("/api/x", undefined, { quiet: true }));
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new DOMException("aborted", "AbortError"))));
+    await failure(request("/api/x"));
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("down"))));
+    await failure(request("/api/x"));
+    off();
+    withId("boom", 500, "text/plain", "sub-id-00002");
+    await failure(request("/api/x"));
+    expect(seen).toEqual(["sub-id-00001"]);
+  });
+
+  it("does not announce a 4xx answer: the page shows it in place, and a 404 or 409 is not a failure to report", async () => {
+    const seen: string[] = [];
+    const off = onApiError((e) => seen.push(e.requestId));
+    withId("not found", 404, "text/plain", "sub-id-00404");
+    await failure(request("/api/x"));
+    withId("decide", 409, "text/plain", "sub-id-00409");
+    await failure(request("/api/x"));
+    withId("boom", 502, "text/plain", "sub-id-00502");
+    await failure(request("/api/x"));
+    off();
+    expect(seen).toEqual(["sub-id-00502"]);
+  });
+
+  it("sends a given id as X-Request-Id, and newRequestId makes an acceptable one", async () => {
+    const f = vi.fn(async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", f);
+    await postJSON("/api/x", {}, undefined, "abcdefgh12");
+    expect(new Headers((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers).get("X-Request-Id")).toBe("abcdefgh12");
+    expect(newRequestId()).toMatch(/^[A-Za-z0-9._-]{8,64}$/);
   });
 });

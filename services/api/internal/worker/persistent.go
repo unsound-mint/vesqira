@@ -64,43 +64,41 @@ var ErrTimeout = errors.New("worker timed out")
 
 // Persistent keeps long-lived scientific workers, so Python and astropy start once instead of per request.
 //
-// There are three lanes, each with its own process and one task at a time. Planes and coordinates use the
-// interactive lane; region spectra and orientation statistics, which read much more of the file, use the heavy
-// lane; header reads for registering files (a project scan can queue a thousand of them) use the registration lane.
-// A slow heavy request or a long scan therefore never delays channel scrubbing (interactive work keeps its latency
-// while background work runs). A request that exceeds Timeout, or any broken reply, kills that lane's process group and
-// its next request starts a clean worker.
+// Work is split into three classes (workload.go): interactive (planes, coordinates, overlay geometry), heavy (region
+// spectra, orientation statistics, PV, channel grids, catalog and index reads) and background (header reads for
+// registering files, fingerprints; a project scan can queue a thousand of them). Each class has its own worker processes,
+// as many as its budget, and one task at a time per process. A slow heavy request or a long scan therefore never delays
+// channel scrubbing: interactive capacity is reserved by construction, not by priority. A request that exceeds Timeout, or
+// any broken reply, kills that process group and the next request on it starts a clean worker.
 //
 // A caller that gives up (context cancelled) while queued leaves without touching the worker. On the interactive
-// lane one that gives up while its request is running does not kill it: planes are small, the reply is drained to
-// keep the stream in step, and restarting costs a cold Python start. On the heavy lane the running read is
-// stopped by killing only the heavy process, because its work can last tens of seconds and nobody is waiting for it.
+// class one that gives up while its request is running does not kill it: planes are small, the reply is drained to
+// keep the stream in step, and restarting costs a cold Python start. On the heavy and background classes the running read is
+// stopped by killing only that process, because its work can last tens of seconds and nobody is waiting for it.
 type Persistent struct {
 	Command []string
 	Timeout time.Duration
 	// ExtraEnv adds variables to the worker's otherwise minimal environment (for ssh: the agent socket and HOME).
 	ExtraEnv []string
+	// Load holds the budgets and the queue state; nil takes DefaultBudgets. Share one with the analysis runner so a queue
+	// reason can name analyses too.
+	Load *Load
 
 	Starts atomic.Int64 // processes started so far (observable in tests and logs)
 
 	once  sync.Once
-	light lane
-	heavy lane
-	reg   lane
+	lanes [numClasses][]*lane
 }
 
-// lane is one worker process with its own queue of one.
-type lane struct {
-	sem  chan struct{}
-	proc *proc
-}
+// lane is one worker process; the class's slot token serializes its use.
+type lane struct{ proc *proc }
 
 // heavyOps are the worker operations that read a region over many channels or a whole map.
-// The catalog operations read a whole table (up to its size cap) and keep it parsed in that process, so they share one lane.
-var heavyOps = map[string]bool{"spectrum": true, "axial": true, "catalog_describe": true, "catalog_rows": true, "catalog_report": true, "catalog_positions": true, "catalog_transform": true, "overlay_catalog": true, "rohsa_index": true, "channel_grid": true, "pv": true, "fingerprint_full": true}
+// The catalog operations read a whole table (up to its size cap) and keep it parsed in that process, so they share a class.
+var heavyOps = map[string]bool{"spectrum": true, "axial": true, "catalog_describe": true, "catalog_rows": true, "catalog_report": true, "catalog_positions": true, "catalog_transform": true, "overlay_catalog": true, "rohsa_index": true, "channel_grid": true, "pv": true}
 
-// registerOps are header reads done to catalog files, kept off the interactive lane.
-var registerOps = map[string]bool{"describe": true, "header": true, "fingerprint": true}
+// backgroundOps are the reads done to catalog files (header reads, fingerprints), kept off the interactive and heavy classes.
+var backgroundOps = map[string]bool{"describe": true, "header": true, "fingerprint": true, "fingerprint_full": true}
 
 type proc struct {
 	cmd *exec.Cmd
@@ -110,9 +108,15 @@ type proc struct {
 
 func (p *Persistent) init() {
 	p.once.Do(func() {
-		p.light.sem = make(chan struct{}, 1)
-		p.heavy.sem = make(chan struct{}, 1)
-		p.reg.sem = make(chan struct{}, 1)
+		if p.Load == nil {
+			p.Load = NewLoad(DefaultBudgets())
+		}
+		for _, c := range Classes() {
+			p.lanes[c] = make([]*lane, p.Load.budgets.of(c))
+			for i := range p.lanes[c] {
+				p.lanes[c][i] = &lane{}
+			}
+		}
 	})
 }
 
@@ -139,7 +143,7 @@ func (p *Persistent) start() (*proc, error) {
 	cmd := exec.Command(p.Command[0], p.Command[1:]...)
 	cmd.Env = append(BaseEnv(), p.ExtraEnv...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Stderr = os.Stderr // the worker's log lines (failures, slow requests) name the API request id
+	cmd.Stderr = StderrTail.Writer(nil) // the worker's log lines (failures, slow requests) name the API request id
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, ErrUnavailable
@@ -164,31 +168,38 @@ func (pr *proc) kill() {
 // Close stops the workers. Safe to call once the server has stopped taking requests.
 func (p *Persistent) Close() {
 	p.init()
-	for _, l := range []*lane{&p.light, &p.heavy, &p.reg} {
-		l.sem <- struct{}{}
-		if l.proc != nil {
-			l.proc.kill()
-			l.proc = nil
+	for _, c := range Classes() {
+		for range p.lanes[c] {
+			p.Load.sem[c] <- struct{}{} // tokens are not given back: nothing runs after Close
 		}
-		<-l.sem
+		for _, l := range p.lanes[c] {
+			if l.proc != nil {
+				l.proc.kill()
+				l.proc = nil
+			}
+		}
 	}
 }
 
 // Do sends one request and returns the reply, or a *RequestError when the worker refused it.
 func (p *Persistent) Do(ctx context.Context, req map[string]any) (Reply, error) {
 	p.init()
-	l, killOnCancel := &p.light, false
-	if op, _ := req["op"].(string); heavyOps[op] {
-		l, killOnCancel = &p.heavy, true
-	} else if registerOps[op] {
-		l = &p.reg
+	op, _ := req["op"].(string)
+	class := classFor(ctx, op)
+	killOnCancel := class != Interactive
+	if op == "fingerprint_full" {
+		releaseFull, err := p.Load.AcquireFull(ctx)
+		if err != nil {
+			return Reply{}, err
+		}
+		defer releaseFull()
 	}
-	select {
-	case l.sem <- struct{}{}:
-	case <-ctx.Done():
-		return Reply{}, ctx.Err()
+	slot, release, err := p.Load.Acquire(ctx, class, OpLabel(op))
+	if err != nil {
+		return Reply{}, err
 	}
-	defer func() { <-l.sem }()
+	defer release()
+	l := p.lanes[class][slot]
 
 	line, err := json.Marshal(req)
 	if err != nil {

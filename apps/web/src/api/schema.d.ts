@@ -2964,6 +2964,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/support/bundle/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The previewed bundle as a zip (owner listener only; the preview expires after ten minutes) */
+        get: operations["owner_s_supportDownload_get_api_support_bundle_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/support/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build a support bundle and return every file's text for review before saving (owner listener only) */
+        post: operations["owner_s_supportPreview_post_api_support_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sweeps": {
         parameters: {
             query?: never;
@@ -3257,6 +3293,23 @@ export interface paths {
         put?: never;
         /** Put a failed or cancelled transfer back in the queue (the partial file is resumed), or copy again a transfer that arrived unverified (contents are compared and the copy this transfer made may be replaced) */
         post: operations["owner_s_retryTransfer_post_api_transfers_id_retry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Budget, running and waiting tasks per workload class; with ?request=<X-Request-Id> whether that request waits and why */
+        get: operations["owner_s_workload_get_api_workload"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6837,6 +6890,101 @@ export interface components {
             /** @description for example: VPN client started; the host became reachable after 12 s */
             message: string;
         };
+        WorkloadClass: {
+            /** @enum {string} */
+            class: "interactive" | "heavy" | "background";
+            /** @description tasks of this class that may run at once (--workers-interactive, --workers-heavy, --workers-background) */
+            budget: number;
+            running: number;
+            waiting: number;
+        };
+        WorkloadRequest: {
+            /**
+             * @description unknown: finished, never queued, or not a request of the scientific workers
+             * @enum {string}
+             */
+            state: "waiting" | "running" | "unknown";
+            class?: string;
+            /** @description present while waiting: what holds the class's slots, and that interactive viewing is unaffected (heavy and background classes) */
+            reason?: string;
+        };
+        /** @description Workload classes (ADR 0056). Names only operations, never files or datasets. */
+        Workload: {
+            classes: components["schemas"]["WorkloadClass"][];
+            request?: components["schemas"]["WorkloadRequest"];
+        };
+        SupportFile: {
+            name: string;
+            bytes: number;
+            /** @description the whole file, plain text, as it is in the zip */
+            text: string;
+        };
+        /** @description A support bundle built and kept in memory for ten minutes; GET /api/support/bundle/{id} returns exactly these files. */
+        SupportPreview: {
+            id: string;
+            bytes: number;
+            files: components["schemas"]["SupportFile"][];
+        };
+        SupportPreviewRequest: {
+            /** @description default false: dataset names and file names are removed from every file */
+            includeDatasetNames?: boolean;
+        };
+        /** @description How the base raster of a saved figure was drawn, so "draw again" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only. */
+        SceneRender: {
+            /** @description The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^26 pixels; a figure whose canvas is larger is stored without this record and is drawn from its PNG only. */
+            canvas: {
+                width: number;
+                height: number;
+            };
+            /** @description The two colours of the hatching that marks a pixel with no value (never a colour of the scale), as the theme gave them */
+            nodata: number[][];
+            /** @description The width in pixels the figure was composed at */
+            figureWidth: number;
+        };
+        RedrawSource: {
+            /**
+             * @description source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines.
+             * @enum {string}
+             */
+            role: "source" | "overlay" | "reliability";
+            /** Format: int64 */
+            datasetId: number;
+            name: string;
+            /**
+             * @description unchanged: equal full SHA-256. probable: nothing differs but what was recorded cannot prove the bytes are the same (an equal sampled fingerprint has a blind spot, ADR 0053). changed: the registered file is not what the figure was drawn from (it can be read). changed_on_disk: the file on disk is not what is registered (register it again first). missing: no longer registered, or no readable file.
+             * @enum {string}
+             */
+            status: "unchanged" | "probable" | "changed" | "changed_on_disk" | "missing";
+            differs: ("size" | "time" | "fingerprint")[];
+            readable: boolean;
+            /** @description The sentence the owner reads about this file */
+            text: string;
+            /**
+             * @description The declarations (unit, orientation interpretation, catalog) in force now against those recorded when the figure was saved. changed and removed are treated like changed data: the owner is asked. not_recorded: the figure was saved before declarations were recorded (not an error). Absent when the dataset is no longer registered.
+             * @enum {string}
+             */
+            declaration?: "unchanged" | "changed" | "removed" | "not_recorded";
+            /** @description The sentence the owner reads about the declarations, e.g. "declaration unchanged" or "declaration changed: unit was K (declared by you), now Jy/beam (declared by you)" */
+            declarationText?: string;
+        };
+        /** @description What "draw again" must tell the owner before it draws. Reads and changes nothing. */
+        RedrawCheck: {
+            /** Format: int64 */
+            figureId: number;
+            /**
+             * @description The description the figure was drawn from; none when it keeps none
+             * @enum {string}
+             */
+            kind: "scene" | "channel-grid" | "none";
+            /**
+             * @description ready: every file is unchanged, draw. ask: say what changed and ask before drawing. blocked: a file cannot be read. none: this figure cannot be drawn again, it is shown as its PNG.
+             * @enum {string}
+             */
+            state: "ready" | "ask" | "blocked" | "none";
+            /** @description The question or the reason, for ask, blocked and none */
+            prompt?: string;
+            sources: components["schemas"]["RedrawSource"][];
+        };
         MaskReference: {
             /** Format: int64 */
             id: number;
@@ -6940,62 +7088,6 @@ export interface components {
             rule?: string;
             mappingVersion?: string;
             note: string;
-        };
-        /** @description How the base raster of a saved figure was drawn, so "draw again" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only. */
-        SceneRender: {
-            /** @description The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^26 pixels; a figure whose canvas is larger is stored without this record and is drawn from its PNG only. */
-            canvas: {
-                width: number;
-                height: number;
-            };
-            /** @description The two colours of the hatching that marks a pixel with no value (never a colour of the scale), as the theme gave them */
-            nodata: number[][];
-            /** @description The width in pixels the figure was composed at */
-            figureWidth: number;
-        };
-        RedrawSource: {
-            /**
-             * @description source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines.
-             * @enum {string}
-             */
-            role: "source" | "overlay" | "reliability";
-            /** Format: int64 */
-            datasetId: number;
-            name: string;
-            /**
-             * @description unchanged: equal full SHA-256. probable: nothing differs but what was recorded cannot prove the bytes are the same (an equal sampled fingerprint has a blind spot, ADR 0053). changed: the registered file is not what the figure was drawn from (it can be read). changed_on_disk: the file on disk is not what is registered (register it again first). missing: no longer registered, or no readable file.
-             * @enum {string}
-             */
-            status: "unchanged" | "probable" | "changed" | "changed_on_disk" | "missing";
-            differs: ("size" | "time" | "fingerprint")[];
-            readable: boolean;
-            /** @description The sentence the owner reads about this file */
-            text: string;
-            /**
-             * @description The declarations (unit, orientation interpretation, catalog) in force now against those recorded when the figure was saved. changed and removed are treated like changed data: the owner is asked. not_recorded: the figure was saved before declarations were recorded (not an error). Absent when the dataset is no longer registered.
-             * @enum {string}
-             */
-            declaration?: "unchanged" | "changed" | "removed" | "not_recorded";
-            /** @description The sentence the owner reads about the declarations, e.g. "declaration unchanged" or "declaration changed: unit was K (declared by you), now Jy/beam (declared by you)" */
-            declarationText?: string;
-        };
-        /** @description What "draw again" must tell the owner before it draws. Reads and changes nothing. */
-        RedrawCheck: {
-            /** Format: int64 */
-            figureId: number;
-            /**
-             * @description The description the figure was drawn from; none when it keeps none
-             * @enum {string}
-             */
-            kind: "scene" | "channel-grid" | "none";
-            /**
-             * @description ready: every file is unchanged, draw. ask: say what changed and ask before drawing. blocked: a file cannot be read. none: this figure cannot be drawn again, it is shown as its PNG.
-             * @enum {string}
-             */
-            state: "ready" | "ask" | "blocked" | "none";
-            /** @description The question or the reason, for ask, blocked and none */
-            prompt?: string;
-            sources: components["schemas"]["RedrawSource"][];
         };
         /** @description One meaningful state of the viewer (ADR 0057): what was on screen, not its pixels. Mutable working state, pruned oldest first past the cap; not evidence */
         ExplorationStep: {
@@ -11994,6 +12086,88 @@ export interface operations {
             };
         };
     };
+    owner_s_supportDownload_get_api_support_bundle_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description zip */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            /** @description Error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_supportPreview_post_api_support_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SupportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportPreview"];
+                };
+            };
+            /** @description Error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listSweeps_get_api_sweeps: {
         parameters: {
             query?: never;
@@ -12822,6 +12996,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_workload_get_api_workload: {
+        parameters: {
+            query?: {
+                /** @description the X-Request-Id the slow request was sent with */
+                request?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workload"];
                 };
             };
             /** @description Error */

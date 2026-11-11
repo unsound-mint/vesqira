@@ -738,3 +738,6 @@ func (s *Server) readableLocally(ctx context.Context, d catalog.Dataset) bool {
 	}
 	return false
 }
+
+// waiting marks a request a person is watching, so its header read is not queued behind project scans (ADR 0056).
+func waiting(ctx context.Context) context.Context { return worker.WithClass(ctx, worker.Interactive) }

@@ -3,7 +3,8 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Input, Select } from "../ui";
 import { getPv } from "../api/channelmaps";
 import type { PvDiagram } from "../api/channelmaps";
-import { ApiError } from "../api/http";
+import { ApiError, newRequestId } from "../api/http";
+import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { lut } from "./colormaps";
 import { lineValid, pathLength } from "./region";
 import { paintPixels, rampCss } from "./channelGrid";
@@ -142,6 +143,8 @@ export function PvPanel({ v }: { v: Viewer }) {
   const [result, setResult] = useState<PvDiagram | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [rid, setRid] = useState<string | null>(null);
+  const queued = useQueueReason(running, rid);
   const ac = useRef<AbortController | null>(null);
   const targets = v.offers?.spectral?.targets ?? [];
   const target = targets.find((t) => t.unit === unit);
@@ -191,11 +194,13 @@ export function PvPanel({ v }: { v: Viewer }) {
     const c = new AbortController();
     ac.current = c;
     setRunning(true);
+    const id = newRequestId();
+    setRid(id);
     setError(null);
     getPv(v.datasetId, {
       points: path.points, width: w, widthUnit, interpolation: interp, first: range.first - 1, last: range.last - 1,
       ...(unit ? { unit } : {}), ...(unit && needsConvention ? { convention } : {}),
-    }, c.signal)
+    }, c.signal, id)
       .then((d) => { if (ac.current === c) setResult(d); })
       .catch((e: unknown) => { if (!isAbort(e)) { setResult(null); setError(e instanceof ApiError ? e.message : "The diagram could not be computed."); } })
       .finally(() => { if (ac.current === c) setRunning(false); });
@@ -255,6 +260,7 @@ export function PvPanel({ v }: { v: Viewer }) {
         <Button type="button" onClick={() => { setPath(null); setResult(null); }} disabled={!path}>Clear the line</Button>
       </div>
       {running ? <p className={s.note} role="status">Reading the cube along the path…</p> : null}
+      <QueueNote reason={queued} className={s.note} />
       {error ? <p role="alert" className={s.err}>{error}</p> : null}
       {result ? (
         <>

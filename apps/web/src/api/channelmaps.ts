@@ -1,4 +1,4 @@
-import { ApiError, requestRaw } from "./http";
+import { ApiError, idHeader, requestRaw } from "./http";
 import type { components } from "./schema";
 import type { Plane, PlaneHeader } from "./planes";
 import { parsePlane } from "./planes";
@@ -28,12 +28,12 @@ export function getChannelGrid(id: number, g: GridRequest, signal?: AbortSignal)
 }
 
 /** One panel: a plane (one channel), or the mean of several channels, at the plan's preview step. */
-export function getPanel(id: number, p: { first: number; last: number }, step: number, signal?: AbortSignal): Promise<Plane & { slab: SlabHeader["slab"] | null }> {
+export function getPanel(id: number, p: { first: number; last: number }, step: number, signal?: AbortSignal, requestId?: string): Promise<Plane & { slab: SlabHeader["slab"] | null }> {
   const single = p.first === p.last;
   const url = single
     ? `${base(id)}/plane?channel=${p.first}${step > 1 ? `&step=${step}` : ""}`
     : `${base(id)}/slab?first=${p.first}&last=${p.last}${step > 1 ? `&step=${step}` : ""}`;
-  return requestRaw(url, { signal })
+  return requestRaw(url, { signal, headers: idHeader(requestId) })
     .then((r) => r.arrayBuffer())
     .then((buf) => {
       const plane = parsePlane(buf);
@@ -68,8 +68,8 @@ export function parsePv(buf: ArrayBuffer): PvDiagram {
 
 export type PvRequest = { points: [number, number][]; width: number; widthUnit: "pixel" | "arcsec"; interpolation: "linear" | "nearest"; first?: number; last?: number; unit?: string; convention?: string };
 
-export function getPv(id: number, r: PvRequest, signal?: AbortSignal): Promise<PvDiagram> {
-  return requestRaw(`${base(id)}/pv`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(r), signal })
+export function getPv(id: number, r: PvRequest, signal?: AbortSignal, requestId?: string): Promise<PvDiagram> {
+  return requestRaw(`${base(id)}/pv`, { method: "POST", headers: { "Content-Type": "application/json", ...idHeader(requestId) }, body: JSON.stringify(r), signal })
     .then((x) => x.arrayBuffer())
     .then(parsePv);
 }

@@ -28,7 +28,7 @@ export type AppliedMask = { id: number; name: string; type: string; policy: stri
 
 export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls; masks?: { type: string; name: string; policy: string; weight?: number; tier: string; mappingVersion?: string }[] }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
 
-export const runAnalysis = (r: AnalysisRequest) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r);
+export const runAnalysis = (r: AnalysisRequest, signal?: AbortSignal, requestId?: string) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r, signal, requestId);
 export const createAnalysisJob = (r: AnalysisRequest) => post<Job>("/api/analysis/job", r);
 export const getDerived = (id: number) => call<Derived>(`/api/datasets/${id}/derived`);
 type Schemas = components["schemas"];
@@ -36,7 +36,7 @@ type Schemas = components["schemas"];
 export type RelOrientParams = Schemas["RelativeOrientationParams"];
 export type RelOrientSummary = Schemas["RelativeOrientationSummary"];
 /** Aborting the request stops the computation: the server kills the program when its request ends. */
-export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams; masks?: MaskUse[]; otherMasks?: MaskUse[] }, signal?: AbortSignal) =>
-  post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal);
+export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams; masks?: MaskUse[]; otherMasks?: MaskUse[] }, signal?: AbortSignal, requestId?: string) =>
+  post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal, requestId);
 export const relativeOrientationTableUrl = (id: number) => `/api/datasets/${id}/relative-orientation.csv`;
 export const jobResult = (id: number) => call<{ summary: StatsSummary | Record<string, unknown> }>(`/api/jobs/${id}/result`);

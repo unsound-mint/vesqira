@@ -10171,6 +10171,303 @@
     }
    }
   },
+  "WorkloadClass": {
+   "type": "object",
+   "required": [
+    "class",
+    "budget",
+    "running",
+    "waiting"
+   ],
+   "properties": {
+    "class": {
+     "type": "string",
+     "enum": [
+      "interactive",
+      "heavy",
+      "background"
+     ]
+    },
+    "budget": {
+     "type": "integer",
+     "description": "tasks of this class that may run at once (--workers-interactive, --workers-heavy, --workers-background)"
+    },
+    "running": {
+     "type": "integer"
+    },
+    "waiting": {
+     "type": "integer"
+    }
+   }
+  },
+  "WorkloadRequest": {
+   "type": "object",
+   "required": [
+    "state"
+   ],
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "waiting",
+      "running",
+      "unknown"
+     ],
+     "description": "unknown: finished, never queued, or not a request of the scientific workers"
+    },
+    "class": {
+     "type": "string"
+    },
+    "reason": {
+     "type": "string",
+     "description": "present while waiting: what holds the class's slots, and that interactive viewing is unaffected (heavy and background classes)"
+    }
+   }
+  },
+  "Workload": {
+   "type": "object",
+   "required": [
+    "classes"
+   ],
+   "description": "Workload classes (ADR 0056). Names only operations, never files or datasets.",
+   "properties": {
+    "classes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/WorkloadClass"
+     }
+    },
+    "request": {
+     "$ref": "#/components/schemas/WorkloadRequest"
+    }
+   }
+  },
+  "SupportFile": {
+   "type": "object",
+   "required": [
+    "name",
+    "bytes",
+    "text"
+   ],
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "bytes": {
+     "type": "integer"
+    },
+    "text": {
+     "type": "string",
+     "description": "the whole file, plain text, as it is in the zip"
+    }
+   }
+  },
+  "SupportPreview": {
+   "type": "object",
+   "required": [
+    "id",
+    "files",
+    "bytes"
+   ],
+   "description": "A support bundle built and kept in memory for ten minutes; GET /api/support/bundle/{id} returns exactly these files.",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "bytes": {
+     "type": "integer"
+    },
+    "files": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/SupportFile"
+     }
+    }
+   }
+  },
+  "SupportPreviewRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "includeDatasetNames": {
+     "type": "boolean",
+     "description": "default false: dataset names and file names are removed from every file"
+    }
+   }
+  },
+  "SceneRender": {
+   "type": "object",
+   "additionalProperties": false,
+   "description": "How the base raster of a saved figure was drawn, so \"draw again\" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only.",
+   "required": [
+    "canvas",
+    "nodata",
+    "figureWidth"
+   ],
+   "properties": {
+    "canvas": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "width",
+      "height"
+     ],
+     "description": "The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^26 pixels; a figure whose canvas is larger is stored without this record and is drawn from its PNG only.",
+     "properties": {
+      "width": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 65536
+      },
+      "height": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 65536
+      }
+     }
+    },
+    "nodata": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 2,
+     "description": "The two colours of the hatching that marks a pixel with no value (never a colour of the scale), as the theme gave them",
+     "items": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 255
+      }
+     }
+    },
+    "figureWidth": {
+     "type": "integer",
+     "minimum": 200,
+     "maximum": 4096,
+     "description": "The width in pixels the figure was composed at"
+    }
+   }
+  },
+  "RedrawSource": {
+   "type": "object",
+   "required": [
+    "role",
+    "datasetId",
+    "name",
+    "status",
+    "differs",
+    "readable",
+    "text"
+   ],
+   "properties": {
+    "role": {
+     "type": "string",
+     "enum": [
+      "source",
+      "overlay",
+      "reliability"
+     ],
+     "description": "source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines."
+    },
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "status": {
+     "type": "string",
+     "enum": [
+      "unchanged",
+      "probable",
+      "changed",
+      "changed_on_disk",
+      "missing"
+     ],
+     "description": "unchanged: equal full SHA-256. probable: nothing differs but what was recorded cannot prove the bytes are the same (an equal sampled fingerprint has a blind spot, ADR 0053). changed: the registered file is not what the figure was drawn from (it can be read). changed_on_disk: the file on disk is not what is registered (register it again first). missing: no longer registered, or no readable file."
+    },
+    "differs": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "size",
+       "time",
+       "fingerprint"
+      ]
+     }
+    },
+    "readable": {
+     "type": "boolean"
+    },
+    "text": {
+     "type": "string",
+     "description": "The sentence the owner reads about this file"
+    },
+    "declaration": {
+     "type": "string",
+     "enum": [
+      "unchanged",
+      "changed",
+      "removed",
+      "not_recorded"
+     ],
+     "description": "The declarations (unit, orientation interpretation, catalog) in force now against those recorded when the figure was saved. changed and removed are treated like changed data: the owner is asked. not_recorded: the figure was saved before declarations were recorded (not an error). Absent when the dataset is no longer registered."
+    },
+    "declarationText": {
+     "type": "string",
+     "description": "The sentence the owner reads about the declarations, e.g. \"declaration unchanged\" or \"declaration changed: unit was K (declared by you), now Jy/beam (declared by you)\""
+    }
+   }
+  },
+  "RedrawCheck": {
+   "type": "object",
+   "required": [
+    "figureId",
+    "kind",
+    "state",
+    "sources"
+   ],
+   "description": "What \"draw again\" must tell the owner before it draws. Reads and changes nothing.",
+   "properties": {
+    "figureId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "scene",
+      "channel-grid",
+      "none"
+     ],
+     "description": "The description the figure was drawn from; none when it keeps none"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "ready",
+      "ask",
+      "blocked",
+      "none"
+     ],
+     "description": "ready: every file is unchanged, draw. ask: say what changed and ask before drawing. blocked: a file cannot be read. none: this figure cannot be drawn again, it is shown as its PNG."
+    },
+    "prompt": {
+     "type": "string",
+     "description": "The question or the reason, for ask, blocked and none"
+    },
+    "sources": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RedrawSource"
+     }
+    }
+   }
+  },
   "MaskReference": {
    "type": "object",
    "additionalProperties": false,
@@ -10458,179 +10755,6 @@
     },
     "note": {
      "type": "string"
-    }
-   }
-  },
-  "SceneRender": {
-   "type": "object",
-   "additionalProperties": false,
-   "description": "How the base raster of a saved figure was drawn, so \"draw again\" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only.",
-   "required": [
-    "canvas",
-    "nodata",
-    "figureWidth"
-   ],
-   "properties": {
-    "canvas": {
-     "type": "object",
-     "additionalProperties": false,
-     "required": [
-      "width",
-      "height"
-     ],
-     "description": "The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^26 pixels; a figure whose canvas is larger is stored without this record and is drawn from its PNG only.",
-     "properties": {
-      "width": {
-       "type": "integer",
-       "minimum": 1,
-       "maximum": 65536
-      },
-      "height": {
-       "type": "integer",
-       "minimum": 1,
-       "maximum": 65536
-      }
-     }
-    },
-    "nodata": {
-     "type": "array",
-     "minItems": 2,
-     "maxItems": 2,
-     "description": "The two colours of the hatching that marks a pixel with no value (never a colour of the scale), as the theme gave them",
-     "items": {
-      "type": "array",
-      "minItems": 3,
-      "maxItems": 3,
-      "items": {
-       "type": "integer",
-       "minimum": 0,
-       "maximum": 255
-      }
-     }
-    },
-    "figureWidth": {
-     "type": "integer",
-     "minimum": 200,
-     "maximum": 4096,
-     "description": "The width in pixels the figure was composed at"
-    }
-   }
-  },
-  "RedrawSource": {
-   "type": "object",
-   "required": [
-    "role",
-    "datasetId",
-    "name",
-    "status",
-    "differs",
-    "readable",
-    "text"
-   ],
-   "properties": {
-    "role": {
-     "type": "string",
-     "enum": [
-      "source",
-      "overlay",
-      "reliability"
-     ],
-     "description": "source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines."
-    },
-    "datasetId": {
-     "type": "integer",
-     "format": "int64"
-    },
-    "name": {
-     "type": "string"
-    },
-    "status": {
-     "type": "string",
-     "enum": [
-      "unchanged",
-      "probable",
-      "changed",
-      "changed_on_disk",
-      "missing"
-     ],
-     "description": "unchanged: equal full SHA-256. probable: nothing differs but what was recorded cannot prove the bytes are the same (an equal sampled fingerprint has a blind spot, ADR 0053). changed: the registered file is not what the figure was drawn from (it can be read). changed_on_disk: the file on disk is not what is registered (register it again first). missing: no longer registered, or no readable file."
-    },
-    "differs": {
-     "type": "array",
-     "items": {
-      "type": "string",
-      "enum": [
-       "size",
-       "time",
-       "fingerprint"
-      ]
-     }
-    },
-    "readable": {
-     "type": "boolean"
-    },
-    "text": {
-     "type": "string",
-     "description": "The sentence the owner reads about this file"
-    },
-    "declaration": {
-     "type": "string",
-     "enum": [
-      "unchanged",
-      "changed",
-      "removed",
-      "not_recorded"
-     ],
-     "description": "The declarations (unit, orientation interpretation, catalog) in force now against those recorded when the figure was saved. changed and removed are treated like changed data: the owner is asked. not_recorded: the figure was saved before declarations were recorded (not an error). Absent when the dataset is no longer registered."
-    },
-    "declarationText": {
-     "type": "string",
-     "description": "The sentence the owner reads about the declarations, e.g. \"declaration unchanged\" or \"declaration changed: unit was K (declared by you), now Jy/beam (declared by you)\""
-    }
-   }
-  },
-  "RedrawCheck": {
-   "type": "object",
-   "required": [
-    "figureId",
-    "kind",
-    "state",
-    "sources"
-   ],
-   "description": "What \"draw again\" must tell the owner before it draws. Reads and changes nothing.",
-   "properties": {
-    "figureId": {
-     "type": "integer",
-     "format": "int64"
-    },
-    "kind": {
-     "type": "string",
-     "enum": [
-      "scene",
-      "channel-grid",
-      "none"
-     ],
-     "description": "The description the figure was drawn from; none when it keeps none"
-    },
-    "state": {
-     "type": "string",
-     "enum": [
-      "ready",
-      "ask",
-      "blocked",
-      "none"
-     ],
-     "description": "ready: every file is unchanged, draw. ask: say what changed and ask before drawing. blocked: a file cannot be read. none: this figure cannot be drawn again, it is shown as its PNG."
-    },
-    "prompt": {
-     "type": "string",
-     "description": "The question or the reason, for ask, blocked and none"
-    },
-    "sources": {
-     "type": "array",
-     "items": {
-      "$ref": "#/components/schemas/RedrawSource"
-     }
     }
    }
   },
@@ -11446,6 +11570,7 @@
     "content": {
      "application/json": {
       "schema": {
+       "type": "object",
        "$ref": "#/components/schemas/BoardRemoveRequest"
       }
      }
@@ -15599,6 +15724,170 @@
     }
    }
   },
+  "GET /api/workload": {
+   "summary": "Budget, running and waiting tasks per workload class; with ?request=<X-Request-Id> whether that request waits and why",
+   "parameters": [
+    {
+     "name": "request",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string"
+     },
+     "description": "the X-Request-Id the slow request was sent with"
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Workload"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/support/preview": {
+   "summary": "Build a support bundle and return every file's text for review before saving (owner listener only)",
+   "requestBody": {
+    "required": false,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/SupportPreviewRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SupportPreview"
+       }
+      }
+     }
+    },
+    "400": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/support/bundle/{id}": {
+   "summary": "The previewed bundle as a zip (owner listener only; the preview expires after ten minutes)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "zip",
+     "content": {
+      "application/zip": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/figures/{id}/redraw-check": {
+   "summary": "Compare what a figure recorded about each file it was drawn from with the files now, before it is drawn again",
+   "description": "Only files on this computer are looked at; a file on a host is never better than probable. Never draws, swaps or changes anything.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RedrawCheck"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
   "GET /api/datasets/{id}/masks": {
    "summary": "The masks of a dataset",
    "parameters": [
@@ -15758,43 +16047,6 @@
        "schema": {
         "type": "string",
         "format": "binary"
-       }
-      }
-     }
-    },
-    "default": {
-     "description": "Error",
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/Error"
-       }
-      }
-     }
-    }
-   }
-  },
-  "GET /api/figures/{id}/redraw-check": {
-   "summary": "Compare what a figure recorded about each file it was drawn from with the files now, before it is drawn again",
-   "description": "Only files on this computer are looked at; a file on a host is never better than probable. Never draws, swaps or changes anything.",
-   "parameters": [
-    {
-     "name": "id",
-     "in": "path",
-     "required": true,
-     "schema": {
-      "type": "integer",
-      "format": "int64"
-     }
-    }
-   ],
-   "responses": {
-    "200": {
-     "description": "ok",
-     "content": {
-      "application/json": {
-       "schema": {
-        "$ref": "#/components/schemas/RedrawCheck"
        }
       }
      }

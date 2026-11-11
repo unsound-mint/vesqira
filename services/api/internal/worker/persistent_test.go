@@ -34,6 +34,8 @@ for line in sys.stdin.buffer:
         sys.stdout.write('{"ok":true,"id":%s,"nbytes":0}\n' % json.dumps(r.get("requestId"))); sys.stdout.flush(); continue
     if m == "slow":
         time.sleep(0.3)
+    if m == "longhash":
+        time.sleep(1.5)
     sys.stdout.buffer.write(b'{"ok":true,"nbytes":4}\n' + b"abcd"); sys.stdout.flush()
 `
 
@@ -46,7 +48,7 @@ func newFake(t *testing.T, timeout time.Duration) *Persistent {
 	if err := os.WriteFile(script, []byte(fake), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	p := &Persistent{Command: []string{"python3", "-P", script}, Timeout: timeout}
+	p := &Persistent{Command: []string{"python3", "-P", script}, Timeout: timeout, Load: NewLoad(Budgets{Interactive: 1, Heavy: 1, Background: 1})}
 	t.Cleanup(p.Close)
 	return p
 }
