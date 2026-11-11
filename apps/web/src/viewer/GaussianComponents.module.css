@@ -27,13 +27,13 @@
 
 /* Lines differ by weight and dash as well as colour, so the plot reads without colour. */
 .data {
-  stroke: var(--text-3);
+  stroke: var(--text-2);
   stroke-width: 1.25px;
 }
 
 .model {
   stroke: var(--accent);
-  stroke-width: 2px;
+  stroke-width: 2.5px;
 }
 
 .cnm {

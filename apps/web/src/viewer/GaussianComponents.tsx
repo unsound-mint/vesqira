@@ -64,8 +64,8 @@ function Plot({ comps, data, cut, phases, drawData }: { comps: Components; data:
         <line className={s.axisLine} x1={M.l} x2={W - M.r} y1={H - M.b} y2={H - M.b} />
         <line className={s.zero} x1={M.l} x2={W - M.r} y1={py(0)} y2={py(0)} />
         {dataY.length ? line(dataY, s.data!, "d") : null}
-        {drawn.map((c, k) => (c ? line(c, phases[k] === "cnm" ? s.cnm! : s.other!, `g${k}`) : null))}
         {line(comps.model, s.model!, "m")}
+        {drawn.map((c, k) => (c ? line(c, phases[k] === "cnm" ? s.cnm! : s.other!, `g${k}`) : null))}
         {drawn.map((c, k) => {
           const comp = comps.head.components[k]!;
           if (!c || !(comp.amp > 0)) return null;
@@ -84,7 +84,6 @@ function Plot({ comps, data, cut, phases, drawData }: { comps: Components; data:
           {segments(xs.map(px), Array.from(res, pr)).map((l, i) => <polyline key={i} className={s.resid} points={l.join(" ")} />)}
           <text className={s.tick} x={M.l + 2} y={10}>{`+${num(rmax)}`}</text>
           <text className={s.tick} x={M.l + 2} y={HR - 4}>{`−${num(rmax)}`}</text>
-          <text className={s.tick} x={W - M.r} y={10} textAnchor="end">residual</text>
         </svg>
       ) : null}
     </>
