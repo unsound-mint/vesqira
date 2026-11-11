@@ -209,13 +209,19 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     setEditIndex(i);
     setDraft(b ? blockSource(b) : "");
   }
+  // The parts are taken from the body as the queued save finds it, not as it was when editing began: a save still in flight
+  // for another part must not be undone by this one.
+  const partsOf = (body: string) => splitBlocks(body).map(blockSource);
   function commitEdit() {
     if (editIndex === null) return;
-    const parts = src.map(blockSource);
-    if (editIndex >= parts.length) parts.push(draft);
-    else parts[editIndex] = draft;
+    const i = editIndex, text = draft;
     setEditIndex(null);
-    void save((cur) => withFront(cur.body, joinBlocks(parts)));
+    void save((cur) => {
+      const parts = partsOf(cur.body);
+      if (i >= parts.length) parts.push(text);
+      else parts[i] = text;
+      return withFront(cur.body, joinBlocks(parts));
+    });
   }
   function editKeys(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Escape") {
@@ -227,12 +233,14 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     }
   }
   function insert(markdown: string) {
-    const parts = src.map(blockSource);
-    const at = editIndex !== null ? editIndex + 1 : parts.length;
-    if (editIndex !== null) parts[editIndex] = draft;
-    parts.splice(at, 0, markdown);
+    const i = editIndex, text = draft;
     setEditIndex(null);
-    void save((cur) => withFront(cur.body, joinBlocks(parts)));
+    void save((cur) => {
+      const parts = partsOf(cur.body);
+      if (i !== null) parts[i] = text;
+      parts.splice(i !== null ? i + 1 : parts.length, 0, markdown);
+      return withFront(cur.body, joinBlocks(parts));
+    });
   }
 
   async function newReport(parent = 0) {

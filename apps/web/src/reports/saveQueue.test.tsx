@@ -47,4 +47,37 @@ describe("saving while an earlier save is still in flight", () => {
     expect(p.body).toContain("Changed part.");
     expect(p.body).toContain("Nothing moves.");
   });
+  it("an edit of another part made while a save is in flight does not undo that save", async () => {
+    let stored = view(1, "Part one.\n\nPart two.");
+    api.saveReport.mockReset();
+    api.listReports.mockImplementation(async () => [row(stored.revision)]);
+    api.publishState.mockResolvedValue(null);
+    api.getReport.mockImplementation(async () => stored);
+    let finishFirst: () => void = () => {};
+    api.saveReport.mockImplementation(async (_id: number, rev: number, p: { body?: string }) => {
+      if (rev === 1) await new Promise<void>((r) => { finishFirst = r; });
+      stored = view(rev + 1, p.body ?? stored.body);
+      return stored;
+    });
+
+    const user = userEvent.setup();
+    render(<ReportsView />);
+    await user.click(await screen.findByText("Part one."));
+    let box = await screen.findByRole("textbox", { name: /Edit this part/ });
+    await user.clear(box);
+    await user.type(box, "Part one, edited.");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await waitFor(() => expect(api.saveReport).toHaveBeenCalledTimes(1));
+    // the second part is edited while the page still shows the old first part
+    await user.click(screen.getByText("Part two."));
+    box = await screen.findByRole("textbox", { name: /Edit this part/ });
+    await user.clear(box);
+    await user.type(box, "Part two, edited.");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    finishFirst();
+    await waitFor(() => expect(api.saveReport).toHaveBeenCalledTimes(2));
+    const body = api.saveReport.mock.calls[1]![2].body as string;
+    expect(body).toContain("Part one, edited.");
+    expect(body).toContain("Part two, edited.");
+  });
 });
