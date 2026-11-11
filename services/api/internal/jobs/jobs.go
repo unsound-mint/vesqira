@@ -311,6 +311,12 @@ func SetConfigValues(text string, values map[string]string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
+// CheckSetting says whether value is acceptable for the editable setting key, by the rules SetConfigValues applies.
+func CheckSetting(key, value string) error {
+	_, err := SetConfigValues("", map[string]string{key: value})
+	return err
+}
+
 // setLine replaces `key = ...` inside [section] or adds it at the end of that section (or a new section).
 func setLine(lines []string, section, key, rendered string) []string {
 	inSection, secEnd := false, -1
@@ -732,19 +738,30 @@ func scan(row interface{ Scan(...any) error }) (Job, error) {
 	return j, nil
 }
 
-func (s *Store) CreateDraft(j Job) (Job, error) {
+type execer interface {
+	Exec(string, ...any) (sql.Result, error)
+}
+
+func insertDraft(db execer, j Job) (int64, error) {
 	if len(j.Script) == 0 || len(j.Script) > MaxScript || !strings.HasPrefix(j.Script, "#!") {
-		return Job{}, fmt.Errorf("%w: the script must start with #! and be at most %d bytes", ErrInvalid, MaxScript)
+		return 0, fmt.Errorf("%w: the script must start with #! and be at most %d bytes", ErrInvalid, MaxScript)
 	}
 	if !nameRe.MatchString(j.Name) {
-		return Job{}, fmt.Errorf("%w: bad job name", ErrInvalid)
+		return 0, fmt.Errorf("%w: bad job name", ErrInvalid)
 	}
-	res, err := s.db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,params,request,parent_run_id,note,auto_import) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	res, err := db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,params,request,parent_run_id,note,auto_import) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		j.HostID, j.Name, j.Template, j.Script, Hash(j.Script), StateDraft, "", "", NewWorkDir(), j.OutputDir, time.Now().Unix(), j.Params, j.Request, j.ParentRunID, j.Note, j.AutoImport)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) CreateDraft(j Job) (Job, error) {
+	id, err := insertDraft(s.db, j)
 	if err != nil {
 		return Job{}, err
 	}
-	id, _ := res.LastInsertId()
 	return s.Get(id)
 }
 

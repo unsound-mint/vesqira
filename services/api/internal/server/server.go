@@ -28,6 +28,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 )
 
 type HeaderReader interface {
@@ -46,6 +47,7 @@ type Server struct {
 	HostDB     *hosts.Store // remote hosts; nil disables them
 	Remote     *hosts.Manager
 	Jobs       *jobs.Store
+	Sweeps     *sweeps.Store // parameter sweeps (ADR 0048); nil disables their routes
 	Derived    *derived.Store
 	ManagedDir string
 	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
@@ -81,10 +83,13 @@ type Server struct {
 
 	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
 
-	records     sync.WaitGroup // background run-record writes in flight (hostwrite.go)
-	recordLocks sync.Map       // job id -> *sync.Mutex: one record write per job at a time
-	imports     sync.WaitGroup // automatic imports of finished jobs in flight (jobwatch.go)
-	disk        hostDisk       // cached storage looks and measured folder sizes per host (hoststorage.go)
+	records      sync.WaitGroup // background run-record writes in flight (hostwrite.go)
+	recordLocks  sync.Map       // job id -> *sync.Mutex: one record write per job at a time
+	sweepMu      sync.Mutex     // one run of the sweep scheduler or cancel at a time (sweeps.go)
+	sweepRuns    sync.WaitGroup // scheduler runs in flight
+	sweepBoardMu sync.Mutex     // one board per sweep
+	imports      sync.WaitGroup // automatic imports of finished jobs in flight (jobwatch.go)
+	disk         hostDisk       // cached storage looks and measured folder sizes per host (hoststorage.go)
 
 	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
@@ -138,6 +143,19 @@ func (s *Server) Handler() http.Handler {
 			mux.HandleFunc("GET /api/jobs/{id}/log", s.jobLog)
 			mux.HandleFunc("POST /api/jobs/{id}/register", s.registerJobOutputs)
 			mux.HandleFunc("GET /api/jobs/{id}/result", s.jobResult)
+			if s.Sweeps != nil {
+				mux.HandleFunc("POST /api/sweeps/preview", s.previewSweep)
+				mux.HandleFunc("GET /api/sweeps", s.listSweeps)
+				mux.HandleFunc("POST /api/sweeps", s.createSweep)
+				mux.HandleFunc("GET /api/sweeps/{id}", s.getSweep)
+				mux.HandleFunc("GET /api/sweeps/{id}/review", s.reviewSweep)
+				mux.HandleFunc("POST /api/sweeps/{id}/submit", s.submitSweep)
+				mux.HandleFunc("POST /api/sweeps/{id}/cancel", s.cancelSweep)
+				mux.HandleFunc("GET /api/sweeps/{id}/grid", s.sweepGrid)
+				if s.Boards != nil {
+					mux.HandleFunc("POST /api/sweeps/{id}/board", s.boardFromSweep)
+				}
+			}
 		}
 	}
 	if s.analysisDeps() {

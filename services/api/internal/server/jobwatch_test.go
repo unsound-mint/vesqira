@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
+	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
@@ -87,13 +89,15 @@ PATH=%[4]s:$PATH exec sh -c "$cmd"
 	rn, _ := runs.Open(cat.DB())
 	au, _ := audit.Open(cat.DB())
 	ns, err := notify.Open(cat.DB())
+	ss, _ := sweeps.Open(cat.DB())
+	bs, _ := boards.Open(cat.DB(), base)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rs, _ := sourceroot.New([]string{filepath.Join(base, "localroot")})
 	local := &worker.Persistent{Command: []string{"python3", "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(local.Close)
-	srv := &Server{Roots: rs, Store: cat, Worker: headerWorker(t, "python3", repo), Planes: local, Runs: rn, HostDB: hs, Remote: mgr, Jobs: js, Audit: au, Notes: ns}
+	srv := &Server{Roots: rs, Store: cat, Worker: headerWorker(t, "python3", repo), Planes: local, Runs: rn, HostDB: hs, Remote: mgr, Jobs: js, Audit: au, Notes: ns, Sweeps: ss, Boards: bs}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	py, _ := exec.LookPath("python3")

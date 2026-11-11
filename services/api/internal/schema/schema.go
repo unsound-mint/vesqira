@@ -26,7 +26,8 @@ import (
 // Version 10: a point catalog's declared columns (catalog_declarations; ADR 0044).
 // Version 11: a finished job keeps what sacct reported it used (jobs.usage, JSON; ADR 0045).
 // Version 12: a ROHSA run keeps its decomposition record (rohsa_runs; ADR 0046).
-const Version = 12
+// Version 13: parameter sweeps, a record of a grid of linked draft jobs (sweeps, sweep_jobs; ADR 0048).
+const Version = 13
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -47,6 +48,24 @@ var migrations = []Migration{
 	{To: 10, Name: "catalog declarations", Up: catalogDeclarations},
 	{To: 11, Name: "job usage", Up: jobUsage},
 	{To: 12, Name: "ROHSA runs", Up: rohsaRuns},
+	{To: 13, Name: "parameter sweeps", Up: parameterSweeps},
+}
+
+// SweepsTables is the DDL of both sweep tables (ADR 0048), shared by the sweeps package (a fresh catalog) and the migration
+// (an upgraded one).
+const SweepsTables = `CREATE TABLE IF NOT EXISTS sweeps(
+	id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, host_id INTEGER NOT NULL, base_job_id INTEGER NOT NULL,
+	base_run_id INTEGER, params TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '',
+	concurrency INTEGER NOT NULL DEFAULT 1, stop_on_failure INTEGER NOT NULL DEFAULT 0, board_id INTEGER,
+	created_at INTEGER NOT NULL, started_at INTEGER);
+CREATE TABLE IF NOT EXISTS sweep_jobs(
+	sweep_id INTEGER NOT NULL REFERENCES sweeps(id) ON DELETE CASCADE, job_id INTEGER NOT NULL UNIQUE, idx INTEGER NOT NULL,
+	vals TEXT NOT NULL, approved_hash TEXT NOT NULL DEFAULT '', PRIMARY KEY(sweep_id, idx));`
+
+// parameterSweeps adds the two sweep tables. No row to carry over: no sweep existed before.
+func parameterSweeps(tx *sql.Tx) error {
+	_, err := tx.Exec(SweepsTables)
+	return err
 }
 
 // jobUsage adds jobs.usage. Every existing job gets ” (nothing was recorded; its use is not known, not zero). A catalog
