@@ -1,4 +1,4 @@
-import type { Dataset } from "../api/catalog";
+import { isCatalog, type Dataset, type ImageDataset } from "../api/catalog";
 import type { OverlayColor } from "./palette";
 import type { Scene, SceneOverlay } from "./scene";
 import { ORIENTATION_ID, REGIONS_ID } from "./scene";
@@ -43,22 +43,26 @@ export function emptyDraft(kind: AddableKind, datasetId: number | null): Draft {
   };
 }
 
+/** A point catalog has no grid to contour and no beam, so only images and cubes are overlay sources. */
+export const imageDatasets = (datasets: Dataset[]): ImageDataset[] => datasets.filter((d): d is ImageDataset => !isCatalog(d));
+
 /** The datasets an overlay of this kind may come from: orientation lines from another map declared axial; contours from any map not declared as angles; a beam from any; the grid from the base only. */
-export function candidates(kind: AddableKind, datasets: Dataset[], baseId: number): Dataset[] {
-  if (kind === "grid") return datasets.filter((d) => d.id === baseId);
-  if (kind === "orientation") return datasets.filter((d) => d.id !== baseId && d.interpretation?.kind === "axial_orientation");
-  if (kind === "contours") return datasets.filter((d) => !d.interpretation);
-  return datasets;
+export function candidates(kind: AddableKind, datasets: Dataset[], baseId: number): ImageDataset[] {
+  const images = imageDatasets(datasets);
+  if (kind === "grid") return images.filter((d) => d.id === baseId);
+  if (kind === "orientation") return images.filter((d) => d.id !== baseId && d.interpretation?.kind === "axial_orientation");
+  if (kind === "contours") return images.filter((d) => !d.interpretation);
+  return images;
 }
 
 /** The overlay dataset's brightness unit as the worker will state it: the file's BUNIT, else a unit declared for it (not stale). */
-export function unitOf(d: Dataset): string | undefined {
+export function unitOf(d: ImageDataset): string | undefined {
   if (d.header.bunit) return d.header.bunit;
   return d.unitDeclaration && !d.unitDeclaration.stale ? d.unitDeclaration.unit : undefined;
 }
 
 /** The channels of a registered dataset by its header: the third axis, or one plane. The worker checks the index again. */
-export const channelsOf = (d: Dataset): number => (d.header.axes.length > 2 ? Math.max(1, d.header.axes[2]!.length) : 1);
+export const channelsOf = (d: ImageDataset): number => (d.header.axes.length > 2 ? Math.max(1, d.header.axes[2]!.length) : 1);
 
 const numbers = (text: string): number[] | null => {
   const parts = text.split(/[\s,;]+/).filter(Boolean);
@@ -79,7 +83,8 @@ export function newOverlayId(kind: AddableKind, scene: Scene): string {
 
 /** The overlay the draft describes, or the first problem as a sentence. */
 export function draftToOverlay(d: Draft, id: string, visible: boolean, datasets: Dataset[], baseId: number): SceneOverlay | string {
-  const ds = d.kind === "grid" ? datasets.find((x) => x.id === baseId) : datasets.find((x) => x.id === d.datasetId);
+  const pool = imageDatasets(datasets);
+  const ds = d.kind === "grid" ? pool.find((x) => x.id === baseId) : pool.find((x) => x.id === d.datasetId);
   if (!ds) return "Choose the dataset the overlay comes from.";
   const style: { color: OverlayColor; width?: number; dash?: "dashed" } = { color: d.color };
   if (d.width.trim()) {

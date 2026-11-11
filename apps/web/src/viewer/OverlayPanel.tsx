@@ -5,7 +5,7 @@ import type { Dataset } from "../api/catalog";
 import { overlayBasis, overlayTitle } from "../scene/basis";
 import { needsGeometry } from "../scene/geometry";
 import { OVERLAY_COLOR_NAMES } from "../scene/palette";
-import { candidates, channelsOf, draftToOverlay, emptyDraft, newOverlayId, overlayToDraft, unitOf } from "../scene/overlayForm";
+import { candidates, channelsOf, draftToOverlay, emptyDraft, imageDatasets, newOverlayId, overlayToDraft, unitOf } from "../scene/overlayForm";
 import type { AddableKind, Draft } from "../scene/overlayForm";
 import { ORIENTATION_ID, REGIONS_ID } from "../scene/scene";
 import type { PaneAction, Scene, SceneOverlay } from "../scene/scene";
@@ -116,7 +116,7 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
 }) {
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
   const pool = candidates(draft.kind, datasets, baseId);
-  const ds = datasets.find((d) => d.id === (draft.kind === "grid" ? baseId : draft.datasetId));
+  const ds = imageDatasets(datasets).find((d) => d.id === (draft.kind === "grid" ? baseId : draft.datasetId));
   const hasRel = ds?.interpretation?.reliabilityId != null;
   const unit = ds ? unitOf(ds) : undefined;
   return (
