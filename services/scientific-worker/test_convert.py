@@ -1,4 +1,4 @@
-"""Golden tests for readout conversions (ADR 0039). Oracles are closed-form formulas and astropy used directly in the
+"""Golden tests for readout conversions (ADR 0040). Oracles are closed-form formulas and astropy used directly in the
 test, not the worker's code path: a conversion is right only if it agrees with them."""
 import math
 import tempfile
@@ -150,9 +150,18 @@ class Convert(unittest.TestCase):
         s = self.conv(self.variant("awav.fits", edit), spectral="GHz")["spectral"]
         self.assertIsNone(s["converted"])
         self.assertIn("air wavelength", s["refused"])
-        s = self.conv(self.variant("legacy.fits", lambda h: h.__setitem__("CTYPE3", "VELO-LSR"), base=g.hi_cube), spectral="GHz")["spectral"]
+        legacy = self.variant("legacy.fits", lambda h: h.__setitem__("CTYPE3", "VELO-LSR"), base=g.hi_cube)
+        s = self.conv(legacy, spectral="GHz")["spectral"]
         self.assertIsNone(s["converted"])
         self.assertIn("legacy", s["refused"])
+        # a velocity unit change needs no convention: VELO-LSR in m/s is offered in km/s, nothing assumed
+        native = self.conv(legacy, spectral="m/s")["spectral"]
+        s = self.conv(legacy, spectral="km/s")["spectral"]
+        self.assertIsNone(s["refused"])
+        self.assertAlmostEqual(s["converted"]["value"], (native["native"]["value"] * u.Unit(native["native"]["unit"])).to_value(u.km / u.s), places=9)
+        self.assertIn("none is assumed", s["basis"])
+        s = self.conv(legacy, spectral="km/s", convention="radio")["spectral"]
+        self.assertIsNone(s["converted"])
 
     def test_no_spectral_axis_and_bad_requests(self):
         s = self.conv(self.f["galactic_centre.fits"], spectral="GHz")["spectral"]

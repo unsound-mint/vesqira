@@ -95,7 +95,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await expect(inspector(page).getByText("1.98000°")).toBeVisible();
   await expect(inspector(page).getByText("8 km/s")).toBeVisible();
 
-  // ---- the same pixel in other units and frames (ADR 0039): converted rows beside the native ones, with their basis ----
+  // ---- the same pixel in other units and frames (ADR 0040): converted rows beside the native ones, with their basis ----
   await page.mouse.click(peak.x, peak.y); // pin the pixel so the pointer can leave the image for the controls
   await inspector(page).getByLabel("Spectral unit").selectOption("GHz");
   await expect(inspector(page).getByText(/^1\.420367\d+ GHz/)).toBeVisible(); // f0 (1 - v/c) for 8 km/s, radio, from the file's RESTFRQ

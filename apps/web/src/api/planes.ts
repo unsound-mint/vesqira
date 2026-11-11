@@ -22,7 +22,7 @@ export type Coord = {
   spectral: { value: number | null } | null;
 };
 
-/** What the file allows (ADR 0039): facts only; the browser offers what is enabled and says why the rest is not. */
+/** What the file allows (ADR 0040): facts only; the browser offers what is enabled and says why the rest is not. */
 export type ConvTarget = { unit: string; enabled: boolean; reason: string | null; kind?: string; needs_convention?: boolean; cross?: boolean };
 export type Conversions = {
   spectral: {

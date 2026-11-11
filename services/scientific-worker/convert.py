@@ -1,4 +1,4 @@
-"""Unit conversions and frame transforms for the viewer's readouts (ADR 0039).
+"""Unit conversions and frame transforms for the viewer's readouts (ADR 0040).
 
 Everything numerical is astropy (units equivalencies, brightness_temperature, SkyCoord); nothing is hand-rolled
 except the textbook definition of a Gaussian beam's solid angle from the two FWHMs. The native value is always
@@ -79,19 +79,24 @@ def _axis(c):
     if not f["resolved"]:
         return None, f.get("note") or "the spectral axis is not resolved"
     ctype = f.get("ctype") or ""
-    if ctype[4:8] in ("-LSR", "-HEL", "-OBS"):
-        return None, f"{ctype} is a legacy spelling: its velocity convention and frame are not declared"
+    # AIPS-era spellings such as VELO-LSR (common in survey cubes, e.g. MAGMA CO): the axis is a velocity, but its
+    # convention is not declared, so only velocity unit changes are offered; anything needing a convention is refused.
+    legacy = ctype[4:8] in ("-LSR", "-HEL", "-OBS")
     base = ctype[:4]
+    if legacy and base not in ("VELO", "FELO", "VRAD", "VOPT"):
+        return None, f"{ctype} is a legacy spelling that is not a velocity axis"
     if base == "AWAV":
         return None, "the axis is in air wavelength: converting it needs a refractive index, which is not applied"
-    kind = AXIS_KIND.get(base)
+    kind = "vel" if legacy else AXIS_KIND.get(base)
     unit = parse_unit(f.get("unit") or "")
     if kind is None or unit is None:
         return None, f"axis type {ctype or 'unknown'} is not frequency, wavelength or a velocity (FREQ, WAVE, VRAD, VOPT, VELO)"
     if not unit.is_equivalent({"freq": u.Hz, "wave": u.m, "vel": u.m / u.s}[kind]):
         return None, f"the axis unit {f.get('unit')} does not fit a {kind} axis"
     return {"kind": kind, "ctype": ctype, "unit": unit, "unit_text": f["unit"], "unit_status": f["unit_status"],
-            "convention": FILE_CONVENTION.get(base), "specsys": f.get("specsys")}, None
+            "convention": None if legacy else FILE_CONVENTION.get(base), "legacy": legacy,
+            "specsys": f.get("specsys") or ({"-LSR": "LSR (legacy CTYPE suffix)", "-HEL": "heliocentric (legacy CTYPE suffix)",
+                                             "-OBS": "observer (legacy CTYPE suffix)"}[ctype[4:8]] if legacy else None)}, None
 
 
 def _spectral_target(unit_text):
@@ -105,6 +110,8 @@ def _frequency(q, axis, rest):
     """The axis quantity as a frequency in Hz: (value, reason). Velocities go through the file's own convention."""
     try:
         if axis["kind"] == "vel":
+            if axis.get("legacy"):
+                return None, f"the axis is {axis['ctype']}, a legacy spelling that does not declare its velocity convention: it is not converted to frequency or wavelength"
             if rest is None:
                 return None, "no rest frequency or wavelength in the file (RESTFRQ, RESTFREQ, RESTWAV)"
             return q.to(u.Hz, CONVENTIONS[axis["convention"]](rest)), None
@@ -130,6 +137,8 @@ def spectral_offers(c) -> dict | None:
             enabled, reason = False, why
         elif kind == "vel" and axis["kind"] != "vel" and rest is None:
             enabled, reason = False, "velocity needs a rest frequency or wavelength from the file (RESTFRQ, RESTFREQ, RESTWAV); there is none"
+        elif kind != "vel" and axis.get("legacy"):
+            enabled, reason = False, f"the axis is {axis['ctype']}, a legacy spelling that does not declare its velocity convention: only velocity units are offered"
         elif kind != "vel" and axis["kind"] == "vel" and rest is None:
             enabled, reason = False, "converting a velocity to frequency or wavelength needs a rest frequency from the file; there is none"
         out["targets"].append({"unit": text, "kind": kind, "enabled": enabled, "reason": reason,
@@ -167,6 +176,11 @@ def convert_spectral(c, channel: int, unit_text, convention) -> dict:
             else:
                 out = q.to(target, u.spectral())
                 basis = "astropy.units.spectral(): c = 299792458 m/s, vacuum wavelength; no rest frequency or convention involved"
+        elif axis.get("legacy"):
+            if convention is not None:
+                return {**base, "refused": f"the axis is {axis['ctype']}, which does not declare its velocity convention; a convention is not applied to it"}
+            out = q.to(target)
+            basis = f"unit change only (astropy.units); {axis['ctype']} is a legacy spelling whose velocity convention is not declared, and none is assumed"
         elif axis["kind"] == "vel":
             if convention is not None and convention != axis["convention"]:
                 return {**base, "refused": f"the file declares the {axis['convention']} convention ({axis['ctype']}); another convention is not applied to a velocity axis"}
