@@ -31,6 +31,13 @@ describe("what a finished job used, in words", () => {
     expect(first).toBe("Memory use not recorded by Slurm; ran 6 h 12 min (no time limit recorded); CPU time not recorded.");
   });
 
+  it("names the columns a site's sacct does not report, without turning them into zeros", () => {
+    const lines = usageLines(usage({ reqMemBytes: null, maxRssBytes: null, unsupported: ["ReqTRES", "MaxRSS"] }));
+    expect(lines[0]).toMatch(/^Memory use not recorded by Slurm;/);
+    expect(lines[1]).toBe("This site's sacct does not report ReqTRES, MaxRSS, so what depends on them is shown as not reported. The job's state is unaffected.");
+    expect(usageLines(usage({ unsupported: [] }))).toHaveLength(1);
+  });
+
   it("explains an out-of-memory stop and a time-limit stop in plain words", () => {
     const oom = usageLines(usage({ state: "FAILED", oomKilled: true, maxRssBytes: 140 * GiB })).join(" ");
     expect(oom).toMatch(/stopped this job because it used more memory than was requested \(140.0 GiB\)/);

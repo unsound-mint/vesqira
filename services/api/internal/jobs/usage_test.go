@@ -227,3 +227,35 @@ func TestSuggestionMathAndWhenItIsWithheld(t *testing.T) {
 		}
 	}
 }
+
+func TestSacctCommandWithAChosenColumnListAndItsClosingLine(t *testing.T) {
+	min, err := BatchStatusCommandFields([]string{"12"}, Fields(MinimalFields))
+	if err != nil || !strings.Contains(min, "sacct -n -P -X -j 12 -o "+MinimalFields+" ") {
+		t.Fatalf("the minimal call is the one used before usage existed (jobs only): %q %v", min, err)
+	}
+	full, _ := BatchStatusCommandFields([]string{"12"}, Fields(UsageFields))
+	if strings.Contains(full, "-X") {
+		t.Errorf("steps are needed for MaxRSS: %q", full)
+	}
+	if _, err := BatchStatusCommandFields([]string{"12"}, []string{"JobID", "State; rm -rf ~"}); err == nil {
+		t.Error("a column name outside the known list reached a command")
+	}
+	body, exit, msg := SplitSacctExit("12|RUNNING\n---\n" + sacctExitMark + "1\nsacct: error: Invalid field requested: \"ReqTRES\"\n")
+	if exit != 1 || strings.Contains(body, "accounting-exit") || RejectedField(msg) != "ReqTRES" {
+		t.Errorf("%q %d %q", body, exit, msg)
+	}
+	if _, exit, _ := SplitSacctExit("12|RUNNING\n---\n"); exit != 0 {
+		t.Error("an answer without the closing line must read as success")
+	}
+	if RejectedField("sacct: error: Invalid field requested: \"Bogus\"") != "" || RejectedField("slurmdbd down") != "" {
+		t.Error("only a column this program asks for can be named")
+	}
+	if !RowsFit("\n---\n12|COMPLETED|0:0|1|s|e\n", 6) || RowsFit("\n---\n12|COMPLETED|0:0|1|s|e\n", 13) || !RowsFit("12|RUNNING\n---\n", 13) {
+		t.Error("RowsFit")
+	}
+	// a minimal answer parsed with the minimal columns gives the state and says nothing about memory
+	st := ParseBatchStatusFields("\n---\n12|COMPLETED|0:0|00:00:09|s|e\n", []string{"12"}, Fields(MinimalFields))["12"]
+	if st.State != StateCompleted || st.Usage == nil || st.Usage.ElapsedSeconds != 9 || st.Usage.MaxRSSBytes != nil || st.Usage.ReqMemBytes != nil || st.Usage.TimelimitSec != nil {
+		t.Errorf("%+v", st)
+	}
+}

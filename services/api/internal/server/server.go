@@ -61,6 +61,8 @@ type Server struct {
 
 	syncState
 
+	sacct sacctMemory // what each host's sacct accepts (sacctcaps.go)
+
 	Projects *projects.Store // opened project folders; nil disables the project routes
 
 	rootsOnce sync.Once // loads the opened projects' folders into projRoots on first use

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -407,21 +408,110 @@ func StatusCommand(slurmID string) (string, error) {
 // BatchStatusCommand asks about several jobs on one host with one squeue and one sacct call, which is how the background
 // watcher keeps to one status call per host per interval. The answer is split per job by ParseBatchStatus.
 func BatchStatusCommand(ids []string) (string, error) {
-	if len(ids) == 0 || len(ids) > MaxActive*4 {
-		return "", fmt.Errorf("%w: between one and %d jobs", ErrInvalid, MaxActive*4)
+	return BatchStatusCommandFields(ids, Fields(UsageFields))
+}
+
+// sacctExitMark starts the line that closes the command's output: sacct's exit status, then what it printed on stderr.
+const sacctExitMark = "@@accounting-exit "
+
+// knownFields are the only sacct columns a command may ask for.
+var knownFields = map[string]bool{}
+
+func init() {
+	for _, f := range Fields(UsageFields) {
+		knownFields[strings.ToLower(f)] = true
 	}
+}
+
+// BatchStatusCommandFields is BatchStatusCommand for a chosen column list (a subset of UsageFields that starts with the
+// six minimal columns). The minimal list keeps sacct's -X (jobs only); steps are asked for only when a column needs them
+// (MaxRSS is recorded on steps, TotalCPU is summed from them). sacct's stderr is not discarded but kept in the closing
+// line, with its exit status, so a site whose sacct rejects a column can be told from a site that has no jobs to list.
+func BatchStatusCommandFields(ids, fields []string) (string, error) {
 	for _, id := range ids {
 		if !ValidSlurmID(id) {
 			return "", fmt.Errorf("%w: bad job id", ErrInvalid)
 		}
 	}
+	if len(ids) == 0 {
+		return "", fmt.Errorf("%w: no job ids", ErrInvalid)
+	}
+	steps := false
+	for _, f := range fields {
+		if !knownFields[strings.ToLower(f)] {
+			return "", fmt.Errorf("%w: bad sacct column", ErrInvalid)
+		}
+		if l := strings.ToLower(f); l == "maxrss" || l == "totalcpu" {
+			steps = true
+		}
+	}
 	list := strings.Join(ids, ",")
-	return `squeue -h -j ` + list + ` -o '%i|%T' 2>/dev/null; echo '---'; sacct -n -P -j ` + list + ` -o ` + UsageFields + ` 2>/dev/null`, nil
+	x := " -X"
+	if steps {
+		x = ""
+	}
+	return `squeue -h -j ` + list + ` -o '%i|%T' 2>/dev/null; echo '---'; e=$(mktemp 2>/dev/null) || e=/dev/null; sacct -n -P` + x + ` -j ` + list + ` -o ` + strings.Join(fields, ",") + ` 2>"$e"; r=$?; echo '` + sacctExitMark + `'$r; head -c 400 "$e" 2>/dev/null; [ "$e" = /dev/null ] || rm -f "$e"; true`, nil
+}
+
+// SplitSacctExit cuts the closing line off the answer to BatchStatusCommandFields: the output to parse, sacct's exit
+// status and its stderr. An answer without the line (an older host command) reads as exit 0.
+func SplitSacctExit(out string) (body string, exit int, stderr string) {
+	i := strings.LastIndex(out, sacctExitMark)
+	if i < 0 {
+		return out, 0, ""
+	}
+	tail := out[i+len(sacctExitMark):]
+	num, msg, _ := strings.Cut(tail, "\n")
+	n, err := strconv.Atoi(strings.TrimSpace(num))
+	if err != nil {
+		return out, 0, ""
+	}
+	return out[:i], n, strings.TrimSpace(msg)
+}
+
+var invalidField = regexp.MustCompile(`(?i)invalid field requested:?\s*"?([A-Za-z0-9_]+)"?`)
+
+// RejectedField is the column sacct's error names ("Invalid field requested: "ReqTRES""), or "" when it names none.
+func RejectedField(stderr string) string {
+	if m := invalidField.FindStringSubmatch(stderr); m != nil {
+		for _, f := range Fields(UsageFields) {
+			if strings.EqualFold(f, m[1]) {
+				return f
+			}
+		}
+	}
+	return ""
+}
+
+// RowsFit reports whether the sacct rows in body (the part after the first ---) have the number of columns asked for.
+// Rows that all have another number mean the output is not in the requested format. No rows fit trivially.
+func RowsFit(body string, columns int) bool {
+	parts := strings.SplitN(body, "---", 2)
+	if len(parts) < 2 {
+		return true
+	}
+	seen := false
+	for _, line := range strings.Split(parts[1], "\n") {
+		if line = strings.TrimSpace(line); line == "" {
+			continue
+		}
+		seen = true
+		if strings.Count(line, "|")+1 == columns {
+			return true
+		}
+	}
+	return !seen
 }
 
 // ParseBatchStatus splits the answer to BatchStatusCommand into one Status per requested id, each parsed by the same rules
 // as a single job's answer (the queue wins over the accounting record). A job Slurm did not list has an empty State.
 func ParseBatchStatus(out string, ids []string) map[string]Status {
+	return ParseBatchStatusFields(out, ids, Fields(UsageFields))
+}
+
+// ParseBatchStatusFields is ParseBatchStatus for the columns the command was built with. out is the body of the answer
+// (SplitSacctExit already applied).
+func ParseBatchStatusFields(out string, ids, fields []string) map[string]Status {
 	parts := strings.SplitN(out, "---", 2)
 	queue, acct := map[string]string{}, map[string]string{}
 	rows := map[string][][]string{} // every sacct row per job: the job's own and its steps (12, 12.batch, 12.0)
@@ -450,7 +540,7 @@ func ParseBatchStatus(out string, ids []string) map[string]Status {
 	res := make(map[string]Status, len(ids))
 	for _, id := range ids {
 		st := ParseStatusFull(queue[id] + "\n---\n" + acct[id])
-		st.Usage = ParseUsage(rows[id])
+		st.Usage = ParseUsageFields(rows[id], fields)
 		res[id] = st
 	}
 	return res

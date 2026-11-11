@@ -152,14 +152,13 @@ func (s *Server) watchHost(ctx context.Context, w *jobWatcher, hw *hostWatch, h 
 	for _, j := range active {
 		slurm = append(slurm, j.SlurmID)
 	}
-	cmd, err := jobs.BatchStatusCommand(slurm)
-	if err != nil {
+	if _, err := jobs.BatchStatusCommand(slurm); err != nil { // the ids are checked before anything is run
 		hw.next = now.Add(w.interval)
 		log.Printf("jobs: watch %s: %v", h.Name, err)
 		return
 	}
 	hw.next = now.Add(w.interval) // the slot is taken before the call, so a slow answer cannot cause a second call
-	out, err := s.Remote.RunShell(ctx, h, cmd, nil, 30*time.Second)
+	st, err := s.hostStatus(ctx, h, slurm, now)
 	if err != nil {
 		hw.fails++
 		hw.next = now.Add(w.backoff(hw.fails))
@@ -172,7 +171,6 @@ func (s *Server) watchHost(ctx context.Context, w *jobWatcher, hw *hostWatch, h 
 		log.Printf("jobs: %s answers again", h.Name)
 	}
 	hw.fails = 0
-	st := jobs.ParseBatchStatus(string(out), slurm)
 	for _, j := range active {
 		s.applyJobStatus(j, h, st[j.SlurmID], now)
 	}

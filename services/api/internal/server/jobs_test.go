@@ -43,14 +43,28 @@ echo $n
 	// squeue -h -j LIST -o '%i|%T': one "id|STATE" line per id still queued or running
 	write("squeue", fmt.Sprintf(`for id in $(echo "$3" | tr , ' '); do s=$(cat %[1]s/$id 2>/dev/null); case "$s" in PENDING|RUNNING) echo "$id|$s";; esac; done
 `, state))
-	// sacct -n -P -j LIST -o JobID,State,...: for an id that has ended, the job's row and its .batch step. A test may put its own
-	// rows (complete lines) in <state>/<id>.sacct to stand in for a particular accounting record.
-	write("sacct", fmt.Sprintf(`for id in $(echo "$4" | tr , ' '); do
+	// sacct [-n] [-P] [-X] -j LIST -o FIELDS: for an id that has ended, the job's row and (without -X) its .batch step, with
+	// the columns asked for. A test may put its own rows (complete lines) in <state>/<id>.sacct to stand in for a particular
+	// accounting record, list the columns this stand-in "site" rejects in <state>/sacct.reject (one per line; the error goes
+	// to stderr and nothing is printed, as a real sacct does), and give the answer to --helpformat in <state>/sacct.helpformat
+	// (without that file --helpformat prints nothing and fails). Every call is appended to <state>/sacct.calls.
+	write("sacct", fmt.Sprintf(`echo "$*" >> %[1]s/sacct.calls
+if [ "$1" = --helpformat ]; then cat %[1]s/sacct.helpformat 2>/dev/null; exit $?; fi
+x=; list=; fields=
+while [ $# -gt 0 ]; do case "$1" in -X) x=1; shift;; -j) list=$2; shift 2;; -o) fields=$2; shift 2;; *) shift;; esac; done
+for f in $(echo "$fields" | tr , ' '); do
+if grep -qix "$f" %[1]s/sacct.reject 2>/dev/null; then echo "sacct: error: Invalid field requested: \"$f\"" >&2; exit 1; fi
+done
+row() { out=; for f in $(echo "$fields" | tr , ' '); do v=
+case "$f" in
+JobID) v=$1;; State) v=$s;; ExitCode) v=$ec;; Elapsed) v=00:00:09;; Start) v=2026-11-04T10:00:00;; End) v=2026-11-04T10:00:09;;
+Timelimit) [ "$2" = job ] && v=00:30:00;; ReqMem) [ "$2" = job ] && v=4G;; ReqTRES) [ "$2" = job ] && v=billing=2,cpu=2,mem=4G,node=1;;
+AllocCPUS) v=2;; TotalCPU) v=00:00:12;; MaxRSS) [ "$2" = step ] && v=1048576K;; NNodes) v=1;;
+esac; out="$out|$v"; done; echo "${out#|}"; }
+for id in $(echo "$list" | tr , ' '); do
 if [ -f %[1]s/$id.sacct ]; then cat %[1]s/$id.sacct; continue; fi
 s=$(cat %[1]s/$id 2>/dev/null); ec=0:0; [ "$s" = FAILED ] && ec=1:0
-case "$s" in COMPLETED|FAILED|CANCELLED|TIMEOUT)
-echo "$id|$s|$ec|00:00:09|2026-11-04T10:00:00|2026-11-04T10:00:09|00:30:00|4G|billing=2,cpu=2,mem=4G,node=1|2|00:00:12||1"
-echo "$id.batch|$s|$ec|00:00:09|2026-11-04T10:00:00|2026-11-04T10:00:09||||2|00:00:12|1048576K|1";; esac; done
+case "$s" in COMPLETED|FAILED|CANCELLED|TIMEOUT) row $id job; if [ -z "$x" ]; then row $id.batch step; fi;; esac; done; exit 0
 `, state))
 	write("scancel", fmt.Sprintf(`echo CANCELLED > %[1]s/$1
 `, state))

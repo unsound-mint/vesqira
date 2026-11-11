@@ -27,6 +27,9 @@ type Usage struct {
 	// OOMKilled: the job or one of its steps was ended by Slurm for exceeding its memory.
 	OOMKilled bool        `json:"oomKilled"`
 	Suggest   *Suggestion `json:"suggest"`
+	// Unsupported names the sacct columns this site's sacct rejected or does not list, so the values that depend on them
+	// are "not reported" for that reason and not because the job left them out. Never nil in JSON.
+	Unsupported []string `json:"unsupported"`
 }
 
 // Suggestion is a request sized from one finished job's measured use. It is only ever shown; the researcher applies it.
@@ -50,6 +53,13 @@ const (
 // UsageFields is the sacct column list the status commands ask for. The first six are what the status parser has always
 // read; the rest feed Usage. Steps (JobID "12.batch", "12.0") are included because MaxRSS is recorded on steps only.
 const UsageFields = "JobID,State,ExitCode,Elapsed,Start,End,Timelimit,ReqMem,ReqTRES,AllocCPUS,TotalCPU,MaxRSS,NNodes"
+
+// MinimalFields is the column list the status commands asked for before usage existed: all a job's state needs. Every
+// sacct accepts it, so state tracking never depends on the optional columns.
+const MinimalFields = "JobID,State,ExitCode,Elapsed,Start,End"
+
+// Fields splits a column list.
+func Fields(list string) []string { return strings.Split(list, ",") }
 
 // parseDuration reads Slurm's [D-]HH:MM:SS[.mmm] and MM:SS[.mmm]. Anything else (UNLIMITED, a bare number, garbage) is not ok.
 func parseDuration(s string) (float64, bool) {
@@ -156,21 +166,29 @@ func reqMem(reqMem, reqTRES string, cpus, nodes *int64) *int64 {
 
 // ParseUsage builds a Usage from the sacct rows of one job (see UsageFields), each already split on "|": the job's own row
 // and its steps. It returns nil when sacct gave no row for the job itself.
-func ParseUsage(rows [][]string) *Usage {
+func ParseUsage(rows [][]string) *Usage { return ParseUsageFields(rows, Fields(UsageFields)) }
+
+// ParseUsageFields is ParseUsage for rows that carry the given columns in that order. A column that was not asked for
+// reads as not reported.
+func ParseUsageFields(rows [][]string, fields []string) *Usage {
+	at := map[string]int{}
+	for i, f := range fields {
+		at[strings.ToLower(f)] = i
+	}
 	var job []string
 	var peak int64
 	var peakSeen, oom bool
 	var stepCPU float64
 	var stepCPUSeen bool
-	col := func(r []string, i int) string {
-		if i < len(r) {
+	named := func(r []string, name string) string {
+		if i, ok := at[strings.ToLower(name)]; ok && i < len(r) {
 			return strings.TrimSpace(r[i])
 		}
 		return ""
 	}
 	for _, r := range rows {
-		id := col(r, 0)
-		if strings.HasPrefix(strings.ToUpper(col(r, 1)), "OUT_OF_MEMORY") {
+		id := named(r, "JobID")
+		if strings.HasPrefix(strings.ToUpper(named(r, "State")), "OUT_OF_MEMORY") {
 			oom = true
 		}
 		if !strings.Contains(id, ".") {
@@ -179,42 +197,42 @@ func ParseUsage(rows [][]string) *Usage {
 			}
 			continue
 		}
-		if b, _, _, ok := parseSize(col(r, 11), 1<<10); ok && b > 0 { // MaxRSS: a bare number is KiB
+		if b, _, _, ok := parseSize(named(r, "MaxRSS"), 1<<10); ok && b > 0 { // MaxRSS: a bare number is KiB
 			peakSeen = true
 			if b > peak {
 				peak = b
 			}
 		}
-		if t, ok := parseDuration(col(r, 10)); ok {
+		if t, ok := parseDuration(named(r, "TotalCPU")); ok {
 			stepCPU, stepCPUSeen = stepCPU+t, true
 		}
 	}
 	if job == nil {
 		return nil
 	}
-	u := &Usage{ExitCode: col(job, 2), OOMKilled: oom}
-	if w := strings.Fields(col(job, 1)); len(w) > 0 { // "CANCELLED by 1000" is CANCELLED
+	u := &Usage{Unsupported: []string{}, ExitCode: named(job, "ExitCode"), OOMKilled: oom}
+	if w := strings.Fields(named(job, "State")); len(w) > 0 { // "CANCELLED by 1000" is CANCELLED
 		u.State = strings.ToUpper(w[0])
 	}
-	if e, ok := parseDuration(col(job, 3)); ok {
+	if e, ok := parseDuration(named(job, "Elapsed")); ok {
 		u.ElapsedSeconds = int64(math.Round(e))
 	}
-	if t, ok := parseDuration(col(job, 6)); ok {
+	if t, ok := parseDuration(named(job, "Timelimit")); ok {
 		n := int64(math.Round(t))
 		u.TimelimitSec = &n
 	}
-	if n, ok := atoi(col(job, 9)); ok {
+	if n, ok := atoi(named(job, "AllocCPUS")); ok {
 		u.AllocCPUS = &n
 	}
 	var nodes *int64
-	if n, ok := atoi(col(job, 12)); ok {
+	if n, ok := atoi(named(job, "NNodes")); ok {
 		nodes = &n
 	}
-	u.ReqMemBytes = reqMem(col(job, 7), col(job, 8), u.AllocCPUS, nodes)
+	u.ReqMemBytes = reqMem(named(job, "ReqMem"), named(job, "ReqTRES"), u.AllocCPUS, nodes)
 	if peakSeen {
 		u.MaxRSSBytes = &peak
 	}
-	if t, ok := parseDuration(col(job, 10)); ok {
+	if t, ok := parseDuration(named(job, "TotalCPU")); ok {
 		u.TotalCPUSec = &t
 		if t == 0 && stepCPUSeen && stepCPU > 0 { // the job row summed nothing but its steps did
 			u.TotalCPUSec = &stepCPU

@@ -142,9 +142,12 @@ func (e *watchEnv) setSlurm(slurmID, state string) {
 }
 
 // statusCalls counts the squeue/sacct commands the host has been given.
-func (e *watchEnv) statusCalls() int {
-	b, _ := os.ReadFile(filepath.Join(filepath.Dir(e.bin), "ssh.log"))
-	return strings.Count(string(b), "squeue -h -j")
+func (e *watchEnv) statusCalls() int { return e.sshLines("squeue -h -j") }
+
+// attempts counts the times the watcher has reached for the host: a status call, or the probe of the host's sacct columns
+// that comes first (once per 6 hours) and is the only thing asked of a host that is down.
+func (e *watchEnv) attempts() int {
+	return e.sshLines("squeue -h -j") + e.sshLines("sacct --helpformat")
 }
 
 func (e *watchEnv) job(id int64) jobs.Job {
@@ -253,29 +256,29 @@ func TestWatcherBacksOffWhenTheHostIsUnreachableAndSaysNothingAboutTheJob(t *tes
 	e.setSlurm(j.SlurmID, "RUNNING")
 	w := newJobWatcher(MinWatchInterval)
 	os.WriteFile(filepath.Join(e.home, "DOWN"), nil, 0o644)
-	base := e.statusCalls()
+	base := e.attempts()
 	t0 := time.Now()
 	e.srv.watchOnce(ctx, w, t0)
-	if e.statusCalls()-base != 1 {
+	if e.attempts()-base != 1 {
 		t.Fatalf("the first attempt must be made")
 	}
 	// the wait grows with each failure: 2, then 4, then 8 intervals
 	e.srv.watchOnce(ctx, w, t0.Add(MinWatchInterval+time.Second)) // inside the first backoff
-	if e.statusCalls()-base != 1 {
+	if e.attempts()-base != 1 {
 		t.Fatalf("asked again inside the backoff")
 	}
 	t2 := t0.Add(2*MinWatchInterval + time.Second)
 	e.srv.watchOnce(ctx, w, t2)
-	if e.statusCalls()-base != 2 {
+	if e.attempts()-base != 2 {
 		t.Fatalf("no second attempt after the first backoff")
 	}
 	e.srv.watchOnce(ctx, w, t2.Add(3*MinWatchInterval))
-	if e.statusCalls()-base != 2 {
+	if e.attempts()-base != 2 {
 		t.Fatalf("the second wait must be longer than three intervals")
 	}
 	t3 := t2.Add(4*MinWatchInterval + time.Second)
 	e.srv.watchOnce(ctx, w, t3)
-	if e.statusCalls()-base != 3 {
+	if e.attempts()-base != 3 {
 		t.Fatalf("no third attempt after the second backoff")
 	}
 	if got := w.backoff(30); got != maxWatchBackoff {

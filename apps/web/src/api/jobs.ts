@@ -16,6 +16,8 @@ export type JobUsage = {
   cpuNotAccounted: boolean;
   oomKilled: boolean;
   suggest: UsageSuggestion | null;
+  /** sacct columns this site's sacct does not report (absent on usage stored before this was recorded). */
+  unsupported?: string[];
 };
 /** A request sized from one job's measured use. It is shown, never applied by itself. */
 export type UsageSuggestion = { mem: string; time: string; memBytes: number; timeSeconds: number; basis: string };

@@ -47,6 +47,9 @@ export function usageLines(u: JobUsage): string[] {
   const cpu = u.cpuNotAccounted ? "CPU time not accounted by Slurm for this job" : u.cpuEfficiency === null ? "CPU time not recorded" : `CPU efficiency ${Math.round(u.cpuEfficiency * 100)} %`;
   const sentence = [mem, time, cpu].join("; ");
   out.push(`${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`);
+  if (u.unsupported && u.unsupported.length > 0) {
+    out.push(`This site's sacct does not report ${u.unsupported.join(", ")}, so what depends on ${u.unsupported.length === 1 ? "it" : "them"} is shown as not reported. The job's state is unaffected.`);
+  }
   if (u.cpuNotAccounted) {
     out.push("Slurm's TotalCPU is about zero although the job ran for a long time. That happens when the work runs in a child process the scheduler does not account, so the efficiency is not shown rather than shown as 0 %.");
   }
