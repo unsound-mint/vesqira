@@ -13,6 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -37,6 +38,7 @@ func TestCatalogSchemaSnapshot(t *testing.T) {
 		"hosts":   func() error { _, e := hosts.Open(db); return e },
 		"jobs":    func() error { _, e := jobs.Open(db); return e },
 		"audit":   func() error { _, e := audit.Open(db); return e },
+		"notify":  func() error { _, e := notify.Open(db); return e },
 		"regions": func() error { _, e := regions.Open(db); return e },
 		"derived": func() error { _, e := derived.Open(db); return e },
 		"reports": func() error { _, e := reports.Open(db, dir); return e },

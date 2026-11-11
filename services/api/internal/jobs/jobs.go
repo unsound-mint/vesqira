@@ -66,6 +66,10 @@ type Job struct {
 	// folder did not exist yet, a rewrite at a terminal state failed, or the host was unreachable (ADR 0039). Not part of
 	// the job JSON.
 	RecordOwed bool `json:"-"`
+	// AutoImport asks for the finished job's results to be imported as a run by itself, once, when it completes (VGT
+	// jobs only). AutoImportTried is set when that attempt was claimed, so it never runs twice and a failure is not retried.
+	AutoImport      bool `json:"autoImport"`
+	AutoImportTried bool `json:"-"`
 }
 
 // VGTRequest is what a VGT job was asked to do, kept so a later run can start from an exact copy. BaseConfigText is
@@ -397,6 +401,45 @@ func StatusCommand(slurmID string) (string, error) {
 	return `squeue -h -j ` + slurmID + ` -o %T 2>/dev/null; echo '---'; sacct -n -P -X -j ` + slurmID + ` -o State,ExitCode,Elapsed,Start,End 2>/dev/null`, nil
 }
 
+// BatchStatusCommand asks about several jobs on one host with one squeue and one sacct call, which is how the background
+// watcher keeps to one status call per host per interval. The answer is split per job by ParseBatchStatus.
+func BatchStatusCommand(ids []string) (string, error) {
+	if len(ids) == 0 || len(ids) > MaxActive*4 {
+		return "", fmt.Errorf("%w: between one and %d jobs", ErrInvalid, MaxActive*4)
+	}
+	for _, id := range ids {
+		if !ValidSlurmID(id) {
+			return "", fmt.Errorf("%w: bad job id", ErrInvalid)
+		}
+	}
+	list := strings.Join(ids, ",")
+	return `squeue -h -j ` + list + ` -o '%i|%T' 2>/dev/null; echo '---'; sacct -n -P -X -j ` + list + ` -o JobID,State,ExitCode,Elapsed,Start,End 2>/dev/null`, nil
+}
+
+// ParseBatchStatus splits the answer to BatchStatusCommand into one Status per requested id, each parsed by the same rules
+// as a single job's answer (the queue wins over the accounting record). A job Slurm did not list has an empty State.
+func ParseBatchStatus(out string, ids []string) map[string]Status {
+	parts := strings.SplitN(out, "---", 2)
+	queue, acct := map[string]string{}, map[string]string{}
+	for _, line := range strings.Split(parts[0], "\n") {
+		if f := strings.SplitN(strings.TrimSpace(line), "|", 2); len(f) == 2 && queue[f[0]] == "" {
+			queue[f[0]] = f[1]
+		}
+	}
+	if len(parts) == 2 {
+		for _, line := range strings.Split(parts[1], "\n") {
+			if f := strings.SplitN(strings.TrimSpace(line), "|", 2); len(f) == 2 && acct[f[0]] == "" {
+				acct[f[0]] = f[1]
+			}
+		}
+	}
+	res := make(map[string]Status, len(ids))
+	for _, id := range ids {
+		res[id] = ParseStatusFull(queue[id] + "\n---\n" + acct[id])
+	}
+	return res
+}
+
 func CancelCommand(slurmID string) (string, error) {
 	if !ValidSlurmID(slurmID) {
 		return "", fmt.Errorf("%w: bad job id", ErrInvalid)
@@ -424,6 +467,43 @@ func ParseSubmit(out string) (string, error) {
 // ParseStatus turns squeue and sacct output into one of our states plus a short detail line. A job Slurm does not
 // know yet is reported as unknown (the empty state), not as failed.
 func ParseStatus(out string) (state, detail string) {
+	st := ParseStatusFull(out)
+	return st.State, st.Detail
+}
+
+// Status is what squeue and sacct said about one job. Slurm is the scheduler's own state word (COMPLETED, TIMEOUT,
+// OUT_OF_MEMORY...), empty when it did not list the job. ExitCode is sacct's "code:signal" and is empty when sacct gave none.
+type Status struct {
+	State, Detail, Slurm, ExitCode string
+}
+
+// ParseStatusFull is ParseStatus with the scheduler's own word and exit code kept, so a message can say "time limit"
+// rather than guess it from a folded state.
+func ParseStatusFull(out string) (st Status) {
+	defer func() { st.Detail = strings.TrimSpace(st.Detail) }()
+	state, detail := parseStatus(out)
+	st = Status{State: state, Detail: detail}
+	parts := strings.SplitN(out, "---", 2)
+	queue := strings.TrimSpace(parts[0])
+	acct := ""
+	if len(parts) == 2 {
+		acct = strings.TrimSpace(parts[1])
+	}
+	f := strings.Split(strings.SplitN(acct, "\n", 2)[0], "|")
+	raw := queue
+	if raw == "" && acct != "" {
+		raw = strings.TrimSpace(f[0])
+	}
+	if w := strings.Fields(raw); len(w) > 0 {
+		st.Slurm = strings.ToUpper(w[0])
+	}
+	if len(f) >= 3 && acct != "" {
+		st.ExitCode = strings.TrimSpace(f[1])
+	}
+	return st
+}
+
+func parseStatus(out string) (state, detail string) {
 	parts := strings.SplitN(out, "---", 2)
 	queue := strings.TrimSpace(parts[0])
 	acct := ""
@@ -492,23 +572,29 @@ func Open(db *sql.DB) (*Store, error) {
 	if err == nil {
 		err = schema.AddColumn(db, "jobs", "record_owed", "INTEGER NOT NULL DEFAULT 0")
 	}
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "auto_import", "INTEGER NOT NULL DEFAULT 0")
+	}
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "auto_import_tried", "INTEGER NOT NULL DEFAULT 0")
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &Store{db}, nil
 }
 
-const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params,request,parent_run_id,note,record_owed`
+const cols = `id,host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,submitted_at,finished_at,run_id,params,request,parent_run_id,note,record_owed,auto_import,auto_import_tried`
 
 func scan(row interface{ Scan(...any) error }) (Job, error) {
 	var j Job
 	var c int64
 	var sub, fin, run, parent sql.NullInt64
-	var owed int
-	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params, &j.Request, &parent, &j.Note, &owed); err != nil {
+	var owed, auto, tried int
+	if err := row.Scan(&j.ID, &j.HostID, &j.Name, &j.Template, &j.Script, &j.ScriptHash, &j.State, &j.Detail, &j.SlurmID, &j.WorkDir, &j.OutputDir, &c, &sub, &fin, &run, &j.Params, &j.Request, &parent, &j.Note, &owed, &auto, &tried); err != nil {
 		return Job{}, err
 	}
-	j.RecordOwed = owed != 0
+	j.RecordOwed, j.AutoImport, j.AutoImportTried = owed != 0, auto != 0, tried != 0
 	j.CreatedAt = time.Unix(c, 0).UTC()
 	if sub.Valid {
 		t := time.Unix(sub.Int64, 0).UTC()
@@ -534,8 +620,8 @@ func (s *Store) CreateDraft(j Job) (Job, error) {
 	if !nameRe.MatchString(j.Name) {
 		return Job{}, fmt.Errorf("%w: bad job name", ErrInvalid)
 	}
-	res, err := s.db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,params,request,parent_run_id,note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		j.HostID, j.Name, j.Template, j.Script, Hash(j.Script), StateDraft, "", "", NewWorkDir(), j.OutputDir, time.Now().Unix(), j.Params, j.Request, j.ParentRunID, j.Note)
+	res, err := s.db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,params,request,parent_run_id,note,auto_import) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		j.HostID, j.Name, j.Template, j.Script, Hash(j.Script), StateDraft, "", "", NewWorkDir(), j.OutputDir, time.Now().Unix(), j.Params, j.Request, j.ParentRunID, j.Note, j.AutoImport)
 	if err != nil {
 		return Job{}, err
 	}
@@ -619,6 +705,71 @@ func (s *Store) SetState(id int64, state, detail string) error {
 	}
 	_, err := s.db.Exec(`UPDATE jobs SET state=?, detail=?, finished_at=COALESCE(finished_at, ?) WHERE id=?`, state, detail, fin, id)
 	return err
+}
+
+// ApplyStatus records what Slurm reported for a job that is queued or running, and only for such a job: the update is
+// guarded by the state, so a late "running" answer cannot overwrite an end state and, when two callers (the background
+// watcher, the Refresh button, the page's own timer) read the same end state, exactly one of them wins. It reports whether
+// this call changed the row; a winner with a terminal state is the one that announces the end.
+func (s *Store) ApplyStatus(id int64, state, detail string) (bool, error) {
+	var fin any
+	if state == StateCompleted || state == StateFailed || state == StateCancelled {
+		fin = time.Now().Unix()
+	}
+	res, err := s.db.Exec(`UPDATE jobs SET state=?, detail=?, finished_at=COALESCE(finished_at, ?) WHERE id=? AND state IN (?,?)`, state, detail, fin, id, StateSubmitted, StateRunning)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// ClaimAutoImport reports whether the caller may import this job's results now: the option is on, the job is a finished
+// VGT job with an output folder that has not become a run, and nobody claimed it before. One caller can win, once, for the
+// life of the catalog, so a restart or a second refresh never imports twice and a failed import is not retried.
+func (s *Store) ClaimAutoImport(id int64) (bool, error) {
+	res, err := s.db.Exec(`UPDATE jobs SET auto_import_tried=1 WHERE id=? AND auto_import=1 AND auto_import_tried=0 AND template='vgt' AND output_dir<>'' AND run_id IS NULL AND state=?`, id, StateCompleted)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// SetAutoImport changes the option on a draft; once a job is submitted the choice it was submitted with stands.
+func (s *Store) SetAutoImport(id int64, on bool) error {
+	res, err := s.db.Exec(`UPDATE jobs SET auto_import=? WHERE id=? AND state=?`, on, id, StateDraft)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("%w: only a draft can change this", ErrInvalid)
+	}
+	return nil
+}
+
+// OwedWindow is how long after it finished a job's run record is still retried by the background watcher.
+const OwedWindow = 24 * time.Hour
+
+// Watchable returns what the background watcher has work for: jobs queued or running on a host, and jobs that finished
+// within OwedWindow whose run record is still owed.
+func (s *Store) Watchable(now time.Time) ([]Job, error) {
+	rows, err := s.db.Query(`SELECT `+cols+` FROM jobs WHERE (state IN (?,?) AND slurm_id<>'')
+		OR (record_owed=1 AND slurm_id<>'' AND state IN (?,?,?) AND COALESCE(finished_at,0) > ?) ORDER BY id`,
+		StateSubmitted, StateRunning, StateCompleted, StateFailed, StateCancelled, now.Add(-OwedWindow).Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Job
+	for rows.Next() {
+		j, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
 }
 
 // SetRecordOwed marks whether the run record on the host still has to be written (see Job.RecordOwed).

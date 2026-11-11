@@ -6,7 +6,7 @@ import type { Host } from "../api/hosts";
 import { JobsView, jobFor } from "./JobsView";
 
 const host: Host = { id: 1, name: "Cluster", dest: "login1", python: "python3", roots: ["/data"], createdAt: "" };
-const draft: Job = { id: 7, hostId: 1, name: "vgt-ker8", template: "vgt", script: "#!/bin/bash -l\n#SBATCH --cpus-per-task=8\n", scriptHash: "a".repeat(64), state: "draft", detail: "", slurmId: "", workDir: "job-0123456789abcdef", outputDir: "/data/vesqira_runs/x", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: null, note: "" };
+const draft: Job = { id: 7, hostId: 1, name: "vgt-ker8", template: "vgt", script: "#!/bin/bash -l\n#SBATCH --cpus-per-task=8\n", scriptHash: "a".repeat(64), state: "draft", detail: "", slurmId: "", workDir: "job-0123456789abcdef", outputDir: "/data/vesqira_runs/x", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: null, note: "", autoImport: true };
 
 function mockFetch(jobs: Job[]) {
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -59,6 +59,32 @@ describe("jobs", () => {
     await userEvent.click(await screen.findByRole("button", { name: /vgt-ker8/ }));
     await userEvent.click(screen.getByRole("button", { name: "Submit this script" }));
     const call = calls.find((c) => c.url.endsWith("/submit"))!;
-    expect(JSON.parse(String(call.init!.body))).toEqual({ scriptHash: draft.scriptHash });
+    expect(JSON.parse(String(call.init!.body))).toEqual({ scriptHash: draft.scriptHash, autoImport: true });
+  });
+
+  it("offers automatic import for a VGT draft, on by default, and submits the choice", async () => {
+    const calls = mockFetch([draft]);
+    render(<JobsView hosts={[host]} onImported={() => {}} onOpenRun={() => {}} />);
+    await userEvent.click(await screen.findByRole("button", { name: /vgt-ker8/ }));
+    const box = screen.getByRole("checkbox", { name: /import its results as a run/ });
+    expect(box).toBeChecked();
+    expect(screen.getByText(/checks nothing/)).toBeInTheDocument();
+    await userEvent.click(box);
+    await userEvent.click(screen.getByRole("button", { name: "Submit this script" }));
+    const call = calls.find((c) => c.url.endsWith("/submit"))!;
+    expect(JSON.parse(String(call.init!.body))).toEqual({ scriptHash: draft.scriptHash, autoImport: false });
+  });
+
+  it("offers no automatic import for a job that has no run to import", async () => {
+    mockFetch([{ ...draft, template: "rohsa", autoImport: false }]);
+    render(<JobsView hosts={[host]} onImported={() => {}} onOpenRun={() => {}} />);
+    await userEvent.click(await screen.findByRole("button", { name: /vgt-ker8/ }));
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("explains the notification toggle where jobs are listed", async () => {
+    mockFetch([]);
+    render(<JobsView hosts={[host]} onImported={() => {}} onOpenRun={() => {}} />);
+    expect(await screen.findByText(/cannot show desktop notifications/)).toBeInTheDocument();
   });
 });

@@ -23,7 +23,7 @@ const imported: Rerun = {
   params: [{ key: "ker", value: "4", source: "config" }],
   vgt: { repoDir: null, configPath: null, baseConfigText: null, set: {}, cpus: null, mem: null, time: null, partition: null, account: null },
 };
-const created: Job = { id: 9, hostId: 1, name: "x", template: "vgt", script: "", scriptHash: "", state: "draft", detail: "", slurmId: "", workDir: "", outputDir: "", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: 1, note: "" };
+const created: Job = { id: 9, hostId: 1, name: "x", template: "vgt", script: "", scriptHash: "", state: "draft", detail: "", slurmId: "", workDir: "", outputDir: "", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: 1, note: "", autoImport: true };
 
 const boardList = { boards: [{ id: 5, title: "LMC paper", createdAt: "", updatedAt: "", items: [] }] };
 function mockFetch(rerun: Rerun, addFails = false) {

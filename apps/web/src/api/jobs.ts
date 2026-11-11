@@ -22,6 +22,8 @@ export type Job = {
   parentRunId: number | null;
   /** Why the owner made this job, or an empty string. */
   note: string;
+  /** Import the results as a run by itself when the job completes (VGT jobs only); fixed once the job is submitted. */
+  autoImport: boolean;
 };
 
 export type RohsaJobRequest = {
@@ -61,7 +63,7 @@ export const listJobs = () => call<{ jobs: Job[] }>("/api/jobs").then((r) => r.j
 export const getJob = (id: number) => call<Job>(`/api/jobs/${id}`);
 export const createJob = (r: VgtJobRequest | RohsaJobRequest) => post<Job>("/api/jobs", r);
 export const editScript = (id: number, script: string) => post<Job>(`/api/jobs/${id}/script`, { script });
-export const submitJob = (id: number, scriptHash: string) => post<Job>(`/api/jobs/${id}/submit`, { scriptHash });
+export const submitJob = (id: number, scriptHash: string, autoImport?: boolean) => post<Job>(`/api/jobs/${id}/submit`, autoImport === undefined ? { scriptHash } : { scriptHash, autoImport });
 export const refreshJob = (id: number) => post<Job>(`/api/jobs/${id}/refresh`, {});
 export const reopenJob = (id: number) => post<Job>(`/api/jobs/${id}/reopen`, {});
 export const cancelJob = (id: number) => post<Job>(`/api/jobs/${id}/cancel`, {});

@@ -22,6 +22,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
@@ -48,7 +49,8 @@ type Server struct {
 	Derived    *derived.Store
 	ManagedDir string
 	Analysis   *AnalysisConfig
-	Audit      *audit.Store // nil records nothing
+	Audit      *audit.Store  // nil records nothing
+	Notes      *notify.Store // events for the owner (jobs ended, results imported); nil records nothing and disables the routes
 	Regions    *regions.Store
 	SSHConfig  string         // the user's ssh_config, only read to offer host aliases; empty offers none
 	Hints      hintSource     // overrides the catalog for the runs list's input hints (tests count calls)
@@ -77,6 +79,7 @@ type Server struct {
 
 	records     sync.WaitGroup // background run-record writes in flight (hostwrite.go)
 	recordLocks sync.Map       // job id -> *sync.Mutex: one record write per job at a time
+	imports     sync.WaitGroup // automatic imports of finished jobs in flight (jobwatch.go)
 
 	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
@@ -205,6 +208,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/compat", s.compatibility)
 	if s.Audit != nil {
 		mux.HandleFunc("GET /api/audit", s.listAudit)
+	}
+	if s.Notes != nil {
+		mux.HandleFunc("GET /api/notifications", s.listNotifications)
+		mux.HandleFunc("POST /api/notifications/read", s.readNotifications)
 	}
 	mux.HandleFunc("GET /api/preview", s.previewFile)
 	mux.HandleFunc("POST /api/datasets/{id}/copy", s.copyDataset)

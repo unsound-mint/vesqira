@@ -56,8 +56,8 @@ func TestOrientationDeclarationMigrationKeepsEveryRowAndLeavesTheNewFieldsUnknow
 	if m, _ := filepath.Glob(p + ".before-schema-*"); len(m) != 1 {
 		t.Fatalf("the catalog was not backed up first: %v", m)
 	}
-	if !strings.Contains(migrations[len(migrations)-1].Name, "frame and quantity") {
-		t.Fatal("the last migration is not the orientation one")
+	if !strings.Contains(migrations[5].Name, "frame and quantity") || migrations[5].To != 7 {
+		t.Fatal("migration 7 is not the orientation one")
 	}
 }
 

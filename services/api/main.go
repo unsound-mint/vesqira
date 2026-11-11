@@ -21,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
@@ -47,6 +48,7 @@ func main() {
 	planeScript := flag.String("plane-worker", "services/scientific-worker/plane_worker.py", "persistent plane worker script")
 	cacheMiB := flag.Int("plane-cache-mib", 256, "plane cache size in MiB (0 disables)")
 	dataDir := flag.String("data-dir", "", "directory for figure previews (default: next to the database)")
+	jobWatch := flag.Duration("job-watch", server.MinWatchInterval, "how often queued and running jobs are looked up on each host (at least 1m, one call per host per interval; 0 turns it off)")
 	reviewAddr := flag.String("review-addr", "", "optional address for the reviewer surface (published previews only); may be non-loopback, put TLS in front")
 	clientIP := flag.String("review-client-ip-header", "", "header a trusted reverse proxy sets to the client address (for example X-Forwarded-For); without it all clients behind a proxy share one failure allowance")
 	webDist := flag.String("web-dist", "", "built web app: served on this address, and on the review address when there is one")
@@ -125,6 +127,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	noteStore, err := notify.Open(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
 	regionStore, err := regions.Open(store.DB())
 	if err != nil {
 		log.Fatal(err)
@@ -159,7 +165,7 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
+	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Derived: derivedStore, ManagedDir: managedDir, Audit: auditStore, Notes: noteStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
@@ -193,6 +199,9 @@ func main() {
 	// copy in progress is not cut off mid-way. The deferred Closes above then run.
 	stop, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if *jobWatch > 0 { // follow queued and running jobs on the hosts while the app runs (ADR 0043)
+		go srv.WatchJobs(stop, *jobWatch)
+	}
 	<-stop.Done()
 	log.Printf("shutting down: finishing running requests")
 	done, release := context.WithTimeout(context.Background(), 15*time.Second)
