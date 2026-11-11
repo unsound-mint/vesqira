@@ -255,6 +255,19 @@ func (m *Manager) sshArgs(h Host) []string {
 		"-o", "ControlMaster=auto", "-o", "ControlPath=" + filepath.Join(m.ControlDir, "%C"), "-o", "ControlPersist=120", "-o", "LogLevel=ERROR", h.Dest}
 }
 
+// TerminalCommand is the ssh command line for an interactive login on h (the integrated terminal, ADR 0029): the same
+// binary, the same multiplexing socket and the user's own agent as the worker connections, with a forced terminal (-tt).
+// Unlike the worker connections it is not BatchMode: a passphrase or one-time-code prompt appears in the terminal, where
+// the person types it, and Vesqira never sees it. The destination is the stored, validated one, never a string from the page.
+func (m *Manager) TerminalCommand(h Host) (bin string, args []string, env []string, err error) {
+	if err := h.Validate(); err != nil {
+		return "", nil, nil, err
+	}
+	args = []string{"-tt", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
+		"-o", "ControlMaster=auto", "-o", "ControlPath=" + filepath.Join(m.ControlDir, "%C"), "-o", "ControlPersist=120", h.Dest}
+	return m.Ssh, args, os.Environ(), nil // the whole environment, so the agent socket and the user's locale reach ssh
+}
+
 // quote single-quotes a string for the remote shell.
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 

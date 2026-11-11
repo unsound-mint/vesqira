@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"regexp"
@@ -60,6 +63,18 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(b)
 	w.bytes += n
 	return n, err
+}
+
+// Hijack lets the terminal WebSocket (terminal.go) take over the connection; without it the upgrade would fail.
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("response does not support hijacking")
+	}
+	if w.status == 0 {
+		w.status = http.StatusSwitchingProtocols
+	}
+	return h.Hijack()
 }
 
 func (w *statusWriter) Flush() {

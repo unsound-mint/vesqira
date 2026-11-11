@@ -7,12 +7,12 @@ import s from "./Modal.module.css";
  * assistive technology, Escape asks to close, and focus goes back to what opened it. Behaviour comes from React Aria;
  * the look is ours and is shared: a scrim over the page and one card (surface, border, radius, shadow, padding) that
  * scrolls when its content is long, with `ModalActions` sticking to its bottom edge. Callers do not restyle the card.
- * `size` is the card's width. `fullscreen` has no card: the content owns the whole viewport (Present, the editor), and
+ * `keepEscape` leaves Escape to the content (a terminal needs it). `size` is the card's width. `fullscreen` has no card: the content owns the whole viewport (Present, the editor), and
  * `className` is for that content.
  */
-export function Modal({ label, onClose, fullscreen, size = "md", className, children }: { label: string; onClose: () => void; fullscreen?: boolean; size?: "sm" | "md" | "lg"; className?: string; children: ReactNode }) {
+export function Modal({ label, onClose, fullscreen, size = "md", className, keepEscape, children }: { label: string; onClose: () => void; fullscreen?: boolean; size?: "sm" | "md" | "lg"; className?: string; keepEscape?: boolean; children: ReactNode }) {
   return (
-    <ModalOverlay className={`${s.overlay} ${fullscreen ? s.fullscreen : s.scrim}`} isOpen onOpenChange={(open) => { if (!open) onClose(); }}>
+    <ModalOverlay className={`${s.overlay} ${fullscreen ? s.fullscreen : s.scrim}`} isOpen isKeyboardDismissDisabled={keepEscape} onOpenChange={(open) => { if (!open) onClose(); }}>
       <AriaModal className={s.modal}>
         <Dialog aria-label={label} className={`${s.dialog} ${fullscreen ? "" : `${s.card} ${s[size]}`} ${className ?? ""}`}>{children}</Dialog>
       </AriaModal>

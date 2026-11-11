@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FileText, FolderOpen, FolderPlus, LayoutGrid, Server, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { FileText, FolderOpen, FolderPlus, LayoutGrid, Server, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
 import { JobsView, jobFor } from "../jobs/JobsView";
@@ -32,6 +32,7 @@ import { healthScore, location } from "../projects/format";
 import { useProject } from "../projects/useProject";
 import { writeProjectFile } from "../api/projects";
 import { editorEnabled } from "../api/editor";
+import { terminalEnabled } from "../api/terminal";
 import { getCompat } from "../api/catalog";
 import type { Compat } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
@@ -59,6 +60,8 @@ import s from "./Shell.module.css";
 
 // Loaded when a file is first opened for editing: it brings Monaco (ADR 0029).
 const EditorScreen = lazy(() => import("../editor/EditorScreen"));
+// Loaded when the terminal is first opened: it brings xterm.js (ADR 0029).
+const TerminalScreen = lazy(() => import("../terminal/TerminalScreen"));
 
 const CATALOG_PROBLEM = "This catalog has changed on disk, is missing or is outside the source folders since it was registered, so its rows cannot be read until it is registered again.";
 
@@ -72,9 +75,12 @@ export function Shell() {
   const project = proj.project;
   const [editor, setEditor] = useState(false); // the server was started with --enable-editor
   const [editing, setEditing] = useState<string | null>(null);
+  const [terminal, setTerminal] = useState(false); // the server was started with --enable-terminal
+  const [terminalOpen, setTerminalOpen] = useState(false);
   useEffect(() => {
     let live = true;
     void editorEnabled().then((on) => live && setEditor(on));
+    void terminalEnabled().then((on) => live && setTerminal(on));
     return () => {
       live = false;
     };
@@ -279,6 +285,7 @@ export function Shell() {
         <IconButton icon={LayoutGrid} label="Boards" size="lg" pressed={mode === "boards"} onClick={() => setMode(mode === "boards" ? "viewer" : "boards")} />
         <IconButton icon={Server} label="Jobs" size="lg" pressed={mode === "jobs"} onClick={() => setMode(mode === "jobs" ? "viewer" : "jobs")} />
         <IconButton icon={FileText} label="Reports" size="lg" pressed={mode === "reports"} onClick={() => setMode(mode === "reports" ? "viewer" : "reports")} />
+        {terminal ? <IconButton icon={TerminalIcon} label="Terminal" size="lg" pressed={terminalOpen} onClick={() => setTerminalOpen(true)} /> : null}
       </nav>
 
       <aside className={s.side} aria-label="Explorer" hidden={!sideShown}>
@@ -505,6 +512,11 @@ export function Shell() {
         {rendererNote ? <Pill>{rendererNote}</Pill> : null}
         <Pill tone={actDs ? flag.tone : "neutral"}>{actDs ? (viewer.view ? flag.text : "Reading layout") : cat.selectedCatalog ? cat.selectedCatalog.name : "No dataset"}</Pill>
       </footer>
+      {terminal && terminalOpen ? (
+        <Suspense fallback={null}>
+          <TerminalScreen hosts={cat.hosts} onClose={() => setTerminalOpen(false)} />
+        </Suspense>
+      ) : null}
       {editor && editing ? (
         <Suspense fallback={null}>
           <EditorScreen key={editing} path={editing} onClose={() => setEditing(null)} />

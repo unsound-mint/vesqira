@@ -57,6 +57,7 @@ func main() {
 	sshBin := flag.String("ssh", "ssh", "ssh client used to reach remote hosts (your own ssh config and agent are used; Vesqira never handles keys)")
 	sshConfig := flag.String("ssh-config", "~/.ssh/config", "ssh_config read only to offer its host aliases when adding a host (empty offers none)")
 	enableEditor := flag.Bool("enable-editor", false, "let the owner edit text files inside the source roots from the app (ADR 0029); off by default, never on the review address")
+	enableTerminal := flag.Bool("enable-terminal", false, "let the owner open a shell on this computer or on a registered host from the app (ADR 0029); runs commands as you; off by default, never on the review address")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
 
@@ -171,7 +172,7 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
+	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
@@ -190,6 +191,9 @@ func main() {
 	}()
 	if *enableEditor {
 		log.Printf("editor enabled: text files inside the source roots can be changed from the app (loopback only)")
+	}
+	if *enableTerminal {
+		log.Printf("terminal enabled: the app can open a shell as this user, here or over ssh (loopback only)")
 	}
 	log.Printf("listening on http://%s, roots: %v", *addr, []string(rs))
 	// No WriteTimeout: a cube analysis answers one request for up to its own 30-minute budget. Reading a request is

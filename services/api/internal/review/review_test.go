@@ -132,6 +132,31 @@ func TestEditorRoutesAreNotOnTheReviewListener(t *testing.T) {
 	}
 }
 
+// The terminal (ADR 0029) is also a route of the owner listener only: neither the session request nor the WebSocket
+// upgrade is answered on the review listener, whatever the headers.
+func TestTerminalRoutesAreNotOnTheReviewListener(t *testing.T) {
+	ts, _, _, _, _ := setup(t)
+	for _, c := range []struct{ method, path string }{{"POST", "/api/terminal/sessions"}, {"GET", "/api/terminal"}, {"PUT", "/api/terminal"}} {
+		req, _ := http.NewRequest(c.method, ts.URL+c.path, strings.NewReader(`{"tab":"tab-aaaaaaaa"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Connection", "Upgrade")
+		req.Header.Set("Upgrade", "websocket")
+		req.Header.Set("Sec-WebSocket-Version", "13")
+		req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+		req.Header.Set("Sec-WebSocket-Protocol", "vesqira.terminal.v1")
+		req.Header.Set("Origin", ts.URL)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode == 101 || resp.StatusCode == 200 && strings.Contains(string(b), "token") || resp.Header.Get("Sec-WebSocket-Accept") != "" {
+			t.Errorf("%s %s on the review listener: %d %s", c.method, c.path, resp.StatusCode, b)
+		}
+	}
+}
+
 func TestEveryBadTokenIsTheSame404AndFailuresAreLimited(t *testing.T) {
 	ts, _, tok, _, _ := setup(t)
 	var first string
