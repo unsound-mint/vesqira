@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");
-const REVIEW = "http://127.0.0.1:8788";
+import { API, REVIEW } from "../ports";
 
 const inspector = (page: Page) => page.getByRole("complementary", { name: "Inspector" });
 const bigChannel = (page: Page) => page.getByRole("region", { name: "Channels" }).locator("strong").first();
@@ -178,7 +178,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await expect(inspector(page).getByRole("button", { name: "Source A" })).toBeVisible();
   await inspector(page).getByRole("button", { name: "Duplicate" }).click();
   await expect(inspector(page).getByRole("button", { name: "Source A copy" })).toBeVisible();
-  const reg = await request.get(await inspector(page).getByRole("link", { name: "Export all as a DS9 region file (.reg)" }).getAttribute("href").then((h) => `http://127.0.0.1:8787${h}`));
+  const reg = await request.get(await inspector(page).getByRole("link", { name: "Export all as a DS9 region file (.reg)" }).getAttribute("href").then((h) => `${API}${h}`));
   const regText = await reg.text();
   expect(reg.status()).toBe(200);
   expect(regText).toContain("image\n");
@@ -225,9 +225,9 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await expect(section.getByText(/orientations cancel/).first()).toBeVisible();
   await expect(inspector(page).getByText(/not defined for angles of an axial map/)).toBeVisible();
   // and the server refuses an arithmetic mean of angles outright
-  const list = (await (await request.get("http://127.0.0.1:8787/api/datasets")).json()) as { datasets: { id: number; name: string }[] };
+  const list = (await (await request.get(`${API}/api/datasets`)).json()) as { datasets: { id: number; name: string }[] };
   const psi = list.datasets.find((d) => d.name === "vgt_psi_deg.fits")!;
-  expect((await request.get(`http://127.0.0.1:8787/api/datasets/${psi.id}/spectrum?shape=rect&x0=0&y0=0&x1=1&y1=1`)).status()).toBe(409);
+  expect((await request.get(`${API}/api/datasets/${psi.id}/spectrum?shape=rect&x0=0&y0=0&x1=1&y1=1`)).status()).toBe(409);
 
   // ---- comparing: linked only when the grids are confirmed the same ----
   await page.getByLabel("Compare with").selectOption({ label: "vgt_reliability.fits" });

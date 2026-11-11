@@ -37,7 +37,7 @@ A dev container (`.devcontainer/devcontainer.json`) runs the same setup. **It is
 | `services/api` | Go control plane: catalog, projects, hosts and jobs, provenance, review server, audit. SQLite |
 | `services/scientific-worker` | Python worker (astropy) that reads FITS headers, planes, spectra and orientation statistics |
 | `fixtures` | Generated synthetic FITS data and the tests that pin its scientific meaning (`generate.py`) |
-| `e2e` | Playwright browser walk-through of `docs/demo.md` |
+| `e2e` | Playwright browser walk-through of `docs/demo.md` (fixed ports 8787, 8788, 8790, 5198, 5199; `make e2e-isolated` picks a free port block through `VESQIRA_E2E_PORT_BASE`, so parallel worktrees do not collide) |
 | `design`, `docs/design` | Design tokens and the approved design direction |
 | `docs` | Architecture decisions (`docs/adr`), product shape, roadmap, demo, performance |
 | `packaging`, `tools` | RPM build, demo and setup scripts, benchmarks, docs and contract checkers |
