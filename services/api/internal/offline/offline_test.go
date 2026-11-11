@@ -105,6 +105,24 @@ func TestStaleAndSupersede(t *testing.T) {
 	}
 }
 
+// A catalog restored without the store's directory must not describe copies that are not there.
+func TestRowsWithoutFilesAreDroppedAtStart(t *testing.T) {
+	s, dir := open(t)
+	if _, err := s.Put(k1, "", []byte("h"), []byte("p"), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Open(s.db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s2.Has(7) || s2.Used() != 0 {
+		t.Fatal("a row with no file survived the start")
+	}
+}
+
 func TestForgetAndOrphanSweep(t *testing.T) {
 	s, dir := open(t)
 	if _, err := s.Put(k1, "", []byte("h"), []byte("p"), time.Now()); err != nil {

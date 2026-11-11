@@ -442,8 +442,10 @@ type offlineJob struct {
 }
 
 type offlineRunner struct {
-	mu  sync.Mutex
-	job *offlineJob
+	pmu     sync.Mutex     // guards probing
+	probing map[int64]bool // hosts being asked again in the background (probeHost)
+	mu      sync.Mutex
+	job     *offlineJob
 }
 
 func (s *Server) waitOffline() {

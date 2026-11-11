@@ -4,7 +4,7 @@
  * ApiError whose message is the server's own words. It imports only offlineState (React and nothing else), so the reviewer bundle can reach it.
  */
 
-import { observeFailure, observeResponse } from "./offlineState";
+import { observeResponse } from "./offlineState";
 
 export class ApiError extends Error {
   /** `status` is 0 when no response arrived; `body` is the parsed JSON error body (or null), for callers with a special case such as a 409 carrying `current`. */
@@ -25,7 +25,8 @@ export function onApiError(listener: ErrorListener): () => void {
 // Only server failures reach the shell's "Last error · Reference" line: a 4xx is an answer the page already shows in place
 // (a 404 for "no derived dataset", a 409 asking for a decision), and announcing those would make the line noise.
 function announce(e: ApiError): ApiError {
-  if (e.requestId && e.status >= 500) for (const l of [...errorListeners]) l(e as ApiError & { requestId: string });
+  // "Not in the offline copy" is an answer the viewer shows in place (every hover asks for a readout the copy does not hold), not a fault
+  if (e.requestId && e.status >= 500 && (e.body as { code?: unknown } | null)?.code !== "offline_missing") for (const l of [...errorListeners]) l(e as ApiError & { requestId: string });
   return e;
 }
 
@@ -81,7 +82,6 @@ export async function requestRaw(url: string, init?: RequestInit, opts: RequestO
   }
   if (!res.ok && !opts.allow?.includes(res.status)) {
     const e = await failure(res, url);
-    observeFailure(url, res.status, e.body);
     throw opts.quiet ? e : announce(e);
   }
   observeResponse(url, res);

@@ -4,7 +4,7 @@ import { usesOf } from "../catalog/MaskPolicies";
 import type { PolicyChoice } from "../catalog/MaskPolicies";
 import { useMasks } from "./useMasks";
 import { expandPreview, getAxial, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
-import { isOfflineMissing } from "../api/offlineState";
+import { isOfflineMissing, setOfflineMissing } from "../api/offlineState";
 import { newRequestId } from "../api/http";
 import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
 import type { Dataset } from "../api/catalog";
@@ -191,6 +191,7 @@ export function useViewer(dataset: Dataset | null) {
     const shown = (p: Plane) => {
       setPlane(p);
       setPlaneError(null);
+      setOfflineMissing(datasetId, null);
     };
     const failed = (e: unknown) => {
       if (isAbort(e)) return;
@@ -219,6 +220,7 @@ export function useViewer(dataset: Dataset | null) {
           // The offline copy kept only the reduced plane (ADR 0059): keep showing it, honestly labelled, and let the banner say
           // what is missing, rather than wiping the picture for an error.
           if (previewShown && isOfflineMissing(e)) {
+            setOfflineMissing(datasetId, message(e, ""));
             setLoading(false);
             return;
           }

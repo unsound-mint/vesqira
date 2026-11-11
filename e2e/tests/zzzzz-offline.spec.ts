@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,16 +13,22 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const run = path.resolve(here, "../.run");
 const remoteRoot = path.join(run, "remote_data");
 const down = path.join(run, "remote-home", "DOWN");
+const workerHome = path.join(run, "remote-home", ".cache", "vesqira");
 
 function hostDown(isDown: boolean) {
-  if (isDown) {
-    fs.writeFileSync(down, "");
+  if (!isDown) {
+    fs.rmSync(down, { force: true });
+    return;
+  }
+  fs.writeFileSync(down, "");
+  // the session dies with the VPN: the host's worker runs from a folder under the stand-in home, which is how it is told apart
+  for (const pid of fs.readdirSync("/proc").filter((n) => /^\d+$/.test(n))) {
     try {
-      execFileSync("pkill", ["-f", path.join(run, "remote-home", ".cache", "vesqira")]); // the session dies with the VPN
+      if (fs.readlinkSync(`/proc/${pid}/cwd`).startsWith(workerHome)) process.kill(Number(pid), "SIGKILL");
     } catch {
-      /* nothing was running */
+      /* gone, or not ours */
     }
-  } else fs.rmSync(down, { force: true });
+  }
 }
 
 async function openDataset(page: Page, file: string) {
@@ -36,10 +41,10 @@ test.afterAll(() => hostDown(false));
 
 test("a prepared cube keeps working, marked as a copy, when the host goes away", async ({ page }) => {
   fs.copyFileSync(path.join(remoteRoot, "remote_cube.fits"), path.join(remoteRoot, "offline_cube.fits"));
-  const host = await page.request.post(`${API}/api/hosts`, { data: { name: "Offline host", dest: "fake", roots: [remoteRoot] } });
+  const host = await page.request.post(`${API}/api/hosts`, { data: { name: "Cluster login", dest: "fake", roots: [remoteRoot] } });
   expect(host.ok()).toBeTruthy();
   const { id } = (await host.json()) as { id: number };
-  const reg = await page.request.post(`${API}/api/hosts/${id}/register`, { data: { path: path.join(remoteRoot, "offline_cube.fits"), asNew: true } });
+  const reg = await page.request.post(`${API}/api/hosts/${id}/register`, { data: { path: path.join(remoteRoot, "offline_cube.fits") } });
   expect(reg.ok()).toBeTruthy();
 
   await openDataset(page, "offline_cube.fits");
@@ -54,6 +59,7 @@ test("a prepared cube keeps working, marked as a copy, when the host goes away",
   await expect(sheet).toContainText("Works partially", { timeout: 30_000 }); // a status in words
   await expect(sheet).toContainText("planes 0–3 (full resolution)");
   await expect(sheet).toContainText(/About .* of your 256\.0 MiB budget/);
+  await page.screenshot({ path: path.join(run, "offline-sheet.png") });
   await sheet.getByRole("button", { name: "Prepare", exact: true }).click();
   await expect(sheet).toContainText("Done.", { timeout: 60_000 });
   await sheet.getByRole("button", { name: "Close" }).click();
@@ -68,10 +74,24 @@ test("a prepared cube keeps working, marked as a copy, when the host goes away",
   await expect(banner).toContainText("It cannot show anything newer");
   // a channel that was not kept fails with a sentence that names it, and the banner repeats it
   await page.getByRole("group", { name: "Plane viewer" }).press("End");
-  await expect(page.getByText(/is not in the offline copy of offline_cube\.fits/).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("alert").filter({ hasText: /is not in the offline copy of offline_cube\.fits/ })).toBeVisible({ timeout: 30_000 });
+  await expect(banner).toBeVisible(); // still said to be a copy beside the refusal
+  for (const [w, h] of [[1440, 900], [1280, 800], [390, 844]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.screenshot({ path: path.join(run, `offline-banner-${w}.png`) });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); // the narrow layout remembers a closed explorer
 
-  // the host is back: live again, no banner
+  // the host is back: answers are live again within a moment (the host is asked again in the background), and the banner goes
   hostDown(false);
-  await openDataset(page, "offline_cube.fits");
-  await expect(page.getByTestId("offline-banner")).toHaveCount(0);
+  await expect(async () => {
+    try {
+      await openDataset(page, "offline_cube.fits");
+      await expect(page.getByTestId("offline-banner")).toHaveCount(0, { timeout: 1500 });
+    } catch (e) {
+      await page.screenshot({ path: path.join(run, "offline-fail.png") });
+      throw e;
+    }
+  }).toPass({ timeout: 60_000, intervals: [1000, 2000, 3000] });
 });

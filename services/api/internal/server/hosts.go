@@ -62,8 +62,12 @@ func (s *Server) authorizeRemote(ctx context.Context, d catalog.Dataset) (real s
 	if err != nil || !h.InRoots(d.Path) {
 		return "", k, 403, "not available"
 	}
-	if state, at := s.reach.get(d.HostID); state == "no" && time.Since(at) < offlineRetry && s.Offline.Has(d.ID) {
-		return "", k, 502, msgHostUnreachable // just failed, and a copy can answer: do not wait out another connect timeout (ADR 0059)
+	if state, at := s.reach.get(d.HostID); state == "no" && s.Offline.Has(d.ID) {
+		// The host did not answer last time and a copy can answer: do not wait out another connect timeout for every request of a
+		// scrub. One background probe at a time asks the host again and updates the state, so the first request after the VPN
+		// is back may still be answered from the copy and the next ones are live (ADR 0059).
+		s.probeHost(h, d.Path, at)
+		return "", k, 502, msgHostUnreachable
 	}
 	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "stat", "path": d.Path})
 	var re *worker.RequestError

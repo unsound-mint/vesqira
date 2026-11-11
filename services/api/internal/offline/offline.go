@@ -88,6 +88,7 @@ func Open(db *sql.DB, dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	s.dropMissing()
 	if subs, err := os.ReadDir(dir); err == nil {
 		for _, d := range subs {
 			id, err := strconv.ParseInt(d.Name(), 10, 64)
@@ -101,6 +102,29 @@ func Open(db *sql.DB, dir string) (*Store, error) {
 		}
 	}
 	return s, nil
+}
+
+// dropMissing removes the rows whose file is gone: a catalog restored from a backup (which does not carry this directory) or a
+// folder removed by hand. Without it the index would describe copies that do not exist.
+func (s *Store) dropMissing() {
+	rows, err := s.db.Query(`SELECT id, file FROM offline_entries`)
+	if err != nil {
+		return
+	}
+	var gone []int64
+	for rows.Next() {
+		var id int64
+		var f string
+		if rows.Scan(&id, &f) == nil {
+			if _, err := os.Stat(s.path(f)); os.IsNotExist(err) {
+				gone = append(gone, id)
+			}
+		}
+	}
+	rows.Close()
+	for _, id := range gone {
+		_, _ = s.db.Exec(`DELETE FROM offline_entries WHERE id=?`, id)
+	}
 }
 
 // Cap is the most the store may keep.

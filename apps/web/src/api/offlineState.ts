@@ -48,15 +48,15 @@ export function observeResponse(url: string, res: Response) {
 
 const sameCopy = (a: OfflineCopy | null, b: OfflineCopy) => a !== null && a.takenAt === b.takenAt && a.signature.size === b.signature.size && a.signature.mtimeNs === b.signature.mtimeNs;
 
-/** Called with a failed request's server body: a refusal that names what the offline copy does not hold. */
-export function observeFailure(url: string, status: number, body: unknown) {
-  const m = ROUTE.exec(url);
-  if (!m || status !== 503) return;
-  const o = body as { code?: unknown; error?: unknown } | null;
-  if (o?.code !== "offline_missing" || typeof o.error !== "string") return;
-  const id = Number(m[1]);
-  const cur = states.get(id) ?? NONE;
-  set(id, { copy: cur.copy, missing: o.error });
+/**
+ * What the copy does not hold, for the plane on screen: the viewer says it (not every refused request is about what the person is
+ * looking at; a quiet prefetch of the next channel is refused too). Cleared when a plane is shown, and by a live answer.
+ */
+export function setOfflineMissing(datasetId: number | null, message: string | null) {
+  if (datasetId === null) return;
+  const cur = states.get(datasetId) ?? NONE;
+  if (message !== null && cur.copy === null) return; // only while the answers are copies
+  set(datasetId, { copy: cur.copy, missing: message });
 }
 
 /** A refusal that says the offline copy does not hold what was asked for (503 offline_missing). */

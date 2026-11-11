@@ -2,8 +2,9 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import type { OfflinePlan, OfflinePrepareState } from "../api/offline";
-import { getView } from "../api/planes";
-import { resetOfflineState } from "../api/offlineState";
+import { onApiError } from "../api/http";
+import { getCoord, getView } from "../api/planes";
+import { resetOfflineState, setOfflineMissing } from "../api/offlineState";
 import { OfflineBanner } from "../viewer/OfflineBanner";
 import { DatasetOffline } from "./OfflineAction";
 
@@ -113,7 +114,7 @@ describe("the viewer's offline banner", () => {
     await act(async () => { await getView(7); });
     const banner = await screen.findByRole("status");
     expect(banner).toHaveTextContent("Offline copy");
-    expect(banner).toHaveTextContent("1,234 bytes");
+    expect(banner).toHaveTextContent("1,234 bytes"); // under "Which file"
     expect(banner).toHaveTextContent("SHA-256 abcdef012345");
     expect(banner).toHaveTextContent("It cannot show anything newer");
     await act(async () => { await getView(7); });
@@ -121,15 +122,24 @@ describe("the viewer's offline banner", () => {
   });
 
   it("names what the copy does not hold, in the server's own words", async () => {
-    fakeApi({
-      "GET /api/datasets/7/view": () => ({ json: { width: 1, height: 1, channels: 1 }, headers: { "X-Vesqira-Offline": mark } }),
-      "GET /api/datasets/7/plane": () => ({ status: 503, json: { error: "channel 30 at full resolution is not in the offline copy of a.fits. Kept: view; planes 10–12 (full resolution).", code: "offline_missing" } }),
-    });
+    fakeApi({ "GET /api/datasets/7/view": () => ({ json: { width: 1, height: 1, channels: 1 }, headers: { "X-Vesqira-Offline": mark } }) });
     render(<OfflineBanner datasetId={7} />);
+    act(() => setOfflineMissing(7, "channel 30 at full resolution is not in the offline copy")); // no copy seen yet: nothing to say it about
+    expect(screen.queryByTestId("offline-banner")).toBeNull();
     await act(async () => { await getView(7); });
-    const { getPlane } = await import("../api/planes");
-    await act(async () => { await getPlane(7, 30).catch(() => undefined); });
+    act(() => setOfflineMissing(7, "channel 30 at full resolution is not in the offline copy of a.fits. Kept: view; planes 10–12 (full resolution)."));
     expect(await screen.findByRole("status")).toHaveTextContent("channel 30 at full resolution is not in the offline copy");
+    act(() => setOfflineMissing(7, null));
+    expect(screen.getByRole("status")).not.toHaveTextContent("channel 30");
+  });
+
+  it("is not an error the shell announces: a refused readout is shown in place", async () => {
+    const seen: unknown[] = [];
+    const off = onApiError((e) => seen.push(e));
+    fakeApi({ "GET /api/datasets/7/coord": () => ({ status: 503, json: { error: "a coordinate readout needs the host", code: "offline_missing" }, headers: { "X-Request-Id": "abcdef0123456789" } }) });
+    await expect(getCoord(7, 1, 1, 0)).rejects.toThrow("needs the host");
+    off();
+    expect(seen).toEqual([]);
   });
 
   it("shows nothing for another dataset", async () => {

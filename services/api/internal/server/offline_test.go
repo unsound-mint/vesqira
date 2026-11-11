@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -22,6 +23,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
 type offEnv struct {
@@ -92,6 +94,9 @@ func newOfflineEnv(t *testing.T) *offEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
+	old := offlineProbeAfter
+	offlineProbeAfter = 0
+	t.Cleanup(func() { offlineProbeAfter = old })
 	e := &offEnv{ts: ts, srv: srv, cat: cat, mgr: mgr, host: h, home: home, remoteFile: filepath.Join(remoteRoot, "hi_cube.fits"), cube: cube, store: off, dataDir: dataDir, bs: bs}
 	r, b := postJSON(t, ts.URL+"/api/hosts/"+itoa(int(h.ID))+"/register", map[string]any{"path": e.remoteFile})
 	if r.StatusCode != 201 {
@@ -110,11 +115,24 @@ func (e *offEnv) down(t *testing.T, down bool) {
 	if down {
 		os.WriteFile(p, nil, 0o644)
 		e.mgr.Forget(e.host.ID) // the open ssh session dies with the VPN
-		e.srv.reach.set(e.host.ID, false)
 		return
 	}
 	os.Remove(p)
-	e.srv.reach.set(e.host.ID, true)
+}
+
+// waitLive asks until an answer is no longer a copy: after the VPN is back, a dataset with a copy goes on being answered from it
+// until the background look at the host has said the host answers (at most a request or two later).
+func (e *offEnv) waitLive(t *testing.T, path string) (*http.Response, []byte) {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		r, b := e.get(t, path)
+		if r.Header.Get("X-Vesqira-Offline") == "" {
+			return r, b
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("the host is back but answers are still copies")
+	return nil, nil
 }
 
 func (e *offEnv) get(t *testing.T, path string) (*http.Response, []byte) {
@@ -294,7 +312,7 @@ func TestPreparedCopyServesWhenTheHostIsUnreachable(t *testing.T) {
 
 	// the host is back: live again, no copy marker
 	e.down(t, false)
-	r, b = e.get(t, e.ds("/plane?channel=12"))
+	r, b = e.waitLive(t, e.ds("/plane?channel=12"))
 	if r.StatusCode != 200 || r.Header.Get("X-Vesqira-Offline") != "" {
 		t.Fatalf("host back: %d %v", r.StatusCode, r.Header)
 	}
@@ -314,6 +332,7 @@ func TestChangedFileMakesTheCopyStaleAndItIsRefused(t *testing.T) {
 		t.Fatalf("fresh copy: %d", r.StatusCode)
 	}
 	e.down(t, false)
+	e.waitLive(t, e.ds("/view"))
 	os.WriteFile(e.remoteFile, append(append([]byte(nil), e.cube...), 0), 0o644)
 	if r, _ := e.get(t, e.ds("/plane?channel=5")); r.StatusCode != 409 {
 		t.Fatalf("a changed file while the host is reachable must be refused, not served from the copy: %d", r.StatusCode)
@@ -451,6 +470,41 @@ func TestForgetAndTheStoreLimit(t *testing.T) {
 	e.down(t, true)
 	if r, _ := e.get(t, e.ds("/plane?channel=5")); r.StatusCode != 502 {
 		t.Fatalf("after forgetting, the host's failure is what is reported: %d", r.StatusCode)
+	}
+}
+
+// When the host goes away between the stat and the read, ask falls back to the copy made from exactly the signature just verified,
+// and to nothing else.
+func TestHostLostBetweenStatAndReadFallsBackToTheVerifiedCopy(t *testing.T) {
+	e := newOfflineEnv(t)
+	e.prepare(t, map[string]any{"datasetIds": []int64{e.remote.ID}, "channels": map[string]int{"from": 5, "to": 5}, "detail": "full", "budgetBytes": 8 << 20})
+	k := cacheKey{id: e.remote.ID, host: e.host.ID, size: e.remote.SizeBytes, mtime: e.remote.ModifiedAt.UnixNano(), op: "plane", channel: 5}
+	try := func(k cacheKey) (worker.Reply, bool, http.Header) {
+		w := httptest.NewRecorder()
+		rep, ok := e.srv.afterFailure(w, httptest.NewRequest("GET", "/", nil), k)
+		return rep, ok, w.Header()
+	}
+	rep, ok, h := try(k)
+	if !ok || h.Get("X-Vesqira-Offline") == "" || len(rep.Payload) == 0 {
+		t.Fatalf("the verified copy was not used: %v %v", ok, h)
+	}
+	if _, p := frame(t, append(append(binary.LittleEndian.AppendUint32(nil, uint32(len(rep.Head))), rep.Head...), rep.Payload...)); len(p) == 0 {
+		t.Fatal("empty payload")
+	}
+	other := k
+	other.channel = 6
+	if _, ok, _ := try(other); ok {
+		t.Error("a plane that was not kept was served")
+	}
+	changed := k
+	changed.size++
+	if _, ok, _ := try(changed); ok {
+		t.Error("a copy was served for another file signature")
+	}
+	local := k
+	local.host = 0
+	if _, ok, _ := try(local); ok {
+		t.Error("a file on this computer answered from the offline store")
 	}
 }
 

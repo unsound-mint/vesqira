@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/offline"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
@@ -25,10 +26,44 @@ import (
 const (
 	msgHostUnreachable   = "the host is not reachable (is the VPN up?)"
 	msgSourceUnreachable = "the file could not be reached (is its network drive answering?)"
-	// offlineRetry is how long a host that just failed to answer is not asked again by a dataset that has an offline copy: without it
-	// every plane request of a scrub would wait out the ssh connect timeout (10 s) before falling back.
-	offlineRetry = 15 * time.Second
+	// offlineProbeTimeout bounds the background look at a host that did not answer.
+	offlineProbeTimeout = 15 * time.Second
 )
+
+// offlineProbeAfter is how long a host that did not answer is left alone before a request of a dataset with an offline copy starts
+// another look at it. Without a short-circuit every plane request of a scrub would wait out the ssh connect timeout (10 s) before
+// falling back to the copy. A variable so tests need not wait.
+var offlineProbeAfter = 3 * time.Second
+
+// probeHost asks a host that last failed to answer whether it does now, in the background and one at a time per host, and records
+// the answer in the reachability state, which is what lets requests go live again. A request the browser gave up on never
+// refreshes that state by itself; this does.
+func (s *Server) probeHost(h hosts.Host, path string, lastAt time.Time) {
+	if s.Remote == nil || time.Since(lastAt) < offlineProbeAfter {
+		return
+	}
+	r := &s.offlineRun
+	r.pmu.Lock()
+	if r.probing[h.ID] {
+		r.pmu.Unlock()
+		return
+	}
+	if r.probing == nil {
+		r.probing = map[int64]bool{}
+	}
+	r.probing[h.ID] = true
+	r.pmu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), offlineProbeTimeout)
+		defer cancel()
+		_, err := s.Remote.Do(ctx, h, map[string]any{"op": "stat", "path": path})
+		var re *worker.RequestError
+		s.reach.set(h.ID, err == nil || errors.As(err, &re)) // a refusal is an answer
+		r.pmu.Lock()
+		delete(r.probing, h.ID)
+		r.pmu.Unlock()
+	}()
+}
 
 // unreachable says a refusal from authorize means "the bytes cannot be reached now", the only case a copy may answer.
 func unreachable(status int, msg string) bool {
