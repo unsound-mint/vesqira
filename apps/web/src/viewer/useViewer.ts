@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
 import { expandPreview, getAxial, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
+import { newRequestId } from "../api/http";
 import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
 import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
@@ -66,6 +67,7 @@ export function useViewer(dataset: Dataset | null) {
   const [spectrum, setSpectrum] = useState<Spectrum | null>(null);
   const [spectrumError, setSpectrumError] = useState<string | null>(null);
   const [spectrumLoading, setSpectrumLoading] = useState(false);
+  const [spectrumRequestId, setSpectrumRequestId] = useState<string | null>(null);
   const [reliability, setReliability] = useState<Plane | null>(null);
   const [axial, setAxial] = useState<AxialStats | null>(null);
   const [axialError, setAxialError] = useState<string | null>(null);
@@ -313,7 +315,9 @@ export function useViewer(dataset: Dataset | null) {
     const ac = new AbortController();
     setSpectrumLoading(true);
     const t = setTimeout(() => {
-      getSpectrum(datasetId, region, ac.signal)
+      const rid = newRequestId();
+      setSpectrumRequestId(rid);
+      getSpectrum(datasetId, region, ac.signal, rid)
         .then((sp) => {
           setSpectrum(sp);
           setSpectrumError(null);
@@ -388,7 +392,7 @@ export function useViewer(dataset: Dataset | null) {
     hover, setHover, mirror, setMirror, pinned, setPinned, picked, setPicked, probe, pixelValue, coord, coordError,
     conv, setConv, offers, convError, convertedNow: converted && converted.key === convKey ? converted.r : null,
     canvas, interp, reliability, axial, axialError, showLines, setShowLines, geometry, drawScale, setDrawScale,
-    tool, setTool, region, setRegion, path, setPath, savedRegions, spectrum, spectrumError, spectrumLoading,
+    tool, setTool, region, setRegion, path, setPath, savedRegions, spectrum, spectrumError, spectrumLoading, spectrumRequestId,
     onChannelKey, retry: () => setRetry((n) => n + 1),
   };
 }

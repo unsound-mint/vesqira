@@ -66,6 +66,8 @@
 }
 
 .state {
+  padding: var(--sp-2);
+  text-align: center;
   position: absolute;
   inset: 0;
   display: grid;

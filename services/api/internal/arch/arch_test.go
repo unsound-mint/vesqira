@@ -17,7 +17,7 @@ const mod = "github.com/unsound-mint/vesqira/services/api/internal/"
 // allowed lists, for every internal package, the internal packages it may import directly. A new import is a design
 // decision: add it here on purpose, and if the importing package faces a reviewer, re-read the reviewer boundary below.
 var allowed = map[string][]string{
-	"arch": {}, "audit": {}, "lifecycle": {}, "backup": {}, "notify": {}, "compat": {}, "derived": {}, "regions": {}, "sourceroot": {}, "identity": {}, "worker": {}, "schema": {}, "vgtlog": {}, "scene": {},
+	"arch": {}, "audit": {}, "lifecycle": {}, "backup": {}, "notify": {}, "compat": {}, "derived": {}, "regions": {}, "sourceroot": {}, "identity": {}, "worker": {}, "support": {}, "schema": {}, "vgtlog": {}, "scene": {},
 	"notionimport": {}, "publish": {}, "imgmeta": {},
 	"transfers":  {"schema"},
 	"boards":     {"schema"},
@@ -31,7 +31,7 @@ var allowed = map[string][]string{
 	"fullschema": {"audit", "boards", "derived", "hosts", "jobs", "notify", "projects", "regions", "reports", "runs", "sweeps", "transfers"},
 	"hosts":      {"worker"},
 	"review":     {"boards"},
-	"server":     {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "notify", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "sweeps", "transfers", "vgtlog", "worker"},
+	"server":     {"audit", "boards", "catalog", "compat", "derived", "discover", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "notify", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "support", "sweeps", "transfers", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a

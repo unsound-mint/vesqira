@@ -46,7 +46,7 @@ func newFake(t *testing.T, timeout time.Duration) *Persistent {
 	if err := os.WriteFile(script, []byte(fake), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	p := &Persistent{Command: []string{"python3", "-P", script}, Timeout: timeout}
+	p := &Persistent{Command: []string{"python3", "-P", script}, Timeout: timeout, Load: NewLoad(Budgets{Interactive: 1, Heavy: 1, Background: 1})}
 	t.Cleanup(p.Close)
 	return p
 }

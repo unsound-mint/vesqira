@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FileText, FolderOpen, FolderPlus, LayoutGrid, Server, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { FileText, LifeBuoy, FolderOpen, FolderPlus, LayoutGrid, Server, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
 import { JobsView, jobFor } from "../jobs/JobsView";
@@ -62,6 +62,7 @@ import { useChannelLink, useSkyLink } from "../viewer/useLinkTransform";
 import { useLinkFollow } from "../viewer/useLinkFollow";
 import type { LinkControls } from "../viewer/CompareBar";
 import { Button, IconButton, Pill, ResizeHandle, Section } from "../ui";
+import { ErrorReferenceHost } from "./ErrorReferenceHost";
 import { LIMITS, useLayout } from "./useLayout";
 import s from "./Shell.module.css";
 
@@ -69,6 +70,8 @@ import s from "./Shell.module.css";
 const EditorScreen = lazy(() => import("../editor/EditorScreen"));
 // Loaded when the terminal is first opened: it brings xterm.js (ADR 0029).
 const TerminalScreen = lazy(() => import("../terminal/TerminalScreen"));
+// Loaded when the support dialog is first opened: it brings the modal and React Aria.
+const SupportDialog = lazy(() => import("./SupportDialog"));
 
 const CATALOG_PROBLEM = "This catalog has changed on disk, is missing or is outside the source folders since it was registered, so its rows cannot be read until it is registered again.";
 
@@ -84,6 +87,7 @@ export function Shell() {
   const [editing, setEditing] = useState<string | null>(null);
   const [terminal, setTerminal] = useState(false); // the server was started with --enable-terminal
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   useEffect(() => {
     let live = true;
     void editorEnabled().then((on) => live && setEditor(on));
@@ -340,6 +344,7 @@ export function Shell() {
         <h1 className={s.name}>Vesqira</h1>
         <span className={s.crumb} title={project?.path}>{project ? `${project.name} · ${location(project, hostName)}` : "No project open"}</span>
         <span className={s.grow} />
+        <IconButton icon={LifeBuoy} label="Create a support bundle" onClick={() => setSupportOpen(true)} />
         <NotificationBell items={notes.items} unread={notes.unread} onOpened={notes.markAllRead} onOpenJob={(id) => { setFocusJob(id); setMode("jobs"); }} onOpenRun={openRun} />
         {project && project.scanned && project.needsCount > 0 ? (
           <button type="button" className={s.pillBtn} aria-pressed={mode === "needs"} onClick={() => setMode("needs")}><Pill tone="warn">{`${project.needsCount} to answer`}</Pill></button>
@@ -592,10 +597,12 @@ export function Shell() {
         <IconButton icon={PanelLeft} label="Toggle explorer" pressed={L.sideOpen} onClick={() => toggle("sideOpen")} />
         <IconButton icon={PanelBottom} label="Toggle timeline" pressed={L.timelineOpen} onClick={() => toggle("timelineOpen")} />
         <IconButton icon={PanelRight} label="Toggle inspector" pressed={L.inspOpen} onClick={() => toggle("inspOpen")} />
+        <ErrorReferenceHost />
         <span className={s.grow} />
         {rendererNote ? <Pill>{rendererNote}</Pill> : null}
         <Pill tone={actDs ? flag.tone : "neutral"}>{actDs ? (viewer.view ? flag.text : "Reading layout") : cat.selectedCatalog ? cat.selectedCatalog.name : "No dataset"}</Pill>
       </footer>
+      {supportOpen ? <Suspense fallback={null}><SupportDialog onClose={() => setSupportOpen(false)} /></Suspense> : null}
       {terminal && terminalOpen ? (
         <Suspense fallback={null}>
           <TerminalScreen hosts={cat.hosts} onClose={() => setTerminalOpen(false)} />

@@ -181,3 +181,20 @@ describe("what is new since the last visit", () => {
     expect(screen.queryByText("New")).toBeNull();
   });
 });
+
+describe("review page error reference", () => {
+  it("shows the server's reference with a copy button when a comment fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return new Response("temporarily unavailable", { status: 500, headers: { "Content-Type": "text/plain", "X-Request-Id": "rev-ref-12345" } });
+      return new Response(JSON.stringify(review), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    render(<ReviewPage token="tok" />);
+    await screen.findByRole("heading", { name: "Group meeting" });
+    await userEvent.type(screen.getByLabelText("Comment"), "Why?");
+    await userEvent.click(screen.getByRole("button", { name: "Send comment" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("temporarily unavailable");
+    expect(alert).toHaveTextContent("Reference: rev-ref-12345");
+    expect(screen.getByRole("button", { name: "Copy reference rev-ref-12345" })).toBeInTheDocument();
+  });
+});

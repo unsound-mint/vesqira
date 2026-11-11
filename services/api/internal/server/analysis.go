@@ -215,6 +215,17 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 // killed with its children when the request ends, and reads its one JSON reply. code is the HTTP status to answer with when it
 // is not 0; the caller removes any output it named.
 func (s *Server) runAnalysisProgram(r *http.Request, args []string) (analysisOutcome, int, string) {
+	if s.Load != nil { // heavy class: wait for a slot, visible to the person who asked (workload.go)
+		label := "analysis"
+		if len(args) > 2 {
+			label = analysisLabel(args[2])
+		}
+		_, release, err := s.Load.Acquire(r.Context(), worker.Heavy, label)
+		if err != nil {
+			return analysisOutcome{}, 499, "request cancelled"
+		}
+		defer release()
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), s.Analysis.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, s.Analysis.Python, args...)
@@ -222,7 +233,7 @@ func (s *Server) runAnalysisProgram(r *http.Request, args []string) (analysisOut
 	if id := RequestID(r.Context()); id != "" { // already validated as a plain token
 		cmd.Env = append(cmd.Env, "VESQIRA_REQUEST_ID="+id)
 	}
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = worker.StderrTail.Writer(nil)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = time.Second

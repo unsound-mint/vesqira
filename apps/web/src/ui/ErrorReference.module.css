@@ -1,0 +1,12 @@
+.ref {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.id {
+  font-family: var(--font-data);
+  user-select: all;
+}

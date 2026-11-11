@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button, Input } from "../ui";
+import { Button, ErrorReference, Input } from "../ui";
+import { ApiError } from "../api/http";
 import { RunLine } from "../boards/RunLine";
 import { addReviewComment, getReview, OUTCOME_TEXT, reviewPreviewUrl, setOutcome } from "../api/boards";
 import type { OutcomeValue } from "../api/boards";
@@ -9,21 +10,25 @@ import { AnchorImage } from "./AnchorImage";
 import { markSeen, readName, readSeen, saveName } from "../boards/seen";
 import s from "./ReviewPage.module.css";
 
+type Problem = { text: string; id?: string };
+const problem = (e: unknown, fallback: string): Problem => ({ text: e instanceof Error ? e.message : fallback, id: e instanceof ApiError ? e.requestId : undefined });
+const Shown = ({ p }: { p: Problem }) => <>{p.text}{p.id ? <> <ErrorReference id={p.id} /></> : null}</>;
+
 /** What a supervisor sees: a frozen board of published previews with provenance, and a way to comment. No data, no paths. */
 export function ReviewPage({ token }: { token: string }) {
   const [rv, setRv] = useState<Review | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<Problem | null>(null);
   const [author, setAuthor] = useState(readName);
   const [since] = useState(() => readSeen(`review.${token.slice(0, 16)}`)); // when this reviewer last opened this link
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<Problem | null>(null);
   const [verdict, setVerdict] = useState<OutcomeValue>("commented");
   const [verdictNote, setVerdictNote] = useState("");
   const [marking, setMarking] = useState<string | null>(null); // the figure revision being marked
   const [draftAnchors, setDraftAnchor] = useState<Record<string, Anchor | null>>({});
 
   useEffect(() => {
-    getReview(token).then((r) => { setRv(r); markSeen(`review.${token.slice(0, 16)}`); }).catch((e: Error) => setErr(e.message));
+    getReview(token).then((r) => { setRv(r); markSeen(`review.${token.slice(0, 16)}`); }).catch((e: unknown) => setErr(problem(e, "Could not load the review.")));
   }, [token]);
 
   async function send(rev: string) {
@@ -38,7 +43,7 @@ export function ReviewPage({ token }: { token: string }) {
       setMarking(null);
       setMsg(null);
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Could not send the comment.");
+      setMsg(problem(e, "Could not send the comment."));
     }
   }
 
@@ -53,11 +58,11 @@ export function ReviewPage({ token }: { token: string }) {
       setRv((cur) => (cur ? { ...cur, outcome: o } : cur));
       setMsg(null);
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Could not send your outcome.");
+      setMsg(problem(e, "Could not send your outcome."));
     }
   }
 
-  if (err) return <main className={s.page}><p role="alert" className={s.err}>{err}</p></main>;
+  if (err) return <main className={s.page}><p role="alert" className={s.err}><Shown p={err} /></p></main>;
   if (!rv) return <main className={s.page}><p className={s.note}>Loading the review…</p></main>;
   const snap = rv.snapshot;
   const byFigure = (rev: string): Comment[] => rv.comments.filter((c) => c.figureRevision === rev);
@@ -74,7 +79,7 @@ export function ReviewPage({ token }: { token: string }) {
       {since > 0 && rv.comments.some((c) => c.fromOwner && new Date(c.createdAt).getTime() > since) ? <p role="status" className={s.noteBox}><strong>Since your last visit:</strong> the author has replied. New replies are marked.</p> : null}
       {rv.superseded ? <p role="status" className={s.noteBox}><strong>The author has replaced this version.</strong> {rv.superseded.reason} Ask for the new link; this one stays readable.</p> : null}
       {snap.question ? <p className={s.noteBox}><strong>What the author asks you to look at:</strong> {snap.question}</p> : null}
-      {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
+      {msg ? <p role="alert" className={s.err}><Shown p={msg} /></p> : null}
       {snap.items.map((it, n) => it.kind === "job" ? (
         <article key={`job-${n}`} className={s.fig} aria-label={`Run ${it.title}`}>
           <h2 className={s.h2}>Run {it.title}</h2>

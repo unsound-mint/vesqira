@@ -1,0 +1,31 @@
+# ADR 0055: Workload classes and support bundle
+
+Status: **proposed; implemented, awaiting owner review.** Decided by the implementing agent under the owner's delegation of ADR decisions (roadmap Stage 6; Q158, Q163, Q169). The new UI (queue note, "Reference" line, support dialog) has had no approved design direction and no visual review.
+
+## Context
+Worker lanes already kept planes off the heavy and registration processes, but the split was implicit (three lanes, one process each), analysis programs ran unbounded, nothing told a waiting panel why it waited, the correlation id (ADR for request logs) was not shown anywhere, the reviewer listener set none, and there was no way to give a maintainer the state of an install without handing over data.
+
+## Decision
+- **Three named classes with budgets** (`worker.Class`, `worker.Load`): interactive (planes, coordinates, overlay geometry), heavy (large-region spectra, orientation statistics, PV, channel grids, catalog and index reads, analysis programs) and background (header reads, fingerprints, full hashes). Each class has its own slots and, for worker operations, its own Python processes (one per slot), so interactive capacity is reserved by construction rather than by priority. Defaults 2 / 2 / 1, flags `--workers-interactive`, `--workers-heavy`, `--workers-background` (1 to 16). `fingerprint_full` moved from the heavy to the background class. The lowest free slot is taken, so warm processes are reused.
+- **Queue reasons.** `Load` records running and waiting tasks (class, operation label, API request id). `GET /api/workload[?request=<X-Request-Id>]` returns per-class budget, running and waiting, and for the named request `waiting` with a sentence ("waiting: 2 heavy analyses are running (relative orientation, PV diagram); interactive viewing is unaffected"), `running` or `unknown`. Polling is used instead of streaming: the existing single-response handlers need no change, and the panel that issued the request (spectrum, PV, channel grid, analysis, relative orientation) polls after 700 ms. Labels are operation names only.
+- **Request id in the UI.** `ApiError.requestId` comes from `X-Request-Id`; a footer line in the owner shell and the reviewer page show "Reference: <id>" with a copy button. The reviewer listener now sets and logs ids too (route pattern only, never the path, which holds the token).
+- **Support bundle** (`internal/support`, `vesqira support-bundle`, a Shell button; routes `POST /api/support/preview`, `GET /api/support/bundle/{id}`, owner listener only, so behind the peer gate). One zip of plain-text files: versions (app, protocol, schema, OS/arch, the worker's Python, numpy, astropy), capabilities, the last API log lines (allow-listed fields of failures and slow requests), worker stderr lines (only lines of the form `worker|analysis request=<id> op=<op> ...`; free text is counted, not shown), table row counts, hosts by alias and reachability only (no address, user, path or VPN command), job state counts, and the kinds and times of the last audit entries (no targets or details). Dataset and file names are removed unless the person ticks "include dataset names". Redaction: exact known secrets (publish key), review-link paths, `.ssh` paths, home directories as `~`, key/token/password assignments, bearer values, PEM markers and any opaque 32+ character token. The preview route builds the bundle once and keeps it in memory for ten minutes; every file's text is shown, and the download returns exactly those bytes. The CLI previews by default and saves only with `--out` (never overwrites; exit 0 done, 1 app unreachable or refused, 2 usage).
+
+## Alternatives
+- **Priority queue in one pool:** an interactive request still waits for a running heavy one unless something is preempted; separate processes avoid that.
+- **Streaming the reason in the response:** needs a streaming protocol for every heavy route; polling an id the client already can send is smaller.
+- **Redaction only by pattern:** misses unknown formats; known secrets are removed by value as well, and structure is allow-listed (fields, line shapes) rather than scrubbed.
+- **Bundle written by the CLI from the database:** would bypass the running app's log buffers and make a second reader of the catalog.
+
+## Consequences
+- Up to 5 worker processes with defaults instead of 3. A worker process's memory cap applies to each.
+- The API log and worker stderr tails are in memory only (300 and 400 lines); a restart empties them.
+- Analysis programs queue in the heavy class; a long relative-orientation run can make a spectrum wait, and says so.
+- Bundle contents are a claim of what is excluded, enforced by tests with secret fixtures; a secret of an unknown shape inside free text that is shown (an error message in a kept worker line) could still pass the pattern pass.
+- No schema change. `POST /api/support/preview` and `GET /api/workload` are described in `packages/contracts`.
+
+## Validation
+`internal/worker/workload_test.go` (flood of heavy and background requests, plane within 150 ms; reason text; budgets), `internal/support/support_test.go` and `internal/server/support_test.go` (file list, no review token, publish key, ssh key path, home path, dataset name, host address; preview equals zip; expiry), `supportcli_test.go` (exit codes), `internal/review/requestid_test.go`, web tests for the reference line, queue note and dialog, and `make bench` (`plane_under_load`). Not verified: a real browser walk-through of the new UI, and behaviour on a host with many analyses queued.
+
+## Rollback/Migration
+Revert the change; nothing is stored. Without the flags the defaults apply.
