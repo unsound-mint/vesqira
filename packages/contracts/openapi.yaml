@@ -2128,6 +2128,39 @@ paths:
       operationId: owner_s_withdrawReport_post_api_reports_id_withdraw
       x-listener: owner
       responses: {'200': {description: ok}}
+  /api/rohsa/sizing:
+    get:
+      operationId: owner_s_rohsaSizing_get_api_rohsa_sizing
+      x-listener: owner
+      summary: "The owner's ROHSA sizing table applied to a crop size and a Gaussian count"
+      parameters:
+        - name: "cropSize"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            minimum: 0
+          description: "crop_size of the config; 0 or absent is read as the whole cube"
+        - name: "nGauss"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            minimum: 0
+          description: "n_gauss of the config; absent is read as 6, as the script reads it"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/RohsaSizing"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/roots:
     get:
       operationId: owner_func_w_get_api_roots
@@ -7392,6 +7425,7 @@ components:
         - "counts"
         - "waitingOn"
         - "pending"
+        - "template"
       properties:
         id:
           type: "integer"
@@ -7456,6 +7490,9 @@ components:
         pending:
           type: "integer"
           description: "Drafts that will still be submitted"
+        template:
+          type: "string"
+          description: "The base job's template: vgt or rohsa; empty when the base job is gone"
     SweepList:
       type: "object"
       required:
@@ -7499,6 +7536,7 @@ components:
         - "diff"
         - "unexpected"
         - "requested"
+        - "sizing"
       properties:
         jobId:
           type: "integer"
@@ -7524,6 +7562,11 @@ components:
           description: "Differing lines that are not a swept setting, the output folder or the job name"
         requested:
           $ref: "#/components/schemas/Requested"
+        sizing:
+          nullable: true
+          description: "ROHSA only: what the owner's sizing table suggests for this draft's crop and Gaussian count, beside what it requests (every draft requests what the base job did)"
+          allOf:
+            - $ref: "#/components/schemas/RohsaSizing"
     SweepReview:
       type: "object"
       description: "The scripts of the drafts still to be submitted, how each differs from the base, and what they request"
@@ -7538,6 +7581,9 @@ components:
         - "totals"
         - "estimate"
         - "maxConcurrency"
+        - "template"
+        - "defaultConcurrency"
+        - "concurrencyNote"
       properties:
         sweep:
           $ref: "#/components/schemas/Sweep"
@@ -7567,18 +7613,26 @@ components:
             - $ref: "#/components/schemas/SweepEstimate"
         maxConcurrency:
           type: "integer"
+        template:
+          type: "string"
+          description: "The base job's template: vgt or rohsa"
+        defaultConcurrency:
+          type: "integer"
+          description: "The limit used when approval names none: 1, one job at a time"
+        concurrencyNote:
+          type: "string"
+          description: "Why one at a time matters for this kind of sweep; empty when there is nothing specific to say (ROHSA: the shared, rebuilt source folder)"
     SweepSubmitRequest:
       type: "object"
       required:
         - "sweepHash"
-        - "concurrency"
       properties:
         sweepHash:
           type: "string"
         concurrency:
           type: "integer"
           minimum: 1
-          description: "At most this many of the sweep's jobs queued or running; 1 is sequential"
+          description: "At most this many of the sweep's jobs queued or running; 1 is sequential. Absent means 1; 0 is refused"
         stopOnFailure:
           type: "boolean"
           description: "Stop scheduling when a job fails; default false: a failure changes nothing for the others and nothing is retried"
@@ -7783,3 +7837,41 @@ components:
         plotNote:
           type: "string"
           description: "Why no plot was drawn"
+    RohsaSizing:
+      type: "object"
+      description: "A resource request suggested for a ROHSA run by the table in the owner's hpc/irgetas/submit_rohsa.sh. It is a suggestion; nothing applies it"
+      required:
+        - "cropSize"
+        - "nGauss"
+        - "assumed"
+        - "cpus"
+        - "mem"
+        - "time"
+        - "scriptPartition"
+        - "basis"
+      properties:
+        cropSize:
+          type: "integer"
+          description: "The crop size used (0 is the whole cube)"
+        nGauss:
+          type: "integer"
+          description: "The number of Gaussians used"
+        assumed:
+          type: "array"
+          items:
+            type: "string"
+          description: "Inputs not given, so the script's own default was used (crop_size 0, n_gauss 6)"
+        cpus:
+          type: "integer"
+        mem:
+          type: "string"
+          description: "Slurm memory, e.g. 140G"
+        time:
+          type: "string"
+          description: "Slurm time limit, e.g. 1-12:00:00"
+        scriptPartition:
+          type: "string"
+          description: "The partition that script submits to; a site setting shown for information and never applied"
+        basis:
+          type: "string"
+          description: "Where the numbers come from, in words"

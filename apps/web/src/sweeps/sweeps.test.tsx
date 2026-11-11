@@ -69,7 +69,8 @@ describe("sweep form", () => {
 
 const review: SweepReview = {
   sweep: { id: 9, name: "s" } as Sweep, baseJobId: 3, baseName: "vgt-base", baseScript: "#!/bin/bash\n", keys: ["dn"], sweepHash: "h".repeat(64), totals, estimate: null, maxConcurrency: 16,
-  jobs: [{ jobId: 10, name: "s-dn8", label: "dn = 8", values: { dn: "8" }, scriptHash: "a".repeat(64), script: "#!/bin/bash\ndn = 8\n", unexpected: 0, requested: { cpus: 8, memBytes: 0, timeSeconds: 0 },
+  template: "vgt", defaultConcurrency: 1, concurrencyNote: "",
+  jobs: [{ jobId: 10, name: "s-dn8", label: "dn = 8", values: { dn: "8" }, scriptHash: "a".repeat(64), script: "#!/bin/bash\ndn = 8\n", unexpected: 0, requested: { cpus: 8, memBytes: 0, timeSeconds: 0 }, sizing: null,
     diff: [{ op: "-", kind: "parameter", text: "dn = 20" }, { op: "+", kind: "parameter", text: "dn = 8" }, { op: "+", kind: "output", text: 'output_dir = "/r/x"' }] }],
 };
 
@@ -166,5 +167,84 @@ describe("sweep grid", () => {
     render(<SweepGrid sweepId={9} />);
     await userEvent.selectOptions(await screen.findByLabelText("Plot metric"), "rms");
     expect(await screen.findByText(/different units/)).toBeInTheDocument();
+  });
+});
+
+const rohsaBase = { id: 5, hostId: 1, name: "rohsa-base", template: "rohsa", state: "completed" } as Job;
+const GiB = 2 ** 30;
+const sizing = (n: number, mem: string) => ({ cropSize: 2048, nGauss: n, assumed: [] as string[], cpus: 32, mem, time: "1-12:00:00", scriptPartition: "ZEN4", basis: "the sizing table of your pipeline's hpc/irgetas/submit_rohsa.sh" });
+const rohsaReview: SweepReview = {
+  ...review,
+  template: "rohsa", baseName: "rohsa-base", keys: ["n_gauss"],
+  concurrencyNote: "ROHSA jobs share one source folder on the host. A rebuild replaces the binary while another job may be starting it. Run one job at a time unless you know the binary is current.",
+  jobs: [
+    { ...review.jobs[0]!, jobId: 11, name: "rs-n4", label: "N = 4", values: { n_gauss: "4" }, requested: { cpus: 32, memBytes: 100 * GiB, timeSeconds: 129600 }, sizing: sizing(4, "100G"),
+      diff: [{ op: "-", kind: "parameter", text: "n_gauss = [16]" }, { op: "+", kind: "parameter", text: "n_gauss = [4]" }] },
+    { ...review.jobs[0]!, jobId: 12, name: "rs-n8", label: "N = 8", values: { n_gauss: "8" }, requested: { cpus: 32, memBytes: 100 * GiB, timeSeconds: 129600 }, sizing: sizing(8, "140G"),
+      diff: [{ op: "-", kind: "parameter", text: "n_gauss = [16]" }, { op: "+", kind: "parameter", text: "n_gauss = [8]" }] },
+  ],
+};
+
+describe("ROHSA sweeps", () => {
+  it("offers the ROHSA settings with the tied lambda for a ROHSA base, and the VGT ones for a VGT base", async () => {
+    mock({});
+    render(<SweepForm jobs={[base, rohsaBase]} baseJobId={5} onCreated={() => {}} />);
+    const setting = screen.getByLabelText("Setting 1") as HTMLSelectElement;
+    const keys = Array.from(setting.options).map((o) => o.value);
+    expect(keys).toEqual(expect.arrayContaining(["lambda", "n_gauss", "lb_sig", "maxiter", "noise", "crop_size"]));
+    expect(keys).not.toContain("output_dir");
+    expect(keys).not.toContain("input");
+    expect(keys).not.toContain("dn");
+    expect(setting.value).toBe("n_gauss");
+    expect(screen.getByText(/one job at a time unless you raise that/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Sweep name/)).toHaveValue("rohsa-sweep");
+    await userEvent.selectOptions(screen.getByLabelText(/Base job/), "3");
+    expect(Array.from((screen.getByLabelText("Setting 1") as HTMLSelectElement).options).map((o) => o.value)).toContain("dn");
+    expect(screen.queryByText(/one job at a time unless you raise that/)).toBeNull();
+  });
+
+  it("sends the tied lambda and the Gaussian counts as typed", async () => {
+    const calls = mock({ "/api/sweeps/preview": () => ({ count: 4, max: 64, baseJob: { id: 5, name: "rohsa-base", hostId: 1 }, jobs: [], totals, estimate: null }) });
+    render(<SweepForm jobs={[rohsaBase]} onCreated={() => {}} />);
+    await userEvent.type(screen.getByLabelText(/Values/), "8, 12");
+    await userEvent.click(screen.getByRole("button", { name: "Add a parameter" }));
+    const second = screen.getAllByLabelText(/^Setting/)[1]!;
+    await userEvent.selectOptions(second, "lambda");
+    await userEvent.type(screen.getAllByLabelText(/Values/)[1]!, "3, 10");
+    await userEvent.click(screen.getByRole("button", { name: "Count the jobs" }));
+    await screen.findByText(/4 jobs/);
+    expect(calls.find((c) => c.url === "/api/sweeps/preview")?.body).toMatchObject({ baseJobId: 5, params: [{ key: "n_gauss", values: ["8", "12"] }, { key: "lambda", values: ["3", "10"] }] });
+  });
+
+  it("defaults to one job at a time, says why, warns when it is raised, and shows the table's size for each draft", async () => {
+    const calls = mock({ "/api/sweeps/9/review": () => rohsaReview, "/api/sweeps/9/submit": () => ({ id: 9, state: "running" }) });
+    render(<SubmitDialog sweep={{ id: 9, name: "rs" } as Sweep} onClose={() => {}} onSubmitted={() => {}} />);
+    expect(await screen.findByText(/A rebuild replaces the binary/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Jobs at the same time/)).toHaveValue("1");
+    // the table gives 100G for N = 4 (the draft asks 100G: no warning) and 140G for N = 8 (it asks 100G: warned, in words)
+    const lines = screen.getAllByText(/your sizing table suggests/);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toHaveTextContent("n_gauss 4 your sizing table suggests 32 CPUs, 100G, 1-12:00:00; this draft requests 32 CPUs and 100 GiB.");
+    expect(lines[0]).not.toHaveTextContent(/less memory/);
+    expect(lines[1]).toHaveTextContent(/n_gauss 8.*140G.*That is less memory than the table gives for this size/);
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts.filter((a) => /1 of 2 drafts request less memory/.test(a.textContent ?? ""))).toHaveLength(1); // said above the list, not only inside a closed draft
+    expect(screen.getByText(/N = 8/, { selector: "summary" })).toHaveTextContent("asks 100 GiB, table suggests 140G");
+    expect(alerts.some((a) => /replaces the binary/.test(a.textContent ?? ""))).toBe(false); // at the default limit the reason is a note, not a warning
+    // raising the limit is the owner's call, with the reason put in front of them
+    const limit = screen.getByLabelText(/Jobs at the same time/);
+    await userEvent.clear(limit);
+    await userEvent.type(limit, "2");
+    expect(screen.getAllByRole("alert").some((a) => /replaces the binary/.test(a.textContent ?? ""))).toBe(true);
+    await userEvent.clear(limit);
+    await userEvent.type(limit, "1");
+    await userEvent.click(screen.getByRole("button", { name: /Submit 2 jobs, 1 at a time/ }));
+    expect(calls.find((c) => c.url.endsWith("/submit"))?.body).toEqual({ sweepHash: review.sweepHash, concurrency: 1, stopOnFailure: false });
+  });
+
+  it("takes its default limit from the server's review", async () => {
+    mock({ "/api/sweeps/9/review": () => ({ ...rohsaReview, defaultConcurrency: 1, maxConcurrency: 16 }) });
+    render(<SubmitDialog sweep={{ id: 9, name: "rs" } as Sweep} onClose={() => {}} onSubmitted={() => {}} />);
+    expect(await screen.findByLabelText(/Jobs at the same time \(1 to 16\)/)).toHaveValue("1");
   });
 });

@@ -45,3 +45,24 @@ func TestSweepResponsesMatchTheSpec(t *testing.T) {
 	check("GET", "/api/boards/{id}", e.api("/api/boards/1"), nil, 200)
 	check("POST", "/api/sweeps/{id}/cancel", e.api("/api/sweeps/"+id+"/cancel"), map[string]any{"cancelRunning": true}, 200)
 }
+
+// A ROHSA sweep's review carries the per-draft sizing and the concurrency note, and approval may omit the concurrency.
+func TestROHSASweepAndSizingResponsesMatchTheSpec(t *testing.T) {
+	doc := loadSpec(t)
+	e := newWatchEnv(t)
+	base := e.rohsaDraft("rohsa-spec", nil, nil)
+	sw := e.createSweep(map[string]any{"name": "rspec", "baseJobId": base.ID, "params": []map[string]any{p("n_gauss", "4", "8")}})
+	id := itoa(int(sw.ID))
+	code, b := getBody(t, e.api("/api/sweeps/"+id+"/review"))
+	if code != 200 {
+		t.Fatalf("review %d %s", code, b)
+	}
+	conforms(t, responseSchemaAt(t, doc, "/api/sweeps/{id}/review", "GET", 200, "application/json"), "ROHSA review", b)
+	hash, _ := e.sweepReview(sw.ID)
+	conforms(t, requestSchema(t, doc, "/api/sweeps/{id}/submit", "POST"), "submit without a concurrency", mustJSON(t, map[string]any{"sweepHash": hash}))
+	code, b = getBody(t, e.api("/api/rohsa/sizing?cropSize=2048&nGauss=16"))
+	if code != 200 {
+		t.Fatalf("sizing %d %s", code, b)
+	}
+	conforms(t, responseSchemaAt(t, doc, "/api/rohsa/sizing", "GET", 200, "application/json"), "sizing", b)
+}

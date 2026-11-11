@@ -305,14 +305,19 @@ type rerunVGT struct {
 }
 
 type rerunJSON struct {
-	ParentRunID int64        `json:"parentRunId"`
-	Source      string       `json:"source"` // job | imported
-	HostID      *int64       `json:"hostId"`
-	Template    string       `json:"template"`
-	Name        string       `json:"name"`
-	VGT         rerunVGT     `json:"vgt"`
-	Params      []runs.Param `json:"params"`
-	Notes       []string     `json:"notes"`
+	ParentRunID int64    `json:"parentRunId"`
+	Source      string   `json:"source"` // job | imported
+	HostID      *int64   `json:"hostId"`
+	Template    string   `json:"template"`
+	Name        string   `json:"name"`
+	VGT         rerunVGT `json:"vgt"`
+	// ROHSA is the same record for a ROHSA run (null for a VGT run), and Settings its editable settings as they were, in the
+	// text a person types them: read from the config the job started from with the job's own changes over it, or, for an
+	// imported run, those the run's own trace declares. A setting the records do not give is absent, never guessed.
+	ROHSA    *rerunVGT         `json:"rohsa"`
+	Settings map[string]string `json:"settings"`
+	Params   []runs.Param      `json:"params"`
+	Notes    []string          `json:"notes"`
 	// ConfigChanged compares the stored config text with the file on the host now; null when not asked or not reachable.
 	ConfigChanged *bool `json:"configChanged"`
 	// LastJob is the job that produced the run and what the scheduler recorded it used, for sizing the next request
@@ -358,15 +363,21 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	if run.Kind != "vgt" {
-		fail(w, 422, "running again is offered for VGT runs only; this run's kind is "+run.Kind)
+	if run.Kind != "vgt" && run.Kind != "rohsa" {
+		fail(w, 422, "running again is offered for VGT and ROHSA runs only; this run's kind is "+run.Kind)
 		return
 	}
-	out := rerunJSON{ParentRunID: id, Source: "imported", Template: "vgt", Name: againName(run.Name), Params: run.Params, Notes: []string{}, VGT: rerunVGT{Set: map[string]string{}}}
+	rohsa := run.Kind == "rohsa"
+	out := rerunJSON{ParentRunID: id, Source: "imported", Template: run.Kind, Name: againName(run.Name), Params: run.Params, Notes: []string{}, VGT: rerunVGT{Set: map[string]string{}}, Settings: map[string]string{}}
+	if rohsa {
+		out.ROHSA = &rerunVGT{Set: map[string]string{}}
+		out.Settings = declaredROHSASettings(run.Params)
+	}
 	if out.Params == nil {
 		out.Params = []runs.Param{}
 	}
 	var job jobs.Job
+	err = jobs.ErrNotFound // without a job store no job made the run
 	if s.Jobs != nil {
 		if job, err = s.Jobs.ForRun(id); err != nil && !errors.Is(err, jobs.ErrNotFound) {
 			log.Printf("runs: %v", err)
@@ -376,13 +387,22 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil { // no job of ours produced this run
 		out.Notes = append(out.Notes, "This run was imported, so the host, code folder and config it ran with are not known here.")
+		if rohsa {
+			out.Notes = append(out.Notes, "The settings below are those the run's own trace declares for the pipeline's config. Choose the host and a config file there; the file supplies everything the trace does not say (the input cube, the crop, the spectral kernel), and these settings are applied over it.")
+		}
 		writeJSON(w, 200, out)
 		return
 	}
 	hid := job.HostID
 	out.HostID = &hid
 	out.LastJob = &rerunJob{ID: job.ID, Name: job.Name, Usage: job.Usage}
-	req, ok := job.VGTRequest()
+	var req jobs.VGTRequest
+	var ok bool
+	if rohsa {
+		req, ok = job.ROHSARequest()
+	} else {
+		req, ok = job.VGTRequest()
+	}
 	if !ok {
 		out.Notes = append(out.Notes, "This run came from a job recorded before its settings were kept, so the code folder, config and resources it ran with are not known here.")
 		writeJSON(w, 200, out)
@@ -394,8 +414,14 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 		set = map[string]string{}
 	}
 	cpus := req.CPUs
-	out.VGT = rerunVGT{RepoDir: strp(req.RepoDir), ConfigPath: strp(req.ConfigPath), BaseConfigText: strp(req.BaseConfigText), Set: set,
+	rr := rerunVGT{RepoDir: strp(req.RepoDir), ConfigPath: strp(req.ConfigPath), BaseConfigText: strp(req.BaseConfigText), Set: set,
 		CPUs: &cpus, Mem: strp(req.Mem), Time: strp(req.Time), Partition: strp(req.Partition), Account: strp(req.Account)}
+	if rohsa {
+		out.ROHSA = &rr
+		out.Settings = effectiveROHSASettings(req)
+	} else {
+		out.VGT = rr
+	}
 	if req.ConfigPath != "" && s.HostDB != nil && s.Remote != nil {
 		if h, err := s.HostDB.Get(job.HostID); err == nil {
 			ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
@@ -411,4 +437,79 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 200, out)
+}
+
+var fortranReal = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?d[-+]?[0-9]+$`)
+
+// declaredROHSASettings are the editable settings a ROHSA run's trace declares for the pipeline's config, in the form the
+// whitelist takes. The trace's [config] comes first, then its top-level n_gauss, and the namelist (source "parameters") only
+// fills what neither says: all three are written from the same options by the pipeline (rohsa/configs.jl: the namelist and the
+// trace config both read opts), so they agree, the namelist only spells reals as Fortran does (10.0d0) and booleans as .true..
+// A value that does not pass the whitelist's own check is left out rather than repaired.
+func declaredROHSASettings(ps []runs.Param) map[string]string {
+	out := map[string]string{}
+	rank := map[string]int{}
+	for _, p := range ps {
+		r := map[string]int{"config": 3, "run_trace": 2, "parameters": 1}[p.Source]
+		if r == 0 || (p.Source == "run_trace" && p.Key != "n_gauss") || r <= rank[p.Key] {
+			continue
+		}
+		v := strings.TrimSpace(p.Value)
+		switch strings.ToLower(v) {
+		case ".true.":
+			v = "true"
+		case ".false.":
+			v = "false"
+		}
+		if fortranReal.MatchString(v) { // 10.0d0, 1.5d-3: a Fortran real as the namelist writes it
+			v = strings.TrimSuffix(v, "d0")
+			v = strings.Replace(v, "d", "e", 1)
+		}
+		if jobs.CheckROHSASetting(p.Key, v) != nil || p.Key == jobs.ROHSATied {
+			continue
+		}
+		out[p.Key], rank[p.Key] = v, r
+	}
+	return out
+}
+
+// effectiveROHSASettings are a ROHSA job's settings as it ran: the config text it started from with its own changes over it.
+func effectiveROHSASettings(req jobs.VGTRequest) map[string]string {
+	out := map[string]string{}
+	if cfg, err := jobs.ReadROHSAConfig(req.BaseConfigText); err == nil {
+		for k, v := range cfg.Values {
+			out[k] = v
+		}
+	}
+	for k, v := range jobs.ROHSAExpand(req.Set) {
+		out[k] = v
+	}
+	return out
+}
+
+// rohsaSizing answers "what does the owner's sizing table say for this crop and Gaussian count": a pure function of two
+// numbers, so the form can ask again as they change. A number that is not given is read the way the script reads it, and
+// the answer says so.
+func (s *Server) rohsaSizing(w http.ResponseWriter, r *http.Request) {
+	num := func(name string) (int, bool, bool) {
+		v := r.URL.Query().Get(name)
+		if v == "" {
+			return 0, false, true
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > 1000000 {
+			fail(w, 400, name+" must be a whole number")
+			return 0, false, false
+		}
+		return n, true, true
+	}
+	crop, haveCrop, ok := num("cropSize")
+	if !ok {
+		return
+	}
+	n, haveN, ok := num("nGauss")
+	if !ok {
+		return
+	}
+	writeJSON(w, 200, jobs.SuggestROHSASizing(crop, n, haveCrop, haveN))
 }
