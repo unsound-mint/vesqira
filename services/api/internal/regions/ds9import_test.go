@@ -1,6 +1,7 @@
 package regions
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -25,10 +26,10 @@ circle(abc,2,3)
 		t.Fatalf("%d items: %+v", len(items), items)
 	}
 	// the box written by Vesqira for x 2..9, y 3..7 comes back as exactly that
-	if b := items[0]; b.Status != Exact || b.Name != "Core" || *b.Shape != (Shape{Shape: "rect", X0: 2, Y0: 3, X1: 9, Y1: 7}) {
+	if b := items[0]; b.Status != Exact || b.Name != "Core" || !reflect.DeepEqual(*b.Shape, Shape{Shape: "rect", X0: 2, Y0: 3, X1: 9, Y1: 7}) {
 		t.Errorf("box: %+v", b)
 	}
-	if c := items[1]; c.Status != Exact || c.Name != "Peak" || *c.Shape != (Shape{Shape: "circle", CX: 10, CY: 11, R: 4}) {
+	if c := items[1]; c.Status != Exact || c.Name != "Peak" || !reflect.DeepEqual(*c.Shape, Shape{Shape: "circle", CX: 10, CY: 11, R: 4}) {
 		t.Errorf("circle: %+v", c)
 	}
 	if c := items[2]; c.Status != Approximate || !strings.Contains(c.Note, "became") || c.Name != "Imported region 3" {
@@ -56,7 +57,7 @@ func TestImportIsTheInverseOfExport(t *testing.T) {
 		{Name: "D", Shape: Shape{Shape: "circle", CX: 100, CY: 5, R: 13}},
 	}
 	for i, it := range ParseDS9(DS9(in)) {
-		if it.Status != Exact || it.Shape == nil || *it.Shape != in[i].Shape || it.Name != in[i].Name {
+		if it.Status != Exact || it.Shape == nil || !reflect.DeepEqual(*it.Shape, in[i].Shape) || it.Name != in[i].Name {
 			t.Errorf("%s did not survive the round trip: %+v", in[i].Name, it)
 		}
 	}

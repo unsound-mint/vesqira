@@ -108,3 +108,52 @@ func TestDS9OutputUsesOneBasedPixelCentresAndKeepsNamesSafe(t *testing.T) {
 		t.Error("one line per region")
 	}
 }
+
+func TestALineRoundTripsAndIsHeldToItsBounds(t *testing.T) {
+	s := newStore(t)
+	r, err := s.Create(1, "Cut", Shape{Shape: "line", Points: [][]int{{2, 3}, {20, 9}, {30, 9}}, Width: 3, WidthUnit: "pixel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(r.ID)
+	if err != nil || got.Shape.Shape != "line" || len(got.Shape.Points) != 3 || got.Shape.Points[1][0] != 20 || got.Shape.Width != 3 || got.Shape.WidthUnit != "pixel" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	// a line keeps no stray rectangle or circle fields: they are what the shape is not
+	if got.Shape.X1 != 0 || got.Shape.R != 0 {
+		t.Errorf("%+v", got.Shape)
+	}
+	arc, err := s.Update(r.ID, nil, &Shape{Shape: "line", Points: [][]int{{1, 1}, {9, 9}}, Width: 12.5, WidthUnit: "arcsec"})
+	if err != nil || arc.Shape.WidthUnit != "arcsec" || arc.Shape.Width != 12.5 {
+		t.Fatalf("%+v %v", arc, err)
+	}
+	for name, sh := range map[string]Shape{
+		"one vertex":   {Shape: "line", Points: [][]int{{1, 1}}, Width: 1, WidthUnit: "pixel"},
+		"no length":    {Shape: "line", Points: [][]int{{4, 4}, {4, 4}}, Width: 1, WidthUnit: "pixel"},
+		"no unit":      {Shape: "line", Points: [][]int{{1, 1}, {5, 5}}, Width: 1},
+		"zero width":   {Shape: "line", Points: [][]int{{1, 1}, {5, 5}}, WidthUnit: "pixel"},
+		"huge width":   {Shape: "line", Points: [][]int{{1, 1}, {5, 5}}, Width: 1e9, WidthUnit: "pixel"},
+		"bad unit":     {Shape: "line", Points: [][]int{{1, 1}, {5, 5}}, Width: 1, WidthUnit: "deg"},
+		"negative":     {Shape: "line", Points: [][]int{{-1, 1}, {5, 5}}, Width: 1, WidthUnit: "pixel"},
+		"three coords": {Shape: "line", Points: [][]int{{1, 1, 1}, {5, 5}}, Width: 1, WidthUnit: "pixel"},
+		"too many":     {Shape: "line", Points: make([][]int, MaxLinePoints+1), Width: 1, WidthUnit: "pixel"},
+	} {
+		if _, err := s.Create(1, "bad", sh); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestDS9WritesATwoVertexPixelWidthLineAsAProjectionAndNeverApproximatesTheRest(t *testing.T) {
+	out := DS9([]Region{
+		{Name: "Cut", Shape: Shape{Shape: "line", Points: [][]int{{2, 3}, {12, 9}}, Width: 3, WidthUnit: "pixel"}},
+		{Name: "Bend", Shape: Shape{Shape: "line", Points: [][]int{{2, 3}, {12, 9}, {20, 9}}, Width: 3, WidthUnit: "pixel"}},
+		{Name: "Wide", Shape: Shape{Shape: "line", Points: [][]int{{2, 3}, {12, 9}}, Width: 30, WidthUnit: "arcsec"}},
+	})
+	if !strings.Contains(out, "# projection(3,4,13,10,3) # text={Cut}\n") {
+		t.Errorf("projection missing in\n%s", out)
+	}
+	if strings.Count(out, "projection(") != 1 || strings.Count(out, "# not written as a DS9 shape") != 2 {
+		t.Errorf("only the exact case becomes a shape:\n%s", out)
+	}
+}

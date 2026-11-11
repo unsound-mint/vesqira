@@ -46,6 +46,8 @@ import { InterpretationPanel, OrientationStats } from "../viewer/OrientationPane
 import { RegionPanel } from "../viewer/RegionPanel";
 import { OverlayPanel } from "../viewer/OverlayPanel";
 import { SpectrumPlot } from "../viewer/SpectrumPlot";
+import { ChannelGrid } from "../viewer/ChannelGrid";
+import { PvPanel } from "../viewer/PvPanel";
 import { GaussianComponents } from "../viewer/GaussianComponents";
 import { flagState } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
@@ -85,6 +87,7 @@ export function Shell() {
   const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== cat.selectedImage?.id) ?? null;
   const viewerB = useViewer(compareDs);
   const [active, setActive] = useState<"a" | "b">("a");
+  const [stage, setStage] = useState<"map" | "grid">("map"); // the map pane(s), or a grid of channel maps of the open dataset
   const [compat, setCompat] = useState<Compat | null>(null);
   const [compatErr, setCompatErr] = useState<string | null>(null);
   const [compatLoading, setCompatLoading] = useState(false);
@@ -332,6 +335,14 @@ export function Shell() {
         ) : cat.selectedCatalog ? (
           <CatalogView dataset={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} />
         ) : cat.selectedImage ? (
+          <div className={s.stageWrap}>
+            <div className={s.stageTabs} role="tablist" aria-label="Stage view">
+              <button type="button" role="tab" aria-selected={stage === "map"} className={s.stageTab} onClick={() => setStage("map")}>Map</button>
+              <button type="button" role="tab" aria-selected={stage === "grid"} className={s.stageTab} onClick={() => setStage("grid")}>Channel maps</button>
+            </div>
+            {stage === "grid" ? (
+              <ChannelGrid key={cat.selectedImage.id} v={viewerA} dataset={cat.selectedImage} />
+            ) : (
           <div className={s.compare}>
             <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} />
             <div className={compareDs ? s.panes2 : s.panes1}>
@@ -346,6 +357,8 @@ export function Shell() {
                 </section>
               ) : null}
             </div>
+          </div>
+            )}
           </div>
         ) : (
           <div className={s.stage}>
@@ -421,6 +434,9 @@ export function Shell() {
           </Section>
           <Section title="Spectrum">
             {actDs ? <><SpectrumPlot v={viewer} /><GaussianComponents v={viewer} /></> : <p className={s.empty}>{EM}</p>}
+          </Section>
+          <Section title="Position-velocity" defaultOpen={false} meta={viewer.path ? "line drawn" : undefined}>
+            {actDs ? <PvPanel v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           {actDs ? (
             <Section title="Made from" defaultOpen={false}>

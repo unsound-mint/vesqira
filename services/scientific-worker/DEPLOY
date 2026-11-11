@@ -10,3 +10,4 @@ catalog_table.py
 overlay_geometry.py
 rohsa.py
 relorient.py
+cube_slices.py

@@ -975,7 +975,8 @@
      "enum": [
       "plane",
       "spectrum",
-      "orientation"
+      "orientation",
+      "channelgrid"
      ]
     },
     "channel": {
@@ -1030,6 +1031,48 @@
     },
     "showLines": {
      "type": "boolean"
+    },
+    "grid": {
+     "type": "object",
+     "description": "A channel-map grid figure only (ADR 0049); the reviewer-safe part of its channel-grid/1 description.",
+     "required": [
+      "first",
+      "last",
+      "stride",
+      "average",
+      "panels",
+      "previewStep",
+      "scaleSource"
+     ],
+     "properties": {
+      "first": {
+       "type": "integer"
+      },
+      "last": {
+       "type": "integer"
+      },
+      "stride": {
+       "type": "integer"
+      },
+      "average": {
+       "type": "integer"
+      },
+      "panels": {
+       "type": "integer"
+      },
+      "previewStep": {
+       "type": "integer"
+      },
+      "unit": {
+       "type": "string"
+      },
+      "convention": {
+       "type": "string"
+      },
+      "scaleSource": {
+       "type": "string"
+      }
+     }
     }
    }
   },
@@ -1400,12 +1443,20 @@
      "description": "Hidden from the lists by default; still resolves by id (ADR 0041)."
     },
     "scene": {
+     "description": "The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance.",
+     "oneOf": [
+      {
+       "$ref": "#/components/schemas/Scene"
+      },
+      {
+       "$ref": "#/components/schemas/ChannelGrid"
+      }
+     ],
      "allOf": [
       {
        "$ref": "#/components/schemas/Scene"
       }
-     ],
-     "description": "The scene the picture was drawn from (ADR 0042); absent for figures saved before scenes. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance."
+     ]
     }
    }
   },
@@ -1452,6 +1503,14 @@
     },
     "scene": {
      "$ref": "#/components/schemas/Scene"
+    },
+    "channelGrid": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/ChannelGrid"
+      }
+     ],
+     "description": "Required for, and only for, a figure of kind channelgrid; carries no scene."
     }
    }
   },
@@ -2712,13 +2771,17 @@
     },
     {
      "$ref": "#/components/schemas/SceneCircle"
+    },
+    {
+     "$ref": "#/components/schemas/SceneLine"
     }
    ],
    "discriminator": {
     "propertyName": "shape",
     "mapping": {
      "rect": "#/components/schemas/SceneRect",
-     "circle": "#/components/schemas/SceneCircle"
+     "circle": "#/components/schemas/SceneCircle",
+     "line": "#/components/schemas/SceneLine"
     }
    }
   },
@@ -3265,7 +3328,7 @@
     },
     "lengthScale": {
      "type": "number",
-     "minimum": 1e-9,
+     "minimum": 1e-09,
      "maximum": 1000000,
      "description": "Base pixels per unit of the length column. Absent: chosen so that the 99th percentile of the drawn values is 6% of the base's shorter side; the overlay states the scale it used."
     },
@@ -6797,6 +6860,834 @@
     }
    }
   },
+  "SceneLine": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "shape",
+    "points",
+    "width",
+    "widthUnit"
+   ],
+   "description": "A saved line: the path a position-velocity diagram is cut along (ADR 0049). Whole-pixel vertices (0-based, y from the bottom), a width across the path and its unit. A line has no area, so it is never the working region and no spectrum or histogram is taken of it.",
+   "properties": {
+    "shape": {
+     "type": "string",
+     "enum": [
+      "line"
+     ]
+    },
+    "points": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 64,
+     "items": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+       "type": "integer",
+       "minimum": -1000000,
+       "maximum": 1000000
+      }
+     }
+    },
+    "width": {
+     "type": "number",
+     "exclusiveMinimum": true,
+     "minimum": 0,
+     "maximum": 100000
+    },
+    "widthUnit": {
+     "type": "string",
+     "enum": [
+      "pixel",
+      "arcsec"
+     ]
+    }
+   }
+  },
+  "ChannelGrid": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "schema",
+    "datasetId",
+    "first",
+    "last",
+    "stride",
+    "average",
+    "columns",
+    "panels",
+    "display",
+    "preview"
+   ],
+   "description": "A grid of channel-map panels of one dataset that share one colour scale (ADR 0049). A separate versioned description from scene/1: a scene is what one pane draws, a grid is many panels. A figure stores one or the other, told apart by `schema`. The shared scale is stored as numbers with where they came from, never recomputed per panel.",
+   "properties": {
+    "schema": {
+     "type": "string",
+     "enum": [
+      "channel-grid/1"
+     ]
+    },
+    "datasetId": {
+     "type": "integer",
+     "format": "int64",
+     "minimum": 1
+    },
+    "first": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "last": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "stride": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "Panels start every `stride` channels from `first`."
+    },
+    "average": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 256,
+     "description": "Channels each panel is the mean of (1: one channel); not more than the stride."
+    },
+    "columns": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 8
+    },
+    "panels": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 64
+    },
+    "spectral": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "unit"
+     ],
+     "description": "The unit the labels are in; absent means the file's own axis unit.",
+     "properties": {
+      "unit": {
+       "type": "string"
+      },
+      "convention": {
+       "type": "string",
+       "enum": [
+        "radio",
+        "optical",
+        "relativistic"
+       ]
+      }
+     }
+    },
+    "display": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "colormap",
+      "stretch",
+      "limits",
+      "source"
+     ],
+     "properties": {
+      "colormap": {
+       "type": "string",
+       "enum": [
+        "viridis",
+        "inferno",
+        "gray"
+       ]
+      },
+      "stretch": {
+       "type": "string",
+       "enum": [
+        "linear",
+        "sqrt",
+        "asinh"
+       ]
+      },
+      "limits": {
+       "type": "array",
+       "minItems": 2,
+       "maxItems": 2,
+       "items": {
+        "type": "number"
+       }
+      },
+      "limitsUnit": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string",
+       "description": "Where the limits came from, in words."
+      }
+     }
+    },
+    "preview": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "step",
+      "panelWidth",
+      "panelHeight"
+     ],
+     "description": "The block-mean step the panels were drawn at (1: the full plane) and their size as drawn; every panel and all together are within the transfer caps.",
+     "properties": {
+      "step": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 64
+      },
+      "panelWidth": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "panelHeight": {
+       "type": "integer",
+       "minimum": 1
+      }
+     }
+    }
+   }
+  },
+  "ChannelGridPlan": {
+   "type": "object",
+   "description": "The plan of a channel-map grid: JSON only, no payload. Each panel is fetched by the plane route (one channel) or the slab route (a mean of several), at the preview step stated here.",
+   "required": [
+    "panels",
+    "panel_count",
+    "step",
+    "panel_width",
+    "panel_height",
+    "pixels_per_panel",
+    "pixels_total",
+    "caps",
+    "scale",
+    "spectral",
+    "nan_meaning"
+   ],
+   "properties": {
+    "channels": {
+     "type": "integer"
+    },
+    "width": {
+     "type": "integer"
+    },
+    "height": {
+     "type": "integer"
+    },
+    "panel_width": {
+     "type": "integer"
+    },
+    "panel_height": {
+     "type": "integer"
+    },
+    "step": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 64
+    },
+    "panel_count": {
+     "type": "integer"
+    },
+    "pixels_per_panel": {
+     "type": "integer"
+    },
+    "pixels_total": {
+     "type": "integer"
+    },
+    "caps": {
+     "type": "object",
+     "properties": {
+      "panels": {
+       "type": "integer"
+      },
+      "pixels_per_panel": {
+       "type": "integer"
+      },
+      "pixels_total": {
+       "type": "integer"
+      }
+     }
+    },
+    "panels": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "index",
+       "first",
+       "last",
+       "channels",
+       "mean"
+      ],
+      "properties": {
+       "index": {
+        "type": "integer"
+       },
+       "first": {
+        "type": "integer"
+       },
+       "last": {
+        "type": "integer"
+       },
+       "channels": {
+        "type": "integer"
+       },
+       "mean": {
+        "type": "boolean",
+        "description": "true for a panel that averages several channels"
+       },
+       "spectral": {
+        "type": "object",
+        "nullable": true,
+        "description": "Spectral value of the panel's first and last channel in `spectral.unit`; null where undefined.",
+        "properties": {
+         "first": {
+          "type": "number",
+          "nullable": true
+         },
+         "last": {
+          "type": "number",
+          "nullable": true
+         }
+        }
+       },
+       "flagged": {
+        "type": "integer",
+        "nullable": true,
+        "description": "Channels of the panel the provider flagged; null when the file declares no flags."
+       }
+      }
+     }
+    },
+    "preview": {
+     "type": "object",
+     "nullable": true,
+     "properties": {
+      "step": {
+       "type": "integer"
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    "averaging": {
+     "type": "object",
+     "nullable": true,
+     "properties": {
+      "channels": {
+       "type": "integer"
+      },
+      "order": {
+       "type": "string"
+      }
+     }
+    },
+    "scale": {
+     "type": "object",
+     "required": [
+      "source",
+      "sampled_panels"
+     ],
+     "description": "The one scale every panel shares. lo and hi are null only when the sampled panels hold no finite pixel.",
+     "properties": {
+      "lo": {
+       "type": "number",
+       "nullable": true
+      },
+      "hi": {
+       "type": "number",
+       "nullable": true
+      },
+      "source": {
+       "type": "string"
+      },
+      "sampled_panels": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      }
+     }
+    },
+    "spectral": {
+     "type": "object",
+     "description": "How the spectral labels were made (ADR 0040). `refused` is set when the asked conversion could not be done: the native values and unit stay and the labels say so.",
+     "properties": {
+      "axis": {
+       "type": "string",
+       "nullable": true
+      },
+      "ctype": {
+       "type": "string",
+       "nullable": true
+      },
+      "unit": {
+       "type": "string",
+       "nullable": true
+      },
+      "unit_status": {
+       "type": "string",
+       "nullable": true
+      },
+      "native_unit": {
+       "type": "string",
+       "nullable": true
+      },
+      "convention": {
+       "type": "string",
+       "nullable": true
+      },
+      "convention_source": {
+       "type": "string",
+       "nullable": true
+      },
+      "specsys": {
+       "type": "string",
+       "nullable": true
+      },
+      "rest": {
+       "type": "object",
+       "nullable": true
+      },
+      "basis": {
+       "type": "string",
+       "nullable": true
+      },
+      "refused": {
+       "type": "string",
+       "nullable": true
+      },
+      "reference_frame_note": {
+       "type": "string"
+      }
+     }
+    },
+    "nan_meaning": {
+     "type": "string"
+    },
+    "bunit": {
+     "type": "string",
+     "nullable": true
+    },
+    "bunit_status": {
+     "type": "string",
+     "nullable": true
+    }
+   }
+  },
+  "SlabHeader": {
+   "type": "object",
+   "description": "The JSON header of a slab frame: a plane header plus what was averaged. NaN in the payload means no value, never zero.",
+   "required": [
+    "width",
+    "height",
+    "channel",
+    "channels",
+    "nan_meaning",
+    "stats",
+    "slab"
+   ],
+   "properties": {
+    "width": {
+     "type": "integer"
+    },
+    "height": {
+     "type": "integer"
+    },
+    "channel": {
+     "type": "integer"
+    },
+    "channels": {
+     "type": "integer"
+    },
+    "nan_meaning": {
+     "type": "string"
+    },
+    "stats": {
+     "$ref": "#/components/schemas/ValueStats"
+    },
+    "preview": {
+     "type": "object",
+     "nullable": true,
+     "properties": {
+      "step": {
+       "type": "integer"
+      },
+      "source_width": {
+       "type": "integer"
+      },
+      "source_height": {
+       "type": "integer"
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    "slab": {
+     "type": "object",
+     "required": [
+      "first",
+      "last",
+      "channels",
+      "samples",
+      "finite_samples",
+      "excluded_samples",
+      "pixels_without_value",
+      "method"
+     ],
+     "properties": {
+      "first": {
+       "type": "integer"
+      },
+      "last": {
+       "type": "integer"
+      },
+      "channels": {
+       "type": "integer"
+      },
+      "samples": {
+       "type": "integer"
+      },
+      "finite_samples": {
+       "type": "integer"
+      },
+      "excluded_samples": {
+       "type": "integer"
+      },
+      "pixels_without_value": {
+       "type": "integer"
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    "spectral_first": {
+     "type": "number",
+     "nullable": true
+    },
+    "spectral_last": {
+     "type": "number",
+     "nullable": true
+    }
+   }
+  },
+  "PvRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "points",
+    "width",
+    "widthUnit",
+    "interpolation"
+   ],
+   "description": "A position-velocity slice along a path of whole-pixel vertices (0-based, y from the bottom), sampled at about one-pixel spacing with several samples across the width averaged.",
+   "properties": {
+    "points": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 64,
+     "items": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+       "type": "integer"
+      }
+     }
+    },
+    "width": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 100000
+    },
+    "widthUnit": {
+     "type": "string",
+     "enum": [
+      "pixel",
+      "arcsec"
+     ]
+    },
+    "interpolation": {
+     "type": "string",
+     "enum": [
+      "linear",
+      "nearest"
+     ],
+     "description": "linear is bilinear interpolation (a sample with a non-finite neighbour is excluded); nearest takes the nearest pixel, no interpolation."
+    },
+    "first": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "last": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "unit": {
+     "type": "string"
+    },
+    "convention": {
+     "type": "string",
+     "enum": [
+      "radio",
+      "optical",
+      "relativistic"
+     ]
+    }
+   }
+  },
+  "PvHeader": {
+   "type": "object",
+   "description": "The JSON header of a position-velocity frame. Payload (little-endian): float64 offset[offsets], float64 axis[channels_returned] (NaN = undefined), float32 value[channels_returned][offsets] (NaN = no value), uint8 count[channels_returned][offsets] (finite samples averaged).",
+   "required": [
+    "offsets",
+    "channels_returned",
+    "first_channel",
+    "last_channel",
+    "layout",
+    "offset",
+    "path",
+    "width",
+    "interpolation",
+    "outside_samples",
+    "spectral",
+    "stats",
+    "nan_meaning",
+    "caps"
+   ],
+   "properties": {
+    "offsets": {
+     "type": "integer"
+    },
+    "channels_returned": {
+     "type": "integer"
+    },
+    "first_channel": {
+     "type": "integer"
+    },
+    "last_channel": {
+     "type": "integer"
+    },
+    "layout": {
+     "type": "string"
+    },
+    "offset": {
+     "type": "object",
+     "required": [
+      "unit",
+      "origin",
+      "method"
+     ],
+     "properties": {
+      "unit": {
+       "type": "string",
+       "enum": [
+        "arcsec",
+        "pixel"
+       ]
+      },
+      "origin": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    "path": {
+     "type": "object",
+     "properties": {
+      "vertices": {
+       "type": "array",
+       "items": {
+        "type": "array",
+        "items": {
+         "type": "number"
+        }
+       }
+      },
+      "length_pixels": {
+       "type": "number"
+      },
+      "spacing_pixels": {
+       "type": "number"
+      },
+      "samples": {
+       "type": "integer"
+      }
+     }
+    },
+    "width": {
+     "type": "object",
+     "properties": {
+      "requested": {
+       "type": "number"
+      },
+      "unit": {
+       "type": "string"
+      },
+      "cross_samples": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    "interpolation": {
+     "type": "object",
+     "required": [
+      "mode",
+      "method"
+     ],
+     "properties": {
+      "mode": {
+       "type": "string",
+       "enum": [
+        "linear",
+        "nearest"
+       ]
+      },
+      "method": {
+       "type": "string"
+      }
+     }
+    },
+    "outside_samples": {
+     "type": "integer",
+     "description": "Samples that fell outside the image; they hold no value."
+    },
+    "spectral": {
+     "type": "object",
+     "description": "How the spectral labels were made (ADR 0040). `refused` is set when the asked conversion could not be done: the native values and unit stay and the labels say so.",
+     "properties": {
+      "axis": {
+       "type": "string",
+       "nullable": true
+      },
+      "ctype": {
+       "type": "string",
+       "nullable": true
+      },
+      "unit": {
+       "type": "string",
+       "nullable": true
+      },
+      "unit_status": {
+       "type": "string",
+       "nullable": true
+      },
+      "native_unit": {
+       "type": "string",
+       "nullable": true
+      },
+      "convention": {
+       "type": "string",
+       "nullable": true
+      },
+      "convention_source": {
+       "type": "string",
+       "nullable": true
+      },
+      "specsys": {
+       "type": "string",
+       "nullable": true
+      },
+      "rest": {
+       "type": "object",
+       "nullable": true
+      },
+      "basis": {
+       "type": "string",
+       "nullable": true
+      },
+      "refused": {
+       "type": "string",
+       "nullable": true
+      },
+      "reference_frame_note": {
+       "type": "string"
+      }
+     }
+    },
+    "stats": {
+     "$ref": "#/components/schemas/ValueStats"
+    },
+    "nan_meaning": {
+     "type": "string"
+    },
+    "sky": {
+     "type": "object",
+     "description": "The file's sky facts (kind, frame and its status)."
+    },
+    "caps": {
+     "type": "object",
+     "properties": {
+      "offsets": {
+       "type": "integer"
+      },
+      "cells": {
+       "type": "integer"
+      },
+      "cross_samples": {
+       "type": "integer"
+      },
+      "work": {
+       "type": "integer"
+      }
+     }
+    }
+   }
+  },
+  "ValueStats": {
+   "type": "object",
+   "description": "Statistics of the finite values of a computed map or diagram (a slab, a position-velocity slice). null when nothing is finite.",
+   "required": [
+    "finite_count",
+    "nonfinite_count",
+    "min",
+    "max",
+    "p01",
+    "p99"
+   ],
+   "properties": {
+    "finite_count": {
+     "type": "integer"
+    },
+    "nonfinite_count": {
+     "type": "integer"
+    },
+    "min": {
+     "type": "number",
+     "nullable": true
+    },
+    "max": {
+     "type": "number",
+     "nullable": true
+    },
+    "p01": {
+     "type": "number",
+     "nullable": true
+    },
+    "p99": {
+     "type": "number",
+     "nullable": true
+    }
+   }
+  },
   "RohsaSizing": {
    "type": "object",
    "description": "A resource request suggested for a ROHSA run by the table in the owner's hpc/irgetas/submit_rohsa.sh. It is a suggestion; nothing applies it",
@@ -9784,6 +10675,293 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Board"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/channel-grid": {
+   "summary": "The plan of a channel-map grid",
+   "description": "Panels of consecutive (or every stride-th) channels over a range, each a single channel or the mean of `average` channels; each labelled with its spectral coordinate in the file's unit or a converted one with the convention used (ADR 0040); and the one colour scale all panels share. A refused conversion leaves the native labels and says why. Refused with 409 for a dataset declared as an orientation map, and with 422 for more panels or pixels than the caps allow.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "first",
+     "in": "query",
+     "required": true,
+     "description": "First channel of the range",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    {
+     "name": "last",
+     "in": "query",
+     "required": true,
+     "description": "Last channel of the range (inclusive)",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    {
+     "name": "stride",
+     "in": "query",
+     "required": false,
+     "description": "Channels between panel starts (default 1)",
+     "schema": {
+      "type": "integer",
+      "minimum": 1
+     }
+    },
+    {
+     "name": "average",
+     "in": "query",
+     "required": false,
+     "description": "Channels averaged per panel (default 1, not above the stride)",
+     "schema": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 256
+     }
+    },
+    {
+     "name": "unit",
+     "in": "query",
+     "required": false,
+     "description": "A spectral unit to label the panels in (Hz, GHz, m, km/s, ...)",
+     "schema": {
+      "type": "string"
+     }
+    },
+    {
+     "name": "convention",
+     "in": "query",
+     "required": false,
+     "description": "Velocity convention for a frequency or wavelength axis",
+     "schema": {
+      "type": "string",
+      "enum": [
+       "radio",
+       "optical",
+       "relativistic"
+      ]
+     }
+    },
+    {
+     "name": "limits",
+     "in": "query",
+     "required": false,
+     "description": "Custom shared limits as lo,hi in the file's unit; without them the scale is sampled from the panels",
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "headers": {
+      "Cache-Control": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "no-store"
+        ]
+       }
+      },
+      "X-Content-Type-Options": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "nosniff"
+        ]
+       }
+      }
+     },
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ChannelGridPlan"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/slab": {
+   "summary": "The mean of several channels as a plane frame",
+   "description": "Per-pixel mean of the finite values of channels first..last, as a plane frame (uint32 little-endian header length, a SlabHeader, then float32 pixels, row 0 = FITS y=1). Non-finite values are excluded and counted; a pixel with none is NaN. With step above 1 the block mean of the slab mean is returned (a display preview, labelled). Refused with 409 for an orientation map.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "first",
+     "in": "query",
+     "required": true,
+     "description": "First channel",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    {
+     "name": "last",
+     "in": "query",
+     "required": true,
+     "description": "Last channel (inclusive)",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    {
+     "name": "step",
+     "in": "query",
+     "required": false,
+     "description": "Block-mean preview factor",
+     "schema": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "headers": {
+      "Cache-Control": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "no-store"
+        ]
+       }
+      },
+      "X-Content-Type-Options": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "nosniff"
+        ]
+       }
+      }
+     },
+     "content": {
+      "application/vnd.vesqira.plane": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       },
+       "x-frame-header": {
+        "$ref": "#/components/schemas/SlabHeader"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/pv": {
+   "summary": "A position-velocity diagram along a path, as a binary frame",
+   "description": "Heavy lane, cancellable. Frame layout as for a plane: uint32 little-endian header length n, n bytes of JSON (a PvHeader, padded so the payload is 8-byte aligned), then the payload the header describes. Offsets are the cumulative great-circle separation of the samples' sky positions (astropy), in arcsec; a file with no celestial WCS gives pixels and refuses an angular width. Refused with 409 for an orientation map and with 422 when the path, width or channel range exceed the caps.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/PvRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "headers": {
+      "Cache-Control": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "no-store"
+        ]
+       }
+      },
+      "X-Content-Type-Options": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "nosniff"
+        ]
+       }
+      }
+     },
+     "content": {
+      "application/vnd.vesqira.pv": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       },
+       "x-frame-header": {
+        "$ref": "#/components/schemas/PvHeader"
        }
       }
      }

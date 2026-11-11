@@ -3,6 +3,7 @@ package regions
 import (
 	"errors"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -62,11 +63,11 @@ func TestSkyRegionsBecomeApproximatedWholePixelShapesOrAreSkippedWithAReason(t *
 	text := "fk5\ncircle(150.0,2.0,360\")\nbox(150.0,2.0,720\",360\")\ncircle(150.0,2.0,360)\nbox(150.0,2.0,30\",30\")\n"
 	it := ResolveSky(ParseDS9(text), "icrs", grid(0))
 	c := it[0]
-	if c.Status != Approximate || *c.Shape != (Shape{Shape: "circle", CX: 15, CY: 11, R: 10}) || !strings.Contains(c.Note, "became") || !strings.Contains(c.Note, "FK5 and ICRS") {
+	if c.Status != Approximate || !reflect.DeepEqual(*c.Shape, Shape{Shape: "circle", CX: 15, CY: 11, R: 10}) || !strings.Contains(c.Note, "became") || !strings.Contains(c.Note, "FK5 and ICRS") {
 		t.Errorf("circle: %+v", c)
 	}
 	b := it[1] // centre (15.2, 11.4), 20 x 10 pixels: x 5.2..25.2 and y 6.4..16.4
-	if b.Status != Approximate || *b.Shape != (Shape{Shape: "rect", X0: 6, Y0: 7, X1: 25, Y1: 16}) {
+	if b.Status != Approximate || !reflect.DeepEqual(*b.Shape, Shape{Shape: "rect", X0: 6, Y0: 7, X1: 25, Y1: 16}) {
 		t.Errorf("box: %+v", b)
 	}
 	if !strings.Contains(it[2].Note, "no unit mark") || it[2].Status != Approximate {

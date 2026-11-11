@@ -618,6 +618,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/channel-grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The plan of a channel-map grid
+         * @description Panels of consecutive (or every stride-th) channels over a range, each a single channel or the mean of `average` channels; each labelled with its spectral coordinate in the file's unit or a converted one with the convention used (ADR 0040); and the one colour scale all panels share. A refused conversion leaves the native labels and says why. Refused with 409 for a dataset declared as an orientation map, and with 422 for more panels or pixels than the caps allow.
+         */
+        get: operations["owner_s_channelGrid_get_api_datasets_id_channel_grid"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/conversions": {
         parameters: {
             query?: never;
@@ -842,6 +864,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/pv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A position-velocity diagram along a path, as a binary frame
+         * @description Heavy lane, cancellable. Frame layout as for a plane: uint32 little-endian header length n, n bytes of JSON (a PvHeader, padded so the payload is 8-byte aligned), then the payload the header describes. Offsets are the cumulative great-circle separation of the samples' sky positions (astropy), in arcsec; a file with no celestial WCS gives pixels and refuses an angular width. Refused with 409 for an orientation map and with 422 when the path, width or channel range exceed the caps.
+         */
+        post: operations["owner_s_pv_post_api_datasets_id_pv"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/regions": {
         parameters: {
             query?: never;
@@ -987,6 +1031,28 @@ export interface paths {
         put?: never;
         /** Advance (or confirm) the index of a run's .dat; each call works for a bounded time */
         post: operations["owner_s_rohsaIndex_post_api_datasets_id_rohsa_index"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/slab": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The mean of several channels as a plane frame
+         * @description Per-pixel mean of the finite values of channels first..last, as a plane frame (uint32 little-endian header length, a SlabHeader, then float32 pixels, row 0 = FITS y=1). Non-finite values are excluded and counted; a pixel with none is NaN. With step above 1 the block mean of the slab mean is returned (a display preview, labelled). Refused with 409 for an orientation map.
+         */
+        get: operations["owner_s_slab_get_api_datasets_id_slab"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3388,7 +3454,7 @@ export interface components {
         /** @description What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. */
         FigureView: {
             /** @enum {string} */
-            kind: "plane" | "spectrum" | "orientation";
+            kind: "plane" | "spectrum" | "orientation" | "channelgrid";
             channel?: number;
             spectralValue?: number;
             /** @description At most 16 characters of letters, digits and / * ^ . - space */
@@ -3404,6 +3470,18 @@ export interface components {
             /** @description Must be the file's BUNIT, or the unit the author declared for a file without one */
             limitsUnit?: string;
             showLines?: boolean;
+            /** @description A channel-map grid figure only (ADR 0049); the reviewer-safe part of its channel-grid/1 description. */
+            grid?: {
+                first: number;
+                last: number;
+                stride: number;
+                average: number;
+                panels: number;
+                previewStep: number;
+                unit?: string;
+                convention?: string;
+                scaleSource: string;
+            };
         };
         /** @description The orientation meaning declared for the file, said to be the author's or the import adapter's, never the file's. */
         FigureInterpretation: {
@@ -3515,8 +3593,8 @@ export interface components {
             provenance: components["schemas"]["FigureProvenance"];
             /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
             archived?: boolean;
-            /** @description The scene the picture was drawn from (ADR 0042); absent for figures saved before scenes. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. */
-            scene?: components["schemas"]["Scene"];
+            /** @description The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. */
+            scene?: components["schemas"]["Scene"] & (components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"]);
         };
         FigureList: {
             figures: components["schemas"]["Figure"][];
@@ -3533,6 +3611,8 @@ export interface components {
              */
             previewPng: string;
             scene?: components["schemas"]["Scene"];
+            /** @description Required for, and only for, a figure of kind channelgrid; carries no scene. */
+            channelGrid?: components["schemas"]["ChannelGrid"];
         };
         /** @description Unknown keys are refused. */
         FigureTextRequest: {
@@ -3954,7 +4034,7 @@ export interface components {
             x: number;
             y: number;
         };
-        SceneRegion: components["schemas"]["SceneRect"] | components["schemas"]["SceneCircle"];
+        SceneRegion: components["schemas"]["SceneRect"] | components["schemas"]["SceneCircle"] | components["schemas"]["SceneLine"];
         /** @description Inclusive 0-based pixel bounds, y from the bottom */
         SceneRect: {
             /**
@@ -5258,6 +5338,232 @@ export interface components {
             /** @description Why no plot was drawn */
             plotNote: string;
         };
+        /** @description A saved line: the path a position-velocity diagram is cut along (ADR 0049). Whole-pixel vertices (0-based, y from the bottom), a width across the path and its unit. A line has no area, so it is never the working region and no spectrum or histogram is taken of it. */
+        SceneLine: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            shape: "line";
+            points: number[][];
+            width: number;
+            /** @enum {string} */
+            widthUnit: "pixel" | "arcsec";
+        };
+        /** @description A grid of channel-map panels of one dataset that share one colour scale (ADR 0049). A separate versioned description from scene/1: a scene is what one pane draws, a grid is many panels. A figure stores one or the other, told apart by `schema`. The shared scale is stored as numbers with where they came from, never recomputed per panel. */
+        ChannelGrid: {
+            /** @enum {string} */
+            schema: "channel-grid/1";
+            /** Format: int64 */
+            datasetId: number;
+            first: number;
+            last: number;
+            /** @description Panels start every `stride` channels from `first`. */
+            stride: number;
+            /** @description Channels each panel is the mean of (1: one channel); not more than the stride. */
+            average: number;
+            columns: number;
+            panels: number;
+            /** @description The unit the labels are in; absent means the file's own axis unit. */
+            spectral?: {
+                unit: string;
+                /** @enum {string} */
+                convention?: "radio" | "optical" | "relativistic";
+            };
+            display: {
+                /** @enum {string} */
+                colormap: "viridis" | "inferno" | "gray";
+                /** @enum {string} */
+                stretch: "linear" | "sqrt" | "asinh";
+                limits: number[];
+                limitsUnit?: string;
+                /** @description Where the limits came from, in words. */
+                source: string;
+            };
+            /** @description The block-mean step the panels were drawn at (1: the full plane) and their size as drawn; every panel and all together are within the transfer caps. */
+            preview: {
+                step: number;
+                panelWidth: number;
+                panelHeight: number;
+            };
+        };
+        /** @description The plan of a channel-map grid: JSON only, no payload. Each panel is fetched by the plane route (one channel) or the slab route (a mean of several), at the preview step stated here. */
+        ChannelGridPlan: {
+            channels?: number;
+            width?: number;
+            height?: number;
+            panel_width: number;
+            panel_height: number;
+            step: number;
+            panel_count: number;
+            pixels_per_panel: number;
+            pixels_total: number;
+            caps: {
+                panels?: number;
+                pixels_per_panel?: number;
+                pixels_total?: number;
+            };
+            panels: {
+                index: number;
+                first: number;
+                last: number;
+                channels: number;
+                /** @description true for a panel that averages several channels */
+                mean: boolean;
+                /** @description Spectral value of the panel's first and last channel in `spectral.unit`; null where undefined. */
+                spectral?: {
+                    first?: number | null;
+                    last?: number | null;
+                } | null;
+                /** @description Channels of the panel the provider flagged; null when the file declares no flags. */
+                flagged?: number | null;
+            }[];
+            preview?: {
+                step?: number;
+                method?: string;
+            } | null;
+            averaging?: {
+                channels?: number;
+                order?: string;
+            } | null;
+            /** @description The one scale every panel shares. lo and hi are null only when the sampled panels hold no finite pixel. */
+            scale: {
+                lo?: number | null;
+                hi?: number | null;
+                source: string;
+                sampled_panels: number[];
+            };
+            /** @description How the spectral labels were made (ADR 0040). `refused` is set when the asked conversion could not be done: the native values and unit stay and the labels say so. */
+            spectral: {
+                axis?: string | null;
+                ctype?: string | null;
+                unit?: string | null;
+                unit_status?: string | null;
+                native_unit?: string | null;
+                convention?: string | null;
+                convention_source?: string | null;
+                specsys?: string | null;
+                rest?: Record<string, never> | null;
+                basis?: string | null;
+                refused?: string | null;
+                reference_frame_note?: string;
+            };
+            nan_meaning: string;
+            bunit?: string | null;
+            bunit_status?: string | null;
+        };
+        /** @description The JSON header of a slab frame: a plane header plus what was averaged. NaN in the payload means no value, never zero. */
+        SlabHeader: {
+            width: number;
+            height: number;
+            channel: number;
+            channels: number;
+            nan_meaning: string;
+            stats: components["schemas"]["ValueStats"];
+            preview?: {
+                step?: number;
+                source_width?: number;
+                source_height?: number;
+                method?: string;
+            } | null;
+            slab: {
+                first: number;
+                last: number;
+                channels: number;
+                samples: number;
+                finite_samples: number;
+                excluded_samples: number;
+                pixels_without_value: number;
+                method: string;
+            };
+            spectral_first?: number | null;
+            spectral_last?: number | null;
+        };
+        /** @description A position-velocity slice along a path of whole-pixel vertices (0-based, y from the bottom), sampled at about one-pixel spacing with several samples across the width averaged. */
+        PvRequest: {
+            points: number[][];
+            width: number;
+            /** @enum {string} */
+            widthUnit: "pixel" | "arcsec";
+            /**
+             * @description linear is bilinear interpolation (a sample with a non-finite neighbour is excluded); nearest takes the nearest pixel, no interpolation.
+             * @enum {string}
+             */
+            interpolation: "linear" | "nearest";
+            first?: number;
+            last?: number;
+            unit?: string;
+            /** @enum {string} */
+            convention?: "radio" | "optical" | "relativistic";
+        };
+        /** @description The JSON header of a position-velocity frame. Payload (little-endian): float64 offset[offsets], float64 axis[channels_returned] (NaN = undefined), float32 value[channels_returned][offsets] (NaN = no value), uint8 count[channels_returned][offsets] (finite samples averaged). */
+        PvHeader: {
+            offsets: number;
+            channels_returned: number;
+            first_channel: number;
+            last_channel: number;
+            layout: string;
+            offset: {
+                /** @enum {string} */
+                unit: "arcsec" | "pixel";
+                origin: string;
+                method: string;
+            };
+            path: {
+                vertices?: number[][];
+                length_pixels?: number;
+                spacing_pixels?: number;
+                samples?: number;
+            };
+            width: {
+                requested?: number;
+                unit?: string;
+                cross_samples?: number;
+                note?: string;
+                method?: string;
+            };
+            interpolation: {
+                /** @enum {string} */
+                mode: "linear" | "nearest";
+                method: string;
+            };
+            /** @description Samples that fell outside the image; they hold no value. */
+            outside_samples: number;
+            /** @description How the spectral labels were made (ADR 0040). `refused` is set when the asked conversion could not be done: the native values and unit stay and the labels say so. */
+            spectral: {
+                axis?: string | null;
+                ctype?: string | null;
+                unit?: string | null;
+                unit_status?: string | null;
+                native_unit?: string | null;
+                convention?: string | null;
+                convention_source?: string | null;
+                specsys?: string | null;
+                rest?: Record<string, never> | null;
+                basis?: string | null;
+                refused?: string | null;
+                reference_frame_note?: string;
+            };
+            stats: components["schemas"]["ValueStats"];
+            nan_meaning: string;
+            /** @description The file's sky facts (kind, frame and its status). */
+            sky?: Record<string, never>;
+            caps: {
+                offsets?: number;
+                cells?: number;
+                cross_samples?: number;
+                work?: number;
+            };
+        };
+        /** @description Statistics of the finite values of a computed map or diagram (a slab, a position-velocity slice). null when nothing is finite. */
+        ValueStats: {
+            finite_count: number;
+            nonfinite_count: number;
+            min: number | null;
+            max: number | null;
+            p01: number | null;
+            p99: number | null;
+        };
         /** @description A resource request suggested for a ROHSA run by the table in the owner's hpc/irgetas/submit_rohsa.sh. It is a suggestion; nothing applies it */
         RohsaSizing: {
             /** @description The crop size used (0 is the whole cube) */
@@ -6393,6 +6699,54 @@ export interface operations {
             };
         };
     };
+    owner_s_channelGrid_get_api_datasets_id_channel_grid: {
+        parameters: {
+            query: {
+                /** @description First channel of the range */
+                first: number;
+                /** @description Last channel of the range (inclusive) */
+                last: number;
+                /** @description Channels between panel starts (default 1) */
+                stride?: number;
+                /** @description Channels averaged per panel (default 1, not above the stride) */
+                average?: number;
+                /** @description A spectral unit to label the panels in (Hz, GHz, m, km/s, ...) */
+                unit?: string;
+                /** @description Velocity convention for a frequency or wavelength axis */
+                convention?: "radio" | "optical" | "relativistic";
+                /** @description Custom shared limits as lo,hi in the file's unit; without them the scale is sampled from the panels */
+                limits?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelGridPlan"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_conversions_get_api_datasets_id_conversions: {
         parameters: {
             query?: never;
@@ -6667,6 +7021,43 @@ export interface operations {
             };
         };
     };
+    owner_s_pv_post_api_datasets_id_pv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PvRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.pv": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listRegions_get_api_datasets_id_regions: {
         parameters: {
             query?: never;
@@ -6916,6 +7307,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_slab_get_api_datasets_id_slab: {
+        parameters: {
+            query: {
+                /** @description First channel */
+                first: number;
+                /** @description Last channel (inclusive) */
+                last: number;
+                /** @description Block-mean preview factor */
+                step?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.plane": string;
                 };
             };
             /** @description Error */

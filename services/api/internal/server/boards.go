@@ -34,9 +34,23 @@ type regionParam struct {
 	R     *int   `json:"r,omitempty"`
 }
 
+// gridParams describes a channel-map grid figure (ADR 0049) without a dataset id: the reviewer-safe part of the stored
+// channel-grid/1 description.
+type gridParams struct {
+	First       int    `json:"first"`
+	Last        int    `json:"last"`
+	Stride      int    `json:"stride"`
+	Average     int    `json:"average"`
+	Panels      int    `json:"panels"`
+	PreviewStep int    `json:"previewStep"`
+	Unit        string `json:"unit,omitempty"`
+	Convention  string `json:"convention,omitempty"`
+	Source      string `json:"scaleSource"`
+}
+
 // ViewParams is what the figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view.
 type ViewParams struct {
-	Kind          string       `json:"kind"` // plane | spectrum | orientation
+	Kind          string       `json:"kind"` // plane | spectrum | orientation | channelgrid
 	Channel       *int         `json:"channel,omitempty"`
 	SpectralValue *float64     `json:"spectralValue,omitempty"`
 	SpectralUnit  string       `json:"spectralUnit,omitempty"`
@@ -47,6 +61,7 @@ type ViewParams struct {
 	Limits        []float64    `json:"limits,omitempty"`
 	LimitsUnit    string       `json:"limitsUnit,omitempty"`
 	ShowLines     *bool        `json:"showLines,omitempty"`
+	Grid          *gridParams  `json:"grid,omitempty"` // channelgrid only
 }
 
 // unitText allows unit spellings such as m/s, Hz or Jy/beam and nothing that could carry markup or a path. It guards the
@@ -72,8 +87,20 @@ func oneOf(v string, ok ...string) bool {
 }
 
 func (p ViewParams) valid() bool {
-	if !oneOf(p.Kind, "plane", "spectrum", "orientation") || p.Kind == "" {
+	if !oneOf(p.Kind, "plane", "spectrum", "orientation", "channelgrid") || p.Kind == "" {
 		return false
+	}
+	if (p.Kind == "channelgrid") != (p.Grid != nil) {
+		return false
+	}
+	if g := p.Grid; g != nil {
+		// a grid shares one scale as numbers: custom limits, never a range recomputed per panel, and never twilight (angles)
+		if p.Region != nil || p.Range != "custom" || len(p.Limits) != 2 || p.Colormap == "twilight" || p.Colormap == "" || p.Stretch == "" || p.Channel == nil || *p.Channel != g.First ||
+			g.Last < g.First || g.Panels != scene.GridPanels(g.First, g.Last, g.Stride) || g.Panels < 1 || g.Panels > scene.MaxGridPanels ||
+			g.Average < 1 || g.Average > g.Stride || g.PreviewStep < 1 || g.PreviewStep > 64 || !unitText.MatchString(g.Unit) ||
+			!oneOf(g.Convention, "radio", "optical", "relativistic") || g.Source == "" || len(g.Source) > 200 || strings.ContainsAny(g.Source, "<>\"&\\") {
+			return false
+		}
 	}
 	if !oneOf(p.Colormap, "viridis", "inferno", "gray", "twilight") || !oneOf(p.Stretch, "linear", "sqrt", "asinh") || !oneOf(p.Range, "percentile", "minmax", "custom") {
 		return false
@@ -149,6 +176,9 @@ func (p ViewParams) checkAgainst(h safeHeader, declaredUnit string) bool {
 	if p.Channel != nil && (*p.Channel < 0 || *p.Channel >= maxLen) {
 		return false
 	}
+	if p.Grid != nil && p.Grid.Last >= maxLen {
+		return false
+	}
 	// the unit of the limits is the file's BUNIT, or, when the file has none, the one the author declared for it
 	if p.LimitsUnit != "" && !(h.BUnit != nil && *h.BUnit == p.LimitsUnit) && !(h.BUnit == nil && declaredUnit != "" && declaredUnit == p.LimitsUnit) {
 		return false
@@ -200,6 +230,9 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 	case "simulated":
 		pr.Statements = append(pr.Statements, "This is simulated data, declared by the author. Results on a simulation are not validation on observations.")
 	}
+	if g := p.Grid; g != nil {
+		pr.Statements = append(pr.Statements, gridStatements(g, p)...)
+	}
 	if p.Region != nil {
 		pr.Statements = append(pr.Statements, "Region values are means of the finite pixels inside the region; flagged channels keep their data; pixel scale is taken at the reference pixel.")
 	}
@@ -217,6 +250,54 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 }
 
 var errBadView = errors.New("view does not match the dataset")
+
+// gridStatements say what a channel-map grid figure is and is not, in the reviewer-safe provenance.
+func gridStatements(g *gridParams, p ViewParams) []string {
+	out := []string{fmt.Sprintf("Channel map: %d panels from channel %d to %d, one every %d channels. All panels share one colour scale, %s to %s %s (%s); each panel is labelled with its own spectral coordinate.",
+		g.Panels, g.First, g.Last, g.Stride, strconv.FormatFloat(p.Limits[0], 'g', 6, 64), strconv.FormatFloat(p.Limits[1], 'g', 6, 64), p.LimitsUnit, g.Source)}
+	if g.Average > 1 {
+		out = append(out, fmt.Sprintf("Each panel is the per-pixel mean of %d channels (fewer at the end of the range); non-finite values are excluded from the mean and a pixel with none is drawn as no value, never as zero.", g.Average))
+	}
+	if g.PreviewStep > 1 {
+		out = append(out, fmt.Sprintf("The panels are display previews: the mean of the finite pixels in %d x %d blocks. They are not for measurement.", g.PreviewStep, g.PreviewStep))
+	}
+	if g.Unit != "" {
+		conv := ""
+		if g.Convention != "" {
+			conv = " (" + g.Convention + " convention)"
+		}
+		out = append(out, "Panel labels are in "+g.Unit+conv+", converted from the file's spectral axis; the reference frame (SPECSYS) is the file's and was not changed.")
+	}
+	return out
+}
+
+// checkChannelGrid holds a figure's channel-grid/1 description to the dataset and to the view description sent with it, so the
+// two cannot tell different stories about one picture.
+func checkChannelGrid(g scene.ChannelGrid, d catalog.Dataset, vp ViewParams) error {
+	refuse := func(why string) error { return fmt.Errorf("%w: %s", scene.ErrInvalid, why) }
+	if vp.Kind != "channelgrid" || vp.Grid == nil {
+		return refuse("a channel grid belongs to a channel-grid figure")
+	}
+	if g.DatasetID != d.ID {
+		return refuse("the grid's dataset is not the figure's")
+	}
+	if d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+		return refuse("an orientation map has no channel grid: averaging angles across channels is not valid")
+	}
+	v := vp.Grid
+	unit, conv := "", ""
+	if g.Spectral != nil {
+		unit, conv = g.Spectral.Unit, g.Spectral.Convention
+	}
+	if v.First != g.First || v.Last != g.Last || v.Stride != g.Stride || v.Average != g.Average || v.Panels != g.Panels || v.PreviewStep != g.Preview.Step ||
+		v.Unit != unit || v.Convention != conv || v.Source != g.Display.Source {
+		return refuse("the grid does not match the view's channel range, averaging, labels or preview")
+	}
+	if vp.Colormap != g.Display.Colormap || vp.Stretch != g.Display.Stretch || !sameFloats(vp.Limits, g.Display.Limits[:]) || vp.LimitsUnit != g.Display.LimitsUnit {
+		return refuse("the grid's shared scale is not the figure's")
+	}
+	return nil
+}
 
 // checkScene holds a figure's scene to the dataset and to the view description sent with it, so the two cannot tell
 // different stories about one picture. Regions and the grid are the base's own; contours, orientation lines and the beam
@@ -372,12 +453,13 @@ func body(w http.ResponseWriter, r *http.Request, limit int64, v any, strict boo
 
 func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		DatasetID  int64           `json:"datasetId"`
-		Title      string          `json:"title"`
-		Caption    string          `json:"caption"`
-		View       json.RawMessage `json:"view"`
-		Scene      json.RawMessage `json:"scene"`      // optional: the scene the picture was drawn from (ADR 0042)
-		PreviewPNG string          `json:"previewPng"` // base64
+		DatasetID   int64           `json:"datasetId"`
+		Title       string          `json:"title"`
+		Caption     string          `json:"caption"`
+		View        json.RawMessage `json:"view"`
+		Scene       json.RawMessage `json:"scene"`       // optional: the scene the picture was drawn from (ADR 0042)
+		ChannelGrid json.RawMessage `json:"channelGrid"` // a channel-grid figure: the channel-grid/1 description (ADR 0049)
+		PreviewPNG  string          `json:"previewPng"`  // base64
 	}
 	if !body(w, r, 12<<20, &in, false) {
 		return
@@ -409,7 +491,27 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	}
 	var sceneJSON json.RawMessage
 	var others []catalog.Dataset
-	if len(in.Scene) > 0 && string(in.Scene) != "null" {
+	hasGrid := len(in.ChannelGrid) > 0 && string(in.ChannelGrid) != "null"
+	hasScene := len(in.Scene) > 0 && string(in.Scene) != "null"
+	if hasGrid != (vp.Kind == "channelgrid") || (hasGrid && hasScene) {
+		fail(w, 400, "a channel-grid figure carries its channel-grid description and no scene, and nothing else carries one")
+		return
+	}
+	if hasGrid {
+		g, err := scene.ParseChannelGrid(in.ChannelGrid)
+		if err == nil {
+			err = checkChannelGrid(g, d, vp)
+		}
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		if sceneJSON, err = g.Marshal(); err != nil { // what is stored is the server's reading, never the client's bytes
+			fail(w, 500, "internal error")
+			return
+		}
+	}
+	if hasScene {
 		sc, err := scene.Parse(in.Scene)
 		if err == nil {
 			others, err = checkScene(sc, d, vp, s.Store.Get)

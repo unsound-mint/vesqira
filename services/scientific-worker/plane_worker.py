@@ -9,6 +9,7 @@ treats the file as untrusted. It never writes (except the ROHSA index sidecar un
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -316,6 +317,15 @@ class Cube:
             raw = np.swapaxes(raw, 1, 2)
         return self._physical(raw)
 
+    @contextlib.contextmanager
+    def block_reader(self):
+        """Yields read(c0, c1, ys, xs): physical float64 values of channels [c0, c1) over a pixel box, shape (channels, y, x),
+        from one memory-mapped open of the file (a bounded read, never the whole cube)."""
+        with fits.open(self.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
+            if hdul[0].header.get("NAXIS", 0) == 0:
+                raise Refused("unreadable", "the file holds no image data")
+            yield lambda c0, c1, ys, xs: self._channel_block(hdul, c0, c1, ys, xs)
+
     def _physical(self, raw: np.ndarray) -> np.ndarray:
         """float64 physical values: BSCALE/BZERO applied, BLANK (integer data) is NaN, never 0."""
         bscale, bzero = self.h.get("BSCALE", 1.0), self.h.get("BZERO", 0.0)
@@ -364,6 +374,8 @@ class Cube:
             requested = int(np.count_nonzero(d[:, None] ** 2 + d[None, :] ** 2 <= r * r))
             inside = lambda yy, xx: (xx - cx) ** 2 + (yy - cy) ** 2 <= r * r   # pixel centres inside the circle (broadcast, no full grids)
         else:
+            if shape == "line":
+                raise Refused("bad_request", "a line has no area: it cannot be averaged over; use it for a position-velocity diagram")
             raise Refused("bad_request", "shape must be rect or circle")
         if bx0 > bx1 or by0 > by1:
             raise Refused("bad_request", "the region does not overlap the image")
@@ -1084,7 +1096,8 @@ def handle(req: dict) -> tuple[dict, bytes]:
         return catalog_op(op, path, req)
     if op == "overlay_catalog":
         return overlay_catalog(req)
-    file_ops = ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky", "overlay_geometry")
+    file_ops = ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky", "overlay_geometry",
+                "slab", "channel_grid", "pv")
     if op in file_ops:
         authorize(path)                                          # also enforces the roots on a remote host
         if op == "axial" and req.get("weights_path") is not None:
@@ -1100,6 +1113,20 @@ def handle(req: dict) -> tuple[dict, bytes]:
     base = {"ok": True, "op": op, "origin": 0, "bunit": bunit, "bunit_status": status}
     if op == "overlay_geometry":
         head, payload = overlay_geometry(c, req)
+        return {**base, **head}, payload
+    if op in ("slab", "channel_grid", "pv"):
+        import cube_slices as cs
+        try:
+            if op == "slab":
+                head, payload = cs.slab(c, req, block_mean, stats)
+            elif op == "channel_grid":
+                head, payload = cs.channel_grid(c, req, block_mean)
+            else:
+                head, payload = cs.pv(c, req, stats)
+        except cs.Refusal as e:
+            raise Refused(e.code, str(e))
+        except convert.Bad as e:
+            raise Refused("bad_request", str(e))
         return {**base, **head}, payload
     if op == "view":
         fl = c.flags()

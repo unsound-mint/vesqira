@@ -10,6 +10,8 @@ from __future__ import annotations
 import math
 import warnings
 
+import numpy as np
+
 from astropy import units as u
 from astropy.coordinates import FK4, FK5, ICRS, Galactic, SkyCoord
 from astropy.stats import gaussian_fwhm_to_sigma
@@ -146,65 +148,111 @@ def spectral_offers(c) -> dict | None:
     return out
 
 
-def convert_spectral(c, channel: int, unit_text, convention) -> dict:
+def spectral_plan(c, unit_text, convention):
+    """What converting the spectral axis to `unit_text` involves, decided once for the file: (base, refused, apply, basis).
+
+    `base` is the readout's fixed part (native unit, specsys, rest frequency, convention and who chose it); `refused` is a
+    sentence when the conversion cannot be done for any channel (else None); `apply` maps a Quantity array in the axis unit to
+    the converted Quantity array (it may raise, which the callers report as "not defined for this value"); `basis` says how.
+    A plan with no spectral axis returns `(None, why, None, None)`. Both the single readout (convert_spectral) and the channel
+    labels (convert_spectral_many) go through here, so a label and a readout cannot disagree.
+    """
     kind, target = _spectral_target(unit_text)
     if convention is not None and convention not in CONVENTIONS:
         raise Bad("unknown velocity convention")
     axis, why = _axis(c)
     if axis is None:
-        return {"native": None, "converted": None, "refused": why, "basis": None}
-    v = float(c._world(0, 0, channel)[c.spec])
-    native = {"value": v if math.isfinite(v) else None, "unit": axis["unit_text"], "unit_status": axis["unit_status"]}
+        return None, why, None, None
+    native = {"unit": axis["unit_text"], "unit_status": axis["unit_status"]}
     base = {"native": native, "converted": None, "refused": None, "basis": None, "convention": None,
             "convention_source": None, "rest": None, "specsys": axis["specsys"], "reference_frame_note": SPECSYS_NOTE}
-    if not math.isfinite(v):
-        return {**base, "refused": "the native spectral value is not finite"}
-    q = v * axis["unit"]
     rest, src = rest_of(c.h)
     if rest is not None:
         base["rest"] = {"value": float(rest.value), "unit": "Hz", "source": src}
-    try:
-        if kind != "vel":
-            if axis["kind"] == "vel":
-                freq, why = _frequency(q, axis, rest)
-                if freq is None:
-                    return {**base, "refused": why}
-                out = freq.to(target, u.spectral())
-                base["convention"], base["convention_source"] = axis["convention"], "file"
-                basis = (f"astropy.units doppler_{axis['convention']} with the file's {src} = {rest.value:.12g} Hz (CTYPE {axis['ctype']} declares the "
-                         f"{axis['convention']} convention), then spectral()")
-            else:
-                out = q.to(target, u.spectral())
-                basis = "astropy.units.spectral(): c = 299792458 m/s, vacuum wavelength; no rest frequency or convention involved"
-        elif axis.get("legacy"):
-            if convention is not None:
-                return {**base, "refused": f"the axis is {axis['ctype']}, which does not declare its velocity convention; a convention is not applied to it"}
-            out = q.to(target)
-            basis = f"unit change only (astropy.units); {axis['ctype']} is a legacy spelling whose velocity convention is not declared, and none is assumed"
-        elif axis["kind"] == "vel":
-            if convention is not None and convention != axis["convention"]:
-                return {**base, "refused": f"the file declares the {axis['convention']} convention ({axis['ctype']}); another convention is not applied to a velocity axis"}
-            out = q.to(target)
-            base["convention"], base["convention_source"] = axis["convention"], "file"
-            basis = f"unit change only (astropy.units); the velocity is the file's {axis['convention']} velocity ({axis['ctype']})"
-        else:
+
+    def refuse(text):
+        return base, text, None, None
+    if kind != "vel":
+        if axis["kind"] == "vel":
+            if axis.get("legacy"):
+                return refuse(f"the axis is {axis['ctype']}, a legacy spelling that does not declare its velocity convention: it is not converted to frequency or wavelength")
             if rest is None:
-                return {**base, "refused": "velocity needs a rest frequency or wavelength from the file (RESTFRQ, RESTFREQ, RESTWAV); there is none"}
-            if convention is None:
-                return {**base, "refused": f"the axis is {axis['ctype']} and the file declares no velocity convention: choose radio, optical or relativistic"}
-            freq, why = _frequency(q, axis, rest)
-            out = freq.to(target, CONVENTIONS[convention](rest))
-            base["convention"], base["convention_source"] = convention, "user"
-            basis = (f"astropy.units doppler_{convention} with the file's {src} = {rest.value:.12g} Hz; the {convention} convention was chosen by "
-                     f"you, the file ({axis['ctype']}) declares none")
-    except Bad:
-        raise
-    except Exception:
-        return {**base, "refused": "the conversion is not defined for this value"}
-    ov = float(out.value)
-    if not math.isfinite(ov):
+                return refuse("no rest frequency or wavelength in the file (RESTFRQ, RESTFREQ, RESTWAV)")
+            base["convention"], base["convention_source"] = axis["convention"], "file"
+            basis = (f"astropy.units doppler_{axis['convention']} with the file's {src} = {rest.value:.12g} Hz (CTYPE {axis['ctype']} declares the "
+                     f"{axis['convention']} convention), then spectral()")
+            return base, None, (lambda q: q.to(u.Hz, CONVENTIONS[axis["convention"]](rest)).to(target, u.spectral())), basis
+        basis = "astropy.units.spectral(): c = 299792458 m/s, vacuum wavelength; no rest frequency or convention involved"
+        return base, None, (lambda q: q.to(target, u.spectral())), basis
+    if axis.get("legacy"):
+        if convention is not None:
+            return refuse(f"the axis is {axis['ctype']}, which does not declare its velocity convention; a convention is not applied to it")
+        basis = f"unit change only (astropy.units); {axis['ctype']} is a legacy spelling whose velocity convention is not declared, and none is assumed"
+        return base, None, (lambda q: q.to(target)), basis
+    if axis["kind"] == "vel":
+        if convention is not None and convention != axis["convention"]:
+            return refuse(f"the file declares the {axis['convention']} convention ({axis['ctype']}); another convention is not applied to a velocity axis")
+        base["convention"], base["convention_source"] = axis["convention"], "file"
+        return base, None, (lambda q: q.to(target)), f"unit change only (astropy.units); the velocity is the file's {axis['convention']} velocity ({axis['ctype']})"
+    if rest is None:
+        return refuse("velocity needs a rest frequency or wavelength from the file (RESTFRQ, RESTFREQ, RESTWAV); there is none")
+    if convention is None:
+        return refuse(f"the axis is {axis['ctype']} and the file declares no velocity convention: choose radio, optical or relativistic")
+    base["convention"], base["convention_source"] = convention, "user"
+    basis = (f"astropy.units doppler_{convention} with the file's {src} = {rest.value:.12g} Hz; the {convention} convention was chosen by "
+             f"you, the file ({axis['ctype']}) declares none")
+    return base, None, (lambda q: q.to(u.Hz, u.spectral()).to(target, CONVENTIONS[convention](rest))), basis
+
+
+def native_values(c, channels) -> np.ndarray:
+    """World values of channels on the spectral axis, in the axis unit, in one WCS call (NaN where not finite)."""
+    pix = np.zeros((len(channels), len(c.shape)))
+    pix[:, c.chan] = np.asarray(channels, dtype=float)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return np.asarray(c.wcs.all_pix2world(pix, 0)[:, c.spec], dtype=float)
+
+
+def convert_spectral_many(c, channels, unit_text, convention) -> dict:
+    """The spectral axis of several channels in one unit: the fixed part of the readout (as convert_spectral's) plus
+    `native.values` and `converted.values`, one number per channel (None where not finite or not defined)."""
+    base, why, apply, basis = spectral_plan(c, unit_text, convention)
+    if base is None:
+        return {"native": None, "converted": None, "refused": why, "basis": None}
+    native = native_values(c, channels)
+    out = {**base, "native": {**base["native"], "values": [float(v) if math.isfinite(v) else None for v in native]},
+           "converted": None, "refused": why, "basis": None}
+    if why is not None:
+        return out
+    axis_unit = _axis(c)[0]["unit"]
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        try:
+            conv = np.asarray(apply(native * axis_unit).value, dtype=float)
+        except Exception:
+            return {**out, "refused": "the conversion is not defined for this value"}
+    ok = np.isfinite(conv) & np.isfinite(native)
+    out["converted"] = {"unit": unit_text, "values": [float(v) if k else None for v, k in zip(conv, ok)]}
+    out["basis"] = basis
+    return out
+
+
+def convert_spectral(c, channel: int, unit_text, convention) -> dict:
+    many = convert_spectral_many(c, [channel], unit_text, convention)
+    if many["native"] is None:
+        return many
+    v = many["native"]["values"][0]
+    native = {"value": v, "unit": many["native"]["unit"], "unit_status": many["native"]["unit_status"]}
+    keep = {k: many[k] for k in ("refused", "convention", "convention_source", "rest", "specsys", "reference_frame_note")}
+    base = {"native": native, "converted": None, "basis": None, **keep}
+    if v is None:
+        return {**base, "rest": None, "convention": None, "convention_source": None, "refused": "the native spectral value is not finite"}
+    if many["refused"] is not None:
+        return {**base, "refused": many["refused"]}
+    cv = many["converted"]["values"][0]
+    if cv is None:
         return {**base, "refused": "the result is not finite (outside what the convention can express)"}
-    return {**base, "converted": {"value": ov, "unit": unit_text}, "basis": basis}
+    return {**base, "converted": {"value": cv, "unit": unit_text}, "basis": many["basis"]}
 
 
 # ----- sky frame -----

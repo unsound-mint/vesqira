@@ -34,7 +34,7 @@ describe("saved regions", () => {
   it("saves, selects, renames, replaces the shape, duplicates, deletes and undoes", async () => {
     fakeApi();
     const setRegion = vi.fn();
-    const { result } = renderHook(() => useSavedRegions(1, setRegion));
+    const { result } = renderHook(() => useSavedRegions(1, setRegion, vi.fn()));
     await act(async () => {}); // let the first list request finish
     await act(async () => { await result.current.save("Core", { shape: "rect", x0: 2, y0: 3, x1: 9, y1: 7 }); });
     expect(result.current.saved.map((r) => r.name)).toEqual(["Core"]);
@@ -62,7 +62,7 @@ describe("saved regions", () => {
 
   it("shows or hides a region on the image without changing it, and reports a failed request", async () => {
     fakeApi();
-    const { result } = renderHook(() => useSavedRegions(1, vi.fn()));
+    const { result } = renderHook(() => useSavedRegions(1, vi.fn(), vi.fn()));
     await act(async () => {});
     await act(async () => { await result.current.save("A", { shape: "circle", cx: 1, cy: 1, r: 1 }); });
     act(() => result.current.toggle(1));
@@ -75,11 +75,35 @@ describe("saved regions", () => {
 
   it("forgets the regions of the previous dataset", async () => {
     fakeApi();
-    const { result, rerender } = renderHook(({ id }) => useSavedRegions(id, vi.fn()), { initialProps: { id: 1 as number | null } });
+    const { result, rerender } = renderHook(({ id }) => useSavedRegions(id, vi.fn(), vi.fn()), { initialProps: { id: 1 as number | null } });
     await act(async () => {});
     await act(async () => { await result.current.save("A", { shape: "circle", cx: 1, cy: 1, r: 1 }); });
     rerender({ id: null });
     await waitFor(() => expect(result.current.saved).toEqual([]));
     expect(result.current.selectedId).toBeNull();
+  });
+
+  it("saves a line beside an area, keeps its vertices and width, and selecting it sets the path, never the working region", async () => {
+    fakeApi();
+    const setRegion = vi.fn();
+    const setPath = vi.fn();
+    const { result } = renderHook(() => useSavedRegions(1, setRegion, setPath));
+    await act(async () => {});
+    const line = { shape: "line" as const, points: [[2, 3], [20, 9], [30, 9]] as [number, number][], width: 3, widthUnit: "pixel" as const };
+    await act(async () => { await result.current.save("Core", { shape: "rect", x0: 2, y0: 3, x1: 9, y1: 7 }); });
+    await act(async () => { await result.current.save("Cut", line); });
+    const cut = result.current.saved[1]!;
+    expect(cut.shape).toMatchObject({ shape: "line", points: [[2, 3], [20, 9], [30, 9]], width: 3, widthUnit: "pixel" });
+    act(() => result.current.select(cut));
+    expect(setPath).toHaveBeenLastCalledWith(line);
+    expect(setRegion).not.toHaveBeenCalled();
+    act(() => result.current.select(result.current.saved[0]!));
+    expect(setRegion).toHaveBeenLastCalledWith({ shape: "rect", x0: 2, y0: 3, x1: 9, y1: 7 });
+    // a copy and a restored deletion keep the line a line
+    await act(async () => { await result.current.duplicate(cut); });
+    expect(result.current.saved[2]!.shape).toMatchObject({ shape: "line", points: [[2, 3], [20, 9], [30, 9]], width: 3 });
+    await act(async () => { await result.current.remove(result.current.saved[2]!); });
+    await act(async () => { await result.current.undoDelete(); });
+    expect(result.current.saved[2]!.shape).toMatchObject({ shape: "line", widthUnit: "pixel" });
   });
 });

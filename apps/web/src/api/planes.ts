@@ -120,7 +120,11 @@ export function expandPreview(p: Plane): Plane {
   return { head: { ...p.head, width: w, height: h }, data };
 }
 
+/** An area: a rectangle (inclusive pixel bounds) or a circle. Spectra, histograms and orientation statistics are taken over these. */
 export type RegionShape = { shape: "rect"; x0: number; y0: number; x1: number; y1: number } | { shape: "circle"; cx: number; cy: number; r: number };
+
+/** A path of whole-pixel vertices (0-based, y from the bottom) with a width across it: the cut of a position-velocity diagram. It has no area. */
+export type LineShape = { shape: "line"; points: [number, number][]; width: number; widthUnit: "pixel" | "arcsec" };
 
 export type SpectrumHeader = {
   channels: number;
