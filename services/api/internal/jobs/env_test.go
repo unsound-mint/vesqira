@@ -54,7 +54,7 @@ func TestPreambleOnlyReadsTheCodeFolder(t *testing.T) {
 }
 
 // Every key the collector can emit is one the reader knows, and the other way round (except the job id, which the reader takes
-// from the file's own header).
+// from the file's own header, and the input fingerprint, which the API measures at import).
 func TestCollectorAndReaderAgreeOnKeys(t *testing.T) {
 	emitted := map[string]bool{}
 	for _, m := range regexp.MustCompile(`ve_(?:ok|no) ([a-z_.0-9]+)|ve_no_all "[^"]+" ((?:[a-z_.0-9]+ ?)+)`).FindAllStringSubmatch(envCollector, -1) {
@@ -66,7 +66,8 @@ func TestCollectorAndReaderAgreeOnKeys(t *testing.T) {
 		}
 	}
 	for _, k := range runs.EnvKeys {
-		if k.Key != "slurm.job_id" && !emitted[k.Key] {
+		// input.sampled_fp is added by the API at import (the job cannot run the worker), so the collector never emits it
+		if k.Key != "slurm.job_id" && k.Key != "input.sampled_fp" && !emitted[k.Key] {
 			t.Errorf("the reader knows %s but the collector never emits it", k.Key)
 		}
 		delete(emitted, k.Key)

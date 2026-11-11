@@ -178,6 +178,9 @@ func (s *Server) inputFingerprint(ctx context.Context, j jobs.Job, h hosts.Host,
 	sizeS, ok1 := runs.EnvValue(facts, "input.size_bytes")
 	mtS, ok2 := runs.EnvValue(facts, "input.mtime_epoch")
 	if !ok1 || !ok2 {
+		if !observed(facts) { // nothing of this file was trusted (another job's, or none): keep the reason already given
+			return facts
+		}
 		return no("the job did not record the input file's size and time, so a later measurement cannot be tied to it")
 	}
 	cfg, _ := jobs.EmbeddedConfig(j.Script)
