@@ -23,12 +23,12 @@ Do first: it makes the viewer claims measurable and unblocks scrubbing on large 
 
 One workspace: inspect, change parameters, run on HPC, add to a board with the supervisor, discuss, remember. The integrated-loop mock (run page, live board panel, change-and-run, what differs) was approved on 2026-11-05; other new screens still need an approved mock.
 
-- [x] Typed run metrics with unit, uncertainty and its kind, sample count and definition, shown on the run, in the reviewer's run line and beside each other in the comparison inspector (ADR 0014 amendment). The run filter box tests results (`am>0.3`). Plotting a metric against a parameter still to do.
+- [x] Typed run metrics with unit, uncertainty and its kind, sample count and definition, shown on the run, in the reviewer's run line and beside each other in the comparison inspector (ADR 0014 amendment). The run filter box tests results (`am>0.3`). A metric plotted against a sweep's parameters is on the sweep's grid board (ADR 0048).
 - [x] "What differs" strip for two runs or panels (Q87, Q132). Built: tick two panels on a board for a table of differing run settings, code, input, view and declared results with their comparability basis. Deferred: "Add this table to the board" (needs a new board item kind) and a difference-map button.
 - [x] Runs as nested pages: a run opens as a page of blocks (default result drawn with the viewer, other results shown in place or side by side, declared numbers, settings with the difference from the parent run, code, what is known about rerunning, your assessment, the job log on demand); the inspector keeps a summary. Still to do: comments from boards on the run page and blocks you add yourself (a plot of numbers, a note, a linked run).
 - [x] A board panel that follows a run still running and pins its result when it finishes. Built: a job on a board shows its state, progress (from the VGT chunk log) and an estimate, becomes its default output once imported as a run, and is pinned as a figure; a snapshot freezes it as a placeholder. Adding the drafted job to a board from the rerun form is built. A finished VGT job is imported automatically once (per-job option, ADR 0043).
 - [x] Change parameters from the cube view and run in one click (pulls shape.md slice 2 forward). Built: "Run again with…" drafts a job from a run (or from runs matched to the open input file), owner-only; submit stays on the Jobs screen after reading the script. Not yet: region-based entry from the viewer, "add to a board when it starts".
-- [ ] Parameter grid board from a sweep.
+- [x] Parameter grid board from a sweep: job panels in parameter order, a metric table and metric-vs-parameter plot, no "best" label (ADR 0048).
 - [~] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39). ADR 0029 (accepted): owner-only, off by default, the editor first. Built: the editor for local text files (`--enable-editor`; confined saves, conflict view, audited opens and saves). Not built: editing files on a host, the terminal.
 - [ ] Optional VPN companion (gpclient): a per-host connect command run through polkit, ADR 0029 (accepted); built after the editor and terminal.
 
@@ -63,15 +63,15 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 The owner asked for the most convenient app for this kind of work, beyond the interview list. Items come from the owner's own research (VGT and ROHSA on LMC H I and CO, Slurm over a VPN, weekly reports) and from common radio-astronomy practice (contours, vectors, channel maps, PV diagrams, relative-orientation statistics). Design: ADR 0042. New screens do not wait for an approved mock during this push; the owner reviews afterwards.
 
 - [x] Declared angle frame and quantity (pixel or sky; B-field, gradient, dust or starlight polarization), and axial-aware resampling for align and convolve (fixes the shipped linear interpolation of axial maps); previews of axial maps stay disabled.
-- [ ] Viewer scene: base plus ordered overlays (contours from another dataset, orientation segments, catalog markers and vectors, regions, beam ellipse, coordinate grid), placed by WCS geometry, not resampling.
-- [ ] Point catalogs as datasets (CSV, TSV, VOTable, FITS table; sexagesimal or degrees; declared frame and angle columns), e.g. starlight polarization and absorption sightlines.
-- [ ] Relative orientation between two orientation maps or a map and a catalog: alignment measure, projected Rayleigh statistic and HRO histogram, with a shifted-map null (pattern shifted, values kept) and the share of valid samples.
+- [~] Viewer scene: base plus ordered overlays, placed by WCS geometry, not resampling. Built: the scene/1 contract and viewer store (figures store their scene, never shown to reviewers), and overlays from other datasets: contours (levels incl. k×σ by MAD), orientation lines, beam ellipse, coordinate grid, each stating its basis or why it is not drawn. Not built: catalog markers and vectors (in progress).
+- [x] Point catalogs as datasets (CSV, TSV, whitespace tables, ECSV, IPAC, VOTable, FITS table; sexagesimal or degrees; declared frame and angle columns; parse report by line), e.g. starlight polarization and absorption sightlines (ADR 0044). On this computer only.
+- [x] Relative orientation between two orientation maps or a map and a catalog: alignment measure (weighted too), projected Rayleigh statistic (no p-value: correlated pixels) and histogram, the owner's shifted-pattern null reproduced, an optional P/σP cut, deterministic seeds (ADR 0047). Remote inputs, Planck HEALPix ingestion and block averaging are not built.
 - [ ] Linked view groups by sky position and spectral value (Stage 3 item, through ADR 0042).
 - [ ] Figures as scenes: draw again, change announced, SVG export (Stage 6 item).
 - [ ] Channel-map grid and position-velocity diagram along a line.
-- [ ] Gaussian decomposition browser for ROHSA results: component curves over the spectrum at a pixel, component and residual maps, CNM versus the rest with the width cut as a declared input.
+- [x] Gaussian decomposition browser for ROHSA results: component curves over the spectrum at a pixel (streamed index of the .dat), component and residual maps, CNM versus the rest with the width cut as a declared input (ADR 0046).
 - [x] Job finished: jobs are watched while the app runs (batched squeue/sacct per host, backoff when unreachable), a notification list and an optional desktop notification, and finished VGT outputs imported once as a run (ADR 0043).
-- [ ] Host quota and run-directory sizes; job efficiency from sacct (elapsed, MaxRSS against the request) offered when running again.
+- [x] Host quota and run-directory sizes; job efficiency from sacct (elapsed, MaxRSS against the request, CPU when accounted) offered when running again, applied only on a click; sacct columns a site lacks fall back without affecting state tracking (ADR 0045).
 
 ## Stage 0 — Install and launch
 
@@ -117,7 +117,7 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 ## Stage 4 — Runs, parameters and reproducibility
 
 - [~] Typed run metrics with units and uncertainty are in (stage L); cross-run filtering and plotting (Q128–Q131) are not.
-- [ ] Parameter sweeps and "explore variations" as a set of linked runs (Q128, Q222).
+- [~] Parameter sweeps and "explore variations" as a set of linked runs (Q128, Q222): VGT sweeps built (drafts read before submitting, concurrency limit, exactly once per job, ADR 0048); ROHSA sweeps need a ROHSA config writer (in progress).
 - [x] Reproducibility facts beyond the git flag, each declared, inferred or unresolved (Q121–Q125, Q198). Capturing environment and hashes is still to do.
 - [ ] Rerun modes: strict, best effort, adapted (Q123).
 - [x] Accounting of failed evaluations when the run reports them; cancelled and excluded are stated as not recorded (Q224).
@@ -143,7 +143,7 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 
 ## Stage 6 — Structure, contracts and operations
 
-- [x] Contract layer, first part: an OpenAPI route list generated from the Go routes, with `make docs` failing on drift or on a web call to a route that does not exist (Q170, Q181). Bodies and generated TypeScript types (ADR 0032): datasets, plane frame, capabilities, figures and boards are described and contract-tested; the other groups are still to do.
+- [x] Contract layer, first part: an OpenAPI route list generated from the Go routes, with `make docs` failing on drift or on a web call to a route that does not exist (Q170, Q181). Bodies and generated TypeScript types (ADR 0032): datasets, plane frame, capabilities, figures, boards, the review surface and every route added since are described and contract-tested; `make docs` fails if a new route lands undescribed (`packages/contracts/undescribed.txt` only shrinks).
 - [x] `packages/contracts` exists. `packages/science-types`, `extensions/astronomy` and `integrations` are retired from AGENTS.md as structure to create now: the semantic code lives in the worker and the Go packages, and is split out when a second discipline or connector makes the seam real.
 - [x] `GET /api/capabilities`: application, protocol and schema versions reported separately, and which features this server was started with (planes, hosts, jobs, analysis, runs, boards, regions, audit), so a client shows a missing feature instead of failing on a 404 (Q155, Q158). No client uses it yet.
 - [ ] Workload classes: reserved interactive capacity, queue reasons shown to the user (Q169).
