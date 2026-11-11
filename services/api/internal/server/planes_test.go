@@ -620,6 +620,10 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 		psi.Interpretation.ReliabilityID == nil || *psi.Interpretation.ReliabilityID != ids["reliability"] {
 		t.Fatalf("adapter interpretation: %+v", psi.Interpretation)
 	}
+	// the pipeline's convention is proposed (psi = 1/2 atan2(U,Q) + 90 deg, pixel frame), not inferred from the files
+	if f, q := psi.Interpretation.Frame, psi.Interpretation.Quantity; f == nil || *f != "pixel" || q == nil || *q != "b_field" {
+		t.Fatalf("adapter frame and quantity: %v %v", f, q)
+	}
 	// importing again refreshes the same run
 	if r, _ := postJSON(t, ts.URL+"/api/runs/import", map[string]any{"path": filepath.Join(dir, "run_metadata.toml")}); r.StatusCode != 201 {
 		t.Errorf("re-import: %d", r.StatusCode)

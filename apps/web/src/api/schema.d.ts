@@ -2668,6 +2668,16 @@ export interface components {
             unit: "deg" | "rad";
             /** Format: int64 */
             reliabilityId: number | null;
+            /**
+             * @description What the angle is measured against: pixel (counter-clockwise from +axis 1 towards +axis 2 as stored) or sky (east of north in the file's own celestial frame). Null means not declared; the file never says.
+             * @enum {string|null}
+             */
+            frame: "pixel" | "sky" | null;
+            /**
+             * @description What the angle describes. A gradient and dust polarization are perpendicular to B, starlight polarization and the B-field itself are not. Null means not declared.
+             * @enum {string|null}
+             */
+            quantity: "b_field" | "gradient" | "dust_polarization" | "starlight_polarization" | "unspecified" | null;
             declaredBy: string;
             /** Format: date-time */
             declaredAt: string;

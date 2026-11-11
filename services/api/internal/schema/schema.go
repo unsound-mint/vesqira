@@ -18,7 +18,9 @@ import (
 // Version 4: a person may declare the unit of a file that has no BUNIT (dataset_units; ADR 0038).
 // Version 5: a job remembers that its run record on the host is still owed (jobs.record_owed; ADR 0039).
 // Version 6: entries may be archived (archived_entries; ADR 0041).
-const Version = 6
+// Version 7: an orientation declaration also records the angle's frame and quantity (interpretations.frame, .quantity;
+// ADR 0042).
+const Version = 7
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -33,6 +35,7 @@ var migrations = []Migration{
 	{To: 4, Name: "declared units", Up: declaredUnits},
 	{To: 5, Name: "run record owed", Up: runRecordOwed},
 	{To: 6, Name: "archived entries", Up: archivedEntries},
+	{To: 7, Name: "orientation frame and quantity", Up: orientationFrameAndQuantity},
 }
 
 // runRecordOwed adds jobs.record_owed. Every existing job gets 0: no record is owed for a job submitted before records
@@ -69,6 +72,23 @@ func ArchivedExpr(kind, idCol string) string {
 		panic("schema.ArchivedExpr: unknown kind " + kind)
 	}
 	return `EXISTS(SELECT 1 FROM archived_entries WHERE kind='` + kind + `' AND entity_id=` + idCol + `)`
+}
+
+// orientationFrameAndQuantity adds the two nullable columns that say what an orientation angle is (ADR 0042). NULL means
+// not declared, which is what every existing row is: it keeps working for single-map statistics and is refused for
+// cross-dataset use until someone declares it. A catalog without the table (never opened by the catalog package) needs
+// nothing.
+func orientationFrameAndQuantity(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='interpretations'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, c := range []string{"frame", "quantity"} {
+		if err := AddColumn(tx, "interpretations", c, "TEXT"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // declaredUnits adds the overlay table for a unit a person declared for a dataset with no BUNIT (ADR 0038). The catalog

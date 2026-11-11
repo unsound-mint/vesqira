@@ -40,7 +40,12 @@ export const registerDataset = (path: string) =>
 export type Compat = { compatible: boolean; reasons: string[] };
 export const getCompat = (a: number, b: number) => call<Compat>(`/api/compat?a=${a}&b=${b}`);
 
-export type InterpretationRequest = { kind: "none" } | { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null };
+export type AngleFrame = NonNullable<Interpretation["frame"]>;
+export type AngleQuantity = NonNullable<Interpretation["quantity"]>;
+/** frame and quantity are null when the person has not declared them: the file never says. */
+export type InterpretationRequest =
+  | { kind: "none" }
+  | { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null; frame: AngleFrame | null; quantity: AngleQuantity | null };
 export const setInterpretation = (id: number, body: InterpretationRequest) =>
   call<Dataset>(`/api/datasets/${id}/interpretation`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 

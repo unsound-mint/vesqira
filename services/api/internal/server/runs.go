@@ -122,7 +122,10 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 					rel = &rd.ID
 				}
 			}
-			if err := s.Store.SetInterpretation(cur, catalog.Interpretation{Kind: "axial_orientation", Unit: "rad", ReliabilityID: rel, DeclaredBy: "vgt-run-adapter"}); err != nil {
+			// the pipeline's convention (psi = 1/2 atan2(U,Q) + 90 deg, radians, counter-clockwise from FITS axis 1 in the pixel
+			// grid) is a proposal the person can override; the files themselves say none of it
+			frame, quantity := "pixel", "b_field"
+			if err := s.Store.SetInterpretation(cur, catalog.Interpretation{Kind: "axial_orientation", Unit: "rad", ReliabilityID: rel, Frame: &frame, Quantity: &quantity, DeclaredBy: "vgt-run-adapter"}); err != nil {
 				log.Printf("runs: %v", err)
 			}
 		}

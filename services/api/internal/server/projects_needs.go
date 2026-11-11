@@ -197,7 +197,7 @@ func (s *Server) computeNeeds(p projects.Project) ([]need, error) {
 			out = append(out, need{
 				ID: "axial:" + r.Path, Kind: "axial_unconfirmed", DatasetID: &id, Scope: needScope{Paths: []string{r.Path}, Count: 1},
 				Message: fmt.Sprintf("%s is proposed as an axial orientation map in %s by %s. You have not confirmed it.", path.Base(r.Path), in.Unit, in.DeclaredBy),
-				Source:  "the run import (" + in.DeclaredBy + "): a proposal, not your declaration",
+				Source:  proposalSource(in.DeclaredBy),
 				Answers: []needOption{{ID: "confirm", Label: "Confirm: it is an axial orientation map", Input: "choice", Choices: []string{"deg", "rad"}, Hint: "leave the unit empty to keep the proposed one (" + in.Unit + ")"},
 					{ID: "not_axial", Label: "It is not an orientation map"}, unknownOpt},
 			})
@@ -498,7 +498,8 @@ func (s *Server) applyAnswer(n need, in answerIn) error {
 		if unit == "" {
 			unit = d.Interpretation.Unit
 		}
-		return s.Store.SetInterpretation(d, catalog.Interpretation{Kind: "axial_orientation", Unit: unit, ReliabilityID: d.Interpretation.ReliabilityID, DeclaredBy: "user"})
+		return s.Store.SetInterpretation(d, catalog.Interpretation{Kind: "axial_orientation", Unit: unit, ReliabilityID: d.Interpretation.ReliabilityID,
+			Frame: d.Interpretation.Frame, Quantity: d.Interpretation.Quantity, DeclaredBy: "user"})
 	case "not_axial":
 		return s.Store.ClearInterpretation(d.ID)
 	}
@@ -549,4 +550,12 @@ func (s *Server) recordAnswer(ctx context.Context, p projects.Project, n need, i
 	}
 	a.Written = written
 	return written, note, s.Projects.SetAnswer(p.ID, a)
+}
+
+// proposalSource says who proposed an orientation declaration nobody has confirmed: a run import or an analysis.
+func proposalSource(by string) string {
+	if by == analysisAuthor {
+		return "the analysis that made this map (" + by + "): a proposal, not your declaration"
+	}
+	return "the run import (" + by + "): a proposal, not your declaration"
 }

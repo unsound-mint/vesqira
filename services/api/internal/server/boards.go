@@ -185,6 +185,9 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		by := "the author of this board"
 		if d.Interpretation.DeclaredBy != "user" {
 			by = "the run import adapter (" + d.Interpretation.DeclaredBy + "), not the file"
+			if d.Interpretation.DeclaredBy != "vgt-run-adapter" {
+				by = "the analysis that made this map (" + d.Interpretation.DeclaredBy + "), not the file"
+			}
 		}
 		pr.Interpretation = &safeInterpretation{Kind: d.Interpretation.Kind, Unit: d.Interpretation.Unit, DeclaredBy: by, HasReliability: d.Interpretation.ReliabilityID != nil}
 		pr.Statements = append(pr.Statements, "The orientation unit and meaning were declared by "+by+", not by the file. Angles are axial (0° and 180° are the same orientation) and statistics use the doubled-angle method.")

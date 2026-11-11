@@ -915,11 +915,11 @@ def handle(req: dict) -> tuple[dict, bytes]:
         return header_cards(path), b""
     if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon"):
         return host_op(op, req)
-    if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions"):
+    if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky"):
         authorize(path)                                          # also enforces the roots on a remote host
         if op == "axial" and req.get("weights_path") is not None:
             authorize(req.get("weights_path"))
-    if op not in ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+    if op not in ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")
     c = cube_for(path)
     declared = declared_unit(req)
@@ -944,6 +944,8 @@ def handle(req: dict) -> tuple[dict, bytes]:
                 "method": "doubled-angle circular statistics (astropy.stats); 0 and 180 degrees are the same orientation"}, b""
     if op == "sky2pix":
         return {**base, "nbytes": 0, **c.sky_to_pixels(req.get("points"))}, b""
+    if op == "orientation_sky":
+        return {**base, "nbytes": 0, **orientation_sky(c, req)}, b""
     if op == "conversions":
         return {**base, "nbytes": 0, **convert.offers(c, bunit, status)}, b""
     if op == "spectrum":
@@ -980,6 +982,46 @@ def handle(req: dict) -> tuple[dict, bytes]:
             "spectral_value": None if value is None else float(value),
             "spectral_unit": None if spectral is None else spectral.get("unit"),
             "flagged": (channel in fl["channels"]) if fl["declared"] else None, "preview": preview}, payload
+
+
+def orientation_sky(c: Cube, req: dict) -> dict:
+    """One pixel of an orientation map as sky-frame B-field orientation (ADR 0042).
+
+    The caller supplies what the person declared: the angle's unit (deg or rad), its frame (pixel or sky) and its quantity.
+    A missing or unusable declaration is a refusal that names it; nothing is assumed. The stored value is read from the
+    file's single plane at (x, y); a pixel with no value gives null, never 0."""
+    import orientation as ori
+    unit = req.get("unit")
+    if unit not in ("deg", "rad"):
+        raise Refused("bad_request", "unit must be deg or rad")
+    try:
+        ori.check_frame(req.get("frame"))
+        ori.b_rotation_deg(req.get("quantity"))
+        if c.channels != 1:
+            raise ori.Undeclared("an orientation map is a single plane")
+        w = ori.celestial_wcs(c) if req["frame"] == "pixel" else None
+    except ori.Undeclared as e:
+        raise Refused("unsupported", str(e))
+    x, y = as_index(req, "x", c.shape[c.x]), as_index(req, "y", c.shape[c.y])
+    plane, _ = c.read_plane(0)
+    v = float(plane[y, x])
+    out = {"x": x, "y": y, "unit": unit, "frame": req["frame"], "quantity": req["quantity"], "stored": None, "sky_b_field_deg": None,
+           "north_pixel_angle_deg": None, "sky_frame": c.sky_facts().get("frame") if c.celestial else None,
+           "method": ("sky frame: position angle east of north in the file's own celestial frame; a gradient and dust polarization are "
+                      "perpendicular to B (+90 degrees); the pixel frame is related to the sky by astropy's WCS at this pixel; axial, in [0, 180)")}
+    if not math.isfinite(v):
+        out["note"] = "this pixel has no value (NaN or BLANK); it is not zero"
+        return out
+    deg = v if unit == "deg" else math.degrees(v)
+    out["stored"] = v
+    try:
+        sky = float(ori.to_sky_b_field(w, x, y, deg, req["frame"], req["quantity"]))
+        if w is not None:
+            out["north_pixel_angle_deg"] = float(ori.sky_pa_to_pixel(w, x, y, 0.0))
+    except ori.Undeclared as e:
+        raise Refused("unsupported", str(e))
+    out["sky_b_field_deg"] = sky
+    return out
 
 
 def limit_memory() -> None:
