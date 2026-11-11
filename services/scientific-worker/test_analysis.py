@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -41,6 +42,18 @@ class Analysis(unittest.TestCase):
 
     def out(self, name):
         return self.dir / name
+
+    def test_a_run_over_the_memory_cap_fails_with_a_clear_error_and_does_not_touch_the_input(self):
+        big = self.dir / "big_plane.fits"
+        fits.PrimaryHDU(np.random.default_rng(0).random((3000, 3000), dtype=np.float32)).writeto(big)
+        before = sha(big)
+        env = dict(os.environ, VESQIRA_WORKER_MEM_MB="40")          # far below what a 9-megapixel plane needs to be processed
+        p = subprocess.run([sys.executable, "-P", SCRIPT, "stats", "--input", str(big)], capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(p.returncode, 2, p.stderr)                  # a controlled refusal, not a crash
+        r = json.loads(p.stdout)
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["error"], "over the memory cap (40 MB)")
+        self.assertEqual(sha(big), before)
 
     def test_stats_match_numpy_and_count_what_is_missing(self):
         code, r = run("stats", "--input", self.f["hi_cube.fits"])

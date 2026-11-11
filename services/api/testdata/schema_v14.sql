@@ -1,6 +1,9 @@
 -- index audit_target
 CREATE INDEX audit_target ON audit(kind, target);
 
+-- index project_entries_format
+CREATE INDEX project_entries_format ON project_entries(project_id, format);
+
 -- index publish_comments_report
 CREATE INDEX publish_comments_report ON publish_comments(report);
 
@@ -60,6 +63,15 @@ CREATE TABLE jobs( id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NUL
 
 -- table notifications
 CREATE TABLE notifications( id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, job_id INTEGER, run_id INTEGER, read INTEGER NOT NULL DEFAULT 0, dedupe TEXT NOT NULL UNIQUE);
+
+-- table project_answers
+CREATE TABLE project_answers( project_id INTEGER NOT NULL, need TEXT NOT NULL, answer TEXT NOT NULL, value TEXT NOT NULL, declared_by TEXT NOT NULL, date TEXT NOT NULL, written INTEGER NOT NULL, PRIMARY KEY(project_id, need));
+
+-- table project_entries
+CREATE TABLE project_entries( project_id INTEGER NOT NULL, grp TEXT NOT NULL, parent TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL, format TEXT NOT NULL DEFAULT '', data TEXT NOT NULL, PRIMARY KEY(project_id, grp, parent, name));
+
+-- table projects
+CREATE TABLE projects( id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, root TEXT NOT NULL, name TEXT NOT NULL, opened_at INTEGER NOT NULL, last_scan_at INTEGER, summary TEXT NOT NULL DEFAULT '{}', UNIQUE(host_id, root));
 
 -- table publish_comments
 CREATE TABLE publish_comments( id INTEGER PRIMARY KEY, space TEXT NOT NULL, report TEXT NOT NULL, revision TEXT NOT NULL, block TEXT NOT NULL, anchor TEXT NOT NULL DEFAULT '', parent_id INTEGER NOT NULL, author TEXT NOT NULL, from_owner INTEGER NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL, resolved_at INTEGER NOT NULL DEFAULT 0, quote TEXT NOT NULL DEFAULT '');

@@ -4,22 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
-	"github.com/unsound-mint/vesqira/services/api/internal/audit"
-	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
-	"github.com/unsound-mint/vesqira/services/api/internal/derived"
-	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
-	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
-	"github.com/unsound-mint/vesqira/services/api/internal/notify"
-	"github.com/unsound-mint/vesqira/services/api/internal/regions"
-	"github.com/unsound-mint/vesqira/services/api/internal/reports"
-	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/fullschema"
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
-	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
-	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
 )
 
 // Tables are created idempotently by the package that owns them, so nothing else forces a column change to be
@@ -34,22 +25,8 @@ func TestCatalogSchemaSnapshot(t *testing.T) {
 	}
 	defer st.Close()
 	db := st.DB()
-	for name, open := range map[string]func() error{
-		"boards":    func() error { _, e := boards.Open(db, dir); return e },
-		"runs":      func() error { _, e := runs.Open(db); return e },
-		"hosts":     func() error { _, e := hosts.Open(db); return e },
-		"jobs":      func() error { _, e := jobs.Open(db); return e },
-		"sweeps":    func() error { _, e := sweeps.Open(db); return e },
-		"transfers": func() error { _, e := transfers.Open(db); return e },
-		"audit":     func() error { _, e := audit.Open(db); return e },
-		"notify":    func() error { _, e := notify.Open(db); return e },
-		"regions":   func() error { _, e := regions.Open(db); return e },
-		"derived":   func() error { _, e := derived.Open(db); return e },
-		"reports":   func() error { _, e := reports.Open(db, dir); return e },
-	} {
-		if err := open(); err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
+	if err := fullschema.Open(db, dir); err != nil {
+		t.Fatal(err)
 	}
 	rows, err := db.Query(`SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type, name`)
 	if err != nil {
@@ -81,5 +58,27 @@ func TestCatalogSchemaSnapshot(t *testing.T) {
 	}
 	if got != string(want) {
 		t.Errorf("the catalog schema changed without a new schema.Version.\nAdd a migration for existing catalogs, bump schema.Version in internal/schema, and re-record the snapshot (see the comment on this test).\n--- recorded\n%s\n--- now\n%s", want, got)
+	}
+}
+
+// The snapshot is only as complete as the stores fullschema opens. This fails when main.go opens a store on the catalog
+// file that fullschema does not, which is how projects, project_entries and project_answers once went missing.
+func TestFullSchemaOpensEveryStoreMainOpens(t *testing.T) {
+	mainSrc, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullSrc, err := os.ReadFile(filepath.Join("internal", "fullschema", "fullschema.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := regexp.MustCompile(`(\w+)\.Open\(store\.DB\(\)`).FindAllStringSubmatch(string(mainSrc), -1)
+	if len(found) < 10 {
+		t.Fatalf("found only %d store opens in main.go: the pattern needs updating", len(found))
+	}
+	for _, m := range found {
+		if !strings.Contains(string(fullSrc), m[1]+".Open(db") {
+			t.Errorf("main.go opens %s on the catalog but internal/fullschema does not: the schema snapshot would miss its tables", m[1])
+		}
 	}
 }

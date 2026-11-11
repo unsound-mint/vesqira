@@ -7,18 +7,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/unsound-mint/vesqira/services/api/internal/audit"
-	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
-	"github.com/unsound-mint/vesqira/services/api/internal/derived"
-	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
-	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
-	"github.com/unsound-mint/vesqira/services/api/internal/projects"
-	"github.com/unsound-mint/vesqira/services/api/internal/regions"
-	"github.com/unsound-mint/vesqira/services/api/internal/reports"
-	"github.com/unsound-mint/vesqira/services/api/internal/runs"
-	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
-	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
+	"github.com/unsound-mint/vesqira/services/api/internal/fullschema"
 )
 
 // keyColumns are the columns that point at a deletable entry (dataset, run, figure, board) or carry a reference to one
@@ -50,6 +40,7 @@ var intentional = map[string]string{
 	"runs.params":                    "the run's own recorded settings, not a reference to a catalog entry",
 	"audit.target":                   "the audit log is append-only history; (kind, target) names an entry that may since have been deleted, and the delete itself is recorded there",
 	"derived.params":                 "the operation's own recorded parameters (provenance), not a reference that must resolve",
+	"notifications.run_id":           "a bounded event feed (notify.Keep) with its own text snapshot; the run link may point at a run deleted since (the UI link goes nowhere), which is history, not a dangling reference to repair",
 }
 
 var whereCol = regexp.MustCompile(`WHERE (\w+)=\?`)
@@ -61,23 +52,8 @@ func TestEveryKeyedTableIsHandled(t *testing.T) {
 	}
 	defer cat.Close()
 	db, dir := cat.DB(), t.TempDir()
-	opens := map[string]func() error{
-		"boards":    func() error { _, err := boards.Open(db, dir); return err },
-		"runs":      func() error { _, err := runs.Open(db); return err },
-		"hosts":     func() error { _, err := hosts.Open(db); return err },
-		"jobs":      func() error { _, err := jobs.Open(db); return err },
-		"sweeps":    func() error { _, err := sweeps.Open(db); return err },
-		"audit":     func() error { _, err := audit.Open(db); return err },
-		"regions":   func() error { _, err := regions.Open(db); return err },
-		"derived":   func() error { _, err := derived.Open(db); return err },
-		"reports":   func() error { _, err := reports.Open(db, dir); return err },
-		"projects":  func() error { _, err := projects.Open(db); return err },
-		"transfers": func() error { _, err := transfers.Open(db); return err },
-	}
-	for name, open := range opens { // the full schema: every store main.go opens on the catalog file
-		if err := open(); err != nil {
-			t.Fatalf("opening %s: %v", name, err)
-		}
+	if err := fullschema.Open(db, dir); err != nil { // the full schema: every store main.go opens on the catalog file
+		t.Fatal(err)
 	}
 
 	handled := map[string]bool{} // "table.column" written by deleteSteps

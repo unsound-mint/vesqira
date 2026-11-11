@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 	"log"
 	"net/http"
 	"os"
@@ -217,7 +218,7 @@ func (s *Server) runAnalysisProgram(r *http.Request, args []string) (analysisOut
 	ctx, cancel := context.WithTimeout(r.Context(), s.Analysis.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, s.Analysis.Python, args...)
-	cmd.Env = []string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C.UTF-8"}
+	cmd.Env = worker.BaseEnv()
 	if id := RequestID(r.Context()); id != "" { // already validated as a plain token
 		cmd.Env = append(cmd.Env, "VESQIRA_REQUEST_ID="+id)
 	}
