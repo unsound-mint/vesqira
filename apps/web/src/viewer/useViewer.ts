@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
-import { expandPreview, getAxial, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
-import type { AxialStats, Coord, Plane, RegionShape, Spectrum, View } from "../api/planes";
+import { expandPreview, getAxial, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
+import type { AxialStats, Conversions, Converted, Coord, Plane, RegionShape, Spectrum, View } from "../api/planes";
 import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
 import { channelForKey } from "./geometry";
@@ -10,6 +10,11 @@ import type { ColormapId } from "./colormaps";
 import type { RangeMode, Stretch } from "./render";
 
 export type Pixel = { x: number; y: number };
+
+/** What the readout shows besides the native values; empty text means native only. The convention is the person's choice and is
+ *  only sent with a velocity asked of a frequency or wavelength axis. */
+export type ConvChoice = { spectral: string; convention: string; frame: string; to: string };
+export const NO_CONV: ConvChoice = { spectral: "", convention: "radio", frame: "", to: "" };
 
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
@@ -42,6 +47,10 @@ export function useViewer(dataset: Dataset | null) {
   const [mirror, setMirror] = useState<Pixel | null>(null);
   const [coord, setCoord] = useState<Coord | null>(null);
   const [coordError, setCoordError] = useState<string | null>(null);
+  const [conv, setConv] = useState<ConvChoice>(NO_CONV);
+  const [offers, setOffers] = useState<Conversions | null>(null);
+  const [converted, setConverted] = useState<{ key: string; r: Converted } | null>(null);
+  const [convError, setConvError] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>("pointer");
   const [region, setRegion] = useState<RegionShape | null>(null);
   const [spectrum, setSpectrum] = useState<Spectrum | null>(null);
@@ -70,6 +79,9 @@ export function useViewer(dataset: Dataset | null) {
     setHover(null);
     setPinned(null);
     setCoord(null);
+    setConv(NO_CONV);
+    setOffers(null);
+    setConverted(null);
     setRegion(null);
     setSpectrum(null);
     setTool("pointer");
@@ -179,6 +191,66 @@ export function useViewer(dataset: Dataset | null) {
     };
   }, [datasetId, probe?.x, probe?.y, shownChannel]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // What the file allows (spectral units, sky frames, brightness units) is read again whenever the layout is: a declared unit changes it.
+  useEffect(() => {
+    if (datasetId === null || !view) {
+      setOffers(null);
+      return;
+    }
+    const ac = new AbortController();
+    getConversions(datasetId, ac.signal)
+      .then((o) => setOffers(o && typeof o === "object" && "value" in o ? o : null))
+      .catch((e: unknown) => !isAbort(e) && setOffers(null));
+    return () => ac.abort();
+  }, [datasetId, view]);
+
+  // A choice the file no longer allows (the unit was withdrawn, say) is dropped, never kept silently.
+  useEffect(() => {
+    if (!offers) return;
+    const ok = (list: { unit: string; enabled: boolean }[] | undefined, v: string) => v === "" || !!list?.some((t) => t.unit === v && t.enabled);
+    const frameOk = (v: string) => v === "" || !!offers.sky?.targets.some((t) => t.id === v && t.enabled);
+    setConv((c) => {
+      const next = { ...c, spectral: ok(offers.spectral?.targets, c.spectral) ? c.spectral : "", to: ok(offers.value.targets, c.to) ? c.to : "", frame: frameOk(c.frame) ? c.frame : "" };
+      return next.spectral === c.spectral && next.to === c.to && next.frame === c.frame ? c : next;
+    });
+  }, [offers]);
+
+  const pixelNumber = useMemo(() => {
+    if (!plane || !probe || plane.head.preview) return null; // a reduced preview holds block means, not pixel values
+    const { width, height } = plane.head;
+    if (probe.x >= width || probe.y >= height) return null;
+    return plane.data[probe.y * width + probe.x] ?? null;
+  }, [plane, probe]);
+  const convWanted = conv.spectral !== "" || conv.frame !== "" || conv.to !== "";
+  const convValue = conv.to !== "" && pixelNumber !== null && Number.isFinite(pixelNumber) ? pixelNumber : null;
+  // a conversion is shown only for the pixel, channel and choices it was computed for
+  const convKey = probe && shownChannel !== null ? [probe.x, probe.y, shownChannel, conv.spectral, conv.spectral ? conv.convention : "", conv.frame, conv.to, convValue].join("|") : null;
+
+  useEffect(() => {
+    if (datasetId === null || !probe || shownChannel === null || !convWanted || convKey === null) {
+      setConverted(null);
+      setConvError(null);
+      return;
+    }
+    const ac = new AbortController();
+    const t = setTimeout(() => {
+      getConvert(datasetId, probe.x, probe.y, shownChannel, { ...conv, value: convValue }, ac.signal)
+        .then((r) => {
+          setConverted({ key: convKey, r });
+          setConvError(null);
+        })
+        .catch((e: unknown) => {
+          if (isAbort(e)) return;
+          setConverted(null);
+          setConvError(message(e, "Could not convert."));
+        });
+    }, 40);
+    return () => {
+      clearTimeout(t);
+      ac.abort();
+    };
+  }, [datasetId, convKey, convWanted]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // The mean spectrum of the region, from the worker. A newer region aborts the older request.
   useEffect(() => {
     if (datasetId === null || !view || !region) {
@@ -257,17 +329,13 @@ export function useViewer(dataset: Dataset | null) {
     [channel, channels],
   );
 
-  const pixelValue = useMemo(() => {
-    if (!plane || !probe || plane.head.preview) return null; // a reduced preview holds block means, not pixel values
-    const { width, height } = plane.head;
-    if (probe.x >= width || probe.y >= height) return null;
-    return plane.data[probe.y * width + probe.x] ?? null;
-  }, [plane, probe]);
+  const pixelValue = pixelNumber;
 
   return {
     datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
     zoom, setZoom, pan, setPan, colormap, setColormap, stretch, setStretch, range, setRange, customLimits, setCustomLimits,
     hover, setHover, mirror, setMirror, pinned, setPinned, probe, pixelValue, coord, coordError,
+    conv, setConv, offers, convError, convertedNow: converted && converted.key === convKey ? converted.r : null,
     canvas, interp, reliability, axial, axialError, showLines, setShowLines,
     tool, setTool, region, setRegion, savedRegions, spectrum, spectrumError, spectrumLoading,
     onChannelKey, retry: () => setRetry((n) => n + 1),

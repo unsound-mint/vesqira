@@ -95,6 +95,23 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await expect(inspector(page).getByText("1.98000°")).toBeVisible();
   await expect(inspector(page).getByText("8 km/s")).toBeVisible();
 
+  // ---- the same pixel in other units and frames (ADR 0039): converted rows beside the native ones, with their basis ----
+  await page.mouse.click(peak.x, peak.y); // pin the pixel so the pointer can leave the image for the controls
+  await inspector(page).getByLabel("Spectral unit").selectOption("GHz");
+  await expect(inspector(page).getByText(/^1\.420367\d+ GHz/)).toBeVisible(); // f0 (1 - v/c) for 8 km/s, radio, from the file's RESTFRQ
+  await inspector(page).getByLabel("Sky frame").selectOption("galactic");
+  await expect(inspector(page).getByText("l (Galactic)")).toBeVisible();
+  await inspector(page).getByLabel("Value unit").selectOption("mK");
+  await expect(inspector(page).getByText(/^12\d{3}(\.\d+)? mK$/)).toBeVisible();
+  await expect(inspector(page).getByText(/doppler_radio/)).toBeVisible();
+  await expect(inspector(page).getByText(/12\.\d+ K$/)).toBeVisible(); // the native value is still listed
+  await expect(inspector(page).getByText(/a frame change such as TOPOCENT to LSRK is not offered/)).toBeVisible();
+  await expectNoAxeViolations(page);
+  await inspector(page).getByLabel("Spectral unit").selectOption("");
+  await inspector(page).getByLabel("Sky frame").selectOption("");
+  await inspector(page).getByLabel("Value unit").selectOption("");
+  await page.keyboard.press("Escape"); // release the pinned pixel
+
   // ---- missing data is not zero ----
   const nan = await pixelAt(page, 32, 24, 3, 3);
   await page.mouse.move(nan.x, nan.y);

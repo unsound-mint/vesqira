@@ -23,6 +23,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 
+import convert
 from fits_header import axes_shape, clean, read_header
 
 MAX_PLANE_ELEMENTS = 1 << 24      # 16.7M pixels = 64 MiB as float32
@@ -914,11 +915,11 @@ def handle(req: dict) -> tuple[dict, bytes]:
         return header_cards(path), b""
     if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon"):
         return host_op(op, req)
-    if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix"):
+    if op in ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions"):
         authorize(path)                                          # also enforces the roots on a remote host
         if op == "axial" and req.get("weights_path") is not None:
             authorize(req.get("weights_path"))
-    if op not in ("view", "plane", "coord", "spectrum", "axial", "sky2pix") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+    if op not in ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions") or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")
     c = cube_for(path)
     declared = declared_unit(req)
@@ -943,10 +944,18 @@ def handle(req: dict) -> tuple[dict, bytes]:
                 "method": "doubled-angle circular statistics (astropy.stats); 0 and 180 degrees are the same orientation"}, b""
     if op == "sky2pix":
         return {**base, "nbytes": 0, **c.sky_to_pixels(req.get("points"))}, b""
+    if op == "conversions":
+        return {**base, "nbytes": 0, **convert.offers(c, bunit, status)}, b""
     if op == "spectrum":
         head, payload = c.spectrum(req)
         return {**base, **head, "bunit": bunit}, payload     # the spectrum head knows only the file's unit
     channel = as_index(req, "channel", c.channels)
+    if op == "convert":
+        x, y = as_index(req, "x", c.shape[c.x]), as_index(req, "y", c.shape[c.y])
+        try:
+            return {**base, "nbytes": 0, **convert.convert(c, req, x, y, channel, bunit, status)}, b""
+        except convert.Bad as e:
+            raise Refused("bad_request", str(e))
     if op == "coord":
         x, y = as_index(req, "x", c.shape[c.x]), as_index(req, "y", c.shape[c.y])
         return {**base, "nbytes": 0, **c.coord(x, y, channel)}, b""

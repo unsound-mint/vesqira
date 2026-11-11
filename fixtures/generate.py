@@ -140,6 +140,42 @@ def cube_int16_scaled() -> fits.HDUList:
     return fits.HDUList([hdu])
 
 
+FREQ0_HZ, DFREQ_HZ = 1.4200e9, 1.0e5   # channel 1 is exactly 1420.0 MHz; 0.1 MHz per channel
+REST_HI_HZ = 1.420405751768e9
+GC_ICRS_DEG = (266.405, -28.936)       # the Galactic centre, to within a few arcseconds (l = 0, b = 0)
+
+
+def cube_frequency_axis() -> fits.HDUList:
+    """Small Jy/beam cube on a FREQ axis in Hz with a 60 x 60 arcsec beam, FK5 J2000 sky and a rest frequency.
+    Unit and frame conversion fixture: every conversion answer is known in closed form."""
+    nc = 8
+    data = np.linspace(0.0, 1.0, nc * NY * NX, dtype=np.float32).reshape(nc, NY, NX)
+    h = fits.PrimaryHDU(data).header
+    h["BUNIT"] = "Jy/beam"
+    h["BMAJ"] = h["BMIN"] = 60.0 / 3600.0
+    h["BPA"] = 0.0
+    for i, (ct, cv, cd, cp, cu) in enumerate([
+        ("RA---TAN", CRVAL_RA, -CDELT_DEG, CRPIX[0], "deg"),
+        ("DEC--TAN", CRVAL_DEC, CDELT_DEG, CRPIX[1], "deg"),
+        ("FREQ", FREQ0_HZ, DFREQ_HZ, 1.0, "Hz"),
+    ], start=1):
+        h[f"CTYPE{i}"], h[f"CRVAL{i}"], h[f"CDELT{i}"], h[f"CRPIX{i}"], h[f"CUNIT{i}"] = ct, cv, cd, cp, cu
+    h["RADESYS"], h["EQUINOX"] = "FK5", 2000.0
+    h["SPECSYS"] = "LSRK"
+    h["RESTFRQ"] = REST_HI_HZ
+    return fits.HDUList([fits.PrimaryHDU(data, header=h)])
+
+
+def cube_galactic_centre() -> fits.HDUList:
+    """2D ICRS image whose reference pixel is the Galactic centre (266.405, -28.936 deg): l and b must come out near 0."""
+    h = fits.PrimaryHDU(np.zeros((NY, NX), dtype=np.float32)).header
+    for i, (ct, cv, cd, cp) in enumerate([("RA---TAN", GC_ICRS_DEG[0], -CDELT_DEG, CRPIX[0]), ("DEC--TAN", GC_ICRS_DEG[1], CDELT_DEG, CRPIX[1])], start=1):
+        h[f"CTYPE{i}"], h[f"CRVAL{i}"], h[f"CDELT{i}"], h[f"CRPIX{i}"], h[f"CUNIT{i}"] = ct, cv, cd, cp, "deg"
+    h["RADESYS"] = "ICRS"
+    h["BUNIT"] = "K"
+    return fits.HDUList([fits.PrimaryHDU(np.zeros((NY, NX), dtype=np.float32), header=h)])
+
+
 def cube_stokes_freq() -> fits.HDUList:
     """4D cube, FITS axes RA, DEC, STOKES (length 1), FREQ: the spectral axis is axis 4, not 3.
 
@@ -348,6 +384,8 @@ def write_all(directory: Path) -> dict[str, Path]:
         "hi_cube_rotated.fits": cube_rotated_wcs(),
         "cube_int16_scaled.fits": cube_int16_scaled(),
         "cube_stokes_freq.fits": cube_stokes_freq(),
+        "hi_cube_freq.fits": cube_frequency_axis(),
+        "galactic_centre.fits": cube_galactic_centre(),
         "vgt_result.fits": vgt_hdul(),
         "vgt_psi_deg.fits": vgt_psi("deg"),
         "vgt_psi_rad.fits": vgt_psi("rad"),

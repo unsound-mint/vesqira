@@ -205,7 +205,7 @@ func (s *Store) Delete(id int64) error {
 // load on a shared login node) and deploys the worker scripts to the host by content hash.
 type Manager struct {
 	Ssh        string            // the ssh binary; "ssh" unless a test substitutes one
-	Files      map[string][]byte // worker script files to deploy: plane_worker.py and fits_header.py
+	Files      map[string][]byte // worker script files to deploy: plane_worker.py, fits_header.py, convert.py (and analysis.py)
 	ControlDir string            // where ssh keeps its multiplexing sockets (short path)
 	Timeout    time.Duration
 
