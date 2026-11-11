@@ -10,7 +10,6 @@ import (
 	"log"
 	"net/http"
 	"path"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -97,6 +96,8 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		Name     string `json:"name"`
 		Script   string `json:"script"` // custom template
 		Note     string `json:"note"`   // why the owner makes this job
+		// AutoImport: import the results as a run by itself when the job completes. Default: on for VGT, off otherwise.
+		AutoImport *bool `json:"autoImport"`
 		// ParentRunID names the run this draft repeats with changes ("run again with...").
 		ParentRunID *int64 `json:"parentRunId"`
 		VGT         struct {
@@ -132,7 +133,14 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, fmt.Sprintf("the note is at most %d characters", jobs.MaxNote))
 		return
 	}
-	job := jobs.Job{HostID: h.ID, Name: in.Name, Template: in.Template, Note: in.Note}
+	job := jobs.Job{HostID: h.ID, Name: in.Name, Template: in.Template, Note: in.Note, AutoImport: in.Template == "vgt"}
+	if in.AutoImport != nil {
+		if *in.AutoImport && in.Template != "vgt" {
+			fail(w, 422, "results are imported automatically for VGT jobs only")
+			return
+		}
+		job.AutoImport = *in.AutoImport
+	}
 	if in.ParentRunID != nil {
 		if s.Runs == nil {
 			fail(w, 422, "the run this job repeats does not exist")
@@ -240,12 +248,18 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		ScriptHash string `json:"scriptHash"`
+		// AutoImport, when present, sets the job's option before it is submitted (the draft's own value otherwise).
+		AutoImport *bool `json:"autoImport"`
 	}
 	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
 	if j.State != jobs.StateDraft {
 		fail(w, 409, "only a draft can be submitted")
+		return
+	}
+	if in.AutoImport != nil && *in.AutoImport && j.Template != "vgt" {
+		fail(w, 422, "results are imported automatically for VGT jobs only")
 		return
 	}
 	if in.ScriptHash != j.ScriptHash {
@@ -260,6 +274,12 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.jobErr(w, err)
 		return
+	}
+	if in.AutoImport != nil && *in.AutoImport != j.AutoImport { // after every refusal above: a refused submit changes nothing
+		if err := s.Jobs.SetAutoImport(j.ID, *in.AutoImport); err != nil {
+			s.jobErr(w, err)
+			return
+		}
 	}
 	// Record the attempt first: from here on the record says "submitting" until Slurm's answer is seen, so a timeout
 	// or a second click cannot submit the same job twice.
@@ -373,24 +393,9 @@ func (s *Server) refreshJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 502, err.Error())
 			return
 		}
-		obtained := time.Now()
-		if state, detail := jobs.ParseStatus(string(out)); state != "" {
-			_ = s.Jobs.SetState(j.ID, state, detail)
-			// the record says how the job ended; and it is retried while it is still owed (folder not there yet, host down)
-			if j.RecordOwed || (isTerminal(state) && !isTerminal(j.State)) {
-				s.recordRunAsync(j.ID, h, jobs.ReportedEvidence(state, detail, obtained))
-			}
-		} else {
-			_ = s.Jobs.SetState(j.ID, j.State, detail)
-		}
+		s.applyJobStatus(j, h, jobs.ParseStatusFull(string(out)), time.Now())
 	} else if j.RecordOwed && j.SlurmID != "" && isTerminal(j.State) {
-		// the end state was read earlier but the record could not be written then: write it from what was stored
-		detail, _, _ := strings.Cut(j.Detail, "; run.json not written")
-		asOf := time.Now()
-		if j.FinishedAt != nil {
-			asOf = *j.FinishedAt
-		}
-		s.recordRunAsync(j.ID, h, jobs.ReportedEvidence(j.State, detail, asOf))
+		s.retryOwedRecord(j, h)
 	}
 	j, _ = s.Jobs.Get(j.ID)
 	writeJSON(w, 200, j)
@@ -415,7 +420,7 @@ func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Audit.Record("job cancel requested", "job", j.ID, "Slurm job "+j.SlurmID)
-	_ = s.Jobs.SetState(j.ID, j.State, "cancel requested")
+	_, _ = s.Jobs.ApplyStatus(j.ID, j.State, "cancel requested") // guarded: never over an end state a refresh just read
 	j, _ = s.Jobs.Get(j.ID)
 	writeJSON(w, 200, j)
 }

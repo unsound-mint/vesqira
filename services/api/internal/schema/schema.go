@@ -20,7 +20,9 @@ import (
 // Version 6: entries may be archived (archived_entries; ADR 0041).
 // Version 7: an orientation declaration also records the angle's frame and quantity (interpretations.frame, .quantity;
 // ADR 0042).
-const Version = 7
+// Version 8: a job remembers whether its results are imported automatically when it finishes, and whether that was
+// tried (jobs.auto_import, jobs.auto_import_tried); finished jobs leave notifications (ADR 0043).
+const Version = 8
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -36,6 +38,23 @@ var migrations = []Migration{
 	{To: 5, Name: "run record owed", Up: runRecordOwed},
 	{To: 6, Name: "archived entries", Up: archivedEntries},
 	{To: 7, Name: "orientation frame and quantity", Up: orientationFrameAndQuantity},
+	{To: 8, Name: "automatic import and notifications", Up: autoImportAndNotifications},
+}
+
+// autoImportAndNotifications adds the two job columns. Every existing job gets 0 for both: a job submitted before the
+// option existed is never imported behind its owner's back. The notifications table is created by its own package
+// (idempotent, nothing to carry over). A catalog without a jobs table needs nothing.
+func autoImportAndNotifications(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='jobs'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, c := range []string{"auto_import", "auto_import_tried"} {
+		if err := AddColumn(tx, "jobs", c, "INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // runRecordOwed adds jobs.record_owed. Every existing job gets 0: no record is owed for a job submitted before records

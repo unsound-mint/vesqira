@@ -2071,6 +2071,100 @@
      "$ref": "#/components/schemas/TextFile"
     }
    }
+  },
+  "Notification": {
+   "type": "object",
+   "required": [
+    "id",
+    "at",
+    "kind",
+    "title",
+    "body",
+    "jobId",
+    "runId",
+    "read"
+   ],
+   "description": "One event for the owner. The words say what Slurm or the importer reported; a finished job is never called a success, because it has not been checked.",
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "at": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "completed",
+      "failed",
+      "cancelled",
+      "timeout",
+      "unknown",
+      "imported",
+      "import_failed"
+     ],
+     "description": "How the job ended (the first five; unknown means Slurm no longer lists it and Vesqira did not mark it finished), or what happened to its results (the last two)"
+    },
+    "title": {
+     "type": "string"
+    },
+    "body": {
+     "type": "string"
+    },
+    "jobId": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true
+    },
+    "runId": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true,
+     "description": "The run the results were imported as (kind imported)"
+    },
+    "read": {
+     "type": "boolean"
+    }
+   }
+  },
+  "NotificationList": {
+   "type": "object",
+   "required": [
+    "notifications",
+    "unread"
+   ],
+   "properties": {
+    "notifications": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/Notification"
+     },
+     "description": "Newest first"
+    },
+    "unread": {
+     "type": "integer",
+     "description": "Unread events in all, not only among those returned"
+    }
+   }
+  },
+  "NotificationsReadRequest": {
+   "type": "object",
+   "description": "Mark events read: by id, or all of them. Unknown keys are refused.",
+   "properties": {
+    "ids": {
+     "type": "array",
+     "maxItems": 500,
+     "items": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    "all": {
+     "type": "boolean"
+    }
+   }
   }
  },
  "operations": {
@@ -3132,6 +3226,79 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/notifications": {
+   "summary": "List notifications: jobs that ended, results imported or not (owner listener only)",
+   "parameters": [
+    {
+     "name": "limit",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 50
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NotificationList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/notifications/read": {
+   "summary": "Mark notifications read; answers with the new list",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/NotificationsReadRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NotificationList"
        }
       }
      }

@@ -1,0 +1,109 @@
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+.bell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--ctl-sm);
+  padding: 0 var(--sp-2);
+  border: var(--bw) solid transparent;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bell:hover,
+.bell[aria-expanded="true"] {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.bell:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* the number is text, so the count never depends on colour */
+.count {
+  min-width: var(--pill);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--text-xs);
+  font-weight: var(--w-strong);
+  line-height: var(--pill);
+  text-align: center;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  right: 0;
+  z-index: 20;
+  width: min(440px, calc(100vw - 2 * var(--sp-4)));
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--bg-2);
+  box-shadow: var(--shadow);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+}
+
+.item + .item {
+  border-top: var(--bw) solid var(--line);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.when {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.title {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--w-medium);
+}
+
+.body {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--sp-4);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}

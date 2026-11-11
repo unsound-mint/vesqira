@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Input, PathField, Pill, Select } from "../ui";
+import { Button, Checkbox, Input, PathField, Pill, Select } from "../ui";
+import { NotifyToggle } from "../notifications/NotifyToggle";
 import { jobResult } from "../api/analysis";
 import { cancelJob, createJob, editScript, getJob, hostText, jobLog, listJobs, readSetting, refreshJob, registerOutputs, reopenJob, submitJob } from "../api/jobs";
 import type { Job, JobState } from "../api/jobs";
@@ -67,6 +68,7 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { ho
             </button>
           ))}
           {jobs.length === 0 ? <p className={s.note}>No jobs yet.</p> : null}
+          <NotifyToggle className={s.note} />
         </section>
         <div className={s.main}>
           {job ? (
@@ -184,8 +186,10 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; h
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [run, setRun] = useState<Run | null>(null);
+  const [autoImport, setAutoImport] = useState(job.autoImport);
   useEffect(() => {
     setScript(job.script);
+    setAutoImport(job.autoImport);
     setLog(null);
     setErr(null);
     setRun(null);
@@ -218,9 +222,10 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; h
       {draft ? (
         <div className={s.row}>
           <Button disabled={busy || !dirty} onClick={() => act(() => editScript(job.id, script), onChange)}>Save edits</Button>
-          <Button variant="primary" disabled={busy || dirty} onClick={() => act(() => submitJob(job.id, job.scriptHash).catch(async (e) => { const j = await getJob(job.id).catch(() => null); if (j) onChange(j); throw e; }), onChange)}>Submit this script</Button>
+          <Button variant="primary" disabled={busy || dirty} onClick={() => act(() => submitJob(job.id, job.scriptHash, job.template === "vgt" ? autoImport : undefined).catch(async (e) => { const j = await getJob(job.id).catch(() => null); if (j) onChange(j); throw e; }), onChange)}>Submit this script</Button>
         </div>
       ) : null}
+      {draft && job.template === "vgt" ? <Checkbox label="When the job completes, import its results as a run (reads the output folder; checks nothing)" checked={autoImport} onChange={(e) => setAutoImport(e.target.checked)} /> : null}
       {draft ? <p className={s.note}>Submitted from this computer to your own cluster account, so there is no extra approval step: the script above is what runs.{dirty ? " Save your edits before submitting." : ""}</p> : null}
       {!draft ? (
         <div className={s.row}>
@@ -233,6 +238,7 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; h
           {job.template === "vgt" && job.state === "completed" && !job.runId ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), (r) => { setRun(r); onChange({ ...job, runId: r.id }); onImported(r); })}>Import results as a run</Button> : null}
         </div>
       ) : null}
+      {!draft && job.template === "vgt" && !job.runId ? <p className={s.note}>{job.autoImport ? "Its results will be imported as a run when it completes." : "Its results are not imported automatically."}</p> : null}
       {job.runId ? <p className={s.note}>Results imported. {run ? <Button onClick={() => onOpenRun(run)}>Open the run</Button> : "Find the run in the explorer."}</p> : null}
       {log !== null ? <pre className={s.log} aria-label="Job log">{log || "No output yet."}</pre> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}

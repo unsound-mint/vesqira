@@ -1382,6 +1382,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List notifications: jobs that ended, results imported or not (owner listener only) */
+        get: operations["owner_s_listNotifications_get_api_notifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark notifications read; answers with the new list */
+        post: operations["owner_s_readNotifications_post_api_notifications_read"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/preview": {
         parameters: {
             query?: never;
@@ -3248,6 +3282,39 @@ export interface components {
         TextConflict: {
             error: string;
             current: components["schemas"]["TextFile"];
+        };
+        /** @description One event for the owner. The words say what Slurm or the importer reported; a finished job is never called a success, because it has not been checked. */
+        Notification: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            at: string;
+            /**
+             * @description How the job ended (the first five; unknown means Slurm no longer lists it and Vesqira did not mark it finished), or what happened to its results (the last two)
+             * @enum {string}
+             */
+            kind: "completed" | "failed" | "cancelled" | "timeout" | "unknown" | "imported" | "import_failed";
+            title: string;
+            body: string;
+            /** Format: int64 */
+            jobId: number | null;
+            /**
+             * Format: int64
+             * @description The run the results were imported as (kind imported)
+             */
+            runId: number | null;
+            read: boolean;
+        };
+        NotificationList: {
+            /** @description Newest first */
+            notifications: components["schemas"]["Notification"][];
+            /** @description Unread events in all, not only among those returned */
+            unread: number;
+        };
+        /** @description Mark events read: by id, or all of them. Unknown keys are refused. */
+        NotificationsReadRequest: {
+            ids?: number[];
+            all?: boolean;
         };
     };
     responses: never;
@@ -5286,6 +5353,70 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_listNotifications_get_api_notifications: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_readNotifications_post_api_notifications_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationsReadRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

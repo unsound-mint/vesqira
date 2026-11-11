@@ -3,6 +3,8 @@ import { FileText, FolderOpen, FolderPlus, LayoutGrid, Server, PanelBottom, Pane
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
 import { JobsView, jobFor } from "../jobs/JobsView";
+import { NotificationBell } from "../notifications/NotificationBell";
+import { useNotifications } from "../notifications/useNotifications";
 import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { UnitControl } from "../catalog/UnitControl";
@@ -67,6 +69,8 @@ export function Shell() {
       live = false;
     };
   }, []);
+  // a job ended or its results were imported: the lists the links point into are refreshed before anyone follows one
+  const notes = useNotifications(useCallback(() => { void refreshDatasets(); void refreshRuns(); }, [refreshDatasets, refreshRuns]));
   const hostName = (id: number) => cat.hosts.find((h) => h.id === id)?.name ?? "host";
   const viewerA = useViewer(cat.selected);
   const [compareId, setCompareId] = useState<number | null>(null);
@@ -235,6 +239,7 @@ export function Shell() {
         <h1 className={s.name}>Vesqira</h1>
         <span className={s.crumb} title={project?.path}>{project ? `${project.name} · ${location(project, hostName)}` : "No project open"}</span>
         <span className={s.grow} />
+        <NotificationBell items={notes.items} unread={notes.unread} onOpened={notes.markAllRead} onOpenJob={(id) => { setFocusJob(id); setMode("jobs"); }} onOpenRun={openRun} />
         {project && project.scanned && project.needsCount > 0 ? (
           <button type="button" className={s.pillBtn} aria-pressed={mode === "needs"} onClick={() => setMode("needs")}><Pill tone="warn">{`${project.needsCount} to answer`}</Pill></button>
         ) : null}
