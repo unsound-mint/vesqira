@@ -21,7 +21,7 @@ test("masks are typed, hatched with a legend, and applied per mask with a policy
   await page.getByRole("button", { name: "Register", exact: true }).click();
   const row = page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^hi_cube\.fits/ });
   const offer = page.getByRole("status", { name: "A dataset already holds this content" });
-  await expect(row.or(offer)).toBeVisible();
+  await expect(row.first().or(offer)).toBeVisible();
   if (await offer.isVisible()) await offer.getByRole("button", { name: "Register as a separate dataset" }).click();
   await row.first().click();
   await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
