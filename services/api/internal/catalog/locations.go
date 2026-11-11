@@ -1,0 +1,302 @@
+package catalog
+
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/identity"
+)
+
+// Where a location came from.
+const (
+	LocRegistered = "registered" // the file the dataset was registered from
+	LocManaged    = "managed"    // a byte-for-byte copy under the data directory
+	LocDownloaded = "downloaded" // a copy fetched from a host, checked at both ends (transfers)
+	LocCopy       = "copy"       // another file the researcher added
+)
+
+// Why a location belongs to its dataset (ADR 0053). Only LinkVerified is proof of the same bytes.
+const (
+	LinkRegistered = "registered" // the primary: no claim is made
+	LinkVerified   = "verified"   // the full SHA-256 values are equal
+	LinkProbable   = "probable"   // same size and sampled fingerprint: probably the same, NOT verified
+	LinkDeclared   = "declared"   // the researcher says it is the same; nothing was proven
+)
+
+var (
+	ErrLocationExists = errors.New("this file is already a location of a dataset")
+	ErrPrimary        = errors.New("the registered file of a dataset cannot be removed as a location")
+	ErrStale          = errors.New("the file changed while its fingerprint was computed")
+	ErrNoLocation     = errors.New("location not found")
+)
+
+// Stamp is a computed value with when and by what it was computed (for example "api" or "worker on <host>").
+type Stamp struct {
+	Value string    `json:"value"`
+	At    time.Time `json:"at"`
+	By    string    `json:"by"`
+}
+
+// Location is one place a dataset's bytes are. The primary location is the file the dataset was registered from.
+type Location struct {
+	ID         int64     `json:"id"`
+	HostID     int64     `json:"hostId"`
+	Path       string    `json:"path"`
+	Kind       string    `json:"kind"`
+	Primary    bool      `json:"primary"`
+	Link       string    `json:"link"`
+	SizeBytes  int64     `json:"sizeBytes"`
+	ModifiedAt time.Time `json:"modifiedAt"`
+	AddedAt    time.Time `json:"addedAt"`
+	// Sampled is the sampled fingerprint (identity.SampledAlgorithm): what it covers is identity.Covers; equal values do
+	// not prove equal bytes. Full is the SHA-256 of every byte. nil means not computed.
+	Sampled *Stamp `json:"sampledFingerprint"`
+	Full    *Stamp `json:"fullSha256"`
+}
+
+// Evidence is what is known about this location's bytes.
+func (l Location) Evidence() identity.Evidence {
+	e := identity.Evidence{Size: l.SizeBytes}
+	if l.Sampled != nil {
+		e.Sampled = l.Sampled.Value
+	}
+	if l.Full != nil {
+		e.Full = l.Full.Value
+	}
+	return e
+}
+
+const locCols = `id,dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,sampled_fp,sampled_at,sampled_by,full_sha256,full_at,full_by`
+
+func scanLocation(row interface{ Scan(...any) error }) (int64, Location, error) {
+	var l Location
+	var dsID, mod, add, sAt, fAt int64
+	var prim int
+	var sFP, sBy, fSHA, fBy string
+	if err := row.Scan(&l.ID, &dsID, &l.HostID, &l.Path, &l.Kind, &prim, &l.Link, &l.SizeBytes, &mod, &add, &sFP, &sAt, &sBy, &fSHA, &fAt, &fBy); err != nil {
+		return 0, l, err
+	}
+	l.Primary = prim == 1
+	l.ModifiedAt, l.AddedAt = time.Unix(0, mod).UTC(), time.Unix(add, 0).UTC()
+	if sFP != "" {
+		l.Sampled = &Stamp{sFP, time.Unix(sAt, 0).UTC(), sBy}
+	}
+	if fSHA != "" {
+		l.Full = &Stamp{fSHA, time.Unix(fAt, 0).UTC(), fBy}
+	}
+	return dsID, l, nil
+}
+
+// Locations lists a dataset's locations, the registered file first.
+func (s *Store) Locations(datasetID int64) ([]Location, error) {
+	rows, err := s.db.Query(`SELECT `+locCols+` FROM dataset_locations WHERE dataset_id=? ORDER BY is_primary DESC, id`, datasetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Location{}
+	for rows.Next() {
+		_, l, err := scanLocation(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// allLocations is every dataset's locations in one query, for List.
+func (s *Store) allLocations() (map[int64][]Location, error) {
+	rows, err := s.db.Query(`SELECT ` + locCols + ` FROM dataset_locations ORDER BY is_primary DESC, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64][]Location{}
+	for rows.Next() {
+		id, l, err := scanLocation(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], l)
+	}
+	return out, rows.Err()
+}
+
+// Location returns one location of a dataset.
+func (s *Store) Location(datasetID, locID int64) (Location, error) {
+	_, l, err := scanLocation(s.db.QueryRow(`SELECT `+locCols+` FROM dataset_locations WHERE id=? AND dataset_id=?`, locID, datasetID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Location{}, ErrNoLocation
+	}
+	return l, err
+}
+
+// upsertPrimary keeps the primary location in step with the dataset row. When the file's size or modification time changed,
+// the fingerprints stored for the old bytes are dropped: a hash must never stay attached to bytes it was not computed from.
+func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
+	_, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at) VALUES(?,?,?,?,1,?,?,?,?)
+		ON CONFLICT(host_id,path) DO UPDATE SET
+			sampled_fp=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN sampled_fp ELSE '' END,
+			sampled_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN sampled_at ELSE 0 END,
+			sampled_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN sampled_by ELSE '' END,
+			full_sha256=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN full_sha256 ELSE '' END,
+			full_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN full_at ELSE 0 END,
+			full_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN full_by ELSE '' END,
+			size_bytes=excluded.size_bytes, modified_at=excluded.modified_at`,
+		datasetID, d.HostID, d.Path, LocRegistered, LinkRegistered, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix())
+	return err
+}
+
+// SetFingerprint records a computed value on a location. size and modNS are the file's size and modification time as seen
+// when the value was computed; a location that no longer has them (it was registered again meanwhile) refuses the value.
+// kind is "sampled" or "full"; by says what computed it.
+func (s *Store) SetFingerprint(locID int64, kind, value, by string, size, modNS int64) error {
+	col := map[string]string{"sampled": "sampled", "full": "full"}[kind]
+	if col == "" || value == "" {
+		return fmt.Errorf("catalog: bad fingerprint kind %q", kind)
+	}
+	valueCol := map[string]string{"sampled": "sampled_fp", "full": "full_sha256"}[kind]
+	res, err := s.db.Exec(fmt.Sprintf(`UPDATE dataset_locations SET %s=?, %s_at=?, %s_by=? WHERE id=? AND size_bytes=? AND modified_at=?`, valueCol, col, col),
+		value, time.Now().Unix(), by, locID, size, modNS)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrStale
+	}
+	return nil
+}
+
+// AddLocation links another file to a dataset. link is what established the identity (LinkVerified, LinkProbable or
+// LinkDeclared); the caller has checked that. A (host, path) that already is a location of any dataset is refused with
+// ErrLocationExists.
+func (s *Store) AddLocation(datasetID int64, l Location) (Location, error) {
+	if l.Kind == "" {
+		l.Kind = LocCopy
+	}
+	switch l.Link {
+	case LinkVerified, LinkProbable, LinkDeclared:
+	default:
+		return Location{}, fmt.Errorf("catalog: a location needs a link, got %q", l.Link)
+	}
+	res, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at) VALUES(?,?,?,?,0,?,?,?,?)`,
+		datasetID, l.HostID, l.Path, l.Kind, l.Link, l.SizeBytes, l.ModifiedAt.UnixNano(), time.Now().Unix())
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return Location{}, ErrLocationExists
+		}
+		return Location{}, err
+	}
+	id, _ := res.LastInsertId()
+	for kind, st := range map[string]*Stamp{"sampled": l.Sampled, "full": l.Full} {
+		if st != nil {
+			if err := s.SetFingerprint(id, kind, st.Value, st.By, l.SizeBytes, l.ModifiedAt.UnixNano()); err != nil {
+				return Location{}, err
+			}
+		}
+	}
+	return s.Location(datasetID, id)
+}
+
+// RemoveLocation forgets a location (the file is never touched). The registered file of a dataset stays.
+func (s *Store) RemoveLocation(datasetID, locID int64) error {
+	l, err := s.Location(datasetID, locID)
+	if err != nil {
+		return err
+	}
+	if l.Primary {
+		return ErrPrimary
+	}
+	_, err = s.db.Exec(`DELETE FROM dataset_locations WHERE id=?`, locID)
+	return err
+}
+
+// LocationOwner says which dataset a (host, path) belongs to as any of its locations, if any.
+func (s *Store) LocationOwner(hostID int64, path string) (int64, bool, error) {
+	var id int64
+	err := s.db.QueryRow(`SELECT dataset_id FROM dataset_locations WHERE host_id=? AND path=?`, hostID, path).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	return id, err == nil, err
+}
+
+// Match is a dataset whose locations say it may hold the same bytes as a file with the given evidence.
+type Match struct {
+	DatasetID  int64  `json:"datasetId"`
+	LocationID int64  `json:"locationId"`
+	Name       string `json:"name"`
+	Relation   string `json:"relation"` // identity.Verified or identity.Probable
+}
+
+// FindSame returns the datasets (other than skip) with a location the evidence is verified or probably equal to, verified
+// first. Only locations of the same size are looked at.
+func (s *Store) FindSame(ev identity.Evidence, skip int64) ([]Match, error) {
+	rows, err := s.db.Query(`SELECT l.`+strings.ReplaceAll(locCols, ",", ",l.")+`, d.name FROM dataset_locations l JOIN datasets d ON d.id=l.dataset_id
+		WHERE l.size_bytes=? AND l.dataset_id<>? AND (l.full_sha256<>'' OR l.sampled_fp<>'') ORDER BY l.dataset_id, l.id`, ev.Size, skip)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	best := map[int64]Match{}
+	var order []int64
+	for rows.Next() {
+		var l Location
+		var dsID, mod, add, sAt, fAt int64
+		var prim int
+		var sFP, sBy, fSHA, fBy, name string
+		if err := rows.Scan(&l.ID, &dsID, &l.HostID, &l.Path, &l.Kind, &prim, &l.Link, &l.SizeBytes, &mod, &add, &sFP, &sAt, &sBy, &fSHA, &fAt, &fBy, &name); err != nil {
+			return nil, err
+		}
+		rel := identity.Relate(ev, identity.Evidence{Size: l.SizeBytes, Sampled: sFP, Full: fSHA})
+		if rel != identity.Verified && rel != identity.Probable {
+			continue
+		}
+		cur, seen := best[dsID]
+		if !seen {
+			order = append(order, dsID)
+		}
+		if !seen || (rel == identity.Verified && cur.Relation != identity.Verified) {
+			best[dsID] = Match{DatasetID: dsID, LocationID: l.ID, Name: name, Relation: rel}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]Match, 0, len(order))
+	for _, id := range order {
+		out = append(out, best[id])
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Relation == identity.Verified && out[j].Relation != identity.Verified
+	})
+	return out, nil
+}
+
+// ReadOrder is the locations the viewer may read from, best first: files on this computer before files on a host, then the
+// registered file before the others, then the order they were added. Only the registered file and locations whose identity
+// is verified (equal full SHA-256) are eligible: a probable or declared location may hold other bytes than the header that
+// was catalogued, so it is never read silently.
+func ReadOrder(locs []Location) []Location {
+	var out []Location
+	for _, l := range locs {
+		if l.Primary || l.Link == LinkVerified {
+			out = append(out, l)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if (out[i].HostID == 0) != (out[j].HostID == 0) {
+			return out[i].HostID == 0
+		}
+		if out[i].Primary != out[j].Primary {
+			return out[i].Primary
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
+}

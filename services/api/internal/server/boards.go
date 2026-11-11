@@ -540,7 +540,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON}, png)
+	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: s.buildFigureIdentity(r.Context(), d, others)}, png)
 	if err != nil {
 		s.boardErr(w, err)
 		return

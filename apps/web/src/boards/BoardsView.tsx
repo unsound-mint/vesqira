@@ -7,6 +7,8 @@ import { Threads } from "./Threads";
 const PresentView = lazy(() => import("./PresentView").then((m) => ({ default: m.PresentView })));
 import { markSeen, readSeen } from "./seen";
 import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
+import type { NewerNotice } from "../api/catalog";
+import { NewerNotices } from "../catalog/NewerNotices";
 import { listDatasets } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
 import { listRuns } from "../api/runs";
@@ -36,8 +38,15 @@ export function provenanceLine(p: Figure["provenance"]): string {
   return parts.join(" · ");
 }
 
+/** One line over the figures when some of them were drawn from data that has a newer result or changed (ADR 0053). Never swaps anything. */
+function BoardNewerLine({ board, newer }: { board: Board; newer: Record<string, NewerNotice[]> }) {
+  const n = board.items.filter((it) => it.kind !== "job" && (newer[String(it.figure.id)]?.length ?? 0) > 0).length;
+  if (n === 0) return null;
+  return <p role="status" className={s.note}>{n === 1 ? "1 figure on this board was" : `${n} figures on this board were`} drawn from data that has a newer result or has changed. Each says what differs; nothing was redrawn or swapped.</p>;
+}
+
 /** Research board: a mutable draft of pinned figures. Sharing freezes it. */
-export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, datasetIdB: number) => void } = {}) {
+export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: number, datasetIdB: number) => void; newer?: Record<string, NewerNotice[]> } = {}) {
   const [boards, setBoards] = useState<Board[]>([]);
   const [id, setId] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -174,6 +183,7 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
         const sid = board.items.find((x) => x.kind === "job" && x.job.sweepId != null);
         return sid && sid.kind === "job" && sid.job.sweepId != null ? <SweepGrid sweepId={sid.job.sweepId} refreshKey={board.items.filter((x) => x.kind === "job" && x.job.runId != null).length} /> : null;
       })() : null}
+      {board && newer ? <BoardNewerLine board={board} newer={newer} /> : null}
       <ol className={s.items} aria-label="Figures on the board">
         {board?.items.map((it, i) => {
           const f = it.kind === "job" ? null : it.figure;
@@ -191,6 +201,7 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
                 <>
                   <h3 className={s.title}>{f.title}</h3>
                   <p className={s.src}>{provenanceLine(f.provenance)}</p>
+                  <NewerNotices notices={newer?.[String(f.id)]} />
                   {f.caption ? <p className={s.cap}>{f.caption}</p> : null}
                   <details className={s.det}>
                     <summary>Where this came from</summary>

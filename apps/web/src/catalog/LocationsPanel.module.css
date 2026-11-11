@@ -1,0 +1,83 @@
+.wrap {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}
+
+.reads {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loc {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--text-sm);
+}
+
+.path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.add {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.notice {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-left-color: var(--warn);
+  border-radius: var(--r-md);
+}
+
+.noticeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.noticeText {
+  margin: 0;
+  font-size: var(--text-sm);
+}

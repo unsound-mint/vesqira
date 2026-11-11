@@ -440,6 +440,25 @@ func (s *Store) List() ([]Run, error) {
 	return out, nil
 }
 
+// OutputRoles maps every dataset that is some run's output to its role in that run (the latest run when several list it).
+func (s *Store) OutputRoles() (map[int64]string, error) {
+	rows, err := s.db.Query(`SELECT dataset_id,role FROM run_outputs ORDER BY run_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var role string
+		if err := rows.Scan(&id, &role); err != nil {
+			return nil, err
+		}
+		out[id] = role
+	}
+	return out, rows.Err()
+}
+
 // ForDataset returns the reviewer-safe summary of the run that produced a dataset, or nil.
 func (s *Store) ForDataset(datasetID int64) (*Summary, error) {
 	var id int64

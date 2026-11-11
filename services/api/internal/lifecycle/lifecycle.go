@@ -308,6 +308,13 @@ func datasetImpact(q querier, b *builder, id int64) error {
 	if err != nil {
 		return err
 	}
+	locs, err := items(q, "dataset_locations", `SELECT id, path FROM dataset_locations WHERE dataset_id=? AND is_primary=0`, id)
+	if err != nil {
+		return err
+	}
+	b.add("locations", "removed", locs, func(n int) string {
+		return plural(n, "other location is", "other locations are") + " forgotten with it. The files themselves are never deleted."
+	})
 	b.add("regions", "removed", regs, func(n int) string {
 		return plural(n, "saved region goes", "saved regions go") + " with it."
 	})
@@ -563,7 +570,7 @@ func deleteSteps(kind string) []string {
 	case KindDataset:
 		return []string{
 			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
-			`DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`, `DELETE FROM catalog_declarations WHERE dataset_id=?`, `UPDATE transfers SET dataset_id=NULL WHERE dataset_id=?`,
+			`DELETE FROM dataset_locations WHERE dataset_id=?`, `DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`, `DELETE FROM catalog_declarations WHERE dataset_id=?`, `UPDATE transfers SET dataset_id=NULL WHERE dataset_id=?`,
 			`DELETE FROM datasets WHERE id=?`}
 	case KindRun:
 		return []string{

@@ -28,7 +28,15 @@ func (p hostPlanes) Do(ctx context.Context, req map[string]any) (worker.Reply, e
 // planesFor picks the worker that holds a dataset's file: the local one, or its host's.
 func (s *Server) planesFor(datasetID int64) PlaneService {
 	d, err := s.Store.Get(datasetID)
-	if err != nil || d.HostID == 0 {
+	if err != nil {
+		return s.planesOn(0)
+	}
+	return s.planesOn(d.HostID)
+}
+
+// planesOn is the worker on one machine: this computer (host 0) or a host.
+func (s *Server) planesOn(host int64) PlaneService {
+	if host == 0 {
 		if s.Planes == nil {
 			return nil
 		}
@@ -37,7 +45,7 @@ func (s *Server) planesFor(datasetID int64) PlaneService {
 	if s.HostDB == nil || s.Remote == nil {
 		return nil
 	}
-	h, err := s.HostDB.Get(d.HostID)
+	h, err := s.HostDB.Get(host)
 	if err != nil {
 		return nil
 	}
@@ -72,7 +80,7 @@ func (s *Server) authorizeRemote(ctx context.Context, d catalog.Dataset) (real s
 	if st.Size != d.SizeBytes || st.MtimeNS != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}
-	return d.Path, cacheKey{id: d.ID, size: st.Size, mtime: st.MtimeNS, unit: declaredUnitOf(d)}, 0, ""
+	return d.Path, cacheKey{id: d.ID, host: d.HostID, size: st.Size, mtime: st.MtimeNS, unit: declaredUnitOf(d)}, 0, ""
 }
 
 func (s *Server) hostFrom(w http.ResponseWriter, r *http.Request) (hosts.Host, bool) {
@@ -211,24 +219,12 @@ func (s *Server) listRemote(w http.ResponseWriter, r *http.Request) {
 // Returns the dataset, or an HTTP status and message. found=false means the path is not available (outside the
 // roots, missing, or not a regular file): the same answer for all of them.
 func (s *Server) registerRemoteFile(ctx context.Context, h hosts.Host, p string) (d catalog.Dataset, code int, msg string) {
-	if !h.InRoots(p) {
-		return d, 403, "not available"
+	realPath, _, _, rcode, rmsg := s.resolveRemote(ctx, h, p)
+	if rcode != 0 {
+		return d, rcode, rmsg
 	}
-	res, err := s.Remote.Do(ctx, h, map[string]any{"op": "resolve", "path": p})
 	var re *worker.RequestError
-	switch {
-	case errors.As(err, &re):
-		return d, 403, "not available"
-	case err != nil:
-		return d, 502, "the host is not reachable (is the VPN up?)"
-	}
-	var rs struct {
-		Real string `json:"real"`
-	}
-	if json.Unmarshal(res.Head, &rs) != nil || !h.InRoots(rs.Real) {
-		return d, 403, "not available"
-	}
-	hdr, err := s.Remote.Do(ctx, h, map[string]any{"op": "header", "path": rs.Real})
+	hdr, err := s.Remote.Do(ctx, h, map[string]any{"op": "header", "path": realPath})
 	if errors.As(err, &re) {
 		return d, 422, "cannot read file: " + re.Message
 	}
@@ -246,12 +242,15 @@ func (s *Server) registerRemoteFile(ctx context.Context, h hosts.Host, p string)
 		delete(meta, k)
 	}
 	clean, _ := json.Marshal(meta)
-	d, err = s.Store.Upsert(catalog.Dataset{HostID: h.ID, Path: rs.Real, Name: path.Base(rs.Real), SizeBytes: size, ModifiedAt: time.Unix(0, mtime), Header: clean})
+	d, err = s.Store.Upsert(catalog.Dataset{HostID: h.ID, Path: realPath, Name: path.Base(realPath), SizeBytes: size, ModifiedAt: time.Unix(0, mtime), Header: clean})
+	if errors.Is(err, catalog.ErrLocationExists) {
+		return d, 409, "this file is already another location of a dataset: remove that location first, or open that dataset"
+	}
 	if err != nil {
 		log.Printf("register remote: %v", err)
 		return d, 500, "internal error"
 	}
-	return d, 0, ""
+	return s.recordIdentity(ctx, d), 0, ""
 }
 
 func (s *Server) registerRemote(w http.ResponseWriter, r *http.Request) {

@@ -82,6 +82,10 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 	if err := schema.AddColumn(db, "figures", "scene", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return nil, err
 	}
+	// a figure records the identity of the datasets it was drawn from (ADR 0053); older figures have none
+	if err := schema.AddColumn(db, "figures", "identity", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return nil, err
+	}
 	// comments grew threads, anchors, owner replies and a resolved mark; older catalogs get the columns
 	for _, c := range [][2]string{{"parent_id", "INTEGER NOT NULL DEFAULT 0"}, {"anchor", "TEXT NOT NULL DEFAULT ''"}, {"from_owner", "INTEGER NOT NULL DEFAULT 0"}, {"resolved_at", "INTEGER NOT NULL DEFAULT 0"}} {
 		if err := schema.AddColumn(db, "comments", c[0], c[1]); err != nil {
@@ -117,6 +121,10 @@ type Figure struct {
 	// Scene is the scene/1 description the picture was drawn from (ADR 0042), absent for figures saved before scenes. It
 	// names dataset ids, so it is owner-side only: snapshots and published reports copy provenance, never this.
 	Scene json.RawMessage `json:"scene,omitempty"`
+	// Identity is what was known about the bytes of each dataset the figure was drawn from when it was saved (ADR 0053):
+	// size, modification time and the fingerprints, each labelled with what it is. Owner-side only, like Scene: snapshots
+	// and published reports copy provenance, never this. Absent for figures saved before identities.
+	Identity json.RawMessage `json:"identity,omitempty"`
 	// Archived figures are hidden from the lists but still resolve by id, on boards, in reports and in reviews (ADR 0041).
 	Archived bool `json:"archived"`
 }
@@ -129,6 +137,7 @@ type NewFigure struct {
 	Caption    string
 	Provenance json.RawMessage
 	Scene      json.RawMessage
+	Identity   json.RawMessage // optional: the figure-identity/1 document (internal/server figureIdentity)
 }
 
 func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
@@ -175,8 +184,8 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 		}
 	}
 	now := time.Now()
-	res, err := s.db.Exec(`INSERT INTO figures(dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene) VALUES(?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(revision) DO NOTHING`, in.DatasetID, title, caption, now.Unix(), revision, sha, cfg.Width, cfg.Height, string(in.Provenance), string(in.Scene))
+	res, err := s.db.Exec(`INSERT INTO figures(dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(revision) DO NOTHING`, in.DatasetID, title, caption, now.Unix(), revision, sha, cfg.Width, cfg.Height, string(in.Provenance), string(in.Scene), string(in.Identity))
 	if err != nil {
 		return Figure{}, err
 	}
@@ -187,18 +196,21 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 	return s.Figure(id)
 }
 
-var figCols = `id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,` + schema.ArchivedExpr("figure", "figures.id")
+var figCols = `id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity,` + schema.ArchivedExpr("figure", "figures.id")
 
 func scanFigure(row interface{ Scan(...any) error }) (Figure, error) {
 	var f Figure
 	var at int64
-	var prov, sc string
-	if err := row.Scan(&f.ID, &f.DatasetID, &f.Title, &f.Caption, &at, &f.Revision, &f.PreviewSHA, &f.Width, &f.Height, &prov, &sc, &f.Archived); err != nil {
+	var prov, sc, ident string
+	if err := row.Scan(&f.ID, &f.DatasetID, &f.Title, &f.Caption, &at, &f.Revision, &f.PreviewSHA, &f.Width, &f.Height, &prov, &sc, &ident, &f.Archived); err != nil {
 		return Figure{}, err
 	}
 	f.CreatedAt, f.Provenance = time.Unix(at, 0).UTC(), json.RawMessage(prov)
 	if sc != "" {
 		f.Scene = json.RawMessage(sc)
+	}
+	if ident != "" {
+		f.Identity = json.RawMessage(ident)
 	}
 	return f, nil
 }

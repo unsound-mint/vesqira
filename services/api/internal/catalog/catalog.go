@@ -38,6 +38,9 @@ type Dataset struct {
 	CatalogDeclaration *CatalogDeclaration `json:"catalogDeclaration"`
 	// Archived entries are hidden from the lists but still resolve by id (ADR 0041).
 	Archived bool `json:"archived"`
+	// Locations are the files this dataset's bytes are in, the registered one first (ADR 0053). Path and HostID above are
+	// the registered file. A location never changes what the dataset is; it says where else the same bytes may be read.
+	Locations []Location `json:"locations"`
 }
 
 // Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).
@@ -138,6 +141,9 @@ func Open(dsn string) (*Store, error) {
 		if err == nil {
 			_, err = db.Exec(schema.CatalogDeclarationsTable)
 		}
+		if err == nil {
+			_, err = db.Exec(schema.DatasetLocationsTable)
+		}
 	}
 	if err != nil {
 		db.Close()
@@ -154,6 +160,13 @@ func (s *Store) DB() *sql.DB { return s.db }
 // Upsert registers a path or refreshes its metadata. The path is the identity of a reference;
 // it does not prove bytewise identity, so size and mtime are stored for later comparison.
 func (s *Store) Upsert(d Dataset) (Dataset, error) {
+	var owner int64
+	if err := s.db.QueryRow(`SELECT dataset_id FROM dataset_locations WHERE host_id=? AND path=? AND is_primary=0`, d.HostID, d.Path).Scan(&owner); err == nil {
+		// the file is another location of a dataset: registering it too would give one file two datasets
+		return Dataset{}, fmt.Errorf("%w (dataset %d)", ErrLocationExists, owner)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return Dataset{}, err
+	}
 	key := pathKey(d.HostID, d.Path)
 	_, err := s.db.Exec(`INSERT INTO datasets(path,name,size_bytes,modified_at,added_at,header,host_id) VALUES(?,?,?,?,?,?,?)
 		ON CONFLICT(path) DO UPDATE SET name=excluded.name,size_bytes=excluded.size_bytes,modified_at=excluded.modified_at,header=excluded.header`,
@@ -163,6 +176,9 @@ func (s *Store) Upsert(d Dataset) (Dataset, error) {
 	}
 	got, err := s.byPath(key)
 	if err != nil {
+		return Dataset{}, err
+	}
+	if err := s.upsertPrimary(got.ID, d); err != nil {
 		return Dataset{}, err
 	}
 	if fileStatesItsUnit(d) { // the file says its unit now: a declaration made while it did not must not linger or come back
@@ -219,6 +235,9 @@ func (s *Store) Get(id int64) (Dataset, error) {
 	}
 	if err == nil && d.Kind == KindCatalog {
 		d.CatalogDeclaration, err = s.catalogDeclaration(id, d)
+	}
+	if err == nil {
+		d.Locations, err = s.Locations(id)
 	}
 	return d, err
 }
@@ -316,7 +335,14 @@ func (s *Store) List() ([]Dataset, error) {
 		return nil, err
 	}
 	rows.Close()
+	locs, err := s.allLocations()
+	if err != nil {
+		return nil, err
+	}
 	for i := range out {
+		if out[i].Locations = locs[out[i].ID]; out[i].Locations == nil {
+			out[i].Locations = []Location{}
+		}
 		if out[i].Interpretation, err = s.interpretation(out[i].ID, out[i]); err != nil {
 			return nil, err
 		}

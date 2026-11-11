@@ -486,6 +486,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/newer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Notices that a newer result exists, or that a file or the data behind a figure changed
+         * @description Datasets and figures keyed by id. Only files on this computer are looked at. Never swaps or redraws anything.
+         */
+        get: operations["owner_s_newerResults_get_api_datasets_newer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}": {
         parameters: {
             query?: never;
@@ -796,6 +816,72 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_interpret_post_api_datasets_id_interpretation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Where a dataset's bytes are, what is known about them, and where the viewer reads from */
+        get: operations["owner_s_listLocations_get_api_datasets_id_locations"];
+        put?: never;
+        /**
+         * Add another file as a location of a dataset, on evidence
+         * @description Linked as verified (equal full SHA-256), probable (equal size and sampled fingerprint; said to be so and never read from) or, with declare, declared when nothing computed can tell. A file whose bytes are proven different is refused (409 bytes_differ) whatever is declared; a file that is already a location is refused (409 already_location). The file is never copied or touched.
+         */
+        post: operations["owner_s_addLocation_post_api_datasets_id_locations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/locations/{lid}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                lid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget a location (the file is never deleted) */
+        post: operations["owner_s_removeLocation_post_api_datasets_id_locations_lid_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/locations/{lid}/fingerprint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                lid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compute the sampled fingerprint now, queue the full SHA-256, or cancel it
+         * @description A full hash reads the whole file, so it runs in the background on one worker at a time, only up to a cap (422 above it), and can be cancelled. On a host it is computed by that host's worker, bounded there as well.
+         */
+        post: operations["owner_s_fingerprintLocation_post_api_datasets_id_locations_lid_fingerprint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3392,6 +3478,8 @@ export interface components {
             kind: "fits" | "catalog";
             /** @description What the person declared about a catalog's columns; null for anything else */
             catalogDeclaration: components["schemas"]["CatalogDeclaration"] | null;
+            /** @description The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053). */
+            locations: components["schemas"]["DatasetLocation"][];
         };
         DatasetList: {
             datasets: components["schemas"]["Dataset"][];
@@ -3710,6 +3798,8 @@ export interface components {
             archived?: boolean;
             /** @description The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. */
             scene?: components["schemas"]["Scene"] & (components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"]);
+            /** @description Absent for figures saved before identities (ADR 0053). */
+            identity?: components["schemas"]["FigureIdentity"];
         };
         FigureList: {
             figures: components["schemas"]["Figure"][];
@@ -5826,6 +5916,183 @@ export interface components {
             dataset: components["schemas"]["Dataset"];
             transfer: components["schemas"]["Transfer"];
         };
+        /** @description A computed value with when and by what it was computed. */
+        IdentityStamp: {
+            value: string;
+            /** Format: date-time */
+            at: string;
+            /** @description What computed it: "this computer" or "worker on <host name>", or "hashed while copying". */
+            by: string;
+        };
+        /** @description One place a dataset's bytes are (ADR 0053). */
+        DatasetLocation: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description 0 for a file on this computer, otherwise the host that holds it
+             */
+            hostId: number;
+            path: string;
+            /** @enum {string} */
+            kind: "registered" | "managed" | "downloaded" | "copy";
+            /** @description The file the dataset was registered from. Dataset.path and hostId are this location. */
+            primary: boolean;
+            /**
+             * @description Why the location belongs to the dataset. registered: the primary, no claim. verified: equal full SHA-256 (the same bytes). probable: same size and equal sampled fingerprint, which is NOT proof. declared: the researcher's word, nothing was proven.
+             * @enum {string}
+             */
+            link: "registered" | "verified" | "probable" | "declared";
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: date-time */
+            modifiedAt: string;
+            /** Format: date-time */
+            addedAt: string;
+            /** @description A SHA-256 over the file size, the primary FITS header and 16 blocks of 64 KiB at fixed offsets (algorithm sampled/1; see LocationList.sampledCovers). A different value proves the files differ; an equal value does not prove they are the same. null: not computed. */
+            sampledFingerprint: components["schemas"]["IdentityStamp"] | null;
+            /** @description The SHA-256 of every byte. null: not computed. */
+            fullSha256: components["schemas"]["IdentityStamp"] | null;
+        };
+        HashStatus: {
+            /** @enum {string} */
+            state: "queued" | "running" | "failed";
+            /** Format: int64 */
+            doneBytes: number;
+            /** Format: int64 */
+            totalBytes: number;
+            error?: string;
+        };
+        /** @description Where the viewer would read the dataset from now: files on this computer before files on a host, the registered file before others, and only the registered file or a location verified to hold the same bytes. */
+        ReadsFrom: {
+            /** Format: int64 */
+            locationId: number;
+            /** Format: int64 */
+            hostId: number;
+            primary: boolean;
+            /** @description false: a file on a host, which is not contacted to answer this */
+            checked: boolean;
+            reason: string;
+        };
+        LocationList: {
+            locations: components["schemas"]["DatasetLocation"][];
+            readsFrom?: components["schemas"]["ReadsFrom"] | null;
+            /** @description Present when nothing can be read; the reason. */
+            unavailable?: string;
+            /** @description Full-hash tasks by location id; a finished or cancelled task is simply gone. */
+            hashing: {
+                [key: string]: components["schemas"]["HashStatus"];
+            };
+            /** @enum {string} */
+            algorithm: "sampled/1";
+            /** @description What a sampled fingerprint covers, in one sentence, for display. */
+            sampledCovers: string;
+            /** Format: int64 */
+            fullHashCapBytes: number;
+        };
+        AddLocationRequest: {
+            path: string;
+            /**
+             * Format: int64
+             * @description 0 (the default) for this computer
+             */
+            hostId?: number;
+            /** @description Say that the file is the same dataset when nothing computed can tell. Never overrides proof of a difference. */
+            declare?: boolean;
+        };
+        FingerprintRequest: {
+            /**
+             * @description sampled: computed now (about 1 MiB read). full: queued in the background, one at a time, capped and cancellable. cancel: stop a full hash.
+             * @enum {string}
+             */
+            mode: "sampled" | "full" | "cancel";
+        };
+        FingerprintQueued: {
+            hashing: {
+                [key: string]: components["schemas"]["HashStatus"];
+            };
+        };
+        /** @description A 409 that says why the file was not linked, or why registering it is offered as a location instead. */
+        LocationRefusal: {
+            error: string;
+            /** @enum {string} */
+            code: "already_location" | "bytes_differ" | "identity_not_established" | "same_content";
+            /** Format: int64 */
+            datasetId?: number;
+            matches?: components["schemas"]["SameContentMatch"][];
+        };
+        SameContentMatch: {
+            /** Format: int64 */
+            datasetId: number;
+            /** Format: int64 */
+            locationId: number;
+            name: string;
+            /**
+             * @description verified: equal full SHA-256. probable: same size and sampled fingerprint, not proof.
+             * @enum {string}
+             */
+            relation: "verified" | "probable";
+        };
+        /** @description A notice only: nothing is swapped or redrawn. */
+        NewerNotice: {
+            /**
+             * @description newer_file: a run's output folder gained a later file of the same role (a re-run writes psi_<stem>_1.fits instead of overwriting). changed_in_place: the registered file's size or time differs. figure_data_changed: the dataset behind a figure is not the bytes the figure was drawn from.
+             * @enum {string}
+             */
+            reason: "newer_file" | "changed_in_place" | "figure_data_changed";
+            name: string;
+            path: string;
+            /**
+             * Format: int64
+             * @description The dataset the notice is about when it exists; 0 for a newer file that is not registered
+             */
+            datasetId: number;
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: date-time */
+            modifiedAt: string;
+            /** @description What differs. fingerprint is said only when both values were computed and differ. */
+            differs: ("size" | "time" | "fingerprint")[];
+        };
+        NewerResults: {
+            datasets: {
+                [key: string]: components["schemas"]["NewerNotice"][];
+            };
+            figures: {
+                [key: string]: components["schemas"]["NewerNotice"][];
+            };
+            note: string;
+        };
+        /** @description What was known about the bytes of each dataset when the figure was saved. Owner API only, never part of the reviewer-safe provenance. */
+        FigureIdentity: {
+            /** @enum {string} */
+            schema: "figure-identity/1";
+            datasets: {
+                /** @enum {string} */
+                role: "source" | "overlay";
+                /** Format: int64 */
+                datasetId: number;
+                name: string;
+                /** Format: int64 */
+                sizeBytes: number;
+                /** Format: date-time */
+                modifiedAt: string;
+                sampledFingerprint: {
+                    value: string;
+                    algorithm?: string;
+                    covers?: string;
+                    /** Format: date-time */
+                    at: string;
+                    by: string;
+                } | null;
+                fullSha256: {
+                    value: string;
+                    /** Format: date-time */
+                    at: string;
+                    by: string;
+                } | null;
+            }[];
+        };
     };
     responses: never;
     parameters: never;
@@ -6654,6 +6921,35 @@ export interface operations {
             };
         };
     };
+    owner_s_newerResults_get_api_datasets_newer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewerResults"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_get_get_api_datasets_id: {
         parameters: {
             query?: never;
@@ -7168,6 +7464,161 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_listLocations_get_api_datasets_id_locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_addLocation_post_api_datasets_id_locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddLocationRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetLocation"];
+                };
+            };
+            /** @description Not linked */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationRefusal"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_removeLocation_post_api_datasets_id_locations_lid_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                lid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: int64 */
+                        removed: number;
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_fingerprintLocation_post_api_datasets_id_locations_lid_fingerprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                lid: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FingerprintRequest"];
+            };
+        };
+        responses: {
+            /** @description sampled fingerprint stored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetLocation"];
+                };
+            };
+            /** @description queued or cancelled */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FingerprintQueued"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

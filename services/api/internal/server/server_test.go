@@ -65,7 +65,7 @@ func newServerWith(t *testing.T, w HeaderReader, p PlaneService) (*httptest.Serv
 
 func post(t *testing.T, ts *httptest.Server, path string, hdr map[string]string) *http.Response {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"path": path})
+	body, _ := json.Marshal(map[string]any{"path": path, "asNew": true}) // the tests register files with equal bytes under several names; the offer is tested in identity_test.go
 	req, _ := http.NewRequest("POST", ts.URL+"/api/datasets", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range hdr {

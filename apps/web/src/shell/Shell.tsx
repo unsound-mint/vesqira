@@ -9,6 +9,8 @@ import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { CatalogView } from "../catalog/CatalogView";
 import { CatalogInspector } from "../catalog/CatalogInspector";
+import { LocationsPanel } from "../catalog/LocationsPanel";
+import { NewerNotices } from "../catalog/NewerNotices";
 import { UnitControl } from "../catalog/UnitControl";
 import { fileStatesItsUnit } from "../catalog/unit";
 import { Explorer } from "../catalog/Explorer";
@@ -246,7 +248,7 @@ export function Shell() {
         <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
       </Section>
       <Section title="Datasets" meta={String(cat.datasets.length + cat.catalogCount)}>
-        <Explorer hosts={cat.hosts} datasets={cat.allDatasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={selectDataset} onRegister={cat.register} />
+        <Explorer hosts={cat.hosts} datasets={cat.allDatasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={selectDataset} onRegister={cat.register} offer={cat.offer} onAddLocation={cat.addAsLocation} onDismissOffer={cat.dismissOffer} />
       </Section>
     </>
   );
@@ -338,7 +340,7 @@ export function Shell() {
         ) : mode === "reports" ? (
           <ReportsView onOpenRun={openRun} />
         ) : mode === "boards" ? (
-          <BoardsView onCompare={compareInViewer} />
+          <BoardsView onCompare={compareInViewer} newer={cat.newer.figures} />
         ) : cat.selectedCatalog ? (
           <CatalogView dataset={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} />
         ) : cat.selectedImage ? (
@@ -380,6 +382,7 @@ export function Shell() {
         <div className={s.scroll}>
           {cat.selectedCatalog ? (
             <>
+              <NewerNotices notices={cat.newer.datasets[String(cat.selectedCatalog.id)]} onOpen={selectDataset} onRegister={(p) => { void cat.register(p); }} />
               <RelativeOrientationResult dataset={cat.selectedCatalog} datasets={cat.allDatasets} />
               <CatalogInspector d={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} onDeclare={cat.declareCatalog} onReread={() => { void cat.register(cat.selectedCatalog!.path); }} />
               {cat.selectedCatalog.catalogDeclaration?.angle ? (
@@ -389,6 +392,9 @@ export function Shell() {
               ) : null}
               <Section title="Nature of the data">
                 <NatureControl dataset={cat.selectedCatalog} onChange={cat.declareNature} />
+              </Section>
+              <Section title="Locations" defaultOpen={false} meta={String(cat.selectedCatalog.locations?.length ?? 1)}>
+                <LocationsPanel key={cat.selectedCatalog.id} dataset={cat.selectedCatalog} hosts={cat.hosts} onChanged={() => void cat.refreshDatasets()} />
               </Section>
               <Section title="Archive or delete" defaultOpen={false} meta={cat.selectedCatalog.archived ? "archived" : undefined}>
                 <EntryActions key={cat.selectedCatalog.id} kind="datasets" id={cat.selectedCatalog.id} name={cat.selectedCatalog.name} archived={cat.selectedCatalog.archived === true} onChanged={async (c) => { await cat.refreshDatasets(); if (c === "deleted") { void cat.refreshRuns(); cat.select(null); } }} />
@@ -484,8 +490,18 @@ export function Shell() {
             {actDs ? <FigurePanel v={viewer} dataset={actDs} datasets={cat.allDatasets} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Dataset">
-            {actDs ? <DatasetInspector d={actDs} problem={cat.problems[String(actDs.id)]} onReread={() => { void cat.register(actDs.path); }} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
+            {actDs ? (
+              <>
+                <NewerNotices notices={cat.newer.datasets[String(actDs.id)]} onOpen={selectDataset} onRegister={(p) => { void cat.register(p); }} />
+                <DatasetInspector d={actDs} problem={cat.problems[String(actDs.id)]} onReread={() => { void cat.register(actDs.path); }} />
+              </>
+            ) : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
           </Section>
+          {actDs ? (
+            <Section title="Locations" defaultOpen={false} meta={String(actDs.locations?.length ?? 1)}>
+              <LocationsPanel key={actDs.id} dataset={actDs} hosts={cat.hosts} onChanged={() => void cat.refreshDatasets()} />
+            </Section>
+          ) : null}
           </>}
         </div>
       </aside>
