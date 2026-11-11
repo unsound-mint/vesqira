@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
@@ -21,6 +22,9 @@ import (
 
 // hostTextPolicy is every check that needs no round trip. status 0 is acceptance.
 func (s *Server) hostTextPolicy(h hosts.Host, p string) (int, string) {
+	if strings.ContainsAny(p, "'!") {
+		return 400, "file names containing ' or ! cannot be edited on a host"
+	}
 	if strings.ContainsAny(p, "\x00\n\r\\") || len(p) > 2000 {
 		return 400, "the path contains a NUL, newline, carriage return or backslash, or is too long, which the editor does not send to a host"
 	}
@@ -74,6 +78,8 @@ func hostTextStatus(err error) (int, string) {
 			return 404, "that file is not a plain file inside a folder Vesqira may read on the host (a symbolic link on the way, a folder, or no permission)"
 		case "toolarge":
 			return 413, "that file is larger than the editor's 2 MiB limit"
+		case "mktemp":
+			return 403, "the folder is not writable on the host, so nothing was written"
 		case "readonly":
 			return 403, "the file is read-only on the host, so it is left as it is"
 		case "truncated":
@@ -150,8 +156,9 @@ func (s *Server) putHostText(w http.ResponseWriter, r *http.Request, in textSave
 		fail(w, st, m)
 		return
 	}
-	s.hostEditMu.Lock()
-	defer s.hostEditMu.Unlock()
+	mu := s.hostEditLock(h.ID)
+	mu.Lock()
+	defer mu.Unlock()
 	ctx, cancel := context.WithTimeout(r.Context(), 70*time.Second)
 	defer cancel()
 	saved, current, err := s.Remote.ReplaceText(ctx, h, in.Path, []byte(in.Content), in.Base.Sha256)
@@ -170,4 +177,17 @@ func (s *Server) putHostText(w http.ResponseWriter, r *http.Request, in textSave
 	}
 	s.Audit.Record("file saved on host", "host", h.ID, "sha256 "+in.Base.Sha256+" -> "+saved.Sha256+" "+h.Name+":"+in.Path)
 	writeJSON(w, 200, asHostTextFile(h, in.Path, saved))
+}
+
+// hostEditLock is the lock for one host: saves to different hosts do not wait for each other.
+func (s *Server) hostEditLock(id int64) *sync.Mutex {
+	s.hostEditMu.Lock()
+	defer s.hostEditMu.Unlock()
+	if s.hostEditLocks == nil {
+		s.hostEditLocks = map[int64]*sync.Mutex{}
+	}
+	if s.hostEditLocks[id] == nil {
+		s.hostEditLocks[id] = &sync.Mutex{}
+	}
+	return s.hostEditLocks[id]
 }

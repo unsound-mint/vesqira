@@ -306,8 +306,8 @@ func TestHostEditorAuditsPathAndHashesNeverContent(t *testing.T) {
 func TestHostEditorHostileFileNames(t *testing.T) {
 	e := newHostEditor(t)
 	t.Chdir(filepath.Dir(e.root))
-	name := "run $(touch PWNED) 'one' \"two\" `touch PWNED`;&|<>.json"
-	p := filepath.Join(e.root, "a b", "it's $(touch PWNED)", name)
+	name := "run $(touch PWNED) \"two\" `touch PWNED`;&|<>.json"
+	p := filepath.Join(e.root, "a b", "its $(touch PWNED)", name)
 	putText(t, p, []byte("{}\n"), 0o644)
 	code, f, b := e.openH(t, p)
 	if code != 200 {
@@ -318,6 +318,22 @@ func TestHostEditorHostileFileNames(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(e.root), "PWNED")); err == nil {
 		t.Fatal("a name was executed as shell syntax")
+	}
+}
+
+// A single quote or exclamation mark in a name is refused (fish reads the doubly quoted quote as an escape).
+func TestHostEditorRefusesQuoteAndBangNames(t *testing.T) {
+	e := newHostEditor(t)
+	for _, n := range []string{"a'(touch PWNED)'.txt", "it's.md", "a!b.md"} {
+		p := filepath.Join(e.root, n)
+		putText(t, p, []byte("x\n"), 0o644)
+		code, _, b := e.openH(t, p)
+		if code != 400 || !strings.Contains(string(b), "cannot be edited on a host") {
+			t.Errorf("%q open: %d %s", n, code, b)
+		}
+		if code, b := e.saveH(t, p, "y", textVersion{Sha256: strings.Repeat("a", 64)}); code != 400 {
+			t.Errorf("%q save: %d %s", n, code, b)
+		}
 	}
 }
 

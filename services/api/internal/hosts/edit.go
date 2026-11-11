@@ -13,7 +13,9 @@ import (
 // Editing a researcher's own text file on a host (ADR 0029, host files). This is the generalisation of the write path of
 // ADR 0039 to an arbitrary existing file: no Vesqira marker (the file is the researcher's), and in its place optimistic
 // concurrency on the sha256 the file had when it was opened. The same rules hold: values are single-quoted arguments used
-// only inside double quotes, the script is one line with no single quote, backslash or exclamation mark (csh and fish),
+// only inside double quotes, the script is one line with no single quote, backslash or exclamation mark (csh and fish).
+// The arguments themselves may contain none of those either (unsafeText): quote() escapes a single quote with a backslash outside the quotes and the
+// ssh layer quotes the line again, which fish reads as an escaped quote, so a name with one is refused rather than escaped;
 // nothing is written unless a staged copy has the expected byte count and sha256, links are never followed, and the
 // existing file's mode is kept.
 
@@ -43,7 +45,7 @@ func editTarget(h Host, p string) (root, rel, name string, err error) {
 	bad := func(why string) error { return fmt.Errorf("%w: %s", ErrEditPath, why) }
 	switch {
 	case unsafeText(p):
-		return "", "", "", bad("the path contains a NUL, newline, carriage return or backslash")
+		return "", "", "", bad("file names containing ' or ! cannot be edited on a host (nor NUL, newline, carriage return or backslash)")
 	case len(p) > 2000:
 		return "", "", "", bad("the path is too long")
 	case !h.InRoots(p):
@@ -94,7 +96,7 @@ emit() {
   [ "$n" -le "$cap" ] || refuse toolarge;
   s=$(sha < "$t");
   echo "vesqira-edit: $1";
-  cat -- "$t";
+  head -c $((cap+1)) < "$t";
   echo;
   echo "vesqira-edit: end $s $n $(mt)";
 };
@@ -117,10 +119,12 @@ emit begin;
 // with cp -p (so the mode is kept; portable POSIX, no stat), put the new bytes into the copy, verify them again, and
 // rename it over the target. Success prints "vesqira-edit: ok <mtime>". A read-only file is refused. The window between
 // step 4 and the rename is not closed (another process of the same account could write the file in between), the same
-// limit as ADR 0039 and as the local editor.
+// limit as ADR 0039 and as the local editor. A trap removes the staging folder when the script is cut short.
 var editWriteScript = oneLine(`
 tag=vesqira-edit; root=$1; rel=$2; name=$3; want_len=$4; want_sha=$5; prior=$6; cap=$7; td=;
 ` + scriptCommon + editWalk + `
+cleanup() { if [ -n "$td" ]; then rm -rf -- "$td"; td=; fi; };
+trap cleanup EXIT; trap "exit 1" INT TERM HUP;
 conflict() { if [ -n "$td" ]; then rm -rf -- "$td"; td=; fi; emit conflict; exit 0; };
 [ "$(sha < "$t")" = "$prior" ] || conflict;
 [ -w "$t" ] || refuse readonly;

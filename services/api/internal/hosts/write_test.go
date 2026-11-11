@@ -163,15 +163,15 @@ func TestWriteFileQuotesHostileNames(t *testing.T) {
 	t.Chdir(base) // a command substitution that ran would create ./PWNED here
 	pwn := "PWNED"
 	pwnPath := filepath.Join(base, pwn)
-	hostileRoot := filepath.Join(base, fmt.Sprintf("my proj it's \"q\" $(touch %s) `touch %s` ;touch %s;", pwn, pwn, pwn))
+	hostileRoot := filepath.Join(base, fmt.Sprintf("my proj its \"q\" $(touch %s) `touch %s` ;touch %s;", pwn, pwn, pwn))
 	if err := os.MkdirAll(hostileRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	m := NewManager(fakeSSH(t), nil)
 	m.ControlDir = t.TempDir()
 	h := Host{Name: "h", Dest: "login1", Python: "python3", Roots: []string{hostileRoot}}
-	rel := "a b/$(touch " + pwn + ")/it's new line/\"x\""
-	name := "run $(touch " + pwn + ") 'one' \"two\" `three`;&|<>.json"
+	rel := "a b/$(touch " + pwn + ")/its new line/\"x\""
+	name := "run $(touch " + pwn + ") \"two\" `three`;&|<>.json"
 	if err := m.WriteFile(context.Background(), h, spec(hostileRoot, rel, name, "{}")); err != nil {
 		t.Fatal(err)
 	}

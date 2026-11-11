@@ -255,7 +255,7 @@ func TestEditNeedsASha256Tool(t *testing.T) {
 
 func TestEditRefusesBackslashNulNewlineAndCRInPathsBeforeSending(t *testing.T) {
 	m, h, root := writeEnv(t)
-	for _, bad := range []string{"a\\b.toml", "a\nb.toml", "a\rb.toml", "a\x00b.toml", "d\\/a.toml"} {
+	for _, bad := range []string{"a\\b.toml", "a\nb.toml", "a\rb.toml", "a\x00b.toml", "d\\/a.toml", "a'(touch PWNED)'.txt", "it's.toml", "a!b.toml", "d'/a.toml"} {
 		p := root + "/" + bad
 		if _, err := m.ReadText(context.Background(), h, p); err == nil || reason(err) != "" {
 			t.Errorf("read %q: %v", bad, err)
@@ -271,9 +271,9 @@ func TestEditQuotesHostileNames(t *testing.T) {
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Chdir(base) // a command substitution that ran would create ./PWNED here
 	pwn := "PWNED"
-	root := filepath.Join(base, fmt.Sprintf("my proj it's \"q\" $(touch %s) `touch %s` ;touch %s;", pwn, pwn, pwn))
-	rel := "a b/$(touch " + pwn + ")/it's \"x\" `touch " + pwn + "`"
-	name := "run $(touch " + pwn + ") 'one' \"two\" `three`;&|<>*?[x] -rf.json"
+	root := filepath.Join(base, fmt.Sprintf("my proj its \"q\" $(touch %s) `touch %s` ;touch %s;", pwn, pwn, pwn))
+	rel := "a b/$(touch " + pwn + ")/its \"x\" `touch " + pwn + "`"
+	name := "run $(touch " + pwn + ") \"two\" `three`;&|<>*?[x] -rf.json"
 	p := filepath.Join(root, rel, name)
 	putFile(t, p, "{}\n", 0o640)
 	m := NewManager(fakeSSH(t), nil)
@@ -306,5 +306,52 @@ func TestEditScriptsSurviveAnyLoginShell(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(editWriteScript), []byte("cp -p")) {
 		t.Error("the mode of the existing file is kept with cp -p")
+	}
+}
+
+// quote() and the ssh layer quote twice, so a single quote would leave \' inside single quotes (an escaped quote to fish).
+// Names with spaces, $(), backticks and ; are allowed and must produce a command line without that sequence.
+func TestEditCommandLineHasNoEscapedQuote(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	root := filepath.Join(base, "proj")
+	name := "a b $(touch PWNED) `touch PWNED`;x.json"
+	p := filepath.Join(root, name)
+	putFile(t, p, "{}\n", 0o640)
+	logf := filepath.Join(base, "argv")
+	ssh := filepath.Join(base, "ssh")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + logf + "\nwhile [ $# -gt 0 ]; do case \"$1\" in -o) shift 2;; -T) shift;; *) break;; esac; done\nshift\ncmd=$(printf '%s' \"$*\" | sed -e 's#bash -lc#bash -c#')\nsh -c \"$cmd\"\n"
+	if err := os.WriteFile(ssh, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(ssh, nil)
+	m.ControlDir = t.TempDir()
+	h := Host{Name: "h", Dest: "login1", Python: "python3", Roots: []string{root}}
+	f, err := m.ReadText(context.Background(), h, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.ReplaceText(context.Background(), h, p, []byte("{ }\n"), f.Sha256); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(logf)
+	// the only \' allowed is the '\'' that joins the quoted pieces of the line; an escaped quote inside quoted text is what fish reads as a quote
+	if len(b) == 0 || strings.Contains(strings.ReplaceAll(string(b), `'\''`, ""), `\'`) {
+		t.Fatalf("command lines: %q", b)
+	}
+}
+
+func TestEditSaveLeavesNoStagingFolderWhenCut(t *testing.T) {
+	m, h, root := writeEnv(t)
+	p := root + "/a.toml"
+	putFile(t, p, "a", 0o644)
+	if !strings.Contains(editWriteScript, "trap cleanup EXIT") {
+		t.Fatal("the save script removes its staging folder on exit and signals")
+	}
+	f, _ := m.ReadText(context.Background(), h, p)
+	if _, _, err := m.ReplaceText(context.Background(), h, p, []byte("b"), f.Sha256); err != nil {
+		t.Fatal(err)
+	}
+	if ents, _ := filepath.Glob(filepath.Join(root, ".vesqira-edit.*")); len(ents) != 0 {
+		t.Fatalf("left %v", ents)
 	}
 }
