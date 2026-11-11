@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Kinds. The first five are how a job ended; the last two say what happened to its results.
+// Kinds. The first five are how a job ended; the next two say what happened to its results; the transfer kinds follow.
 const (
 	KindCompleted    = "completed"
 	KindFailed       = "failed"
@@ -19,6 +19,10 @@ const (
 	KindUnknown      = "unknown"
 	KindImported     = "imported"
 	KindImportFailed = "import_failed"
+	// A transfer between this computer and a host finished, did not (or arrived unverified), or needs a decision (ADR 0048).
+	KindTransferDone     = "transfer_done"
+	KindTransferFailed   = "transfer_failed"
+	KindTransferConflict = "transfer_conflict"
 )
 
 // Keep is how many events are kept; older ones are dropped when a new one arrives.

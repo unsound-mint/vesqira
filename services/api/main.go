@@ -30,6 +30,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/server"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
+	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
@@ -132,6 +133,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	transferStore, err := transfers.Open(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
 	regionStore, err := regions.Open(store.DB())
 	if err != nil {
 		log.Fatal(err)
@@ -166,7 +171,7 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Derived: derivedStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
+	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
@@ -203,8 +208,18 @@ func main() {
 	if *jobWatch > 0 { // follow queued and running jobs on the hosts while the app runs (ADR 0043)
 		go srv.WatchJobs(stop, *jobWatch)
 	}
+	transfersStopped := make(chan struct{}) // the transfer queue (ADR 0048); on shutdown rsync gets SIGTERM and keeps its partial files
+	go func() {
+		srv.RunTransfers(stop)
+		close(transfersStopped)
+	}()
 	<-stop.Done()
 	log.Printf("shutting down: finishing running requests")
+	select {
+	case <-transfersStopped:
+	case <-time.After(30 * time.Second):
+		log.Printf("transfers did not stop in time; they resume from their partial files at the next start")
+	}
 	done, release := context.WithTimeout(context.Background(), 15*time.Second)
 	defer release()
 	for _, s := range servers {

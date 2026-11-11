@@ -31,6 +31,12 @@ const (
 	StateSkipped   = "skipped"
 )
 
+// Kinds of source.
+const (
+	KindFile = "file"
+	KindDir  = "dir"
+)
+
 // Policies for a name that already exists at the destination. Nothing but PolicyReplace ever overwrites.
 const (
 	PolicyAsk      = "ask"       // an identical file counts as already there; a different one waits for the owner
