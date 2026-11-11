@@ -14,16 +14,16 @@ const run = (over: Partial<Run> = {}): Run => ({
 });
 const baseText = '[vgt]\nker = 8\ndn = 10\nnoise = 0.37\nnoise_mode = "scalar"\n';
 const fromJob: Rerun = {
-  parentRunId: 1, source: "job", hostId: 1, template: "vgt", name: "vgt-ker8-again", params: [], notes: [], configChanged: false,
+  parentRunId: 1, source: "job", hostId: 1, template: "vgt", name: "vgt-ker8-again", params: [], notes: [], configChanged: false, lastJob: null,
   vgt: { repoDir: "/shared/vgt", configPath: "/data/configs/a.toml", baseConfigText: baseText, set: { dn: "12" }, cpus: 16, mem: "64G", time: "02:00:00", partition: "", account: "" },
 };
 const imported: Rerun = {
-  parentRunId: 2, source: "imported", hostId: null, template: "vgt", name: "run-b-again", configChanged: null,
+  parentRunId: 2, source: "imported", hostId: null, template: "vgt", name: "run-b-again", configChanged: null, lastJob: null,
   notes: ["This run was imported: how it was started is not known."],
   params: [{ key: "ker", value: "4", source: "config" }],
   vgt: { repoDir: null, configPath: null, baseConfigText: null, set: {}, cpus: null, mem: null, time: null, partition: null, account: null },
 };
-const created: Job = { id: 9, hostId: 1, name: "x", template: "vgt", script: "", scriptHash: "", state: "draft", detail: "", slurmId: "", workDir: "", outputDir: "", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: 1, note: "", autoImport: true };
+const created: Job = { id: 9, hostId: 1, name: "x", template: "vgt", script: "", scriptHash: "", state: "draft", detail: "", slurmId: "", workDir: "", outputDir: "", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: 1, note: "", autoImport: true, usage: null };
 
 const boardList = { boards: [{ id: 5, title: "LMC paper", createdAt: "", updatedAt: "", items: [] }] };
 function mockFetch(rerun: Rerun, addFails = false) {

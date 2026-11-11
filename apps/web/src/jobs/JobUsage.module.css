@@ -1,0 +1,46 @@
+.box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  font-size: var(--text-sm);
+}
+
+.lead,
+.note,
+.warn,
+.src {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.lead {
+  color: var(--text);
+}
+
+.note {
+  color: var(--text-2);
+}
+
+.src {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.warn {
+  color: var(--text);
+  font-weight: var(--w-strong);
+}
+
+.warn::before {
+  content: "Note: ";
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}

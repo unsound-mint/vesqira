@@ -4209,6 +4209,291 @@
     "report"
    ],
    "description": "Positions in the declared frame, or in the frame asked for (transformed with astropy, angles carried with them)."
+  },
+  "QuotaEntry": {
+   "type": "object",
+   "required": [
+    "scope",
+    "usedBytes",
+    "softBytes",
+    "hardBytes",
+    "raw"
+   ],
+   "properties": {
+    "scope": {
+     "type": "string",
+     "description": "storage pool, file system or mount the line is about"
+    },
+    "usedBytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "softBytes": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true,
+     "description": "null: the tool reports no soft limit"
+    },
+    "hardBytes": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true,
+     "description": "null: the tool reports no hard limit"
+    },
+    "raw": {
+     "type": "string",
+     "description": "the line as the tool printed it (shortened), so the numbers can be compared with the cluster's own"
+    }
+   },
+   "description": "One line of a quota report. Sizes are powers of 1024, which is what each tool prints."
+  },
+  "HostQuota": {
+   "type": "object",
+   "required": [
+    "tool",
+    "command",
+    "entries"
+   ],
+   "properties": {
+    "tool": {
+     "type": "string",
+     "enum": [
+      "beegfs-ctl",
+      "lfs quota",
+      "quota"
+     ],
+     "description": "which tool answered; tried in this order"
+    },
+    "command": {
+     "type": "string"
+    },
+    "entries": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/QuotaEntry"
+     }
+    }
+   }
+  },
+  "HostFilesystem": {
+   "type": "object",
+   "required": [
+    "root",
+    "filesystem",
+    "mount",
+    "totalBytes",
+    "usedBytes",
+    "availBytes",
+    "raw"
+   ],
+   "properties": {
+    "root": {
+     "type": "string",
+     "description": "one of the host's declared source roots"
+    },
+    "filesystem": {
+     "type": "string"
+    },
+    "mount": {
+     "type": "string"
+    },
+    "totalBytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "usedBytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "availBytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "raw": {
+     "type": "string"
+    },
+    "error": {
+     "type": "string",
+     "description": "present when df gave nothing usable for this root; the numbers are then 0 and mean nothing"
+    }
+   },
+   "description": "What `df -P -k` reported for a root. Free space is the file system's, not the user's allowance."
+  },
+  "HostStorageReport": {
+   "type": "object",
+   "required": [
+    "checkedAt",
+    "quota",
+    "quotaNote",
+    "filesystems"
+   ],
+   "properties": {
+    "checkedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "quota": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/HostQuota"
+      }
+     ],
+     "nullable": true,
+     "description": "null when no quota tool answered readably"
+    },
+    "quotaNote": {
+     "type": "string",
+     "description": "when quota is null: \"this site's quota tool is not available\", in words"
+    },
+    "filesystems": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/HostFilesystem"
+     }
+    }
+   }
+  },
+  "HostStorage": {
+   "type": "object",
+   "required": [
+    "report",
+    "error",
+    "checkedAt",
+    "cached"
+   ],
+   "properties": {
+    "report": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/HostStorageReport"
+      }
+     ],
+     "nullable": true,
+     "description": "the last good look; null if there has never been one"
+    },
+    "error": {
+     "type": "string",
+     "description": "non-empty when the latest attempt failed (host unreachable); report is then the last good look, if any"
+    },
+    "checkedAt": {
+     "type": "string",
+     "format": "date-time",
+     "nullable": true,
+     "description": "when report was made"
+    },
+    "cached": {
+     "type": "boolean",
+     "description": "true when no call was made to the host for this answer"
+    }
+   },
+   "description": "Quota and disk usage of a host (ADR 0044). A look is reused for 10 minutes; a failed one for 1 minute; Refresh cannot reach the host more than once per 15 seconds."
+  },
+  "RunFolder": {
+   "type": "object",
+   "required": [
+    "path",
+    "name",
+    "kind",
+    "jobId",
+    "bytes",
+    "partial",
+    "measuredAt"
+   ],
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "job",
+      "run"
+     ],
+     "description": "a job's output folder, or a run folder found by scanning a project on the host"
+    },
+    "jobId": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true
+    },
+    "bytes": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true,
+     "description": "null until measured; never 0 for unmeasured"
+    },
+    "partial": {
+     "type": "boolean",
+     "description": "du could not read some entries, so bytes is a lower bound"
+    },
+    "measuredAt": {
+     "type": "string",
+     "format": "date-time",
+     "nullable": true
+    }
+   }
+  },
+  "RunFolderList": {
+   "type": "object",
+   "required": [
+    "folders"
+   ],
+   "properties": {
+    "folders": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RunFolder"
+     }
+    }
+   },
+   "description": "Run folders on a host, largest measured first. Listing makes no call to the host."
+  },
+  "FolderSizeRequest": {
+   "type": "object",
+   "required": [
+    "path"
+   ],
+   "properties": {
+    "path": {
+     "type": "string",
+     "description": "an absolute folder inside one of the host's source roots"
+    }
+   }
+  },
+  "DiskUsage": {
+   "type": "object",
+   "required": [
+    "path",
+    "kib",
+    "bytes",
+    "partial",
+    "measuredAt"
+   ],
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "kib": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "bytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "partial": {
+     "type": "boolean",
+     "description": "du could not read some entries: a lower bound"
+    },
+    "measuredAt": {
+     "type": "string",
+     "format": "date-time"
+    }
+   },
+   "description": "`du -sk` of one folder: disk blocks used, not the sum of file lengths."
   }
  },
  "operations": {
@@ -6284,6 +6569,210 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Dataset"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/hosts/{id}/storage": {
+   "summary": "Quota and disk usage of a host, from a cache of at most 10 minutes (owner listener only)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HostStorage"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such host",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/hosts/{id}/storage/refresh": {
+   "summary": "Look at the host's storage again now (at most once per 15 seconds per host)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HostStorage"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such host",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/hosts/{id}/folders": {
+   "summary": "Run folders on a host (job outputs, scanned runs) with the sizes measured so far; no call to the host",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunFolderList"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such host",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/hosts/{id}/folders/size": {
+   "summary": "Measure one folder with du -sk (read-only; one at a time per host; 90 s limit)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/FolderSizeRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DiskUsage"
+       }
+      }
+     }
+    },
+    "422": {
+     "description": "not a folder inside the host's source roots",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "502": {
+     "description": "the host did not answer, du timed out, or the folder is not there",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
        }
       }
      }

@@ -1245,6 +1245,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/hosts/{id}/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Run folders on a host (job outputs, scanned runs) with the sizes measured so far; no call to the host */
+        get: operations["owner_s_hostFolders_get_api_hosts_id_folders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{id}/folders/size": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Measure one folder with du -sk (read-only; one at a time per host; 90 s limit) */
+        post: operations["owner_s_measureFolder_post_api_hosts_id_folders_size"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/hosts/{id}/list": {
         parameters: {
             query?: never;
@@ -1275,6 +1313,44 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_registerRemote_post_api_hosts_id_register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{id}/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Quota and disk usage of a host, from a cache of at most 10 minutes (owner listener only) */
+        get: operations["owner_s_hostStorage_false_get_api_hosts_id_storage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{id}/storage/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Look at the host's storage again now (at most once per 15 seconds per host) */
+        post: operations["owner_s_hostStorage_true_post_api_hosts_id_storage_refresh"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4038,6 +4114,113 @@ export interface components {
             note?: string;
             report: components["schemas"]["CatalogParseReport"];
         };
+        /** @description One line of a quota report. Sizes are powers of 1024, which is what each tool prints. */
+        QuotaEntry: {
+            /** @description storage pool, file system or mount the line is about */
+            scope: string;
+            /** Format: int64 */
+            usedBytes: number;
+            /**
+             * Format: int64
+             * @description null: the tool reports no soft limit
+             */
+            softBytes: number | null;
+            /**
+             * Format: int64
+             * @description null: the tool reports no hard limit
+             */
+            hardBytes: number | null;
+            /** @description the line as the tool printed it (shortened), so the numbers can be compared with the cluster's own */
+            raw: string;
+        };
+        HostQuota: {
+            /**
+             * @description which tool answered; tried in this order
+             * @enum {string}
+             */
+            tool: "beegfs-ctl" | "lfs quota" | "quota";
+            command: string;
+            entries: components["schemas"]["QuotaEntry"][];
+        };
+        /** @description What `df -P -k` reported for a root. Free space is the file system's, not the user's allowance. */
+        HostFilesystem: {
+            /** @description one of the host's declared source roots */
+            root: string;
+            filesystem: string;
+            mount: string;
+            /** Format: int64 */
+            totalBytes: number;
+            /** Format: int64 */
+            usedBytes: number;
+            /** Format: int64 */
+            availBytes: number;
+            raw: string;
+            /** @description present when df gave nothing usable for this root; the numbers are then 0 and mean nothing */
+            error?: string;
+        };
+        HostStorageReport: {
+            /** Format: date-time */
+            checkedAt: string;
+            /** @description null when no quota tool answered readably */
+            quota: components["schemas"]["HostQuota"] | null;
+            /** @description when quota is null: "this site's quota tool is not available", in words */
+            quotaNote: string;
+            filesystems: components["schemas"]["HostFilesystem"][];
+        };
+        /** @description Quota and disk usage of a host (ADR 0044). A look is reused for 10 minutes; a failed one for 1 minute; Refresh cannot reach the host more than once per 15 seconds. */
+        HostStorage: {
+            /** @description the last good look; null if there has never been one */
+            report: components["schemas"]["HostStorageReport"] | null;
+            /** @description non-empty when the latest attempt failed (host unreachable); report is then the last good look, if any */
+            error: string;
+            /**
+             * Format: date-time
+             * @description when report was made
+             */
+            checkedAt: string | null;
+            /** @description true when no call was made to the host for this answer */
+            cached: boolean;
+        };
+        RunFolder: {
+            path: string;
+            name: string;
+            /**
+             * @description a job's output folder, or a run folder found by scanning a project on the host
+             * @enum {string}
+             */
+            kind: "job" | "run";
+            /** Format: int64 */
+            jobId: number | null;
+            /**
+             * Format: int64
+             * @description null until measured; never 0 for unmeasured
+             */
+            bytes: number | null;
+            /** @description du could not read some entries, so bytes is a lower bound */
+            partial: boolean;
+            /** Format: date-time */
+            measuredAt: string | null;
+        };
+        /** @description Run folders on a host, largest measured first. Listing makes no call to the host. */
+        RunFolderList: {
+            folders: components["schemas"]["RunFolder"][];
+        };
+        FolderSizeRequest: {
+            /** @description an absolute folder inside one of the host's source roots */
+            path: string;
+        };
+        /** @description `du -sk` of one folder: disk blocks used, not the sum of file lengths. */
+        DiskUsage: {
+            path: string;
+            /** Format: int64 */
+            kib: number;
+            /** Format: int64 */
+            bytes: number;
+            /** @description du could not read some entries: a lower bound */
+            partial: boolean;
+            /** Format: date-time */
+            measuredAt: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -6086,6 +6269,99 @@ export interface operations {
             };
         };
     };
+    owner_s_hostFolders_get_api_hosts_id_folders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunFolderList"];
+                };
+            };
+            /** @description no such host */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_measureFolder_post_api_hosts_id_folders_size: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FolderSizeRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiskUsage"];
+                };
+            };
+            /** @description not a folder inside the host's source roots */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the host did not answer, du timed out, or the folder is not there */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listRemote_get_api_hosts_id_list: {
         parameters: {
             query?: never;
@@ -6123,6 +6399,86 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_hostStorage_false_get_api_hosts_id_storage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostStorage"];
+                };
+            };
+            /** @description no such host */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_hostStorage_true_post_api_hosts_id_storage_refresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostStorage"];
+                };
+            };
+            /** @description no such host */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

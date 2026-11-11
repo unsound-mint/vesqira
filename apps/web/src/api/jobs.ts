@@ -1,6 +1,25 @@
 import { request as call, postJSON as post } from "./http";
 import type { Run } from "./runs";
 
+/** What the scheduler recorded a finished job used (ADR 0044). null is "not reported", never 0. */
+export type JobUsage = {
+  state: string;
+  exitCode: string;
+  elapsedSeconds: number;
+  timelimitSeconds: number | null;
+  reqMemBytes: number | null;
+  maxRssBytes: number | null;
+  allocCpus: number | null;
+  totalCpuSeconds: number | null;
+  cpuEfficiency: number | null;
+  /** TotalCPU is about zero over a long run: the work ran where Slurm does not account CPU. */
+  cpuNotAccounted: boolean;
+  oomKilled: boolean;
+  suggest: UsageSuggestion | null;
+};
+/** A request sized from one job's measured use. It is shown, never applied by itself. */
+export type UsageSuggestion = { mem: string; time: string; memBytes: number; timeSeconds: number; basis: string };
+
 export type JobState = "draft" | "submitting" | "submitted" | "running" | "completed" | "failed" | "cancelled";
 
 export type Job = {
@@ -24,6 +43,8 @@ export type Job = {
   note: string;
   /** Import the results as a run by itself when the job completes (VGT jobs only); fixed once the job is submitted. */
   autoImport: boolean;
+  /** What the scheduler said the job used, once it has ended; null before that or when the end was not read from sacct. */
+  usage: JobUsage | null;
 };
 
 export type RohsaJobRequest = {

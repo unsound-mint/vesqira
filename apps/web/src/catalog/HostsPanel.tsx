@@ -5,6 +5,7 @@ import { Button, Input, PathField, Select } from "../ui";
 import { browseHostDirs, checkHost, createHost, deleteHost, listRemote, registerRemote, sshConfigHosts } from "../api/hosts";
 import type { Host, HostCheck, RemoteEntry, SshAlias } from "../api/hosts";
 import { bytes } from "./format";
+import { HostStorage } from "../hosts/HostStorage";
 import s from "./HostsPanel.module.css";
 
 const join = (dir: string, name: string) => `${dir.replace(/\/$/, "")}/${name}`;
@@ -143,6 +144,7 @@ function HostRow({ host, onChange, onRegistered }: { host: Host; onChange: () =>
         <Button type="submit" disabled={busy || !regPath.trim()}>Register</Button>
       </form>
       {state ? <p role="alert" className={s.err}>{state}</p> : null}
+      <HostStorage host={host} />
       {check ? (
         <p className={s.note} role="status">
           Connected. Python {check.python}, astropy {check.astropy}. {check.enforces_roots ? "The host enforces its source folders itself." : "The host is NOT enforcing source folders."}
