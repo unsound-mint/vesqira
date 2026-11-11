@@ -1,4 +1,5 @@
 import type { Scene, SceneAction, SceneLink } from "./scene";
+import { visibleWindow } from "./view";
 
 /**
  * Panes that follow each other (ADR 0042, section 4). A group names its panes and which facets it links: the cursor, the
@@ -80,8 +81,16 @@ export type SkyMap = {
   frames: { from: string; to: string; sameFrame: boolean };
 };
 
-/** Image pixels the pane shows, in the worker's pixel coordinates (the view is in edge coordinates, y up: pixel i spans [i, i + 1)). */
-export function visibleRegion(view: Scene["view"], image: Size): Region {
+/**
+ * Image pixels the pane shows, in the worker's pixel coordinates (the view is in edge coordinates, y up: pixel i spans
+ * [i, i + 1)). With the pane's size this is exactly what it shows (`visibleWindow`: a pane wider or taller than the image shows
+ * more along one axis); without it, the window of image / zoom around the centre, which is the part of it the pane always shows.
+ */
+export function visibleRegion(view: Scene["view"], image: Size, pane?: Size | null): Region {
+  if (pane && pane.w > 0 && pane.h > 0) {
+    const w = visibleWindow(view, pane, image);
+    return { x0: w.x0 - 0.5, x1: w.x1 - 0.5, y0: w.y0 - 0.5, y1: w.y1 - 0.5 };
+  }
   const c = view.centre ?? { x: image.w / 2, y: image.h / 2 };
   const hw = image.w / view.zoom / 2;
   const hh = image.h / view.zoom / 2;

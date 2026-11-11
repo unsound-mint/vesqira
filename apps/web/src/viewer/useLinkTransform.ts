@@ -38,12 +38,12 @@ function channelsOf(r: LinkReply): ChannelState {
  * is asked again, because the approximation's measured error is per region. The last answer stays until the next arrives
  * (consumers check that a point is inside its region), and is dropped when the pair changes.
  */
-export function useSkyLink(enabled: boolean, from: number | null, to: number | null, scene: Scene | null, image: Size | null, stamp: string): SkyState {
+export function useSkyLink(enabled: boolean, from: number | null, to: number | null, scene: Scene | null, image: Size | null, pane: Size | null, stamp: string): SkyState {
   const [state, setState] = useState<{ key: string; s: SkyState }>({ key: "", s: IDLE_SKY });
   const [kept, setKept] = useState<Region | null>(null);
   const pair = `${from}>${to}|${stamp}`;
   const view = scene?.view;
-  const win = useMemo(() => (view && image ? visibleRegion(view, image) : null), [view?.zoom, view?.centre?.x, view?.centre?.y, image?.w, image?.h]); // eslint-disable-line react-hooks/exhaustive-deps
+  const win = useMemo(() => (view && image ? visibleRegion(view, image, pane) : null), [view?.zoom, view?.centre?.x, view?.centre?.y, image?.w, image?.h, pane?.w, pane?.h]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     setKept(null);
   }, [pair]);

@@ -56,7 +56,7 @@ import { flagState, spectralText } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
 import type { Pixel } from "../viewer/useViewer";
 import { limits } from "../viewer/render";
-import { channelTarget, defaultPrefs, follow, linkGroup, linkPills, links, mapPixel, sceneLink } from "../scene/link";
+import { channelTarget, defaultPrefs, linkGroup, linkPills, links, mapPixel, sceneLink } from "../scene/link";
 import type { LinkPrefs, PaneId } from "../scene/link";
 import { useChannelLink, useSkyLink } from "../viewer/useLinkTransform";
 import { useLinkFollow } from "../viewer/useLinkFollow";
@@ -124,10 +124,12 @@ export function Shell() {
   const stamp = `${cat.selectedImage?.modifiedAt ?? ""}|${compareDs?.modifiedAt ?? ""}`;
   const imageA = viewerA.view ? { w: viewerA.view.width, h: viewerA.view.height } : null;
   const imageB = viewerB.view ? { w: viewerB.view.width, h: viewerB.view.height } : null;
+  const [paneA, setPaneA] = useState<{ w: number; h: number } | null>(null);
+  const [paneB, setPaneB] = useState<{ w: number; h: number } | null>(null);
   const byWcs = group !== null && group.basis === "wcs";
   const wantSky = byWcs && (group.facets.cursor || group.facets.view);
-  const skyAB = useSkyLink(wantSky, idA, idB, viewerA.scene, imageA, stamp);
-  const skyBA = useSkyLink(wantSky, idB, idA, viewerB.scene, imageB, stamp);
+  const skyAB = useSkyLink(wantSky, idA, idB, viewerA.scene, imageA, paneA, stamp);
+  const skyBA = useSkyLink(wantSky, idB, idA, viewerB.scene, imageB, paneB, stamp);
   const wantChannels = byWcs && group.facets.channel;
   const chAB = useChannelLink(wantChannels, idA, idB, stamp);
   const chBA = useChannelLink(wantChannels, idB, idA, stamp);
@@ -250,10 +252,6 @@ export function Shell() {
       toggle("sideOpen");
     }
   }, [compareDs?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  // the pane you are working in drives the other one, for the facets its group links
-  useEffect(() => {
-    for (const a of follow(group, viewer.scene, other.scene, { from: viewer.channels, to: other.channels })) other.dispatch(a);
-  }, [linked, viewer.channel, viewer.channels, other.channels, viewer.scene?.view]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null), setOutsideIn(null);
   }, [linked, group?.facets.cursor, group?.basis]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -434,12 +432,12 @@ export function Shell() {
             <div className={compareDs ? s.panes2 : s.panes1}>
               <section className={s.pane} aria-label={`Map: ${cat.selectedImage.name}`}>
                 {compareDs ? <PaneHeader name={cat.selectedImage.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} note={outsideIn === "a" ? OUTSIDE_NOTE : null} /> : null}
-                <div className={s.paneBody}><PlaneViewer v={viewerA} onProbe={(p) => mirror("a", p)} /></div>
+                <div className={s.paneBody}><PlaneViewer v={viewerA} onProbe={(p) => mirror("a", p)} onSize={setPaneA} /></div>
               </section>
               {compareDs ? (
                 <section className={s.pane} aria-label={`Map: ${compareDs.name}`}>
                   <PaneHeader name={compareDs.name} axial={viewerB.interp !== null} active={useB} onActivate={() => setActive("b")} note={outsideIn === "b" ? OUTSIDE_NOTE : null} />
-                  <div className={s.paneBody}><PlaneViewer v={viewerB} onProbe={(p) => mirror("b", p)} /></div>
+                  <div className={s.paneBody}><PlaneViewer v={viewerB} onProbe={(p) => mirror("b", p)} onSize={setPaneB} /></div>
                 </section>
               ) : null}
             </div>

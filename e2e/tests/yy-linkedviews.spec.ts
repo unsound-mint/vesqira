@@ -30,6 +30,42 @@ async function hover(page: Page, name: string, fx: number, fy: number) {
   await page.mouse.move(box.x + box.width * fx, box.y + box.height * fy);
 }
 
+const widthOf = async (page: Page, name: string) => (await pane(page, name).locator('canvas[aria-label*="pixels"]').first().boundingBox())!.width;
+const group = (page: Page) => page.getByRole("group", { name: "Link group" });
+// the two panes differ by a pixel at the same zoom (their borders), so equal means within 1 %
+const equalWidths = (page: Page, a: string, b: string) => expect.poll(async () => Math.abs((await widthOf(page, a)) - (await widthOf(page, b))) / (await widthOf(page, a))).toBeLessThan(0.01);
+
+test("the view follows the pane that is moved, either way, on one grid", async ({ page }) => {
+  await page.goto("/");
+  for (const f of ["vgt_psi_deg.fits", "vgt_psi_rad.fits"]) await ensureRegistered(page, f);
+  await datasets(page).getByRole("button", { name: /^vgt_psi_deg\.fits/ }).first().click();
+  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
+  await page.getByLabel("Compare with").selectOption({ label: "vgt_psi_rad.fits" });
+  await expect(page.getByText("Same grid: cursor and channel are linked")).toBeVisible();
+  const a = "vgt_psi_deg.fits";
+  const b = "vgt_psi_rad.fits";
+  // the view is not linked until it is asked for: a zoom in A leaves B alone
+  const fitted = await widthOf(page, b);
+  await pane(page, a).getByRole("button", { name: "Zoom in" }).click();
+  await expect.poll(() => widthOf(page, a)).toBeGreaterThan(fitted + 1);
+  expect(Math.abs((await widthOf(page, b)) - fitted)).toBeLessThan(1.5);
+  // ticking View brings B to A's view (A is the active pane and leads once)
+  await group(page).getByLabel("View").check();
+  await expect(page.getByText("Same grid: cursor, channel and view are linked")).toBeVisible();
+  await equalWidths(page, a, b);
+  // a zoom in A is followed by B
+  await pane(page, a).getByRole("button", { name: "Zoom in" }).click();
+  await equalWidths(page, a, b);
+  // a zoom in B, the pane that is not active, is followed by A, and nothing snaps back
+  const before = await widthOf(page, b);
+  await pane(page, b).getByRole("button", { name: "Zoom in" }).click();
+  await expect.poll(() => widthOf(page, b)).toBeGreaterThan(before + 1);
+  await equalWidths(page, a, b);
+  const settled = await widthOf(page, b);
+  await page.waitForTimeout(600);
+  expect(Math.abs((await widthOf(page, b)) - settled)).toBeLessThan(1.5);
+});
+
 test("different grids link by WCS: cursor marker, footprint, channel by value, a refused frame, and unlinking", async ({ page }) => {
   await page.goto("/");
   for (const f of ["hi_cube.fits", "hi_cube_galactic_overlap.fits", "hi_cube_topocentric.fits"]) await ensureRegistered(page, f);
@@ -83,7 +119,38 @@ test("different grids link by WCS: cursor marker, footprint, channel by value, a
   await expect(page.getByText("Channel link refused: spectral frames differ (LSRK vs TOPOCENT); changing frame is not offered")).toBeVisible();
   await expect(page.getByText(/Linked by WCS: frame ICRS \(astropy\)/)).toBeVisible();
 
-  const r = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).include('[aria-label="Link group"]').analyze();
+  // the marker is where the closed form puts it: B has pixels twice as large about the same reference pixel (15, 11 from 0),
+  // so A's pixel (25, 17) is B's (20, 14); this pins the pixel convention between the browser and the worker
+  const b2 = "hi_cube_topocentric.fits";
+  const canvasBox = async (name: string) => (await pane(page, name).locator('canvas[aria-label*="pixels"]').first().boundingBox())!;
+  const ac = await canvasBox(a);
+  await expect(async () => {
+    await page.mouse.move(ac.x + ac.width * (25.5 / 32), ac.y + ac.height * (1 - 17.5 / 24) - 1);
+    await page.mouse.move(ac.x + ac.width * (25.5 / 32), ac.y + ac.height * (1 - 17.5 / 24));
+    await expect(marker(pane(page, b2))).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  const bc = await canvasBox(b2);
+  const mk = (await marker(pane(page, b2)).boundingBox())!;
+  expect(Math.abs(mk.x + mk.width / 2 - bc.x - bc.width * (20.5 / 32))).toBeLessThan(2);
+  expect(Math.abs(mk.y + mk.height / 2 - bc.y - bc.height * ((24 - 1 - 14 + 0.5) / 24))).toBeLessThan(2);
+
+  // the view, linked by WCS, follows whichever pane is moved: B shows twice the field, so it zooms twice as much as A
+  const fa = (await canvasBox(a)).width;
+  const fb = bc.width;
+  const near = (name: string, want: number) => expect.poll(async () => Math.abs((await canvasBox(name)).width / want - 1)).toBeLessThan(0.015);
+  await group(page).getByLabel("View").check();
+  await near(b2, 2 * fb);
+  await pane(page, a).getByRole("button", { name: "Zoom in" }).click();
+  await near(a, 1.25 * fa);
+  await near(b2, 2.5 * fb);
+  await pane(page, b2).getByRole("button", { name: "Zoom in" }).click();
+  await near(b2, 3.125 * fb);
+  await near(a, 1.5625 * fa);
+  await page.waitForTimeout(600);
+  await near(b2, 3.125 * fb); // nothing snapped back
+  await near(a, 1.5625 * fa);
+
+  const r =await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).include('[aria-label="Link group"]').analyze();
   expect(r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
   if (process.env.VESQIRA_SHOTS) await page.screenshot({ path: `${process.env.VESQIRA_SHOTS}/linked-views.png` });
 });

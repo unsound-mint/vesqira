@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import fixture from "../../../../packages/contracts/fixtures/scenes.json";
-import { channelTarget, compareGroup, contains, defaultPrefs, followWcs, linkGroup, linkPills, mapPixel, mapView, regionToAsk, sceneLink, visibleRegion } from "./link";
+import { channelTarget, compareGroup, contains, defaultPrefs, followWcs, linkGroup, linkPills, mapPixel, mapView, padRegion, regionToAsk, sceneLink, visibleRegion } from "./link";
 import type { ChannelMap, ChannelState, LinkGroup, SkyMap, SkyState } from "./link";
 import { initialPane, paneReducer, sceneReducer } from "./scene";
+import { visibleWindow } from "./view";
 import type { Scene } from "./scene";
 
 const scene = (channel = 0, view: Scene["view"] = { zoom: 1 }): Scene => ({
@@ -91,6 +92,24 @@ describe("the view in the other map", () => {
     expect(regionToAsk(asked, { x0: win.x0 + 20, x1: win.x1 + 20, y0: win.y0, y1: win.y1 })).not.toBe(asked); // left the region
     const zoomedIn = visibleRegion({ zoom: 16, centre: { x: 20, y: 20 } }, { w: 40, h: 40 });
     expect(regionToAsk(asked, zoomedIn)).not.toBe(asked); // a much smaller view has a tighter error bound: asked again
+  });
+});
+
+describe("the region asked of the worker is what the pane shows", () => {
+  // a tall image in a pane that is wider than it: the pane shows more than image / zoom across, which the margin must cover
+  const image = { w: 100, h: 300 };
+  const pane = { w: 517, h: 390 };
+  const view = { zoom: 2, centre: { x: 50, y: 150 } };
+  it("contains the pane's real window with the margin, in the worker's pixel coordinates", () => {
+    const w = visibleWindow(view, pane, image);
+    const shown = { x0: w.x0 - 0.5, x1: w.x1 - 0.5, y0: w.y0 - 0.5, y1: w.y1 - 0.5 };
+    expect(visibleRegion(view, image, pane)).toEqual(shown);
+    expect(contains(regionToAsk(null, shown), shown)).toBe(true);
+    // image / zoom alone would leave the outer columns of this pane outside the region (the reason the pane's size is used)
+    expect(contains(padRegion(visibleRegion(view, image), 0.25), shown)).toBe(false);
+  });
+  it("falls back to image / zoom before the pane has a size", () => {
+    expect(visibleRegion(view, image, { w: 0, h: 0 })).toEqual(visibleRegion(view, image));
   });
 });
 

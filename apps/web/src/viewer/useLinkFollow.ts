@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { followWcs } from "../scene/link";
+import { follow, followWcs } from "../scene/link";
 import type { ChannelState, LinkGroup, PaneId, SkyMap, SkyState } from "../scene/link";
 import type { Viewer } from "./useViewer";
 
@@ -12,7 +12,8 @@ const flags = () => ({ ch: { a: false, b: false }, view: { a: false, b: false } 
 type Seen = { key: string; ch: Record<PaneId, number | null>; view: Record<PaneId, string>; sky: Record<PaneId, SkyMap | null> };
 
 /**
- * Makes a pane follow the one the person moves, for a group linked by WCS (ADR 0042, section 4). It reacts to a pane's own
+ * Makes a pane follow the one the person moves, for a linked group on either basis (ADR 0042, section 4): by index and image
+ * point on the same grid, through the worker's tables by WCS. It reacts to a pane's own
  * change, never to which pane is active: nearest-channel and clamped-zoom mappings are not invertible, so following the
  * active pane would make the other jump the moment the inspector switched. A change this hook made itself is not taken for
  * the person's (it would bounce back). When a facet is switched on or its transform arrives, the active pane leads once; when
@@ -24,8 +25,8 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
   const led = useRef<PaneId>("a"); // the pane whose view was last followed
   const sa = v.a.scene;
   const sb = v.b.scene;
-  const key = group && group.basis === "wcs"
-    ? [ids.a, ids.b, group.facets.channel, group.facets.view, chan.ab.map !== null, chan.ba.map !== null, sky.ab.map !== null, sky.ba.map !== null].join("|")
+  const key = group
+    ? [group.basis, ids.a, ids.b, v.a.channels, v.b.channels, group.facets.channel, group.facets.view, chan.ab.map !== null, chan.ba.map !== null, sky.ab.map !== null, sky.ba.map !== null].join("|")
     : null;
   const cha = sa?.base.channel ?? null;
   const chb = sb?.base.channel ?? null;
@@ -48,7 +49,9 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
       const to = other(from);
       const dir = from === "a" ? "ab" : "ba";
       const only = facet === "ch" ? { channel: true, view: false } : { channel: false, view: true };
-      const actions = followWcs(group, scenes[from], scenes[to], { sky: sky[dir].map, channels: chan[dir].map, fromImage: images[from], toImage: images[to] }, only);
+      const actions = group.basis === "same-grid"
+        ? follow(group, scenes[from], scenes[to], { from: v[from].channels, to: v[to].channels }).filter((a) => a.type === (facet === "ch" ? "setChannel" : "setView"))
+        : followWcs(group, scenes[from], scenes[to], { sky: sky[dir].map, channels: chan[dir].map, fromImage: images[from], toImage: images[to] }, only);
       for (const a of actions) {
         mine.current[facet][to] = true;
         v[to].dispatch(a);

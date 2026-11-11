@@ -77,6 +77,13 @@ describe("a figure's scene", () => {
     expect(figureScene(noRegion, { plane: plane(), axial: true, scale: 6, bunit: null, interp: withRel, reliability: otherGrid }).overlays[0]).toMatchObject({ opacity: "uniform" });
   });
 
+  it("keeps how the pane was linked, so a figure says how its panes followed each other", () => {
+    const link = { id: "compare", name: "H I and CO", basis: "wcs" as const, facets: { cursor: true, channel: true, view: false }, datasets: [1, 2] };
+    const live = sceneReducer(newScene(1, DEFAULT_DISPLAY, false, true), { type: "setLink", link });
+    expect(figureScene(live, { plane: plane(), axial: false, scale: 1, bunit: "K", interp: null, reliability: null }).link).toEqual(link);
+    expect("link" in figureScene(newScene(1, DEFAULT_DISPLAY, false, true), { plane: plane(), axial: false, scale: 1, bunit: "K", interp: null, reliability: null })).toBe(false);
+  });
+
   it("records custom limits with their unit, leaves computed limits to the data, and gives up on limits it cannot state", () => {
     const scalar = newScene(1, DEFAULT_DISPLAY, false, true);
     const custom = sceneReducer(scalar, { type: "setDisplay", display: { range: "custom", limits: [2, 5], scaleGroup: "compare" } });
