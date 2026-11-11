@@ -183,7 +183,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   expect(reg.status()).toBe(200);
   expect(regText).toContain("image\n");
   expect(regText).toContain("circle(21,10,3) # text={Source A}");
-  await inspector(page).getByRole("button", { name: "Delete" }).last().click();
+  await inspector(page).getByRole("button", { name: "Delete", exact: true }).last().click();
   await expect(inspector(page).getByRole("button", { name: "Source A copy" })).toHaveCount(0);
   await inspector(page).getByRole("button", { name: "Undo" }).click();
   await expect(inspector(page).getByRole("button", { name: "Source A copy" })).toBeVisible();
