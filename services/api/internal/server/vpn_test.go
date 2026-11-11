@@ -58,7 +58,7 @@ func newVPN(t *testing.T, enabled bool) *vpnEnv {
 	}
 	mgr := hosts.NewManager("false", nil)
 	mgr.ControlDir = t.TempDir()
-	e.srv = &Server{Roots: rs, Store: st, Worker: &fakeWorker{}, Audit: e.au, HostDB: hs, Remote: mgr, VPNEnabled: enabled}
+	e.srv = &Server{Roots: rs, Store: st, Worker: &fakeWorker{}, Audit: e.au, HostDB: hs, Remote: mgr, VPNEnabled: enabled, VPNPoll: 200 * time.Millisecond, VPNLogDir: filepath.Join(e.dir, "vpnlogs")}
 	e.srv.pingHook = func(context.Context, hosts.Host, map[string]any) (worker.Reply, error) {
 		e.pings.Add(1)
 		if e.up.Load() {
@@ -105,6 +105,18 @@ func (e *vpnEnv) vpn(t *testing.T, h hosts.Host, body any) (int, map[string]any)
 	return r.StatusCode, m
 }
 
+// waitAudit waits for the audit log to contain want (the exit of a client is recorded when its process ends) and returns it.
+func (e *vpnEnv) waitAudit(t *testing.T, want string) string {
+	t.Helper()
+	for i := 0; i < 200; i++ {
+		if a := e.auditText(t); strings.Contains(a, want) {
+			return a
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return e.auditText(t)
+}
+
 func (e *vpnEnv) auditText(t *testing.T) string {
 	t.Helper()
 	es, err := e.au.List("", 0, 100)
@@ -148,7 +160,8 @@ func TestVPNRunsTheStoredArgvWithoutAShell(t *testing.T) {
 		t.Fatalf("the reachability check ran %d times, want once", got)
 	}
 	a := e.auditText(t)
-	if !strings.Contains(a, "host vpn connect | Cluster: exit 0 after") || strings.Contains(a, "SECRET-OUTPUT-TOKEN") || strings.Contains(a, "touch") {
+	if !strings.Contains(e.waitAudit(t, "host vpn client exit | Cluster: exit 0 after"), "host vpn client exit | Cluster: exit 0 after") ||
+		!strings.Contains(a, "host vpn connect | Cluster: client started (pid") || strings.Contains(a, "SECRET-OUTPUT-TOKEN") || strings.Contains(a, "touch") {
 		t.Fatalf("audit: %s", a)
 	}
 }
@@ -159,7 +172,7 @@ func TestVPNConnectThatLeavesTheHostUnreachableSaysSo(t *testing.T) {
 	h := e.addHost(t, []string{fail}, []string{"true"})
 	code, m := e.vpn(t, h, map[string]string{"action": "connect"})
 	if code != 200 || m["exitCode"] != float64(3) || m["reachable"] != false ||
-		m["message"] != "VPN command failed (exit 3); the host is still not reachable" || m["output"] != "auth failed\n" {
+		m["message"] != "VPN client exited with code 3; the host is still not reachable" || m["output"] != "auth failed\n" {
 		t.Fatalf("%d %v", code, m)
 	}
 	// the host list tells what was learned, so the page shows "not reachable"
@@ -174,8 +187,9 @@ func TestVPNConnectThatLeavesTheHostUnreachableSaysSo(t *testing.T) {
 		t.Fatalf("%s", b)
 	}
 	// disconnect runs the other command and checks again
+	before := e.pings.Load()
 	code, m = e.vpn(t, h, map[string]string{"action": "disconnect"})
-	if code != 200 || m["exitCode"] != float64(0) || e.pings.Load() != 2 {
+	if code != 200 || m["exitCode"] != float64(0) || e.pings.Load() != before+1 {
 		t.Fatalf("%d %v pings %d", code, m, e.pings.Load())
 	}
 }
@@ -327,24 +341,16 @@ func postRaw(t *testing.T, url, body string) (int, string) {
 	return resp.StatusCode, string(b)
 }
 
-func TestVPNTimeoutKillsTheWholeProcessTree(t *testing.T) {
-	e := newVPN(t, true)
-	e.srv.VPNTimeout = 400 * time.Millisecond
-	pidFile := filepath.Join(e.dir, "child.pid")
-	hang := e.script(t, "hang", `sleep 60 & echo $! > `+pidFile+`; echo started; wait`)
-	h := e.addHost(t, []string{hang}, nil)
-	start := time.Now()
-	code, m := e.vpn(t, h, map[string]string{"action": "connect"})
-	if code != 200 || m["timedOut"] != true || m["reachable"] != false {
-		t.Fatalf("%d %v", code, m)
+func readPid(t *testing.T, file string) int {
+	t.Helper()
+	var b []byte
+	var err error
+	for i := 0; i < 200; i++ {
+		if b, err = os.ReadFile(file); err == nil && strings.HasSuffix(string(b), "\n") {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	if d := time.Since(start); d > 10*time.Second {
-		t.Fatalf("the timeout took %s", d)
-	}
-	if !strings.Contains(m["message"].(string), "did not finish within") || !strings.Contains(m["output"].(string), "started") {
-		t.Fatalf("%v", m)
-	}
-	b, err := os.ReadFile(pidFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,14 +358,176 @@ func TestVPNTimeoutKillsTheWholeProcessTree(t *testing.T) {
 	for _, c := range strings.TrimSpace(string(b)) {
 		pid = pid*10 + int(c-'0')
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for syscall.Kill(pid, 0) == nil && !isZombie(pid) {
+	return pid
+}
+
+func alive(pid int) bool { return syscall.Kill(pid, 0) == nil && !isZombie(pid) }
+
+func waitDead(t *testing.T, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(8 * time.Second)
+	for alive(pid) {
 		if time.Now().After(deadline) {
-			t.Fatalf("the child %d outlived the timeout", pid)
+			t.Fatalf("process %d is still alive", pid)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if a := e.auditText(t); !strings.Contains(a, "Cluster: timed out after") {
+}
+
+// foregroundClient is a stand-in for `gpclient connect`: it prints a line and stays in the foreground, with a helper child,
+// until it is stopped. Its pid and its child's pid are written to files.
+func (e *vpnEnv) foregroundClient(t *testing.T) (prog, clientPid, childPid string) {
+	t.Helper()
+	clientPid, childPid = filepath.Join(e.dir, "client.pid"), filepath.Join(e.dir, "child.pid")
+	prog = e.script(t, "fg", `echo $$ > `+clientPid+`; sleep 300 & echo $! > `+childPid+`; echo "tunnel is up"; wait`)
+	t.Cleanup(func() { // never leave a test client behind
+		for _, f := range []string{clientPid, childPid} {
+			if b, err := os.ReadFile(f); err == nil {
+				pid := 0
+				for _, c := range strings.TrimSpace(string(b)) {
+					pid = pid*10 + int(c-'0')
+				}
+				if pid > 1 {
+					_ = syscall.Kill(-pid, syscall.SIGKILL)
+					_ = syscall.Kill(pid, syscall.SIGKILL)
+				}
+			}
+		}
+	})
+	return
+}
+
+// A client that stays in the foreground is not killed when the wait ends: it is the tunnel. The answer says so, the host list
+// shows it running with its output, and disconnect without a disconnect command ends its whole process group.
+func TestVPNForegroundClientSurvivesTheWaitAndDisconnectStopsIt(t *testing.T) {
+	e := newVPN(t, true)
+	e.srv.VPNTimeout = 600 * time.Millisecond
+	prog, clientPid, childPid := e.foregroundClient(t)
+	h := e.addHost(t, []string{prog}, nil)
+	code, m := e.vpn(t, h, map[string]string{"action": "connect"})
+	if code != 200 || m["timedOut"] != true || m["reachable"] != false || !strings.HasPrefix(m["message"].(string), "VPN client is running but the host is still not reachable after ") ||
+		!strings.Contains(m["output"].(string), "tunnel is up") {
+		t.Fatalf("%d %v", code, m)
+	}
+	cp, chp := readPid(t, clientPid), readPid(t, childPid)
+	if !alive(cp) || !alive(chp) {
+		t.Fatal("the client was killed when the wait ended")
+	}
+	if pg, err := syscall.Getpgid(cp); err != nil || pg != cp { // own session and group
+		t.Fatalf("the client is not in its own process group: %d %v", pg, err)
+	}
+	// the host list shows it
+	_, b := get(t, e.ts.URL+"/api/hosts")
+	var l struct {
+		Hosts []struct {
+			VPNClient *struct {
+				Running bool   `json:"running"`
+				Pid     int    `json:"pid"`
+				Output  string `json:"output"`
+			} `json:"vpnClient"`
+		} `json:"hosts"`
+	}
+	_ = json.Unmarshal(b, &l)
+	if len(l.Hosts) != 1 || l.Hosts[0].VPNClient == nil || !l.Hosts[0].VPNClient.Running || l.Hosts[0].VPNClient.Pid != cp || !strings.Contains(l.Hosts[0].VPNClient.Output, "tunnel is up") {
+		t.Fatalf("%s", b)
+	}
+	// the log is private
+	if fi, err := os.Stat(filepath.Join(e.dir, "vpnlogs", "host-"+itoa(int(h.ID))+".log")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("log: %v %v", fi, err)
+	}
+	// a second connect is refused while it runs
+	if code, m := e.vpn(t, h, map[string]string{"action": "connect"}); code != 409 || !strings.Contains(m["error"].(string), "already running") {
+		t.Fatalf("%d %v", code, m)
+	}
+	// disconnect, with no disconnect command stored, ends the group
+	code, m = e.vpn(t, h, map[string]string{"action": "disconnect"})
+	if code != 200 || m["message"] != "VPN client stopped; the host is still not reachable" {
+		t.Fatalf("%d %v", code, m)
+	}
+	waitDead(t, cp)
+	waitDead(t, chp)
+	a := e.waitAudit(t, "host vpn client exit")
+	for _, want := range []string{"host vpn connect | Cluster: client started (pid", "host vpn disconnect | Cluster: client (pid", "stopped with SIGTERM", "host vpn client exit | Cluster: exit -1 after"} {
+		if !strings.Contains(a, want) {
+			t.Errorf("audit lacks %q:\n%s", want, a)
+		}
+	}
+	if strings.Contains(a, "tunnel is up") {
+		t.Fatalf("client output reached the audit log: %s", a)
+	}
+	// nothing left to stop
+	if code, _ := e.vpn(t, h, map[string]string{"action": "disconnect"}); code != 409 {
+		t.Fatalf("disconnect with nothing running: %d", code)
+	}
+}
+
+// The host becoming reachable while the client keeps running is the success the page reports, with the seconds it took.
+func TestVPNConnectReportsWhenTheHostBecomesReachable(t *testing.T) {
+	e := newVPN(t, true)
+	e.srv.VPNTimeout = 10 * time.Second
+	prog, clientPid, _ := e.foregroundClient(t)
+	h := e.addHost(t, []string{prog}, nil)
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		e.up.Store(true)
+	}()
+	start := time.Now()
+	code, m := e.vpn(t, h, map[string]string{"action": "connect"})
+	if code != 200 || m["reachable"] != true || m["timedOut"] != false || !strings.HasPrefix(m["message"].(string), "VPN client started; the host became reachable after ") || !strings.HasSuffix(m["message"].(string), " s") {
+		t.Fatalf("%d %v", code, m)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("took %s", time.Since(start))
+	}
+	if !alive(readPid(t, clientPid)) {
+		t.Fatal("the client was stopped")
+	}
+	if !e.srv.reach.takeKick(h.ID) {
+		t.Fatal("the watcher was not kicked")
+	}
+}
+
+// With a disconnect command stored, that command is what disconnect runs; the client is not signalled by Vesqira.
+func TestVPNDisconnectCommandIsUsedWhenConfigured(t *testing.T) {
+	e := newVPN(t, true)
+	e.srv.VPNTimeout = 500 * time.Millisecond
+	prog, clientPid, _ := e.foregroundClient(t)
+	marker := filepath.Join(e.dir, "disconnected")
+	dis := e.script(t, "dis", `echo "bye" ; touch `+marker)
+	h := e.addHost(t, []string{prog}, []string{dis})
+	if code, _ := e.vpn(t, h, map[string]string{"action": "connect"}); code != 200 {
+		t.Fatal(code)
+	}
+	cp := readPid(t, clientPid)
+	e.srv.VPNTimeout = 5 * time.Second
+	code, m := e.vpn(t, h, map[string]string{"action": "disconnect"})
+	if code != 200 || m["output"] != "bye\n" || m["exitCode"] != float64(0) {
+		t.Fatalf("%d %v", code, m)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatal("the disconnect command did not run")
+	}
+	if !alive(cp) {
+		t.Fatal("Vesqira signalled the client although a disconnect command is configured")
+	}
+	if a := e.auditText(t); !strings.Contains(a, "host vpn disconnect | Cluster: command exit 0 after") || strings.Contains(a, "bye") {
+		t.Fatalf("audit: %s", a)
+	}
+}
+
+// A disconnect command that hangs is still bounded.
+func TestVPNDisconnectCommandIsBounded(t *testing.T) {
+	e := newVPN(t, true)
+	e.srv.VPNTimeout = 400 * time.Millisecond
+	pidFile := filepath.Join(e.dir, "hang.pid")
+	hang := e.script(t, "hang", `sleep 60 & echo $! > `+pidFile+`; wait`)
+	h := e.addHost(t, []string{"true"}, []string{hang})
+	code, m := e.vpn(t, h, map[string]string{"action": "disconnect"})
+	if code != 200 || m["timedOut"] != true || !strings.Contains(m["message"].(string), "did not finish within") {
+		t.Fatalf("%d %v", code, m)
+	}
+	waitDead(t, readPid(t, pidFile))
+	if a := e.auditText(t); !strings.Contains(a, "Cluster: command timed out after") {
 		t.Fatalf("audit: %s", a)
 	}
 }
@@ -434,7 +602,7 @@ func TestVPNProgramThatDoesNotStartIsReported(t *testing.T) {
 	if code != 200 || m["message"] != "VPN command could not be started; the host is still not reachable" || !strings.Contains(m["output"].(string), "definitely-not-a-vpn-client-xyz") {
 		t.Fatalf("%d %v", code, m)
 	}
-	if a := e.auditText(t); !strings.Contains(a, "Cluster: did not start after") {
+	if a := e.auditText(t); !strings.Contains(a, "host vpn connect | Cluster: did not start") {
 		t.Fatalf("audit: %s", a)
 	}
 }

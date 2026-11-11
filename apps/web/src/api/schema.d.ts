@@ -6563,6 +6563,17 @@ export interface components {
              * @description when that was learned; absent while unknown
              */
             reachableAt?: string;
+            /** @description The VPN client Vesqira started for this host in this session (in memory; a restart forgets it, the client keeps running). Absent when none was started. */
+            vpnClient?: {
+                running: boolean;
+                pid: number;
+                /** Format: date-time */
+                startedAt: string;
+                /** @description once the client ended; -1 when ended by a signal */
+                exitCode?: number;
+                /** @description the end of what the client printed (at most 16 KiB, control sequences removed); never written to the audit log */
+                output: string;
+            };
         };
         HostCreate: {
             name: string;
@@ -6589,18 +6600,18 @@ export interface components {
         HostVpnResult: {
             /** @enum {string} */
             action: "connect" | "disconnect";
-            /** @description the program's exit status; -1 when it did not start, timed out or was ended by a signal */
+            /** @description the program's exit status; -1 when it did not start, is still running or was ended by a signal */
             exitCode: number;
-            /** @description the command did not finish in time and was stopped with everything it started */
+            /** @description connect: the host did not become reachable within the wait (about two minutes); the client keeps running. disconnect: the command did not finish in time and was stopped with everything it started */
             timedOut: boolean;
             /** Format: int64 */
             durationMs: number;
-            /** @description stdout and stderr together, control sequences removed, at most 16 KiB; why the program did not start when it did not. Never written to the audit log. */
+            /** @description stdout and stderr together (a client's log file, last 16 KiB), control sequences removed; why the program did not start when it did not. Never written to the audit log. */
             output: string;
             outputTruncated: boolean;
             /** @description the result of the host reachability check run after the command */
             reachable: boolean;
-            /** @description for example: VPN command finished; the host is reachable */
+            /** @description for example: VPN client started; the host became reachable after 12 s */
             message: string;
         };
     };

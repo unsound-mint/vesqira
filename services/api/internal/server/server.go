@@ -93,7 +93,9 @@ type Server struct {
 
 	// VPNEnabled mounts the VPN routes (--enable-vpn, ADR 0029 step 3) and lets a host carry a VPN command. Off by default.
 	VPNEnabled bool
-	VPNTimeout time.Duration // how long a VPN command may run; zero means hosts.DefaultVPNRun
+	VPNTimeout time.Duration // how long connect waits for the host to answer, and a disconnect command may run; zero means hosts.DefaultVPNRun
+	VPNPoll    time.Duration // how often connect asks the host check meanwhile; zero means three seconds
+	VPNLogDir  string        // where a started VPN client writes its output (0600 files); empty means a per-user folder under the temp dir
 	vpn        vpnRuns
 	reach      reachability                                                                      // whether each host last answered (vpn.go)
 	pingHook   func(ctx context.Context, h hosts.Host, req map[string]any) (worker.Reply, error) // test stand-in for the host check

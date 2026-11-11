@@ -79,6 +79,16 @@ describe("the VPN companion on a host", () => {
     expect(within(group).queryByRole("button", { name: "Disconnect VPN" })).toBeNull();
   });
 
+  it("shows a running client with its recent output and offers Disconnect even without a disconnect command", async () => {
+    mockFetch({ "/api/capabilities": caps(true), "/api/hosts/ssh-config": noAliases });
+    panel({ ...base, vpnCommand: ["gpclient", "connect", "vpn.example.edu"], reachable: "yes", vpnClient: { running: true, pid: 4242, startedAt: "2026-01-01T10:00:00Z", output: "tunnel is up\n" } });
+    const group = await screen.findByRole("group", { name: "VPN for Cluster" });
+    expect(await within(group).findByText(/VPN client running since .*pid 4242/)).toBeInTheDocument();
+    expect(within(group).getByLabelText("VPN client recent output")).toHaveTextContent("tunnel is up");
+    expect(within(group).getByRole("button", { name: "Disconnect VPN" })).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: /Connect VPN/ })).toBeNull(); // already running
+  });
+
   it("a host without a command only offers to set one", async () => {
     mockFetch({ "/api/capabilities": caps(true), "/api/hosts/ssh-config": noAliases });
     panel({ ...base, reachable: "no" });

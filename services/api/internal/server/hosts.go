@@ -111,8 +111,9 @@ func (s *Server) hostErr(w http.ResponseWriter, err error) {
 // hostView is a host with what this session last learned about reaching it (a host check or the job watcher; not stored).
 type hostView struct {
 	hosts.Host
-	Reachable   string    `json:"reachable"`            // "yes", "no" or "unknown"
-	ReachableAt time.Time `json:"reachableAt,omitzero"` // when that was learned
+	Reachable   string         `json:"reachable"`            // "yes", "no" or "unknown"
+	ReachableAt time.Time      `json:"reachableAt,omitzero"` // when that was learned
+	VPNClient   *vpnClientView `json:"vpnClient,omitempty"`  // the VPN client Vesqira started for this host in this session
 }
 
 func (s *Server) listHosts(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +126,7 @@ func (s *Server) listHosts(w http.ResponseWriter, r *http.Request) {
 	for i, h := range hs {
 		out[i] = hostView{Host: h}
 		out[i].Reachable, out[i].ReachableAt = s.reach.get(h.ID)
+		out[i].VPNClient = s.vpnClientView(h.ID)
 	}
 	writeJSON(w, 200, map[string]any{"hosts": out})
 }

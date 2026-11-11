@@ -16,6 +16,8 @@ export type Host = {
   vpnCommand?: string[]; vpnDisconnectCommand?: string[];
   /** What this session last learned about reaching the host (a check, the job watcher or a VPN command). */
   reachable?: "yes" | "no" | "unknown"; reachableAt?: string;
+  /** The VPN client Vesqira started for this host in this session (running, or how it ended) with its recent output. */
+  vpnClient?: { running: boolean; pid: number; startedAt: string; exitCode?: number; output: string };
 };
 export type HostCheck = { python: string; astropy: string; numpy: string; roots: string[] | null; enforces_roots: boolean };
 export type RemoteEntry = { name: string; kind: "dir" | "file"; size?: number };

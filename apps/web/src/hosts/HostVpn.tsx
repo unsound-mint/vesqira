@@ -38,7 +38,8 @@ export function VpnFields({ connect, disconnect, onConnect, onDisconnect }: { co
         A JSON list: the program, then its arguments, for example <span className="mono">["gpclient","connect","vpn.example.edu"]</span> or <span className="mono">["/usr/bin/openconnect","--protocol=gp","--background","vpn.example.edu"]</span>.
         It is stored exactly as written and run without a shell, so quotes, <span className="mono">;</span> and <span className="mono">$</span> are plain text. It runs as you on this computer. If your client needs privileges, write
         <span className="mono"> pkexec</span> as the first part or use your own polkit rule: the client asks for its password in its own window, and Vesqira never asks for or sees it.
-        The command must finish once the tunnel is up (use the client's background option); Vesqira stops it after two minutes.
+        Vesqira starts it detached and leaves it running (clients that stay in the foreground while the tunnel is up are fine), then checks the host for up to two minutes.
+        Without a disconnect command, Disconnect ends the client it started.
       </p>
     </div>
   );
@@ -55,6 +56,9 @@ export function HostVpn({ host, onChange }: { host: Host; onChange: () => Promis
 
   const hasConnect = !!host.vpnCommand?.length;
   const hasDisconnect = !!host.vpnDisconnectCommand?.length;
+  const client = host.vpnClient;
+  const clientRunning = client?.running === true;
+  const canDisconnect = hasDisconnect || clientRunning;
   const state = host.reachable === "no" ? "not reachable" : host.reachable === "yes" ? "reachable" : "not checked yet";
 
   async function run(action: "connect" | "disconnect") {
@@ -86,18 +90,26 @@ export function HostVpn({ host, onChange }: { host: Host; onChange: () => Promis
 
   return (
     <div className={s.vpn} role="group" aria-label={`VPN for ${host.name}`}>
-      {hasConnect || hasDisconnect ? (
+      {hasConnect || canDisconnect ? (
         <>
           <p className={s.state}>
             <strong>VPN: {state}</strong>
             {host.reachable === "no" ? <span className={s.hint}> The host did not answer.</span> : null}
           </p>
+          {client ? (
+            <div>
+              <p className={s.note} role="status">
+                {clientRunning ? `VPN client running since ${new Date(client.startedAt).toLocaleTimeString()} (pid ${client.pid}).` : `VPN client ended (${client.exitCode === -1 ? "by a signal" : `exit ${client.exitCode}`}); it started at ${new Date(client.startedAt).toLocaleTimeString()}.`}
+              </p>
+              <pre className={s.output} aria-label="VPN client recent output" tabIndex={0}>{client.output || "(no output)"}</pre>
+            </div>
+          ) : null}
           <div className={s.row}>
-            {hasConnect && host.reachable !== "yes" ? <Button type="button" variant="primary" disabled={busy} onClick={() => run("connect")}>Connect VPN</Button> : null}
-            {hasConnect && host.reachable === "yes" ? <Button type="button" disabled={busy} onClick={() => run("connect")}>Connect VPN again</Button> : null}
-            {hasDisconnect ? <Button type="button" disabled={busy} onClick={() => run("disconnect")}>Disconnect VPN</Button> : null}
+            {hasConnect && !clientRunning && host.reachable !== "yes" ? <Button type="button" variant="primary" disabled={busy} onClick={() => run("connect")}>Connect VPN</Button> : null}
+            {hasConnect && !clientRunning && host.reachable === "yes" ? <Button type="button" disabled={busy} onClick={() => run("connect")}>Connect VPN again</Button> : null}
+            {canDisconnect ? <Button type="button" disabled={busy} onClick={() => run("disconnect")}>Disconnect VPN</Button> : null}
           </div>
-          {busy ? <p className={s.note} role="status">Running the VPN command…</p> : null}
+          {busy ? <p className={s.note} role="status">Starting the VPN client and waiting for the host (up to two minutes)…</p> : null}
           {result ? (
             <div role="status">
               <p className={result.reachable ? s.ok : s.warn}>{result.message}</p>
@@ -106,7 +118,7 @@ export function HostVpn({ host, onChange }: { host: Host; onChange: () => Promis
           ) : null}
           <div className={s.cmds}>
             {hasConnect ? <p className={s.note}>Connect runs, as you, without a shell: <code className="mono">{showArgv(host.vpnCommand)}</code></p> : null}
-            {hasDisconnect ? <p className={s.note}>Disconnect runs: <code className="mono">{showArgv(host.vpnDisconnectCommand)}</code></p> : null}
+            {hasDisconnect ? <p className={s.note}>Disconnect runs: <code className="mono">{showArgv(host.vpnDisconnectCommand)}</code></p> : hasConnect ? <p className={s.note}>Disconnect ends the client Vesqira started (SIGTERM, then SIGKILL after 5 s).</p> : null}
           </div>
         </>
       ) : null}

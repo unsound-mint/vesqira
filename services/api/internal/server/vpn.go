@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -99,10 +101,12 @@ func (r *reachability) wakeCh() <-chan struct{} {
 	return r.wake
 }
 
-// vpnRuns allows one VPN command at a time per host.
+// vpnRuns allows one VPN command at a time per host and remembers, in memory only, the client Vesqira started for each host.
+// A client is not adopted after a restart: it keeps running (it is the user's VPN) but is forgotten.
 type vpnRuns struct {
 	mu      sync.Mutex
 	running map[int64]bool
+	clients map[int64]*hosts.VPNClient
 }
 
 func (v *vpnRuns) begin(id int64) bool {
@@ -122,6 +126,44 @@ func (v *vpnRuns) end(id int64) {
 	v.mu.Lock()
 	delete(v.running, id)
 	v.mu.Unlock()
+}
+
+func (v *vpnRuns) setClient(id int64, c *hosts.VPNClient) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.clients == nil {
+		v.clients = map[int64]*hosts.VPNClient{}
+	}
+	v.clients[id] = c
+}
+
+// client returns the last client started for the host (running or not), or nil.
+func (v *vpnRuns) client(id int64) *hosts.VPNClient {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.clients[id]
+}
+
+// vpnClientView is what the host list shows about the client Vesqira started for a host.
+type vpnClientView struct {
+	Running   bool      `json:"running"`
+	Pid       int       `json:"pid"`
+	StartedAt time.Time `json:"startedAt"`
+	ExitCode  *int      `json:"exitCode,omitempty"` // once it ended; -1 when ended by a signal
+	Output    string    `json:"output"`
+}
+
+func (s *Server) vpnClientView(id int64) *vpnClientView {
+	c := s.vpn.client(id)
+	if c == nil {
+		return nil
+	}
+	v := &vpnClientView{Running: c.Running(), Pid: c.Pid, StartedAt: c.Started}
+	if code, _, ok := c.Exit(); ok {
+		v.ExitCode = &code
+	}
+	v.Output, _ = c.Output()
+	return v
 }
 
 // pingHost asks the host's worker who it is (deploying it if needed) and records whether the host answered. A worker that
@@ -169,18 +211,19 @@ func (s *Server) hostVPN(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 1<<10, &in, true) {
 		return
 	}
-	var argv []string
 	switch in.Action {
 	case "connect":
-		argv = h.VPNCommand
+		if len(h.VPNCommand) == 0 {
+			fail(w, 409, "this host has no VPN connect command")
+			return
+		}
 	case "disconnect":
-		argv = h.VPNDisconnectCommand
+		if c := s.vpn.client(h.ID); len(h.VPNDisconnectCommand) == 0 && (c == nil || !c.Running()) {
+			fail(w, 409, "this host has no VPN disconnect command, and no VPN client started by Vesqira is running for it")
+			return
+		}
 	default:
 		fail(w, 422, `action must be "connect" or "disconnect"`)
-		return
-	}
-	if len(argv) == 0 {
-		fail(w, 409, "this host has no VPN "+in.Action+" command")
 		return
 	}
 	if !s.vpn.begin(h.ID) {
@@ -188,50 +231,183 @@ func (s *Server) hostVPN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.vpn.end(h.ID)
-
-	timeout := s.VPNTimeout
-	if timeout <= 0 {
-		timeout = hosts.DefaultVPNRun
+	// A closed tab does not stop a half-finished connect; the time limits do.
+	ctx := context.WithoutCancel(r.Context())
+	if in.Action == "connect" {
+		s.vpnConnect(ctx, w, h)
+		return
 	}
-	// A closed tab does not stop a half-finished connect; the time limit does.
-	res := hosts.RunVPN(context.WithoutCancel(r.Context()), argv, timeout)
-	ended := fmt.Sprintf("exit %d", res.ExitCode)
+	s.vpnDisconnect(ctx, w, h)
+}
+
+func (s *Server) vpnWindow() time.Duration {
+	if s.VPNTimeout > 0 {
+		return s.VPNTimeout
+	}
+	return hosts.DefaultVPNRun
+}
+
+func (s *Server) vpnLogPath(h hosts.Host) string {
+	dir := s.VPNLogDir
+	if dir == "" {
+		dir = filepath.Join(os.TempDir(), fmt.Sprintf("vesqira-vpn-%d", os.Getuid()))
+	}
+	return filepath.Join(dir, fmt.Sprintf("host-%d.log", h.ID))
+}
+
+// vpnConnect starts the stored client detached and leaves it running. It then asks the host check every few seconds for up to
+// the wait window: reachable means the tunnel works. A client that exits first is reported with its exit code and output (a
+// client that daemonizes itself exits 0 right after forking and gets one host check, as before).
+func (s *Server) vpnConnect(ctx context.Context, w http.ResponseWriter, h hosts.Host) {
+	if c := s.vpn.client(h.ID); c != nil && c.Running() {
+		fail(w, 409, fmt.Sprintf("a VPN client started by Vesqira is already running for this host (since %s); disconnect it first", c.Started.Format("15:04:05")))
+		return
+	}
+	start := time.Now()
+	c, err := hosts.StartVPNClient(h.VPNCommand, s.vpnLogPath(h))
+	if err != nil {
+		s.Audit.Record("host vpn connect", "host", h.ID, h.Name+": did not start")
+		writeJSON(w, 200, vpnReply{Action: "connect", ExitCode: -1, Output: err.Error(), Message: "VPN command could not be started; the host is still not reachable"})
+		return
+	}
+	s.vpn.setClient(h.ID, c)
+	s.Audit.Record("host vpn connect", "host", h.ID, fmt.Sprintf("%s: client started (pid %d)", h.Name, c.Pid))
+	go func() { // also records an exit long after the request ended
+		<-c.Done()
+		code, _, _ := c.Exit()
+		s.Audit.Record("host vpn client exit", "host", h.ID, fmt.Sprintf("%s: exit %d after %s", h.Name, code, time.Since(c.Started).Round(time.Second)))
+	}()
+
+	window, poll := s.vpnWindow(), s.VPNPoll
+	if poll <= 0 {
+		poll = 3 * time.Second
+	}
+	deadline := time.Now().Add(window)
+	reachable, exited := false, false
+	s.Remote.Forget(h.ID) // the client may change the network under a worker that holds the old path
+wait:
+	for time.Now().Before(deadline) {
+		select {
+		case <-c.Done():
+			exited = true
+			break wait
+		case <-time.After(poll):
+		}
+		pctx, cancel := context.WithTimeout(ctx, min(15*time.Second, time.Until(deadline)+time.Second))
+		_, _, _, reachable = s.pingHost(pctx, h)
+		cancel()
+		if reachable {
+			break
+		}
+		s.Remote.Forget(h.ID)
+	}
+	if !reachable && !exited { // the client may have ended while the last check ran
+		select {
+		case <-c.Done():
+			exited = true
+		default:
+		}
+	}
+	rep := vpnReply{Action: "connect", ExitCode: -1}
+	if exited {
+		code, _, _ := c.Exit()
+		rep.ExitCode = code
+		s.Remote.Forget(h.ID)
+		pctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		_, _, _, reachable = s.pingHost(pctx, h)
+		cancel()
+	}
+	rep.DurationMs = time.Since(start).Milliseconds()
+	rep.Reachable = reachable
+	rep.Output, rep.OutputTruncated = c.Output()
+	elapsed := time.Since(start).Round(time.Second)
 	switch {
-	case res.TimedOut:
-		ended = "timed out"
-	case res.StartError != "":
-		ended = "did not start"
+	case exited && rep.ExitCode == 0:
+		rep.Message = "VPN command finished; " + reachText(reachable)
+	case exited:
+		rep.Message = fmt.Sprintf("VPN client exited with code %d; %s", rep.ExitCode, reachText(reachable))
+		if rep.ExitCode < 0 {
+			rep.Message = "VPN client was ended by a signal; " + reachText(reachable)
+		}
+	case reachable:
+		rep.Message = fmt.Sprintf("VPN client started; the host became reachable after %d s", int(elapsed.Seconds()))
+	default:
+		rep.TimedOut = true
+		rep.Message = fmt.Sprintf("VPN client is running but the host is still not reachable after %s", window.Round(time.Second))
 	}
-	s.Audit.Record("host vpn "+in.Action, "host", h.ID, fmt.Sprintf("%s: %s after %d ms", h.Name, ended, res.Duration.Milliseconds()))
-
-	// The command may have changed the network under a worker that is still holding the old path: start the check fresh.
-	s.Remote.Forget(h.ID)
-	pctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 60*time.Second)
-	defer cancel()
-	_, _, _, reachable := s.pingHost(pctx, h)
-	if in.Action == "connect" && res.ExitCode == 0 && reachable {
+	if reachable && (!exited || rep.ExitCode == 0) {
 		s.reach.kick(h.ID) // the job watcher need not wait out its backoff
 	}
+	writeJSON(w, 200, rep)
+}
 
-	what := "VPN command finished"
-	switch {
-	case res.TimedOut:
-		what = fmt.Sprintf("VPN command did not finish within %s and was stopped", timeout.Round(time.Second))
-	case res.StartError != "":
-		what = "VPN command could not be started"
-	case res.ExitCode != 0:
-		what = fmt.Sprintf("VPN command failed (exit %d)", res.ExitCode)
+func reachText(reachable bool) string {
+	if reachable {
+		return "the host is reachable"
 	}
-	state := "the host is reachable"
-	if !reachable {
-		state = "the host is still not reachable"
+	return "the host is still not reachable"
+}
+
+// vpnDisconnect runs the configured disconnect command; without one it ends the client Vesqira started (SIGTERM to its process
+// group, SIGKILL after five seconds).
+func (s *Server) vpnDisconnect(ctx context.Context, w http.ResponseWriter, h hosts.Host) {
+	c := s.vpn.client(h.ID)
+	rep := vpnReply{Action: "disconnect"}
+	start := time.Now()
+	if len(h.VPNDisconnectCommand) > 0 {
+		res := hosts.RunVPN(ctx, h.VPNDisconnectCommand, s.vpnWindow())
+		ended := fmt.Sprintf("exit %d", res.ExitCode)
+		switch {
+		case res.TimedOut:
+			ended = "timed out"
+		case res.StartError != "":
+			ended = "did not start"
+		}
+		s.Audit.Record("host vpn disconnect", "host", h.ID, fmt.Sprintf("%s: command %s after %d ms", h.Name, ended, res.Duration.Milliseconds()))
+		rep.ExitCode, rep.TimedOut, rep.Output, rep.OutputTruncated = res.ExitCode, res.TimedOut, res.Output, res.OutputTruncated
+		if res.StartError != "" {
+			rep.Output = res.StartError
+		}
+		rep.Message = "VPN command finished"
+		switch {
+		case res.TimedOut:
+			rep.Message = fmt.Sprintf("VPN command did not finish within %s and was stopped", s.vpnWindow().Round(time.Second))
+		case res.StartError != "":
+			rep.Message = "VPN command could not be started"
+		case res.ExitCode != 0:
+			rep.Message = fmt.Sprintf("VPN command failed (exit %d)", res.ExitCode)
+		}
+		if c != nil && c.Running() { // a client that the command asked to end gets a moment; it is not killed
+			select {
+			case <-c.Done():
+			case <-time.After(5 * time.Second):
+			}
+		}
+	} else {
+		killed, err := c.Stop(5 * time.Second)
+		how := "SIGTERM"
+		if killed {
+			how = "SIGKILL"
+		}
+		if err != nil {
+			s.Audit.Record("host vpn disconnect", "host", h.ID, fmt.Sprintf("%s: client (pid %d) could not be stopped", h.Name, c.Pid))
+			fail(w, 500, err.Error())
+			return
+		}
+		s.Audit.Record("host vpn disconnect", "host", h.ID, fmt.Sprintf("%s: client (pid %d) stopped with %s", h.Name, c.Pid, how))
+		rep.Output, rep.OutputTruncated = c.Output()
+		rep.Message = "VPN client stopped"
+		if killed {
+			rep.Message = "VPN client did not end on SIGTERM and was killed"
+		}
 	}
-	out := res.Output
-	if res.StartError != "" {
-		out = res.StartError
-	}
-	writeJSON(w, 200, vpnReply{Action: in.Action, ExitCode: res.ExitCode, TimedOut: res.TimedOut, DurationMs: res.Duration.Milliseconds(),
-		Output: out, OutputTruncated: res.OutputTruncated, Reachable: reachable, Message: what + "; " + state})
+	s.Remote.Forget(h.ID)
+	pctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	_, _, _, rep.Reachable = s.pingHost(pctx, h)
+	rep.DurationMs = time.Since(start).Milliseconds()
+	rep.Message += "; " + reachText(rep.Reachable)
+	writeJSON(w, 200, rep)
 }
 
 // setHostVPN replaces a host's VPN commands. Only the owner's host form calls it, and only with --enable-vpn.

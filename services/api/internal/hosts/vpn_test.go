@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -132,5 +133,42 @@ func writeTestScript(t *testing.T, p, body string) {
 	t.Helper()
 	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A client that ignores SIGTERM is killed after the grace period, with its helpers; one that obeys is not killed.
+func TestVPNClientStopEscalatesToSIGKILL(t *testing.T) {
+	dir := t.TempDir()
+	stubborn := filepath.Join(dir, "stubborn")
+	writeTestScript(t, stubborn, `trap '' TERM; echo started; while true; do sleep 0.05; done`)
+	c, err := StartVPNClient([]string{stubborn}, filepath.Join(dir, "logs", "a.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-c.Pid, syscall.SIGKILL) })
+	time.Sleep(200 * time.Millisecond)
+	killed, err := c.Stop(300 * time.Millisecond)
+	if err != nil || !killed || c.Running() {
+		t.Fatalf("killed=%v err=%v running=%v", killed, err, c.Running())
+	}
+	if out, _ := c.Output(); out != "started\n" {
+		t.Fatalf("output %q", out)
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "logs", "a.log")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("log mode: %v %v", fi, err)
+	}
+	obedient := filepath.Join(dir, "obedient")
+	writeTestScript(t, obedient, `sleep 300 & wait`)
+	c2, err := StartVPNClient([]string{obedient}, filepath.Join(dir, "logs", "b.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-c2.Pid, syscall.SIGKILL) })
+	time.Sleep(100 * time.Millisecond)
+	if killed, err := c2.Stop(5 * time.Second); err != nil || killed {
+		t.Fatalf("killed=%v err=%v", killed, err)
+	}
+	if _, err := StartVPNClient([]string{"definitely-not-installed-xyz"}, filepath.Join(dir, "logs", "c.log")); err == nil {
+		t.Fatal("a missing program must not start")
 	}
 }

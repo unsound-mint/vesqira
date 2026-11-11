@@ -11109,6 +11109,28 @@ components:
           type: "string"
           format: "date-time"
           description: "when that was learned; absent while unknown"
+        vpnClient:
+          type: "object"
+          required:
+            - "running"
+            - "pid"
+            - "startedAt"
+            - "output"
+          properties:
+            running:
+              type: "boolean"
+            pid:
+              type: "integer"
+            startedAt:
+              type: "string"
+              format: "date-time"
+            exitCode:
+              type: "integer"
+              description: "once the client ended; -1 when ended by a signal"
+            output:
+              type: "string"
+              description: "the end of what the client printed (at most 16 KiB, control sequences removed); never written to the audit log"
+          description: "The VPN client Vesqira started for this host in this session (in memory; a restart forgets it, the client keeps running). Absent when none was started."
       description: "A host with what this session last learned about reaching it."
     HostCreate:
       type: "object"
@@ -11188,16 +11210,16 @@ components:
             - "disconnect"
         exitCode:
           type: "integer"
-          description: "the program's exit status; -1 when it did not start, timed out or was ended by a signal"
+          description: "the program's exit status; -1 when it did not start, is still running or was ended by a signal"
         timedOut:
           type: "boolean"
-          description: "the command did not finish in time and was stopped with everything it started"
+          description: "connect: the host did not become reachable within the wait (about two minutes); the client keeps running. disconnect: the command did not finish in time and was stopped with everything it started"
         durationMs:
           type: "integer"
           format: "int64"
         output:
           type: "string"
-          description: "stdout and stderr together, control sequences removed, at most 16 KiB; why the program did not start when it did not. Never written to the audit log."
+          description: "stdout and stderr together (a client's log file, last 16 KiB), control sequences removed; why the program did not start when it did not. Never written to the audit log."
         outputTruncated:
           type: "boolean"
         reachable:
@@ -11205,4 +11227,4 @@ components:
           description: "the result of the host reachability check run after the command"
         message:
           type: "string"
-          description: "for example: VPN command finished; the host is reachable"
+          description: "for example: VPN client started; the host became reachable after 12 s"
