@@ -1,4 +1,4 @@
-# ADR 0055: Workload classes and support bundle
+# ADR 0056: Workload classes and support bundle
 
 Status: **proposed; implemented, awaiting owner review.** Decided by the implementing agent under the owner's delegation of ADR decisions (roadmap Stage 6; Q158, Q163, Q169). The new UI (queue note, "Reference" line, support dialog) has had no approved design direction and no visual review.
 

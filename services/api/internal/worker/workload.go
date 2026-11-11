@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Class is the workload class of a piece of scientific work (ADR 0055). Each class has its own concurrency budget and
+// Class is the workload class of a piece of scientific work (ADR 0056). Each class has its own concurrency budget and
 // its own worker processes, so capacity reserved for interactive viewing is never taken by heavy or background work.
 type Class int
 

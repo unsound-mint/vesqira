@@ -18,7 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
-// The support bundle (ADR 0055). Owner listener only. A bundle is built once by the preview route, kept in memory for ten
+// The support bundle (ADR 0056). Owner listener only. A bundle is built once by the preview route, kept in memory for ten
 // minutes, and the download returns exactly the bytes whose files were previewed: what the person read is what is saved.
 
 type supportFileView struct {

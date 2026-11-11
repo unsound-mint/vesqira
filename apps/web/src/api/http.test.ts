@@ -105,6 +105,19 @@ describe("request id", () => {
     expect(seen).toEqual(["sub-id-00001"]);
   });
 
+  it("does not announce a 4xx answer: the page shows it in place, and a 404 or 409 is not a failure to report", async () => {
+    const seen: string[] = [];
+    const off = onApiError((e) => seen.push(e.requestId));
+    withId("not found", 404, "text/plain", "sub-id-00404");
+    await failure(request("/api/x"));
+    withId("decide", 409, "text/plain", "sub-id-00409");
+    await failure(request("/api/x"));
+    withId("boom", 502, "text/plain", "sub-id-00502");
+    await failure(request("/api/x"));
+    off();
+    expect(seen).toEqual(["sub-id-00502"]);
+  });
+
   it("sends a given id as X-Request-Id, and newRequestId makes an acceptable one", async () => {
     const f = vi.fn(async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", f);

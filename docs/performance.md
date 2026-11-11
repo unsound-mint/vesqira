@@ -32,7 +32,7 @@ On a remote host, a plane larger than about a quarter of a megapixel is first re
 
 ## Workload classes
 
-Scientific work has three classes (ADR 0055), each with its own concurrency budget and its own worker processes, so capacity reserved for interactive viewing is never taken by heavier work:
+Scientific work has three classes (ADR 0056), each with its own concurrency budget and its own worker processes, so capacity reserved for interactive viewing is never taken by heavier work:
 
 | Class | Work | Budget flag (default) |
 | --- | --- | --- |

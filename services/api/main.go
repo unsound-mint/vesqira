@@ -61,7 +61,7 @@ func main() {
 	enableTerminal := flag.Bool("enable-terminal", false, "let the owner open a shell on this computer or on a registered host from the app (ADR 0029); runs commands as you; off by default, never on the review address")
 	enableVPN := flag.Bool("enable-vpn", false, "let the owner set a VPN client command per host and run it from the app (ADR 0029); runs that command as you, without a shell; off by default, never on the review address")
 	allowOthers := flag.Bool("allow-other-local-users", false, "DANGEROUS: do not check which user account connects to the owner address; on a shared computer any other account can then use the app as you (and open a shell with --enable-terminal)")
-	wInteractive := flag.Int("workers-interactive", worker.DefaultBudgets().Interactive, "worker processes reserved for interactive viewing (planes, coordinates, overlays); never used by heavy or background work (ADR 0055)")
+	wInteractive := flag.Int("workers-interactive", worker.DefaultBudgets().Interactive, "worker processes reserved for interactive viewing (planes, coordinates, overlays); never used by heavy or background work (ADR 0056)")
 	wHeavy := flag.Int("workers-heavy", worker.DefaultBudgets().Heavy, "heavy tasks at once: spectra over large regions, PV, channel grids, index builds, and analysis programs")
 	wBackground := flag.Int("workers-background", worker.DefaultBudgets().Background, "background tasks at once: header reads for registering files, fingerprints")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")

@@ -107,7 +107,7 @@ def run(path: str, nx: int, ny: int, nc: int, repeats: int) -> dict:
 
 def load_bench(path: str, nx: int, ny: int, nc: int, repeats: int) -> dict:
     """Planes on their own worker process while a heavy worker (large-region spectra, back to back) and a background worker
-    (header reads, back to back) are busy: the workload classes of ADR 0055, each with its own process. What it measures is
+    (header reads, back to back) are busy: the workload classes of ADR 0056, each with its own process. What it measures is
     what separate processes do not isolate: CPU, memory bandwidth and the page cache."""
     import threading
     inter, heavy, back = Worker(), Worker(), Worker()

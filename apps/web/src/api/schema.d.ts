@@ -6685,7 +6685,7 @@ export interface components {
             /** @description present while waiting: what holds the class's slots, and that interactive viewing is unaffected (heavy and background classes) */
             reason?: string;
         };
-        /** @description Workload classes (ADR 0055). Names only operations, never files or datasets. */
+        /** @description Workload classes (ADR 0056). Names only operations, never files or datasets. */
         Workload: {
             classes: components["schemas"]["WorkloadClass"][];
             request?: components["schemas"]["WorkloadRequest"];

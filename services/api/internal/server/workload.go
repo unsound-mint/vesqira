@@ -28,7 +28,7 @@ type WorkloadReply struct {
 
 // workload reports the budget, running and waiting counts of each workload class and, when ?request=<id> names the
 // X-Request-Id a slow request was sent with, whether that request is waiting and why. A panel that has been waiting for a
-// heavy answer asks this, so the person reads a reason instead of a silent spinner (ADR 0055). Nothing in it names a file,
+// heavy answer asks this, so the person reads a reason instead of a silent spinner (ADR 0056). Nothing in it names a file,
 // dataset or path: only operation names.
 func (s *Server) workload(w http.ResponseWriter, r *http.Request) {
 	out := WorkloadReply{Classes: []worker.ClassState{}}

@@ -1,4 +1,4 @@
-// Package support builds the support bundle (ADR 0055): a zip a person can attach to a bug report. It holds versions, capabilities,
+// Package support builds the support bundle (ADR 0056): a zip a person can attach to a bug report. It holds versions, capabilities,
 // counts and recent log lines, and nothing that identifies the research: no file contents, no hostnames, no keys or tokens, no
 // dataset names unless the person asked for them. Everything is plain text so the person can read every file before saving.
 //

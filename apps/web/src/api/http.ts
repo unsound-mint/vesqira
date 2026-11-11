@@ -20,8 +20,10 @@ export function onApiError(listener: ErrorListener): () => void {
   return () => void errorListeners.delete(listener);
 }
 
+// Only server failures reach the shell's "Last error · Reference" line: a 4xx is an answer the page already shows in place
+// (a 404 for "no derived dataset", a 409 asking for a decision), and announcing those would make the line noise.
 function announce(e: ApiError): ApiError {
-  if (e.requestId) for (const l of [...errorListeners]) l(e as ApiError & { requestId: string });
+  if (e.requestId && e.status >= 500) for (const l of [...errorListeners]) l(e as ApiError & { requestId: string });
   return e;
 }
 

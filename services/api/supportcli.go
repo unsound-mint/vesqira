@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// supportCommand is `vesqira support-bundle` (ADR 0055): a client of the running owner API, like the agent commands. Without
+// supportCommand is `vesqira support-bundle` (ADR 0056): a client of the running owner API, like the agent commands. Without
 // --out it only previews (file names and sizes, and with --show every file's text), so nothing is written before the person
 // has seen what the bundle holds. Exit codes: 0 done, 1 the app did not answer or refused, 2 wrong usage.
 func supportCommand(args []string) bool {

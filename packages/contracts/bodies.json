@@ -9983,7 +9983,7 @@
    "required": [
     "classes"
    ],
-   "description": "Workload classes (ADR 0055). Names only operations, never files or datasets.",
+   "description": "Workload classes (ADR 0056). Names only operations, never files or datasets.",
    "properties": {
     "classes": {
      "type": "array",
