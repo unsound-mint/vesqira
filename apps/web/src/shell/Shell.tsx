@@ -117,7 +117,7 @@ export function Shell() {
   const [prefsFor, setPrefsFor] = useState<{ key: string; p: LinkPrefs }>(() => ({ key: pairKey, p: defaultPrefs() }));
   const linkPrefs = prefsFor.key === pairKey ? prefsFor.p : defaultPrefs();
   const updatePrefs = (patch: Partial<LinkPrefs>) => setPrefsFor({ key: pairKey, p: { ...linkPrefs, ...patch } });
-  const group = compareDs !== null ? linkGroup(linkPrefs, sameGrid) : null;
+  const group = compareDs !== null ? linkGroup(linkPrefs, sameGrid, compat?.channelLink.ok === false ? compat.channelLink.reason : null) : null;
   const linked = group !== null;
   const idA = cat.selectedImage?.id ?? null;
   const idB = compareDs?.id ?? null;

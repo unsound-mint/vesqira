@@ -13,7 +13,9 @@ import { visibleWindow } from "./view";
 export type LinkFacet = "cursor" | "channel" | "view";
 export type LinkBasis = "same-grid" | "wcs";
 export type PaneId = "a" | "b";
-export type LinkGroup = { id: string; name: string; panes: PaneId[]; basis: LinkBasis; facets: Record<LinkFacet, boolean> };
+export type LinkGroup = { id: string; name: string; panes: PaneId[]; basis: LinkBasis; facets: Record<LinkFacet, boolean>;
+  /** Same grid only: why the channel is not linked although the grids match (the spectral frames are not known to be the same). The channel facet is then off. */
+  channelRefusal?: string };
 
 export const DEFAULT_LINK_NAME = "Compare";
 export const FACETS: { id: LinkFacet; label: string }[] = [
@@ -30,12 +32,16 @@ export const defaultPrefs = (): LinkPrefs => ({ name: DEFAULT_LINK_NAME, facets:
  * The compare panes' group, or null when they are not linked: fewer than two panes still in it, or different grids the person
  * has not chosen to link by WCS. Same grid links on its own (as before), and the person can still leave it.
  */
-export function linkGroup(prefs: LinkPrefs, sameGrid: boolean): LinkGroup | null {
+export function linkGroup(prefs: LinkPrefs, sameGrid: boolean, channelRefusal: string | null = null): LinkGroup | null {
   const panes = (["a", "b"] as const).filter((p) => prefs.members[p]);
   if (panes.length < 2) return null;
   const basis: LinkBasis | null = sameGrid ? "same-grid" : prefs.wcs ? "wcs" : null;
   if (!basis) return null;
-  return { id: "compare", name: prefs.name.trim() || DEFAULT_LINK_NAME, panes, basis, facets: prefs.facets };
+  const g: LinkGroup = { id: "compare", name: prefs.name.trim() || DEFAULT_LINK_NAME, panes, basis, facets: prefs.facets };
+  // Same grid says the sky pixels match, not that channel i is the same spectral value in both: with differing or undeclared
+  // spectral frames the channel is refused (cursor and view concern sky position only and stay as chosen).
+  if (basis === "same-grid" && channelRefusal) return { ...g, facets: { ...prefs.facets, channel: false }, channelRefusal };
+  return g;
 }
 
 /** The two compare panes as one group when their grids are confirmed identical: cursor and channel linked, view not (as before). */
@@ -200,7 +206,9 @@ export function linkPills(g: LinkGroup, sky: SkyState, channel: ChannelState): P
   const words = facetWords(g);
   if (g.basis === "same-grid") {
     const n = FACETS.filter((f) => g.facets[f.id]).length;
-    return [{ text: n === 0 ? "Same grid: nothing is linked" : `Same grid: ${words} ${n > 1 ? "are" : "is"} linked`, tone: n === 0 ? "neutral" : "ok" }];
+    const text = n === 0 ? "Same grid: nothing is linked" : `Same grid: ${words} ${n > 1 ? "are" : "is"} linked`;
+    if (g.channelRefusal) return [{ text: `${n === 0 ? "Same grid: nothing is linked" : `Same grid: ${words} linked`}; channel link refused: ${g.channelRefusal}`, tone: "warn" }];
+    return [{ text, tone: n === 0 ? "neutral" : "ok" }];
   }
   const out: Pill[] = [];
   if (g.facets.cursor || g.facets.view) {

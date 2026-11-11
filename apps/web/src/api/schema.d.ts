@@ -444,6 +444,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * Whether two maps are known to share a grid, and whether their channels may be linked by index
+         * @description Query `a` and `b` are dataset ids. Nothing is resampled. `channelLink` is about the spectral axis only and is not a grid reason.
+         */
         get: operations["owner_s_compatibility_get_api_compat"];
         put?: never;
         post?: never;
@@ -6293,6 +6297,18 @@ export interface components {
             sky: components["schemas"]["LinkSky"] | null;
             spectral: components["schemas"]["LinkSpectral"] | null;
         };
+        /** @description Whether the two maps' channels may be linked by index on one grid: the spectral reference frame (SPECSYS) must be declared by both and equal. Separate from grid compatibility, which guards sky position only. */
+        ChannelLink: {
+            ok: boolean;
+            /** @description Why not, empty when ok */
+            reason: string;
+        };
+        Compat: {
+            /** @description Shape, axis types, units, reference values, steps, rotation and the celestial frame all match: pixels correspond one to one */
+            compatible: boolean;
+            reasons: string[];
+            channelLink: components["schemas"]["ChannelLink"];
+        };
     };
     responses: never;
     parameters: never;
@@ -7040,7 +7056,10 @@ export interface operations {
     };
     owner_s_compatibility_get_api_compat: {
         parameters: {
-            query?: never;
+            query: {
+                a: number;
+                b: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7052,7 +7071,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Compat"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

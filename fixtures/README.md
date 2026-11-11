@@ -3,7 +3,7 @@
 Synthetic, deterministic astronomy inputs with independently known answers. Not real data. Files are generated on demand (`python3 fixtures/generate.py [dir]`) and are never committed.
 
 - `hi_cube`: 32x24x64 cube, TAN celestial WCS, linear VRAD axis in m/s, a source at a known pixel and channel, a NaN block (missing) and two flagged channels in a separate `FLAGS` table (flagged data is still finite).
-- Variants in another frame and with coarser pixels (incompatible with the base cube), `hi_cube_galactic_overlap` (the base cube's field on a Galactic grid, so the two overlap and link by WCS), `hi_cube_topocentric` (coarser pixels and a topocentric spectral frame, whose channels must not link to the base cube's LSRK ones), a VGT result file (`ANGLE`, `RELIABILITY`).
+- Variants in another frame and with coarser pixels (incompatible with the base cube), `hi_cube_galactic_overlap` (the base cube's field on a Galactic grid, so the two overlap and link by WCS), `hi_cube_topocentric` (coarser pixels and a topocentric spectral frame, whose channels must not link to the base cube's LSRK ones), `hi_cube_topocentric_same_grid` (the base cube with only SPECSYS changed: one grid, so cursor and view link, but the channel link is refused), a VGT result file (`ANGLE`, `RELIABILITY`).
 - Variants without a spectral reference and without celestial WCS: unknown must stay unknown.
 - VGT-style axial angle map with reliability, including the 1°/179° case, a degenerate pair and zero reliability that is not missing.
 - Oracles: an independent TAN projection and a doubled-angle axial mean, used to check implementations later.

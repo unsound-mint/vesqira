@@ -15,7 +15,7 @@ describe("comparison inspector", () => {
   });
 
   it("shows the code versions, the changed settings and the coverage warning", () => {
-    render(<CompareInspector a={ds(1, "a.fits", true)} b={ds(2, "b.fits", true)} va={viewer(90, 10)} vb={viewer(70, 30)} runs={[run(1, "ker8", "8", "abc123abc123abc123", true, 1), run(2, "ker12", "12", "def456def456def456", false, 2)]} compat={{ compatible: true, reasons: [] }} onCreated={() => {}} />);
+    render(<CompareInspector a={ds(1, "a.fits", true)} b={ds(2, "b.fits", true)} va={viewer(90, 10)} vb={viewer(70, 30)} runs={[run(1, "ker8", "8", "abc123abc123abc123", true, 1), run(2, "ker12", "12", "def456def456def456", false, 2)]} compat={{ compatible: true, reasons: [], channelLink: { ok: true, reason: "" } }} onCreated={() => {}} />);
     expect(screen.getByText(/abc123abc123 -dirty \(not reproducible\)/)).toBeInTheDocument();
     expect(screen.getByText("Run settings that differ (1)")).toBeInTheDocument();
     expect(screen.getByText(/not better agreement/)).toBeInTheDocument();
@@ -24,7 +24,7 @@ describe("comparison inspector", () => {
   });
 
   it("proposes alignment, with its caveats, only when the grids differ", () => {
-    render(<CompareInspector a={ds(1, "a.fits")} b={ds(2, "b.fits")} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: false, reasons: ["axis 1 step differs"] }} onCreated={() => {}} />);
+    render(<CompareInspector a={ds(1, "a.fits")} b={ds(2, "b.fits")} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: false, reasons: ["axis 1 step differs"], channelLink: { ok: true, reason: "" } }} onCreated={() => {}} />);
     expect(screen.getByRole("button", { name: /Propose: align a.fits onto b.fits/ })).toBeInTheDocument();
     expect(screen.getByText(/does not match angular resolution/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Axial difference map/ })).toBeNull();
@@ -33,15 +33,15 @@ describe("comparison inspector", () => {
 
 describe("difference of scalar maps", () => {
   it("is offered only for two undeclared maps on one grid, and says the beams are not matched", () => {
-    render(<CompareInspector a={ds(1, "a.fits")} b={ds(2, "b.fits")} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: true, reasons: [] }} onCreated={() => {}} />);
+    render(<CompareInspector a={ds(1, "a.fits")} b={ds(2, "b.fits")} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: true, reasons: [], channelLink: { ok: true, reason: "" } }} onCreated={() => {}} />);
     expect(screen.getByRole("button", { name: /Difference map \(a.fits − b.fits\)/ })).toBeInTheDocument();
     expect(screen.getByText(/beams are not matched/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Axial difference map/ })).toBeNull();
   });
   it("is not offered for orientation maps (they have the axial difference) or for different grids", () => {
-    const { rerender } = render(<CompareInspector a={ds(1, "a.fits", true)} b={ds(2, "b.fits", true)} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: true, reasons: [] }} onCreated={() => {}} />);
+    const { rerender } = render(<CompareInspector a={ds(1, "a.fits", true)} b={ds(2, "b.fits", true)} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: true, reasons: [], channelLink: { ok: true, reason: "" } }} onCreated={() => {}} />);
     expect(screen.queryByRole("button", { name: /^Difference map/ })).toBeNull();
-    rerender(<CompareInspector a={ds(1, "a.fits")} b={ds(2, "b.fits")} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: false, reasons: ["x"] }} onCreated={() => {}} />);
+    rerender(<CompareInspector a={ds(1, "a.fits")} b={ds(2, "b.fits")} va={viewer(1, 0)} vb={viewer(1, 0)} runs={[]} compat={{ compatible: false, reasons: ["x"], channelLink: { ok: true, reason: "" } }} onCreated={() => {}} />);
     expect(screen.queryByRole("button", { name: /^Difference map/ })).toBeNull();
   });
 });

@@ -9102,6 +9102,46 @@
      "nullable": true
     }
    }
+  },
+  "ChannelLink": {
+   "type": "object",
+   "required": [
+    "ok",
+    "reason"
+   ],
+   "description": "Whether the two maps' channels may be linked by index on one grid: the spectral reference frame (SPECSYS) must be declared by both and equal. Separate from grid compatibility, which guards sky position only.",
+   "properties": {
+    "ok": {
+     "type": "boolean"
+    },
+    "reason": {
+     "type": "string",
+     "description": "Why not, empty when ok"
+    }
+   }
+  },
+  "Compat": {
+   "type": "object",
+   "required": [
+    "compatible",
+    "reasons",
+    "channelLink"
+   ],
+   "properties": {
+    "compatible": {
+     "type": "boolean",
+     "description": "Shape, axis types, units, reference values, steps, rotation and the celestial frame all match: pixels correspond one to one"
+    },
+    "reasons": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "channelLink": {
+     "$ref": "#/components/schemas/ChannelLink"
+    }
+   }
   }
  },
  "operations": {
@@ -13290,6 +13330,52 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/LinkReply"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/compat": {
+   "summary": "Whether two maps are known to share a grid, and whether their channels may be linked by index",
+   "description": "Query `a` and `b` are dataset ids. Nothing is resampled. `channelLink` is about the spectral axis only and is not a grid reason.",
+   "parameters": [
+    {
+     "name": "a",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "b",
+     "in": "query",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Compat"
        }
       }
      }

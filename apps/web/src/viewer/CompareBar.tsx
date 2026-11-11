@@ -79,7 +79,7 @@ export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChan
         <div className={s.state} role="group" aria-label="Link group">
           <Input label="Group name" value={link.prefs.name} maxLength={60} onChange={(e) => link.onPrefs({ name: e.target.value })} />
           {FACETS.map((f) => (
-            <Checkbox key={f.id} label={f.label} checked={link.prefs.facets[f.id as LinkFacet]} onChange={(e) => link.onPrefs({ facets: { ...link.prefs.facets, [f.id]: e.target.checked } })} />
+            <Checkbox key={f.id} label={f.label} checked={link.group!.facets[f.id as LinkFacet] && link.prefs.facets[f.id as LinkFacet]} disabled={f.id === "channel" && !!link.group!.channelRefusal} onChange={(e) => link.onPrefs({ facets: { ...link.prefs.facets, [f.id]: e.target.checked } })} />
           ))}
           <Button onClick={() => link.onPrefs({ members: { ...link.prefs.members, a: false } })}>Unlink map A</Button>
           <Button onClick={() => link.onPrefs({ members: { ...link.prefs.members, b: false } })}>Unlink map B</Button>

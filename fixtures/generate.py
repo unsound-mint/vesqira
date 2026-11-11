@@ -86,6 +86,14 @@ def cube_topocentric() -> fits.HDUList:
     return hdul
 
 
+def cube_topocentric_same_grid() -> fits.HDUList:
+    """hi_cube with only SPECSYS changed (TOPOCENT): the same grid on every axis, so the grid check passes, but channel i is not
+    the same spectral value in both frames and must not be linked by index."""
+    hdul = hi_cube()
+    hdul[0].header["SPECSYS"] = "TOPOCENT"
+    return hdul
+
+
 def cube_coarser_pixels() -> fits.HDUList:
     """Same frame and field but 2x coarser pixel scale: resolution differs, so a match must be explicit."""
     hdul = hi_cube()
@@ -531,6 +539,7 @@ def write_all(directory: Path) -> dict[str, Path]:
         "hi_cube_coarser.fits": cube_coarser_pixels(),
         "hi_cube_galactic_overlap.fits": cube_galactic_overlap(),
         "hi_cube_topocentric.fits": cube_topocentric(),
+        "hi_cube_topocentric_same_grid.fits": cube_topocentric_same_grid(),
         "hi_cube_reverse_spectral.fits": cube_reverse_spectral(),
         "hi_cube_rotated.fits": cube_rotated_wcs(),
         "cube_int16_scaled.fits": cube_int16_scaled(),

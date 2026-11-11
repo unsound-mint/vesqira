@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fixture from "../../../../packages/contracts/fixtures/scenes.json";
-import { channelTarget, compareGroup, contains, defaultPrefs, followWcs, linkGroup, linkPills, mapPixel, mapView, padRegion, regionToAsk, sceneLink, visibleRegion } from "./link";
+import { channelTarget, compareGroup, contains, defaultPrefs, follow, followWcs, links, linkGroup, linkPills, mapPixel, mapView, padRegion, regionToAsk, sceneLink, visibleRegion } from "./link";
 import type { ChannelMap, ChannelState, LinkGroup, SkyMap, SkyState } from "./link";
 import { initialPane, paneReducer, sceneReducer } from "./scene";
 import { visibleWindow } from "./view";
@@ -143,6 +143,22 @@ describe("what the link pill states", () => {
     expect(linkPills(compareGroup(true)!, { status: "idle", refused: null, map: null }, { status: "idle", refused: null, map: null })).toEqual([{ text: "Same grid: cursor and channel are linked", tone: "ok" }]);
     const view = { ...compareGroup(true)!, facets: { cursor: false, channel: false, view: true } };
     expect(linkPills(view, ready(sky()), chReady)[0]!.text).toBe("Same grid: view is linked");
+  });
+  it("same grid with the spectral frames refused: the channel is off, cursor and view stay, and the pill says why", () => {
+    const why = "spectral frames differ (LSRK vs TOPOCENT); changing frame is not offered";
+    const g = linkGroup(defaultPrefs(), true, why)!;
+    expect(g.facets).toEqual({ cursor: true, channel: false, view: false });
+    expect(links(g, "channel")).toBe(false);
+    expect(links(g, "cursor")).toBe(true);
+    const idle = { status: "idle" as const, refused: null, map: null };
+    expect(linkPills(g, idle, idle)).toEqual([{ text: `Same grid: cursor linked; channel link refused: ${why}`, tone: "warn" }]);
+    const both = linkGroup({ ...defaultPrefs(), facets: { cursor: true, channel: true, view: true } }, true, why)!;
+    expect(linkPills(both, idle, idle)[0]!.text).toBe(`Same grid: cursor and view linked; channel link refused: ${why}`);
+    // the channel does not follow even though both cubes have the same number of channels
+    const a = scene(5);
+    expect(follow(g, a, scene(0), { from: 12, to: 12 }).some((x) => x.type === "setChannel")).toBe(false);
+    expect(follow(linkGroup(defaultPrefs(), true)!, a, scene(0), { from: 12, to: 12 }).some((x) => x.type === "setChannel")).toBe(true);
+    expect(sceneLink(g, { a: 1, b: 2 })!.facets.channel).toBe(false);
   });
   it("WCS names the frames, the program and the error bound; a larger error is called approximate", () => {
     const [p] = linkPills(wcsGroup({ cursor: true, channel: false, view: false }), ready(sky()), chReady);

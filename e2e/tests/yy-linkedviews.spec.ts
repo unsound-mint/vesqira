@@ -154,3 +154,31 @@ test("different grids link by WCS: cursor marker, footprint, channel by value, a
   expect(r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
   if (process.env.VESQIRA_SHOTS) await page.screenshot({ path: `${process.env.VESQIRA_SHOTS}/linked-views.png` });
 });
+
+test("one grid but different spectral frames: the cursor links, the channel is refused and does not follow", async ({ page }) => {
+  await page.goto("/");
+  const b = "hi_cube_topocentric_same_grid.fits";
+  for (const f of ["hi_cube.fits", b]) await ensureRegistered(page, f);
+  await datasets(page).getByRole("button", { name: /^hi_cube\.fits/ }).first().click();
+  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
+  await page.getByLabel("Compare with").selectOption({ label: b });
+  await expect(page.getByText("Same grid: cursor linked; channel link refused: spectral frames differ (LSRK vs TOPOCENT); changing frame is not offered")).toBeVisible();
+  await expect(group(page).getByLabel("Channel")).toBeDisabled();
+  await expect(group(page).getByLabel("Channel")).not.toBeChecked();
+
+  // the cursor is still linked (it concerns sky position, which the grid check confirmed)
+  const a = "hi_cube.fits";
+  await expect(async () => {
+    await hover(page, a, 0.5, 0.5);
+    await expect(marker(pane(page, b))).toBeVisible({ timeout: 1000 });
+  }).toPass();
+
+  // a channel moved in A is not followed by index: B stays where it was
+  await page.getByRole("slider", { name: "Channel" }).focus();
+  await page.keyboard.press("Home");
+  for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowRight");
+  await expect(pane(page, a).getByText(/Channel 11 of 64/)).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(pane(page, b).getByText(/Channel 11 of 64/)).toHaveCount(0);
+  await expect(pane(page, b).getByText(/Channel 1 of 64/)).toBeVisible();
+});
