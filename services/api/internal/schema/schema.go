@@ -38,7 +38,8 @@ import (
 // Version 19: the exploration history, a bounded list of viewer scenes per project (exploration_steps; ADR 0057).
 // Version 20: a project keeps the researcher's import rules and a record of what each was applied to (import_rules, import_applied;
 // ADR 0058).
-const Version = 20
+// Version 21: a board panel may carry its place on the board's grid (board_items.layout_x, layout_y, layout_w, layout_h; ADR 0060).
+const Version = 21
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -67,6 +68,23 @@ var migrations = []Migration{
 	{To: 18, Name: "interpretation tiers and typed masks", Up: tiersAndMasks},
 	{To: 19, Name: "exploration history", Up: explorationHistory},
 	{To: 20, Name: "import rules", Up: importRules},
+	{To: 21, Name: "board layout grid", Up: boardLayoutGrid},
+}
+
+// boardLayoutGrid adds the four nullable columns that place a panel on the grid. NULL is what every existing panel gets: the board
+// has no layout and the client derives one from the order, without rewriting anything until the researcher changes it. A catalog
+// without a board_items table needs nothing.
+func boardLayoutGrid(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='board_items'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, c := range []string{"layout_x", "layout_y", "layout_w", "layout_h"} {
+		if err := AddColumn(tx, "board_items", c, "INTEGER"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // MasksTable is the table of typed masks (ADR 0055): one row per derived mask file, with what the mask is for (the dataset), what

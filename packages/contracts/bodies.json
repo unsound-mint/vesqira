@@ -1749,6 +1749,14 @@
     },
     "note": {
      "type": "string"
+    },
+    "layout": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/BoardRect"
+      }
+     ],
+     "description": "Absent until the board is first arranged; the client then derives a place from the order and writes nothing."
     }
    }
   },
@@ -1776,6 +1784,14 @@
     },
     "note": {
      "type": "string"
+    },
+    "layout": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/BoardRect"
+      }
+     ],
+     "description": "Absent until the board is first arranged; the client then derives a place from the order and writes nothing."
     }
    }
   },
@@ -2052,6 +2068,14 @@
     },
     "provenance": {
      "$ref": "#/components/schemas/FigureProvenance"
+    },
+    "layout": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/BoardRect"
+      }
+     ],
+     "description": "The place as saved when the board was published; absent for a board that was never arranged and for snapshots made before layouts, which the reader lays out from the order."
     }
    }
   },
@@ -2085,6 +2109,14 @@
     },
     "note": {
      "type": "string"
+    },
+    "layout": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/BoardRect"
+      }
+     ],
+     "description": "The place as saved when the board was published; absent for a board that was never arranged and for snapshots made before layouts, which the reader lays out from the order."
     }
    }
   },
@@ -11872,6 +11904,79 @@
      }
     }
    }
+  },
+  "BoardRect": {
+   "type": "object",
+   "description": "A panel's place on the board's 12-column grid (ADR 0060): column x (0-based) and row y, spanning w columns and h rows. Rows have one fixed height, so y and h count rows.",
+   "required": [
+    "x",
+    "y",
+    "w",
+    "h"
+   ],
+   "properties": {
+    "x": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 11
+    },
+    "y": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 10000
+    },
+    "w": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 12
+    },
+    "h": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 200
+    }
+   }
+  },
+  "BoardLayoutRequest": {
+   "type": "object",
+   "required": [
+    "layout",
+    "expect"
+   ],
+   "description": "The places of every panel of a board, in position order (ADR 0060). A null place clears that panel's. Places must be inside the grid and must not overlap; the server does not compact. expect names the panel at each position and must cover the whole board; from, when present, is the layout being replaced. A mismatch of either is a 409 and nothing changes.",
+   "properties": {
+    "layout": {
+     "type": "array",
+     "items": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/BoardRect"
+       }
+      ],
+      "nullable": true
+     },
+     "maxItems": 2000
+    },
+    "expect": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/BoardExpect"
+     },
+     "maxItems": 2000
+    },
+    "from": {
+     "type": "array",
+     "items": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/BoardRect"
+       }
+      ],
+      "nullable": true
+     },
+     "maxItems": 2000
+    }
+   }
   }
  },
  "operations": {
@@ -17667,6 +17772,62 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/boards/{id}/layout": {
+   "summary": "Save the places of all panels on the board's grid",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/BoardLayoutRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Board"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "The board's panels or their places are not the ones the request names; nothing was changed. `board` is the board as it is now.",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BoardConflict"
        }
       }
      }
