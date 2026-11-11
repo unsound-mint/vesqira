@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, deleteCatalogDeclaration, getAvailability, isCatalog, listDatasets, putCatalogDeclaration, registerDataset, setInterpretation, setNature, setUnit } from "../api/catalog";
-import type { CatalogDataset, CatalogDeclarationRequest, Dataset, ImageDataset, InterpretationRequest, Nature, Problem } from "../api/catalog";
+import { addLocation, ApiError, deleteCatalogDeclaration, getAvailability, getNewer, isCatalog, listDatasets, putCatalogDeclaration, registerDataset, sameContentOffer, setInterpretation, setNature, setUnit } from "../api/catalog";
+import type { CatalogDataset, CatalogDeclarationRequest, Dataset, ImageDataset, InterpretationRequest, Nature, NewerResults, Problem } from "../api/catalog";
+import type { Offer } from "./SameContentOffer";
 import { listHosts } from "../api/hosts";
 import { listJobs } from "../api/jobs";
 import type { Job } from "../api/jobs";
@@ -21,10 +22,15 @@ export function useCatalog() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [problems, setProblems] = useState<Record<string, Problem>>({});
+  /** Notices that a newer result exists or that the data behind a dataset or figure changed (ADR 0053), checked with the files. */
+  const [newer, setNewer] = useState<NewerResults>({ datasets: {}, figures: {} });
+  /** A file whose content a registered dataset already holds: the choice offered instead of registering it. */
+  const [offer, setOffer] = useState<Offer | null>(null);
 
   /** Which registered files changed or vanished on disk. Checked at start, when the window comes back and after a change here. */
   const checkFiles = useCallback(() => {
     getAvailability().then(setProblems).catch(() => undefined);
+    getNewer().then(setNewer).catch(() => undefined);
   }, []);
   useEffect(() => {
     checkFiles();
@@ -48,17 +54,36 @@ export function useCatalog() {
   }, []);
 
   /** Returns an error message for the form, or null on success. */
-  const register = useCallback(async (path: string): Promise<string | null> => {
+  const register = useCallback(async (path: string, opts: { asNew?: boolean } = {}): Promise<string | null> => {
     try {
-      const d = await registerDataset(path);
+      const d = await registerDataset(path, opts);
       setDatasets((cur) => [...cur.filter((x) => x.id !== d.id), d].sort((a, b) => a.name.localeCompare(b.name)));
       setSelectedId(d.id);
+      setOffer(null);
       checkFiles();
       return null;
     } catch (e) {
+      const matches = sameContentOffer(e);
+      if (matches) { // not an error: a dataset already holds this content, and the choice is the person's
+        setOffer({ path, matches });
+        return null;
+      }
       return e instanceof ApiError ? e.message : "Could not register the file.";
     }
   }, [checkFiles]);
+
+  /** Add the offered file as another location of a dataset instead of registering a duplicate. Returns an error text, or null. */
+  const addAsLocation = useCallback(async (datasetId: number, path: string): Promise<string | null> => {
+    try {
+      await addLocation(datasetId, { path });
+      setOffer(null);
+      setDatasets(await listDatasets({ archived: "all" }));
+      setSelectedId(datasetId);
+      return null;
+    } catch (e) {
+      return e instanceof ApiError ? e.message : "Could not add the location.";
+    }
+  }, []);
 
   /** Declare (or clear) what the user says a dataset is. Returns an error text with reasons, or null on success. */
   const declare = useCallback(async (id: number, body: InterpretationRequest): Promise<string | null> => {
@@ -133,5 +158,5 @@ export function useCatalog() {
   const selectedImage = selected && !isCatalog(selected) ? selected : null;
   const selectedCatalog = selected && isCatalog(selected) ? selected : null;
 
-  return { problems, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
+  return { problems, newer, offer, dismissOffer: () => setOffer(null), addAsLocation, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
 }

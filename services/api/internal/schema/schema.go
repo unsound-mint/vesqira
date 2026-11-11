@@ -28,7 +28,9 @@ import (
 // Version 12: a ROHSA run keeps its decomposition record (rohsa_runs; ADR 0046).
 // Version 13: parameter sweeps, a record of a grid of linked draft jobs (sweeps, sweep_jobs; ADR 0048).
 // Version 14: the transfer queue (transfers; ADR 0051).
-const Version = 14
+// Version 15: a dataset may have several locations, each with its own fingerprints (dataset_locations); a figure records the
+// identity of the datasets it was drawn from (figures.identity; ADR 0053).
+const Version = 15
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -51,6 +53,63 @@ var migrations = []Migration{
 	{To: 12, Name: "ROHSA runs", Up: rohsaRuns},
 	{To: 13, Name: "parameter sweeps", Up: parameterSweeps},
 	{To: 14, Name: "transfers", Up: transfersTable},
+	{To: 15, Name: "dataset locations and figure identity", Up: datasetIdentity},
+}
+
+// DatasetLocationsTable is where a dataset's files are (ADR 0053). Every dataset has one primary row (the file it was
+// registered from; datasets.path is the same file under a unique key) and may have more. link says why a location belongs to
+// the dataset: registered (the primary: no claim), verified (equal full SHA-256), probable (equal size and sampled
+// fingerprint: NOT proof) or declared (the researcher's word). The fingerprint columns say what was computed, when and by
+// whom (” means not computed). The catalog package creates it for a fresh install and the migration for an upgraded one.
+const DatasetLocationsTable = `CREATE TABLE IF NOT EXISTS dataset_locations(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+	host_id INTEGER NOT NULL DEFAULT 0,
+	path TEXT NOT NULL,
+	kind TEXT NOT NULL DEFAULT 'registered',
+	is_primary INTEGER NOT NULL DEFAULT 0,
+	link TEXT NOT NULL DEFAULT 'registered',
+	size_bytes INTEGER NOT NULL,
+	modified_at INTEGER NOT NULL,
+	added_at INTEGER NOT NULL,
+	sampled_fp TEXT NOT NULL DEFAULT '', sampled_at INTEGER NOT NULL DEFAULT 0, sampled_by TEXT NOT NULL DEFAULT '',
+	full_sha256 TEXT NOT NULL DEFAULT '', full_at INTEGER NOT NULL DEFAULT 0, full_by TEXT NOT NULL DEFAULT '',
+	UNIQUE(host_id, path))`
+
+// datasetIdentity adds dataset_locations and gives every existing dataset its primary location (no fingerprint yet: none was
+// computed, which the empty columns say), and adds figures.identity (” for every existing figure: it recorded none). A
+// catalog without those tables (never opened by their packages) needs nothing for them.
+func datasetIdentity(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='datasets'`).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		if _, err := tx.Exec(DatasetLocationsTable); err != nil {
+			return err
+		}
+		var have int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('datasets') WHERE name IN ('path','size_bytes','modified_at','added_at')`).Scan(&have); err != nil {
+			return err
+		}
+		if have < 4 { // a table that is not the catalog's own (a test's stand-in) has nothing to carry over
+			n = 0
+		}
+	}
+	if n > 0 {
+		if err := AddColumn(tx, "datasets", "host_id", "INTEGER NOT NULL DEFAULT 0"); err != nil { // the first catalogs had none
+			return err
+		}
+		// datasets.path of a file on a host is stored as "h<host>:<path>"; the location keeps the plain path
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at)
+			SELECT id, host_id, CASE WHEN host_id=0 THEN path ELSE substr(path, length('h'||host_id||':')+1) END, 'registered', 1, 'registered', size_bytes, modified_at, added_at FROM datasets`); err != nil {
+			return err
+		}
+	}
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='figures'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	return AddColumn(tx, "figures", "identity", "TEXT NOT NULL DEFAULT ''")
 }
 
 // SweepsTables is the DDL of both sweep tables (ADR 0048), shared by the sweeps package (a fresh catalog) and the migration

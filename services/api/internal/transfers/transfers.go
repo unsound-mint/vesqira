@@ -111,6 +111,9 @@ type Verif struct {
 	SourceSHA256 string `json:"sourceSha256"`
 	DestSHA256   string `json:"destSha256"`
 	Bytes        int64  `json:"bytes"`
+	// SourceMTime is the source's modification time in seconds as the host reported it in the same step that hashed it
+	// (0: not reported). Not stored: it is only used when the verified download finishes.
+	SourceMTime int64 `json:"-"`
 }
 
 type Store struct{ db *sql.DB }

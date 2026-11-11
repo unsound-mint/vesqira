@@ -9,6 +9,8 @@ import { matchDataset } from "./filter";
 import { datasetVocabulary } from "./vocabulary";
 import { previewFile } from "../api/catalog";
 import type { Preview } from "../api/catalog";
+import { SameContentOffer } from "./SameContentOffer";
+import type { Offer } from "./SameContentOffer";
 import s from "./Explorer.module.css";
 
 const FITS_EXT = [".fits", ".fit", ".fits.gz", ".csv", ".tsv", ".ecsv", ".dat", ".txt", ".tbl", ".cat", ".xcat", ".vot", ".votable"];
@@ -23,13 +25,17 @@ type Props = {
   loading: boolean;
   error: string | null;
   onSelect: (id: number) => void;
-  onRegister: (path: string) => Promise<string | null>;
+  onRegister: (path: string, opts?: { asNew?: boolean }) => Promise<string | null>;
+  /** A registered dataset already holds the content of the file just submitted (ADR 0053): the choice, not an error. */
+  offer?: Offer | null;
+  onAddLocation?: (datasetId: number, path: string) => Promise<string | null>;
+  onDismissOffer?: () => void;
 };
 
 type Host = { id: number; name: string };
 const NO_HOSTS: Host[] = [];
 
-export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}, loading, error, onSelect, onRegister }: Props) {
+export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}, loading, error, onSelect, onRegister, offer = null, onAddLocation, onDismissOffer }: Props) {
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -74,6 +80,14 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
           </div>
         ) : null}
         {formError ? <p role="alert" className={s.err}>{formError}</p> : null}
+        {offer && onAddLocation ? (
+          <SameContentOffer
+            offer={offer}
+            onAdd={(id) => { void onAddLocation(id, offer.path).then(setFormError); }}
+            onSeparate={() => { void onRegister(offer.path, { asNew: true }).then(setFormError); }}
+            onDismiss={() => onDismissOffer?.()}
+          />
+        ) : null}
       </form>
       {error ? <p role="alert" className={s.err}>{error}</p> : null}
       {loading ? <p className={s.note}>Loading datasets…</p> : null}

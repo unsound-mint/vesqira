@@ -24,6 +24,7 @@ type PlaneService interface {
 // cacheKey includes the file signature, so a file that changed on disk can never serve stale pixels.
 type cacheKey struct {
 	id      int64
+	host    int64 // the machine the bytes were read on: one dataset can be read from more than one location (ADR 0053)
 	size    int64
 	mtime   int64
 	op      string
@@ -105,7 +106,7 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 	if info.Size() != d.SizeBytes || info.ModTime().UnixNano() != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}
-	return real, cacheKey{id: d.ID, size: info.Size(), mtime: info.ModTime().UnixNano(), unit: declaredUnitOf(d)}, 0, ""
+	return real, cacheKey{id: d.ID, host: d.HostID, size: info.Size(), mtime: info.ModTime().UnixNano(), unit: declaredUnitOf(d)}, 0, ""
 }
 
 // source resolves a dataset id to an authorized, unchanged file.
@@ -129,12 +130,13 @@ func (s *Server) source(w http.ResponseWriter, r *http.Request) (d catalog.Datas
 		fail(w, 409, "this is a point catalog: it has no planes, only rows (see its catalog report)")
 		return
 	}
-	real, k, status, msg := s.authorize(r.Context(), d)
+	eff, loc, real, k, status, msg := s.chooseRead(r.Context(), d, true)
 	if status != 0 {
 		fail(w, status, msg)
 		return
 	}
-	return d, real, k, true
+	w.Header().Set("X-Vesqira-Location", strconv.FormatInt(loc.ID, 10)) // which location was read, for a client that wants to say so
+	return eff, real, k, true
 }
 
 // index reads a required non-negative integer query parameter.
@@ -154,7 +156,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 	if k.unit != "" {
 		req["declared_bunit"] = k.unit // the worker uses it only for a file with no BUNIT, and labels it as the person's
 	}
-	svc := s.planesFor(k.id)
+	svc := s.planesOn(k.host)
 	if svc == nil {
 		fail(w, 503, "the scientific worker is not configured")
 		return worker.Reply{}, false

@@ -97,10 +97,10 @@ type lane struct {
 
 // heavyOps are the worker operations that read a region over many channels or a whole map.
 // The catalog operations read a whole table (up to its size cap) and keep it parsed in that process, so they share one lane.
-var heavyOps = map[string]bool{"spectrum": true, "axial": true, "catalog_describe": true, "catalog_rows": true, "catalog_report": true, "catalog_positions": true, "catalog_transform": true, "overlay_catalog": true, "rohsa_index": true, "channel_grid": true, "pv": true}
+var heavyOps = map[string]bool{"spectrum": true, "axial": true, "catalog_describe": true, "catalog_rows": true, "catalog_report": true, "catalog_positions": true, "catalog_transform": true, "overlay_catalog": true, "rohsa_index": true, "channel_grid": true, "pv": true, "fingerprint_full": true}
 
 // registerOps are header reads done to catalog files, kept off the interactive lane.
-var registerOps = map[string]bool{"describe": true, "header": true}
+var registerOps = map[string]bool{"describe": true, "header": true, "fingerprint": true}
 
 type proc struct {
 	cmd *exec.Cmd

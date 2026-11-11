@@ -100,6 +100,12 @@ type Server struct {
 	disk         hostDisk       // cached storage looks and measured folder sizes per host (hoststorage.go)
 	xfer         transferRunner // the running transfers and the hosts' rsync probes (transfers.go)
 
+	// FullHashCap is the largest file a full SHA-256 is computed for (0 means 16 GiB). Full hashes run in the background, one
+	// at a time, and can be cancelled (identity.go, ADR 0053).
+	FullHashCap int64
+	hashing     hashRegistry
+	hashes      sync.WaitGroup // full hashes in flight
+
 	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
 }
@@ -111,7 +117,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/files/tree", s.fileTree)
 	mux.HandleFunc("GET /api/datasets", s.list)
 	mux.HandleFunc("GET /api/datasets/availability", s.availability)
+	mux.HandleFunc("GET /api/datasets/newer", s.newerResults)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
+	mux.HandleFunc("GET /api/datasets/{id}/locations", s.listLocations)
+	mux.HandleFunc("POST /api/datasets/{id}/locations", s.addLocation)
+	mux.HandleFunc("POST /api/datasets/{id}/locations/{lid}/delete", s.removeLocation)
+	mux.HandleFunc("POST /api/datasets/{id}/locations/{lid}/fingerprint", s.fingerprintLocation)
 	mux.HandleFunc("POST /api/datasets", s.register)
 	mux.HandleFunc("POST /api/catalogs", s.registerCatalog)
 	mux.HandleFunc("GET /api/datasets/{id}/catalog/report", s.catalogReport)
@@ -402,7 +413,11 @@ func (s *Server) availability(w http.ResponseWriter, r *http.Request) {
 		if d.HostID != 0 {
 			continue
 		}
-		switch _, _, status, _ := s.authorize(r.Context(), d); status {
+		_, _, status, _ := s.authorize(r.Context(), d)
+		if status != 0 && status != 409 && s.readableLocally(r.Context(), d) { // the registered file is gone but a verified copy here reads: the viewer works
+			continue // (a file that changed is still said to have changed)
+		}
+		switch status {
 		case 0:
 		case 404:
 			out[strconv.FormatInt(d.ID, 10)] = "missing"
@@ -467,11 +482,21 @@ func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset
 		return catalog.Dataset{}, 404, "file not found"
 	}
 	d, err := s.Store.Upsert(catalog.Dataset{Path: real, Name: filepath.Base(real), SizeBytes: info.Size(), ModifiedAt: info.ModTime(), Header: hdr})
+	if errors.Is(err, catalog.ErrLocationExists) {
+		return catalog.Dataset{}, 409, "this file is already another location of a dataset: remove that location first, or open that dataset"
+	}
 	if err != nil {
 		log.Printf("register: %v", err)
 		return catalog.Dataset{}, 500, "internal error"
 	}
-	return d, 0, ""
+	return s.recordIdentity(ctx, d), 0, ""
+}
+
+// knownFile says whether a path on this computer already is a dataset's registered file or location: registering it again
+// refreshes that dataset, so there is nothing to offer.
+func (s *Server) knownFile(real string) bool {
+	_, found, _ := s.Store.LocationOwner(0, real)
+	return found
 }
 
 // inPartialFolder reports whether a path is inside a folder where rsync keeps an unfinished transfer (ADR 0051).
@@ -488,6 +513,8 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var in struct {
 		Path string `json:"path"`
+		// AsNew registers the file as its own dataset although a dataset already holds probably or verifiably the same bytes.
+		AsNew bool `json:"asNew"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, 400, "invalid request body")
@@ -497,6 +524,12 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, 403, err.Error())
 		return
+	}
+	if !in.AsNew && !s.knownFile(real) {
+		if m := s.sameContent(r.Context(), real); len(m) > 0 {
+			failCode(w, 409, "same_content", "A dataset already holds this content. Add the file as another location of it, or register it as a separate dataset.", map[string]any{"matches": m})
+			return
+		}
 	}
 	d, code, msg := s.registerPath(r.Context(), real)
 	if code != 0 {

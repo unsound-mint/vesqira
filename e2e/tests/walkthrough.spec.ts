@@ -34,7 +34,13 @@ async function chooseHostFolder(page: Page, target: string) {
 async function register(page: Page, file: string) {
   await page.getByLabel("Register a FITS file").fill(path.join(data, file));
   await page.getByRole("button", { name: "Register", exact: true }).click();
-  await expect(page.getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}`) })).toBeVisible();
+  const row = page.getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}`) });
+  // A file with the same bytes as a registered dataset is offered as a location of it (ADR 0053); the walk-through's fixtures repeat
+  // bytes under several names and want separate datasets, so it chooses that when the offer appears.
+  const offer = page.getByRole("status", { name: "A dataset already holds this content" });
+  await expect(row.or(offer)).toBeVisible();
+  if (await offer.isVisible()) await offer.getByRole("button", { name: "Register as a separate dataset" }).click();
+  await expect(row).toBeVisible();
   await expect(page.getByLabel("Register a FITS file")).toHaveValue(""); // the form clears itself once the registration has finished
 }
 
@@ -264,7 +270,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await page.getByRole("button", { name: "Boards", exact: true }).click();
   await expect(page.getByRole("heading", { name: "H I peak at 8 km/s" })).toBeVisible();
   await page.getByText("Where this came from").click();
-  await expect(page.getByText(/bytes were not hashed/)).toBeVisible();
+  await expect(page.getByText(/SHA-256 of its bytes was recorded|sampled fingerprint of it|bytes were not hashed/)).toBeVisible();
   await page.getByLabel("Note for the reviewer").fill("Check the unit of the colour bar.");
   await page.getByLabel("Note for the reviewer").blur();
   await page.getByLabel("Label").fill("Group meeting draft");
@@ -326,7 +332,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   const printPage = await page.context().newPage();
   await printPage.goto(`${new URL(page.url()).origin}/#/print/1`);
   await expect(printPage.getByRole("button", { name: "Print or save as PDF" })).toBeVisible();
-  await expect(printPage.getByText(/bytes were not hashed/)).toBeVisible();
+  await expect(printPage.getByText(/SHA-256 of its bytes was recorded|sampled fingerprint of it|bytes were not hashed/)).toBeVisible();
   await printPage.close();
   await page.getByRole("button", { name: "Revoke link" }).click();
   await sup.reload();

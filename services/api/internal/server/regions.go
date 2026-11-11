@@ -173,7 +173,7 @@ func (s *Server) importRegions(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			items = s.placeSkyRegions(r.Context(), k.id, real, items)
+			items = s.placeSkyRegions(r.Context(), k.host, real, items)
 			break
 		}
 	}
@@ -200,8 +200,8 @@ func (s *Server) importRegions(w http.ResponseWriter, r *http.Request) {
 
 // placeSkyRegions settles the DS9 regions written on the sky using the dataset's own WCS, evaluated by the worker. A region
 // is placed only if its frame fits the dataset's declared frame; nothing is transformed between frames.
-func (s *Server) placeSkyRegions(ctx context.Context, id int64, real string, items []regions.ImportItem) []regions.ImportItem {
-	svc := s.planesFor(id)
+func (s *Server) placeSkyRegions(ctx context.Context, host int64, real string, items []regions.ImportItem) []regions.ImportItem {
+	svc := s.planesOn(host)
 	if svc == nil {
 		return regions.ResolveSky(items, "", func([][2]float64) (regions.Placement, error) {
 			return regions.Placement{}, errors.New("the scientific worker is not available")

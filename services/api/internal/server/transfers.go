@@ -640,6 +640,9 @@ func (s *Server) settle(t transfers.Transfer, h hosts.Host, out outcome) {
 		case out.state == transfers.StateDone && out.verif.Status == transfers.Unverified:
 			s.notifyTransfer(t, h, notify.KindTransferFailed, "arrived but NOT verified: "+tName(t), out.verif.Note)
 		case out.state == transfers.StateDone:
+			if done, err := s.Transfers.Get(t.ID); err == nil { // the kind and the final name are settled by the attempt
+				s.linkDownloadedLocation(context.Background(), done, out.verif)
+			}
 			s.notifyTransfer(t, h, notify.KindTransferDone, "finished and verified: "+tName(t), out.detail)
 		}
 	}
@@ -687,7 +690,7 @@ const kindReserved = "reserved"
 // nobody has touched the name since; any other entry means the name was lost.
 func (e end) identity() string { return fmt.Sprintf("%s:%d:%d", e.kind, e.size, e.mtime) }
 
-func (s *Server) localStat(p string) end {
+func (s *Server) localEnd(p string) end {
 	st, err := os.Lstat(p)
 	switch {
 	case err != nil:
@@ -752,9 +755,9 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 		src = fromRemote(st)
 	} else {
 		if p, err := s.roots().Resolve(t.SourcePath); err == nil {
-			src = s.localStat(p)
+			src = s.localEnd(p)
 		} else if p, err := s.roots().ResolveDir(t.SourcePath); err == nil {
-			src = s.localStat(p)
+			src = s.localEnd(p)
 		} else {
 			return failed("the source is no longer a file or folder inside the source roots on this computer")
 		}
@@ -933,7 +936,7 @@ func clipText(s string, n int) string {
 // folder is named the way the owner named it (a root may be a symbolic link there); the host resolves it again each time.
 func (s *Server) lookDest(ctx context.Context, t transfers.Transfer, h hosts.Host, destReal, name string, hash bool) (end, error) {
 	if t.Direction == hosts.Download {
-		e := s.localStat(filepath.Join(destReal, name))
+		e := s.localEnd(filepath.Join(destReal, name))
 		if hash && e.kind == hosts.KindFile {
 			sum, _, err := hosts.HashFile(ctx, e.real)
 			if err != nil {
@@ -1093,7 +1096,7 @@ func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h ho
 		}
 		if a.sha != "" && a.sha == b.sha {
 			return ret(outcome{state: transfers.StateDone, detail: fmt.Sprintf("A file with this name, size and SHA-256 is already %s; nothing was transferred.", where),
-				verif: transfers.Verif{Status: transfers.Verified, Method: transfers.MethodSHA256, SourceSHA256: a.sha, DestSHA256: b.sha, Bytes: src.size,
+				verif: transfers.Verif{Status: transfers.Verified, Method: transfers.MethodSHA256, SourceSHA256: a.sha, DestSHA256: b.sha, Bytes: src.size, SourceMTime: a.mtime,
 					Note: "The existing file and the source have the same SHA-256 (both hashed just now)."}})
 		}
 	}
@@ -1175,7 +1178,7 @@ func (s *Server) verify(ctx context.Context, t transfers.Transfer, h hosts.Host,
 
 	// a file: size and sha256 on both ends
 	var srcSum, dstSum string
-	var srcSize, dstSize int64
+	var srcSize, dstSize, srcMTime int64
 	if download {
 		st, err := s.Remote.StatPath(ctx, h, path.Dir(t.SourcePath), path.Base(t.SourcePath), true)
 		if err != nil {
@@ -1184,7 +1187,7 @@ func (s *Server) verify(ctx context.Context, t transfers.Transfer, h hosts.Host,
 			}
 			return classify(err)
 		}
-		srcSum, srcSize = st.SHA, st.Size
+		srcSum, srcSize, srcMTime = st.SHA, st.Size, st.MTime
 		sum, n, err := hosts.HashFile(ctx, filepath.Join(destReal, final))
 		if err != nil {
 			if ctx.Err() != nil {
@@ -1214,7 +1217,7 @@ func (s *Server) verify(ctx context.Context, t transfers.Transfer, h hosts.Host,
 		}
 		dstSum, dstSize = st.SHA, st.Size
 	}
-	v := transfers.Verif{Method: transfers.MethodSHA256, SourceSHA256: srcSum, DestSHA256: dstSum, Bytes: dstSize}
+	v := transfers.Verif{Method: transfers.MethodSHA256, SourceSHA256: srcSum, DestSHA256: dstSum, Bytes: dstSize, SourceMTime: srcMTime}
 	switch {
 	case srcSum == "" || dstSum == "":
 		v.Status = transfers.Unverified

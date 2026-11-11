@@ -257,7 +257,8 @@
     "interpretation",
     "unitDeclaration",
     "kind",
-    "catalogDeclaration"
+    "catalogDeclaration",
+    "locations"
    ],
    "properties": {
     "id": {
@@ -341,6 +342,13 @@
      ],
      "nullable": true,
      "description": "What the person declared about a catalog's columns; null for anything else"
+    },
+    "locations": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/DatasetLocation"
+     },
+     "description": "The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053)."
     }
    }
   },
@@ -1467,6 +1475,14 @@
        "$ref": "#/components/schemas/Scene"
       }
      ]
+    },
+    "identity": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/FigureIdentity"
+      }
+     ],
+     "description": "Absent for figures saved before identities (ADR 0053)."
     }
    }
   },
@@ -8101,6 +8117,526 @@
    },
    "description": "The dataset a verified download was registered as (201 the first time, 200 when it already was). Its derived record names the host and path as an external reference and the hash compared."
   },
+  "IdentityStamp": {
+   "type": "object",
+   "required": [
+    "value",
+    "at",
+    "by"
+   ],
+   "properties": {
+    "value": {
+     "type": "string"
+    },
+    "at": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "by": {
+     "type": "string",
+     "description": "What computed it: \"this computer\" or \"worker on <host name>\", or \"hashed while copying\"."
+    }
+   },
+   "description": "A computed value with when and by what it was computed."
+  },
+  "DatasetLocation": {
+   "type": "object",
+   "required": [
+    "id",
+    "hostId",
+    "path",
+    "kind",
+    "primary",
+    "link",
+    "sizeBytes",
+    "modifiedAt",
+    "addedAt",
+    "sampledFingerprint",
+    "fullSha256"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "hostId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "0 for a file on this computer, otherwise the host that holds it"
+    },
+    "path": {
+     "type": "string"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "registered",
+      "managed",
+      "downloaded",
+      "copy"
+     ]
+    },
+    "primary": {
+     "type": "boolean",
+     "description": "The file the dataset was registered from. Dataset.path and hostId are this location."
+    },
+    "link": {
+     "type": "string",
+     "enum": [
+      "registered",
+      "verified",
+      "probable",
+      "declared",
+      "stale"
+     ],
+     "description": "Why the location belongs to the dataset. registered: the primary, no claim. verified: equal full SHA-256 (the same bytes). probable: same size and equal sampled fingerprint, which is NOT proof. declared: the researcher's word, nothing was proven. stale: was verified or probable against an earlier version of the registered file, which has changed since; not read from until compared again."
+    },
+    "sizeBytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "modifiedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "addedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "sampledFingerprint": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/IdentityStamp"
+      }
+     ],
+     "nullable": true,
+     "description": "A SHA-256 over the file size, the primary FITS header and 16 blocks of 64 KiB at fixed offsets (algorithm sampled/1; see LocationList.sampledCovers). A different value proves the files differ; an equal value does not prove they are the same. null: not computed."
+    },
+    "fullSha256": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/IdentityStamp"
+      }
+     ],
+     "nullable": true,
+     "description": "The SHA-256 of every byte. null: not computed."
+    }
+   },
+   "description": "One place a dataset's bytes are (ADR 0053)."
+  },
+  "HashStatus": {
+   "type": "object",
+   "required": [
+    "state",
+    "doneBytes",
+    "totalBytes"
+   ],
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "queued",
+      "running",
+      "failed"
+     ]
+    },
+    "doneBytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "totalBytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "error": {
+     "type": "string"
+    }
+   }
+  },
+  "ReadsFrom": {
+   "type": "object",
+   "required": [
+    "locationId",
+    "hostId",
+    "primary",
+    "checked",
+    "reason"
+   ],
+   "properties": {
+    "locationId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "hostId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "primary": {
+     "type": "boolean"
+    },
+    "checked": {
+     "type": "boolean",
+     "description": "false: a file on a host, which is not contacted to answer this"
+    },
+    "reason": {
+     "type": "string"
+    }
+   },
+   "description": "Where the viewer would read the dataset from now: files on this computer before files on a host, the registered file before others, and only the registered file or a location verified to hold the same bytes."
+  },
+  "LocationList": {
+   "type": "object",
+   "required": [
+    "locations",
+    "hashing",
+    "algorithm",
+    "sampledCovers",
+    "fullHashCapBytes"
+   ],
+   "properties": {
+    "locations": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/DatasetLocation"
+     }
+    },
+    "readsFrom": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/ReadsFrom"
+      }
+     ],
+     "nullable": true
+    },
+    "unavailable": {
+     "type": "string",
+     "description": "Present when nothing can be read; the reason."
+    },
+    "hashing": {
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "#/components/schemas/HashStatus"
+     },
+     "description": "Full-hash tasks by location id; a finished or cancelled task is simply gone."
+    },
+    "algorithm": {
+     "type": "string",
+     "enum": [
+      "sampled/1"
+     ]
+    },
+    "sampledCovers": {
+     "type": "string",
+     "description": "What a sampled fingerprint covers, in one sentence, for display."
+    },
+    "fullHashCapBytes": {
+     "type": "integer",
+     "format": "int64"
+    }
+   }
+  },
+  "AddLocationRequest": {
+   "type": "object",
+   "required": [
+    "path"
+   ],
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "hostId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "0 (the default) for this computer"
+    },
+    "declare": {
+     "type": "boolean",
+     "description": "Say that the file is the same dataset when nothing computed can tell. Never overrides proof of a difference."
+    }
+   }
+  },
+  "FingerprintRequest": {
+   "type": "object",
+   "required": [
+    "mode"
+   ],
+   "properties": {
+    "mode": {
+     "type": "string",
+     "enum": [
+      "sampled",
+      "full",
+      "cancel"
+     ],
+     "description": "sampled: computed now (about 1 MiB read). full: queued in the background, one at a time, capped and cancellable. cancel: stop a full hash."
+    }
+   }
+  },
+  "FingerprintQueued": {
+   "type": "object",
+   "required": [
+    "hashing"
+   ],
+   "properties": {
+    "hashing": {
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "#/components/schemas/HashStatus"
+     }
+    }
+   }
+  },
+  "LocationRefusal": {
+   "type": "object",
+   "required": [
+    "error",
+    "code"
+   ],
+   "properties": {
+    "error": {
+     "type": "string"
+    },
+    "code": {
+     "type": "string",
+     "enum": [
+      "already_location",
+      "bytes_differ",
+      "identity_not_established",
+      "same_content"
+     ]
+    },
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "matches": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/SameContentMatch"
+     }
+    }
+   },
+   "description": "A 409 that says why the file was not linked, or why registering it is offered as a location instead."
+  },
+  "SameContentMatch": {
+   "type": "object",
+   "required": [
+    "datasetId",
+    "locationId",
+    "name",
+    "relation"
+   ],
+   "properties": {
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "locationId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "relation": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "probable"
+     ],
+     "description": "verified: equal full SHA-256. probable: same size and sampled fingerprint, not proof."
+    }
+   }
+  },
+  "NewerNotice": {
+   "type": "object",
+   "required": [
+    "reason",
+    "name",
+    "path",
+    "datasetId",
+    "sizeBytes",
+    "modifiedAt",
+    "differs"
+   ],
+   "properties": {
+    "reason": {
+     "type": "string",
+     "enum": [
+      "newer_file",
+      "changed_in_place",
+      "figure_data_changed"
+     ],
+     "description": "newer_file: a run's output folder gained a later file of the same role (a re-run writes psi_<stem>_1.fits instead of overwriting). changed_in_place: the registered file's size or time differs. figure_data_changed: the dataset behind a figure is not the bytes the figure was drawn from."
+    },
+    "name": {
+     "type": "string"
+    },
+    "path": {
+     "type": "string"
+    },
+    "datasetId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "The dataset the notice is about when it exists; 0 for a newer file that is not registered"
+    },
+    "sizeBytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "modifiedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "differs": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "size",
+       "time",
+       "fingerprint"
+      ]
+     },
+     "description": "What differs. fingerprint is said only when both values were computed and differ."
+    }
+   },
+   "description": "A notice only: nothing is swapped or redrawn."
+  },
+  "NewerResults": {
+   "type": "object",
+   "required": [
+    "datasets",
+    "figures",
+    "note"
+   ],
+   "properties": {
+    "datasets": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/NewerNotice"
+      }
+     }
+    },
+    "figures": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/NewerNotice"
+      }
+     }
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "FigureIdentity": {
+   "type": "object",
+   "required": [
+    "schema",
+    "datasets"
+   ],
+   "properties": {
+    "schema": {
+     "type": "string",
+     "enum": [
+      "figure-identity/1"
+     ]
+    },
+    "datasets": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "role",
+       "datasetId",
+       "name",
+       "sizeBytes",
+       "modifiedAt",
+       "sampledFingerprint",
+       "fullSha256"
+      ],
+      "properties": {
+       "role": {
+        "type": "string",
+        "enum": [
+         "source",
+         "overlay"
+        ]
+       },
+       "datasetId": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "name": {
+        "type": "string"
+       },
+       "sizeBytes": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "modifiedAt": {
+        "type": "string",
+        "format": "date-time"
+       },
+       "sampledFingerprint": {
+        "nullable": true,
+        "type": "object",
+        "required": [
+         "value",
+         "at",
+         "by"
+        ],
+        "properties": {
+         "value": {
+          "type": "string"
+         },
+         "algorithm": {
+          "type": "string"
+         },
+         "covers": {
+          "type": "string"
+         },
+         "at": {
+          "type": "string",
+          "format": "date-time"
+         },
+         "by": {
+          "type": "string"
+         }
+        }
+       },
+       "fullSha256": {
+        "nullable": true,
+        "type": "object",
+        "required": [
+         "value",
+         "at",
+         "by"
+        ],
+        "properties": {
+         "value": {
+          "type": "string"
+         },
+         "at": {
+          "type": "string",
+          "format": "date-time"
+         },
+         "by": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "description": "What was known about the bytes of each dataset when the figure was saved. Owner API only, never part of the reviewer-safe provenance."
+  },
   "TerminalOpen": {
    "type": "object",
    "required": [
@@ -11903,6 +12439,245 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/TransferRegistered"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/locations": {
+   "summary": "Where a dataset's bytes are, what is known about them, and where the viewer reads from",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LocationList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/locations": {
+   "summary": "Add another file as a location of a dataset, on evidence",
+   "description": "Linked as verified (equal full SHA-256), probable (equal size and sampled fingerprint; said to be so and never read from) or, with declare, declared when nothing computed can tell. A file whose bytes are proven different is refused (409 bytes_differ) whatever is declared; a file that is already a location is refused (409 already_location). The file is never copied or touched.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/AddLocationRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DatasetLocation"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "Not linked",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LocationRefusal"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/locations/{lid}/delete": {
+   "summary": "Forget a location (the file is never deleted)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "lid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "removed"
+        ],
+        "properties": {
+         "removed": {
+          "type": "integer",
+          "format": "int64"
+         }
+        }
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/locations/{lid}/fingerprint": {
+   "summary": "Compute the sampled fingerprint now, queue the full SHA-256, or cancel it",
+   "description": "A full hash reads the whole file, so it runs in the background on one worker at a time, only up to a cap (422 above it), and can be cancelled. On a host it is computed by that host's worker, bounded there as well.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "lid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/FingerprintRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "sampled fingerprint stored",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DatasetLocation"
+       }
+      }
+     }
+    },
+    "202": {
+     "description": "queued or cancelled",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FingerprintQueued"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/newer": {
+   "summary": "Notices that a newer result exists, or that a file or the data behind a figure changed",
+   "description": "Datasets and figures keyed by id. Only files on this computer are looked at. Never swaps or redraws anything.",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NewerResults"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
        }
       }
      }

@@ -122,6 +122,15 @@ func (s *Server) copyDataset(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
+	// the bytes were hashed while they were copied: that is a full SHA-256 of the copy, and of the original as it was read
+	if p, ok := primaryOf(nd.Locations); ok && p.Full == nil {
+		_ = s.Store.SetFingerprint(p.ID, "full", sum, "hashed while copying", p.SizeBytes, p.ModifiedAt.UnixNano())
+	}
+	for _, l := range d.Locations {
+		if l.HostID == d.HostID && l.Path == d.Path && l.Full == nil {
+			_ = s.Store.SetFingerprint(l.ID, "full", sum, "hashed while copying", l.SizeBytes, l.ModifiedAt.UnixNano())
+		}
+	}
 	summary, _ := json.Marshal(map[string]any{"sha256": sum, "bytes": n, "policy": "A byte-for-byte copy of the original at the time of copying. The original is untouched and remains the reference; the SHA-256 identifies this copy."})
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: "managed-copy", Params: json.RawMessage(`{}`), Sources: []int64{d.ID}, Summary: summary}); err != nil {
 		log.Printf("derived: %v", err)

@@ -870,6 +870,20 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         if truncated:
             data = data[:limit]
         return {"ok": True, "op": op, "nbytes": 0, "text": data.decode("utf-8", "replace"), "truncated": truncated, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+    if op == "fingerprint":
+        # the sampled fingerprint (ADR 0053): about 1 MiB read however large the file is; never called a full hash
+        import fingerprint as fp
+        return {"ok": True, "op": op, "nbytes": 0, "algorithm": fp.ALGORITHM, "sampled": fp.sampled(real), "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+    if op == "fingerprint_full":
+        # the SHA-256 of every byte, refused above a cap; the API kills this (heavy) lane's process when the caller cancels
+        import fingerprint as fp
+        cap = req.get("max_bytes", fp.DEFAULT_FULL_CAP)
+        if isinstance(cap, bool) or not isinstance(cap, int) or not 1 <= cap <= fp.MAX_FULL_CAP:
+            raise Refused("bad_request", "bad request")
+        got = fp.full(real, cap)
+        if got is None:
+            raise Refused("unsupported", "the file is larger than the cap for a full hash")
+        return {"ok": True, "op": op, "nbytes": 0, "sha256": got[0], "bytes": got[1], "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
     if op == "describe":
         # Local registration: the head is exactly what `fits_header.py <path>` prints (no op/size fields), and a refusal
         # carries the same short sanitised message, so the catalog row and the error text do not depend on the transport.
@@ -1117,7 +1131,7 @@ def handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "bad request")
         authorize(path)
         return header_cards(path), b""
-    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon"):
+    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "fingerprint", "fingerprint_full"):
         return host_op(op, req)
     if isinstance(op, str) and op.startswith("catalog_"):
         return catalog_op(op, path, req)
