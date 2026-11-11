@@ -437,8 +437,67 @@ class Cube:
             result["weighted"]["unknown_weight_excluded"] = int(np.count_nonzero(ok & ~np.isfinite(w)))
         return result
 
+    # ----- masks applied to a region (ADR 0055) -----
+    def region_masks(self, req: dict):
+        """The masks the request names, opened (close with __exit__), or None. The caller (the API) has already checked that they belong to
+        the dataset and are fresh; the policy rules (no default, `missing` exclude-only, no weights here) are the shared ones in masks.py."""
+        specs = req.get("masks")
+        if not specs:
+            return None
+        import masks as mk
+        try:
+            return mk.Applied(self, mk.check_specs(specs), False).__enter__()
+        except mk.MaskError as e:
+            raise Refused("unsupported", str(e))
+
     # ----- region spectrum: mean of the finite pixels inside the region, per channel -----
     def spectrum(self, req: dict) -> tuple[dict, bytes]:
+        ap = self.region_masks(req)
+        try:
+            return self._spectrum(req, ap)
+        finally:
+            if ap is not None:
+                ap.__exit__(None, None, None)
+
+    def region_histogram(self, req: dict) -> dict:
+        """Counts of the finite values of one channel inside a region, in `bins` equal steps from `min` to `max` (the largest value falls in
+        the last bin; the same rule as the browser's count of the plane it holds), with the masks the request names applied per mask."""
+        channel = as_index(req, "channel", self.channels)
+        lo, hi, bins = req.get("min"), req.get("max"), req.get("bins")
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in (lo, hi)):
+            raise Refused("bad_request", "min and max must be finite numbers")
+        if isinstance(bins, bool) or not isinstance(bins, int) or not 1 <= bins <= 1024:
+            raise Refused("bad_request", "bins must be an integer from 1 to 1024")
+        shape, (bx0, bx1, by0, by1), mask, npix, requested = self.region_mask(req)
+        plane, _ = self.read_plane(channel)
+        ys, xs = slice(by0, by1 + 1), slice(bx0, bx1 + 1)
+        vals = plane[ys, xs][mask]
+        no_value = int(vals.size - np.count_nonzero(np.isfinite(vals)))      # counted before any mask, and apart from them
+        ap = self.region_masks(req)
+        try:
+            if ap is not None:
+                ex, _ = ap.plane(channel, vals, (ys, xs, mask))
+                vals = vals[~ex]                                              # a masked pixel is left out; it is never turned into zero
+        finally:
+            if ap is not None:
+                ap.__exit__(None, None, None)
+        fin = vals[np.isfinite(vals)].astype(np.float64)
+        counts = np.zeros(bins, dtype=np.int64)
+        if not hi > lo:
+            counts[0] = fin.size
+        else:
+            inside = fin[(fin >= lo) & (fin <= hi)]
+            np.add.at(counts, np.minimum(bins - 1, np.floor((inside - lo) * (bins / (hi - lo))).astype(np.int64)), 1)
+        out = {"channel": channel, "min": lo, "max": hi, "bins": bins, "counts": counts.tolist(), "pixels": npix, "no_value": no_value,
+               "region": {"pixels": npix, "requested_pixels": requested, "clipped": npix != requested}}
+        if ap is not None:
+            import masks as mk
+            out["masks"] = ap.record()
+            out["excluded_by_mask"] = ap.unique_excluded
+            out["policy"] = mk.masks_policy_sentence(ap.specs)
+        return out
+
+    def _spectrum(self, req: dict, ap) -> tuple[dict, bytes]:
         nx, ny, nc = self.shape[self.x], self.shape[self.y], self.channels
         if nc > MAX_SPECTRUM_CHANNELS:
             raise Refused("unsupported", "too many channels for a region spectrum")
@@ -446,6 +505,7 @@ class Cube:
         if npix * nc > MAX_REGION_WORK:
             raise Refused("unsupported", "the region is too large for a spectrum; draw a smaller one")
         mean, count = np.full(nc, np.nan), np.zeros(nc, dtype="<u4")
+        no_value = 0
         ys, xs = slice(by0, by1 + 1), slice(bx0, bx1 + 1)
         # Read a block of channels per call: one strided read of the region over K channels instead of K separate reads,
         # with the per-channel mean taken in one vectorised step. K is bounded so a block stays a few tens of MB.
@@ -455,6 +515,10 @@ class Cube:
             for c0 in range(0, nc, block):
                 c1 = min(nc, c0 + block)
                 vals = self._channel_block(hdul, c0, c1, ys, xs)[:, mask]          # (channels, region pixels)
+                if ap is not None:
+                    no_value += int(vals.size - np.count_nonzero(np.isfinite(vals)))   # counted before any mask, and apart from them
+                    ex = np.stack([ap.plane(c0 + i, vals[i], (ys, xs, mask))[0] for i in range(c1 - c0)])
+                    vals = np.where(ex, np.nan, vals)                      # a masked pixel is left out; it is never turned into zero
                 finite = np.isfinite(vals)
                 n = finite.sum(axis=1)
                 count[c0:c1] = n
@@ -489,6 +553,12 @@ class Cube:
                 "mask_policy": "Mean of the finite pixels inside the region, per channel. NaN, BLANK and infinite values are excluded and counted; "
                                "no weighting; flagged channels keep their data.",
                 "bunit": clean(self.h.get("BUNIT")) if "BUNIT" in self.h else None}
+        if ap is not None:
+            import masks as mk
+            head["masks"] = ap.record()
+            head["no_value"] = no_value
+            head["excluded_by_mask"] = ap.unique_excluded
+            head["mask_policy"] += " " + mk.masks_policy_sentence(ap.specs)
         return head, payload
 
 _cubes: dict[str, Cube] = {}
@@ -1179,7 +1249,7 @@ def handle(req: dict) -> tuple[dict, bytes]:
     if op == "overlay_catalog":
         return overlay_catalog(req)
     file_ops = ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky", "overlay_geometry",
-                "slab", "channel_grid", "pv", "link")
+                "slab", "channel_grid", "pv", "link", "region_histogram")
     if op in file_ops:
         authorize(path)                                          # also enforces the roots on a remote host
         if op == "axial" and req.get("weights_path") is not None:
@@ -1232,6 +1302,8 @@ def handle(req: dict) -> tuple[dict, bytes]:
         return {**base, "nbytes": 0, **orientation_sky(c, req)}, b""
     if op == "conversions":
         return {**base, "nbytes": 0, **convert.offers(c, bunit, status)}, b""
+    if op == "region_histogram":
+        return {**base, "nbytes": 0, **c.region_histogram(req)}, b""
     if op == "spectrum":
         head, payload = c.spectrum(req)
         return {**base, **head, "bunit": bunit}, payload     # the spectrum head knows only the file's unit

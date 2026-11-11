@@ -312,6 +312,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/{id}/conversions", s.conversions)
 	mux.HandleFunc("GET /api/datasets/{id}/convert", s.convert)
 	mux.HandleFunc("GET /api/datasets/{id}/spectrum", s.spectrum)
+	mux.HandleFunc("GET /api/datasets/{id}/region-histogram", s.regionHistogram)
 	mux.HandleFunc("GET /api/datasets/{id}/channel-grid", s.channelGrid)
 	mux.HandleFunc("GET /api/datasets/{id}/slab", s.slab)
 	mux.HandleFunc("POST /api/datasets/{id}/pv", s.pv)

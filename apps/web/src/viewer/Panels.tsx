@@ -7,6 +7,7 @@ import type { ColormapId } from "./colormaps";
 import { RANGES, STRETCHES, limits, normalize } from "./render";
 import type { RangeMode, Stretch } from "./render";
 import { Histogram } from "./Histogram";
+import { useMaskedHistogram } from "./useMaskedHistogram";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { axialText, degrees, limitText, precisionNote, provenanceNote, spectralText, unitLabel, valueText } from "./format";
@@ -244,6 +245,7 @@ export function DisplayControls({ v }: { v: Viewer }) {
     return saved ? mk(saved.name, toShape(saved)) : null;
   }, [histOf, v.region, drawnIsSaved, savedList, v.plane]);
   const histValue = histScope ? histOf : "plane";
+  const maskedHist = useMaskedHistogram(v.datasetId, v.plane?.head.channel ?? v.channel, histScope?.shape ?? null, stats?.min ?? null, stats?.max ?? null, 64, v.maskUses);
 
   useEffect(() => {
     const c = bar.current;
@@ -307,7 +309,7 @@ export function DisplayControls({ v }: { v: Viewer }) {
               {savedList.map((r) => <option key={r.id} value={`s${r.id}`}>Region: {r.name}</option>)}
             </Select>
           ) : null}
-          <Histogram data={v.plane.data} stats={stats} limits={lim} unit={unit} scope={histScope} onChange={(lo, hi) => { v.setCustomLimits([lo, hi]); v.setRange("custom"); }} />
+          <Histogram data={v.plane.data} stats={stats} limits={lim} unit={unit} scope={histScope} masked={maskedHist} onChange={(lo, hi) => { v.setCustomLimits([lo, hi]); v.setRange("custom"); }} />
         </>
       ) : null}
       <div className={s.legend}>

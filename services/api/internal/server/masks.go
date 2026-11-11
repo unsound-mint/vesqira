@@ -478,6 +478,50 @@ func (s *Server) maskSpecs(uses []maskUse, d catalog.Dataset, weightOK bool) (sp
 	return string(b), safe, uses, 0, ""
 }
 
+// regionMasks reads the masks a region spectrum or region histogram is asked to apply from the query (`mask=<id>:<policy>`, repeated),
+// checks them with the same rules as every other analysis (maskSpecs: an explicit policy per mask, weight refused, a mask of this
+// dataset, fresh) and returns the list for the plane worker, and the text that makes the cache key differ per mask, policy and file.
+// ok is false when a refusal was already written. No mask named: nil, "", true (the unmasked path is untouched).
+func (s *Server) regionMasks(w http.ResponseWriter, r *http.Request, d catalog.Dataset, k cacheKey) (specs []any, key string, ok bool) {
+	raw := r.URL.Query()["mask"]
+	if len(raw) == 0 {
+		return nil, "", true
+	}
+	if k.host != 0 {
+		fail(w, 409, "masks are applied to files on this computer; this file is read on another host")
+		return nil, "", false
+	}
+	uses := make([]maskUse, 0, len(raw))
+	for _, t := range raw {
+		idText, policy, found := strings.Cut(t, ":")
+		id, err := strconv.ParseInt(idText, 10, 64)
+		if !found || err != nil {
+			fail(w, 400, "mask must be <id>:<policy>, for example 3:exclude")
+			return nil, "", false
+		}
+		uses = append(uses, maskUse{ID: id, Policy: policy})
+	}
+	if len(uses) > 8 {
+		fail(w, 422, "at most 8 masks can be applied to a region at once")
+		return nil, "", false
+	}
+	text, _, _, code, msg := s.maskSpecs(uses, d, false)
+	if code != 0 {
+		fail(w, code, msg)
+		return nil, "", false
+	}
+	if len(text) > 6000 { // the plane worker reads one request line of at most 8 KiB
+		fail(w, 422, "these masks are too many or have too long names for one region request: apply fewer")
+		return nil, "", false
+	}
+	if err := json.Unmarshal([]byte(text), &specs); err != nil {
+		log.Printf("masks: %v", err)
+		fail(w, 500, "internal error")
+		return nil, "", false
+	}
+	return specs, "|masks=" + text, true
+}
+
 // maskPlane answers with one plane of a mask for the viewer's hatch overlay: a frame whose payload is uint8, row 0 = FITS y 1, 1 = flagged.
 func (s *Server) maskPlane(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathInt(w, r, "id")

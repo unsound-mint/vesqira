@@ -1021,6 +1021,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/region-histogram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Histogram of a region of one channel, with masks applied per mask (ADR 0055)
+         * @description Counted by the scientific worker, which is the only side that has the mask bytes. Without a `mask` parameter the answer is the unmasked count (the browser does the same from the plane it holds, and does not call this).
+         */
+        get: operations["owner_s_regionHistogram_get_api_datasets_id_region_histogram"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/regions": {
         parameters: {
             query?: never;
@@ -1203,6 +1225,10 @@ export interface paths {
             };
             cookie?: never;
         };
+        /**
+         * Mean spectrum of a region, with masks applied per mask (ADR 0055)
+         * @description A frame: uint32 little-endian header length n, n bytes of JSON (shape, region, size, axis, mask_policy, bunit and, when masks were applied, masks, no_value and excluded_by_mask), then float64 axis[channels], float64 mean[channels] (NaN: no finite pixel left, never zero) and uint32 count[channels] (pixels that entered the mean), little-endian. Only the transport and the JSON header are described here.
+         */
         get: operations["owner_s_spectrum_get_api_datasets_id_spectrum"];
         put?: never;
         post?: never;
@@ -7485,6 +7511,45 @@ export interface components {
             /** @description default false: dataset names and file names are removed from every file */
             includeDatasetNames?: boolean;
         };
+        /** @description One mask a region spectrum or histogram applied (ADR 0055): what it was, the policy, and how many pixels (summed over the channels read) it flagged with a value and left out. Never a path. */
+        RegionMaskApplied: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @enum {string} */
+            type: "missing" | "invalid" | "low_snr" | "saturated" | "user_excluded" | "other";
+            /** @enum {string} */
+            policy: "exclude" | "keep";
+            /** @enum {string} */
+            tier?: "verified" | "declared" | "inferred" | "unresolved";
+            fingerprint?: string;
+            pixels_flagged_with_value: number;
+            pixels_excluded: number;
+        };
+        /** @description Counts of the finite values of one channel inside a region, in equal bins from min to max (the largest value falls in the last bin). `no_value` pixels (NaN, BLANK, infinite) are counted apart and before any mask; `excluded_by_mask` counts pixels with a value that a mask left out. Zero is a value. The browser asks for this only when masks are named; the unmasked histogram is counted there. */
+        RegionHistogram: {
+            ok: boolean;
+            channel: number;
+            min: number;
+            max: number;
+            bins: number;
+            counts: number[];
+            /** @description Pixels of the region inside the image */
+            pixels: number;
+            no_value: number;
+            /** @description Present when masks were applied */
+            excluded_by_mask?: number;
+            /** @description Present when masks were applied */
+            masks?: components["schemas"]["RegionMaskApplied"][];
+            policy?: string;
+            bunit?: string | null;
+            bunit_status?: string;
+            region: {
+                pixels: number;
+                requested_pixels: number;
+                clipped: boolean;
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -9289,6 +9354,56 @@ export interface operations {
             };
         };
     };
+    owner_s_regionHistogram_get_api_datasets_id_region_histogram: {
+        parameters: {
+            query: {
+                /** @description 0-based */
+                channel: number;
+                min: number;
+                max: number;
+                bins: number;
+                /** @description rect or circle (a line has no area) */
+                shape: "rect" | "circle";
+                /** @description rect: 0-based pixel, y from the bottom */
+                x0?: number;
+                y0?: number;
+                x1?: number;
+                y1?: number;
+                /** @description circle: centre */
+                cx?: number;
+                cy?: number;
+                r?: number;
+                /** @description A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). Masks are applied to files read on this computer (409 for a host). */
+                mask?: string[];
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegionHistogram"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listRegions_get_api_datasets_id_regions: {
         parameters: {
             query?: never;
@@ -9593,21 +9708,46 @@ export interface operations {
     };
     owner_s_spectrum_get_api_datasets_id_spectrum: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description rect or circle (a line has no area) */
+                shape: "rect" | "circle";
+                /** @description rect: 0-based pixel, y from the bottom */
+                x0?: number;
+                y0?: number;
+                x1?: number;
+                y1?: number;
+                /** @description circle: centre */
+                cx?: number;
+                cy?: number;
+                r?: number;
+                /** @description A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). Masks are applied to files read on this computer (409 for a host). */
+                mask?: string[];
+            };
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description ok */
+            /** @description a frame */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/vnd.vesqira.plane": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

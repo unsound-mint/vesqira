@@ -2,6 +2,8 @@ import { useRef } from "react";
 import type { PointerEvent } from "react";
 import type { PlaneStats, RegionShape } from "../api/planes";
 import { useHistogram } from "./useHistogram";
+import type { MaskedHistogram } from "./useMaskedHistogram";
+import { AppliedMasks } from "./AppliedMasks";
 import { limitNumber, limitText } from "./format";
 import s from "./Histogram.module.css";
 
@@ -14,20 +16,26 @@ export type HistogramScope = { name: string; shape: RegionShape; width: number; 
  * The values of the visible plane (or of `scope`, a region of it, drawn on the plane's own value range so the limits keep their place) with the two display limits on them. Drag near a limit, or type the numbers.
  * Only finite pixels are counted: no-value pixels are not in the histogram and zero is just a value.
  */
-export function Histogram({ data, stats, limits, unit, onChange, scope = null }: { data: Float32Array; stats: PlaneStats; limits: [number, number] | null; unit: string | null; onChange: (lo: number, hi: number) => void; scope?: HistogramScope | null }) {
+export function Histogram({ data, stats, limits, unit, onChange, scope = null, masked = null }: { data: Float32Array; stats: PlaneStats; limits: [number, number] | null; unit: string | null; onChange: (lo: number, hi: number) => void; scope?: HistogramScope | null; masked?: MaskedHistogram | null }) {
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<0 | 1 | null>(null);
   const { min, max } = stats;
-  const result = useHistogram(data, min, max, BINS, scope?.shape ?? null, scope?.width, scope?.height);
+  // With masks named the worker counts the region (it has the mask bytes); otherwise the plane in hand is counted here.
+  const server = scope && masked ? masked : null;
+  const local = useHistogram(data, server ? null : min, server ? null : max, BINS, scope?.shape ?? null, scope?.width, scope?.height);
+  const sr = server?.result ?? null;
+  const result = server ? (sr ? { counts: sr.counts, pixels: sr.pixels, nonfinite: sr.no_value } : null) : local;
+  const left = sr?.excluded_by_mask ?? 0; // pixels with a value that masks left out
   const counted = result ? result.counts : null;
   const counts = counted ?? []; // null while counting: the plot stays empty rather than show another channel's counts
   const fmt = (n: number | null) => (n === null ? "…" : n.toLocaleString("en-US"));
   const regionDone = scope && result && result.pixels !== null;
-  const finite = scope ? (regionDone ? result.pixels! - (result.nonfinite ?? 0) : null) : stats.finite_count;
+  const finite = scope ? (regionDone ? result.pixels! - (result.nonfinite ?? 0) - left : null) : stats.finite_count;
   const nonfinite = scope ? (result?.nonfinite ?? null) : stats.nonfinite_count;
   const label = scope
     ? `Region: ${scope.name}${regionDone ? `, ${fmt(result.pixels)} pixels, ${fmt(result.nonfinite)} not finite` : ""}${scope.preview ? " (from the preview)" : ""}`
     : "Plane";
+  if (server?.error) return <p role="alert" className={s.note} data-testid="histogram-scope">{label}. {server.error}</p>;
   if (min === null || max === null || (!scope && counted !== null && counted.length === 0)) return <p className={s.note}>No histogram: the plane has no finite value.</p>;
   if (scope && finite === 0) return <p className={s.note} data-testid="histogram-scope">{label}. No histogram: the region has no finite value.</p>;
   const lo0: number = min;
@@ -91,7 +99,8 @@ export function Histogram({ data, stats, limits, unit, onChange, scope = null }:
         <span className="mono">{limitText(max, unit)}</span>
       </div>
       </div>
-      <p className={s.note}>Counts are drawn on a square-root scale. {fmt(nonfinite)} pixels with no value are not counted.</p>
+      <p className={s.note}>Counts are drawn on a square-root scale. {fmt(nonfinite)} pixels with no value are not counted.{server ? " Masks chosen under Region apply to this count." : ""}</p>
+      {sr?.masks ? <AppliedMasks masks={sr.masks} excluded={sr.excluded_by_mask} testId="histogram-masks" /> : null}
       {limits ? (
         <div className={s.inputs}>
           <label>Lower limit<input key={`lo${limits[0]}`} aria-label={`Lower limit${unit ? ` (${unit})` : ""}`} className={s.num} inputMode="decimal" defaultValue={limitNumber(limits[0])} onBlur={(e) => set(0, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") set(0, e.currentTarget.value); }} /></label>

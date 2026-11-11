@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
+import { usesOf } from "../catalog/MaskPolicies";
+import type { PolicyChoice } from "../catalog/MaskPolicies";
+import { useMasks } from "./useMasks";
 import { expandPreview, getAxial, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
 import { newRequestId } from "../api/http";
 import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
@@ -80,6 +83,12 @@ export function useViewer(dataset: Dataset | null) {
   const [spectrumError, setSpectrumError] = useState<string | null>(null);
   const [spectrumLoading, setSpectrumLoading] = useState(false);
   const [spectrumRequestId, setSpectrumRequestId] = useState<string | null>(null);
+  // The masks a region's spectrum and histogram apply, and what each does (ADR 0055). Each mask is named with its policy by the person;
+  // a mask not named is not applied. A view setting of the moment, like the pinned pixel: it starts empty with every dataset.
+  const { masks: datasetMasks } = useMasks(datasetId);
+  const [maskChoice, setMaskChoice] = useState<PolicyChoice>({});
+  const maskUses = useMemo(() => usesOf(maskChoice).filter((u) => !datasetMasks || datasetMasks.some((m) => m.id === u.id)), [maskChoice, datasetMasks]);
+  const maskKey = JSON.stringify(maskUses);
   const [reliability, setReliability] = useState<Plane | null>(null);
   const [axial, setAxial] = useState<AxialStats | null>(null);
   const [axialError, setAxialError] = useState<string | null>(null);
@@ -144,6 +153,7 @@ export function useViewer(dataset: Dataset | null) {
     setOffers(null);
     setConverted(null);
     setSpectrum(null);
+    setMaskChoice({});
     setPath(null);
     setTool("pointer");
     if (datasetId === null) return;
@@ -329,7 +339,7 @@ export function useViewer(dataset: Dataset | null) {
     const t = setTimeout(() => {
       const rid = newRequestId();
       setSpectrumRequestId(rid);
-      getSpectrum(datasetId, region, ac.signal, rid)
+      getSpectrum(datasetId, region, ac.signal, rid, maskUses)
         .then((sp) => {
           setSpectrum(sp);
           setSpectrumError(null);
@@ -346,7 +356,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, view, region]);
+  }, [datasetId, view, region, maskKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The paired reliability map (one plane), for readouts and line opacity.
   useEffect(() => {
@@ -404,7 +414,7 @@ export function useViewer(dataset: Dataset | null) {
     hover, setHover, mirror, setMirror, pinned, setPinned, picked, setPicked, probe, pixelValue, coord, coordError,
     conv, setConv, offers, convError, convertedNow: converted && converted.key === convKey ? converted.r : null,
     canvas, interp, reliability, axial, axialError, showLines, setShowLines, geometry, drawScale, setDrawScale,
-    tool, setTool, region, setRegion, path, setPath, savedRegions, spectrum, spectrumError, spectrumLoading, spectrumRequestId,
+    tool, setTool, region, setRegion, path, setPath, savedRegions, spectrum, spectrumError, spectrumLoading, spectrumRequestId, datasetMasks, maskChoice, setMaskChoice, maskUses,
     onChannelKey, retry: () => setRetry((n) => n + 1),
   };
 }
