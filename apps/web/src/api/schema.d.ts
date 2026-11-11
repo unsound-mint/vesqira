@@ -5013,6 +5013,11 @@ export interface components {
             index_bytes: number;
             width?: number;
             height?: number;
+            /**
+             * @description Which machine builds and keeps the index: this one, or the host that holds the fit (ADR 0046). On a host the .dat is read there, the sidecar is written in the account's own cache folder there, and only this state and single pixels travel.
+             * @enum {string}
+             */
+            where: "here" | "host";
         };
         RohsaComponent: {
             /** @description 1-based Gaussian number within the pixel, in file order */

@@ -163,6 +163,17 @@ describe("Gaussian components over the spectrum", () => {
     expect(api.comps).not.toHaveBeenCalled();
   });
 
+  it("says the host is reading the .dat and keeping the index when the fit lives on a host", async () => {
+    api.index.mockResolvedValueOnce({ state: "building", done_bytes: 25, size_bytes: 100, rows: 1, malformed: 0, reason: null, examples: [], index_bytes: 8, where: "host" });
+    api.index.mockReturnValueOnce(new Promise(() => {})); // the next call is still running
+    const user = userEvent.setup();
+    render(<GaussianComponents v={viewer} />);
+    await user.click(await screen.findByRole("switch", { name: /Gaussian components/ }));
+    const status = await screen.findByText(/The host is reading the \.dat once to find each pixel: 25%/);
+    expect(status).toHaveTextContent("kept in the account's cache folder on the host");
+    expect(status).toHaveTextContent("the .dat does not leave it");
+  });
+
   it("marks an invalid width and an unresolved velocity axis instead of inventing values", async () => {
     api.comps.mockResolvedValue({
       ...components,

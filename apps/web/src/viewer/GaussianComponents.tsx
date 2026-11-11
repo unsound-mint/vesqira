@@ -128,7 +128,7 @@ export function GaussianComponents({ v }: { v: Viewer }) {
         <>
           {st.indexError ? <p role="alert" className={s.err}>{st.indexError}</p> : null}
           {idx?.state === "building" || (!idx && !st.indexError) ? (
-            <p role="status" className={s.note}>Reading the .dat once to find each pixel{idx ? `: ${pct}%` : "…"} The index is kept and reused.</p>
+            <p role="status" className={s.note}>{idx?.where === "host" ? "The host is reading the .dat once to find each pixel" : "Reading the .dat once to find each pixel"}{idx ? `: ${pct}%` : "…"} {idx?.where === "host" ? "The index is kept in the account's cache folder on the host and reused; the .dat does not leave it." : "The index is kept and reused."}</p>
           ) : null}
           {idx?.state === "refused" ? (
             <div role="alert" className={s.err}>

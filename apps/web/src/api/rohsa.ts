@@ -19,6 +19,8 @@ export type RohsaRecord = {
   regionBasis: string;
   cropDatasetId: number | null;
   cropName: string;
+  /** The host the fit lives on; absent for a fit on this computer. */
+  hostId?: number;
   notes: string[];
   unitNotes: Record<string, string>;
 };

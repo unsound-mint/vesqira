@@ -7288,6 +7288,12 @@ components:
           type: "integer"
         height:
           type: "integer"
+        where:
+          type: "string"
+          enum:
+            - "here"
+            - "host"
+          description: "Which machine builds and keeps the index: this one, or the host that holds the fit (ADR 0046). On a host the .dat is read there, the sidecar is written in the account's own cache folder there, and only this state and single pixels travel."
       required:
         - "state"
         - "done_bytes"
@@ -7297,6 +7303,7 @@ components:
         - "reason"
         - "examples"
         - "index_bytes"
+        - "where"
       description: "Progress of the index of a ROHSA .dat. building: call again; ready: pixels can be read; refused: the file is not the ROHSA row layout, with the reason and example lines."
     RohsaComponent:
       type: "object"
