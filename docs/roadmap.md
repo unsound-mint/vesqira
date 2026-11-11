@@ -58,6 +58,21 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 - [x] Pages and presentation (ADR 0036, "Pages, front matter, changes and deletions"): page tree kept from the Notion import, front matter date and summary under the title, reader list newest first, what changed since the revision last read, comments on selected words, withdraw a report, delete a comment.
 - [x] Follow-ups from the security review (ADR 0036, "Hardening"): image metadata stripped when publishing (`internal/imgmeta`, pixel-checked, fuzzed), fixed shape for derived `software`, bounded Markdown scans (one was cubic), comment-cursor guard. Left: a schema for derived `summary`.
 
+## Stage S — Scene, cross-tracer comparison and the researcher's loop (owner direction, 2026-11-11)
+
+The owner asked for the most convenient app for this kind of work, beyond the interview list. Items come from the owner's own research (VGT and ROHSA on LMC H I and CO, Slurm over a VPN, weekly reports) and from common radio-astronomy practice (contours, vectors, channel maps, PV diagrams, relative-orientation statistics). Design: ADR 0042. New screens do not wait for an approved mock during this push; the owner reviews afterwards.
+
+- [ ] Declared angle frame and quantity (pixel or sky; B-field, gradient, dust or starlight polarization), and axial-aware resampling for align, convolve and display (fixes the shipped linear interpolation of axial maps).
+- [ ] Viewer scene: base plus ordered overlays (contours from another dataset, orientation segments, catalog markers and vectors, regions, beam ellipse, coordinate grid), placed by WCS geometry, not resampling.
+- [ ] Point catalogs as datasets (CSV, TSV, VOTable, FITS table; sexagesimal or degrees; declared frame and angle columns), e.g. starlight polarization and absorption sightlines.
+- [ ] Relative orientation between two orientation maps or a map and a catalog: alignment measure, projected Rayleigh statistic and HRO histogram, with a shifted-map null (pattern shifted, values kept) and the share of valid samples.
+- [ ] Linked view groups by sky position and spectral value (Stage 3 item, through ADR 0042).
+- [ ] Figures as scenes: draw again, change announced, SVG export (Stage 6 item).
+- [ ] Channel-map grid and position-velocity diagram along a line.
+- [ ] Gaussian decomposition browser for ROHSA results: component curves over the spectrum at a pixel, component and residual maps, CNM versus the rest with the width cut as a declared input.
+- [ ] Job finished: a desktop notification, and the finished outputs imported as a run (Stage L item).
+- [ ] Host quota and run-directory sizes; job efficiency from sacct (elapsed, MaxRSS against the request) offered when running again.
+
 ## Stage 0 — Install and launch
 
 - [x] Server serves the web app; Fedora RPM with launcher, desktop entry, icon and metadata (ADR 0021).
