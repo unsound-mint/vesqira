@@ -169,4 +169,17 @@ describe("StepRecorder", () => {
     await rec.idle();
     expect(sent).toEqual(["Drew a circle, radius 1 pixels"]);
   });
+
+  it("a link change is always a step, though the link is not part of a scene's identity", async () => {
+    const { rec, sent, clk } = setup();
+    const s = fresh();
+    rec.observe(s);
+    const linked = step(s, { type: "setLink", link: { id: "g", name: "pair", basis: "wcs", facets: { cursor: true, channel: true, view: false }, datasets: [1, 2] } });
+    rec.observe(linked);
+    clk.advance(EDIT_HOLD_MS);
+    rec.observe(step(linked, { type: "setLink", link: null }));
+    clk.advance(EDIT_HOLD_MS);
+    await rec.idle();
+    expect(sent.map((x) => x.label)).toEqual(["Opened ds1", "Linked views: pair (by sky position)", "Left the link group"]);
+  });
 });

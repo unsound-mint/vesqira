@@ -142,7 +142,7 @@ export class StepRecorder {
   private write(c: Candidate, scene: Scene) {
     this.queue = this.queue.then(async () => {
       const sig = signature(scene);
-      if (this.head && this.head.sig === sig) return; // the head already is this state
+      if (c.kind !== "link" && this.head && this.head.sig === sig) return; // the head already is this state (a link change is not in the signature: it is always a step)
       const id = await this.send({ kind: c.kind, label: c.label, scene, parentId: this.head?.id ?? null });
       if (id !== null) this.head = { id, sig };
     });

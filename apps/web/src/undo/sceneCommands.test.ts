@@ -165,4 +165,61 @@ describe("scene commands", () => {
     expect(v.undo.future).toHaveLength(0);
     expect(scene(v).base.datasetId).toBe(9);
   });
+
+  describe("facts that arrive between commands are not undone with them", () => {
+    const region = { shape: "rect", x0: 1, y0: 1, x1: 5, y1: 4 } as const;
+    const draw = (v: ViewerState, at: number) => viewerReducer(v, { type: "updateOverlay", id: "regions", patch: { active: region }, at });
+    const plain = (): ViewerState => ({ ...initialViewer(initialPane(null, false)), pane: { ...initialPane(null, false), scene: newScene(1, initialPane(1, false).keep.display, false, true) } });
+
+    it("a declaration made after the command stays: undoing 'draw region' does not make an axial map scalar again", () => {
+      let v = draw(plain(), 1000);
+      v = viewerReducer(v, { type: "syncAxial", axial: true });
+      expect(scene(v).base.display.mapping).toBe("axial");
+      v = viewerReducer(v, { type: "undo" });
+      expect(scene(v).base.display.mapping).toBe("axial");
+      expect(scene(v).overlays.map((o) => o.id)).toEqual(["orientation", "regions"]);
+      expect(scene(v).overlays.find((o) => o.id === "regions")).not.toHaveProperty("active");
+      v = viewerReducer(v, { type: "redo" });
+      expect(scene(v).overlays.find((o) => o.id === "regions")).toHaveProperty("active");
+      expect(scene(v).overlays[0]!.id).toBe("orientation");
+    });
+
+    it("a linked pane that followed its partner keeps the channel it was moved to", () => {
+      let v = draw(plain(), 1000);
+      v = viewerReducer(v, { type: "fact", action: { type: "setChannel", channel: 17 } }); // B was scrubbed; this pane followed
+      v = viewerReducer(v, { type: "undo" });
+      expect(scene(v).base.channel).toBe(17);
+      expect(scene(v).overlays.find((o) => o.id === "regions")).not.toHaveProperty("active");
+    });
+
+    it("the shared scale group and the worker's value for the unchanged channel stay", () => {
+      let v = viewerReducer(plain(), { type: "setDisplay", display: { colormap: "gray" }, at: 1000 });
+      v = viewerReducer(v, { type: "fact", action: { type: "setDisplay", display: { scaleGroup: "compare" } } });
+      v = viewerReducer(v, { type: "fact", action: { type: "setSpectral", channel: 0, spectral: { value: 1.42e9, unit: "Hz" } } });
+      v = viewerReducer(v, { type: "undo" });
+      expect(scene(v).base.display).toMatchObject({ colormap: "viridis", scaleGroup: "compare" });
+      expect(scene(v).base.spectral).toEqual({ value: 1.42e9, unit: "Hz" });
+    });
+
+    it("a command that changed the channel puts the old channel and its world value back", () => {
+      let v = viewerReducer(plain(), { type: "fact", action: { type: "setSpectral", channel: 0, spectral: { value: 5, unit: "m/s" } } });
+      v = viewerReducer(v, { type: "setChannel", channel: 9, at: 1000 });
+      v = viewerReducer(v, { type: "fact", action: { type: "setSpectral", channel: 9, spectral: { value: 9, unit: "m/s" } } });
+      v = viewerReducer(v, { type: "undo" });
+      expect(scene(v).base).toMatchObject({ channel: 0, spectral: { value: 5, unit: "m/s" } });
+      v = viewerReducer(v, { type: "redo" });
+      expect(scene(v).base.channel).toBe(9);
+    });
+
+    it("a removed overlay comes back at its place and the mapping is never restored", () => {
+      let v = viewerReducer(plain(), { type: "addOverlay", overlay: { id: "b", kind: "beam", datasetId: 1, visible: true }, at: 1000 });
+      v = viewerReducer(v, { type: "removeOverlay", id: "b", at: 5000 });
+      v = viewerReducer(v, { type: "undo" });
+      expect(scene(v).overlays.map((o) => o.id)).toEqual(["regions", "b"]);
+      v = viewerReducer(v, { type: "setDisplay", display: { stretch: "sqrt" }, at: 9000 });
+      v = viewerReducer(v, { type: "syncAxial", axial: true });
+      v = viewerReducer(v, { type: "undo" });
+      expect(scene(v).base.display).toMatchObject({ mapping: "axial", stretch: "linear" });
+    });
+  });
 });
