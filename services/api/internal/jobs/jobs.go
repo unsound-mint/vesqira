@@ -18,8 +18,31 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 )
+
+// envSpecFor reads the output folder and the input file out of the config text the job embeds ([input] output_dir and
+// input_file), so the preamble describes the files this very script will use.
+func envSpecFor(repoDir, config, expect string) EnvSpec {
+	in, out := ConfigPaths(config)
+	return EnvSpec{RepoDir: repoDir, OutputDir: out, InputFile: in, ExpectCommit: expect}
+}
+
+// ConfigPaths returns [input] input_file and output_dir from a config text, or "" for one that is missing or not a string.
+func ConfigPaths(config string) (inputFile, outputDir string) {
+	var cfg struct {
+		Input struct {
+			InputFile string `toml:"input_file"`
+			OutputDir string `toml:"output_dir"`
+		} `toml:"input"`
+	}
+	if _, err := toml.Decode(config, &cfg); err != nil {
+		return "", ""
+	}
+	return cfg.Input.InputFile, cfg.Input.OutputDir
+}
 
 var (
 	ErrNotFound = errors.New("not found")
@@ -88,6 +111,10 @@ type VGTRequest struct {
 	Time           string            `json:"time"`
 	Partition      string            `json:"partition"`
 	Account        string            `json:"account"`
+	// RerunMode is how a draft made with "run again with..." relates to its parent run: strict, best_effort or adapted
+	// (ADR 0054). ExpectCommit is the parent's revision a strict draft was rendered to insist on.
+	RerunMode    string `json:"rerunMode,omitempty"`
+	ExpectCommit string `json:"expectCommit,omitempty"`
 }
 
 // VGTRequest returns the stored request, or false for a job that has none (not VGT, or made before it was recorded).
@@ -97,6 +124,23 @@ func (j Job) VGTRequest() (VGTRequest, bool) { return j.configRequest("vgt") }
 // folder were applied), the settings it changed and the resources it asked for. A ROHSA job drafted before it kept its
 // settings (it ran a config by path) has none.
 func (j Job) ROHSARequest() (VGTRequest, bool) { return j.configRequest("rohsa") }
+
+// ConfigRequest is the stored request of a VGT or ROHSA job, or false for a job that has none.
+func (j Job) ConfigRequest() (VGTRequest, bool) { return j.configRequestAny() }
+
+// configRequestAny is the stored request of a VGT or ROHSA job.
+func (j Job) configRequestAny() (VGTRequest, bool) {
+	if r, ok := j.configRequest("vgt"); ok {
+		return r, true
+	}
+	return j.configRequest("rohsa")
+}
+
+// RerunMode is how the job repeats its parent run (strict, best_effort or adapted), or "" for a job that repeats none.
+func (j Job) RerunMode() string {
+	r, _ := j.configRequestAny()
+	return r.RerunMode
+}
 
 func (j Job) configRequest(template string) (VGTRequest, bool) {
 	var r VGTRequest
@@ -146,6 +190,9 @@ type VGTSettings struct {
 	Time      string
 	Partition string
 	Account   string
+	// ExpectCommit makes the job stop before the program starts unless the code folder is at this revision with no changed
+	// tracked file (a strict rerun, ADR 0054).
+	ExpectCommit string
 }
 
 const configEnd = "VESQIRA_CONFIG_END"
@@ -188,6 +235,7 @@ func RenderVGT(p VGTSettings) (string, error) {
 	b.WriteString("threads=\"${SLURM_CPUS_PER_TASK:-1}\"\nexport JULIA_NUM_THREADS=\"$threads\"\n")
 	b.WriteString("echo \"job_id=$SLURM_JOB_ID host=$(hostname) threads=$threads\"\ndate --iso-8601=seconds\n")
 	b.WriteString("command -v julia >/dev/null || { echo \"Julia is not on PATH\" >&2; exit 2; }\n")
+	b.WriteString(EnvPreamble(envSpecFor(p.RepoDir, p.Config, p.ExpectCommit)))
 	b.WriteString("srun --ntasks=1 julia --project=. --threads=\"$threads\" main.jl \"$cfg\"\ndate --iso-8601=seconds\n")
 	return b.String(), nil
 }
@@ -203,6 +251,8 @@ type ROHSASettings struct {
 	Time       string
 	Partition  string
 	Account    string
+	// ExpectCommit: as for VGTSettings.
+	ExpectCommit string
 }
 
 // RenderROHSA renders the batch script for one ROHSA run, following the pipeline's own ROHSA cluster script: write the
@@ -253,6 +303,8 @@ func RenderROHSA(p ROHSASettings) (string, error) {
 	b.WriteString("command -v julia >/dev/null || { echo \"Julia is not on PATH\" >&2; exit 2; }\n")
 	b.WriteString("# the optimiser loop is OpenMP-parallel: match threads to the allocation\n")
 	b.WriteString("export OMP_NUM_THREADS=\"${SLURM_CPUS_PER_TASK:-1}\"\nulimit -s unlimited\nexport OMP_STACKSIZE=256M\n")
+	// after the module and build lines above: the environment recorded is the one the program starts in
+	b.WriteString(EnvPreamble(envSpecFor(p.RepoDir, p.Config, p.ExpectCommit)))
 	b.WriteString("srun --ntasks=1 julia --project=. rohsa/cli/preprocess.jl --config \"$config\"\ndate --iso-8601=seconds\n")
 	return b.String(), nil
 }

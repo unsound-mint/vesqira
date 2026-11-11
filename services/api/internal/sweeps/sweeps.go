@@ -227,6 +227,8 @@ func classify(line string, keys []string) string {
 	switch {
 	case strings.HasPrefix(t, "output_dir") && strings.HasPrefix(strings.TrimSpace(t[len("output_dir"):]), "="):
 		return "output"
+	case strings.HasPrefix(t, "ve_out=\""): // the environment record's copy of the same folder (jobs.EnvPreamble)
+		return "output"
 	case strings.HasPrefix(t, "#SBATCH --job-name="):
 		return "name"
 	}

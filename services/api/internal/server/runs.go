@@ -189,6 +189,11 @@ type runJSON struct {
 	// JobID is the Vesqira job whose outputs this run is; ParentRunID is the run that job was drafted from.
 	JobID       *int64 `json:"jobId"`
 	ParentRunID *int64 `json:"parentRunId"`
+	// RerunMode is how the draft repeated its parent (strict, best_effort, adapted); ParentComparison lines the facts both
+	// runs observed up against each other (ADR 0054). Both are null for a run that repeats nothing, and the list leaves
+	// ParentComparison out.
+	RerunMode        *string           `json:"rerunMode"`
+	ParentComparison *parentComparison `json:"parentComparison"`
 }
 
 // hintSource is what the runs list reads the registered files' names and sizes through (the catalog; a test counts calls).
@@ -220,12 +225,19 @@ func (s *Server) hintsFor(rs []runs.Run) map[catalog.HintKey]int64 {
 // runView describes one run. Lists use runViewWith and read the job links once for all runs.
 func (s *Server) runView(r runs.Run) runJSON {
 	var lin map[int64]jobs.Lineage
+	mode := ""
 	if s.Jobs != nil {
 		if j, err := s.Jobs.ForRun(r.ID); err == nil {
 			lin = map[int64]jobs.Lineage{r.ID: {JobID: j.ID, ParentRunID: j.ParentRunID}}
+			mode = j.RerunMode()
 		}
 	}
-	return s.runViewWith(r, lin, s.hintsFor([]runs.Run{r}))
+	out := s.runViewWith(r, lin, s.hintsFor([]runs.Run{r}))
+	if mode != "" {
+		out.RerunMode = &mode
+	}
+	out.ParentComparison = s.compareWithParent(r, out.ParentRunID, mode)
+	return out
 }
 
 func (s *Server) runViewWith(r runs.Run, lin map[int64]jobs.Lineage, hints map[catalog.HintKey]int64) runJSON {

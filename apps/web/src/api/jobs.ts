@@ -1,6 +1,6 @@
 import { request as call, postJSON as post } from "./http";
 import type { components } from "./schema";
-import type { Run } from "./runs";
+import type { Run, RerunCheck, RerunMode } from "./runs";
 
 /** What the scheduler recorded a finished job used (ADR 0045). null is "not reported", never 0. */
 export type JobUsage = {
@@ -58,6 +58,8 @@ export type RohsaJobRequest = {
   note?: string;
   /** The run this draft repeats with changes. */
   parentRunId?: number;
+  /** How closely it repeats it (ADR 0054); adapted when left out. */
+  rerunMode?: RerunMode;
   /** The config is read from configPath on the host unless configText is given (a rerun passes the text the parent started from). set holds only the settings that change; the output folder is never one of them. */
   rohsa: { repoDir: string; configPath: string; configText?: string; set?: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string };
 };
@@ -73,6 +75,8 @@ export type VgtJobRequest = {
   note?: string;
   /** The run this draft repeats with changes. */
   parentRunId?: number;
+  /** How closely it repeats it (ADR 0054); adapted when left out. */
+  rerunMode?: RerunMode;
   /** With configText the host's file is not read again: a rerun passes the config text the parent started from. */
   vgt: { repoDir: string; configPath: string; configText?: string; set: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string };
 };
@@ -92,6 +96,8 @@ export const submitJob = (id: number, scriptHash: string, autoImport?: boolean) 
 export const refreshJob = (id: number) => post<Job>(`/api/jobs/${id}/refresh`, {});
 export const reopenJob = (id: number) => post<Job>(`/api/jobs/${id}/reopen`, {});
 export const cancelJob = (id: number) => post<Job>(`/api/jobs/${id}/cancel`, {});
+/** What can be said about a rerun draft before it is submitted; the host is only asked for strict and best effort drafts. */
+export const rerunCheck = (id: number) => call<RerunCheck>(`/api/jobs/${id}/rerun-check`);
 export const jobLog = (id: number) => call<{ log: string }>(`/api/jobs/${id}/log`).then((r) => r.log);
 export const registerOutputs = (id: number) => post<Run>(`/api/jobs/${id}/register`, {});
 export const hostText = (hostId: number, path: string) => call<{ text: string }>(`/api/hosts/${hostId}/text?path=${encodeURIComponent(path)}`).then((r) => r.text);

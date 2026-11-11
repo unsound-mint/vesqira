@@ -1297,6 +1297,15 @@
     },
     "review": {
      "$ref": "#/components/schemas/RunReview"
+    },
+    "controls": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/Controls"
+      }
+     ],
+     "nullable": true,
+     "description": "Smoothing, noise model and control construction stated for the run, each with who said so; absent when none was stated."
     }
    }
   },
@@ -8693,6 +8702,490 @@
     }
    }
   },
+  "ControlsStated": {
+   "type": "object",
+   "description": "Who is responsible for a block of controls: declared (a person said so, not checked here) or verified (Vesqira ran it and records what it ran).",
+   "required": [
+    "basis",
+    "by",
+    "at"
+   ],
+   "properties": {
+    "basis": {
+     "type": "string",
+     "enum": [
+      "declared",
+      "verified"
+     ]
+    },
+    "by": {
+     "type": "string",
+     "enum": [
+      "researcher",
+      "vesqira"
+     ]
+    },
+    "at": {
+     "type": "string"
+    }
+   }
+  },
+  "ControlsSmoothing": {
+   "type": "object",
+   "description": "The kernel applied before the result was made. A width always comes with its unit; width null means smoothing was applied and its width is not stated.",
+   "required": [
+    "kernel",
+    "width",
+    "unit",
+    "note",
+    "basis",
+    "by",
+    "at"
+   ],
+   "properties": {
+    "kernel": {
+     "type": "string",
+     "enum": [
+      "gaussian_fwhm",
+      "gaussian_sigma",
+      "boxcar",
+      "other"
+     ]
+    },
+    "width": {
+     "type": "number",
+     "nullable": true
+    },
+    "unit": {
+     "type": "string",
+     "enum": [
+      "",
+      "pixel",
+      "arcsec",
+      "arcmin",
+      "deg",
+      "channel",
+      "km/s"
+     ]
+    },
+    "note": {
+     "type": "string"
+    },
+    "basis": {
+     "type": "string",
+     "enum": [
+      "declared",
+      "verified"
+     ]
+    },
+    "by": {
+     "type": "string",
+     "enum": [
+      "researcher",
+      "vesqira"
+     ]
+    },
+    "at": {
+     "type": "string"
+    }
+   }
+  },
+  "ControlsNoise": {
+   "type": "object",
+   "description": "How the noise was described to the analysis.",
+   "required": [
+    "kind",
+    "sigma",
+    "sigmaUnit",
+    "estimated",
+    "note",
+    "basis",
+    "by",
+    "at"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "scalar_sigma",
+      "rms_map",
+      "per_channel_rms",
+      "other"
+     ]
+    },
+    "sigma": {
+     "type": "number",
+     "nullable": true
+    },
+    "sigmaUnit": {
+     "type": "string"
+    },
+    "estimated": {
+     "type": "string",
+     "description": "How the noise was estimated, in words."
+    },
+    "note": {
+     "type": "string"
+    },
+    "basis": {
+     "type": "string",
+     "enum": [
+      "declared",
+      "verified"
+     ]
+    },
+    "by": {
+     "type": "string",
+     "enum": [
+      "researcher",
+      "vesqira"
+     ]
+    },
+    "at": {
+     "type": "string"
+    }
+   }
+  },
+  "ControlParam": {
+   "type": "object",
+   "required": [
+    "key",
+    "value"
+   ],
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    }
+   }
+  },
+  "ControlsConstruction": {
+   "type": "object",
+   "description": "How a control or null was built. Verified only for a null Vesqira ran itself (relative orientation).",
+   "required": [
+    "kind",
+    "params",
+    "note",
+    "basis",
+    "by",
+    "at"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "shifted_map_null",
+      "injection_test",
+      "permutation",
+      "other"
+     ]
+    },
+    "params": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ControlParam"
+     }
+    },
+    "note": {
+     "type": "string"
+    },
+    "basis": {
+     "type": "string",
+     "enum": [
+      "declared",
+      "verified"
+     ]
+    },
+    "by": {
+     "type": "string",
+     "enum": [
+      "researcher",
+      "vesqira"
+     ]
+    },
+    "at": {
+     "type": "string"
+    }
+   }
+  },
+  "Controls": {
+   "type": "object",
+   "description": "Smoothing, noise model and control construction stated for a result. A block that is null was not stated, which is not the same as none applied.",
+   "required": [
+    "smoothing",
+    "noise",
+    "construction"
+   ],
+   "properties": {
+    "smoothing": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/ControlsSmoothing"
+      }
+     ],
+     "nullable": true
+    },
+    "noise": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/ControlsNoise"
+      }
+     ],
+     "nullable": true
+    },
+    "construction": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/ControlsConstruction"
+      }
+     ],
+     "nullable": true
+    }
+   }
+  },
+  "ControlsDeclaration": {
+   "type": "object",
+   "description": "What the researcher states. Replaces the stored statement: a block that is left out or null is cleared. Basis, author and time are set by the server (declared, researcher, now) whatever is sent.",
+   "additionalProperties": false,
+   "properties": {
+    "smoothing": {
+     "type": "object",
+     "nullable": true,
+     "additionalProperties": false,
+     "required": [
+      "kernel"
+     ],
+     "properties": {
+      "kernel": {
+       "type": "string",
+       "enum": [
+        "gaussian_fwhm",
+        "gaussian_sigma",
+        "boxcar",
+        "other"
+       ]
+      },
+      "width": {
+       "type": "number",
+       "nullable": true
+      },
+      "unit": {
+       "type": "string",
+       "enum": [
+        "pixel",
+        "arcsec",
+        "arcmin",
+        "deg",
+        "channel",
+        "km/s"
+       ],
+       "description": "required with a width, refused without one"
+      },
+      "note": {
+       "type": "string",
+       "description": "at most 300 characters; required for kind other"
+      }
+     }
+    },
+    "noise": {
+     "type": "object",
+     "nullable": true,
+     "additionalProperties": false,
+     "required": [
+      "kind"
+     ],
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "scalar_sigma",
+        "rms_map",
+        "per_channel_rms",
+        "other"
+       ]
+      },
+      "sigma": {
+       "type": "number",
+       "nullable": true,
+       "description": "scalar_sigma only; needs sigmaUnit"
+      },
+      "sigmaUnit": {
+       "type": "string",
+       "description": "for example K or Jy/beam"
+      },
+      "estimated": {
+       "type": "string",
+       "description": "how the noise was estimated; at most 300 characters"
+      },
+      "note": {
+       "type": "string"
+      }
+     }
+    },
+    "construction": {
+     "type": "object",
+     "nullable": true,
+     "additionalProperties": false,
+     "required": [
+      "kind"
+     ],
+     "properties": {
+      "kind": {
+       "type": "string",
+       "enum": [
+        "shifted_map_null",
+        "injection_test",
+        "permutation",
+        "other"
+       ]
+      },
+      "params": {
+       "type": "array",
+       "maxItems": 12,
+       "items": {
+        "$ref": "#/components/schemas/ControlParam"
+       },
+       "description": "lower-case names (letters, digits, _), each once; values at most 80 characters"
+      },
+      "note": {
+       "type": "string",
+       "description": "required for kind other"
+      }
+     }
+    }
+   }
+  },
+  "EnvDifference": {
+   "type": "object",
+   "description": "One fact compared between two runs, or between a parent run and the code folder as it is now. unknown means at least one side did not observe it; it is never reported as matched.",
+   "required": [
+    "key",
+    "label",
+    "result",
+    "parent",
+    "this",
+    "blocking",
+    "why"
+   ],
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "result": {
+     "type": "string",
+     "enum": [
+      "matched",
+      "differed",
+      "unknown"
+     ]
+    },
+    "parent": {
+     "type": "string"
+    },
+    "this": {
+     "type": "string"
+    },
+    "blocking": {
+     "type": "boolean",
+     "description": "differed in a fact a strict rerun requires to be equal"
+    },
+    "why": {
+     "type": "string",
+     "description": "for unknown: which side did not observe it"
+    }
+   }
+  },
+  "RerunSettingChange": {
+   "type": "object",
+   "required": [
+    "key",
+    "parent",
+    "now"
+   ],
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "parent": {
+     "type": "string",
+     "nullable": true,
+     "description": "null: the parent run did not have this setting"
+    },
+    "now": {
+     "type": "string",
+     "nullable": true,
+     "description": "null: the draft does not have it"
+    }
+   }
+  },
+  "RerunCheck": {
+   "type": "object",
+   "description": "What can be said about a rerun draft before it is submitted (ADR 0054). A strict draft with blocking true is refused by the submit route.",
+   "required": [
+    "mode",
+    "parentRunId",
+    "codeChecked",
+    "differences",
+    "settings",
+    "settingsKnown",
+    "blocking",
+    "messages",
+    "notes"
+   ],
+   "properties": {
+    "mode": {
+     "type": "string",
+     "enum": [
+      "strict",
+      "best_effort",
+      "adapted"
+     ]
+    },
+    "parentRunId": {
+     "type": "integer"
+    },
+    "codeChecked": {
+     "type": "boolean",
+     "description": "the host answered the read-only look at the code folder; adapted drafts do not ask"
+    },
+    "differences": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/EnvDifference"
+     }
+    },
+    "settings": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RerunSettingChange"
+     }
+    },
+    "settingsKnown": {
+     "type": "boolean",
+     "description": "false when the parent run's settings were not kept, so no change can be marked"
+    },
+    "blocking": {
+     "type": "boolean"
+    },
+    "messages": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "notes": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
   "SceneLink": {
    "type": "object",
    "additionalProperties": false,
@@ -13271,6 +13764,143 @@
     },
     "429": {
      "description": "too many sessions are open",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/jobs/{id}/rerun-check": {
+   "summary": "Check a rerun draft before submitting: strict reads the code folder on the host (read-only) and compares it with the parent run's observed code; best effort lists each difference; adapted marks the settings that changed",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "the check",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RerunCheck"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such job",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "the job repeats no run, or has no kept settings",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "PUT /api/runs/{id}/controls": {
+   "summary": "State how the run was smoothed, how its noise was modelled and how a control was built; stored as declared by the researcher",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/ControlsDeclaration"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "the run with its controls (the run record as GET /api/runs/{id} returns it)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "id",
+         "controls"
+        ],
+        "properties": {
+         "id": {
+          "type": "integer"
+         },
+         "controls": {
+          "allOf": [
+           {
+            "$ref": "#/components/schemas/Controls"
+           }
+          ],
+          "nullable": true
+         }
+        }
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such run",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "422": {
+     "description": "a value the controls cannot carry: a width without its unit, an unknown kernel or model, text that is too long",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
      "content": {
       "application/json": {
        "schema": {

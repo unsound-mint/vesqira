@@ -503,7 +503,7 @@ func renderedFromSettings(base jobs.Job) (string, bool) {
 		if err != nil {
 			return "", false
 		}
-		script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: base.Name, RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account})
+		script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: base.Name, RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, ExpectCommit: req.ExpectCommit})
 		return script, err == nil
 	}
 	req, ok := base.VGTRequest()
@@ -519,7 +519,7 @@ func renderedFromSettings(base jobs.Job) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: base.Name, RepoDir: req.RepoDir, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account})
+	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: base.Name, RepoDir: req.RepoDir, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, ExpectCommit: req.ExpectCommit})
 	return script, err == nil
 }
 

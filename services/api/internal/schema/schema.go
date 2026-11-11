@@ -30,7 +30,9 @@ import (
 // Version 14: the transfer queue (transfers; ADR 0051).
 // Version 15: a dataset may have several locations, each with its own fingerprints (dataset_locations); a figure records the
 // identity of the datasets it was drawn from (figures.identity; ADR 0053).
-const Version = 15
+// Version 16: a run keeps what its job observed about the environment and the controls stated for it (runs.environment,
+// runs.controls; ADR 0054).
+const Version = 16
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -54,6 +56,7 @@ var migrations = []Migration{
 	{To: 13, Name: "parameter sweeps", Up: parameterSweeps},
 	{To: 14, Name: "transfers", Up: transfersTable},
 	{To: 15, Name: "dataset locations and figure identity", Up: datasetIdentity},
+	{To: 16, Name: "run environment and controls", Up: runEnvironmentAndControls},
 }
 
 // DatasetLocationsTable is where a dataset's files are (ADR 0053). Every dataset has one primary row (the file it was
@@ -151,6 +154,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS transfers_live_name ON transfers(CASE directio
 func transfersTable(tx *sql.Tx) error {
 	_, err := tx.Exec(TransfersTable)
 	return err
+}
+
+// runEnvironmentAndControls adds runs.environment and runs.controls. Every existing run gets ” for both: nothing was observed
+// or stated, which is not the same as "none". A catalog without a runs table needs nothing.
+func runEnvironmentAndControls(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='runs'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, c := range []string{"environment", "controls"} {
+		if err := AddColumn(tx, "runs", c, "TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // jobUsage adds jobs.usage. Every existing job gets ” (nothing was recorded; its use is not known, not zero). A catalog

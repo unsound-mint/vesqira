@@ -27,7 +27,10 @@ func Reproducibility(r Run, inputInRegistry bool) []Fact {
 	var out []Fact
 	add := func(key, label, status, detail string) { out = append(out, Fact{key, label, status, detail}) }
 
+	envCommit, haveEnvCommit := EnvValue(r.Environment, "code.commit")
 	switch {
+	case haveEnvCommit:
+		add("code", "Code version", EnvVerified, envCodeDetail(r, envCommit))
 	case r.GitCommit == "":
 		add("code", "Code version", "unresolved", "The run does not record a commit.")
 	case r.Dirty:
@@ -48,7 +51,11 @@ func Reproducibility(r Run, inputInRegistry bool) []Fact {
 	default:
 		add("input", "Input data", "declared", fmt.Sprintf("%s, %d bytes as declared. No content hash is recorded.", r.InputName, r.InputSizeBytes))
 	}
-	add("environment", "Software environment", "unresolved", "Language and package versions are not recorded in the run metadata.")
+	if len(r.Environment) == 0 {
+		add("environment", "Software environment", "unresolved", "Language and package versions are not recorded in the run metadata, and no job of this catalog observed them.")
+	} else {
+		out = append(out, envFacts(r.Environment)...)
+	}
 	seed := ""
 	for _, p := range r.Params {
 		if seedKey.MatchString(p.Key) {
@@ -94,4 +101,66 @@ func short(c string) string {
 		return c[:12]
 	}
 	return c
+}
+
+// envCodeDetail says what the job saw of the code folder, and whether the run's own metadata agrees.
+func envCodeDetail(r Run, commit string) string {
+	d := "Commit " + short(commit)
+	switch v, _ := EnvValue(r.Environment, "code.dirty"); v {
+	case "no":
+		d += ", no tracked file changed"
+	case "yes":
+		h, _ := EnvValue(r.Environment, "code.diff_sha256")
+		d += ", tracked files changed since that commit (hash of the change " + short(h) + "), so the commit alone does not rebuild the code"
+	default:
+		d += "; whether tracked files had changed was not observed"
+	}
+	d += ". Observed by the job itself when it ran, from a file next to its outputs (the file is not signed)."
+	declared := strings.TrimSuffix(r.GitCommit, "-dirty")
+	if declared != "" && !strings.HasPrefix(commit, declared) && !strings.HasPrefix(declared, commit) {
+		d += " The run's own metadata declares commit " + short(r.GitCommit) + ", which differs."
+	}
+	return d
+}
+
+// envFacts turns the observed environment into the facts a reader of the run page sees. A group is verified when at least one of
+// its facts was observed; the others say why they were not.
+func envFacts(env []EnvFact) []Fact {
+	group := func(key, label string, keys ...string) Fact {
+		var seen, miss []string
+		for _, k := range keys {
+			for _, f := range env {
+				if f.Key != k {
+					continue
+				}
+				if f.Status == EnvVerified {
+					v := f.Value
+					if len(v) == 64 {
+						v = v[:12]
+					}
+					seen = append(seen, f.Label+" "+v)
+				} else {
+					miss = append(miss, f.Label+": "+f.Reason)
+				}
+			}
+		}
+		detail := strings.Join(seen, "; ")
+		status := EnvUnresolved
+		if len(seen) > 0 {
+			status = EnvVerified
+			detail += ". Observed by the job itself when it ran."
+		}
+		if len(miss) > 0 {
+			if detail != "" {
+				detail += " "
+			}
+			detail += "Not observed: " + strings.Join(miss, "; ") + "."
+		}
+		return Fact{key, label, status, detail}
+	}
+	return []Fact{
+		group("environment", "Software environment", "julia.version", "julia.manifest_sha256", "python.version", "modules.sha256"),
+		group("machine", "Machine", "node.name", "cpu.model"),
+		group("input_file", "Input file as observed", "input.size_bytes", "input.mtime_epoch"),
+	}
 }

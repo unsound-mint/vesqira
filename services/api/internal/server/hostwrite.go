@@ -242,7 +242,13 @@ func (s *Server) recordRun(ctx context.Context, jobID int64, h hosts.Host, ev jo
 		return
 	}
 	j.State, j.Detail = ev.Value, ev.Detail
-	data, err := jobs.RunRecord(j, h.Name, s.runInputs(j), ev, time.Now())
+	var env json.RawMessage
+	if isTerminal(ev.Value) && (j.Template == "vgt" || j.Template == "rohsa") {
+		if facts, read := s.readJobEnvironment(ctx, j, h); read { // what the job saw, merged into the record at its end (ADR 0054)
+			env, _ = json.Marshal(facts)
+		}
+	}
+	data, err := jobs.RunRecordWithEnvironment(j, h.Name, s.runInputs(j), ev, time.Now(), env)
 	if err != nil {
 		note(err.Error(), true)
 		return

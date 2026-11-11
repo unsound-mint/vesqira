@@ -333,7 +333,7 @@ func (s *Server) autoImport(ctx context.Context, jobID int64, h hosts.Host) {
 			Body:  msg + ". It was tried once and is not retried; open the job to import them by hand."})
 		return
 	}
-	_ = s.Jobs.LinkRun(j.ID, run.ID)
+	run = s.linkJobRun(ctx, j, h, run)
 	s.Audit.Record("run imported automatically", "job", j.ID, h.Name+": "+j.OutputDir)
 	rid := run.ID
 	_, _ = s.Notes.Add(fmt.Sprintf("job:%d:import", j.ID), notify.Notification{Kind: notify.KindImported, JobID: &id, RunID: &rid,

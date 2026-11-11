@@ -117,6 +117,8 @@ type vgtInput struct {
 	Set                             map[string]string
 	CPUs                            int
 	Mem, Time, Partition, Account   string
+	// RerunMode and ExpectRev come from "run again with..." (ADR 0054); ExpectRev is set for a strict rerun only.
+	RerunMode, ExpectRev string
 }
 
 type builtJob struct{ Script, OutputDir, Request string }
@@ -150,14 +152,14 @@ func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgt
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
-	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: name, RepoDir: in.RepoDir, Config: cfg, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
+	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: name, RepoDir: in.RepoDir, Config: cfg, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev})
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
 	// The base text and the overrides are kept apart so a rerun can change one setting on the same base, without
 	// reading a file that may have changed on the host since.
 	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: baseCfg, Set: in.Set,
-		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
+		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev})
 	if !h.InRoots(out) {
 		return builtJob{}, &apiErr{422, "the output folder must be inside a source root of the host"}
 	}
@@ -170,6 +172,7 @@ type rohsaInput struct {
 	Set                             map[string]string
 	CPUs                            int
 	Mem, Time, Partition, Account   string
+	RerunMode, ExpectRev            string
 }
 
 // buildROHSA renders a ROHSA job the way buildVGT renders a VGT one: the config text (read from the host unless given), the
@@ -203,12 +206,12 @@ func (s *Server) buildROHSA(ctx context.Context, h hosts.Host, name string, in r
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
-	script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: name, RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, Config: text, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
+	script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: name, RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, Config: text, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev})
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
 	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: cfg, Set: in.Set,
-		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
+		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev})
 	return builtJob{Script: script, OutputDir: out, Request: string(rq)}, nil
 }
 
@@ -223,7 +226,9 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		AutoImport *bool `json:"autoImport"`
 		// ParentRunID names the run this draft repeats with changes ("run again with...").
 		ParentRunID *int64 `json:"parentRunId"`
-		VGT         struct {
+		// RerunMode is strict, best_effort or adapted (the default) for a draft that has a ParentRunID (ADR 0054).
+		RerunMode string `json:"rerunMode"`
+		VGT       struct {
 			RepoDir    string            `json:"repoDir"`
 			ConfigPath string            `json:"configPath"` // a config on the host, inside its roots
 			ConfigText string            `json:"configText"`
@@ -282,12 +287,17 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		job.ParentRunID = in.ParentRunID
 	}
+	rerunMode, expectRev, aerr := s.rerunFor(in.Template, in.ParentRunID, in.RerunMode)
+	if aerr != nil {
+		s.failAPI(w, aerr)
+		return
+	}
 	switch in.Template {
 	case "custom":
 		job.Script = in.Script
 	case "vgt":
 		v, aerr := s.buildVGT(r.Context(), h, in.Name, vgtInput{RepoDir: in.VGT.RepoDir, ConfigPath: in.VGT.ConfigPath, ConfigText: in.VGT.ConfigText, Set: in.VGT.Set,
-			CPUs: in.VGT.CPUs, Mem: in.VGT.Mem, Time: in.VGT.Time, Partition: in.VGT.Partition, Account: in.VGT.Account})
+			CPUs: in.VGT.CPUs, Mem: in.VGT.Mem, Time: in.VGT.Time, Partition: in.VGT.Partition, Account: in.VGT.Account, RerunMode: rerunMode, ExpectRev: expectRev})
 		if aerr != nil {
 			s.failAPI(w, aerr)
 			return
@@ -295,7 +305,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		job.Script, job.OutputDir, job.Request = v.Script, v.OutputDir, v.Request
 	case "rohsa":
 		v, aerr := s.buildROHSA(r.Context(), h, in.Name, rohsaInput{RepoDir: in.ROHSA.RepoDir, ConfigPath: in.ROHSA.ConfigPath, ConfigText: in.ROHSA.ConfigText, Set: in.ROHSA.Set,
-			CPUs: in.ROHSA.CPUs, Mem: in.ROHSA.Mem, Time: in.ROHSA.Time, Partition: in.ROHSA.Partition, Account: in.ROHSA.Account})
+			CPUs: in.ROHSA.CPUs, Mem: in.ROHSA.Mem, Time: in.ROHSA.Time, Partition: in.ROHSA.Partition, Account: in.ROHSA.Account, RerunMode: rerunMode, ExpectRev: expectRev})
 		if aerr != nil {
 			s.failAPI(w, aerr)
 			return
@@ -303,6 +313,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		job.Script, job.OutputDir, job.Request = v.Script, v.OutputDir, v.Request
 	default:
 		fail(w, 400, "template must be vgt, rohsa or custom")
+		return
+	}
+	if aerr := s.refuseStrictSettings(job); aerr != nil {
+		s.failAPI(w, aerr)
 		return
 	}
 	created, err := s.Jobs.CreateDraft(job)
@@ -374,6 +388,11 @@ func (s *Server) submitDraft(ctx context.Context, j jobs.Job, h hosts.Host, scri
 	if err != nil {
 		return j, jobAPIErr(err)
 	}
+	// A strict rerun is refused here, before anything is recorded or sent, when the code folder is not the parent's.
+	rerunNote, aerr := s.gateRerun(ctx, j, h)
+	if aerr != nil {
+		return j, aerr
+	}
 	if autoImport != nil && *autoImport != j.AutoImport { // after every refusal above: a refused submit changes nothing
 		if err := s.Jobs.SetAutoImport(j.ID, *autoImport); err != nil {
 			return j, jobAPIErr(err)
@@ -399,7 +418,11 @@ func (s *Server) submitDraft(ctx context.Context, j jobs.Job, h hosts.Host, scri
 	if err := s.Jobs.MarkSubmitted(j.ID, id); err != nil {
 		return j, jobAPIErr(err)
 	}
-	s.Audit.Record("job submitted", "job", j.ID, "Slurm job "+id+", script sha256 "+j.ScriptHash[:12])
+	detail := "Slurm job " + id + ", script sha256 " + j.ScriptHash[:12]
+	if rerunNote != "" {
+		detail += "; " + rerunNote
+	}
+	s.Audit.Record("job submitted", "job", j.ID, detail)
 	j, _ = s.Jobs.Get(j.ID)
 	// Settings are known now. The record is written in the background (the answer does not wait for ssh), and only once the
 	// job has created its output folder; a refresh completes it and adds the end state.
@@ -573,7 +596,7 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 			fail(w, code, msg)
 			return
 		}
-		_ = s.Jobs.LinkRun(j.ID, run.ID)
+		run = s.linkJobRun(rctx, j, h, run)
 		writeJSON(w, 201, s.runView(run))
 		return
 	}
@@ -591,6 +614,6 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	_ = s.Jobs.LinkRun(j.ID, run.ID)
+	run = s.linkJobRun(ctx, j, h, run)
 	writeJSON(w, 201, s.runView(run))
 }
