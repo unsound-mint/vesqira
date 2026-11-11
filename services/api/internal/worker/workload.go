@@ -43,8 +43,9 @@ type Budgets struct{ Interactive, Heavy, Background int }
 const MaxBudget = 16
 
 // DefaultBudgets: two interactive processes (a plane and a coordinate readout never queue behind each other), two heavy
-// slots (one analysis and one spectrum can overlap), one background slot (a rescan is never urgent).
-func DefaultBudgets() Budgets { return Budgets{Interactive: 2, Heavy: 2, Background: 1} }
+// slots (one analysis and one spectrum can overlap), two background slots (a rescan is never urgent, but a full file hash,
+// which is capped at one at a time, must never hold the only slot that header reads of a scan need).
+func DefaultBudgets() Budgets { return Budgets{Interactive: 2, Heavy: 2, Background: 2} }
 
 // Validate rejects a budget outside 1..MaxBudget; zero is not a way to switch a class off, because every class has work.
 func (b Budgets) Validate() error {
@@ -99,6 +100,24 @@ func OpLabel(op string) string {
 
 type labelKey struct{}
 
+type classKey struct{}
+
+// WithClass says a person is waiting on this request. Only Interactive is honoured, and only for an operation whose own
+// class is background (header reads, fingerprints): the register preview and registration must not queue behind a project
+// scan. It never moves heavy work, and never demotes anything.
+func WithClass(ctx context.Context, c Class) context.Context {
+	return context.WithValue(ctx, classKey{}, c)
+}
+
+// classFor is ClassOf with the caller's intent applied.
+func classFor(ctx context.Context, op string) Class {
+	c := ClassOf(op)
+	if v, ok := ctx.Value(classKey{}).(Class); ok && v == Interactive && c == Background {
+		return Interactive
+	}
+	return c
+}
+
 // WithLabel names the work for queue reasons ("relative orientation"); without it a worker call is named after its operation.
 func WithLabel(ctx context.Context, label string) context.Context {
 	return context.WithValue(ctx, labelKey{}, label)
@@ -108,6 +127,7 @@ type task struct {
 	class Class
 	label string
 	id    string // the API request id, "" when none
+	why   string // a fixed queue reason, for waits that are not for a class slot
 	since time.Time
 }
 
@@ -118,13 +138,16 @@ type Load struct {
 	sem     [numClasses]chan struct{} // blocks while the class is full
 	free    [numClasses][]bool        // which slot numbers are in use; the lowest free one is taken, so warm worker processes are reused
 
+	// full serializes full file hashes (one at a time), so with a background budget above one a hash never takes the last slot.
+	full chan struct{}
+
 	mu      sync.Mutex
 	running map[*task]struct{}
 	waiting map[*task]struct{}
 }
 
 func NewLoad(b Budgets) *Load {
-	l := &Load{budgets: b, running: map[*task]struct{}{}, waiting: map[*task]struct{}{}}
+	l := &Load{budgets: b, full: make(chan struct{}, 1), running: map[*task]struct{}{}, waiting: map[*task]struct{}{}}
 	for _, c := range Classes() {
 		l.sem[c] = make(chan struct{}, b.of(c))
 		l.free[c] = make([]bool, b.of(c))
@@ -174,6 +197,30 @@ func (l *Load) Acquire(ctx context.Context, c Class, label string) (int, func(),
 			<-l.sem[c]
 		})
 	}, nil
+}
+
+// AcquireFull waits for the one full-hash token. A caller takes it before its background slot, so a second hash waits
+// without holding a slot that header reads and sampled fingerprints need. With a background budget of one the hash still
+// takes that slot: there is nowhere else to go, and the flag help says so.
+func (l *Load) AcquireFull(ctx context.Context) (func(), error) {
+	select {
+	case l.full <- struct{}{}:
+	default:
+		id, _ := ctx.Value(idKey{}).(string)
+		t := &task{class: Background, label: OpLabel("fingerprint_full"), id: id, since: time.Now(),
+			why: "waiting: another full file hash is running; header reads and sampled fingerprints are unaffected"}
+		l.mu.Lock()
+		l.waiting[t] = struct{}{}
+		l.mu.Unlock()
+		defer func() { l.mu.Lock(); delete(l.waiting, t); l.mu.Unlock() }()
+		select {
+		case l.full <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	var once sync.Once
+	return func() { once.Do(func() { <-l.full }) }, nil
 }
 
 // take marks the lowest free slot of c as used. Called with mu held and a semaphore token owned, so one is free.
@@ -250,6 +297,9 @@ const maxNamed = 4
 // reasonLocked says why t waits: what holds its class's slots. Other classes are never named as the cause, because they cannot
 // be: the one thing a person needs to hear is that viewing is unaffected.
 func (l *Load) reasonLocked(t *task) string {
+	if t.why != "" {
+		return t.why
+	}
 	counts := map[string]int{}
 	n := 0
 	for r := range l.running {

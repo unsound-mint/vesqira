@@ -288,7 +288,7 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	nd, code, msg := s.registerPath(r.Context(), outPath)
+	nd, code, msg := s.registerPath(waiting(r.Context()), outPath)
 	if code != 0 {
 		cleanup()
 		fail(w, code, msg)

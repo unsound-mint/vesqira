@@ -65,7 +65,7 @@ func main() {
 	allowOthers := flag.Bool("allow-other-local-users", false, "DANGEROUS: do not check which user account connects to the owner address; on a shared computer any other account can then use the app as you (and open a shell with --enable-terminal)")
 	wInteractive := flag.Int("workers-interactive", worker.DefaultBudgets().Interactive, "worker processes reserved for interactive viewing (planes, coordinates, overlays); never used by heavy or background work (ADR 0056)")
 	wHeavy := flag.Int("workers-heavy", worker.DefaultBudgets().Heavy, "heavy tasks at once: spectra over large regions, PV, channel grids, index builds, and analysis programs")
-	wBackground := flag.Int("workers-background", worker.DefaultBudgets().Background, "background tasks at once: header reads for registering files, fingerprints")
+	wBackground := flag.Int("workers-background", worker.DefaultBudgets().Background, "background tasks at once: project scans, fingerprints; at most one of them is a full file hash, which takes the last slot only when this is 1 (ADR 0056)")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
 

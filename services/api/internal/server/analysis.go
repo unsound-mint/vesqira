@@ -210,7 +210,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"summary": res.Summary, "software": derived.CleanSoftware(res.Software)})
 		return
 	}
-	nd, code, msg := s.registerPath(r.Context(), outPath)
+	nd, code, msg := s.registerPath(waiting(r.Context()), outPath)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -226,7 +226,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: in.Op, Params: params, Sources: sources, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
-	nd = s.finishAxialResult(analysisOutcome{res.Summary, res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(r.Context(), p) }, in.Op, sources, params)
+	nd = s.finishAxialResult(analysisOutcome{res.Summary, res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(waiting(r.Context()), p) }, in.Op, sources, params)
 	writeJSON(w, 201, map[string]any{"dataset": nd, "summary": res.Summary})
 }
 

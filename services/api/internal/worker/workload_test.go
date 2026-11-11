@@ -160,3 +160,91 @@ func TestInteractiveRequestIsNotDelayedByAFloodOfHeavyAndBackgroundWork(t *testi
 	}
 	wg.Wait()
 }
+
+func fullHash(p *Persistent) error {
+	_, err := p.Do(context.Background(), map[string]any{"op": "fingerprint_full", "path": "longhash"})
+	return err
+}
+
+func waitFor(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	for i := 0; i < 1000 && !ok(); i++ {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if !ok() {
+		t.Fatal("timed out waiting for " + what)
+	}
+}
+
+// A full hash holding a background slot must neither delay a header read a person waits on (it is interactive by caller
+// intent) nor starve scan header reads (a second full hash waits for the hash token without holding a slot).
+func TestFullHashDoesNotBlockHeaderReads(t *testing.T) {
+	p := newFake(t, 10*time.Second)
+	p.Load = NewLoad(Budgets{Interactive: 1, Heavy: 1, Background: 2})
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ { // two hashes: one runs, one waits for the token
+		wg.Add(1)
+		go func() { defer wg.Done(); _ = fullHash(p) }()
+	}
+	waitFor(t, "a hash to run and another to wait", func() bool {
+		s := p.Load.Snapshot()[Background]
+		return s.Running == 1 && s.Waiting == 1
+	})
+	// the waiting hash is told why, and does not claim to be waiting for a class slot
+	p.Load.mu.Lock()
+	var why string
+	for w := range p.Load.waiting {
+		why = p.Load.reasonLocked(w)
+	}
+	p.Load.mu.Unlock()
+	if !strings.Contains(why, "another full file hash") {
+		t.Fatalf("reason: %q", why)
+	}
+	// a scan's header read keeps flowing on the second background slot
+	start := time.Now()
+	if _, err := p.Do(context.Background(), map[string]any{"op": "describe", "path": "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 700*time.Millisecond {
+		t.Fatalf("scan header read took %v behind a full hash", d)
+	}
+	// a person's header read does not use the background class at all
+	before := p.Load.Snapshot()[Background]
+	start = time.Now()
+	if _, err := p.Do(WithClass(context.Background(), Interactive), map[string]any{"op": "describe", "path": "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 700*time.Millisecond {
+		t.Fatalf("interactive header read took %v", d)
+	}
+	if after := p.Load.Snapshot()[Background]; after.Running != before.Running {
+		t.Fatalf("background changed: %+v -> %+v", before, after)
+	}
+	wg.Wait()
+}
+
+// With every background slot held, the caller's intent is what keeps a person's header read moving; heavy work is never
+// promoted by it.
+func TestWithClassPromotesOnlyBackgroundOps(t *testing.T) {
+	ctx := WithClass(context.Background(), Interactive)
+	if classFor(ctx, "describe") != Interactive || classFor(ctx, "fingerprint_full") != Interactive {
+		t.Fatal("a background op was not promoted")
+	}
+	if classFor(ctx, "spectrum") != Heavy || classFor(context.Background(), "describe") != Background {
+		t.Fatal("promotion leaked")
+	}
+	p := newFake(t, 10*time.Second)
+	p.Load = NewLoad(Budgets{Interactive: 1, Heavy: 1, Background: 1})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { defer wg.Done(); _ = fullHash(p) }()
+	waitFor(t, "the hash to run", func() bool { return p.Load.Snapshot()[Background].Running == 1 })
+	start := time.Now()
+	if _, err := p.Do(ctx, map[string]any{"op": "describe", "path": "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(start) > 700*time.Millisecond {
+		t.Fatal("register-style header read waited for the only background slot")
+	}
+	wg.Wait()
+}

@@ -34,6 +34,8 @@ for line in sys.stdin.buffer:
         sys.stdout.write('{"ok":true,"id":%s,"nbytes":0}\n' % json.dumps(r.get("requestId"))); sys.stdout.flush(); continue
     if m == "slow":
         time.sleep(0.3)
+    if m == "longhash":
+        time.sleep(1.5)
     sys.stdout.buffer.write(b'{"ok":true,"nbytes":4}\n' + b"abcd"); sys.stdout.flush()
 `
 

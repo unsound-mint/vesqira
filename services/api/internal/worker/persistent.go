@@ -185,8 +185,15 @@ func (p *Persistent) Close() {
 func (p *Persistent) Do(ctx context.Context, req map[string]any) (Reply, error) {
 	p.init()
 	op, _ := req["op"].(string)
-	class := ClassOf(op)
+	class := classFor(ctx, op)
 	killOnCancel := class != Interactive
+	if op == "fingerprint_full" {
+		releaseFull, err := p.Load.AcquireFull(ctx)
+		if err != nil {
+			return Reply{}, err
+		}
+		defer releaseFull()
+	}
 	slot, release, err := p.Load.Acquire(ctx, class, OpLabel(op))
 	if err != nil {
 		return Reply{}, err

@@ -120,7 +120,7 @@ func (s *Server) registerCatalog(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, err.Error())
 		return
 	}
-	d, code, msg := s.registerCatalogPath(r.Context(), real)
+	d, code, msg := s.registerCatalogPath(waiting(r.Context()), real)
 	if code != 0 {
 		fail(w, code, msg)
 		return
