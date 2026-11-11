@@ -36,15 +36,7 @@ type Schemas = components["schemas"];
 export type RelOrientParams = Schemas["RelativeOrientationParams"];
 export type RelOrientSummary = Schemas["RelativeOrientationSummary"];
 /** Aborting the request stops the computation: the server kills the program when its request ends. */
-<<<<<<< HEAD
-export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams }, signal?: AbortSignal, requestId?: string) =>
+export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams; masks?: MaskUse[]; otherMasks?: MaskUse[] }, signal?: AbortSignal, requestId?: string) =>
   post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal, requestId);
-||||||| e4aef11
-export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams }, signal?: AbortSignal) =>
-  post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal);
-=======
-export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams; masks?: MaskUse[]; otherMasks?: MaskUse[] }, signal?: AbortSignal) =>
-  post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal);
->>>>>>> main
 export const relativeOrientationTableUrl = (id: number) => `/api/datasets/${id}/relative-orientation.csv`;
 export const jobResult = (id: number) => call<{ summary: StatsSummary | Record<string, unknown> }>(`/api/jobs/${id}/result`);

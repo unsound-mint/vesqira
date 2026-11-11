@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
-<<<<<<< HEAD
 import { Button, ErrorReference, Input } from "../ui";
 import { ApiError } from "../api/http";
-||||||| e4aef11
-import { Button, Input } from "../ui";
-=======
-import { Button, Input } from "../ui";
 import { tierLine } from "../api/tier";
->>>>>>> main
 import { RunLine } from "../boards/RunLine";
 import { addReviewComment, getReview, OUTCOME_TEXT, reviewPreviewUrl, setOutcome } from "../api/boards";
 import type { OutcomeValue } from "../api/boards";

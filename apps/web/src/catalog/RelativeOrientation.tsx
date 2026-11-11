@@ -112,14 +112,8 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
     const ctl = new AbortController();
     abort.current = ctl;
     try {
-<<<<<<< HEAD
-      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params }, ctl.signal, id);
-||||||| e4aef11
-      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params }, ctl.signal);
-=======
       const mu = mapMode ? usesOf(ownPolicy) : [], ou = mapMode ? usesOf(theirPolicy) : [];
-      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params, ...(mu.length ? { masks: mu } : {}), ...(ou.length ? { otherMasks: ou } : {}) }, ctl.signal);
->>>>>>> main
+      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params, ...(mu.length ? { masks: mu } : {}), ...(ou.length ? { otherMasks: ou } : {}) }, ctl.signal, id);
       onCreated(r.dataset);
     } catch (e) {
       if (ctl.signal.aborted) setErr({ msg: "Cancelled: the computation was stopped and nothing was kept.", reasons: [] });
