@@ -23,7 +23,7 @@
   --text:#e7ecf2; --text-2:#a7b3c1; --text-3:#7f8c9b;
   --accent:#3cc4e8; --accent-hover:#6fd6f0; --accent-ink:#04202a; --accent-bg:rgba(60,196,232,.14);
   --ok:#4cc38a; --ok-bg:rgba(76,195,138,.14); --warn:#f0b04c; --warn-bg:rgba(240,176,76,.14); --err:#ff7b7b; --err-bg:rgba(255,123,123,.14);
-  --ring-accent:0 0 0 1px var(--accent); --nodata-a:#1b222c; --nodata-b:#556275; --nodata-hatch:repeating-linear-gradient(45deg,#1b222c 0 4px,#556275 4px 8px); --canvas-text:#e7ecf2; --canvas-text-2:#a7b3c1; --focus:#7cd8f2; --shadow:0 8px 28px rgba(0,0,0,.5);
+  --ring-accent:0 0 0 1px var(--accent); --nodata-a:#1b222c; --nodata-b:#556275; --nodata-hatch:repeating-linear-gradient(45deg,#1b222c 0 4px,#556275 4px 8px); --canvas-text:#e7ecf2; --canvas-text-2:#a7b3c1; --focus:#7cd8f2; --shadow:0 8px 28px rgba(0,0,0,.5); --scrim:rgba(4,7,11,.62);
   /* overlay inks on the image canvas, which is dark in both themes, so they are not redefined for light (apps/web/src/scene/palette.ts holds the same values for figures) */
   --overlay-white:#e7ecf2; --overlay-cyan:#3cc4e8; --overlay-amber:#f0b04c; --overlay-magenta:#f07ad8; --overlay-lime:#9be36a;
   color-scheme:dark;
@@ -33,10 +33,10 @@
   --line:#d8dfe7; --line-strong:#bcc7d3; --text:#0e1620; --text-2:#455364; --text-3:#5b6877;
   --accent:#0a6f8f; --accent-hover:#065a75; --accent-ink:#ffffff; --accent-bg:rgba(10,111,143,.10);
   --ok:#086648; --ok-bg:rgba(8,102,72,.10); --warn:#8f5700; --warn-bg:rgba(143,87,0,.10); --err:#b3261e; --err-bg:rgba(179,38,30,.08);
-  --focus:#0a6f8f; --shadow:0 8px 28px rgba(14,22,32,.18); color-scheme:light}}
+  --focus:#0a6f8f; --shadow:0 8px 28px rgba(14,22,32,.18); --scrim:rgba(14,22,32,.42); color-scheme:light}}
 :root[data-theme="light"]{
   --bg-0:#e9edf2; --bg-1:#f3f6f9; --bg-2:#ffffff; --bg-3:#eef2f6; --canvas:#0b0e13;
   --line:#d8dfe7; --line-strong:#bcc7d3; --text:#0e1620; --text-2:#455364; --text-3:#5b6877;
   --accent:#0a6f8f; --accent-hover:#065a75; --accent-ink:#ffffff; --accent-bg:rgba(10,111,143,.10);
   --ok:#086648; --ok-bg:rgba(8,102,72,.10); --warn:#8f5700; --warn-bg:rgba(143,87,0,.10); --err:#b3261e; --err-bg:rgba(179,38,30,.08);
-  --focus:#0a6f8f; --shadow:0 8px 28px rgba(14,22,32,.18); color-scheme:light}
+  --focus:#0a6f8f; --shadow:0 8px 28px rgba(14,22,32,.18); --scrim:rgba(14,22,32,.42); color-scheme:light}

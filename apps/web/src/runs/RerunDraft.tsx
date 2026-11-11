@@ -12,18 +12,10 @@ import { NOISE_MODES, SETTINGS } from "../jobs/JobsView";
 import { SizingHint } from "../jobs/JobUsage";
 import { RohsaSizingHint } from "../jobs/RohsaSizingHint";
 import { KERNELS, ROHSA_SETTINGS, readRohsaSetting, sameValue } from "../jobs/rohsaSettings";
+import { formatDuration, slurmLimitGloss } from "../ui/duration";
 import s from "./RerunDraft.module.css";
 
 const MAX_NOTE = 500;
-
-/** "1 h 46 min", "12 min", "45 s": how long the run took, for sizing the next request. */
-export function duration(seconds: number): string {
-  const t = Math.round(seconds);
-  if (t < 60) return `${t} s`;
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  return h > 0 ? `${h} h ${m} min` : `${m} min`;
-}
 
 /** What the run declared for a setting. Declared parameters may be namespaced ("vgt.ker"); a missing one is unknown, "". */
 function declared(rerun: Rerun, key: string): string {
@@ -235,11 +227,11 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
         <PathField label={rohsa ? "ROHSA config on the host" : "Config on the host"} kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} required placeholder="/shared/home/you/vgt/configs/run.toml" />
         <Input label="CPUs" value={res.cpus} onChange={(e) => setRes({ ...res, cpus: e.target.value })} inputMode="numeric" required />
         <Input label="Memory" value={res.mem} onChange={(e) => setRes({ ...res, mem: e.target.value })} required />
-        <Input label="Time limit" value={res.time} onChange={(e) => setRes({ ...res, time: e.target.value })} required />
+        <Input label="Time limit" hint={slurmLimitGloss(res.time)} value={res.time} onChange={(e) => setRes({ ...res, time: e.target.value })} required />
         <Input label="Partition (optional)" value={res.partition} onChange={(e) => setRes({ ...res, partition: e.target.value })} />
         <Input label="Account (optional)" value={res.account} onChange={(e) => setRes({ ...res, account: e.target.value })} />
       </fieldset>
-      {run.elapsedSeconds !== null && run.elapsedSeconds !== undefined ? <p className={s.note}>The last run took {duration(run.elapsedSeconds)}.</p> : null}
+      {run.elapsedSeconds !== null && run.elapsedSeconds !== undefined ? <p className={s.note}>The last run took {formatDuration(run.elapsedSeconds)}.</p> : null}
       {rerun.lastJob?.usage ? <SizingHint jobId={rerun.lastJob.id} jobName={rerun.lastJob.name} usage={rerun.lastJob.usage} mem={res.mem} time={res.time} onUseMem={(mem) => setRes((r) => ({ ...r, mem }))} onUseTime={(time) => setRes((r) => ({ ...r, time }))} /> : null}
 
       {rohsa ? (

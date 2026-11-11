@@ -519,3 +519,39 @@ func TestBoardFromASweepFollowsEachJobInParameterOrderWithOwnerOnlyLabels(t *tes
 		}
 	}
 }
+
+// A sweep's drafts are rendered from the base's settings. When the owner edited the base's script by hand before sweeping it
+// (the usual way a base job is made), the review must not call that edit an unexpected difference in every draft: the drafts
+// are compared with what the base's settings render, and the base's own edit is reported once.
+func TestSweepReviewHasNoUnexpectedLinesWhenTheBaseScriptWasEditedByHand(t *testing.T) {
+	e := newWatchEnv(t)
+	base := e.draft("vgt-base", nil)
+	edited := strings.Replace(base.Script, `echo "job_id`, `echo "reviewed; job_id`, 1)
+	if edited == base.Script {
+		t.Fatal("the script has no echo line to edit")
+	}
+	if r, b := postJSON(t, e.api("/api/jobs/"+itoa(int(base.ID))+"/script"), map[string]any{"script": edited}); r.StatusCode != 200 {
+		t.Fatalf("edit %d %s", r.StatusCode, b)
+	}
+	sw := e.createSweep(map[string]any{"name": "dnker", "baseJobId": base.ID, "params": []map[string]any{p("dn", "8", "16"), p("ker", "2", "4")}})
+	_, rev := e.sweepReview(sw.ID)
+	if n := rev["baseEditedLines"].(float64); n != 2 {
+		t.Errorf("the base's own edit is 2 lines (one out, one in), got %v", n)
+	}
+	for _, jv := range rev["jobs"].([]any) {
+		m := jv.(map[string]any)
+		if m["unexpected"].(float64) != 0 {
+			t.Errorf("%v: unexpected lines %v", m["label"], m["diff"])
+		}
+		for _, l := range m["diff"].([]any) {
+			if k := l.(map[string]any)["kind"]; k == "other" {
+				t.Errorf("%v: an other line %v", m["label"], l)
+			}
+		}
+	}
+	// an unedited base reports no edit
+	sw2 := e.createSweep(e.sweepRequest("plain", p("dn", "8", "16"), p("ker", "2", "4")))
+	if _, rev2 := e.sweepReview(sw2.ID); rev2["baseEditedLines"].(float64) != 0 {
+		t.Errorf("unedited base reported as edited: %v", rev2["baseEditedLines"])
+	}
+}

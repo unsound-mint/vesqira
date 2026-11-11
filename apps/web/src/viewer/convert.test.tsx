@@ -45,7 +45,8 @@ const base = (over: object = {}) => ({
 describe("converted readout", () => {
   it("says the frame is assumed when the header declares none, and keeps the native values listed", () => {
     render(<CoordinateReadout v={base()} />);
-    expect(screen.getByText(/ICRS \(assumed: the header declares none, so the FITS standard default applies\)/)).toBeInTheDocument();
+    expect(screen.getByText(/ICRS \(assumed\)/)).toBeInTheDocument();
+    expect(screen.getByText(/The header declares no celestial frame, so the FITS standard default applies/)).toBeInTheDocument(); // in the Basis
     expect(screen.getByText("150.50000°")).toBeInTheDocument();
     expect(screen.getByText("2 Jy/beam")).toBeInTheDocument();
   });

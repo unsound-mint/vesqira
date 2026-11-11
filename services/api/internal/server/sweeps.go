@@ -466,10 +466,19 @@ func (s *Server) reviewSweep(w http.ResponseWriter, r *http.Request) {
 			keys = append(keys, p.Key)
 		}
 	}
+	// Drafts are rendered from the base's settings, never from its script text. A base the owner edited by hand (or one drafted
+	// by an older template) therefore differs from every draft in the lines that were edited, which no swept setting explains.
+	// The drafts are compared with what the base's settings render, so a line is only "other" when it is unexpected in the
+	// draft; the base's own edits are counted once, and the review says they are not carried over.
+	ref, baseEdited := base.Script, 0
+	if rendered, ok := renderedFromSettings(base); ok && rendered != base.Script {
+		ref = rendered
+		baseEdited = len(sweeps.Diff(rendered, base.Script, nil)) // lines, "-" and "+" together
+	}
 	list := make([]reviewJob, 0, len(pj))
 	scripts := make([]string, 0, len(pj))
 	for i, j := range pj {
-		d := sweeps.Diff(base.Script, j.Script, keys)
+		d := sweeps.Diff(ref, j.Script, keys)
 		list = append(list, reviewJob{JobID: j.ID, Name: j.Name, Label: sweeps.Label(sw.Params, pm[i].Values), Values: pm[i].Values, ScriptHash: j.ScriptHash,
 			Script: j.Script, Diff: d, Unexpected: sweeps.Unexpected(d), Requested: jobs.RequestedOf(j.Script), Sizing: rohsaSizingOf(j)})
 		scripts = append(scripts, j.Script)
@@ -478,9 +487,41 @@ func (s *Server) reviewSweep(w http.ResponseWriter, r *http.Request) {
 	if base.Template == "rohsa" {
 		note = rohsaConcurrencyNote
 	}
-	writeJSON(w, 200, map[string]any{"sweep": s.sweepView(sw), "baseJobId": base.ID, "baseName": base.Name, "baseScript": base.Script, "keys": keys, "jobs": list,
+	writeJSON(w, 200, map[string]any{"sweep": s.sweepView(sw), "baseJobId": base.ID, "baseName": base.Name, "baseScript": base.Script, "baseEditedLines": baseEdited, "keys": keys, "jobs": list,
 		"sweepHash": sweepHash(pj), "totals": sumRequested(scripts), "estimate": estimateFrom(base), "maxConcurrency": sweeps.MaxConcurrency,
 		"template": base.Template, "defaultConcurrency": sweeps.DefaultConcurrency, "concurrencyNote": note})
+}
+
+// renderedFromSettings is the script the base job's own settings render now, with the base's name and output folder: what the
+// base would be had nobody edited its text. False for a job with no kept settings or one that no longer renders.
+func renderedFromSettings(base jobs.Job) (string, bool) {
+	if base.Template == "rohsa" {
+		req, ok := base.ROHSARequest()
+		if !ok || req.BaseConfigText == "" {
+			return "", false
+		}
+		text, err := jobs.SetROHSAConfig(req.BaseConfigText, req.Set, base.OutputDir)
+		if err != nil {
+			return "", false
+		}
+		script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: base.Name, RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account})
+		return script, err == nil
+	}
+	req, ok := base.VGTRequest()
+	if !ok || req.BaseConfigText == "" {
+		return "", false
+	}
+	vals := map[string]string{}
+	for k, v := range req.Set {
+		vals[k] = v
+	}
+	vals["output_dir"] = base.OutputDir
+	text, err := jobs.SetConfigValues(req.BaseConfigText, vals)
+	if err != nil {
+		return "", false
+	}
+	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: base.Name, RepoDir: req.RepoDir, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account})
+	return script, err == nil
 }
 
 // rohsaConcurrencyNote is shown with the review of a ROHSA sweep. The default of one job at a time holds for every sweep; for

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Pill } from "../ui";
+import { formatDuration } from "../ui/duration";
 import { pinJobItem } from "../api/boards";
 import type { Board, JobInfo } from "../api/boards";
 import type { Dataset } from "../api/catalog";
@@ -11,15 +12,6 @@ import s from "./JobPanel.module.css";
 
 const ACTIVE = new Set<JobInfo["state"]>(["draft", "submitting", "submitted", "running"]);
 export const jobIsActive = (j: JobInfo) => ACTIVE.has(j.state);
-
-/** "12 min", "1 h 05 min": a duration for people, never more precise than the data allows. */
-export function formatSpan(seconds: number): string {
-  const m = Math.round(seconds / 60);
-  if (seconds < 90) return "1 min";
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  return `${h} h ${String(m % 60).padStart(2, "0")} min`;
-}
 
 const TONE: Record<JobInfo["state"], "neutral" | "ok" | "warn" | "err" | "accent"> = {
   draft: "neutral", submitting: "neutral", submitted: "neutral", running: "accent", completed: "ok", failed: "err", cancelled: "warn", unknown: "warn",
@@ -45,10 +37,10 @@ export function JobLines({ job, now }: { job: JobInfo; now: number }) {
       {active && p ? (
         <p className={s.src}>
           {p.done} of {p.total} chunks done
-          {p.etaSeconds !== null ? ` · about ${formatSpan(p.etaSeconds)} left (estimate at the rate so far)` : ""}
+          {p.etaSeconds !== null ? ` · about ${formatDuration(p.etaSeconds)} left (estimate at the rate so far)` : ""}
         </p>
       ) : null}
-      {active && elapsed !== null ? <p className={s.src}>{p ? "" : "The job's log reports no progress. "}Elapsed {formatSpan(elapsed)} since it was submitted.</p> : null}
+      {active && elapsed !== null ? <p className={s.src}>{p ? "" : "The job's log reports no progress. "}Elapsed {formatDuration(elapsed)} since it was submitted.</p> : null}
       {active ? <p className={s.src}>Becomes the result when the job finishes.</p> : null}
     </div>
   );

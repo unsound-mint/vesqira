@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Button, Input, Select } from "../ui";
 import type { Job } from "../api/jobs";
-import { createSweep, gib, parseValues, previewSweep, span } from "../api/sweeps";
+import { createSweep, gib, parseValues, previewSweep } from "../api/sweeps";
+import { formatDuration } from "../ui/duration";
 import type { Sweep, SweepPreview, SweepRequest } from "../api/sweeps";
 import { SETTINGS } from "../jobs/JobsView";
 import { ROHSA_SWEEP_KEYS } from "../jobs/rohsaSettings";
@@ -99,10 +100,10 @@ function Facts({ preview }: { preview: SweepPreview }) {
   return (
     <ul className={s.facts} aria-label="What the sweep would make">
       <li><strong>{preview.count} jobs</strong> (at most {preview.max}), as drafts: {preview.jobs.slice(0, 3).map((j) => j.label).join("; ")}{preview.jobs.length > 3 ? "; …" : ""}</li>
-      <li>Each requests {t.cpusEach} CPUs, {gib(t.memBytesEach)}, up to {span(t.timeLimitSecondsEach)}; together {t.cpusTotal} CPUs, {gib(t.memBytesTotal)} and {span(t.timeLimitSecondsTotal)} of time limits.</li>
+      <li>Each requests {t.cpusEach} CPUs, {gib(t.memBytesEach)}, up to {formatDuration(t.timeLimitSecondsEach)}; together {t.cpusTotal} CPUs, {gib(t.memBytesTotal)} and {formatDuration(t.timeLimitSecondsTotal)} of time limits.</li>
       {e ? (
         <li>
-          {e.baseJobName} took {span(e.elapsedSeconds)}{e.maxRssBytes !== null ? ` and peaked at ${gib(e.maxRssBytes)}` : ""}. If each job took as long, {preview.count} in sequence would take about {span(e.elapsedSeconds * preview.count)}. {e.basis}.
+          {e.baseJobName} took {formatDuration(e.elapsedSeconds)}{e.maxRssBytes !== null ? ` and peaked at ${gib(e.maxRssBytes)}` : ""}. If each job took as long, {preview.count} in sequence would take about {formatDuration(e.elapsedSeconds * preview.count)}. {e.basis}.
         </li>
       ) : <li>The base job has no measured use, so no estimate is offered.</li>}
     </ul>

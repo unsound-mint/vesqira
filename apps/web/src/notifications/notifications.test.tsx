@@ -178,6 +178,17 @@ describe("desktop notifications", () => {
     N.permission = "denied";
     render(<NotifyToggle />);
     expect(screen.getByText(/blocked for this window/)).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Notify me/ })).toBeNull();
+  });
+
+  it("makes the blocked notice a hint that goes away when dismissed, and stays away in this browser", async () => {
+    const { N } = fakeNotification("denied");
+    N.permission = "denied";
+    const { unmount } = render(<NotifyToggle />);
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss this hint" }));
+    expect(screen.queryByText(/blocked for this window/)).toBeNull();
+    unmount();
+    render(<NotifyToggle />);
+    expect(screen.queryByText(/blocked for this window/)).toBeNull();
   });
 });

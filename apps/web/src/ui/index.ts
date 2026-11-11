@@ -1,4 +1,6 @@
+export { Basis, leadClause } from "./Basis";
 export { Button, IconButton } from "./Button";
+export { formatDuration, parseTime, slurmLimitGloss } from "./duration";
 export { Checkbox, Switch, Select, Input, Slider } from "./Controls";
 export { FilterBox } from "./FilterBox";
 export type { Vocabulary, VocabKey } from "./FilterBox";
@@ -9,4 +11,6 @@ export { PathField } from "./PathField";
 export { Pill } from "./Pill";
 export { ResizeHandle } from "./ResizeHandle";
 export { Section } from "./Section";
+export { useRoving } from "./roving";
+export { ScrollTable } from "./ScrollTable";
 export { TreeRow } from "./TreeRow";

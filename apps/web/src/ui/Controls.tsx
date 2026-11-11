@@ -36,12 +36,15 @@ export function Select({ label, children, ...rest }: { label: string } & SelectH
   );
 }
 
-export function Input({ label, ...rest }: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
+/** `hint` is a short gloss under the field ("1 day" for a time limit of 1-00:00:00), read with the field; nothing shows when it is empty. */
+export function Input({ label, hint, ...rest }: { label: string; hint?: string } & InputHTMLAttributes<HTMLInputElement>) {
   const id = useId();
+  const hintId = `${id}-hint`;
   return (
     <div className={s.field}>
       <label htmlFor={id} className={s.label}>{label}</label>
-      <input id={id} className={s.input} {...rest} />
+      <input id={id} className={s.input} aria-describedby={hint ? hintId : undefined} {...rest} />
+      {hint ? <span id={hintId} className={s.hint}>= {hint}</span> : null}
     </div>
   );
 }

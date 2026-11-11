@@ -7,6 +7,7 @@
     "status status status status";
   height: 100vh;
   height: 100dvh;
+  position: relative;
   background: var(--bg-0);
 }
 
@@ -321,4 +322,29 @@
   .insp > [role="separator"] {
     display: none;
   }
+}
+
+/* the first thing Tab reaches: off-screen until focused, then a button over the title bar */
+.skip {
+  position: absolute;
+  top: var(--sp-2);
+  left: var(--sp-2);
+  z-index: 60;
+  padding: var(--sp-1) var(--sp-3);
+  border: var(--bw) solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--w-medium);
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.skip:focus {
+  transform: none;
+}
+
+.canvas:focus {
+  outline: none;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, catalogRows } from "../api/catalog";
 import type { CatalogDataset, CatalogRows } from "../api/catalog";
-import { Button } from "../ui";
+import { Button, ScrollTable } from "../ui";
 import { bytes, EM } from "./format";
 import s from "./CatalogView.module.css";
 
@@ -63,7 +63,7 @@ export function CatalogView({ dataset, problem }: { dataset: CatalogDataset; pro
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
       {page ? (
         <>
-          <div className={s.scroller} role="region" aria-label="Catalog rows" tabIndex={0}>
+          <ScrollTable label="Catalog rows" className={s.scroller}>
             <table className={s.table}>
               <caption className={s.caption}>Rows {(offset + 1).toLocaleString("en-US")} to {last.toLocaleString("en-US")} of {total.toLocaleString("en-US")}. A dash is a missing value, not zero. Numbers are shown as read: a leading zero or a trailing 0 is not kept.</caption>
               <thead>
@@ -91,7 +91,7 @@ export function CatalogView({ dataset, problem }: { dataset: CatalogDataset; pro
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollTable>
           <nav className={s.pager} aria-label="Pages of rows">
             <Button type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>Previous {PAGE}</Button>
             <Button type="button" disabled={last >= total} onClick={() => setOffset(offset + PAGE)}>Next {PAGE}</Button>

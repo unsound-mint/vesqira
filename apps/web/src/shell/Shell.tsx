@@ -205,14 +205,19 @@ export function Shell() {
   // The run page is a full page of its own: the map inspector and channel timeline describe the viewer, not the run.
   const projectPage = mode === "open" || mode === "look" || mode === "needs" || mode === "health";
   const noProjectYet = mode === "viewer" && !project && !cat.selectedImage && !cat.selectedCatalog; // nothing open at all: the way in is opening a folder
-  const onPage = mode === "run" || mode === "rerun" || mode === "reports" || projectPage || noProjectYet;
+  // Every mode but the viewer is a page of its own (Jobs, Boards and Reports included): the map inspector and the channel
+  // timeline describe a dataset in the viewer, so beside a page they would be empty sections taking its width.
+  const onPage = mode !== "viewer" || noProjectYet;
   // On a narrow screen the explorer is an overlay on the canvas: choosing a project page has to uncover it.
   useEffect(() => {
     if (projectPage && typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches) set("sideOpen", false);
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
   const selectDataset = (id: number) => {
     cat.select(id);
-    if (projectPage) setMode("viewer");
+    // choosing a dataset is asking to see it; a draft being edited (rerun) is not thrown away by a click in the explorer
+    if (mode !== "viewer" && mode !== "rerun") setMode("viewer");
+    // narrow screens: the explorer is an overlay on the viewer, so it has to get out of the way of what was just chosen
+    if (typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches) set("sideOpen", false);
   };
   async function openFolder(path: string, hostId: number) {
     const p = await proj.open(path, hostId);
@@ -246,13 +251,15 @@ export function Shell() {
     </>
   );
   const inspShown = L.inspOpen && !onPage;
-  const timelineShown = L.timelineOpen && !singlePlane && !onPage;
+  // a channel timeline belongs to a cube: not to a page, a catalog (rows, not channels) or nothing selected
+  const timelineShown = L.timelineOpen && !singlePlane && !onPage && actDs !== null;
   const sideShown = L.sideOpen && mode !== "reports"; // reports have their own page tree
   const cols = [`var(--w-rail)`, sideShown ? `${L.side}px` : "0px", "minmax(0,1fr)", inspShown ? `${L.insp}px` : "0px"].join(" ");
   const rows = ["var(--h-title)", "minmax(0,1fr)", timelineShown ? `${L.timeline}px` : "0px", "var(--h-status)"].join(" ");
 
   return (
     <div className={s.shell} style={{ gridTemplateColumns: cols, gridTemplateRows: rows }}>
+      <a className={s.skip} href="#main-content" onClick={(e) => { e.preventDefault(); document.getElementById("main-content")?.focus(); }}>{mode === "viewer" ? "Skip to the viewer" : "Skip to the page"}</a>
       <header className={s.title}>
         <h1 className={s.name}>Vesqira</h1>
         <span className={s.crumb} title={project?.path}>{project ? `${project.name} · ${location(project, hostName)}` : "No project open"}</span>
@@ -299,7 +306,7 @@ export function Shell() {
         <ResizeHandle orientation="vertical" label="Resize explorer" value={L.side} min={LIMITS.side.min} max={LIMITS.side.max} onChange={(v) => set("side", v)} />
       </aside>
 
-      <main className={s.canvas} aria-label="Viewer">
+      <main id="main-content" tabIndex={-1} className={s.canvas} aria-label="Viewer">
         {mode === "open" || noProjectYet ? (
           <OpenProject recent={proj.recent} hosts={cat.hosts} currentId={project?.id ?? null} busy={proj.opening} error={proj.error} onOpen={(path, hostId) => void openFolder(path, hostId)} />
         ) : mode === "look" && project ? (
@@ -388,7 +395,7 @@ export function Shell() {
               </Section>
             </>
           ) : null}
-          {cat.selectedCatalog ? null : <>
+          {cat.selectedCatalog ? null : !actDs ? <p className={s.empty}>Nothing selected. Choose a dataset in the explorer.</p> : <>
           {compareDs && cat.selectedImage ? (
             <Section title="Comparison">
               <CompareInspector a={cat.selectedImage} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
@@ -496,7 +503,7 @@ export function Shell() {
         <IconButton icon={PanelRight} label="Toggle inspector" pressed={L.inspOpen} onClick={() => toggle("inspOpen")} />
         <span className={s.grow} />
         {rendererNote ? <Pill>{rendererNote}</Pill> : null}
-        <Pill tone={actDs ? flag.tone : "neutral"}>{actDs ? (viewer.view ? flag.text : "Reading layout") : "No dataset"}</Pill>
+        <Pill tone={actDs ? flag.tone : "neutral"}>{actDs ? (viewer.view ? flag.text : "Reading layout") : cat.selectedCatalog ? cat.selectedCatalog.name : "No dataset"}</Pill>
       </footer>
       {editor && editing ? (
         <Suspense fallback={null}>

@@ -341,7 +341,7 @@ test("the workbench is usable in the light theme and at phone width", async ({ b
     await page.goto("/");
     if (width <= 800) await page.getByRole("button", { name: "Toggle explorer" }).click();
     await page.getByRole("button", { name: /^hi_cube\.fits/ }).click();
-    if (width <= 800) await page.getByRole("button", { name: "Toggle explorer" }).click();
+    if (width <= 800) await expect(page.getByRole("complementary", { name: "Explorer" })).toBeHidden(); // choosing a dataset uncovers it
     await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
     await expectNoAxeViolations(page);
 
