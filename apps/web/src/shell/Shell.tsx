@@ -55,6 +55,11 @@ import { PvPanel } from "../viewer/PvPanel";
 import { GaussianComponents } from "../viewer/GaussianComponents";
 import { flagState, spectralText } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
+import { HistoryPanel } from "../history/HistoryPanel";
+import { useExplorationHistory } from "../history/useExplorationHistory";
+import { UndoBar } from "../undo/UndoBar";
+import { useUndoKeys } from "../undo/keys";
+import type { Scene } from "../scene/scene";
 import type { Pixel } from "../viewer/useViewer";
 import { limits } from "../viewer/render";
 import { channelTarget, defaultPrefs, linkGroup, linkPills, links, mapPixel, sceneLink } from "../scene/link";
@@ -216,8 +221,7 @@ export function Shell() {
     if (!shared || !sharedLimits) return;
     for (const v of [viewerA, viewerB]) {
       if (v.range !== "custom" || !v.customLimits || v.customLimits[0] !== sharedLimits[0] || v.customLimits[1] !== sharedLimits[1]) {
-        v.setCustomLimits(sharedLimits);
-        v.setRange("custom");
+        v.dispatchFact({ type: "setDisplay", display: { limits: sharedLimits, range: "custom" } }); // follows the shared scale, not a command
       }
     }
   }, [shared, sharedLimits, viewerA.range, viewerA.customLimits, viewerB.range, viewerB.customLimits]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -276,6 +280,36 @@ export function Shell() {
     setCompareId(b);
     setMode("viewer");
   };
+  // Exploration history of the primary pane, per project, and undo of the active pane's edits (ADR 0055). "Continue from here" may
+  // have to open another dataset first; the scene is applied once that pane has started over on it.
+  const [pendingScene, setPendingScene] = useState<Scene | null>(null);
+  const hist = useExplorationHistory({
+    projectId: project?.id ?? 0,
+    scene: viewerA.scene,
+    datasetName: (id) => cat.allDatasets.find((d) => d.id === id)?.name ?? `dataset ${id}`,
+    haveDataset: (id) => cat.allDatasets.some((d) => d.id === id),
+    restore: (scene, opensOther) => {
+      setActive("a");
+      setCompareId(null);
+      setMode("viewer");
+      setStage("map");
+      if (opensOther) {
+        setPendingScene(scene);
+        cat.select(scene.base.datasetId);
+      } else viewerA.applyScene(scene, "continue from history");
+    },
+  });
+  const { applyScene: applyToA } = viewerA;
+  useEffect(() => {
+    if (pendingScene && viewerA.scene?.base.datasetId === pendingScene.base.datasetId && viewerA.view !== null) {
+      applyToA(pendingScene, "continue from history");
+      setPendingScene(null);
+    }
+  }, [pendingScene, viewerA.scene?.base.datasetId, viewerA.view, applyToA]);
+  useUndoKeys(mode === "viewer" && cat.selectedImage !== null, {
+    undo: () => { if (!viewer.undoName) return false; viewer.undo(); return true; },
+    redo: () => { if (!viewer.redoName) return false; viewer.redo(); return true; },
+  });
   const rerunRun = mode === "rerun" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const pageRun = mode === "run" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
@@ -429,6 +463,7 @@ export function Shell() {
               <ChannelGrid key={cat.selectedImage.id} v={viewerA} dataset={cat.selectedImage} />
             ) : (
           <div className={s.compare}>
+            <div className={s.undoRow}><UndoBar surface="map" undoName={viewer.undoName} redoName={viewer.redoName} onUndo={viewer.undo} onRedo={viewer.redo} /></div>
             <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} link={linkControls} />
             <div className={compareDs ? s.panes2 : s.panes1}>
               <section className={s.pane} aria-label={`Map: ${cat.selectedImage.name}`}>
@@ -523,6 +558,9 @@ export function Shell() {
           </Section>
           <Section title="Spectrum">
             {actDs ? <><SpectrumPlot v={viewer} /><GaussianComponents v={viewer} /></> : <p className={s.empty}>{EM}</p>}
+          </Section>
+          <Section title="History" defaultOpen={false} meta={hist.steps.length > 0 ? String(hist.steps.length) : undefined}>
+            {actDs ? <HistoryPanel steps={hist.steps} keep={hist.keep} error={hist.error} onContinue={hist.continueFrom} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           <Section title="Position-velocity" defaultOpen={false} meta={viewer.path ? "line drawn" : undefined}>
             {actDs ? <PvPanel v={viewer} /> : <p className={s.empty}>{EM}</p>}

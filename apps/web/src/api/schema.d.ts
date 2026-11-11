@@ -1484,6 +1484,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The viewer's exploration history for a project, oldest first, without scenes (owner listener only) */
+        get: operations["owner_s_listHistory_get_api_history"];
+        put?: never;
+        /** Record a step of the exploration history; the oldest steps beyond the cap are dropped (owner listener only) */
+        post: operations["owner_s_addHistoryStep_post_api_history"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/history/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One step with the scene to restore (owner listener only) */
+        get: operations["owner_s_getHistoryStep_get_api_history_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/hosts": {
         parameters: {
             query?: never;
@@ -6945,6 +6982,76 @@ export interface components {
             prompt?: string;
             sources: components["schemas"]["RedrawSource"][];
         };
+        /** @description One meaningful state of the viewer (ADR 0055): what was on screen, not its pixels. Mutable working state, pruned oldest first past the cap; not evidence */
+        ExplorationStep: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description The open project the step belongs to; 0 when no project was open
+             */
+            projectId: number;
+            /**
+             * Format: int64
+             * @description The step this one was reached from. Null for the first step of a branch, or when that step was pruned. Several steps with the same parent are branches
+             */
+            parentId: number | null;
+            /**
+             * Format: int64
+             * @description The base dataset of the scene (the owner's id; never sent to a reviewer)
+             */
+            datasetId: number;
+            /** @enum {string} */
+            kind: "opened" | "channel" | "region" | "overlay" | "link" | "continued";
+            label: string;
+            /** Format: date-time */
+            at: string;
+        };
+        ExplorationHistory: {
+            /** @description Oldest first, without scenes */
+            steps: components["schemas"]["ExplorationStep"][];
+            /** @description How many steps a project keeps */
+            keep: number;
+        };
+        ExplorationStepWithScene: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description The open project the step belongs to; 0 when no project was open
+             */
+            projectId: number;
+            /**
+             * Format: int64
+             * @description The step this one was reached from. Null for the first step of a branch, or when that step was pruned. Several steps with the same parent are branches
+             */
+            parentId: number | null;
+            /**
+             * Format: int64
+             * @description The base dataset of the scene (the owner's id; never sent to a reviewer)
+             */
+            datasetId: number;
+            /** @enum {string} */
+            kind: "opened" | "channel" | "region" | "overlay" | "link" | "continued";
+            label: string;
+            /** Format: date-time */
+            at: string;
+            /** @description The scene to restore (scene/1). Only the single-step read and the create reply carry it, and the create reply does not */
+            scene?: components["schemas"]["Scene"];
+        };
+        AddExplorationStepRequest: {
+            /** Format: int64 */
+            projectId: number;
+            /**
+             * Format: int64
+             * @description A step of the same project; continuing from an earlier step makes a branch
+             */
+            parentId?: number | null;
+            /** @enum {string} */
+            kind: "opened" | "channel" | "region" | "overlay" | "link" | "continued";
+            label: string;
+            scene: components["schemas"]["Scene"];
+        };
     };
     responses: never;
     parameters: never;
@@ -9574,6 +9681,101 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_listHistory_get_api_history: {
+        parameters: {
+            query?: {
+                project?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorationHistory"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_addHistoryStep_post_api_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddExplorationStepRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorationStep"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_getHistoryStep_get_api_history_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorationStepWithScene"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

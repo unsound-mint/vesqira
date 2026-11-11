@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button, Input, Select } from "../ui";
 import type { Dataset } from "../api/catalog";
-import { addToBoard, createBoard, listBoards } from "../api/boards";
+import { createBoard, listBoards } from "../api/boards";
+import { addFigure } from "../undo/boardCommands";
 import type { Board, Figure } from "../api/boards";
 import { defaultFigureTitle, saveViewFigure } from "./saveFigure";
 import type { Viewer } from "./useViewer";
@@ -58,7 +59,7 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
         id = (await createBoard(newBoard.trim())).id;
         setNewBoard("");
       }
-      await addToBoard(id, saved.id);
+      await addFigure(id, saved.id);
       setNote("Added to the board.");
       setBoards(await listBoards());
       setBoardId(String(id));

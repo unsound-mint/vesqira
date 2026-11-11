@@ -3,7 +3,8 @@ import { Button, Input, PathField, Pill, Select } from "../ui";
 import { createJob, hostText, readSetting } from "../api/jobs";
 import type { Job } from "../api/jobs";
 import type { Host } from "../api/hosts";
-import { addJobToBoard, listBoards } from "../api/boards";
+import { listBoards } from "../api/boards";
+import { addJob } from "../undo/boardCommands";
 import type { Board } from "../api/boards";
 import { getRerun } from "../api/runs";
 import type { Rerun, RerunMode, Run } from "../api/runs";
@@ -174,7 +175,7 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
 
   async function addToChosen(job: Job, board: Board) {
     try {
-      await addJobToBoard(board.id, job.id);
+      await addJob(board.id, job.id);
       setDraft({ job, board, error: null });
     } catch (e) {
       setDraft({ job, board, error: e instanceof Error ? e.message : "Could not add the job to the board." });

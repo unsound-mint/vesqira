@@ -1,0 +1,70 @@
+.root {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.list {
+  display: grid;
+  gap: var(--sp-1);
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.step,
+.head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--sp-1) var(--sp-2);
+  align-items: baseline;
+  padding: var(--sp-1) var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font-size: var(--text-sm);
+}
+
+.head {
+  border-color: var(--line-strong);
+}
+
+.kind {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.time {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.branch {
+  grid-column: 1 / -1;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.step > button,
+.head > button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}

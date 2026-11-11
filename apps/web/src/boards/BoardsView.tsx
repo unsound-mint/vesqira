@@ -1,7 +1,11 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Download, Printer, Trash2 } from "lucide-react";
 import { Button, Checkbox, IconButton, Input, LinkButton, Select } from "../ui";
-import { addToBoard, createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
+import { addToBoard, createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, publish, revokeSnapshot, snapshotComments, ownerReply, preflight, OUTCOME_TEXT } from "../api/boards";
+import { boardStack, moveItem, removeItem, resolveComment, setNote } from "../undo/boardCommands";
+import { useUndoStack } from "../undo/useUndoStack";
+import { useUndoKeys } from "../undo/keys";
+import { UndoBar } from "../undo/UndoBar";
 import { Threads } from "./Threads";
 // loaded when someone presents: it brings the modal primitives (ADR 0033), which the rest of the app does not need
 const PresentView = lazy(() => import("./PresentView").then((m) => ({ default: m.PresentView })));
@@ -122,6 +126,18 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
     else setSnaps([]);
   }, [board?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Undo and redo of this board's edits (ADR 0055). The stack outlives this screen; publishing and replies are not commands.
+  const stack = board ? boardStack(board.id) : null;
+  const undo = useUndoStack(stack);
+  const afterUndo = async () => {
+    await reload(id);
+    const open = Object.keys(comments).map(Number); // threads on screen show the state the undo just changed
+    if (open.length > 0) setComments(Object.fromEntries(await Promise.all(open.map(async (sid) => [sid, await snapshotComments(sid)] as const))));
+  };
+  const doUndo = () => { if (!stack || !undo.undoName || undo.busy) return false; void stack.undo().then(afterUndo).catch(() => undefined); return true; };
+  const doRedo = () => { if (!stack || !undo.redoName || undo.busy) return false; void stack.redo().then(afterUndo).catch(() => undefined); return true; };
+  useUndoKeys(!presenting, { undo: doUndo, redo: doRedo });
+
   async function run(f: () => Promise<unknown>) {
     try {
       await f();
@@ -169,6 +185,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
         {board ? <EntryActions key={board.id} kind="boards" id={board.id} name={board.title} archived={board.archived === true} onChanged={async (c) => { if (c === "deleted" || (c === "archived" && !showArchived)) setId(null); await reload(c === "restored" ? board.id : null); }} /> : null}
       </div>
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
+      {board ? <UndoBar surface="board" undoName={undo.undoName} redoName={undo.redoName} busy={undo.busy} error={undo.error} onUndo={doUndo} onRedo={doRedo} onDismiss={() => stack?.clearError()} /> : null}
       {!board ? <p className={s.note}>Create a board, then add figures to it from the viewer (Figure section).</p> : null}
       {board && board.items.length === 0 ? <p className={s.note}>This board has no figures. Open a dataset and use “Save as figure”, then add it here.</p> : null}
       {board && board.items.length > 0 ? (
@@ -225,14 +242,14 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
               ) : null}
               <label className={s.noteLabel}>
                 Note for the reviewer
-                <textarea className={s.area} rows={2} defaultValue={it.note} maxLength={2000} onBlur={(e) => { if (e.target.value !== it.note) void run(() => setNote(board.id, it.position, e.target.value)); }} />
+                <textarea key={`${it.position}:${it.note}`} className={s.area} rows={2} defaultValue={it.note} maxLength={2000} onBlur={(e) => { if (e.target.value !== it.note) void run(() => setNote(board.id, board, it.position, e.target.value)); }} />
               </label>
               {f ? <Checkbox label="Compare" aria-label={`Compare ${f.title}`} checked={ticked.includes(it.position)} onChange={(e) => tick(it.position, e.target.checked)} /> : null}
               <div className={s.row}>
-                <IconButton icon={ArrowUp} label="Move up" disabled={i === 0} onClick={() => run(() => moveItem(board.id, it.position, -1))} />
-                <IconButton icon={ArrowDown} label="Move down" disabled={i === board.items.length - 1} onClick={() => run(() => moveItem(board.id, it.position, 1))} />
+                <IconButton icon={ArrowUp} label="Move up" disabled={i === 0} onClick={() => run(() => moveItem(board.id, board, it.position, -1))} />
+                <IconButton icon={ArrowDown} label="Move down" disabled={i === board.items.length - 1} onClick={() => run(() => moveItem(board.id, board, it.position, 1))} />
                 {f ? <LinkButton icon={Download} href={`/api/figures/${f.id}/download`} download>Download PNG</LinkButton> : null}
-                <IconButton icon={Trash2} label="Remove from board" onClick={() => run(() => removeItem(board.id, it.position))} />
+                <IconButton icon={Trash2} label="Remove from board" onClick={() => run(() => removeItem(board.id, board, it.position))} />
               </div>
               {f ? <FigureRedraw figure={f} addTo={(figureId) => run(() => addToBoard(board.id, figureId))} /> : null}
             </div>
@@ -306,7 +323,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
                         comments={comments[sn.id]!.filter((c) => c.figureRevision === rev)}
                         isNew={(c) => !c.fromOwner && new Date(c.createdAt).getTime() > (seenAt[sn.id] ?? 0)}
                         onReply={async (parentId, body) => { await ownerReply(sn.id, parentId, body); setComments({ ...comments, [sn.id]: await snapshotComments(sn.id) }); }}
-                        onResolve={async (id, resolved) => { await resolveComment(id, resolved); setComments({ ...comments, [sn.id]: await snapshotComments(sn.id) }); }}
+                        onResolve={async (id, resolved) => { await resolveComment(board.id, id, resolved); setComments({ ...comments, [sn.id]: await snapshotComments(sn.id) }); }}
                       />
                     ))}
                   </div>

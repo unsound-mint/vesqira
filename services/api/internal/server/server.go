@@ -21,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
+	"github.com/unsound-mint/vesqira/services/api/internal/history"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
@@ -62,6 +63,7 @@ type Server struct {
 	Audit     *audit.Store  // nil records nothing
 	Notes     *notify.Store // events for the owner (jobs ended, results imported); nil records nothing and disables the routes
 	Regions   *regions.Store
+	History   *history.Store // the viewer's exploration history (ADR 0055); nil disables the routes
 	SSHConfig string         // the user's ssh_config, only read to offer host aliases; empty offers none
 	Hints     hintSource     // overrides the catalog for the runs list's input hints (tests count calls)
 	WebDist   string         // built web app served at / on this (loopback) listener; empty serves the API only
@@ -307,6 +309,11 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/datasets/{id}/regions/import", s.importRegions)
 		mux.HandleFunc("POST /api/regions/{id}", s.updateRegion)
 		mux.HandleFunc("POST /api/regions/{id}/delete", s.deleteRegion)
+	}
+	if s.History != nil {
+		mux.HandleFunc("GET /api/history", s.listHistory)
+		mux.HandleFunc("GET /api/history/{id}", s.getHistoryStep)
+		mux.HandleFunc("POST /api/history", s.addHistoryStep)
 	}
 	mux.HandleFunc("GET /api/compat", s.compatibility)
 	if s.Audit != nil {

@@ -315,6 +315,13 @@ func datasetImpact(q querier, b *builder, id int64) error {
 	b.add("locations", "removed", locs, func(n int) string {
 		return plural(n, "other location is", "other locations are") + " forgotten with it. The files themselves are never deleted."
 	})
+	steps, err := items(q, "exploration_steps", `SELECT id, label FROM exploration_steps WHERE dataset_id=?`, id)
+	if err != nil {
+		return err
+	}
+	b.add("history", "removed", steps, func(n int) string {
+		return plural(n, "step of the exploration history goes", "steps of the exploration history go") + " with it (a step opens this dataset, so it could no longer be continued)."
+	})
 	b.add("regions", "removed", regs, func(n int) string {
 		return plural(n, "saved region goes", "saved regions go") + " with it."
 	})
@@ -562,10 +569,11 @@ func tableOf(st string) string {
 // writes to must exist: a missing or renamed one is an error, not a silent skip. TestEveryKeyedTableIsHandled runs
 // against the full schema, so a rename fails there.
 var optionalTables = map[string]bool{
-	"saved_regions": true,                                                                      // regions store
-	"masks":         true,                                                                      // masks store (ADR 0055)
-	"derived":       true,                                                                      // derived store
-	"run_review":    true, "run_review_history": true, "run_outputs": true, "rohsa_runs": true, // runs store
+	"exploration_steps": true,                                                                      // history store (ADR 0057)
+	"saved_regions":     true,                                                                      // regions store
+	"masks":             true,                                                                      // masks store (ADR 0055)
+	"derived":           true,                                                                      // derived store
+	"run_review":        true, "run_review_history": true, "run_outputs": true, "rohsa_runs": true, // runs store
 	"jobs":        true, // jobs store
 	"transfers":   true, // transfers store
 	"board_items": true, // boards store
@@ -579,7 +587,7 @@ func deleteSteps(kind string) []string {
 	switch kind {
 	case KindDataset:
 		return []string{
-			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM masks WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
+			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM exploration_steps WHERE dataset_id=?`, `DELETE FROM masks WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
 			`DELETE FROM dataset_locations WHERE dataset_id=?`, `DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`, `DELETE FROM catalog_declarations WHERE dataset_id=?`, `UPDATE transfers SET dataset_id=NULL WHERE dataset_id=?`,
 			`DELETE FROM datasets WHERE id=?`}
 	case KindRun:
