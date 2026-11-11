@@ -90,6 +90,36 @@ func TestAChannelGridIsRefusedWhenItBreaksTheCapsOrIsIncomplete(t *testing.T) {
 	}
 }
 
+func TestAChannelGridRecordsHowItWasComposedAndRefusesBadRecords(t *testing.T) {
+	with := strings.Replace(goodGrid, `"preview":{"step":2,"panelWidth":300,"panelHeight":200}}`, `"preview":{"step":2,"panelWidth":300,"panelHeight":200},"render":{"figureWidth":720,"overlaysNotDrawn":2}}`, 1)
+	g, err := ParseChannelGrid([]byte(with))
+	if err != nil || g.Render == nil || g.Render.FigureWidth != 720 || g.Render.OverlaysNotDrawn != 2 {
+		t.Fatalf("%+v %v", g.Render, err)
+	}
+	if out, _ := g.Marshal(); !strings.Contains(string(out), `"render":{"figureWidth":720,"overlaysNotDrawn":2}`) {
+		t.Errorf("%s", out)
+	}
+	old, err := ParseChannelGrid([]byte(goodGrid))
+	if err != nil || old.Render != nil {
+		t.Fatalf("a grid saved before has no render: %+v %v", old.Render, err)
+	}
+	if out, _ := old.Marshal(); strings.Contains(string(out), "render") {
+		t.Errorf("an older grid must marshal as it always did: %s", out)
+	}
+	for name, r := range map[string]string{
+		"no width":    `{"overlaysNotDrawn":0}`,
+		"no count":    `{"figureWidth":720}`,
+		"negative":    `{"figureWidth":720,"overlaysNotDrawn":-1}`,
+		"too narrow":  `{"figureWidth":5,"overlaysNotDrawn":0}`,
+		"unknown key": `{"figureWidth":720,"overlaysNotDrawn":0,"theme":"dark"}`,
+	} {
+		in := strings.Replace(goodGrid, `"panelHeight":200}}`, `"panelHeight":200},"render":`+r+`}`, 1)
+		if _, err := ParseChannelGrid([]byte(in)); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: accepted (%v)", name, err)
+		}
+	}
+}
+
 func TestGridPanelsCountsFromTheFirstChannel(t *testing.T) {
 	for _, c := range []struct{ f, l, s, want int }{{0, 0, 1, 1}, {0, 7, 3, 3}, {2, 20, 5, 4}, {5, 4, 1, 0}, {0, 5, 0, 0}} {
 		if got := GridPanels(c.f, c.l, c.s); got != c.want {

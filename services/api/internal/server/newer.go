@@ -232,6 +232,14 @@ type figureDatasetIdentity struct {
 type figureIdentity struct {
 	Schema   string                  `json:"schema"`
 	Datasets []figureDatasetIdentity `json:"datasets"`
+	// RedrawnFrom is set on a figure made by "draw again": the figure it redraws. The original is never changed; this is the
+	// only link between them (ADR 0042, section 5).
+	RedrawnFrom *redrawnFrom `json:"redrawnFrom,omitempty"`
+}
+
+type redrawnFrom struct {
+	FigureID int64  `json:"figureId"`
+	Revision string `json:"revision"`
 }
 
 func figureDiffers(src figureDatasetIdentity, d catalog.Dataset) []string {
@@ -249,8 +257,8 @@ func figureDiffers(src figureDatasetIdentity, d catalog.Dataset) []string {
 	return differs(src.SizeBytes, src.ModifiedAt, fpA, d.SizeBytes, d.ModifiedAt, fpB)
 }
 
-func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset, overlays []catalog.Dataset) json.RawMessage {
-	doc := figureIdentity{Schema: "figure-identity/1"}
+func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset, overlays []catalog.Dataset, from *redrawnFrom) json.RawMessage {
+	doc := figureIdentity{Schema: "figure-identity/1", RedrawnFrom: from}
 	add := func(role string, d catalog.Dataset) {
 		locs, err := s.Store.Locations(d.ID)
 		if err != nil {

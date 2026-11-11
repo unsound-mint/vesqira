@@ -1,13 +1,11 @@
 import type { Dataset } from "../api/catalog";
 import { createFigure } from "../api/boards";
 import type { Figure, FigureRequest } from "../api/boards";
-import { lut } from "./colormaps";
-import { blobToBase64, captionLines, composeImageFigure, composeSpectrumFigure, FIGURE_WIDTH } from "./figure";
+import { blobToBase64, captionLines, composeSpectrumFigure, figureScale, FIGURE_WIDTH } from "./figure";
 import { figureScene, overlaysPending, sceneStatable } from "../scene/figureScene";
-import { overlayBasis } from "../scene/basis";
-import { needsGeometry } from "../scene/geometry";
-import { sceneLayers } from "../scene/overlays";
 import type { Scene } from "../scene/scene";
+import { nodataColours } from "./nodata";
+import { composePlaneFigure } from "./planeFigure";
 import { limits } from "./render";
 import type { Viewer } from "./useViewer";
 
@@ -34,43 +32,34 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
   const heading = opts.title?.trim() || defaultFigureTitle(v, dataset);
   let blob: Blob;
   let scene: Scene | null = null; // a spectrum figure is a plot, not a pane: it has no scene
+  let viewParams: FigureRequest["view"];
   if (kind === "spectrum" && v.spectrum) {
     blob = await composeSpectrumFigure({ spectrum: v.spectrum, title: heading, captions, flagged: view.flags.declared ? view.flags.channels : [], channel: plane.head.channel });
+    const r = v.region;
+    viewParams = {
+      kind: axial ? "orientation" : kind,
+      channel: plane.head.channel,
+      ...(plane.head.spectral_value !== null ? { spectralValue: plane.head.spectral_value, spectralUnit: plane.head.spectral_unit ?? undefined } : {}),
+      ...(axial ? {} : { colormap: v.colormap, stretch: v.stretch, range: v.range, ...(lim ? { limits: lim, limitsUnit: view.bunit ?? undefined } : {}) }),
+      ...(axial ? { showLines: v.showLines } : {}),
+      ...(r ? { region: r.shape === "rect" ? { shape: "rect", x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 } : { shape: "circle", cx: r.cx, cy: r.cy, r: r.r } } : {}),
+    };
   } else {
+    if (kind === "spectrum") throw new Error("The region spectrum is not ready yet.");
     const src = v.canvas.current;
     if (!src) throw new Error("The image is not drawn yet.");
-    const iw = FIGURE_WIDTH - 40;
-    const scale = iw / plane.head.width;
+    const scale = figureScale(FIGURE_WIDTH, plane.head.width);
     // The figure's overlays are drawn from its own scene, through the same overlay registry as the screen. The scene is
     // stored only when it states the display fully; the picture is drawn from it either way.
     if (!v.scene || v.scene.base.datasetId !== dataset.id) throw new Error("The image is not drawn yet.");
     if (overlaysPending(v.scene, v.geometry).length) throw new Error("Some overlays are still being computed. The figure can be saved once they are drawn.");
     const drawn = figureScene(v.scene, { plane, axial, scale, bunit: view.bunit, interp: v.interp, reliability: v.reliability, geometry: v.geometry, datasets: opts.datasets });
-    scene = sceneStatable(drawn) ? drawn : null;
-    // every overlay drawn from another file (or the grid) states its basis in the caption, as its row does on screen
-    const nameOf = (id: number) => (id === dataset.id ? dataset.name : opts.datasets?.find((d) => d.id === id)?.name ?? `dataset ${id}`);
-    const overlayLines = drawn.overlays
-      .filter((o) => o.visible && needsGeometry(o, drawn))
-      .map((o) => overlayBasis(o, drawn, v.geometry[o.id], nameOf))
-      .filter((t): t is string => t !== null);
-    blob = await composeImageFigure({
-      source: src,
-      planeW: plane.head.width,
-      planeH: plane.head.height,
-      layers: sceneLayers(drawn, { plane, scale, interp: v.interp, reliability: v.reliability, geometry: v.geometry }).map((l) => l.marks),
-      legend: axial ? { kind: "cyclic", lut: lut("twilight") } : { kind: "scalar", lut: lut(v.colormap), limits: lim, unit: view.bunit },
-      title: heading,
-      captions: [...captions, ...overlayLines],
-    });
+    // how the base raster was drawn, so "draw again" can reproduce it: the canvas it was drawn on, the theme's no-value colours
+    const render = { canvas: { width: src.width, height: src.height }, nodata: nodataColours().map((c) => [...c]), figureWidth: FIGURE_WIDTH };
+    scene = sceneStatable(drawn) && render.canvas.width > 0 && render.canvas.height > 0 ? { ...drawn, render } : null;
+    const made = await composePlaneFigure({ dataset, datasets: opts.datasets, view, plane, drawn, interp: v.interp, reliability: v.reliability, geometry: v.geometry, title: heading, figureWidth: FIGURE_WIDTH, showLines: v.showLines, source: src });
+    blob = made.blob;
+    viewParams = made.viewParams;
   }
-  const r = v.region;
-  const viewParams: FigureRequest["view"] = {
-    kind: axial ? "orientation" : kind,
-    channel: plane.head.channel,
-    ...(plane.head.spectral_value !== null ? { spectralValue: plane.head.spectral_value, spectralUnit: plane.head.spectral_unit ?? undefined } : {}),
-    ...(axial ? {} : { colormap: v.colormap, stretch: v.stretch, range: v.range, ...(lim ? { limits: lim, limitsUnit: view.bunit ?? undefined } : {}) }),
-    ...(axial ? { showLines: v.showLines } : {}),
-    ...(r ? { region: r.shape === "rect" ? { shape: "rect", x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 } : { shape: "circle", cx: r.cx, cy: r.cy, r: r.r } } : {}),
-  };
   return createFigure({ datasetId: dataset.id, title: heading, caption: opts.caption ?? "", view: viewParams, previewPng: await blobToBase64(blob), ...(scene ? { scene } : {}) });
 }

@@ -42,6 +42,9 @@ type Scene struct {
 	Overlays []Overlay `json:"overlays"`
 	View     View      `json:"view"`
 	Link     *Link     `json:"link,omitempty"`
+	// Render records how the base raster of a saved figure was drawn, so "draw again" can reproduce it (ADR 0042,
+	// section 5). Absent from a live pane's scene and from figures saved before it existed, which draw again from their PNG only.
+	Render *Render `json:"render,omitempty"`
 }
 
 // Link is the link group a pane was in (ADR 0042, section 4): how its panes followed each other when the scene was made.
@@ -57,6 +60,62 @@ type LinkFacets struct {
 	Cursor  bool `json:"cursor"`
 	Channel bool `json:"channel"`
 	View    bool `json:"view"`
+}
+
+// Render is the part of a figure's picture that the scene does not say: the size of the canvas the plane was drawn on (a
+// whole multiple of the plane when zoomed in, the display size when zoomed out), the two no-value colours the theme gave
+// (the hatching, never a colour of the scale), and the width the figure was composed at.
+type Render struct {
+	Canvas      RenderCanvas `json:"canvas"`
+	Nodata      [2][3]int    `json:"nodata"`
+	FigureWidth int          `json:"figureWidth"`
+}
+
+type RenderCanvas struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+const (
+	maxRenderSide   = 65536
+	maxRenderPixels = 1 << 27
+)
+
+func parseRender(raw []byte) (*Render, error) {
+	var in struct {
+		Canvas *struct {
+			Width  *int `json:"width"`
+			Height *int `json:"height"`
+		} `json:"canvas"`
+		Nodata      [][]*int `json:"nodata"`
+		FigureWidth *int     `json:"figureWidth"`
+	}
+	if err := strict(raw, &in); err != nil {
+		return nil, bad("render: %v", err)
+	}
+	c := in.Canvas
+	if c == nil || c.Width == nil || c.Height == nil || *c.Width < 1 || *c.Height < 1 || *c.Width > maxRenderSide || *c.Height > maxRenderSide || *c.Width**c.Height > maxRenderPixels {
+		return nil, bad("render needs a canvas size of at least 1 pixel a side and at most %d pixels", maxRenderPixels)
+	}
+	if in.FigureWidth == nil || *in.FigureWidth < 200 || *in.FigureWidth > 4096 {
+		return nil, bad("render needs the figure width, 200 to 4096 pixels")
+	}
+	r := &Render{Canvas: RenderCanvas{Width: *c.Width, Height: *c.Height}, FigureWidth: *in.FigureWidth}
+	if len(in.Nodata) != 2 {
+		return nil, bad("render needs the two no-value colours")
+	}
+	for i, col := range in.Nodata {
+		if len(col) != 3 {
+			return nil, bad("a no-value colour is three numbers from 0 to 255")
+		}
+		for j, v := range col {
+			if v == nil || *v < 0 || *v > 255 {
+				return nil, bad("a no-value colour is three numbers from 0 to 255")
+			}
+			r.Nodata[i][j] = *v
+		}
+	}
+	return r, nil
 }
 
 type Base struct {
@@ -298,6 +357,7 @@ func Parse(raw []byte) (Scene, error) {
 		Overlays []json.RawMessage `json:"overlays"`
 		View     *json.RawMessage  `json:"view"`
 		Link     json.RawMessage   `json:"link"`
+		Render   *json.RawMessage  `json:"render"`
 	}
 	if err := strict(raw, &in); err != nil {
 		return Scene{}, bad("not a scene object: %v", err)
@@ -326,6 +386,11 @@ func Parse(raw []byte) (Scene, error) {
 			return Scene{}, bad("link: the group's datasets must include the scene's own")
 		}
 		s.Link = &l
+	}
+	if in.Render != nil {
+		if s.Render, err = parseRender(*in.Render); err != nil {
+			return Scene{}, err
+		}
 	}
 	if len(in.Overlays) > MaxOverlays {
 		return Scene{}, bad("at most %d overlays", MaxOverlays)

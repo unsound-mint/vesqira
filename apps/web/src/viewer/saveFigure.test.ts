@@ -32,7 +32,7 @@ function viewer(): Viewer {
   scene = sceneReducer(scene, { type: "setView", view: { zoom: 4, centre: { x: 2, y: 3 } } });
   const d = scene.base.display;
   return {
-    scene, view, plane, interp: null, reliability: null, spectrum: null, canvas: { current: {} as HTMLCanvasElement },
+    scene, view, plane, interp: null, reliability: null, spectrum: null, canvas: { current: { width: 30, height: 20 } as HTMLCanvasElement },
     colormap: d.colormap, stretch: d.stretch, range: d.range, customLimits: [2, 6], region: { shape: "rect", x0: 1, y0: 2, x1: 3, y1: 4 }, showLines: true,
   } as unknown as Viewer;
 }
@@ -47,6 +47,8 @@ describe("saving a figure", () => {
       base: { datasetId: 3, channel: 4, spectral: { value: 8000, unit: "m/s" }, display: { mapping: "scalar", colormap: "inferno", stretch: "linear", range: "custom", limits: [2, 6], limitsUnit: "K" } },
       overlays: [{ id: "regions", kind: "regions", datasetId: 3, visible: true, active: { shape: "rect", x0: 1, y0: 2, x1: 3, y1: 4 }, saved: [] }],
       view: { zoom: 1 },
+      // how the base raster was drawn, so "draw again" can reproduce it (jsdom has no theme tokens: the fallback colours)
+      render: { canvas: { width: 30, height: 20 }, nodata: [[27, 34, 44], [85, 98, 117]], figureWidth: 720 },
     });
     expect(drawn.at(-1)).toEqual([{ type: "rect", role: "region", x: 1, y: 5, w: 3, h: 3 }]); // only the working region, as the scene says
   });

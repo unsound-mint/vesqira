@@ -40,6 +40,15 @@ type ChannelGrid struct {
 	Display  GridDisplay   `json:"display"`
 	// Preview records the block-mean step the panels were drawn at (1 = the full plane) and their size as drawn.
 	Preview GridPreview `json:"preview"`
+	// Render records what the composed picture said beyond the description: the width it was composed at and how many
+	// overlays of the map were visible but not drawn on the panels (the caption states it). Absent from grids saved before
+	// "draw again", which draw from their PNG only.
+	Render *GridRender `json:"render,omitempty"`
+}
+
+type GridRender struct {
+	FigureWidth      int `json:"figureWidth"`
+	OverlaysNotDrawn int `json:"overlaysNotDrawn"`
 }
 
 type GridSpectral struct {
@@ -106,6 +115,10 @@ func ParseChannelGrid(raw []byte) (ChannelGrid, error) {
 			PanelWidth  *int `json:"panelWidth"`
 			PanelHeight *int `json:"panelHeight"`
 		} `json:"preview"`
+		Render *struct {
+			FigureWidth      *int `json:"figureWidth"`
+			OverlaysNotDrawn *int `json:"overlaysNotDrawn"`
+		} `json:"render"`
 	}
 	if err := strict(raw, &in); err != nil {
 		return ChannelGrid{}, bad("not a channel grid object: %v", err)
@@ -166,6 +179,12 @@ func ParseChannelGrid(raw []byte) (ChannelGrid, error) {
 		return ChannelGrid{}, bad("the panels hold %d pixels each and %d together: more than the %d and %d a grid may transfer", px, px*g.Panels, MaxGridPanelPixels, MaxGridPixels)
 	}
 	g.Preview = GridPreview{Step: *p.Step, PanelWidth: *p.PanelWidth, PanelHeight: *p.PanelHeight}
+	if r := in.Render; r != nil {
+		if r.FigureWidth == nil || *r.FigureWidth < 200 || *r.FigureWidth > 4096 || r.OverlaysNotDrawn == nil || *r.OverlaysNotDrawn < 0 || *r.OverlaysNotDrawn > MaxOverlays {
+			return ChannelGrid{}, bad("render needs the figure width (200 to 4096) and the number of overlays not drawn (0 to %d)", MaxOverlays)
+		}
+		g.Render = &GridRender{FigureWidth: *r.FigureWidth, OverlaysNotDrawn: *r.OverlaysNotDrawn}
+	}
 	return g, nil
 }
 

@@ -474,6 +474,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		Scene       json.RawMessage `json:"scene"`       // optional: the scene the picture was drawn from (ADR 0042)
 		ChannelGrid json.RawMessage `json:"channelGrid"` // a channel-grid figure: the channel-grid/1 description (ADR 0049)
 		PreviewPNG  string          `json:"previewPng"`  // base64
+		RedrawnFrom *int64          `json:"redrawnFrom"` // "draw again": the figure this one redraws (ADR 0042, section 5)
 	}
 	if !body(w, r, 12<<20, &in, false) {
 		return
@@ -545,6 +546,16 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var link *redrawnFrom
+	var linkRev string
+	if in.RedrawnFrom != nil {
+		orig, err := s.redrawLink(*in.RedrawnFrom, d.ID, hasGrid)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		link, linkRev = &redrawnFrom{FigureID: orig.ID, Revision: orig.Revision}, orig.Revision
+	}
 	d = s.ensureFingerprinted(r.Context(), d)
 	for i := range others {
 		others[i] = s.ensureFingerprinted(r.Context(), others[i])
@@ -558,7 +569,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: s.buildFigureIdentity(r.Context(), d, others)}, png)
+	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: s.buildFigureIdentity(r.Context(), d, others, link), RedrawnFrom: linkRev}, png)
 	if err != nil {
 		s.boardErr(w, err)
 		return

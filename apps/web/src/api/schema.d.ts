@@ -1336,6 +1336,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/figures/{id}/redraw-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare what a figure recorded about each file it was drawn from with the files now, before it is drawn again
+         * @description Only files on this computer are looked at; a file on a host is never better than probable. Never draws, swaps or changes anything.
+         */
+        get: operations["owner_s_redrawCheck_get_api_figures_id_redraw_check"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/figures/{id}/restore": {
         parameters: {
             query?: never;
@@ -3968,6 +3990,11 @@ export interface components {
             scene?: components["schemas"]["Scene"];
             /** @description Required for, and only for, a figure of kind channelgrid; carries no scene. */
             channelGrid?: components["schemas"]["ChannelGrid"];
+            /**
+             * Format: int64
+             * @description "Draw again": the id of the figure this one redraws, of the same dataset and the same kind of description. The new figure is a revision of its own; the original is untouched.
+             */
+            redrawnFrom?: number;
         };
         /** @description Unknown keys are refused. */
         FigureTextRequest: {
@@ -4348,6 +4375,7 @@ export interface components {
             overlays: components["schemas"]["SceneOverlay"][];
             view: components["schemas"]["SceneView"];
             link?: components["schemas"]["SceneLink"];
+            render?: components["schemas"]["SceneRender"];
         };
         SceneBase: {
             /** Format: int64 */
@@ -5749,6 +5777,12 @@ export interface components {
                 panelWidth: number;
                 panelHeight: number;
             };
+            /** @description What the composed picture said beyond the description, so "draw again" reproduces it. Absent from grids saved before. */
+            render?: {
+                figureWidth: number;
+                /** @description How many overlays of the map were visible but not drawn on the panels (the caption states it) */
+                overlaysNotDrawn: number;
+            };
         };
         /** @description The plan of a channel-map grid: JSON only, no payload. Each panel is fetched by the plane route (one channel) or the slab route (a mean of several), at the preview step stated here. */
         ChannelGridPlan: {
@@ -6243,6 +6277,12 @@ export interface components {
                     by: string;
                 } | null;
             }[];
+            /** @description Set on a figure made by "draw again": the figure it redraws, which is never changed (ADR 0042, section 5). Owner API only. */
+            redrawnFrom?: {
+                /** Format: int64 */
+                figureId: number;
+                revision: string;
+            };
         };
         /** @description Ask for a terminal session (only with --enable-terminal, ADR 0029). The host is chosen by id, never by a free-form string. */
         TerminalOpen: {
@@ -6613,6 +6653,52 @@ export interface components {
             reachable: boolean;
             /** @description for example: VPN client started; the host became reachable after 12 s */
             message: string;
+        };
+        /** @description How the base raster of a saved figure was drawn, so "draw again" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only. */
+        SceneRender: {
+            /** @description The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^27 pixels. */
+            canvas: {
+                width: number;
+                height: number;
+            };
+            /** @description The two colours of the hatching that marks a pixel with no value (never a colour of the scale), as the theme gave them */
+            nodata: number[][];
+            /** @description The width in pixels the figure was composed at */
+            figureWidth: number;
+        };
+        RedrawSource: {
+            /** @enum {string} */
+            role: "source" | "overlay";
+            /** Format: int64 */
+            datasetId: number;
+            name: string;
+            /**
+             * @description unchanged: equal full SHA-256. probable: nothing differs but what was recorded cannot prove the bytes are the same (an equal sampled fingerprint has a blind spot, ADR 0053). changed: the registered file is not what the figure was drawn from (it can be read). changed_on_disk: the file on disk is not what is registered (register it again first). missing: no longer registered, or no readable file.
+             * @enum {string}
+             */
+            status: "unchanged" | "probable" | "changed" | "changed_on_disk" | "missing";
+            differs: ("size" | "time" | "fingerprint")[];
+            readable: boolean;
+            /** @description The sentence the owner reads about this file */
+            text: string;
+        };
+        /** @description What "draw again" must tell the owner before it draws. Reads and changes nothing. */
+        RedrawCheck: {
+            /** Format: int64 */
+            figureId: number;
+            /**
+             * @description The description the figure was drawn from; none when it keeps none
+             * @enum {string}
+             */
+            kind: "scene" | "channel-grid" | "none";
+            /**
+             * @description ready: every file is unchanged, draw. ask: say what changed and ask before drawing. blocked: a file cannot be read. none: this figure cannot be drawn again, it is shown as its PNG.
+             * @enum {string}
+             */
+            state: "ready" | "ask" | "blocked" | "none";
+            /** @description The question or the reason, for ask, blocked and none */
+            prompt?: string;
+            sources: components["schemas"]["RedrawSource"][];
         };
     };
     responses: never;
@@ -8873,6 +8959,37 @@ export interface operations {
                 };
                 content: {
                     "image/png": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_redrawCheck_get_api_figures_id_redraw_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RedrawCheck"];
                 };
             };
             /** @description Error */
