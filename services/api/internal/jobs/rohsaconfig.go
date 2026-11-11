@@ -19,7 +19,7 @@ import (
 
 type rohsaKey struct {
 	Section  string // where a key the file lacks is added
-	Kind     string // number | int | bool | intlist | kernel | path
+	Kind     string // number | gb | int | bool | intlist | kernel | path
 	Min, Max int    // int and intlist bounds
 	Internal bool   // set by Vesqira per job, never by a request
 }
@@ -29,21 +29,25 @@ type rohsaKey struct {
 // smoothing kernel and the crop. The input cube and the output folder are not here: the input is a file of the host's, and
 // the output folder is Vesqira's per job so a repeated run never writes over an earlier one.
 var rohsaKeys = map[string]rohsaKey{
-	"n_gauss":         {"rohsa", "intlist", 1, 64, false},
-	"lambda_amp":      {"rohsa", "number", 0, 0, false},
-	"lambda_mu":       {"rohsa", "number", 0, 0, false},
-	"lambda_sig":      {"rohsa", "number", 0, 0, false},
-	"lambda_var_amp":  {"rohsa", "number", 0, 0, false},
-	"lambda_var_mu":   {"rohsa", "number", 0, 0, false},
-	"lambda_var_sig":  {"rohsa", "number", 0, 0, false},
-	"sig_init":        {"rohsa", "number", 0, 0, false},
-	"lb_sig_init":     {"rohsa", "number", 0, 0, false},
-	"ub_sig_init":     {"rohsa", "number", 0, 0, false},
-	"lb_sig":          {"rohsa", "number", 0, 0, false},
-	"ub_sig":          {"rohsa", "number", 0, 0, false},
-	"maxiter_init":    {"rohsa", "int", 1, 1000000, false},
-	"maxiter":         {"rohsa", "int", 1, 1000000, false},
-	"noise":           {"rohsa", "bool", 0, 0, false},
+	"n_gauss":        {"rohsa", "intlist", 1, 64, false},
+	"lambda_amp":     {"rohsa", "number", 0, 0, false},
+	"lambda_mu":      {"rohsa", "number", 0, 0, false},
+	"lambda_sig":     {"rohsa", "number", 0, 0, false},
+	"lambda_var_amp": {"rohsa", "number", 0, 0, false},
+	"lambda_var_mu":  {"rohsa", "number", 0, 0, false},
+	"lambda_var_sig": {"rohsa", "number", 0, 0, false},
+	"sig_init":       {"rohsa", "number", 0, 0, false},
+	"lb_sig_init":    {"rohsa", "number", 0, 0, false},
+	"ub_sig_init":    {"rohsa", "number", 0, 0, false},
+	"lb_sig":         {"rohsa", "number", 0, 0, false},
+	"ub_sig":         {"rohsa", "number", 0, 0, false},
+	"maxiter_init":   {"rohsa", "int", 1, 1000000, false},
+	"maxiter":        {"rohsa", "int", 1, 1000000, false},
+	"noise":          {"rohsa", "bool", 0, 0, false},
+	// The pipeline's own memory preflight: it estimates what the fit needs and refuses to start when that is above this budget
+	// (unless force_full_cube). A research setting of the config, not a credential; raising N can need it raised, together with
+	// the job's Slurm memory (a separate request). A number (written as typed: 96 stays 96, not 96.0) or the word auto.
+	"memory_gb":       {"input", "gb", 1, 100000, false},
 	"spectral_kernel": {"input", "kernel", 0, 0, false},
 	"crop_size":       {"input", "int", 0, 100000, false},
 	"crop_x0":         {"input", "int", 0, 100000, false},
@@ -119,6 +123,17 @@ func checkROHSAValue(key, val string) (string, error) {
 		}
 		if !strings.ContainsAny(val, ".eE") {
 			val += ".0" // the pipeline's configs write real values as reals (lambda_amp = 30.0)
+		}
+		return val, nil
+	case "gb":
+		if val == "auto" {
+			return `"auto"`, nil
+		}
+		if !numRe.MatchString(val) || strings.ContainsAny(val, "eE") {
+			return "", fmt.Errorf("%w: %s must be a number of GB (96 or 96.5) or auto", ErrInvalid, key)
+		}
+		if f, _ := strconv.ParseFloat(val, 64); f < float64(spec.Min) || f > float64(spec.Max) {
+			return "", fmt.Errorf("%w: %s must be between %d and %d", ErrInvalid, key, spec.Min, spec.Max)
 		}
 		return val, nil
 	case "int", "intlist":

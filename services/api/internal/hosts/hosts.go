@@ -242,6 +242,10 @@ func (m *Manager) fileNames() []string {
 	return names
 }
 
+// RemoteCacheDir is the folder on a host where its worker keeps rebuildable sidecars (the index of a ROHSA .dat): inside
+// the account's own cache, beside the deployed worker, never under a source root or next to data (the shell expands $HOME).
+func (m *Manager) RemoteCacheDir() string { return "$HOME/.cache/vesqira/rohsa" }
+
 // RemoteDir is where the deployed worker scripts live on a host (the shell expands $HOME there).
 func (m *Manager) RemoteDir() string { return m.remoteDir() }
 
@@ -319,7 +323,8 @@ func (m *Manager) worker(h Host) *worker.Persistent {
 		return w
 	}
 	rj, _ := json.Marshal(h.Roots)
-	remote := fmt.Sprintf(`cd "%s" && VESQIRA_ROOTS=%s exec %s -P plane_worker.py`, m.remoteDir(), quote(string(rj)), h.Python)
+	// VESQIRA_CACHE is the one place this worker may write (the ROHSA index, ADR 0046): fixed here, never taken from a request
+	remote := fmt.Sprintf(`cd "%s" && VESQIRA_ROOTS=%s VESQIRA_CACHE="%s" exec %s -P plane_worker.py`, m.remoteDir(), quote(string(rj)), m.RemoteCacheDir(), h.Python)
 	w := &worker.Persistent{Command: append(append([]string{m.Ssh}, m.sshArgs(h)...), "sh -c "+quote(remote)), Timeout: m.Timeout, ExtraEnv: m.env()}
 	m.workers[h.ID] = w
 	return w

@@ -87,8 +87,8 @@ func TestROHSAJobEmbedsItsConfigAndSetsTheOutputFolderPerJob(t *testing.T) {
 	if k.OutputDir == j.OutputDir {
 		t.Error("two jobs share an output folder")
 	}
-	if j.AutoImport {
-		t.Error("a ROHSA job is read from local files; nothing is imported by itself")
+	if !j.AutoImport {
+		t.Error("a ROHSA job's fit is imported from its host when it completes (ADR 0046)")
 	}
 	// the stored request keeps the base text and the overrides apart, as VGT's does
 	got, _ := e.jobs.Get(j.ID)
@@ -369,27 +369,6 @@ func TestROHSASizingRouteMirrorsTheScriptAndSaysWhatItAssumed(t *testing.T) {
 	}
 }
 
-func TestROHSAJobIsNotImportedFromTheHostAndWritesNoRunRecord(t *testing.T) {
-	e := newWatchEnv(t)
-	j := e.submit(e.rohsaDraft("rohsa-a", nil, nil), nil)
-	e.setSlurm(j.SlurmID, "COMPLETED")
-	r, b := postJSON(t, e.api("/api/jobs/"+itoa(int(j.ID))+"/refresh"), map[string]any{})
-	if r.StatusCode != 200 {
-		t.Fatalf("%d %s", r.StatusCode, b)
-	}
-	e.srv.waitRecords()
-	e.srv.waitImports()
-	if _, err := os.Stat(filepath.Join(j.OutputDir, jobs.RunRecordName)); err == nil {
-		t.Error("a run.json was written beside a ROHSA fit: a rescan would list the folder as another run")
-	}
-	if got := e.job(j.ID); got.RunID != nil || got.RecordOwed {
-		t.Errorf("job: run %v owed %v", got.RunID, got.RecordOwed)
-	}
-	if r, b := postJSON(t, e.api("/api/jobs/"+itoa(int(j.ID))+"/register"), map[string]any{}); r.StatusCode != 409 || !strings.Contains(string(b), "ADR 0046") {
-		t.Errorf("register: %d %s", r.StatusCode, b)
-	}
-}
-
 func TestSweepOverROHSAKeys(t *testing.T) {
 	e := newWatchEnv(t)
 	base := e.rohsaDraft("rohsa-base", map[string]string{"lambda": "10"}, nil)
@@ -406,7 +385,7 @@ func TestSweepOverROHSAKeys(t *testing.T) {
 		}
 		j := e.job(m.JobID)
 		cfg := configOf(t, j.Script)
-		if j.Template != "rohsa" || j.AutoImport || !strings.Contains(cfg, "n_gauss = ["+m.Values["n_gauss"]+"]") ||
+		if j.Template != "rohsa" || !j.AutoImport || !strings.Contains(cfg, "n_gauss = ["+m.Values["n_gauss"]+"]") ||
 			!strings.Contains(cfg, "lambda_amp = "+m.Values["lambda"]+".0") || !strings.Contains(cfg, "lambda_sig = "+m.Values["lambda"]+".0") {
 			t.Errorf("draft %d: auto %v\n%s", i, j.AutoImport, cfg)
 		}

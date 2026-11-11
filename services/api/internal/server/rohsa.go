@@ -8,14 +8,18 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
+	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
+	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
@@ -96,34 +100,33 @@ type fileUnit struct {
 
 // importROHSA registers the crop and the product maps found where the pipeline puts them, and records the run. The .dat is
 // not registered as a dataset (it is not FITS); the run keeps its location server-side and the viewer reads it through
-// the worker. The crop is an input: it is linked to the run, never listed as one of its outputs.
-func (s *Server) importROHSA(ctx context.Context, datReal string) (runs.Run, int, string) {
-	dir, base := filepath.Dir(datReal), filepath.Base(datReal)
+// the worker, on the machine that holds it. The crop is an input: it is linked to the run, never listed as one of its outputs.
+func (s *Server) importROHSA(ctx context.Context, src rohsaSource) (runs.Run, int, string) {
+	datReal := src.Dat()
+	base := path.Base(filepath.ToSlash(datReal))
 	stem := strings.TrimSuffix(base, ".dat")
 	suffix := strings.TrimPrefix(stem, "rohsa_")
+	folder := path.Base(path.Dir(filepath.ToSlash(datReal)))
 	parsed, err := runs.ParseROHSA(
-		s.readNear(dir, stem+"_run_trace.toml"), s.readNear(dir, stem+"_products_trace.toml"), s.readNear(dir, "parameters_"+suffix+".txt"),
-		stem, filepath.Base(dir))
+		src.Near(ctx, stem+"_run_trace.toml"), src.Near(ctx, stem+"_products_trace.toml"), src.Near(ctx, "parameters_"+suffix+".txt"),
+		stem, folder)
 	if err != nil {
 		return runs.Run{}, 422, err.Error()
 	}
 	info := parsed.Info
+	info.HostID = src.HostID()
 	if info.RegionBasis != "declared" {
 		info.Notes = append(info.Notes, "No trace names the region, so the crop is looked for under the folder's name; that name is the only link between the fit and the file.")
 	}
 	// the crop: <region>.fits beside the .dat, the way the pipeline names it
 	if info.Region != "" && !strings.ContainsAny(info.Region, `/\`) {
 		cropName := info.Region + ".fits"
-		if real, err := s.roots().Resolve(filepath.Join(dir, cropName)); err == nil {
-			d, code, msg := s.registerPath(ctx, real)
+		if d, found, code, msg := src.Register(ctx, cropName); found {
 			if code != 0 {
 				info.Notes = append(info.Notes, cropName+" could not be registered ("+msg+"), so the run has no spectral calibration.")
 			} else {
 				info.CropDatasetID, info.CropName = &d.ID, cropName
-				parsed.InputName = cropName
-				if fi, err := os.Stat(real); err == nil {
-					parsed.InputSizeBytes = fi.Size()
-				}
+				parsed.InputName, parsed.InputSizeBytes = cropName, d.SizeBytes
 			}
 		}
 	}
@@ -134,31 +137,16 @@ func (s *Server) importROHSA(ctx context.Context, datReal string) (runs.Run, int
 	var outs []runs.Output
 	seen := map[string]bool{}
 	for _, sub := range []struct{ folder, prefix string }{{"maps", ""}, {"cubes", "cube_"}} {
-		pdir, err := s.roots().ResolveDir(filepath.Join(dir, "rohsa", parsed.ProductLabel, sub.folder))
-		if err != nil {
-			continue
-		}
-		ents, err := os.ReadDir(pdir)
-		if err != nil {
-			continue
-		}
-		names := make([]string, 0, len(ents))
-		for _, e := range ents {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".fits") {
-				names = append(names, e.Name())
-			}
-		}
-		sort.Strings(names)
-		for _, name := range names {
+		rel := path.Join("rohsa", parsed.ProductLabel, sub.folder)
+		for _, name := range src.Fits(ctx, rel) {
 			if len(outs) >= maxROHSAProducts {
 				info.Notes = append(info.Notes, fmt.Sprintf("Only the first %d product files were linked.", maxROHSAProducts))
 				break
 			}
-			real, err := s.roots().Resolve(filepath.Join(pdir, name)) // a link out of the roots is skipped
-			if err != nil {
+			d, found, code, msg := src.Register(ctx, path.Join(rel, name)) // a link out of the roots is skipped
+			if !found {
 				continue
 			}
-			d, code, msg := s.registerPath(ctx, real)
 			if code != 0 {
 				info.Notes = append(info.Notes, name+" was not linked: "+msg)
 				continue
@@ -177,7 +165,7 @@ func (s *Server) importROHSA(ctx context.Context, datReal string) (runs.Run, int
 	if len(outs) == 0 {
 		info.Notes = append(info.Notes, "No product maps were found under rohsa/"+parsed.ProductLabel+"/ beside the .dat.")
 	}
-	run, err := s.Runs.Save(datReal, parsed.Parsed, outs)
+	run, err := s.Runs.Save(src.Key(), parsed.Parsed, outs)
 	if err != nil {
 		log.Printf("runs: %v", err)
 		return runs.Run{}, 500, "internal error"
@@ -187,6 +175,55 @@ func (s *Server) importROHSA(ctx context.Context, datReal string) (runs.Run, int
 		return runs.Run{}, 500, "internal error"
 	}
 	return run, 0, ""
+}
+
+// remoteImportTimeout bounds one import from a host: a fit's product tree is a few dozen small headers, each read there.
+const remoteImportTimeout = 10 * time.Minute
+
+// importROHSAFromHost imports a ROHSA fit that lives on a host: the .dat, or the folder holding it (or one fit just below).
+// The host's worker reads the small records (trace, namelist) and the FITS headers; the .dat is not read at all.
+func (s *Server) importROHSAFromHost(w http.ResponseWriter, r *http.Request, hostID int64, p string) {
+	if s.HostDB == nil || s.Remote == nil {
+		fail(w, 503, "remote hosts are not configured")
+		return
+	}
+	h, err := s.HostDB.Get(hostID)
+	if err != nil {
+		fail(w, 404, "host not found")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), remoteImportTimeout)
+	defer cancel()
+	dat, code, msg := s.rohsaTargetRemote(ctx, h, p)
+	if code != 0 {
+		fail(w, code, msg)
+		return
+	}
+	run, code, msg := s.importROHSA(ctx, remoteROHSA{s: s, h: h, dat: dat})
+	if code != 0 {
+		fail(w, code, msg)
+		return
+	}
+	s.Audit.Record("rohsa run imported from host", "run", run.ID, h.Name+": "+dat)
+	writeJSON(w, 201, s.runView(run))
+}
+
+// importROHSAJob imports the fit a finished ROHSA job left in its output folder on its host: the one rohsa_*.dat found in the
+// folder or just below it (the pipeline writes <output>/<region>/...). The same importer as an import by path, so the run is
+// the one an owner would get by hand; a folder with no fit or several is refused with the reason and nothing is guessed.
+func (s *Server) importROHSAJob(ctx context.Context, j jobs.Job, h hosts.Host) (runs.Run, int, string) {
+	dat, code, msg := s.rohsaTargetRemote(ctx, h, j.OutputDir)
+	if code != 0 {
+		if code == 403 {
+			msg = "the job's output folder is not available on the host"
+		}
+		return runs.Run{}, code, msg
+	}
+	run, code, msg := s.importROHSA(ctx, remoteROHSA{s: s, h: h, dat: dat})
+	if code == 0 {
+		s.Audit.Record("rohsa run imported from host", "run", run.ID, h.Name+": "+dat)
+	}
+	return run, code, msg
 }
 
 // proposeProductUnit never changes what a file says. When the file has no BUNIT, a unit from the product's name is declared as
@@ -243,15 +280,12 @@ func (s *Server) rohsaRunsFor(d catalog.Dataset) ([]rohsaRunView, error) {
 		return nil, err
 	}
 	out := []rohsaRunView{}
-	if d.HostID != 0 {
-		return out, nil
-	}
 	for _, r := range all {
 		if r.Info.CropDatasetID == nil {
 			continue
 		}
 		crop, err := s.Store.Get(*r.Info.CropDatasetID)
-		if err != nil || crop.HostID != 0 {
+		if err != nil {
 			continue
 		}
 		v := rohsaRunView{RunID: r.RunID, Name: r.RunName, NGauss: r.Info.NGauss, NGaussBasis: r.Info.NGaussBasis, CropDatasetID: crop.ID, CropName: crop.Name, IsCrop: crop.ID == d.ID}
@@ -336,23 +370,24 @@ func (s *Server) rohsaRuns(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"runs": rs})
 }
 
-// rohsaTask is a validated request: the dataset is on the run's grid, the crop and the .dat are authorized and unchanged.
+// rohsaTask is a validated request: the dataset is on the run's grid, the crop and the .dat are authorized and unchanged,
+// on this machine or on the one host that holds both.
 type rohsaTask struct {
 	run      runs.RohsaRun
 	crop     catalog.Dataset
 	cropReal string
 	datReal  string
-	key      cacheKey
+	// datSize and datMtime are the .dat as it is now (stat, here or on the host): part of the cache key, so a changed fit
+	// never serves old pixels.
+	datSize, datMtime int64
+	host              *hosts.Host // nil for a fit on this machine
+	key               cacheKey
 }
 
 func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int64) (rohsaTask, bool) {
 	var t rohsaTask
 	d, ok := s.datasetByPath(w, r)
 	if !ok {
-		return t, false
-	}
-	if s.CacheDir == "" {
-		fail(w, 503, "the cache folder for ROHSA indexes is not configured")
 		return t, false
 	}
 	rr, err := s.Runs.ROHSA(runID)
@@ -363,6 +398,10 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 	if err != nil {
 		log.Printf("rohsa: %v", err)
 		fail(w, 500, "internal error")
+		return t, false
+	}
+	if rr.Info.HostID == 0 && s.CacheDir == "" {
+		fail(w, 503, "the cache folder for ROHSA indexes is not configured")
 		return t, false
 	}
 	if rr.Info.NGauss == 0 || rr.Info.CropDatasetID == nil {
@@ -393,21 +432,64 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 		fail(w, 404, "the run's crop is no longer registered")
 		return t, false
 	}
+	if crop.HostID != rr.Info.HostID {
+		// the crop gives the grid and the spectral axis and the .dat holds the fit: the worker reads both, so both are on one machine
+		fail(w, 409, "the run's crop and its fit are not on the same machine")
+		return t, false
+	}
 	cropReal, key, status, msg := s.authorize(r.Context(), crop)
 	if status != 0 {
 		fail(w, status, msg)
 		return t, false
 	}
-	datReal, err := s.roots().Resolve(rr.DatPath)
-	if err != nil {
-		fail(w, 403, err.Error())
+	t = rohsaTask{run: rr, crop: crop, cropReal: cropReal, key: key}
+	if rr.Info.HostID == 0 {
+		datReal, err := s.roots().Resolve(rr.DatPath)
+		if err != nil {
+			fail(w, 403, err.Error())
+			return t, false
+		}
+		t.datReal = datReal
+		if fi, err := os.Stat(datReal); err == nil {
+			t.datSize, t.datMtime = fi.Size(), fi.ModTime().UnixNano()
+		}
+		return t, true
+	}
+	if s.HostDB == nil || s.Remote == nil {
+		fail(w, 503, "remote hosts are not configured")
 		return t, false
 	}
-	return rohsaTask{run: rr, crop: crop, cropReal: cropReal, datReal: datReal, key: key}, true
+	h, err := s.HostDB.Get(rr.Info.HostID)
+	if err != nil || !h.InRoots(rr.DatPath) {
+		fail(w, 403, "not available")
+		return t, false
+	}
+	rep, err := s.Remote.Do(r.Context(), h, map[string]any{"op": "stat", "path": rr.DatPath}) // the host's worker enforces its roots
+	var re *worker.RequestError
+	switch {
+	case errors.As(err, &re):
+		fail(w, 403, "not available")
+		return t, false
+	case errors.Is(err, context.Canceled):
+		return t, false
+	case err != nil:
+		fail(w, 502, "the host is not reachable (is the VPN up?)")
+		return t, false
+	}
+	var st struct {
+		Size    int64 `json:"size"`
+		MtimeNS int64 `json:"mtime_ns"`
+	}
+	if json.Unmarshal(rep.Head, &st) != nil {
+		fail(w, 502, "the host answered unexpectedly")
+		return t, false
+	}
+	t.datReal, t.datSize, t.datMtime, t.host = rr.DatPath, st.Size, st.MtimeNS, &h
+	return t, true
 }
 
-func (s *Server) rohsaDo(w http.ResponseWriter, r *http.Request, req map[string]any) (worker.Reply, bool) {
-	svc := s.planesFor(0)
+func (s *Server) rohsaDo(w http.ResponseWriter, r *http.Request, t rohsaTask, req map[string]any) (worker.Reply, bool) {
+	svc := s.planesFor(t.crop.ID) // the host's worker for a crop on a host, this machine's otherwise
 	if svc == nil {
 		fail(w, 503, "the scientific worker is not configured")
 		return worker.Reply{}, false
@@ -428,17 +510,29 @@ func (s *Server) rohsaDo(w http.ResponseWriter, r *http.Request, req map[string]
 		fail(w, 504, "the scientific worker timed out")
 	default:
 		log.Printf("worker: %v", err)
-		fail(w, 502, "the scientific worker is unavailable")
+		if t.host != nil {
+			fail(w, 502, "the host is not reachable (is the VPN up?)")
+		} else {
+			fail(w, 502, "the scientific worker is unavailable")
+		}
 	}
 	return worker.Reply{}, false
 }
 
+// request is what the worker is asked. A host's worker is never told where to cache: it keeps the index in its own account's
+// cache folder (plane_worker.remote_cache_dir), so no request can make it write anywhere else.
 func (t rohsaTask) request(op string, s *Server) map[string]any {
-	return map[string]any{"op": op, "path": t.cropReal, "dat_path": t.datReal, "cache_dir": s.CacheDir, "n_gauss": t.run.Info.NGauss}
+	req := map[string]any{"op": op, "path": t.cropReal, "dat_path": t.datReal, "n_gauss": t.run.Info.NGauss}
+	if t.host == nil {
+		req["cache_dir"] = s.CacheDir
+	}
+	return req
 }
 
 // rohsaIndex advances (or confirms) the index of the run's .dat. Each call works for a bounded time, so a very large file is
 // indexed over several calls and the page shows the progress. The answer is the index's state, not a scientific result.
+// For a fit on a host the index is built there: the .dat is streamed once on the host, the sidecar goes to the account's
+// cache folder on the host, and only this small state travels. That write is audited when an index starts and when it settles.
 func (s *Server) rohsaIndex(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		RunID int64 `json:"runId"`
@@ -452,17 +546,45 @@ func (s *Server) rohsaIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	req := t.request("rohsa_index", s)
 	req["budget_s"] = 15
-	rep, ok := s.rohsaDo(w, r, req)
+	rep, ok := s.rohsaDo(w, r, t, req)
 	if !ok {
+		return
+	}
+	var head map[string]json.RawMessage
+	if err := json.Unmarshal(rep.Head, &head); err != nil {
+		fail(w, 502, "the worker answered unexpectedly")
+		return
+	}
+	flag := func(k string) bool { var b bool; _ = json.Unmarshal(head[k], &b); return b }
+	if t.host != nil {
+		var file, state string
+		_ = json.Unmarshal(head["cache_file"], &file)
+		_ = json.Unmarshal(head["state"], &state)
+		if flag("created") {
+			s.Audit.Record("rohsa index started on host", "run", in.RunID, t.host.Name+": index written under "+path.Dir(file)+" (a rebuildable cache, never in the data's folder) for "+t.datReal)
+		}
+		if flag("settled") {
+			s.Audit.Record("rohsa index "+state+" on host", "run", in.RunID, t.host.Name+": "+path.Base(file))
+		}
+		head["where"] = json.RawMessage(`"host"`)
+	} else {
+		head["where"] = json.RawMessage(`"here"`)
+	}
+	for _, k := range []string{"cache_file", "created", "settled"} { // a location on the host and bookkeeping are not the page's
+		delete(head, k)
+	}
+	out, err := json.Marshal(head)
+	if err != nil {
+		fail(w, 500, "internal error")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(rep.Head)
+	_, _ = w.Write(out)
 }
 
 // rohsaComponents answers with the Gaussians of one pixel as a frame: the JSON head (components, axis, conventions) and the
-// float64 curves.
+// float64 curves. On a host the pixel is one seek in the index there and N short lines of the .dat.
 func (s *Server) rohsaComponents(w http.ResponseWriter, r *http.Request) {
 	runID, err := strconv.ParseInt(r.URL.Query().Get("run"), 10, 64)
 	if err != nil {
@@ -481,19 +603,15 @@ func (s *Server) rohsaComponents(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var datSize, datMtime int64
-	if fi, err := os.Stat(t.datReal); err == nil {
-		datSize, datMtime = fi.Size(), fi.ModTime().UnixNano()
-	}
 	k := t.key
-	k.op, k.x, k.y, k.q = "rohsa_pixel", x, y, fmt.Sprintf("%d,%d,%d", runID, datSize, datMtime)
+	k.op, k.x, k.y, k.q = "rohsa_pixel", x, y, fmt.Sprintf("%d,%d,%d", runID, t.datSize, t.datMtime)
 	if rep, hit := s.Cache.get(k); hit {
 		writeFrame(w, rep)
 		return
 	}
 	req := t.request("rohsa_pixel", s)
 	req["x"], req["y"] = x, y
-	rep, ok := s.rohsaDo(w, r, req)
+	rep, ok := s.rohsaDo(w, r, t, req)
 	if !ok {
 		return
 	}

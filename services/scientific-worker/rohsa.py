@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import time
 
 import numpy as np
@@ -62,6 +63,17 @@ def _save_meta(meta_path: str, m: dict) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(m, f)
     os.replace(tmp, meta_path)
+
+
+def _refuse_links(*paths: str) -> None:
+    """A sidecar that exists must be a plain file: a link in the cache folder must never be followed by a write."""
+    for p in paths:
+        try:
+            st = os.lstat(p)
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(st.st_mode):
+            raise Bad("unsupported", "a cache file for the index is not a plain file; it is not used")
 
 
 def _check_args(nx: int, ny: int, n: int) -> None:
@@ -149,14 +161,16 @@ def index_step(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, budget_s
     os.makedirs(cache_dir, exist_ok=True)
     key = _key(dat_path, st)
     meta_path, offs_path = _paths(cache_dir, key)
+    _refuse_links(meta_path, offs_path, meta_path + ".tmp")
     m = _load_meta(meta_path, st, nx, ny, n)
     expected_rows = nx * ny * n
+    created, was_building = m is None, m is None or m["state"] == "building"
     if m is None:
         m = {"version": INDEX_VERSION, "size": st.st_size, "mtime_ns": st.st_mtime_ns, "nx": nx, "ny": ny, "n_gauss": n,
              "state": "building", "done": 0, "rows": 0, "lines": 0, "pixels": 0, "bad_count": 0, "examples": [], "reason": None}
         open(offs_path, "wb").close()
     elif m["state"] != "building":
-        return _summary(m, st)
+        return {**_summary(m, st), "created": False, "settled": False, "cache_file": offs_path}
     t0 = time.monotonic()
     # the sidecar may hold more offsets than the metadata admits (a call died between the two writes): trust the metadata
     with open(offs_path, "r+b") as out, open(dat_path, "rb") as f:
@@ -205,7 +219,10 @@ def index_step(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, budget_s
         else:
             m["state"] = "ready"
     _save_meta(meta_path, m)
-    return _summary(m, st)
+    out = _summary(m, st)
+    # what this call did, for the caller's audit: it began an index, and/or it settled one (ready or refused)
+    out.update(created=created, settled=was_building and m["state"] != "building", cache_file=offs_path)
+    return out
 
 
 def _summary(m: dict, st: os.stat_result) -> dict:

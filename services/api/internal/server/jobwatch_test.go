@@ -418,12 +418,15 @@ func TestAutoImportOptionDefaultsByTemplateAndIsStoredWithTheJob(t *testing.T) {
 		t.Errorf("the option was turned off at creation")
 	}
 	rohsa := map[string]any{"template": "rohsa", "rohsa": map[string]any{"repoDir": "/shared/home/u/vgt", "configPath": "/shared/home/u/vgt/configs/rohsa/a.toml", "configText": "[input]\ninput = \"a.fits\"\noutput_dir = \"x\"\n[rohsa]\nn_gauss = [4]\n", "cpus": 4, "mem": "8G", "time": "01:00:00"}}
-	if j := e.draft("rohsa-a", rohsa); j.AutoImport {
-		t.Errorf("a ROHSA job has nothing to import and must default to off")
+	if j := e.draft("rohsa-a", rohsa); !j.AutoImport {
+		t.Errorf("a ROHSA job's fit is imported from its host by default (ADR 0046)")
 	}
-	rohsa["autoImport"] = true
-	if r, _ := postJSON(t, e.api("/api/jobs"), map[string]any{"hostId": e.host.ID, "template": "rohsa", "name": "rohsa-b", "rohsa": rohsa["rohsa"], "autoImport": true}); r.StatusCode != 422 {
-		t.Errorf("automatic import for a ROHSA job: %d, want 422", r.StatusCode)
+	if r, _ := postJSON(t, e.api("/api/jobs"), map[string]any{"hostId": e.host.ID, "template": "rohsa", "name": "rohsa-b", "rohsa": rohsa["rohsa"], "autoImport": false}); r.StatusCode != 201 {
+		t.Errorf("a ROHSA job with the option off: %d", r.StatusCode)
+	}
+	// a custom script names no output folder, so there is nothing to import from it
+	if r, _ := postJSON(t, e.api("/api/jobs"), map[string]any{"hostId": e.host.ID, "template": "custom", "name": "c", "script": "#!/bin/bash\necho hi\n", "autoImport": true}); r.StatusCode != 422 {
+		t.Errorf("automatic import for a custom job: %d, want 422", r.StatusCode)
 	}
 	// the draft's option can be changed when submitting, and then it stands
 	j := e.draft("vgt-c", nil)

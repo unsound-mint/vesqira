@@ -22,11 +22,13 @@ SCRIPT = str(HERE / "plane_worker.py")
 class Client:
     """Talks the line protocol to one long-lived worker process."""
 
-    def __init__(self, roots=None):
+    def __init__(self, roots=None, env_extra=None):
         env = dict(os.environ)
         env.pop("VESQIRA_ROOTS", None)
         if roots is not None:
             env["VESQIRA_ROOTS"] = json.dumps([str(r) for r in roots])
+        env.pop("VESQIRA_CACHE", None)
+        env.update(env_extra or {})
         self.p = subprocess.Popen([sys.executable, "-P", SCRIPT], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, env=env)
 

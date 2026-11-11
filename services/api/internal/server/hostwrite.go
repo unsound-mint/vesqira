@@ -223,9 +223,9 @@ func (s *Server) recordRun(ctx context.Context, jobID int64, h hosts.Host, ev jo
 		return
 	}
 	settle := func() { _ = s.Jobs.SetRecordOwed(j.ID, false) }
-	if j.OutputDir == "" || j.Template == "rohsa" {
-		// custom jobs name no output folder: there is nothing to write next to. A ROHSA job has one, but its folder is imported
-		// by its own rohsa_*.dat and trace (ADR 0046); a run.json beside them would make a rescan list it as another run.
+	if j.OutputDir == "" {
+		// custom jobs name no output folder: there is nothing to write next to. (A ROHSA job's record sits in the output folder
+		// above the fit; discovery merges the two into one run, see discover.mergeJobRecords.)
 		settle()
 		return
 	}

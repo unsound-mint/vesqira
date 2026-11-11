@@ -11,6 +11,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
 // Watching jobs while the app runs (ADR 0043). Until now a job's state was read only when someone pressed Refresh or had
@@ -291,7 +292,11 @@ func (s *Server) autoImportAsync(j jobs.Job, h hosts.Host) {
 	s.imports.Add(1)
 	go func() {
 		defer s.imports.Done()
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		limit := 90 * time.Second
+		if j.Template == "rohsa" {
+			limit = remoteImportTimeout // a fit's product tree is registered file by file on the host
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), limit)
 		defer cancel()
 		s.autoImport(ctx, j.ID, h)
 	}()
@@ -301,7 +306,7 @@ func (s *Server) autoImportAsync(j jobs.Job, h hosts.Host) {
 func (s *Server) waitImports() { s.imports.Wait() }
 
 // autoImport runs the same import as the "Import results as a run" button (importFrom: run_metadata.toml and the output
-// files next to it; no other way of finding a run) and links the run to the job. The claim in the store lets exactly one
+// files next to it, or for a ROHSA job the one fit found under its output folder; no other way of finding a run) and links the run to the job. The claim in the store lets exactly one
 // attempt happen: a failure becomes one notification with the reason and is not retried; the button stays available.
 func (s *Server) autoImport(ctx context.Context, jobID int64, h hosts.Host) {
 	won, err := s.Jobs.ClaimAutoImport(jobID)
@@ -313,7 +318,14 @@ func (s *Server) autoImport(ctx context.Context, jobID int64, h hosts.Host) {
 		return
 	}
 	id := j.ID
-	run, code, msg := s.importFrom(ctx, remoteRun{s: s, h: h, dir: j.OutputDir})
+	var run runs.Run
+	var code int
+	var msg string
+	if j.Template == "rohsa" {
+		run, code, msg = s.importROHSAJob(ctx, j, h)
+	} else {
+		run, code, msg = s.importFrom(ctx, remoteRun{s: s, h: h, dir: j.OutputDir})
+	}
 	if code != 0 {
 		s.Audit.Record("run import failed", "job", j.ID, h.Name+": "+msg)
 		_, _ = s.Notes.Add(fmt.Sprintf("job:%d:import", j.ID), notify.Notification{Kind: notify.KindImportFailed, JobID: &id,
