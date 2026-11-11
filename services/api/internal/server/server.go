@@ -87,7 +87,9 @@ type Server struct {
 
 	// EditorEnabled mounts the text editor routes (--enable-editor, ADR 0029). Off by default.
 	EditorEnabled bool
-	editMu        sync.Mutex // one editor save at a time
+	editMu        sync.Mutex            // one editor save at a time
+	hostEditMu    sync.Mutex            // guards hostEditLocks
+	hostEditLocks map[int64]*sync.Mutex // one editor save per host at a time (a save waits on ssh, so it does not share editMu)
 
 	// TerminalEnabled mounts the integrated terminal routes (--enable-terminal, ADR 0029). Off by default.
 	TerminalEnabled bool

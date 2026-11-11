@@ -26,7 +26,8 @@ async function ensureRegistered(page: Page, file: string) {
 /** Panels read as they scroll into view; "Load all" reads the rest (it is absent once every panel is loaded). */
 async function loadAll(page: Page) {
   const more = page.getByRole("button", { name: "Load all" });
-  if (await more.count()) await more.click();
+  // the button can vanish between the check and the click when the last panels finish loading on their own
+  if (await more.count()) await more.click({ timeout: 3000 }).catch(() => {});
 }
 
 test("a grid of channel maps shares one labelled scale and is saved as a figure; a line gives a position-velocity diagram", async ({ page, request }) => {

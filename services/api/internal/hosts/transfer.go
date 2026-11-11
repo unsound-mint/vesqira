@@ -76,7 +76,7 @@ func (h Host) checkRemote(p string) error {
 	case len(p) > 500:
 		return refusedf("the path is too long")
 	case unsafeText(p):
-		return refusedf("the path contains a NUL, newline, carriage return or backslash, which cannot be passed safely through the host's login shell")
+		return refusedf("the path contains a NUL, newline, carriage return, backslash, ' or !, which cannot be passed safely through the host's login shell")
 	case !h.InRoots(p):
 		return refusedf("the path is not inside a source root of the host")
 	}
@@ -99,7 +99,7 @@ func CheckName(n string) error {
 	case n == "" || n == "." || n == ".." || strings.Contains(n, "/") || len(n) > 200:
 		return refusedf("the name must be one plain file or folder name")
 	case unsafeText(n):
-		return refusedf("the name contains a NUL, newline, carriage return or backslash")
+		return refusedf("the name contains a NUL, newline, carriage return, backslash, ' or !")
 	case strings.HasPrefix(n, PartialDir):
 		return refusedf("the name is reserved for unfinished transfers")
 	}
@@ -465,7 +465,7 @@ func (m *Manager) RsyncArgv(h Host, s RsyncSpec) ([]string, error) {
 	if s.Direction != Download && s.Direction != Upload {
 		return nil, refusedf("unknown direction %q", s.Direction)
 	}
-	if !path.IsAbs(s.Local) || !path.IsAbs(s.Remote) || unsafeText(s.Local) || unsafeText(s.Remote) {
+	if !path.IsAbs(s.Local) || !path.IsAbs(s.Remote) || unsafeArg(s.Local) || unsafeArg(s.Remote) {
 		return nil, refusedf("transfers take absolute paths without NUL, newline, carriage return or backslash")
 	}
 	if !ValidDest(h.Dest) {

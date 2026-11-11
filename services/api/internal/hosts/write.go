@@ -103,8 +103,14 @@ func (w WriteSpec) recognises(b []byte) bool {
 }
 
 // unsafeText is a character the remote command line cannot carry safely through every login shell: NUL, newline and
-// carriage return (csh and fish treat them specially) and the backslash (fish reads it inside single quotes).
-func unsafeText(s string) bool { return strings.ContainsAny(s, "\x00\n\r\\") }
+// carriage return (csh and fish treat them specially), the backslash (fish reads it inside single quotes), the single
+// quote (quote() closes the quote, adds a backslash-quote and reopens it, and runShellCap quotes the result again, which leaves \' inside single quotes, an
+// escaped quote to fish: a name like a'(touch X)'.txt would run) and the exclamation mark (csh history). Shared by the
+// ADR 0039 writes, the transfers' host paths and the editor.
+func unsafeText(s string) bool { return unsafeArg(s) || strings.ContainsAny(s, "'!") }
+
+// unsafeArg is unsafeText for a value that is an rsync argument and never goes through a login shell.
+func unsafeArg(s string) bool { return strings.ContainsAny(s, "\x00\n\r\\") }
 
 // validate checks everything that can be checked before a round trip. The host repeats the checks that need its
 // filesystem (links, resolved location, the existing file).
@@ -114,7 +120,7 @@ func (w WriteSpec) validate(h Host) error {
 	case !h.InRoots(w.Root):
 		return bad("the folder is not inside a source root of the host")
 	case unsafeText(w.Root) || unsafeText(w.Rel) || unsafeText(w.Name) || unsafeText(w.Marker):
-		return bad("a name contains a NUL, newline, carriage return or backslash")
+		return bad("a name contains a NUL, newline, carriage return, backslash, ' or !")
 	case w.Name == "" || w.Name == "." || w.Name == ".." || strings.Contains(w.Name, "/") || len(w.Name) > 200:
 		return bad("the file name is not one plain name")
 	case w.Marker == "" || len(w.Marker) > 200:

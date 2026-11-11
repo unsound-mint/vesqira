@@ -14,16 +14,19 @@ export async function editorEnabled(): Promise<boolean> {
   }
 }
 
-export async function openTextFile(path: string): Promise<TextFile> {
-  return getJSON<TextFile>(`/api/files/text?${new URLSearchParams({ path })}`);
+/** `hostId` opens the file on that host (ADR 0029, host files) instead of on this computer. */
+export async function openTextFile(path: string, hostId = 0): Promise<TextFile> {
+  const q = new URLSearchParams({ path });
+  if (hostId > 0) q.set("hostId", String(hostId));
+  return getJSON<TextFile>(`/api/files/text?${q}`);
 }
 
 export type SaveResult = { status: "saved"; file: TextFile } | { status: "conflict"; current: TextFile; message: string };
 
 /** Saves over the version the file had when it was opened. A changed file is a "conflict" carrying what is on disk now; nothing was written. */
-export async function saveTextFile(path: string, content: string, base: TextVersion): Promise<SaveResult> {
+export async function saveTextFile(path: string, content: string, base: TextVersion, hostId = 0): Promise<SaveResult> {
   try {
-    const file = await putJSON<TextFile>("/api/files/text", { path, content, base: { size: base.size, mtime: base.mtime, sha256: base.sha256 } });
+    const file = await putJSON<TextFile>("/api/files/text", { path, content, base: { size: base.size, mtime: base.mtime, sha256: base.sha256 }, ...(hostId > 0 ? { hostId } : {}) });
     return { status: "saved", file };
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) {

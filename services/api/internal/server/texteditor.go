@@ -47,12 +47,15 @@ type textFile struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
 	textVersion
+	HostID int64  `json:"hostId,omitempty"` // the file is on this host (hosttext.go), not on this computer
+	Host   string `json:"host,omitempty"`   // that host's name
 }
 
 type textSave struct {
 	Path    string      `json:"path"`
 	Content string      `json:"content"`
 	Base    textVersion `json:"base"`
+	HostID  int64       `json:"hostId,omitempty"`
 }
 
 type textConflict struct {
@@ -81,6 +84,18 @@ func checkTextBytes(b []byte) (int, string) {
 	return 0, ""
 }
 
+// checkTextName refuses a file name the editor does not open: FITS and every extension outside the text allowlist.
+func checkTextName(name string) (int, string) {
+	ext := strings.ToLower(filepath.Ext(name))
+	switch {
+	case ext == ".fits" || ext == ".fit" || ext == ".fts" || ext == ".fz":
+		return 415, "that is a FITS file; the editor never opens or writes FITS"
+	case ext != "" && !editableExt[ext]:
+		return 415, "the editor opens text files only (toml, yaml, json, jl, py, sh, slurm, md, txt, cfg, ini) or files with no extension"
+	}
+	return 0, ""
+}
+
 // readOnlyRole says whether real sits under a data/raw or data/external folder of any root that holds it: source data
 // the project explorer marks read-only (discover.RoleOf is the scanner's own rule, so the two cannot disagree). The check
 // is made on the path below each root, so a root that itself lives under a folder called data/raw is not locked by it.
@@ -102,12 +117,8 @@ func (s *Server) openText(p string) (real string, fi os.FileInfo, data []byte, s
 	if role, ro := s.readOnlyRole(real); ro {
 		return "", nil, nil, 403, "that file is " + role + " source data (data/" + role + "), which Vesqira treats as read-only; the editor does not open it"
 	}
-	ext := strings.ToLower(filepath.Ext(real))
-	switch {
-	case ext == ".fits" || ext == ".fit" || ext == ".fts" || ext == ".fz":
-		return "", nil, nil, 415, "that is a FITS file; the editor never opens or writes FITS"
-	case ext != "" && !editableExt[ext]:
-		return "", nil, nil, 415, "the editor opens text files only (toml, yaml, json, jl, py, sh, slurm, md, txt, cfg, ini) or files with no extension"
+	if st, m := checkTextName(real); st != 0 {
+		return "", nil, nil, st, m
 	}
 	f, err := os.Open(real)
 	if err != nil {
@@ -143,6 +154,10 @@ func asTextFile(real string, fi os.FileInfo, data []byte) textFile {
 }
 
 func (s *Server) getText(w http.ResponseWriter, r *http.Request) {
+	if id := r.URL.Query().Get("hostId"); id != "" {
+		s.getHostText(w, r, id)
+		return
+	}
 	real, fi, data, status, msg := s.openText(r.URL.Query().Get("path"))
 	if status != 0 {
 		fail(w, status, msg)
@@ -183,6 +198,10 @@ func (s *Server) putText(w http.ResponseWriter, r *http.Request) {
 	}
 	if st, m := checkTextBytes([]byte(in.Content)); st != 0 { // FITS magic and NUL bytes; the UTF-8 case is covered above
 		fail(w, st, m)
+		return
+	}
+	if in.HostID != 0 {
+		s.putHostText(w, r, in)
 		return
 	}
 	if in.Base.Sha256 == "" || in.Base.Mtime == "" {

@@ -97,6 +97,54 @@ describe("the editor screen", () => {
   });
 });
 
+describe("a file on a host", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const host = { id: 3, name: "Cluster login" };
+
+  it("names the host in the title, opens and saves with the host id and takes the answer as the new base", async () => {
+    const calls = server((c) => (c.method === "GET" ? json(200, { ...file("ker = 8\n", "aaa"), hostId: 3, host: "Cluster login" }) : json(200, { ...file(c.body!.content, "bbb", "2"), hostId: 3, host: "Cluster login" })));
+    render(<EditorScreen path={PATH} host={host} onClose={() => {}} />);
+    const box = await screen.findByLabelText("Contents of pipeline.toml");
+    expect(screen.getByRole("dialog", { name: "Edit pipeline.toml on Cluster login" })).toBeTruthy();
+    expect(screen.getByText(/on Cluster login/)).toBeTruthy();
+    expect(calls[0]!.url).toContain("hostId=3");
+    await userEvent.type(box, "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByText("saved")).toBeTruthy());
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect((put.body as unknown as { hostId: number }).hostId).toBe(3);
+    expect(put.body?.base.sha256).toBe("aaa");
+  });
+
+  it("shows both versions when the file changed on the host, and keeping mine sends the host's current sha256", async () => {
+    let puts = 0;
+    const calls = server((c) => {
+      if (c.method === "GET") return json(200, file("mine = 0\n", "aaa"));
+      puts += 1;
+      if (puts === 1) return json(409, { error: "the file changed on the host since you opened it; nothing was written", current: file("theirs = 1\n", "ccc", "5") });
+      return json(200, file(c.body!.content, "ddd", "6"));
+    });
+    render(<EditorScreen path={PATH} host={host} onClose={() => {}} />);
+    await userEvent.type(await screen.findByLabelText("Contents of pipeline.toml"), "edit");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("heading", { name: "Changed on the host" })).toBeTruthy();
+    expect((screen.getByLabelText("On the host now") as HTMLTextAreaElement).value).toBe("theirs = 1\n");
+    expect((screen.getByLabelText("Your version") as HTMLTextAreaElement).value).toBe("mine = 0\nedit");
+    await userEvent.click(screen.getByRole("button", { name: "Keep mine…" }));
+    await userEvent.click(screen.getByRole("button", { name: "Overwrite the file on the host" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Changed on the host" })).toBeNull());
+    expect(calls.filter((c) => c.method === "PUT")[1]!.body?.base.sha256).toBe("ccc");
+  });
+
+  it("does not send a host id for a file on this computer", async () => {
+    const calls = server(() => json(200, file("a\n", "aaa")));
+    render(<EditorScreen path={PATH} onClose={() => {}} />);
+    await screen.findByLabelText("Contents of pipeline.toml");
+    expect(calls[0]!.url).not.toContain("hostId");
+    expect(screen.getByRole("dialog", { name: "Edit pipeline.toml" })).toBeTruthy();
+  });
+});
+
 describe("bytes the editor surface cannot show", () => {
   afterEach(() => vi.unstubAllGlobals());
 
