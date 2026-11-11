@@ -311,6 +311,10 @@ func (s *Server) retryTransfer(w http.ResponseWriter, r *http.Request) {
 	// Copying again after a mismatch compares contents (a same-size, same-time file would otherwise look finished) and may
 	// replace the copy this transfer itself made: that is what the owner asked for by pressing it.
 	won, err := s.Transfers.Requeue(t.ID, t.Verif.Status == transfers.Unverified)
+	if errors.Is(err, transfers.ErrNameTaken) {
+		fail(w, 409, "another transfer to the same folder is now writing "+tName(t)+"; wait for it or remove one of them")
+		return
+	}
 	if err != nil {
 		log.Printf("transfers: %v", err)
 		fail(w, 500, "internal error")
@@ -669,11 +673,19 @@ func (s *Server) notifyTransfer(t transfers.Transfer, h hosts.Host, kind, title,
 
 // end is what one side of a transfer looks like.
 type end struct {
-	kind string
-	size int64
-	real string
-	sha  string
+	kind  string
+	size  int64
+	real  string
+	sha   string
+	mtime int64 // seconds; 0 when not known
 }
+
+// kindReserved is a name that no file holds yet but another live transfer to the same folder has reserved.
+const kindReserved = "reserved"
+
+// identity is what a replace noted about the entry it was going to overwrite. A retry that finds the same entry there knows
+// nobody has touched the name since; any other entry means the name was lost.
+func (e end) identity() string { return fmt.Sprintf("%s:%d:%d", e.kind, e.size, e.mtime) }
 
 func (s *Server) localStat(p string) end {
 	st, err := os.Lstat(p)
@@ -683,15 +695,15 @@ func (s *Server) localStat(p string) end {
 	case st.Mode()&os.ModeSymlink != 0:
 		return end{kind: hosts.KindLink}
 	case st.IsDir():
-		return end{kind: hosts.KindDir, real: p}
+		return end{kind: hosts.KindDir, real: p, mtime: st.ModTime().Unix()}
 	case st.Mode().IsRegular():
-		return end{kind: hosts.KindFile, size: st.Size(), real: p}
+		return end{kind: hosts.KindFile, size: st.Size(), real: p, mtime: st.ModTime().Unix()}
 	}
 	return end{kind: hosts.KindOther}
 }
 
 func fromRemote(st hosts.RemoteStat) end {
-	return end{kind: st.Kind, size: st.Size, real: st.Real, sha: st.SHA}
+	return end{kind: st.Kind, size: st.Size, real: st.Real, sha: st.SHA, mtime: st.MTime}
 }
 
 // nameWithSuffix is "cube.fits" -> "cube (2).fits"; a folder or a name without an extension gets the suffix at the end.
@@ -758,13 +770,14 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 	}
 
 	final := t.FinalName
+	replaced := ""
 	skipCopy := false
 	if final == "" { // the first attempt: the conflict check, once; its answer is stored so a retry resumes the same file
-		o, name := s.resolveConflict(ctx, t, h, destReal, src)
+		o, name, was := s.resolveConflict(ctx, t, h, destReal, src)
 		if o != nil {
 			return *o
 		}
-		final = name
+		final, replaced = name, was
 	} else {
 		// A retry. The partial file is in PartialDir, so nothing may be at the chosen name unless this transfer put it there.
 		switch {
@@ -784,7 +797,11 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 			if err != nil {
 				return classify(err)
 			}
-			if cur.kind != hosts.KindAbsent {
+			switch {
+			case cur.kind == hosts.KindAbsent:
+			case t.Policy == transfers.PolicyReplace && final == t.Name && t.Replaced != "" && cur.identity() == t.Replaced:
+				// the file this replace was going to overwrite, unchanged since the first check: the partial file is resumed
+			default:
 				return s.nameLost(t, final, "something else was put there after this transfer was queued")
 			}
 		}
@@ -793,7 +810,29 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 	if src.kind == hosts.KindFile {
 		total = src.size
 	}
-	if err := s.Transfers.Plan(t.ID, src.kind, total, final); err != nil {
+	spec := hosts.RsyncSpec{Direction: t.Direction, Dir: src.kind == hosts.KindDir, BwlimitKBps: t.BwlimitKBps, Compress: t.Compress,
+		IgnoreExisting: t.Policy != transfers.PolicyReplace && !t.Checksum, Checksum: t.Checksum, HostRsyncPath: hr.Path}
+	if download {
+		spec.Local, spec.Remote = filepath.Join(destReal, final), src.real
+	} else {
+		spec.Local, spec.Remote = src.real, path.Join(destReal, final)
+	}
+	if !skipCopy {
+		if !download {
+			if err := s.Remote.CheckUploadTarget(ctx, h, t.DestDir, final); err != nil {
+				return classify(err)
+			}
+		}
+		if src.kind == hosts.KindDir && t.Policy == transfers.PolicyReplace {
+			if o := s.typeConflicts(ctx, t, h, spec, destReal, final); o != nil {
+				return *o
+			}
+		}
+	}
+	if err := s.Transfers.Plan(t.ID, src.kind, total, final, replaced); err != nil {
+		if errors.Is(err, transfers.ErrNameTaken) {
+			return outcome{state: transfers.StateConflict, detail: fmt.Sprintf("%s was just taken by another transfer to the same folder. Nothing was changed; choose what to do.", final)}
+		}
 		return failed("could not record the transfer: %v", err)
 	}
 
@@ -808,13 +847,6 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 		}
 	}
 
-	spec := hosts.RsyncSpec{Direction: t.Direction, Dir: src.kind == hosts.KindDir, BwlimitKBps: t.BwlimitKBps, Compress: t.Compress,
-		IgnoreExisting: t.Policy != transfers.PolicyReplace && !t.Checksum, Checksum: t.Checksum, HostRsyncPath: hr.Path}
-	if download {
-		spec.Local, spec.Remote = filepath.Join(destReal, final), src.real
-	} else {
-		spec.Local, spec.Remote = src.real, path.Join(destReal, final)
-	}
 	if !skipCopy {
 		argv, err := s.Remote.RsyncArgv(h, spec)
 		if err != nil {
@@ -865,6 +897,31 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 	return s.verify(ctx, t, h, spec, src, destReal, final)
 }
 
+// folderDifferencesNote says in words what a folder's verifying dry run found. Entries the copy skipped on purpose (links that
+// point outside the folder, special files) come first: nothing was transferred for them, so the folder is not a full copy.
+func folderDifferencesNote(d hosts.Differences) string {
+	names := func(a []string) string {
+		shown := a[:min(len(a), 5)]
+		out := strings.Join(shown, ", ")
+		if len(a) > len(shown) {
+			out += fmt.Sprintf(" and %d more", len(a)-len(shown))
+		}
+		return clipText(out, 300)
+	}
+	var parts []string
+	if len(d.Links) > 0 {
+		parts = append(parts, fmt.Sprintf("%d symbolic link(s) in the source were not copied, because a link that points outside the folder is never copied (or is missing in the copy): %s", len(d.Links), names(d.Links)))
+	}
+	if len(d.Specials) > 0 {
+		parts = append(parts, fmt.Sprintf("%d special file(s) (device, pipe or socket) in the source were not copied: %s", len(d.Specials), names(d.Specials)))
+	}
+	if len(d.Other) > 0 {
+		shown := strings.Join(d.Other[:min(len(d.Other), 5)], "; ")
+		parts = append(parts, fmt.Sprintf("rsync's content comparison found %d other difference(s): %s", len(d.Other), clipText(shown, 300)))
+	}
+	return strings.Join(parts, ". ")
+}
+
 func clipText(s string, n int) string {
 	if r := []rune(s); len(r) > n {
 		return string(r[:n]) + "…"
@@ -890,6 +947,89 @@ func (s *Server) lookDest(ctx context.Context, t transfers.Transfer, h hosts.Hos
 	return fromRemote(st), err
 }
 
+// typeConflicts stops a folder replace that would delete something the owner has. rsync turns an entry of the other type into
+// the source's by deleting it first: a symbolic link called sub at the destination, where the source has a folder sub, is removed
+// and replaced by a real folder (and a file by a folder, a link by a file). A dry run (no --delete, so it lists only what the copy
+// would create) names every entry that is new to rsync; one of those that already exists at the destination is exactly such a
+// clash. It returns nil when there is none, otherwise the outcome that asks the owner, with nothing changed.
+func (s *Server) typeConflicts(ctx context.Context, t transfers.Transfer, h hosts.Host, spec hosts.RsyncSpec, destReal, final string) *outcome {
+	download := t.Direction == hosts.Download
+	cur, err := s.lookDest(ctx, t, h, destReal, final, false)
+	if err != nil {
+		o := classify(err)
+		return &o
+	}
+	if cur.kind != hosts.KindDir {
+		return nil // nothing there yet (or the kind check refuses it elsewhere): there is nothing to delete
+	}
+	spec.Preflight = true
+	argv, err := s.Remote.RsyncArgv(h, spec)
+	if err != nil {
+		o := classify(err)
+		return &o
+	}
+	res, err := s.Remote.RunRsync(ctx, argv, nil)
+	if err != nil {
+		o := classify(err)
+		return &o
+	}
+	switch {
+	case ctx.Err() != nil:
+		return &outcome{state: transfers.StateCancelled}
+	case res.ExitCode != 0 && hosts.RsyncExitRetryable(res.ExitCode):
+		return &outcome{state: "retry", detail: "the connection was lost while looking at the destination folder: " + clipText(res.Stderr, 200)}
+	case res.ExitCode != 0:
+		o := failed("looking at the destination folder before replacing it failed (rsync exit %d): %s. Nothing was changed.", res.ExitCode, clipText(res.Stderr, 300))
+		return &o
+	}
+	rels := hosts.NewEntries(res.Listing)
+	var exist []string
+	if download {
+		for _, r := range rels {
+			if !filepath.IsLocal(r) {
+				continue
+			}
+			if _, err := os.Lstat(filepath.Join(destReal, final, r)); err == nil {
+				exist = append(exist, r)
+			}
+		}
+	} else if len(rels) > 0 {
+		if exist, err = s.Remote.ExistingAmong(ctx, h, t.DestDir, final, rels); err != nil {
+			o := classify(err)
+			return &o
+		}
+	}
+	// report the outermost entries only: a clash at sub makes everything below it one too
+	var top []string
+	for _, r := range exist {
+		nested := false
+		for _, o := range exist {
+			if o != r && strings.HasPrefix(r, o+"/") {
+				nested = true
+				break
+			}
+		}
+		if !nested {
+			top = append(top, r)
+		}
+	}
+	if len(top) == 0 {
+		return nil
+	}
+	_ = s.Transfers.ClearFinalName(t.ID)
+	shown := top[:min(len(top), 5)]
+	more := ""
+	if len(top) > len(shown) {
+		more = fmt.Sprintf(" and %d more", len(top)-len(shown))
+	}
+	where := "on this computer"
+	if !download {
+		where = "on " + h.Name
+	}
+	return &outcome{state: transfers.StateConflict, detail: fmt.Sprintf("Replacing %s would delete %d entr%s %s that %s of another type than the one in the source (a link, file or folder where the source has a different one): %s%s. Nothing was changed. Move or remove them yourself and choose Replace again, or choose Keep both.",
+		final, len(top), map[bool]string{true: "y", false: "ies"}[len(top) == 1], where, map[bool]string{true: "is", false: "are"}[len(top) == 1], strings.Join(shown, ", "), more)}
+}
+
 // nameLost answers a retry that finds the destination changed under it: the transfer goes back to asking, nothing at the
 // destination is touched, and a partial file of a download that was only going to be resumed under the abandoned name is deleted.
 func (s *Server) nameLost(t transfers.Transfer, name, why string) outcome {
@@ -902,17 +1042,29 @@ func (s *Server) nameLost(t transfers.Transfer, name, why string) outcome {
 
 // resolveConflict looks at the name at the destination and applies the transfer's policy. It returns a finished outcome
 // (conflict, skipped, already there, failed, retry) or nil with the name to use. Nothing at the destination is touched.
-func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h hosts.Host, destReal string, src end) (*outcome, string) {
+func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h hosts.Host, destReal string, src end) (*outcome, string, string) {
 	download := t.Direction == hosts.Download
-	look := func(name string, hash bool) (end, error) { return s.lookDest(ctx, t, h, destReal, name, hash) }
-	ret := func(o outcome) (*outcome, string) { return &o, "" }
+	// A name counts as taken when the folder holds it or another live transfer to the same side and folder has reserved it: that
+	// transfer's file sits in the partial folder until it ends, so the folder alone would say the name is free.
+	look := func(name string, hash bool) (end, error) {
+		e, err := s.lookDest(ctx, t, h, destReal, name, hash)
+		if err != nil || e.kind != hosts.KindAbsent || hash {
+			return e, err
+		}
+		held, err := s.Transfers.NameHeld(t, name)
+		if err == nil && held {
+			return end{kind: kindReserved}, nil
+		}
+		return e, err
+	}
+	ret := func(o outcome) (*outcome, string, string) { return &o, "", "" }
 	existing, err := look(t.Name, false)
 	if err != nil {
 		o := classify(err)
-		return &o, ""
+		return &o, "", ""
 	}
 	if existing.kind == hosts.KindAbsent {
-		return nil, t.Name
+		return nil, t.Name, ""
 	}
 	where := "on this computer"
 	if !download {
@@ -936,7 +1088,7 @@ func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h ho
 		for _, e := range []error{aerr, berr} {
 			if e != nil {
 				o := classify(e)
-				return &o, ""
+				return &o, "", ""
 			}
 		}
 		if a.sha != "" && a.sha == b.sha {
@@ -949,6 +1101,12 @@ func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h ho
 	if existing.kind == hosts.KindFile {
 		what = fmt.Sprintf("a file of %s", fmtBytes(existing.size))
 	}
+	if existing.kind == kindReserved {
+		what = "a name that another transfer in the queue is writing there"
+		if t.Policy != transfers.PolicySkip && t.Policy != transfers.PolicyKeepBoth {
+			return ret(outcome{state: transfers.StateConflict, detail: fmt.Sprintf("%s is being written %s by another transfer that has not finished. Nothing was changed; wait for it, or choose Keep both or Skip.", t.Name, where)})
+		}
+	}
 	switch t.Policy {
 	case transfers.PolicySkip:
 		return ret(outcome{state: transfers.StateSkipped, detail: fmt.Sprintf("%s is already %s (%s); left as it is and nothing was transferred.", t.Name, where, what)})
@@ -958,10 +1116,10 @@ func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h ho
 			e, err := look(name, false)
 			if err != nil {
 				o := classify(err)
-				return &o, ""
+				return &o, "", ""
 			}
 			if e.kind == hosts.KindAbsent {
-				return nil, name
+				return nil, name, ""
 			}
 		}
 		return ret(failed("there are already 98 copies named like %s; remove some or pick another name", t.Name))
@@ -969,7 +1127,7 @@ func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h ho
 		if existing.kind != src.kind {
 			return ret(failed("%s is already %s and is %s, while the source is a %s; Vesqira will not replace one kind with another", t.Name, where, what, src.kind))
 		}
-		return nil, t.Name
+		return nil, t.Name, existing.identity()
 	}
 	return ret(outcome{state: transfers.StateConflict, detail: fmt.Sprintf("%s is already %s (%s) and differs from the source (%s). Nothing was changed; choose what to do.",
 		t.Name, where, what, sourceWords(src))})
@@ -1008,9 +1166,7 @@ func (s *Server) verify(ctx context.Context, t transfers.Transfer, h hosts.Host,
 		case res.ExitCode != 0:
 			return done(transfers.Verif{Status: transfers.Unverified, Method: transfers.MethodChecksum, Note: "the check could not be completed: " + clipText(res.Stderr, 300)}, "The folder arrived but could not be checked.")
 		case strings.TrimSpace(res.Listing) != "":
-			lines := strings.Split(strings.TrimSpace(res.Listing), "\n")
-			shown := strings.Join(lines[:min(len(lines), 5)], "; ")
-			return done(transfers.Verif{Status: transfers.Unverified, Method: transfers.MethodChecksum, Note: fmt.Sprintf("rsync's content comparison found %d difference(s): %s", len(lines), clipText(shown, 300))}, "The folder arrived but differs from the source.")
+			return done(transfers.Verif{Status: transfers.Unverified, Method: transfers.MethodChecksum, Note: folderDifferencesNote(hosts.ParseDifferences(res.Listing))}, "The folder arrived but differs from the source.")
 		}
 		return done(transfers.Verif{Status: transfers.Verified, Method: transfers.MethodChecksum,
 			Note: "Every file in the folder was compared by content with rsync's checksum in a dry run (rsync's checksum, not SHA-256), and the file lists are equal."},

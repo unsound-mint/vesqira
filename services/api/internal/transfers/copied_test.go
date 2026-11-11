@@ -13,7 +13,7 @@ func TestCopiedAndWrittenHashDecideWhatARetryMayTouch(t *testing.T) {
 	a := newT(t, s, 1, "a")
 	now := time.Now()
 	s.Claim(a.ID, now)
-	s.Plan(a.ID, "file", 100, "a (2)")
+	s.Plan(a.ID, "file", 100, "a (2)", "")
 	if got, _ := s.Get(a.ID); got.Copied || got.WrittenSHA != "" {
 		t.Fatalf("%+v", got)
 	}

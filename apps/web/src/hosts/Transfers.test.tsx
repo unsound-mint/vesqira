@@ -124,6 +124,20 @@ describe("the transfers panel", () => {
     expect(within(up).getByText("to Cluster")).toBeInTheDocument();
   });
 
+  it("says that copying a folder again overwrites differing files, and only does it after a second click", async () => {
+    const calls = mockFetch([
+      tr({ id: 4, name: "run1", finalName: "run1", kind: "dir", state: "done", verification: { status: "unverified", method: "rsync-checksum", note: "rsync's content comparison found 1 other difference(s): >fc.t...... a.fits", sourceSha256: "", destSha256: "", bytes: 0 } }),
+    ]);
+    render(<Transfers hosts={[host]} />);
+    const item = await screen.findByRole("listitem", { name: "Download run1" });
+    expect(within(item).queryByRole("button", { name: "Copy again and compare contents" })).not.toBeInTheDocument();
+    await userEvent.click(within(item).getByRole("button", { name: "Copy again, overwriting differing files…" }));
+    expect(calls.some((c) => c.url.endsWith("/retry"))).toBe(false);
+    expect(within(item).getByText(/overwrites each one/)).toHaveTextContent("including a file you edited there");
+    await userEvent.click(within(item).getByRole("button", { name: "Overwrite differing files" }));
+    expect(calls.filter((c) => c.url === "/api/transfers/4/retry")).toHaveLength(1);
+  });
+
   it("asks for a decision on a conflict, and Replace needs a second, explicit click", async () => {
     const calls = mockFetch([tr({ state: "conflict", detail: "cube.fits is already on this computer (a file of 7.0 KiB) and differs from the source. Nothing was changed; choose what to do." })]);
     render(<Transfers hosts={[host]} />);

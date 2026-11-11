@@ -180,9 +180,9 @@ func clip(s string, n int) string {
 // probeScript prints where the host's rsync is, its version line, and whether a sha256 tool exists. Under a login shell,
 // so a module-provided rsync is found the way the other host commands find their tools.
 var probeScript = oneLine(`
-p=$(command -v rsync 2>/dev/null); echo "vesqira-probe: path $p";
-if [ -n "$p" ]; then echo "vesqira-probe: version $(rsync --version 2>/dev/null | head -n 1)"; fi;
-if command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then echo "vesqira-probe: sha yes"; else echo "vesqira-probe: sha no"; fi;
+p=$(command -v rsync 2>/dev/null); printf '%s\n' "vesqira-probe: path $p";
+if [ -n "$p" ]; then printf '%s\n' "vesqira-probe: version $(rsync --version 2>/dev/null | head -n 1)"; fi;
+if command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then printf '%s\n' "vesqira-probe: sha yes"; else printf '%s\n' "vesqira-probe: sha no"; fi;
 `)
 
 // HostRsync is what a host offers for transfers.
@@ -234,28 +234,31 @@ func (m *Manager) HostRsyncProbe(ctx context.Context, h Host) (HostRsync, error)
 // statScript runs under sh with four arguments: root, dir, name and the mode ("stat" or "hash"). It resolves the root and dir,
 // refuses a dir that resolves outside the root, and reports the entry Name inside it (or the dir itself when name is empty):
 //
-//	vesqira-stat: refused:<reason> | absent | link | other | dir | file <bytes> <sha256 or -> <resolved path>
+//	vesqira-stat: refused:<reason> | absent | link | other | dir 0 - <mtime> <resolved path> | file <bytes> <sha256 or -> <mtime> <resolved path>
 //
 // It never creates, changes or deletes anything. A final component that is a symbolic link is reported as "link" and never
-// followed. Hashing needs sha256sum or shasum; without either the hash is "-" and the caller says so.
+// followed. Hashing needs sha256sum or shasum; without either the hash is "-" and the caller says so. The modification time is
+// seconds since the epoch, "-" when the host's stat does not say. Paths are printed with printf: a path may hold a backslash
+// (the resolved one can, through a link), which dash's echo would interpret.
 var statScript = oneLine(`
 tag=vesqira-stat; root=$1; dir=$2; name=$3; mode=$4;
-refuse() { echo "$tag: refused:$1"; exit 0; };
+refuse() { printf '%s\n' "$tag: refused:$1"; exit 0; };
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d" " -f1; else shasum -a 256 | cut -d" " -f1; fi; };
 havesha() { command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; };
 rootp=$(cd -- "$root" 2>/dev/null && pwd -P) || refuse root;
 real=$(cd -- "$dir" 2>/dev/null && pwd -P) || refuse absent;
 case "$real" in "$rootp"|"$rootp"/*) ;; *) refuse escape;; esac;
 if [ -n "$name" ]; then t="$real/$name"; else t=$real; fi;
-if [ -L "$t" ]; then echo "$tag: link"; exit 0; fi;
-if [ ! -e "$t" ]; then echo "$tag: absent"; exit 0; fi;
-if [ -d "$t" ]; then echo "$tag: dir 0 - $t"; exit 0; fi;
+if [ -L "$t" ]; then printf '%s\n' "$tag: link"; exit 0; fi;
+if [ ! -e "$t" ]; then printf '%s\n' "$tag: absent"; exit 0; fi;
+mt=$(stat -c %Y -- "$t" 2>/dev/null || stat -f %m -- "$t" 2>/dev/null); case "$mt" in ""|*[!0-9]*) mt=-;; esac;
+if [ -d "$t" ]; then printf '%s\n' "$tag: dir 0 - $mt $t"; exit 0; fi;
 if [ -f "$t" ]; then
   n=$(wc -c < "$t" | tr -d " "); s=-;
   if [ "$mode" = hash ] && havesha; then s=$(sha < "$t") || refuse io; fi;
-  echo "$tag: file $n $s $t"; exit 0;
+  printf '%s\n' "$tag: file $n $s $mt $t"; exit 0;
 fi;
-echo "$tag: other";
+printf '%s\n' "$tag: other";
 `)
 
 // Entry kinds reported by StatPath.
@@ -273,6 +276,8 @@ type RemoteStat struct {
 	Size int64
 	SHA  string // "" unless hashed; "-" is never returned: no tool means ""
 	Real string // the resolved path of the entry
+	// MTime is the modification time in seconds; 0 when the host did not say.
+	MTime int64
 }
 
 type statRefusal string
@@ -321,15 +326,20 @@ func (m *Manager) StatPath(ctx context.Context, h Host, dir, name string, hash b
 	case rest == KindAbsent || rest == KindLink || rest == KindOther:
 		return RemoteStat{Kind: rest}, nil
 	case strings.HasPrefix(rest, "dir ") || strings.HasPrefix(rest, "file "):
-		f := strings.SplitN(rest, " ", 4)
-		if len(f) != 4 {
+		f := strings.SplitN(rest, " ", 5)
+		if len(f) != 5 {
 			break
 		}
 		n, nerr := strconv.ParseInt(f[1], 10, 64)
 		if nerr != nil || n < 0 {
 			break
 		}
-		st := RemoteStat{Kind: f[0], Size: n, Real: f[3]}
+		st := RemoteStat{Kind: f[0], Size: n, Real: f[4]}
+		if f[3] != "-" {
+			if mt, merr := strconv.ParseInt(f[3], 10, 64); merr == nil && mt > 0 {
+				st.MTime = mt
+			}
+		}
 		if f[2] != "-" {
 			if len(f[2]) != 64 {
 				break
@@ -399,6 +409,7 @@ type RsyncSpec struct {
 	IgnoreExisting bool // never overwrite a file that is there now (every policy but an explicit replace)
 	Checksum       bool // compare contents, not size and time (a retry after a mismatch)
 	VerifyOnly     bool // dry run comparing contents both ways, listing every difference; changes nothing
+	Preflight      bool // dry run listing what the copy would create, to find entries it would have to delete; changes nothing
 	HostRsyncPath  string
 }
 
@@ -441,7 +452,8 @@ func relDirSlash(p string) string { return strings.TrimRight(p, "/") + "/" }
 //
 //	-rltp            recurse, keep links as links, times and permissions. Not owner, group or devices (-a): they mean
 //	                 nothing without root and a special file does not belong in a research folder.
-//	--safe-links     a link inside a copied folder that points outside the copied tree is dropped, not copied.
+//	--safe-links     a link inside a copied folder that points outside the copied tree is dropped, not copied. The
+//	                 verifying dry run leaves it out (and adds -D) so that every entry the copy skipped shows up as a difference.
 //	--protect-args   the remote path is not parsed by the host's shell.
 //	--partial-dir    an unfinished file lives in PartialDir, never under its final name; a retry resumes from it.
 //	--timeout        an attempt whose connection stays open but silent for ten minutes ends and is retried.
@@ -471,12 +483,21 @@ func (m *Manager) RsyncArgv(h Host, s RsyncSpec) ([]string, error) {
 	}
 	argv := []string{m.rsyncBin(), "-rltp", "--safe-links", "--protect-args", "--partial-dir=" + PartialDir,
 		"--timeout=" + strconv.Itoa(IOTimeout), "--no-i-r", "-e", rsh}
+	if s.VerifyOnly {
+		// Without --safe-links and with -D (devices and special files), what the copy dropped silently is a difference: a link
+		// that points outside the folder, a fifo or a socket. They are never copied, so the folder cannot be called verified.
+		argv = []string{m.rsyncBin(), "-rltpD", "--protect-args", "--partial-dir=" + PartialDir,
+			"--timeout=" + strconv.Itoa(IOTimeout), "--no-i-r", "-e", rsh}
+	}
 	if s.HostRsyncPath != "" && s.HostRsyncPath != "rsync" && safeRsyncPath.MatchString(s.HostRsyncPath) {
 		argv = append(argv, "--rsync-path="+s.HostRsyncPath)
 	}
-	if s.VerifyOnly {
+	switch {
+	case s.Preflight:
+		argv = append(argv, "-n", "--itemize-changes", "-8")
+	case s.VerifyOnly:
 		argv = append(argv, "-n", "--checksum", "--delete", "--itemize-changes")
-	} else {
+	default:
 		argv = append(argv, "--info=progress2", "--no-h")
 		if s.Checksum {
 			argv = append(argv, "--checksum")
@@ -554,10 +575,12 @@ type RsyncResult struct {
 }
 
 // RsyncExitRetryable says whether an exit code is a lost or stalled connection (worth another attempt that resumes) rather
-// than a refusal. 23 and 24 (a file could not be read, or vanished) and 11 (a full disk) are not retried: they repeat.
+// than a refusal. 20 is rsync's exit for a SIGTERM or SIGINT it received (something outside Vesqira stopped it, for example the
+// host's login node killing it; a cancel by the owner is recognised before this is asked). 23 and 24 (a file could not be read,
+// or vanished) and 11 (a full disk) are not retried: they repeat.
 func RsyncExitRetryable(code int) bool {
 	switch code {
-	case -1, 5, 10, 12, 14, 30, 35, 255:
+	case -1, 5, 10, 12, 14, 20, 30, 35, 255:
 		return true
 	}
 	return false
@@ -609,6 +632,7 @@ func (m *Manager) RunRsync(ctx context.Context, argv []string, onProgress func(P
 	cmd := exec.CommandContext(ctx, bin, argv[1:]...)
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 20 * time.Second
+	dieWithParent(cmd)
 	// An explicit environment: nothing from the caller's RSYNC_* or SSH_* variables, and C numbers (no locale separators).
 	cmd.Env = append([]string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C"}, m.env()...)
 	stderr := &tail{max: 4096}

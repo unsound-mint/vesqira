@@ -15,6 +15,8 @@ import (
 var (
 	ErrNotFound = errors.New("not found")
 	ErrState    = errors.New("the transfer is not in a state that allows this")
+	// ErrNameTaken: another live transfer to the same folder holds the final name.
+	ErrNameTaken = errors.New("another transfer is already writing that name in that folder")
 )
 
 // States. queued and waiting are runnable (waiting: a retry after a failure, not before NextAt); running and verifying
@@ -90,8 +92,11 @@ type Transfer struct {
 	Verif       Verif      `json:"verification"`
 	// Copied is set when rsync finished for the chosen name, so the file there is this transfer's own; WrittenSHA is the hash of
 	// that file when it was checked. Neither is shown: they decide whether a retry may touch what is at the destination.
-	Copied     bool       `json:"-"`
-	WrittenSHA string     `json:"-"`
+	Copied     bool   `json:"-"`
+	WrittenSHA string `json:"-"`
+	// Replaced is the identity (kind, size, modification time) of the entry that a replace was going to overwrite, noted at the
+	// first check: a retry that finds the same entry there knows nobody else touched the name; a different one means the name was lost.
+	Replaced   string     `json:"-"`
 	DatasetID  *int64     `json:"datasetId"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	StartedAt  *time.Time `json:"startedAt"`
@@ -119,7 +124,7 @@ func Open(db *sql.DB) (*Store, error) {
 
 const cols = `id,host_id,direction,kind,source_path,dest_dir,name,final_name,policy,state,detail,total_bytes,done_bytes,rate_bps,eta_s,
 	bwlimit_kbps,compress,checksum,attempts,fails,next_at,warning,verif_status,verif_method,verif_note,src_sha,dst_sha,verif_bytes,dataset_id,
-	created_at,started_at,finished_at,copied,written_sha`
+	created_at,started_at,finished_at,copied,written_sha,replaced`
 
 func ts(n sql.NullInt64) *time.Time {
 	if !n.Valid {
@@ -136,7 +141,7 @@ func scan(row interface{ Scan(...any) error }) (Transfer, error) {
 	var created int64
 	err := row.Scan(&t.ID, &t.HostID, &t.Direction, &t.Kind, &t.SourcePath, &t.DestDir, &t.Name, &t.FinalName, &t.Policy, &t.State, &t.Detail,
 		&t.TotalBytes, &t.DoneBytes, &t.RateBps, &t.EtaSeconds, &t.BwlimitKBps, &compress, &checksum, &t.Attempts, &t.Fails, &next, &t.Warning,
-		&t.Verif.Status, &t.Verif.Method, &t.Verif.Note, &t.Verif.SourceSHA256, &t.Verif.DestSHA256, &t.Verif.Bytes, &ds, &created, &started, &finished, &copied, &t.WrittenSHA)
+		&t.Verif.Status, &t.Verif.Method, &t.Verif.Note, &t.Verif.SourceSHA256, &t.Verif.DestSHA256, &t.Verif.Bytes, &ds, &created, &started, &finished, &copied, &t.WrittenSHA, &t.Replaced)
 	if err != nil {
 		return Transfer{}, err
 	}
@@ -253,10 +258,31 @@ func (s *Store) Claim(id int64, now time.Time) (bool, error) {
 
 // Plan records what the first attempt found: the kind, the size if known, the name chosen after the conflict check. The
 // final name is written once; a later attempt keeps it (the unfinished file is named after it).
-func (s *Store) Plan(id int64, kind string, total int64, finalName string) error {
-	_, err := s.db.Exec(`UPDATE transfers SET kind=?, total_bytes=CASE WHEN ?>0 THEN ? ELSE total_bytes END, final_name=CASE WHEN final_name='' THEN ? ELSE final_name END WHERE id=?`,
-		kind, total, total, finalName, id)
+// replaced is the identity of the entry a replace will overwrite ("" when there is none). It returns ErrNameTaken when another
+// live transfer to the same folder already holds the name (the unique index decides, so two transfers on different hosts cannot
+// both get it).
+func (s *Store) Plan(id int64, kind string, total int64, finalName, replaced string) error {
+	_, err := s.db.Exec(`UPDATE transfers SET kind=?, total_bytes=CASE WHEN ?>0 THEN ? ELSE total_bytes END,
+		replaced=CASE WHEN final_name='' THEN ? ELSE replaced END, final_name=CASE WHEN final_name='' THEN ? ELSE final_name END WHERE id=?`,
+		kind, total, total, replaced, finalName, id)
+	return nameTaken(err)
+}
+
+func nameTaken(err error) error {
+	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		return ErrNameTaken
+	}
 	return err
+}
+
+// NameHeld says whether another live transfer to the same side and folder has reserved name as its final name. A download's
+// side is this computer; an upload's is its host.
+func (s *Store) NameHeld(t Transfer, name string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM transfers WHERE id<>? AND final_name=? AND dest_dir=?
+		AND (CASE direction WHEN 'download' THEN 0 ELSE host_id END)=(CASE ? WHEN 'download' THEN 0 ELSE ? END)
+		AND state IN ('queued','waiting','running','verifying')`, t.ID, name, t.DestDir, t.Direction, t.HostID).Scan(&n)
+	return n > 0, err
 }
 
 func (s *Store) SetWarning(id int64, w string) error {
@@ -290,7 +316,7 @@ func (s *Store) Verifying(id int64) (bool, error) {
 // ClearFinalName forgets the chosen name, so the next attempt runs the conflict check again. It is used when the name chosen
 // earlier is no longer free (something else was put there) or the file there is no longer the one this transfer wrote.
 func (s *Store) ClearFinalName(id int64) error {
-	_, err := s.db.Exec(`UPDATE transfers SET final_name='', copied=0, written_sha='' WHERE id=?`, id)
+	_, err := s.db.Exec(`UPDATE transfers SET final_name='', copied=0, written_sha='', replaced='' WHERE id=?`, id)
 	return err
 }
 
@@ -356,7 +382,7 @@ func (s *Store) Requeue(id int64, checksum bool) (bool, error) {
 		verif_status='', verif_method='', verif_note='', src_sha='', dst_sha='', verif_bytes=0
 		WHERE id=? AND (state IN ('failed','cancelled') OR (state='done' AND verif_status='unverified'))`, b2i(checksum), id)
 	if err != nil {
-		return false, err
+		return false, nameTaken(err) // the name this transfer held was taken by another one while it was finished
 	}
 	n, _ := res.RowsAffected()
 	return n == 1, nil

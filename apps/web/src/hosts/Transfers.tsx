@@ -33,6 +33,7 @@ export function Transfers({ hosts, onRegistered }: { hosts: Host[]; onRegistered
   const [err, setErr] = useState<string | null>(null);
   const [rowErr, setRowErr] = useState<Record<number, string>>({});
   const [confirm, setConfirm] = useState<number | null>(null);
+  const [confirmAgain, setConfirmAgain] = useState<number | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [absent, setAbsent] = useState(false); // a server started without the queue answers 404: nothing to show
   const alive = useRef(true);
@@ -135,8 +136,22 @@ export function Transfers({ hosts, onRegistered }: { hosts: Host[]; onRegistered
                   <Button type="button" onClick={() => void act(t.id, () => cancelTransfer(t.id, true))}>Cancel and delete the partial file</Button>
                 ) : null}
                 {t.state === "failed" || t.state === "cancelled" ? <Button type="button" onClick={() => void act(t.id, () => retryTransfer(t.id))}>Try again</Button> : null}
-                {t.state === "done" && t.verification.status === "unverified" ? (
+                {t.state === "done" && t.verification.status === "unverified" && t.kind !== "dir" ? (
                   <Button type="button" onClick={() => void act(t.id, () => retryTransfer(t.id))}>Copy again and compare contents</Button>
+                ) : null}
+                {t.state === "done" && t.verification.status === "unverified" && t.kind === "dir" ? (
+                  confirmAgain === t.id ? (
+                    <>
+                      <span className={s.note}>
+                        Copying again compares every file by content and overwrites each one in <span className="mono">{t.destPath}</span> that differs from the
+                        source, including a file you edited there. Files that exist only in the destination are kept.
+                      </span>
+                      <Button type="button" onClick={() => { setConfirmAgain(null); void act(t.id, () => retryTransfer(t.id)); }}>Overwrite differing files</Button>
+                      <Button type="button" onClick={() => setConfirmAgain(null)}>Leave it</Button>
+                    </>
+                  ) : (
+                    <Button type="button" onClick={() => setConfirmAgain(t.id)}>Copy again, overwriting differing files…</Button>
+                  )
                 ) : null}
                 {t.state === "done" && t.direction === "download" && t.kind === "file" && t.verification.status === "verified" ? (
                   t.datasetId != null ? (

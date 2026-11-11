@@ -62,7 +62,7 @@ func TestRetryWaitsUntilItsTimeAndTheFinalNameIsWrittenOnce(t *testing.T) {
 	a := newT(t, s, 1, "a.fits")
 	now := time.Now()
 	s.Claim(a.ID, now)
-	if err := s.Plan(a.ID, "file", 5000, "a (2).fits"); err != nil {
+	if err := s.Plan(a.ID, "file", 5000, "a (2).fits", ""); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := s.Retry(a.ID, []string{StateRunning}, now.Add(time.Minute), 3, "the connection dropped"); !ok || err != nil {
@@ -75,7 +75,7 @@ func TestRetryWaitsUntilItsTimeAndTheFinalNameIsWrittenOnce(t *testing.T) {
 		t.Fatalf("a waiting transfer is not due after its time")
 	}
 	// a second plan (the next attempt) does not rename it: the partial file is keyed by the first name
-	s.Plan(a.ID, "file", 5000, "a (3).fits")
+	s.Plan(a.ID, "file", 5000, "a (3).fits", "")
 	got, _ := s.Get(a.ID)
 	if got.FinalName != "a (2).fits" || got.DestPath != "/l/a (2).fits" || got.Fails != 3 || got.Kind != "file" || got.TotalBytes != 5000 {
 		t.Fatalf("%+v", got)
@@ -163,7 +163,7 @@ func TestTheQueueSurvivesARestart(t *testing.T) {
 	run, wait, done := newT(t, s, 1, "run"), newT(t, s, 1, "wait"), newT(t, s, 2, "done")
 	now := time.Now()
 	s.Claim(run.ID, now)
-	s.Plan(run.ID, "file", 1000, "run")
+	s.Plan(run.ID, "file", 1000, "run", "")
 	s.Progress(run.ID, 400, 1000, 1, 1)
 	s.Claim(wait.ID, now)
 	s.Retry(wait.ID, []string{StateRunning}, now.Add(time.Hour), 2, "dropped")
@@ -227,5 +227,51 @@ func TestLinkDatasetSurvivesAndIsClearedWhenTheDatasetIsDeleted(t *testing.T) {
 	}
 	if got, _ := s.Get(a.ID); got.DatasetID != nil {
 		t.Fatalf("%+v", got)
+	}
+}
+
+// A final name belongs to one live transfer per side and folder; the unique index decides, so two writers cannot both get it.
+func TestAFinalNameIsHeldByOneLiveTransferPerSideAndFolder(t *testing.T) {
+	_, s := openAt(t, filepath.Join(t.TempDir(), "c.db"))
+	mk := func(host int64, dir, direction string) Transfer {
+		tr, err := s.Create(Transfer{HostID: host, Direction: direction, SourcePath: "/src/a", DestDir: dir, Name: "a", Compress: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tr
+	}
+	a, b := mk(1, "/dest", "download"), mk(2, "/dest", "download")
+	if err := s.Plan(a.ID, "file", 10, "a.fits", ""); err != nil {
+		t.Fatal(err)
+	}
+	if held, _ := s.NameHeld(b, "a.fits"); !held {
+		t.Fatal("the name is held by A, and B asks")
+	}
+	if held, _ := s.NameHeld(a, "a.fits"); held {
+		t.Fatal("a transfer does not conflict with itself")
+	}
+	if err := s.Plan(b.ID, "file", 10, "a.fits", ""); !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("the same name, folder and side must be refused: %v", err)
+	}
+	// other folder, and other side (an upload to a host's folder of the same text), are different names
+	if err := s.Plan(mk(2, "/elsewhere", "download").ID, "file", 10, "a.fits", ""); err != nil {
+		t.Fatal(err)
+	}
+	up1, up2 := mk(1, "/dest", "upload"), mk(2, "/dest", "upload")
+	if err := s.Plan(up1.ID, "file", 10, "a.fits", ""); err != nil {
+		t.Fatalf("a host's folder is not this computer's: %v", err)
+	}
+	if err := s.Plan(up2.ID, "file", 10, "a.fits", ""); err != nil {
+		t.Fatalf("two hosts have separate folders: %v", err)
+	}
+	// finished, the name is free again; a finished transfer cannot be put back while another holds it
+	if ok, err := s.Finish(a.ID, []string{StateQueued}, StateFailed, "x", Verif{}); err != nil || !ok {
+		t.Fatal(err)
+	}
+	if err := s.Plan(b.ID, "file", 10, "a.fits", ""); err != nil {
+		t.Fatalf("a failed transfer must release its name: %v", err)
+	}
+	if _, err := s.Requeue(a.ID, false); !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("Try again over a name that B now holds: %v", err)
 	}
 }
