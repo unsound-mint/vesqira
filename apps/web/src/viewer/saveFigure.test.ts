@@ -53,6 +53,14 @@ describe("saving a figure", () => {
     expect(drawn.at(-1)).toEqual([{ type: "rect", role: "region", x: 1, y: 5, w: 3, h: 3 }]); // only the working region, as the scene says
   });
 
+  it("keeps the scene but not the render record when the canvas is too large to draw again", async () => {
+    const v = viewer();
+    await saveViewFigure({ ...v, canvas: { current: { width: 12000, height: 12000 } as HTMLCanvasElement } } as Viewer, dataset, { title: "Huge" });
+    const r = sent.at(-1)!;
+    expect(r.scene).toBeDefined();
+    expect(r.scene).not.toHaveProperty("render");
+  });
+
   it("still draws the working region when the scene cannot be stored (custom range without valid limits)", async () => {
     const v = viewer();
     const scene = { ...v.scene!, base: { ...v.scene!.base, display: { ...v.scene!.base.display, limits: [6, 2] } } };

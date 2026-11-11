@@ -94,7 +94,7 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
           {!boardId ? <Input label="New board name" value={newBoard} onChange={(e) => setNewBoard(e.target.value)} /> : null}
           <Button onClick={addIt}>Add to board</Button>
           {note ? <p className={s.note}>{note}</p> : null}
-          <FigureRedraw figure={saved} />
+          <FigureRedraw figure={saved} only="svg" />
         </div>
       ) : null}
     </div>

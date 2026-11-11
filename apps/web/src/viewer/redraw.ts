@@ -72,6 +72,13 @@ function withoutSigma(o: SceneOverlay): SceneOverlay {
   return { ...o, levels };
 }
 
+/** JSON with sorted keys, so two scenes are the same when they say the same things whatever order their keys were written in. */
+function canon(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
+  if (v && typeof v === "object") return `{${Object.keys(v).sort().filter((k) => (v as Record<string, unknown>)[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canon((v as Record<string, unknown>)[k])}`).join(",")}}`;
+  return JSON.stringify(v) ?? "null";
+}
+
 const sigmas = (s: Scene) => Object.fromEntries(s.overlays.flatMap((o) => (o.kind === "contours" && o.levels.mode === "sigma" && o.levels.sigma !== undefined ? [[o.id, o.levels.sigma] as const] : [])));
 
 /**
@@ -89,10 +96,23 @@ export async function redrawSceneFigure(f: Figure, o: { refresh: boolean }): Pro
   const axial = stored.base.display.mapping === "axial" && base.interpretation !== null;
   const [view, plane] = await Promise.all([getView(base.id), getPlane(base.id, stored.base.channel)]);
   if (plane.head.preview) throw new Error("The plane came back as a reduced preview; it cannot be drawn again at full resolution.");
-  const relId = base.interpretation?.reliabilityId ?? null;
-  const reliability = axial && relId !== null ? await getPlane(relId, 0).catch(() => null) : null;
-  const s = figureScale(render.figureWidth, plane.head.width);
   const nameOf = (id: number) => datasets.find((d) => d.id === id)?.name ?? "another dataset";
+  // A reliability map decides the opacity, length or threshold of orientation lines. The figure recorded which map it used; if the
+  // declaration now names another, or the map cannot be read, the lines would not be the figure's: stop and say so.
+  for (const ov of stored.overlays) {
+    if (ov.kind !== "orientation" || !ov.visible || ov.reliabilityId === undefined) continue;
+    const now = datasets.find((d) => d.id === ov.datasetId)?.interpretation?.reliabilityId ?? null;
+    if (now !== ov.reliabilityId) throw new Error(`The reliability map declared for ${nameOf(ov.datasetId)} is not the one the figure used any more, so its orientation lines cannot be drawn again.`);
+  }
+  const own = stored.overlays.find((ov) => ov.kind === "orientation" && ov.visible && ov.datasetId === base.id);
+  const relId = base.interpretation?.reliabilityId ?? null;
+  const usesRel = own?.kind === "orientation" && (own.opacity === "reliability" || own.length === "reliability" || own.threshold !== undefined);
+  let reliability: Plane | null = null;
+  if (axial && usesRel) {
+    if (relId === null) throw new Error(`${base.name} declares no reliability map now, and the figure's orientation lines were drawn with one.`);
+    reliability = await getPlane(relId, 0).catch((e: unknown) => { throw new Error(describe(e, `The reliability map ${nameOf(relId)} cannot be read, and the figure's orientation lines were drawn with it`)); });
+  }
+  const s = figureScale(render.figureWidth, plane.head.width);
   const geometry: Record<string, GeometryEntry> = {};
   await Promise.all(
     stored.overlays
@@ -121,7 +141,8 @@ export async function redrawSceneFigure(f: Figure, o: { refresh: boolean }): Pro
       notes.push(`${overlayTitle(ov, drawn, nameOf)}: the noise level (σ) is now ${Number(now[id]!.toPrecision(4))}, the figure recorded ${Number(was[id]!.toPrecision(4))}; the levels are drawn at the new value.`);
     }
   }
-  if (!notes.length && JSON.stringify({ ...stored, render: undefined }) !== JSON.stringify({ ...drawn })) notes.push("The scene as drawn now differs from the one the figure stored.");
+  const bare = (sc: Scene) => canon({ ...sc, render: undefined, overlays: sc.overlays.map((ov) => (ov.kind === "contours" && ov.levels.mode === "sigma" ? { ...ov, levels: { ...ov.levels, sigma: undefined } } : ov)) });
+  if (bare(stored) !== bare(drawn)) notes.push("The scene as drawn now differs from the one the figure stored (a layer or a setting the data no longer supports was changed).");
   const meta = { title: f.title, caption: f.caption, provenance: f.provenance, software: "Vesqira; vector layers drawn from the figure's stored scene over the base raster as drawn, units and provenance as the PNG download carries them" };
   return {
     kind: "scene",
@@ -158,7 +179,7 @@ export async function redrawGridFigure(f: Figure): Promise<Redrawn> {
   ]);
   const [lo, hi] = [spec.display.limits[0]!, spec.display.limits[1]!];
   // the shared scale is the recorded one, with the words the figure recorded for it: a scale measured again is not the figure's scale
-  const plan = { ...planned, scale: { ...planned.scale, lo, hi, source: spec.display.source } };
+  const plan = { ...planned, scale: { ...planned.scale, lo, hi, source: spec.render.scaleSource } };
   const notes: string[] = [];
   if (plan.step !== spec.preview.step) notes.push(`The panels are now read at preview step ${plan.step}; the figure recorded ${spec.preview.step}.`);
   const colormap = spec.display.colormap as ColormapId, stretch = spec.display.stretch as Stretch;

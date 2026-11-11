@@ -89,7 +89,7 @@ export function gridFigure(o: { datasetId: number; plan: ChannelGridPlan; first:
     display: { colormap: o.colormap as "viridis" | "inferno" | "gray", stretch: o.stretch as "linear" | "sqrt" | "asinh", limits: [lo, hi], ...(o.bunit ? { limitsUnit: o.bunit } : {}), source },
     preview: { step: o.plan.step, panelWidth: o.plan.panel_width, panelHeight: o.plan.panel_height },
     // what the composed picture said beyond the description, so "draw again" reproduces it
-    render: { figureWidth: o.figureWidth ?? FIGURE_WIDTH, overlaysNotDrawn: o.overlaysNotDrawn },
+    render: { figureWidth: o.figureWidth ?? FIGURE_WIDTH, overlaysNotDrawn: o.overlaysNotDrawn, scaleSource: o.plan.scale.source },
   };
   const view: FigureRequest["view"] = {
     kind: "channelgrid", channel: o.first, colormap: o.colormap as "viridis" | "inferno" | "gray", stretch: o.stretch as "linear" | "sqrt" | "asinh", range: "custom", limits: [lo, hi], ...(o.bunit ? { limitsUnit: o.bunit } : {}),

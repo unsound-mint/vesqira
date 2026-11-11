@@ -7127,7 +7127,8 @@
      "description": "What the composed picture said beyond the description, so \"draw again\" reproduces it. Absent from grids saved before.",
      "required": [
       "figureWidth",
-      "overlaysNotDrawn"
+      "overlaysNotDrawn",
+      "scaleSource"
      ],
      "properties": {
       "figureWidth": {
@@ -7140,6 +7141,12 @@
        "minimum": 0,
        "maximum": 16,
        "description": "How many overlays of the map were visible but not drawn on the panels (the caption states it)"
+      },
+      "scaleSource": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 600,
+       "description": "The whole sentence on where the shared limits came from, as the caption printed it; display.source keeps its first 190 characters"
       }
      }
     }
@@ -8612,8 +8619,10 @@
         "type": "string",
         "enum": [
          "source",
-         "overlay"
-        ]
+         "overlay",
+         "reliability"
+        ],
+        "description": "source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines."
        },
        "datasetId": {
         "type": "integer",
@@ -9989,7 +9998,7 @@
       "width",
       "height"
      ],
-     "description": "The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^27 pixels.",
+     "description": "The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^26 pixels; a figure whose canvas is larger is stored without this record and is drawn from its PNG only.",
      "properties": {
       "width": {
        "type": "integer",
@@ -10043,8 +10052,10 @@
      "type": "string",
      "enum": [
       "source",
-      "overlay"
-     ]
+      "overlay",
+      "reliability"
+     ],
+     "description": "source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines."
     },
     "datasetId": {
      "type": "integer",

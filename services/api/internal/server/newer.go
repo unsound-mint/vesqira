@@ -218,7 +218,7 @@ type identityValue struct {
 }
 
 type figureDatasetIdentity struct {
-	Role       string         `json:"role"` // source | overlay
+	Role       string         `json:"role"` // source | overlay | reliability
 	DatasetID  int64          `json:"datasetId"`
 	Name       string         `json:"name"`
 	SizeBytes  int64          `json:"sizeBytes"`
@@ -257,7 +257,7 @@ func figureDiffers(src figureDatasetIdentity, d catalog.Dataset) []string {
 	return differs(src.SizeBytes, src.ModifiedAt, fpA, d.SizeBytes, d.ModifiedAt, fpB)
 }
 
-func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset, overlays []catalog.Dataset, from *redrawnFrom) json.RawMessage {
+func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset, overlays, reliability []catalog.Dataset, from *redrawnFrom) json.RawMessage {
 	doc := figureIdentity{Schema: "figure-identity/1", RedrawnFrom: from}
 	add := func(role string, d catalog.Dataset) {
 		locs, err := s.Store.Locations(d.ID)
@@ -277,6 +277,9 @@ func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset
 	add("source", source)
 	for _, o := range overlays {
 		add("overlay", o)
+	}
+	for _, r := range reliability {
+		add("reliability", r)
 	}
 	b, err := json.Marshal(doc)
 	if err != nil {

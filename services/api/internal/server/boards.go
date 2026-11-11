@@ -505,6 +505,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		run, _ = s.Runs.ForDataset(d.ID)
 	}
 	var sceneJSON json.RawMessage
+	var sceneRead *scene.Scene // the validated scene, when the figure has one
 	var others []catalog.Dataset
 	hasGrid := len(in.ChannelGrid) > 0 && string(in.ChannelGrid) != "null"
 	hasScene := len(in.Scene) > 0 && string(in.Scene) != "null"
@@ -535,6 +536,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, err.Error())
 			return
 		}
+		sceneRead = &sc
 		for _, o := range others { // every file the picture drew from is still the one that was registered
 			if _, _, status, m := s.authorize(r.Context(), o); status != 0 {
 				fail(w, status, "overlay "+o.Name+": "+m)
@@ -560,6 +562,10 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	for i := range others {
 		others[i] = s.ensureFingerprinted(r.Context(), others[i])
 	}
+	rels := s.reliabilityMaps(sceneRead, d, others)
+	for i := range rels {
+		rels[i] = s.ensureFingerprinted(r.Context(), rels[i])
+	}
 	prov, err := buildProvenance(d, vp, run, s.derivedSummary(d.ID), others)
 	if errors.Is(err, errBadView) {
 		fail(w, 400, "the view description does not match the dataset")
@@ -569,7 +575,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: s.buildFigureIdentity(r.Context(), d, others, link), RedrawnFrom: linkRev}, png)
+	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: s.buildFigureIdentity(r.Context(), d, others, rels, link), RedrawnFrom: linkRev}, png)
 	if err != nil {
 		s.boardErr(w, err)
 		return

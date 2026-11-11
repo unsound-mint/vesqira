@@ -119,7 +119,7 @@ describe("the stored description", () => {
       spectral: { unit: "km/s", convention: "radio" },
       display: { colormap: "inferno", stretch: "asinh", limits: [0.5, 8.25], limitsUnit: "K" },
       preview: { step: 2, panelWidth: 16, panelHeight: 12 },
-      render: { figureWidth: 720, overlaysNotDrawn: 2 },
+      render: { figureWidth: 720, overlaysNotDrawn: 2, scaleSource: expect.stringContaining("percentile") },
     });
     expect(g.view).toMatchObject({ kind: "channelgrid", channel: 0, range: "custom", limits: [0.5, 8.25], limitsUnit: "K", colormap: "inferno", stretch: "asinh" });
     expect(g.view.grid).toMatchObject({ first: 0, last: 20, stride: 10, average: 3, panels: 3, previewStep: 2, unit: "km/s", convention: "radio" });

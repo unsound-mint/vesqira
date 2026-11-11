@@ -20,6 +20,9 @@ export type RegionsOverlay = S["RegionsOverlay"];
 export const SCENE_VERSION = "scene/1" as const;
 export const MAX_ZOOM = 16;
 export const MAX_OVERLAYS = 16;
+/** The largest canvas a figure records (`render.canvas`): what a redrawing allocates for the base raster (256 MiB of RGBA). The server holds the same bound. */
+export const MAX_RENDER_PIXELS = 2 ** 26;
+export const MAX_RENDER_SIDE = 65536;
 /** The overlays every pane has today, by id: its own orientation lines (axial maps only) and its regions. */
 export const ORIENTATION_ID = "orientation";
 export const REGIONS_ID = "regions";

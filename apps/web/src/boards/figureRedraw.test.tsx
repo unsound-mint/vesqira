@@ -95,7 +95,7 @@ describe("draw again", () => {
     unmount();
     render(<FigureRedraw figure={fig({ scene: undefined })} />);
     expect(screen.queryByRole("button", { name: "Draw again" })).toBeNull();
-    expect(screen.getByText(/cannot be drawn again or exported as SVG/)).toBeTruthy();
+    expect(screen.getByText(/keeps no description of how it was drawn, so it is shown as the PNG that was saved/)).toBeTruthy();
   });
 
   it("saves the redrawing as a new revision only on request, and says the original and the boards are untouched", async () => {
@@ -111,6 +111,27 @@ describe("draw again", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: 8 })));
     expect(r.save).toHaveBeenCalledOnce();
     expect(screen.getByText(/boards and shared reviews keep the figure they hold/)).toBeTruthy();
+  });
+
+  it("offers to put a saved revision on the board, only once and only when it was saved", async () => {
+    check.mockResolvedValue({ figureId: 7, kind: "scene", state: "ready", sources: [source("unchanged", "x")] });
+    redraw.mockResolvedValue(drawn());
+    const addTo = vi.fn(async () => {});
+    render(<FigureRedraw figure={fig()} addTo={addTo} />);
+    await userEvent.click(screen.getByRole("button", { name: "Draw again" }));
+    await screen.findByRole("region", { name: "The figure drawn again" });
+    expect(screen.queryByRole("button", { name: "Add to this board" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Save as a new revision" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Add to this board" }));
+    expect(addTo).toHaveBeenCalledWith(8);
+    expect(await screen.findByText(/Added to this board, after the original/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add to this board" })).toBeNull();
+  });
+
+  it("offers only the SVG export for a figure that was just saved", () => {
+    render(<FigureRedraw figure={fig()} only="svg" />);
+    expect(screen.queryByRole("button", { name: "Draw again" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Export SVG" })).toBeTruthy();
   });
 
   it("shows why a redrawing failed, such as a layer the worker now refuses", async () => {

@@ -3,6 +3,7 @@ import { createFigure } from "../api/boards";
 import type { Figure, FigureRequest } from "../api/boards";
 import { blobToBase64, captionLines, composeSpectrumFigure, figureScale, FIGURE_WIDTH } from "./figure";
 import { figureScene, overlaysPending, sceneStatable } from "../scene/figureScene";
+import { MAX_RENDER_PIXELS, MAX_RENDER_SIDE } from "../scene/scene";
 import type { Scene } from "../scene/scene";
 import { nodataColours } from "./nodata";
 import { composePlaneFigure } from "./planeFigure";
@@ -56,7 +57,10 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
     const drawn = figureScene(v.scene, { plane, axial, scale, bunit: view.bunit, interp: v.interp, reliability: v.reliability, geometry: v.geometry, datasets: opts.datasets });
     // how the base raster was drawn, so "draw again" can reproduce it: the canvas it was drawn on, the theme's no-value colours
     const render = { canvas: { width: src.width, height: src.height }, nodata: nodataColours().map((c) => [...c]), figureWidth: FIGURE_WIDTH };
-    scene = sceneStatable(drawn) && render.canvas.width > 0 && render.canvas.height > 0 ? { ...drawn, render } : null;
+    // a canvas too large to draw again is not recorded: the figure keeps its scene and is drawn from its PNG only
+    const { width: cw, height: ch } = render.canvas;
+    const redrawable = cw >= 1 && ch >= 1 && cw <= MAX_RENDER_SIDE && ch <= MAX_RENDER_SIDE && cw * ch <= MAX_RENDER_PIXELS;
+    scene = sceneStatable(drawn) ? (redrawable ? { ...drawn, render } : drawn) : null;
     const made = await composePlaneFigure({ dataset, datasets: opts.datasets, view, plane, drawn, interp: v.interp, reliability: v.reliability, geometry: v.geometry, title: heading, figureWidth: FIGURE_WIDTH, showLines: v.showLines, source: src });
     blob = made.blob;
     viewParams = made.viewParams;

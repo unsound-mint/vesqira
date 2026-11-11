@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -84,6 +85,13 @@ func TestRedrawComparisonSaysExactlyWhatTheEvidenceProves(t *testing.T) {
 	if s, _, text := classifyUnreadable("map.fits", 403, nil); s != srcMissing || text != "map.fits: not available." {
 		t.Errorf("not allowed: %s %q", s, text)
 	}
+}
+
+// planeWorker reads every file as a single 8 x 6 plane, which an orientation map and its reliability map must be.
+type planeWorker struct{}
+
+func (planeWorker) Header(_ context.Context, _ string) (json.RawMessage, error) {
+	return json.RawMessage(`{"ok":true,"naxis":2,"bitpix":-32,"axes":[{"axis":1,"length":8,"ctype":"RA---TAN","cunit":"deg","crval":150,"crpix":4,"cdelt":-0.01},{"axis":2,"length":6,"ctype":"DEC--TAN","cunit":"deg","crval":2,"crpix":3,"cdelt":0.01}],"bunit":"deg","radesys":"ICRS","specsys":null}`), nil
 }
 
 func ptr[T any](v T) *T { return &v }
@@ -207,6 +215,56 @@ func TestRedrawCheckComparesTheRecordedIdentityWithTheFilesNow(t *testing.T) {
 	}
 	if code, _ := e.call("GET", "/api/figures/9999/redraw-check", nil); code != 404 {
 		t.Errorf("unknown figure: %d", code)
+	}
+}
+
+// A reliability map sets the opacity (or length, or the threshold) of orientation lines, so it decides how the picture looks. A
+// figure records its identity as a third role, and a change in it is announced like a change in the source.
+func TestAFiguresReliabilityMapIsRecordedAndCheckedLikeASource(t *testing.T) {
+	e := newIDEnv(t)
+	e.srv.Worker = planeWorker{} // a map is a plane: two axes longer than 1
+	psiFile := e.write("psi.fits", []byte("orientation map bytes"))
+	relFile := e.write("rel.fits", []byte("reliability map bytes, another file"))
+	psi, rel := e.mustRegister(psiFile), e.mustRegister(relFile)
+	if code, b := e.call("POST", "/api/datasets/"+itoa(int(psi.ID))+"/interpretation", map[string]any{"kind": "axial_orientation", "unit": "deg", "reliabilityId": rel.ID, "frame": "pixel", "quantity": "b_field"}); code != 200 {
+		t.Fatalf("declare: %d %s", code, b)
+	}
+	sc := map[string]any{
+		"schema": "scene/1",
+		"base":   map[string]any{"datasetId": psi.ID, "channel": 3, "display": map[string]any{"mapping": "axial", "colormap": "twilight", "stretch": "linear", "range": "minmax"}},
+		"overlays": []any{map[string]any{"id": "orientation", "kind": "orientation", "datasetId": psi.ID, "visible": true,
+			"sampling": map[string]any{"mode": "step", "step": 2}, "length": "fixed", "opacity": "reliability", "reliabilityId": rel.ID}},
+		"view":   map[string]any{"zoom": 1},
+		"render": map[string]any{"canvas": map[string]any{"width": 16, "height": 12}, "nodata": []any{[]any{27, 34, 44}, []any{85, 98, 117}}, "figureWidth": 720},
+	}
+	code, out := e.call("POST", "/api/figures", map[string]any{"datasetId": psi.ID, "title": "Lines", "previewPng": testPNG(t), "scene": sc,
+		"view": map[string]any{"kind": "orientation", "channel": 3, "showLines": true}})
+	if code != 201 {
+		t.Fatalf("figure: %d %s", code, out)
+	}
+	var fig boards.Figure
+	json.Unmarshal(out, &fig)
+	var id figureIdentity
+	json.Unmarshal(fig.Identity, &id)
+	if len(id.Datasets) != 2 || id.Datasets[1].Role != "reliability" || id.Datasets[1].DatasetID != rel.ID || id.Datasets[1].Full == nil {
+		t.Fatalf("the identity records the reliability map: %s", fig.Identity)
+	}
+	if strings.Contains(string(fig.Provenance), id.Datasets[1].Full.Value) {
+		t.Fatal("reviewer-safe provenance must not carry the identity")
+	}
+	c := e.redrawCheck(fig.ID)
+	if c.State != "ready" || len(c.Sources) != 2 || c.Sources[1].Role != "reliability" || c.Sources[1].Name != "rel.fits" || c.Sources[1].Status != srcUnchanged {
+		t.Fatalf("unchanged: %+v", c)
+	}
+	// the reliability map is read again with other bytes: the figure's lines would be drawn from other opacities
+	later := time.Now().Add(time.Hour)
+	os.WriteFile(relFile, []byte("reliability map bytes, CHANGED file"), 0o644)
+	os.Chtimes(relFile, later, later)
+	e.mustRegister(relFile)
+	c = e.redrawCheck(fig.ID)
+	if c.State != "ask" || c.Sources[0].Status != srcUnchanged || c.Sources[1].Status != srcChanged || c.Sources[1].Role != "reliability" ||
+		!strings.HasPrefix(c.Sources[1].Text, "rel.fits: changed since the figure was drawn (") {
+		t.Fatalf("changed reliability map: %+v", c)
 	}
 }
 

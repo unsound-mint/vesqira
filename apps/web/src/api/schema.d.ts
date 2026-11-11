@@ -5782,6 +5782,8 @@ export interface components {
                 figureWidth: number;
                 /** @description How many overlays of the map were visible but not drawn on the panels (the caption states it) */
                 overlaysNotDrawn: number;
+                /** @description The whole sentence on where the shared limits came from, as the caption printed it; display.source keeps its first 190 characters */
+                scaleSource: string;
             };
         };
         /** @description The plan of a channel-map grid: JSON only, no payload. Each panel is fetched by the plane route (one channel) or the slab route (a mean of several), at the preview step stated here. */
@@ -6253,8 +6255,11 @@ export interface components {
             /** @enum {string} */
             schema: "figure-identity/1";
             datasets: {
-                /** @enum {string} */
-                role: "source" | "overlay";
+                /**
+                 * @description source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines.
+                 * @enum {string}
+                 */
+                role: "source" | "overlay" | "reliability";
                 /** Format: int64 */
                 datasetId: number;
                 name: string;
@@ -6656,7 +6661,7 @@ export interface components {
         };
         /** @description How the base raster of a saved figure was drawn, so "draw again" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only. */
         SceneRender: {
-            /** @description The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^27 pixels. */
+            /** @description The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^26 pixels; a figure whose canvas is larger is stored without this record and is drawn from its PNG only. */
             canvas: {
                 width: number;
                 height: number;
@@ -6667,8 +6672,11 @@ export interface components {
             figureWidth: number;
         };
         RedrawSource: {
-            /** @enum {string} */
-            role: "source" | "overlay";
+            /**
+             * @description source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines.
+             * @enum {string}
+             */
+            role: "source" | "overlay" | "reliability";
             /** Format: int64 */
             datasetId: number;
             name: string;

@@ -91,12 +91,12 @@ func TestAChannelGridIsRefusedWhenItBreaksTheCapsOrIsIncomplete(t *testing.T) {
 }
 
 func TestAChannelGridRecordsHowItWasComposedAndRefusesBadRecords(t *testing.T) {
-	with := strings.Replace(goodGrid, `"preview":{"step":2,"panelWidth":300,"panelHeight":200}}`, `"preview":{"step":2,"panelWidth":300,"panelHeight":200},"render":{"figureWidth":720,"overlaysNotDrawn":2}}`, 1)
+	with := strings.Replace(goodGrid, `"preview":{"step":2,"panelWidth":300,"panelHeight":200}}`, `"preview":{"step":2,"panelWidth":300,"panelHeight":200},"render":{"figureWidth":720,"overlaysNotDrawn":2,"scaleSource":"the whole sentence, longer than the stored one"}}`, 1)
 	g, err := ParseChannelGrid([]byte(with))
-	if err != nil || g.Render == nil || g.Render.FigureWidth != 720 || g.Render.OverlaysNotDrawn != 2 {
+	if err != nil || g.Render == nil || g.Render.FigureWidth != 720 || g.Render.OverlaysNotDrawn != 2 || g.Render.ScaleSource != "the whole sentence, longer than the stored one" {
 		t.Fatalf("%+v %v", g.Render, err)
 	}
-	if out, _ := g.Marshal(); !strings.Contains(string(out), `"render":{"figureWidth":720,"overlaysNotDrawn":2}`) {
+	if out, _ := g.Marshal(); !strings.Contains(string(out), `"render":{"figureWidth":720,"overlaysNotDrawn":2,"scaleSource":"the whole sentence, longer than the stored one"}`) {
 		t.Errorf("%s", out)
 	}
 	old, err := ParseChannelGrid([]byte(goodGrid))
@@ -107,11 +107,14 @@ func TestAChannelGridRecordsHowItWasComposedAndRefusesBadRecords(t *testing.T) {
 		t.Errorf("an older grid must marshal as it always did: %s", out)
 	}
 	for name, r := range map[string]string{
-		"no width":    `{"overlaysNotDrawn":0}`,
-		"no count":    `{"figureWidth":720}`,
-		"negative":    `{"figureWidth":720,"overlaysNotDrawn":-1}`,
-		"too narrow":  `{"figureWidth":5,"overlaysNotDrawn":0}`,
-		"unknown key": `{"figureWidth":720,"overlaysNotDrawn":0,"theme":"dark"}`,
+		"no width":    `{"overlaysNotDrawn":0,"scaleSource":"x"}`,
+		"no count":    `{"figureWidth":720,"scaleSource":"x"}`,
+		"no source":   `{"figureWidth":720,"overlaysNotDrawn":0}`,
+		"markup":      `{"figureWidth":720,"overlaysNotDrawn":0,"scaleSource":"<b>x</b>"}`,
+		"too long":    `{"figureWidth":720,"overlaysNotDrawn":0,"scaleSource":"` + strings.Repeat("x", 601) + `"}`,
+		"negative":    `{"figureWidth":720,"overlaysNotDrawn":-1,"scaleSource":"x"}`,
+		"too narrow":  `{"figureWidth":5,"overlaysNotDrawn":0,"scaleSource":"x"}`,
+		"unknown key": `{"figureWidth":720,"overlaysNotDrawn":0,"scaleSource":"x","theme":"dark"}`,
 	} {
 		in := strings.Replace(goodGrid, `"panelHeight":200}}`, `"panelHeight":200},"render":`+r+`}`, 1)
 		if _, err := ParseChannelGrid([]byte(in)); !errors.Is(err, ErrInvalid) {

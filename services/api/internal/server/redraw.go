@@ -129,24 +129,25 @@ func classifyUnreadable(name string, status int, onDisk []string) (string, []str
 }
 
 // figureSources lists the datasets a stored description draws from, the base first, then each overlay's dataset once.
-func figureSources(f boards.Figure) (kind string, ids []int64, ok bool, why string) {
+func figureSources(f boards.Figure) (kind string, ids []int64, sc *scene.Scene, ok bool, why string) {
 	if len(f.Scene) == 0 {
-		return "none", nil, false, promptNone
+		return "none", nil, nil, false, promptNone
 	}
 	var head struct {
 		Schema string `json:"schema"`
 	}
 	if json.Unmarshal(f.Scene, &head) != nil {
-		return "none", nil, false, promptNone
+		return "none", nil, nil, false, promptNone
 	}
 	switch head.Schema {
 	case scene.Version:
-		sc, err := scene.Parse(f.Scene)
+		parsed, err := scene.Parse(f.Scene)
 		if err != nil {
-			return "none", nil, false, promptNone
+			return "none", nil, nil, false, promptNone
 		}
+		sc = &parsed
 		if sc.Render == nil {
-			return "scene", nil, false, promptNoRender
+			return "scene", nil, sc, false, promptNoRender
 		}
 		ids = []int64{sc.Base.DatasetID}
 		seen := map[int64]bool{sc.Base.DatasetID: true}
@@ -156,18 +157,65 @@ func figureSources(f boards.Figure) (kind string, ids []int64, ok bool, why stri
 				ids = append(ids, o.DatasetID)
 			}
 		}
-		return "scene", ids, true, ""
+		return "scene", ids, sc, true, ""
 	case scene.ChannelGridVersion:
 		g, err := scene.ParseChannelGrid(f.Scene)
 		if err != nil {
-			return "none", nil, false, promptNone
+			return "none", nil, nil, false, promptNone
 		}
 		if g.Render == nil {
-			return "channel-grid", nil, false, promptNoRender
+			return "channel-grid", nil, nil, false, promptNoRender
 		}
-		return "channel-grid", []int64{g.DatasetID}, true, ""
+		return "channel-grid", []int64{g.DatasetID}, nil, true, ""
 	}
-	return "none", nil, false, promptNone
+	return "none", nil, nil, false, promptNone
+}
+
+// sceneReliabilityIDs lists the reliability maps a scene's visible orientation overlays read, in scene order: the one the
+// overlay names (it sets the line opacity) or, when it names none but sets the length or a threshold from reliability, the one
+// its dataset declares now. lookup finds a dataset of the scene.
+func sceneReliabilityIDs(sc *scene.Scene, lookup func(int64) (catalog.Dataset, bool)) []int64 {
+	var out []int64
+	seen := map[int64]bool{}
+	for _, o := range sc.Overlays {
+		if o.Kind != "orientation" || !o.Visible {
+			continue
+		}
+		id := o.ReliabilityID
+		if id == nil && (o.Length == "reliability" || o.Threshold != nil) {
+			if d, ok := lookup(o.DatasetID); ok && d.Interpretation != nil {
+				id = d.Interpretation.ReliabilityID
+			}
+		}
+		if id != nil && !seen[*id] {
+			seen[*id] = true
+			out = append(out, *id)
+		}
+	}
+	return out
+}
+
+// reliabilityMaps are the reliability maps a figure's scene reads that are not already recorded as its source or an overlay's
+// dataset: a map that sets line opacity, length or the threshold decides which lines exist and how they look, so a figure
+// records its identity too (role "reliability").
+func (s *Server) reliabilityMaps(sc *scene.Scene, base catalog.Dataset, others []catalog.Dataset) []catalog.Dataset {
+	if sc == nil {
+		return nil
+	}
+	known := map[int64]catalog.Dataset{base.ID: base}
+	for _, o := range others {
+		known[o.ID] = o
+	}
+	var out []catalog.Dataset
+	for _, id := range sceneReliabilityIDs(sc, func(id int64) (catalog.Dataset, bool) { d, ok := known[id]; return d, ok }) {
+		if _, dup := known[id]; dup {
+			continue
+		}
+		if d, err := s.Store.Get(id); err == nil {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // onDiskDiffers says what differs between the figure's record of a file on this computer and the file now (size, time and, when
@@ -201,11 +249,27 @@ func (s *Server) onDiskDiffers(d catalog.Dataset, src *figureDatasetIdentity) []
 // checkRedraw builds the comparison for one figure.
 func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult {
 	res := redrawResult{FigureID: f.ID, Sources: []redrawSource{}}
-	kind, ids, ok, why := figureSources(f)
+	kind, ids, sc, ok, why := figureSources(f)
 	res.Kind = kind
 	if !ok {
 		res.State, res.Prompt = "none", why
 		return res
+	}
+	roles := map[int64]string{}
+	for i, id := range ids {
+		roles[id] = "overlay"
+		if i == 0 {
+			roles[id] = "source"
+		}
+	}
+	if sc != nil { // a reliability map the scene reads is a file the picture depends on too
+		lookup := func(id int64) (catalog.Dataset, bool) { d, err := s.Store.Get(id); return d, err == nil }
+		for _, id := range sceneReliabilityIDs(sc, lookup) {
+			if _, dup := roles[id]; !dup {
+				ids = append(ids, id)
+				roles[id] = "reliability"
+			}
+		}
 	}
 	var doc figureIdentity
 	if len(f.Identity) > 0 {
@@ -220,11 +284,8 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 		return nil
 	}
 	blocked, anyChanged, anyProbable := false, false, false
-	for i, id := range ids {
-		role := "overlay"
-		if i == 0 {
-			role = "source"
-		}
+	for _, id := range ids {
+		role := roles[id]
 		src := recorded(id)
 		out := redrawSource{Role: role, DatasetID: id, Differs: []string{}}
 		d, err := s.Store.Get(id)
@@ -307,7 +368,7 @@ func (s *Server) redrawLink(from int64, datasetID int64, grid bool) (boards.Figu
 	if err != nil {
 		return orig, err
 	}
-	kind, _, _, _ := figureSources(orig)
+	kind, _, _, _, _ := figureSources(orig)
 	if orig.DatasetID != datasetID || (kind == "channel-grid") != grid || kind == "none" {
 		return orig, errors.New("a figure can only be drawn again from a figure of the same dataset and the same kind")
 	}

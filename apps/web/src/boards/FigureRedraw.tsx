@@ -30,7 +30,14 @@ const MESSAGES = {
  * like now and, if anything changed or cannot be proven unchanged, says so and waits for the owner. A redrawing replaces
  * nothing: it becomes a new, linked figure only on "Save as a new revision".
  */
-export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f: Figure) => void }) {
+export function FigureRedraw({ figure, onSaved, addTo, only }: {
+  figure: Figure;
+  onSaved?: (f: Figure) => void;
+  /** Puts a saved revision on the board the figure is on (the board card passes it). */
+  addTo?: (figureId: number) => Promise<void>;
+  /** "svg": only the export, for a figure that was just saved (drawing it again would show nothing new). */
+  only?: "svg";
+}) {
   const schema = (figure.scene as { schema?: string } | undefined)?.schema;
   const drawable = schema === "scene/1" || schema === "channel-grid/1";
   const [busy, setBusy] = useState<null | "checking" | "drawing" | "saving">(null);
@@ -40,6 +47,7 @@ export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f
   const [note, setNote] = useState<string | null>(null);
   const [out, setOut] = useState<{ r: Redrawn; url: string; same: boolean; proven: boolean } | null>(null);
   const [saved, setSaved] = useState<Figure | null>(null);
+  const [onBoard, setOnBoard] = useState(false);
   const live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
   useEffect(() => () => { if (out) URL.revokeObjectURL(out.url); }, [out]);
@@ -50,6 +58,7 @@ export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f
     setNote(null);
     setOut(null);
     setSaved(null);
+    setOnBoard(false);
   }
 
   async function draw(refresh: boolean, why: "draw" | "svg") {
@@ -112,13 +121,13 @@ export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f
   }
 
   if (!drawable) {
-    return <p className={s.note}>Saved before figures kept their description: shown as the PNG that was saved, so it cannot be drawn again or exported as SVG.</p>;
+    return <p className={s.note}>This figure keeps no description of how it was drawn, so it is shown as the PNG that was saved. It cannot be drawn again or exported as SVG.</p>;
   }
   const idle = busy === null;
   return (
     <div className={s.wrap}>
       <div className={s.row}>
-        <Button icon={Redo2} disabled={!idle} onClick={() => void start("draw")}>{busy === "checking" || busy === "drawing" ? "Working…" : "Draw again"}</Button>
+        {only === "svg" ? null : <Button icon={Redo2} disabled={!idle} onClick={() => void start("draw")}>{busy === "checking" || busy === "drawing" ? "Working…" : "Draw again"}</Button>}
         {schema === "scene/1" ? <Button icon={FileImage} disabled={!idle} onClick={() => void start("svg")}>Export SVG</Button> : null}
       </div>
       {check ? (
@@ -144,7 +153,16 @@ export function FigureRedraw({ figure, onSaved }: { figure: Figure; onSaved?: (f
             {out.r.svg ? <Button icon={FileImage} disabled={!idle} onClick={() => saveBlobAs(new Blob([out.r.svg!()], { type: "image/svg+xml" }), downloadName(figure.title, "svg"))}>Download SVG</Button> : null}
             <Button variant="ghost" onClick={reset}>Close</Button>
           </div>
-          {saved ? <p role="status" className={s.note}>Saved as a new revision: “{saved.title}”. Add it to a board from the figure list.</p> : null}
+          {saved ? (
+            <>
+              <p role="status" className={s.note}>Saved as a new revision: “{saved.title}”, linked to this figure.{addTo && !onBoard ? " It is not on a board yet." : ""}{onBoard ? " Added to this board, after the original." : ""}</p>
+              {addTo && !onBoard ? (
+                <div className={s.row}>
+                  <Button onClick={() => void addTo(saved.id).then(() => setOnBoard(true)).catch((e: unknown) => setErr(e instanceof Error ? e.message : "Could not add it to the board."))}>Add to this board</Button>
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>

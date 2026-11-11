@@ -78,7 +78,7 @@ type RenderCanvas struct {
 
 const (
 	maxRenderSide   = 65536
-	maxRenderPixels = 1 << 27
+	maxRenderPixels = 1 << 26 // 256 MiB of RGBA: what a redrawing allocates for the base raster
 )
 
 func parseRender(raw []byte) (*Render, error) {
