@@ -119,20 +119,20 @@ type vgtInput struct {
 	Mem, Time, Partition, Account   string
 }
 
-type vgtBuilt struct{ Script, OutputDir, Request string }
+type builtJob struct{ Script, OutputDir, Request string }
 
 // buildVGT renders a VGT job from its settings: the config text (read from the host unless given), the editable settings
 // applied through the whitelist, a fresh output folder inside the host's source roots, the script, and the request kept so a
 // rerun can start from an exact copy. Nothing is stored. createJob and sweeps both call it, so a sweep's drafts are rendered by
 // exactly the code that renders any other draft.
-func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgtInput) (vgtBuilt, *apiErr) {
+func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgtInput) (builtJob, *apiErr) {
 	cfg := in.ConfigText
 	if cfg == "" && in.ConfigPath != "" {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		text, code, msg := s.remoteText(ctx, h, in.ConfigPath)
 		cancel()
 		if code != 0 {
-			return vgtBuilt{}, &apiErr{code, "config: " + msg}
+			return builtJob{}, &apiErr{code, "config: " + msg}
 		}
 		cfg = text
 	}
@@ -148,20 +148,68 @@ func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgt
 	vals["output_dir"] = out
 	cfg, err := jobs.SetConfigValues(cfg, vals)
 	if err != nil {
-		return vgtBuilt{}, jobAPIErr(err)
+		return builtJob{}, jobAPIErr(err)
 	}
 	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: name, RepoDir: in.RepoDir, Config: cfg, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
 	if err != nil {
-		return vgtBuilt{}, jobAPIErr(err)
+		return builtJob{}, jobAPIErr(err)
 	}
 	// The base text and the overrides are kept apart so a rerun can change one setting on the same base, without
 	// reading a file that may have changed on the host since.
 	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: baseCfg, Set: in.Set,
 		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
 	if !h.InRoots(out) {
-		return vgtBuilt{}, &apiErr{422, "the output folder must be inside a source root of the host"}
+		return builtJob{}, &apiErr{422, "the output folder must be inside a source root of the host"}
 	}
-	return vgtBuilt{Script: script, OutputDir: out, Request: string(rq)}, nil
+	return builtJob{Script: script, OutputDir: out, Request: string(rq)}, nil
+}
+
+// rohsaInput is everything a ROHSA draft is rendered from.
+type rohsaInput struct {
+	RepoDir, ConfigPath, ConfigText string
+	Set                             map[string]string
+	CPUs                            int
+	Mem, Time, Partition, Account   string
+}
+
+// buildROHSA renders a ROHSA job the way buildVGT renders a VGT one: the config text (read from the host unless given), the
+// editable settings applied through the ROHSA whitelist, a fresh output folder inside the host's source roots that Vesqira
+// sets (so a repeated run never writes over an earlier one), the script with the config embedded, and the request kept so a
+// rerun or a sweep can start from an exact copy. Nothing is stored.
+func (s *Server) buildROHSA(ctx context.Context, h hosts.Host, name string, in rohsaInput) (builtJob, *apiErr) {
+	cfg := in.ConfigText
+	if cfg == "" && in.ConfigPath != "" {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		text, code, msg := s.remoteText(ctx, h, in.ConfigPath)
+		cancel()
+		if code != 0 {
+			return builtJob{}, &apiErr{code, "config: " + msg}
+		}
+		cfg = text
+	}
+	if cfg == "" {
+		return builtJob{}, &apiErr{422, "a ROHSA job starts from a config: give the config's path on the host"}
+	}
+	if len(h.Roots) == 0 {
+		return builtJob{}, &apiErr{422, "the host has no source folder to write results into"}
+	}
+	var suffix [4]byte
+	_, _ = rand.Read(suffix[:])
+	out := path.Join(h.Roots[0], "vesqira_runs", name+"-"+hex.EncodeToString(suffix[:]))
+	if !h.InRoots(out) {
+		return builtJob{}, &apiErr{422, "the output folder must be inside a source root of the host"}
+	}
+	text, err := jobs.SetROHSAConfig(cfg, in.Set, out)
+	if err != nil {
+		return builtJob{}, jobAPIErr(err)
+	}
+	script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: name, RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, Config: text, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
+	if err != nil {
+		return builtJob{}, jobAPIErr(err)
+	}
+	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: cfg, Set: in.Set,
+		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account})
+	return builtJob{Script: script, OutputDir: out, Request: string(rq)}, nil
 }
 
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
@@ -187,13 +235,15 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			Account    string            `json:"account"`
 		} `json:"vgt"`
 		ROHSA struct {
-			RepoDir    string `json:"repoDir"`
-			ConfigPath string `json:"configPath"`
-			CPUs       int    `json:"cpus"`
-			Mem        string `json:"mem"`
-			Time       string `json:"time"`
-			Partition  string `json:"partition"`
-			Account    string `json:"account"`
+			RepoDir    string            `json:"repoDir"`
+			ConfigPath string            `json:"configPath"`
+			ConfigText string            `json:"configText"`
+			Set        map[string]string `json:"set"`
+			CPUs       int               `json:"cpus"`
+			Mem        string            `json:"mem"`
+			Time       string            `json:"time"`
+			Partition  string            `json:"partition"`
+			Account    string            `json:"account"`
 		} `json:"rohsa"`
 	}
 	if !body(w, r, 256<<10, &in, true) {
@@ -244,12 +294,13 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		job.Script, job.OutputDir, job.Request = v.Script, v.OutputDir, v.Request
 	case "rohsa":
-		script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: in.Name, RepoDir: in.ROHSA.RepoDir, ConfigPath: in.ROHSA.ConfigPath, CPUs: in.ROHSA.CPUs, Mem: in.ROHSA.Mem, Time: in.ROHSA.Time, Partition: in.ROHSA.Partition, Account: in.ROHSA.Account})
-		if err != nil {
-			s.jobErr(w, err)
+		v, aerr := s.buildROHSA(r.Context(), h, in.Name, rohsaInput{RepoDir: in.ROHSA.RepoDir, ConfigPath: in.ROHSA.ConfigPath, ConfigText: in.ROHSA.ConfigText, Set: in.ROHSA.Set,
+			CPUs: in.ROHSA.CPUs, Mem: in.ROHSA.Mem, Time: in.ROHSA.Time, Partition: in.ROHSA.Partition, Account: in.ROHSA.Account})
+		if aerr != nil {
+			s.failAPI(w, aerr)
 			return
 		}
-		job.Script = script
+		job.Script, job.OutputDir, job.Request = v.Script, v.OutputDir, v.Request
 	default:
 		fail(w, 400, "template must be vgt, rohsa or custom")
 		return
@@ -510,6 +561,10 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
+	if j.Template == "rohsa" {
+		fail(w, 409, "a ROHSA fit is read from files on this machine (ADR 0046): copy the fit's folder under a source root here and import its rohsa_*.dat from Runs")
+		return
+	}
 	if j.Template == "analysis" {
 		d, code, msg := s.registerAnalysisJob(ctx, j, hostRef{h})
 		if code != 0 {

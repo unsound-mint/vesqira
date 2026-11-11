@@ -147,7 +147,7 @@ func TestSweepIsRefusedWhenItsGridOrBaseIsWrong(t *testing.T) {
 		}
 		return out
 	}
-	rohsa := e.draft("rohsa-base", map[string]any{"template": "rohsa", "rohsa": map[string]any{"repoDir": "/shared/home/u/vgt", "configPath": "/shared/home/u/vgt/c.toml", "cpus": 4, "mem": "8G", "time": "01:00:00"}})
+	rohsa := e.draft("rohsa-base", map[string]any{"template": "rohsa", "rohsa": map[string]any{"repoDir": "/shared/home/u/vgt", "configPath": "/shared/home/u/vgt/c.toml", "configText": "[input]\ninput = \"a.fits\"\noutput_dir = \"x\"\n[rohsa]\nn_gauss = [4]\n", "cpus": 4, "mem": "8G", "time": "01:00:00"}})
 	for name, in := range map[string]map[string]any{
 		"65 jobs":          {"params": []map[string]any{p("dn", vals(13)...), p("ker", vals(5)...)}},
 		"four parameters":  {"params": []map[string]any{p("dn", "1"), p("ker", "1"), p("min_valid", "1"), p("noise", "1")}},

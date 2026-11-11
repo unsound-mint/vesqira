@@ -149,7 +149,7 @@ PATH=%s:$PATH exec sh -c "$cmd"
 		}
 	}
 	// the ROHSA template: a reviewed script, nothing from the request reaches a command
-	rr, rohsaBody := postJSON(t, api("/api/jobs"), map[string]any{"hostId": h.ID, "template": "rohsa", "name": "rohsa-n8", "rohsa": map[string]any{"repoDir": "/shared/home/u/vgt", "configPath": "/shared/home/u/vgt/configs/rohsa/a.toml", "cpus": 16, "mem": "12G", "time": "03:00:00"}})
+	rr, rohsaBody := postJSON(t, api("/api/jobs"), map[string]any{"hostId": h.ID, "template": "rohsa", "name": "rohsa-n8", "rohsa": map[string]any{"repoDir": "/shared/home/u/vgt", "configPath": "/shared/home/u/vgt/configs/rohsa/a.toml", "configText": "[input]\ninput = \"a.fits\"\noutput_dir = \"x\"\n[rohsa]\nn_gauss = [4]\n", "cpus": 16, "mem": "12G", "time": "03:00:00"}})
 	if rr.StatusCode != 201 || !strings.Contains(string(rohsaBody), "rohsa/cli/preprocess.jl") {
 		t.Errorf("rohsa draft: %d %s", rr.StatusCode, rohsaBody)
 	}

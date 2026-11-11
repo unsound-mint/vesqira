@@ -417,7 +417,7 @@ func TestAutoImportOptionDefaultsByTemplateAndIsStoredWithTheJob(t *testing.T) {
 	if j := e.draft("vgt-b", map[string]any{"autoImport": false}); j.AutoImport {
 		t.Errorf("the option was turned off at creation")
 	}
-	rohsa := map[string]any{"template": "rohsa", "rohsa": map[string]any{"repoDir": "/shared/home/u/vgt", "configPath": "/shared/home/u/vgt/configs/rohsa/a.toml", "cpus": 4, "mem": "8G", "time": "01:00:00"}}
+	rohsa := map[string]any{"template": "rohsa", "rohsa": map[string]any{"repoDir": "/shared/home/u/vgt", "configPath": "/shared/home/u/vgt/configs/rohsa/a.toml", "configText": "[input]\ninput = \"a.fits\"\noutput_dir = \"x\"\n[rohsa]\nn_gauss = [4]\n", "cpus": 4, "mem": "8G", "time": "01:00:00"}}
 	if j := e.draft("rohsa-a", rohsa); j.AutoImport {
 		t.Errorf("a ROHSA job has nothing to import and must default to off")
 	}
