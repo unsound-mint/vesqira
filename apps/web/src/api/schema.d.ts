@@ -2883,6 +2883,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/terminal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Terminal WebSocket (only with --enable-terminal)
+         * @description WebSocket (only with --enable-terminal, ADR 0029). The request must be a WebSocket upgrade from the page's own origin (Origin equal to Host, same Host and Sec-Fetch-Site rules as every route) with no query string, offering two subprotocols: vesqira.terminal.v1 and vesqira-token.<token> (the token from POST /api/terminal/sessions; single use, valid for expiresInSeconds). The server selects vesqira.terminal.v1 and never echoes the token. Binary frames are terminal bytes: input from the page (at most 65536 bytes per frame), output from the shell. Text frames are JSON control messages: {"type":"resize","cols":1..500,"rows":1..200} from the page (anything else closes the session), and {"type":"exit","reason":string,"code":int|null} from the server once, just before it closes. The session ends when the shell exits, after idleSeconds without input, after lifetimeSeconds, when the page closes the socket, or when a newer session is opened for the same tab. Opening and closing are audited (kind terminal); input and output never are.
+         */
+        get: operations["owner_s_terminalSocket_get_api_terminal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/terminal/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask for a terminal session; answers with a single-use token (only with --enable-terminal) */
+        post: operations["owner_s_openTerminalSession_post_api_terminal_sessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/transfers": {
         parameters: {
             query?: never;
@@ -3619,6 +3656,8 @@ export interface components {
                 editor: boolean;
                 /** @description The resumable transfer queue is on (ADR 0051). */
                 transfers: boolean;
+                /** @description the integrated terminal (--enable-terminal, ADR 0029) */
+                terminal: boolean;
             };
             limits: {
                 previewStepMax: number;
@@ -6092,6 +6131,29 @@ export interface components {
                     by: string;
                 } | null;
             }[];
+        };
+        /** @description Ask for a terminal session (only with --enable-terminal, ADR 0029). The host is chosen by id, never by a free-form string. */
+        TerminalOpen: {
+            /** @description chosen by the page, one per browser tab; a new session for the same tab ends the previous one */
+            tab: string;
+            /**
+             * Format: int64
+             * @description a registered host to open ssh to; 0 or absent opens the user's login shell on this computer
+             */
+            hostId?: number;
+        };
+        /** @description The one-time credential for the WebSocket at GET /api/terminal. Shown once; send it only as a WebSocket subprotocol. */
+        TerminalSession: {
+            /** @description 64 hex characters; single use */
+            token: string;
+            /** @description the subprotocol the server selects: vesqira.terminal.v1 */
+            protocol: string;
+            /** @description how long the token can still be used to connect */
+            expiresInSeconds: number;
+            /** @description no input for this long ends the session */
+            idleSeconds: number;
+            /** @description longest a session runs */
+            lifetimeSeconds: number;
         };
     };
     responses: never;
@@ -10604,6 +10666,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Sweep"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_terminalSocket_get_api_terminal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description switching protocols */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description a query string was sent */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description missing, wrong, used or expired token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description foreign Host, cross-site or cross-origin request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description host not found, or the terminal is off */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not a WebSocket upgrade */
+            426: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description too many sessions are open */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_openTerminalSession_post_api_terminal_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TerminalOpen"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TerminalSession"];
+                };
+            };
+            /** @description bad request (tab id, unknown field) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description foreign Host, cross-site or cross-origin request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description unknown host */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description too many sessions waiting to connect */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Error */

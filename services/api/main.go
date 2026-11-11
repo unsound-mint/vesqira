@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -57,6 +58,8 @@ func main() {
 	sshBin := flag.String("ssh", "ssh", "ssh client used to reach remote hosts (your own ssh config and agent are used; Vesqira never handles keys)")
 	sshConfig := flag.String("ssh-config", "~/.ssh/config", "ssh_config read only to offer its host aliases when adding a host (empty offers none)")
 	enableEditor := flag.Bool("enable-editor", false, "let the owner edit text files inside the source roots from the app (ADR 0029); off by default, never on the review address")
+	enableTerminal := flag.Bool("enable-terminal", false, "let the owner open a shell on this computer or on a registered host from the app (ADR 0029); runs commands as you; off by default, never on the review address")
+	allowOthers := flag.Bool("allow-other-local-users", false, "DANGEROUS: do not check which user account connects to the owner address; on a shared computer any other account can then use the app as you (and open a shell with --enable-terminal)")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
 
@@ -68,6 +71,22 @@ func main() {
 	host, _, err := net.SplitHostPort(*addr)
 	if err != nil || (host != "127.0.0.1" && host != "localhost" && host != "::1") {
 		log.Fatalf("refusing to listen on %q: local mode binds to loopback only", *addr)
+	}
+	gateOwner := true
+	switch {
+	case *allowOthers:
+		gateOwner = false
+		log.Printf("WARNING: --allow-other-local-users: any user account on this computer can reach the owner API on %s and act as you", *addr)
+	case runtime.GOOS != "linux":
+		gateOwner = false
+		if *enableTerminal || *enableEditor {
+			log.Fatalf("--enable-terminal and --enable-editor need the check that only your own user account reaches the owner address, which exists on Linux only; on %s pass --allow-other-local-users to accept that any local account can use them", runtime.GOOS)
+		}
+		log.Printf("WARNING: on %s any user account on this computer can reach the owner API on %s; the same-user check is Linux only (SECURITY.md)", runtime.GOOS, *addr)
+	default:
+		if _, err := os.Stat("/proc/net/tcp"); err != nil {
+			log.Fatalf("cannot check which user connects to %s: %v (the owner address would be open to every account; pass --allow-other-local-users to accept that)", *addr, err)
+		}
 	}
 	if len(roots) == 0 {
 		// opening a project folder makes it readable (ADR 0030); nothing else outside the data directory is
@@ -171,7 +190,7 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
+	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
@@ -191,13 +210,24 @@ func main() {
 	if *enableEditor {
 		log.Printf("editor enabled: text files inside the source roots can be changed from the app (loopback only)")
 	}
+	if *enableTerminal {
+		log.Printf("terminal enabled: the app can open a shell as this user, here or over ssh (loopback only)")
+	}
 	log.Printf("listening on http://%s, roots: %v", *addr, []string(rs))
 	// No WriteTimeout: a cube analysis answers one request for up to its own 30-minute budget. Reading a request is
 	// bounded, and so is an idle connection.
 	owner := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 16 << 10}
 	servers = append(servers, owner)
+	ownerLn, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var ownerServe net.Listener = ownerLn
+	if gateOwner { // only this process's own uid may connect (peergate.go); the review and publish listeners are for others and stay open
+		ownerServe = server.NewPeerGate(ownerLn)
+	}
 	go func() {
-		if err := owner.ListenAndServe(); err != http.ErrServerClosed {
+		if err := owner.Serve(ownerServe); err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
 	}()

@@ -83,6 +83,12 @@ type Server struct {
 	EditorEnabled bool
 	editMu        sync.Mutex // one editor save at a time
 
+	// TerminalEnabled mounts the integrated terminal routes (--enable-terminal, ADR 0029). Off by default.
+	TerminalEnabled bool
+	TerminalShell   []string       // argv of the local shell; empty runs the user's login shell ($SHELL -l). Tests set it.
+	TerminalLimits  TerminalLimits // zero values take the defaults
+	terms           termRegistry
+
 	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
 
 	records      sync.WaitGroup // background run-record writes in flight (hostwrite.go)
@@ -247,6 +253,10 @@ func (s *Server) Handler() http.Handler {
 	if s.EditorEnabled {
 		mux.HandleFunc("GET /api/files/text", s.getText)
 		mux.HandleFunc("PUT /api/files/text", s.putText)
+	}
+	if s.TerminalEnabled {
+		mux.HandleFunc("POST /api/terminal/sessions", s.openTerminalSession)
+		mux.HandleFunc("GET /api/terminal", s.terminalSocket)
 	}
 	mux.HandleFunc("GET /api/datasets/{id}/header-cards", s.headerCards)
 	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
