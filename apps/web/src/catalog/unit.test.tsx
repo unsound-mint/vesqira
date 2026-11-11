@@ -1,13 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import type { Dataset } from "../api/catalog";
+import type { ImageDataset } from "../api/catalog";
 import { DatasetInspector } from "./DatasetInspector";
 import { UnitControl } from "./UnitControl";
 
 const header = (over: Record<string, unknown> = {}) => ({ naxis: 2, bitpix: -32, bunit: null, bunit_status: "unresolved", specsys: null, radesys: null, axes: [], ...over });
-const ds = (over: Partial<Dataset> = {}, h: Record<string, unknown> = {}): Dataset =>
-  ({ id: 7, path: "/data/a.fits", name: "a.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", interpretation: null, unitDeclaration: null, header: header(h), ...over }) as unknown as Dataset;
+const ds = (over: Partial<ImageDataset> = {}, h: Record<string, unknown> = {}): ImageDataset =>
+  ({ id: 7, path: "/data/a.fits", name: "a.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", interpretation: null, unitDeclaration: null, header: header(h), ...over }) as unknown as ImageDataset;
 const declared = (over: Record<string, unknown> = {}) => ({ unit: "Jy/beam", declaredBy: "user", declaredAt: "2026-11-10T10:00:00Z", stale: false, ...over });
 
 describe("the unit of the values", () => {

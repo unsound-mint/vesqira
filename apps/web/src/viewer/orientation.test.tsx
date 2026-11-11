@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Dataset } from "../api/catalog";
+import type { Dataset, Header, ImageDataset } from "../api/catalog";
 import { lut } from "./colormaps";
 import { glyphStride, orientationLines } from "./glyphs";
 import { axialMeanText, InterpretationPanel, suggestCompanion } from "./OrientationPanels";
@@ -82,7 +82,7 @@ describe("orientation lines", () => {
 });
 
 describe("declaring an interpretation", () => {
-  const ds = (id: number, name: string): Dataset => ({ id, name, path: `/d/${name}`, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: {} as Dataset["header"] });
+  const ds = (id: number, name: string): ImageDataset => ({ id, name, path: `/d/${name}`, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: {} as Header });
   const viewer = { view: { channels: 1 }, plane: { head: { stats: { min: 0, max: 3.1 } } } } as unknown as Viewer;
 
   it("suggests a reliability map by file name only", () => {

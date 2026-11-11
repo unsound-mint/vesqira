@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Dataset } from "../api/catalog";
+import type { Header, ImageDataset } from "../api/catalog";
 import { CompareBar, linkState } from "./CompareBar";
 
-const ds = (id: number, name: string): Dataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: {} as Dataset["header"] });
+const ds = (id: number, name: string): ImageDataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: {} as Header });
 const all = [ds(1, "a.fits"), ds(2, "b.fits"), ds(3, "c.fits")];
 
 describe("comparing maps", () => {
