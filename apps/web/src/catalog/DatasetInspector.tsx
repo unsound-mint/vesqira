@@ -22,6 +22,11 @@ function unitText(d: ImageDataset): string {
   return u.stale ? `${show(d.header.bunit)} (unresolved; you declared ${u.unit} for an earlier version of the file, not applied)` : `${u.unit} (declared by you, not in the file)`;
 }
 
+/** A value of the sheet. It is cut at the edge of the column, so the whole text is its tooltip. */
+function Val({ text, title }: { text: string; title?: string }) {
+  return <dd className="mono" title={title ?? text}>{text}</dd>;
+}
+
 export function DatasetInspector({ d, problem, onReread }: { d: ImageDataset; problem?: Problem; onReread?: () => void }) {
   const h = d.header;
   return (
@@ -34,19 +39,19 @@ export function DatasetInspector({ d, problem, onReread }: { d: ImageDataset; pr
       ) : null}
       <dl className={s.facts}>
         <dt>File</dt>
-        <dd className="mono" title={d.path}>{d.name}</dd>
+        <Val text={d.name} title={d.path} />
         <dt>Size</dt>
-        <dd className="mono">{bytes(d.sizeBytes)}</dd>
+        <Val text={bytes(d.sizeBytes)} />
         <dt>Brightness unit</dt>
-        <dd className="mono">{unitText(d)}</dd>
+        <Val text={unitText(d)} />
         <dt>Pixel scale</dt>
-        <dd className="mono">{pixelScale(d)}</dd>
+        <Val text={pixelScale(d)} />
         <dt>Beam</dt>
-        <dd className="mono">{beamText(d)}</dd>
+        <Val text={beamText(d)} />
         <dt>Frame</dt>
-        <dd className="mono">{show(h.radesys)}</dd>
+        <Val text={show(h.radesys)} />
         <dt>Spectral frame</dt>
-        <dd className="mono">{show(h.specsys)}</dd>
+        <Val text={show(h.specsys)} />
       </dl>
       <div className={s.scroller} role="region" aria-label="Axes table" tabIndex={0}>
       <table className={s.axes}>

@@ -45,7 +45,7 @@ export const KIND_COLOR: Record<AddableKind, OverlayColor> = { contours: "amber"
 export function emptyDraft(kind: AddableKind, datasetId: number | null): Draft {
   return {
     kind, datasetId, channel: "1", levelMode: "sigma", values: "3, 5, 10", start: "1", step: "1", factor: "2", count: "5",
-    sampling: "auto", gapPx: "16", stepPx: "4", length: "fixed", opacity: "uniform", threshold: "", corner: "bottom-left", frame: "icrs",
+    sampling: "auto", gapPx: "16", stepPx: "4", length: "fixed", opacity: "uniform", threshold: "", corner: "bottom-right", frame: "icrs",
     vectors: false, lengthColumn: "", lengthScale: "", colorColumn: "", filterColumn: "", filterSigma: "", filterMin: "3",
     color: KIND_COLOR[kind], width: "", dash: kind === "grid" ? "dashed" : "solid",
   };

@@ -4,14 +4,20 @@
   gap: var(--sp-1);
 }
 
+/* the input keeps room to show a path; when the column is too narrow for both, Browse goes under it instead of cropping it */
 .row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--sp-2);
   align-items: center;
 }
 
+.row > button {
+  flex: none;
+}
+
 .input {
+  flex: 1 1 12rem;
   min-width: 0;
   font-family: var(--font-data);
 }

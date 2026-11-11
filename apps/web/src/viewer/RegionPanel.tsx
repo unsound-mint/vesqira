@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Button, Input } from "../ui";
+import { useEffect, useRef, useState } from "react";
+import { Download, Upload } from "lucide-react";
+import { Button, Checkbox, Input, LinkButton, Switch } from "../ui";
 import type { RegionShape } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
@@ -134,16 +135,16 @@ function SavedList({ v }: { v: Viewer }) {
                 </form>
               ) : (
                 <>
-                  <label className={s.pick}>
-                    <input type="checkbox" checked={!sr.hidden.has(r.id)} onChange={() => sr.toggle(r.id)} aria-label={`Show ${r.name} on the image`} />
+                  <div className={s.pick}>
+                    <Switch label={null} checked={!sr.hidden.has(r.id)} onChange={() => sr.toggle(r.id)} aria-label={`Show ${r.name} on the image`} />
                     <button type="button" className={s.name} aria-pressed={selected} onClick={() => sr.select(selected ? null : r)}>{r.name}</button>
-                  </label>
+                  </div>
                   <span className={s.note}>{describe(r)}</span>
                   <div className={s.actions}>
                     <Button type="button" onClick={() => setEditing({ id: r.id, text: r.name })}>Rename</Button>
                     <Button type="button" disabled={!changed} onClick={() => void sr.reshape(r.id, current!)}>Use current {line ? "line" : "shape"}</Button>
                     <Button type="button" onClick={() => void sr.duplicate(r)}>Duplicate</Button>
-                    <a className={s.link} href={ds9Url(r.datasetId, r.id)} download>DS9</a>
+                    <LinkButton icon={Download} href={ds9Url(r.datasetId, r.id)} download>DS9</LinkButton>
                     <Button type="button" onClick={() => void sr.remove(r)}>Delete</Button>
                   </div>
                 </>
@@ -159,7 +160,7 @@ function SavedList({ v }: { v: Viewer }) {
       ) : null}
       {sr.error ? <p role="alert" className={s.err}>{sr.error}</p> : null}
       <Ds9Import v={v} />
-      {sr.saved.length > 0 && v.datasetId !== null ? <a className={s.link} href={ds9Url(v.datasetId)} download>Export all as a DS9 region file (.reg)</a> : null}
+      {sr.saved.length > 0 && v.datasetId !== null ? <div className={s.actions}><LinkButton icon={Download} href={ds9Url(v.datasetId)} download>Export all as a DS9 region file (.reg)</LinkButton></div> : null}
       <p className={s.note}>Exported DS9 files use the dataset’s own pixel grid (image coordinates, counted from 1), so they open in DS9 on the same file without any sky transformation. Imported files may also use sky coordinates (FK5, ICRS or the dataset’s own frame, boxes and circles): they are placed with this file’s WCS and always listed as approximated.</p>
     </section>
   );
@@ -171,6 +172,7 @@ function Ds9Import({ v }: { v: Viewer }) {
   const [items, setItems] = useState<ImportItem[] | null>(null);
   const [withApprox, setWithApprox] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const file = useRef<HTMLInputElement>(null);
   if (v.datasetId === null) return null;
   const id = v.datasetId;
   async function choose(file: File | undefined) {
@@ -192,10 +194,10 @@ function Ds9Import({ v }: { v: Viewer }) {
   const toAdd = exact + (withApprox ? approx : 0);
   return (
     <section className={s.saved} aria-label="Import DS9 regions">
-      <label className={s.note}>
-        Import a DS9 region file (image coordinates)
-        <input type="file" accept=".reg,.txt,text/plain" onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
-      </label>
+      <div className={s.actions}>
+        <Button icon={Upload} onClick={() => file.current?.click()}>Import a DS9 region file…</Button>
+      </div>
+      <input ref={file} type="file" hidden aria-label="Import a DS9 region file (image coordinates)" accept=".reg,.txt,text/plain" onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
       {items ? (
         <>
@@ -208,7 +210,7 @@ function Ds9Import({ v }: { v: Viewer }) {
               </li>
             ))}
           </ul>
-          {approx > 0 ? <label className={s.pick}><input type="checkbox" checked={withApprox} onChange={(e) => setWithApprox(e.target.checked)} /> Also add the {approx} approximated {approx === 1 ? "region" : "regions"}</label> : null}
+          {approx > 0 ? <Checkbox label={`Also add the ${approx} approximated ${approx === 1 ? "region" : "regions"}`} checked={withApprox} onChange={(e) => setWithApprox(e.target.checked)} /> : null}
           <div className={s.actions}>
             <Button disabled={toAdd === 0} onClick={() => { void v.savedRegions.importText(text ?? "", withApprox); setItems(null); setText(null); }}>Add {toAdd} {toAdd === 1 ? "region" : "regions"}</Button>
             <Button onClick={() => { setItems(null); setText(null); }}>Cancel</Button>

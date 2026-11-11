@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Button, Input, Section, Select } from "../ui";
+import { Basis, Button, Input, More, Section, Select } from "../ui";
 import { ApiError, isCatalog } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
 import { getDerived, relativeOrientationTableUrl, runRelativeOrientation } from "../api/analysis";
@@ -43,6 +43,13 @@ export function notReady(d: Dataset): string | null {
   if (i.stale) return "the file changed since it was declared";
   const miss = [i.frame ? null : "the angle's frame", !i.quantity || i.quantity === "unspecified" ? "what the angle measures" : null].filter(Boolean);
   return miss.length ? `${miss.join(" and ")} ${miss.length > 1 ? "are" : "is"} not declared` : null;
+}
+
+/** Why a bootstrap interval has no width: every resample gave one value, so it says nothing about uncertainty. Null when it has width. */
+export function bootstrapNote(range: readonly number[], used: number): string | null {
+  const [lo, hi] = range;
+  if (lo === undefined || hi === undefined || !(hi - lo < 5e-4)) return null;
+  return `No spread: all 2000 resamples of the ${used} used source${used === 1 ? "" : "s"} gave the same value, which happens when every source has the same |Δψ| or very few are used. It is not a sign of certainty.`;
 }
 
 const fmt = (v: number | null | undefined, digits = 3) => (v === null || v === undefined || !Number.isFinite(v) ? EM : v.toFixed(digits));
@@ -110,46 +117,55 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
       {chosenWhy ? <p className={s.note}>{chosen?.name}: {chosenWhy}.</p> : null}
       {chosen && !chosenWhy ? (
         <>
-          <p className={s.note}>
-            {catalogMode
-              ? "The map is averaged as axial angles in a disk around each source (pixels within the radius on the sky, NaN left out, weighted by the map's declared reliability if it has one). The chance level moves the whole source pattern across the map, keeping each source's angle."
-              : "The two maps must share a grid (align one first if not). The chance level moves the second map across the first by whole pixels, with wrap. Pixels are correlated, so the projected Rayleigh statistic is shown without a p-value."}
-          </p>
+          <Basis summary={catalogMode ? "The map is averaged as axial angles in a disk around each source; the chance level shifts the source pattern across the map." : "The two maps must share a grid; the chance level shifts the second map across the first by whole pixels."}>
+            <p>
+              {catalogMode
+                ? "The map is averaged as axial angles in a disk around each source (pixels within the radius on the sky, NaN left out, weighted by the map's declared reliability if it has one). The chance level moves the whole source pattern across the map, keeping each source's angle."
+                : "The two maps must share a grid (align one first if not). The chance level moves the second map across the first by whole pixels, with wrap. Pixels are correlated, so the projected Rayleigh statistic is shown without a p-value."}
+            </p>
+          </Basis>
           <div className={s.grid}>
             {catalogMode ? <Input label="Disk radius (arcmin)" value={val("radiusArcmin")} onChange={set("radiusArcmin")} inputMode="decimal" /> : null}
-            {catalogMode ? <Input label="Fewest pixels in a disk" value={val("minPixels")} onChange={set("minPixels")} inputMode="numeric" /> : null}
             <Input label="Shifts in the null" value={val(catalogMode ? "nShiftsCatalog" : "nShiftsMaps")} onChange={set(catalogMode ? "nShiftsCatalog" : "nShiftsMaps")} inputMode="numeric" />
-            <Input label="Shortest shift (deg)" value={val("minShiftDeg")} onChange={set("minShiftDeg")} inputMode="decimal" />
-            <Input label="Share of samples a shift keeps" value={val("keepFraction")} onChange={set("keepFraction")} inputMode="decimal" />
-            <Input label="Seed" value={val("seed")} onChange={set("seed")} inputMode="numeric" />
-            <Input label="Histogram bins (equal width)" value={val("bins")} onChange={set("bins")} inputMode="numeric" />
           </div>
-          {catalogMode ? (
-            <fieldset className={s.grid} aria-label="Optional row filter on P/σP">
-              <Select label="Filter rows: column P" value={snrP} onChange={set("snrP")} disabled={valueCols.length === 0}>
-                <option value="">Off: use every row</option>
-                {valueCols.map((c) => <option key={c} value={c}>{c}</option>)}
-              </Select>
-              <Select label="Filter rows: column σP" value={snrSigma} onChange={set("snrSigma")} disabled={valueCols.length === 0}>
-                <option value="">Off: use every row</option>
-                {valueCols.map((c) => <option key={c} value={c}>{c}</option>)}
-              </Select>
-              {snrOn ? <Input label="Keep rows with P/σP ≥" value={val("snrMin")} onChange={set("snrMin")} inputMode="decimal" /> : null}
-            </fieldset>
-          ) : null}
-          {catalogMode && valueCols.length === 0 ? <p className={s.note}>No value columns are declared for the catalog, so there is nothing to filter on; declare the P and σP columns as values to enable the P/σP filter.</p> : null}
-          {catalogMode && proposal && !(snrP === proposal.p && snrSigma === proposal.sigma) ? (
-            <p className={s.note}>
-              Proposal, from the column names only: P = {proposal.p}, σP = {proposal.sigma}.{" "}
-              <Button onClick={() => setV({ ...v, snrP: proposal.p, snrSigma: proposal.sigma })}>Use this proposal</Button>
-            </p>
-          ) : null}
-          {snrOn ? <p className={s.note}>Rows with P/σP below {val("snrMin")} are left out and listed in the table with that reason; rows with P or σP missing are left out with their own reason. The default is the threshold your comparison script uses (3); the filter is recorded with the result.</p> : null}
+          <More summary="Advanced settings" open={unreadable.length > 0 || snrOn || snrHalf}>
+            <div className={s.grid}>
+              {catalogMode ? <Input label="Fewest pixels in a disk" value={val("minPixels")} onChange={set("minPixels")} inputMode="numeric" /> : null}
+              <Input label="Shortest shift (deg)" value={val("minShiftDeg")} onChange={set("minShiftDeg")} inputMode="decimal" />
+              <Input label="Share of samples a shift keeps" value={val("keepFraction")} onChange={set("keepFraction")} inputMode="decimal" />
+              <Input label="Seed" value={val("seed")} onChange={set("seed")} inputMode="numeric" />
+              <Input label="Histogram bins (equal width)" value={val("bins")} onChange={set("bins")} inputMode="numeric" />
+            </div>
+            {catalogMode ? (
+              <fieldset className={s.filter} aria-label="Optional row filter on P/σP">
+                <div className={s.grid}>
+                  <Select label="Filter rows: column P" value={snrP} onChange={set("snrP")} disabled={valueCols.length === 0}>
+                    <option value="">Off: use every row</option>
+                    {valueCols.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </Select>
+                  <Select label="Filter rows: column σP" value={snrSigma} onChange={set("snrSigma")} disabled={valueCols.length === 0}>
+                    <option value="">Off: use every row</option>
+                    {valueCols.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </Select>
+                  {snrOn ? <Input label="Keep rows with P/σP ≥" value={val("snrMin")} onChange={set("snrMin")} inputMode="decimal" /> : null}
+                </div>
+              </fieldset>
+            ) : null}
+            {catalogMode && valueCols.length === 0 ? <p className={s.note}>No value columns are declared for the catalog, so there is nothing to filter on; declare the P and σP columns as values to enable the P/σP filter.</p> : null}
+            {catalogMode && proposal && !(snrP === proposal.p && snrSigma === proposal.sigma) ? (
+              <p className={s.note}>
+                Proposal, from the column names only: P = {proposal.p}, σP = {proposal.sigma}.{" "}
+                <Button onClick={() => setV({ ...v, snrP: proposal.p, snrSigma: proposal.sigma })}>Use this proposal</Button>
+              </p>
+            ) : null}
+            {snrOn ? <p className={s.note}>Rows with P/σP below {val("snrMin")} are left out and listed in the table with that reason; rows with P or σP missing are left out with their own reason. The default is the threshold your comparison script uses (3); the filter is recorded with the result.</p> : null}
+            <p className={s.note}>The seed is recorded with the result: the same inputs and seed give the same numbers.</p>
+          </More>
           {snrHalf ? <p className={s.err}>The P/σP filter needs both columns: choose P and σP, or set both to Off.</p> : null}
           {unreadable.length ? <p className={s.err}>Every parameter needs a number; {unreadable.length === 1 ? "one is" : `${unreadable.length} are`} empty or not a number.</p> : null}
           <Button variant="primary" disabled={busy || unreadable.length > 0 || snrHalf} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
           {busy ? <Button onClick={() => abort.current?.abort()}>Cancel</Button> : null}
-          <p className={s.note}>The seed is recorded with the result: the same inputs and seed give the same numbers. A null of thousands of shifts can take minutes on a large map.</p>
+          <p className={s.note}>A null of thousands of shifts can take minutes on a large map.</p>
         </>
       ) : null}
       {err ? (
@@ -200,7 +216,7 @@ export function RelOrientView({ s: r, names, tableUrl }: { s: RelOrientSummary; 
         <dd className="mono">{n.skipped ? EM : `${fmt(n.p_one_sided, 4)} from ${n.kept ?? 0} kept of ${n.attempted ?? 0} shifts`}</dd>
         <dt>Median |Δψ|</dt>
         <dd className="mono">{fmt(r.median_abs_dpsi_deg, 1)}°</dd>
-        {cat && r.bootstrap_am_16_84 ? (<><dt>Bootstrap 16–84%</dt><dd className="mono">{fmt(r.bootstrap_am_16_84[0])} to {fmt(r.bootstrap_am_16_84[1])}</dd></>) : null}
+        {cat && r.bootstrap_am_16_84 ? (<><dt>Bootstrap 16–84%</dt><dd><span className="mono">{fmt(r.bootstrap_am_16_84[0])} to {fmt(r.bootstrap_am_16_84[1])}</span>{bootstrapNote(r.bootstrap_am_16_84, c.used) ? <span className={s.sub}>{bootstrapNote(r.bootstrap_am_16_84, c.used)}</span> : null}</dd></>) : null}
         {!cat && r.prs ? (<><dt>Projected Rayleigh V</dt><dd className="mono">{fmt(r.prs.V, 1)}{r.prs.V_weighted !== null && r.prs.V_weighted !== undefined ? ` (weighted ${fmt(r.prs.V_weighted, 1)})` : ""}, n = {r.prs.n?.toLocaleString("en-US")}</dd></>) : null}
         {!cat && r.independent_samples ? (<><dt>Independent beams (approx.)</dt><dd className="mono">{r.independent_samples.value !== null && r.independent_samples.value !== undefined ? fmt(r.independent_samples.value, 0) : `not offered: ${r.independent_samples.reason}`}</dd></>) : null}
         <dt>{cat ? "Sources used" : "Pixels used"}</dt>
@@ -238,8 +254,8 @@ export function RelOrientView({ s: r, names, tableUrl }: { s: RelOrientSummary; 
 }
 
 const HW = 320;
-const HH = 180;
-const HM = { l: 34, r: 8, t: 10, b: 40 };
+const HH = 196;
+const HM = { l: 52, r: 12, t: 10, b: 46 };
 
 /** Fraction of samples per |Δψ| bin, with the null's 2.5–97.5% band and median per bin when a null was run. */
 export function DeltaPsiHistogram({ s: r }: { s: RelOrientSummary }) {
@@ -257,7 +273,7 @@ export function DeltaPsiHistogram({ s: r }: { s: RelOrientSummary }) {
         {ticks.map((t) => (
           <g key={t}>
             <line className={s.rule} x1={HM.l} x2={HW - HM.r} y1={py(t)} y2={py(t)} />
-            <text className={s.tick} x={HM.l - 4} y={py(t) + 3} textAnchor="end">{t.toFixed(2)}</text>
+            <text className={s.tick} x={HM.l - 6} y={py(t) + 4} textAnchor="end">{t.toFixed(2)}</text>
           </g>
         ))}
         {h.fractions.map((f, i) => (
@@ -274,8 +290,9 @@ export function DeltaPsiHistogram({ s: r }: { s: RelOrientSummary }) {
           </g>
         )) : null}
         <line className={s.axis} x1={HM.l} x2={HW - HM.r} y1={py(0)} y2={py(0)} />
-        {[0, 45, 90].map((d) => <text key={d} className={s.tick} x={HM.l + (d / 90) * (HW - HM.l - HM.r)} y={HH - HM.b + 12} textAnchor={d === 0 ? "start" : d === 90 ? "end" : "middle"}>{d}°</text>)}
-        <text className={s.tick} x={(HW + HM.l) / 2} y={HH - 4} textAnchor="middle">|Δψ|: 0° parallel, 90° perpendicular</text>
+        {[0, 45, 90].map((d) => <text key={d} className={s.tick} x={HM.l + (d / 90) * (HW - HM.l - HM.r)} y={HH - HM.b + 16} textAnchor={d === 0 ? "start" : d === 90 ? "end" : "middle"}>{d}°</text>)}
+        <text className={s.tick} x={(HW + HM.l - HM.r) / 2} y={HH - 6} textAnchor="middle">|Δψ| (0° parallel, 90° perpendicular)</text>
+        <text className={s.tick} transform={`translate(11 ${(HH - HM.b + HM.t) / 2}) rotate(-90)`} textAnchor="middle">share of {r.mode === "map_catalog" ? "sources" : "pixels"}</text>
       </svg>
       <figcaption className={s.note}>
         Bars: share of {r.mode === "map_catalog" ? "sources" : "pixels"} per bin ({k} equal-width bins of {90 / k}°).{band ? " Whiskers: the null's 2.5–97.5% range per bin; dot: its median." : " No null was run."}
@@ -285,20 +302,29 @@ export function DeltaPsiHistogram({ s: r }: { s: RelOrientSummary }) {
 }
 
 const SW = 320;
+const SM = { l: 40, r: 10, t: 10, b: 36 };
+
+/** The longest "round" length (1, 2, 5 times a power of ten) that fits in `max`, for a scale bar. */
+export function niceLength(max: number): number {
+  if (!(max > 0)) return 0;
+  const p = 10 ** Math.floor(Math.log10(max));
+  return [5, 2, 1].map((m) => m * p).find((v) => v <= max) ?? p;
+}
 
 /** Map vs catalog: the map's orientation (solid) and the catalog's (dashed, outlined) at each source, in the map's pixel frame, over
-    the map's outline. Not the map raster: the figure is self-contained. North and east depend on the map's WCS, so the axes are pixels. */
+    the map's outline. Not the map raster: the figure is self-contained. North and east depend on the map's WCS, which the result does
+    not carry, so the axes are pixels (a frame with ticks) and the scale bar comes from the map's stated pixel scale. */
 export function SegmentsFigure({ s: r }: { s: RelOrientSummary }) {
   const g = r.segments!;
   const nx = (r.map as { nx?: number }).nx ?? 1;
   const ny = (r.map as { ny?: number }).ny ?? 1;
-  const pad = 8;
-  const scale = (SW - 2 * pad) / Math.max(nx, ny);
-  const w = nx * scale + 2 * pad;
-  const h = ny * scale + 2 * pad;
+  const scaleArcmin = (r.map as { pixel_scale_arcmin?: number }).pixel_scale_arcmin;
+  const scale = (SW - SM.l - SM.r) / Math.max(nx, ny);
+  const w = SW;
+  const h = ny * scale + SM.t + SM.b;
   const len = Math.max(8, Math.min(40, (SW / Math.sqrt(Math.max(1, g.x.length))) * 0.5));
-  const X = (x: number) => pad + (x + 0.5) * scale;
-  const Y = (y: number) => h - pad - (y + 0.5) * scale;                   // FITS y up
+  const X = (x: number) => SM.l + (x + 0.5) * scale;
+  const Y = (y: number) => h - SM.b - (y + 0.5) * scale;                   // FITS y up
   // the catalog's segment is the longer one, so it shows past the map's when the two agree
   const seg = (x: number, y: number, deg: number, f = 1) => {
     const a = (deg * Math.PI) / 180;
@@ -306,10 +332,30 @@ export function SegmentsFigure({ s: r }: { s: RelOrientSummary }) {
     const dy = (Math.sin(a) * len * f) / 2;
     return { x1: X(x) - dx, y1: Y(y) + dy, x2: X(x) + dx, y2: Y(y) - dy };
   };
+  const xTicks = [0, Math.round(nx / 2), nx];
+  const yTicks = [0, Math.round(ny / 2), ny];
+  const barArcmin = scaleArcmin && scaleArcmin > 0 ? niceLength(0.3 * nx * scaleArcmin) : 0;
+  const barPx = barArcmin && scaleArcmin ? (barArcmin / scaleArcmin) * scale : 0;
+  const bx = SM.l + nx * scale - 8 - barPx;
+  const by = h - SM.b - 10;
   return (
     <figure className={s.fig}>
-      <svg className={s.svg} viewBox={`0 0 ${w.toFixed(1)} ${h.toFixed(1)}`} role="img" aria-label={`Orientations at ${g.x.length} sources over the map outline: map solid, catalog dashed`}>
-        <rect className={s.outline} x={pad} y={pad} width={nx * scale} height={ny * scale} />
+      <svg className={s.svg} viewBox={`0 0 ${w.toFixed(1)} ${h.toFixed(1)}`} role="img" aria-label={`Orientations at ${g.x.length} sources over the map outline in its pixel frame: map solid, catalog dashed`}>
+        <rect className={s.outline} x={SM.l} y={SM.t} width={nx * scale} height={ny * scale} />
+        {xTicks.map((t) => (
+          <g key={`x${t}`}>
+            <line className={s.axis} x1={SM.l + t * scale} x2={SM.l + t * scale} y1={SM.t + ny * scale} y2={SM.t + ny * scale + 4} />
+            <text className={s.tick} x={SM.l + t * scale} y={SM.t + ny * scale + 16} textAnchor={t === 0 ? "start" : t === nx ? "end" : "middle"}>{t}</text>
+          </g>
+        ))}
+        {yTicks.map((t) => (
+          <g key={`y${t}`}>
+            <line className={s.axis} x1={SM.l - 4} x2={SM.l} y1={h - SM.b - t * scale} y2={h - SM.b - t * scale} />
+            <text className={s.tick} x={SM.l - 7} y={h - SM.b - t * scale + (t === 0 ? 0 : t === ny ? 8 : 4)} textAnchor="end">{t}</text>
+          </g>
+        ))}
+        <text className={s.tick} x={SM.l + (nx * scale) / 2} y={h - 4} textAnchor="middle">x (pixel)</text>
+        <text className={s.tick} transform={`translate(10 ${SM.t + (ny * scale) / 2}) rotate(-90)`} textAnchor="middle">y (pixel)</text>
         {g.x.map((x, i) => {
           const y = g.y[i]!;
           const m = g.map_pix_deg[i];
@@ -321,10 +367,16 @@ export function SegmentsFigure({ s: r }: { s: RelOrientSummary }) {
             </g>
           );
         })}
+        {barPx > 0 ? (
+          <g>
+            <line className={s.scaleBar} x1={bx} x2={bx + barPx} y1={by} y2={by} />
+            <text className={s.tick} x={bx + barPx / 2} y={by - 5} textAnchor="middle">{barArcmin >= 1 ? `${barArcmin}′` : `${barArcmin * 60}″`}</text>
+          </g>
+        ) : null}
       </svg>
       <figcaption className={s.note}>
         <span className={s.keyMap} aria-hidden="true" /> map, averaged in the disk · <span className={s.keyOther} aria-hidden="true" /> catalog · faded: not used (see the table for the reason).
-        Pixel frame of the map, FITS y up; segment lengths are fixed (the catalog's is drawn longer so both show).{g.truncated ? " Only the first sources are drawn; the table has all of them." : ""}
+        Pixel frame of the map, FITS y up; the bar is the map's pixel scale. North and east are not drawn: they depend on the map's WCS, which this figure does not carry. Segment lengths are fixed (the catalog's is drawn longer so both show).{g.truncated ? " Only the first sources are drawn; the table has all of them." : ""}
       </figcaption>
     </figure>
   );

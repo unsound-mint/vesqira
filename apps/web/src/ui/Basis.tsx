@@ -35,3 +35,13 @@ export function Basis({ summary, label = "Basis", tone = "note", role, children 
     </div>
   );
 }
+
+/**
+ * A sentence shown as one line with the rest behind "Basis": the first clause (see leadClause) up front, the whole sentence in
+ * the disclosure. A sentence that is short enough is just the line.
+ */
+export function BasisNote({ text, label }: { text: string; label?: string }) {
+  const lead = leadClause(text);
+  if (lead === text.replace(/\.$/, "")) return <Basis summary={text} />;
+  return <Basis summary={`${lead}${lead.endsWith("…") ? "" : "."}`} {...(label ? { label } : {})}>{text}</Basis>;
+}

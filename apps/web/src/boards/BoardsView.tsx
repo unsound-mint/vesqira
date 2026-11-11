@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
-import { Button, Checkbox, IconButton, Input, Select } from "../ui";
+import { ArrowDown, ArrowUp, Download, Printer, Trash2 } from "lucide-react";
+import { Button, Checkbox, IconButton, Input, LinkButton, Select } from "../ui";
 import { createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
 import { Threads } from "./Threads";
 // loaded when someone presents: it brings the modal primitives (ADR 0033), which the rest of the app does not need
@@ -164,7 +164,7 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
       {board && board.items.length > 0 ? (
         <div className={s.row}>
           <Button onClick={() => setPresenting(true)}>Present</Button>
-          <a className={s.link2} href={`#/print/${board.id}`} target="_blank" rel="noopener noreferrer">Print or save as PDF</a>
+          <LinkButton icon={Printer} href={`#/print/${board.id}`} target="_blank" rel="noopener noreferrer">Print or save as PDF</LinkButton>
         </div>
       ) : null}
       {presenting && board ? <Suspense fallback={null}><PresentView board={board} onClose={() => setPresenting(false)} /></Suspense> : null}
@@ -182,7 +182,7 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
           const out = jobRun ? defaultOutput(jobRun) : undefined;
           const outData = out ? lookup.datasets.find((d) => d.id === out.datasetId) : undefined;
           return (
-          <li key={it.position} className={s.card}>
+          <li key={it.position} className={`${s.card} ${job && !(jobRun && outData) ? s.cardJob : ""}`}>
             {f ? <img className={s.img} src={figurePreviewUrl(f.id)} alt={`${f.title}. ${provenanceLine(f.provenance)}`} width={f.width} height={f.height} /> : null}
             {job && jobRun && outData ? <LiveResult key={`${job.id}-${it.position}`} boardId={board.id} position={it.position} job={job} run={jobRun} dataset={outData} onPinned={replaceBoard} /> : null}
             {job && !(jobRun && outData) ? <JobFrame job={job} /> : null}
@@ -218,7 +218,7 @@ export function BoardsView({ onCompare }: { onCompare?: (datasetIdA: number, dat
               <div className={s.row}>
                 <IconButton icon={ArrowUp} label="Move up" disabled={i === 0} onClick={() => run(() => moveItem(board.id, it.position, -1))} />
                 <IconButton icon={ArrowDown} label="Move down" disabled={i === board.items.length - 1} onClick={() => run(() => moveItem(board.id, it.position, 1))} />
-                {f ? <a className={s.link2} href={`/api/figures/${f.id}/download`} download>Download PNG</a> : null}
+                {f ? <LinkButton icon={Download} href={`/api/figures/${f.id}/download`} download>Download PNG</LinkButton> : null}
                 <IconButton icon={Trash2} label="Remove from board" onClick={() => run(() => removeItem(board.id, it.position))} />
               </div>
             </div>

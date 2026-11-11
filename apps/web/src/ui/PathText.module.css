@@ -1,0 +1,29 @@
+.path {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  font-family: var(--font-data);
+  white-space: nowrap;
+}
+
+.head {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tail {
+  flex: none;
+}
+
+/* the whole path for assistive technology and copy; not drawn */
+.full {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

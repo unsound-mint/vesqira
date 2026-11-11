@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { Button, IconButton } from "../ui";
@@ -13,6 +13,8 @@ import { fromDrag, lineFromDrag, lineValid } from "./region";
 import type { Pt } from "./region";
 import type { LineShape, RegionShape } from "../api/planes";
 import { dashOf, LABEL_PX, lineMarks, nearestMarker, sceneMarks } from "../scene/overlays";
+import { placeLabels } from "../scene/labelPlacement";
+import type { Box, PlacedLabel } from "../scene/labelPlacement";
 import { SourcePopover } from "./SourceRow";
 import type { Mark } from "../scene/overlays";
 import { dragCentre, placement } from "../scene/view";
@@ -27,6 +29,9 @@ function token(name: string, fallback: Rgb): Rgb {
 /** The plane on screen: native aspect, square pixels, sharp edges, north up, "no value" pixels hatched. */
 export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: Pt | null) => void; onDrawn?: (plane: NonNullable<Viewer["plane"]>) => void }) {
   const box = useRef<HTMLDivElement>(null);
+  const frameEl = useRef<HTMLDivElement>(null);
+  const chromeEls = useRef<(HTMLElement | null)[]>([]); // the zoom bar, the channel caption and the warning: drawn over the picture, so labels keep clear of them
+  const [chrome, setChrome] = useState<Box[]>([]);
   const cv = v.canvas;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [draft, setDraft] = useState<RegionShape | null>(null);
@@ -200,10 +205,23 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
   const setDrawScale = v.setDrawScale;
   useEffect(() => setDrawScale(shape.scale), [shape.scale, setDrawScale]);
 
+  // the viewer's own controls in frame pixels, measured after layout so overlay labels never sit under them
+  useLayoutEffect(() => {
+    const f = frameEl.current?.getBoundingClientRect();
+    if (!f) { setChrome((c) => (c.length ? [] : c)); return; }
+    const next = chromeEls.current.flatMap((el) => {
+      if (!el) return [];
+      const r = el.getBoundingClientRect();
+      return [{ x: r.left - f.left, y: r.top - f.top, w: r.width, h: r.height }];
+    });
+    setChrome((c) => (c.length === next.length && c.every((b, i) => b.x === next[i]!.x && b.y === next[i]!.y && b.w === next[i]!.w && b.h === next[i]!.h) ? c : next));
+  });
+
   const probe = v.probe;
   const cell = plane ? shape.width / plane.head.width : 0;
   const mark = Math.max(cell, 10);
   const allNoValue = plane !== null && plane.head.stats.finite_count === 0;
+  const placed = useMemo(() => placeLabels(labels, cell, { w: shape.width, h: shape.height }, chrome), [labels, cell, shape.width, shape.height, chrome]);
 
   return (
     <div
@@ -217,7 +235,7 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
     >
       {body}
       {plane && shape.width > 0 ? (
-        <div className={s.frame} style={{ width: shape.width, height: shape.height, transform: `translate(${shape.offset.x}px, ${shape.offset.y}px)` }}>
+        <div className={s.frame} ref={frameEl} style={{ width: shape.width, height: shape.height, transform: `translate(${shape.offset.x}px, ${shape.offset.y}px)` }}>
           <canvas
             key={canvasKey}
             ref={cv}
@@ -283,7 +301,7 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
           {labels.length || sources.length ? (
             // labels and catalog markers in screen pixels, so text and dots keep their size at every zoom
             <svg className={s.overlay} width={shape.width} height={shape.height} aria-hidden="true">
-              <Labels labels={labels} cell={cell} />
+              <Labels labels={placed} />
               <Sources sources={sources} cell={cell} picked={pickedMark} />
             </svg>
           ) : null}
@@ -305,20 +323,20 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
         </div>
       ) : null}
       {plane ? (
-        <p className={s.caption} aria-live="polite">
+        <p className={s.caption} aria-live="polite" ref={(el) => { chromeEls.current[1] = el; }}>
           {channelLabel(plane.head.channel, plane.head.channels, view?.spectral ?? null, plane.head.spectral_value)}
           {v.loading && v.channel !== plane.head.channel ? ` · loading ${v.channel + 1}…` : ""}
           {plane.head.preview ? ` · preview, reduced ${plane.head.preview.step}× — full resolution loading` : ""}
         </p>
       ) : null}
       {plane ? (
-        <div className={s.zoomBar} role="group" aria-label="Zoom">
+        <div className={s.zoomBar} role="group" aria-label="Zoom" ref={(el) => { chromeEls.current[0] = el; }}>
           <IconButton icon={ZoomOut} label="Zoom out" disabled={v.zoom <= 1} onClick={() => v.setZoom(v.zoom / 1.25)} />
           <IconButton icon={ZoomIn} label="Zoom in" disabled={v.zoom >= 16} onClick={() => v.setZoom(v.zoom * 1.25)} />
           <IconButton icon={Maximize2} label="Fit to the pane" disabled={v.zoom === 1} onClick={() => v.setZoom(1)} />
         </div>
       ) : null}
-      {allNoValue ? <p className={s.warn} role="status">Every pixel in this plane has no value (NaN or BLANK).</p> : null}
+      {allNoValue ? <p className={s.warn} role="status" ref={(el) => { chromeEls.current[2] = el; }}>Every pixel in this plane has no value (NaN or BLANK).</p> : null}
     </div>
   );
 }
@@ -374,15 +392,12 @@ function Sources({ sources, cell, picked }: { sources: Extract<Mark, { type: "ma
   );
 }
 
-/** Overlay labels (grid coordinates, the beam size) at their picture positions times the screen cell, with a dark halo. */
-function Labels({ labels, cell }: { labels: Extract<Mark, { type: "text" }>[]; cell: number }) {
+/** Overlay labels (grid coordinates, the beam size) where placeLabels put them, with a dark halo. */
+function Labels({ labels }: { labels: PlacedLabel[] }) {
   return labels.map((m, i) => {
-    const pad = 3;
-    const x = m.x * cell + (m.anchor === "start" ? pad : m.anchor === "end" ? -pad : 0);
-    const y = m.y * cell + (m.baseline === "bottom" ? -pad : m.baseline === "top" ? pad : 0);
     const baseline = m.baseline === "top" ? "hanging" : m.baseline === "bottom" ? "text-after-edge" : "central";
     return (
-      <text key={i} className={s.label} x={x} y={y} textAnchor={m.anchor} dominantBaseline={baseline} style={{ fill: ink(m.color), fontSize: LABEL_PX }} data-role={m.role}>
+      <text key={i} className={s.label} x={m.sx} y={m.sy} textAnchor={m.anchor} dominantBaseline={baseline} style={{ fill: ink(m.color), fontSize: LABEL_PX }} data-role={m.role}>
         {m.text}
       </text>
     );

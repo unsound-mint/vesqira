@@ -34,6 +34,7 @@ function mockFetch(opts: { storage?: Answer; folders?: RunFolder[]; sizes?: Reco
   return calls;
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+beforeAll(() => import("./HostStorageDialog")); // the dialog is loaded on demand; warm it so a cold transform does not eat a test's wait
 
 describe("host storage", () => {
   it("asks the host nothing until the section is opened", () => {
@@ -90,8 +91,8 @@ describe("host storage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(looks()).toHaveLength(3));
     expect(looks()[2]).toMatchObject({ method: "POST", url: "/api/hosts/4/storage/refresh" });
-    // closing the section stops the asking
-    await userEvent.click(screen.getByRole("button", { name: "Hide disk and quota" }));
+    // closing the dialog stops the asking
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(REASK_MS * 2); });
     expect(looks()).toHaveLength(3);
   });
@@ -103,12 +104,14 @@ describe("sizes of my runs", () => {
     render(<HostStorage host={host} />);
     await userEvent.click(screen.getByRole("button", { name: "Disk and quota" }));
     const list = await screen.findByRole("list", { name: /Run folders on Cluster, largest first/ });
-    expect(within(list).getAllByText(/not measured/)).toHaveLength(2); // unmeasured is not a size
+    // unmeasured is not a size: those folders are one summary line, not rows of dashes
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByText(/2 folders not measured yet/)).toBeInTheDocument();
     expect(calls.filter((c) => c.url.endsWith("/folders/size"))).toHaveLength(0);
     await userEvent.click(screen.getByRole("button", { name: "Measure run-a" }));
     await waitFor(() => expect(within(list).getByText("88.0 GiB")).toBeInTheDocument());
     const names = within(list).getAllByRole("listitem").map((li) => /run-[abc]/.exec(li.textContent ?? "")![0]);
-    expect(names).toEqual(["run-a", "run-b", "run-c"]);
+    expect(names).toEqual(["run-a", "run-b"]);
     expect(calls.filter((c) => c.url.endsWith("/folders/size"))).toEqual([{ method: "POST", url: "/api/hosts/4/folders/size", body: { path: "/data/runs/a" } }]);
   });
 
@@ -129,5 +132,23 @@ describe("sizes of my runs", () => {
     await userEvent.click(screen.getByRole("button", { name: "Disk and quota" }));
     await screen.findByRole("list", { name: /Run folders/ });
     expect(screen.queryByRole("button", { name: /delete|remove|archive|clean/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("the dialog", () => {
+  it("shows the quota bar in the warning colour from 90 % and in the normal one below", async () => {
+    mockFetch({});
+    render(<HostStorage host={host} />);
+    await userEvent.click(screen.getByRole("button", { name: "Disk and quota" }));
+    expect(await screen.findByRole("meter", { name: /99 % of the hard limit/ })).toHaveAttribute("data-tone", "warn");
+    expect(screen.getByRole("meter", { name: /60 % of the file system used/ })).toHaveAttribute("data-tone", "ok");
+  });
+
+  it("keeps the raw tool output one click away, with the sentence in view", async () => {
+    mockFetch({});
+    render(<HostStorage host={host} />);
+    await userEvent.click(screen.getByRole("button", { name: "Disk and quota" }));
+    const raw = await screen.findByText(/spectre\| 1000\|\| 395.00 GiB/);
+    expect(raw.closest("details")).not.toHaveAttribute("open");
   });
 });

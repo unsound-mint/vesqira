@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Modal } from "../ui/Modal";
-import { Button, Pill } from "../ui";
+import { Button, PathText, Pill } from "../ui";
 import { BOM, fromEditorText, hasBom, hasLoneCR, lineEnding, openTextFile, saveTextFile, toEditorText, withoutBom } from "../api/editor";
 import type { TextFile } from "../api/editor";
 import { bytes } from "../catalog/format";
@@ -80,7 +80,7 @@ export default function EditorScreen({ path, onClose }: { path: string; onClose:
         <header className={s.bar}>
           <div className={s.title}>
             <p className={s.name}>{name}</p>
-            <p className={s.where} title={doc?.file.path ?? path}>{doc?.file.path ?? path}</p>
+            <p className={s.where}><PathText path={doc?.file.path ?? path} /></p>
           </div>
           {doc ? <span className={s.meta}>{bytes(doc.file.size)}</span> : null}
           {dirty ? <Pill tone="warn">unsaved</Pill> : doc ? <Pill tone="neutral">saved</Pill> : null}

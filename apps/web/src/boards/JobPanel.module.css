@@ -20,9 +20,9 @@
   align-content: center;
   justify-items: start;
   gap: var(--sp-3);
-  min-height: 140px;
-  padding: var(--sp-4);
-  border: var(--bw) dashed var(--line-strong);
+  min-height: 72px;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg-2);
 }

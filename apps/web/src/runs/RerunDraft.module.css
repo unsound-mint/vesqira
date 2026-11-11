@@ -68,6 +68,12 @@
   font-size: var(--text-xs);
 }
 
+/* a path with its Browse button needs a whole row: in a third of the page the button crops the path */
+.wide {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
 .setting {
   display: grid;
   align-content: start;

@@ -134,7 +134,7 @@ describe("status words", () => {
   it("never says valid, and absent flags are not 'not flagged'", () => {
     expect(flagState(view(false), plane(null)).text).toBe("No channel flags declared");
     expect(flagState(view(true), plane(false)).text).toBe("Channel not flagged");
-    expect(flagState(view(true), plane(true))).toEqual({ tone: "warn", text: "Channel flagged by provider" });
+    expect(flagState(view(true), plane(true))).toEqual({ tone: "warn", text: "Channel flagged in the file" });
     for (const t of [flagState(view(false), plane(null)).text, flagState(view(true), plane(false)).text]) expect(t.toLowerCase()).not.toContain("valid");
   });
 
@@ -178,7 +178,7 @@ describe("channel timeline keyboard", () => {
 
   it("lists flagged channels and says flagged data is kept", () => {
     render(<ChannelTimeline v={viewer(0, () => {})} />);
-    expect(screen.getByText(/Provider-flagged: 11, 12/)).toBeInTheDocument();
+    expect(screen.getByText(/Flagged in the file: 11, 12/)).toBeInTheDocument();
     expect(screen.getByText(/data kept/)).toBeInTheDocument();
   });
 

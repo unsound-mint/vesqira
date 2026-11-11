@@ -179,7 +179,7 @@ export function SweepGrid({ sweepId, refreshKey = 0 }: { sweepId: number; refres
           {grid.plot ? <Plot plot={grid.plot} /> : metric ? <p className={s.warn} role="note">{grid.plotNote}</p> : null}
         </div>
       ) : (
-        <p className={s.note}>No run of this sweep has declared a metric yet. When runs are imported, their declared numbers appear here.</p>
+        <p className={s.note}>No metric to plot yet: it appears here once runs of this sweep are imported with a declared number.</p>
       )}
     </section>
   );

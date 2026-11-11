@@ -38,6 +38,7 @@
 }
 
 .params {
+  min-width: 0;
   display: grid;
   gap: var(--sp-2);
   margin: 0;
@@ -52,11 +53,16 @@
   font-size: var(--text-xs);
 }
 
+/* the setting and its label share a line; the values, which are the long part, get a line of their own */
 .prow {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(60px, 90px) minmax(160px, 2fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   gap: var(--sp-2);
   align-items: end;
+}
+
+.prow > :last-child {
+  grid-column: 1 / -1;
 }
 
 .facts {

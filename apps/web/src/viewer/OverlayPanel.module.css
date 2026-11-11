@@ -76,6 +76,17 @@
   color: var(--warn);
 }
 
+/* a refusal carries an icon, so it is not told by colour alone */
+p.refused {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1);
+}
+
+.refused svg {
+  flex: none;
+}
+
 .form {
   display: grid;
   gap: var(--sp-2);

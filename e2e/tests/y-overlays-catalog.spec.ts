@@ -83,6 +83,7 @@ test("a catalog is drawn over the map from its declaration, counted, clickable a
   await insp.getByRole("button", { name: "Edit Catalog of y_stars.csv" }).click();
   await insp.getByLabel(/Orientation vectors from the declared angle/).check();
   await insp.getByLabel("Vector length").selectOption("P");
+  await insp.getByText("Filter rows", { exact: true }).click(); // the filter is behind a disclosure until one is set
   await insp.getByLabel("Keep rows where").selectOption("P");
   await insp.getByLabel("divided by").selectOption("sP");
   await insp.getByRole("button", { name: "Apply" }).click();

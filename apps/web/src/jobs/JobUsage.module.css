@@ -9,6 +9,12 @@
   font-size: var(--text-sm);
 }
 
+.h {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--w-strong);
+}
+
 .lead,
 .note,
 .warn,

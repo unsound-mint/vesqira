@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Pencil, Plus, X } from "lucide-react";
-import { Basis, Button, IconButton, Input, Select, Switch, leadClause } from "../ui";
+import { AlertTriangle, ArrowDown, ArrowUp, Pencil, Plus, X } from "lucide-react";
+import { Basis, Button, Icon, IconButton, Input, More, Select, Switch, leadClause } from "../ui";
 import type { Dataset } from "../api/catalog";
 import { overlayBasis, overlayTitle } from "../scene/basis";
 import { needsGeometry } from "../scene/geometry";
@@ -111,7 +111,7 @@ function Row({ o, i, n, scene, geometry, nameOf, dispatch, onEdit, editing, pick
         </div>
       </div>
       {computing ? <p className={s.basis} role="status">Computing its placement on this map…</p>
-        : refused ? <p className={s.refused} role="status">{basis}</p>
+        : refused ? <p className={s.refused} role="status"><Icon icon={AlertTriangle} /><span>{basis}</span></p>
           : basis ? <OverlayBasis text={basis} /> : null}
       {o.kind === "catalog" && o.visible ? <CatalogSources o={o} entry={entry} picked={picked} onPick={onPick} /> : null}
     </li>
@@ -157,16 +157,13 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
       ) : null}
       {draft.kind === "contours" && ds ? (
         <>
-          <Input label={`Channel (1 to ${channelsOf(ds)})`} inputMode="numeric" value={draft.channel} onChange={(e) => set({ channel: e.target.value })} />
-          <Select label="Levels" value={draft.levelMode} onChange={(e) => set({ levelMode: e.target.value as Draft["levelMode"], values: e.target.value === "sigma" ? "3, 5, 10" : draft.levelMode === "sigma" ? "" : draft.values })}>
-            <option value="sigma">Multiples of σ (robust, from the channel)</option>
-            <option value="list">A list of values</option>
-            <option value="linear">Start, step, count</option>
-            <option value="geometric">Start, factor, count</option>
-          </Select>
-          {draft.levelMode === "sigma" || draft.levelMode === "list" ? (
-            <Input label={draft.levelMode === "sigma" ? "Multiples of σ" : `Values${unit ? ` in ${unit}` : " (the file has no unit)"}`} value={draft.values} onChange={(e) => set({ values: e.target.value })} />
-          ) : (
+          <div className={s.fields}>
+            <Input label={`Channel (1 to ${channelsOf(ds)})`} inputMode="numeric" value={draft.channel} onChange={(e) => set({ channel: e.target.value })} />
+            {draft.levelMode === "sigma" || draft.levelMode === "list" ? (
+              <Input label={draft.levelMode === "sigma" ? "Multiples of σ" : `Values${unit ? ` in ${unit}` : " (no unit)"}`} value={draft.values} onChange={(e) => set({ values: e.target.value })} />
+            ) : null}
+          </div>
+          {draft.levelMode === "linear" || draft.levelMode === "geometric" ? (
             <div className={s.fields}>
               <Input label={`Start${unit ? ` (${unit})` : ""}`} inputMode="decimal" value={draft.start} onChange={(e) => set({ start: e.target.value })} />
               {draft.levelMode === "linear"
@@ -174,8 +171,7 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
                 : <Input label="Factor" inputMode="decimal" value={draft.factor} onChange={(e) => set({ factor: e.target.value })} />}
               <Input label="Count" inputMode="numeric" value={draft.count} onChange={(e) => set({ count: e.target.value })} />
             </div>
-          )}
-          <p className={s.hint}>{unit ? `Levels are in the file's unit, ${unit}.` : "The file states no unit: levels are plain numbers."}{draft.levelMode === "sigma" ? " σ is 1.4826 × the median absolute deviation of the channel's finite pixels, signal included." : ""}</p>
+          ) : null}
         </>
       ) : null}
       {draft.kind === "orientation" ? (
@@ -187,6 +183,7 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
           {draft.sampling === "auto"
             ? <Input label="Screen pixels between lines" inputMode="numeric" value={draft.gapPx} onChange={(e) => set({ gapPx: e.target.value })} />
             : <Input label="Every n-th pixel" inputMode="numeric" value={draft.stepPx} onChange={(e) => set({ stepPx: e.target.value })} />}
+          <More summary="Length, opacity and reliability">
           <div className={s.fields}>
             <Select label="Length" value={draft.length} disabled={!hasRel} onChange={(e) => set({ length: e.target.value as Draft["length"] })}>
               <option value="fixed">Fixed</option>
@@ -199,6 +196,7 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
           </div>
           <Input label="Only reliability at least (optional)" inputMode="decimal" value={draft.threshold} disabled={!hasRel} onChange={(e) => set({ threshold: e.target.value })} />
           {!hasRel ? <p className={s.hint}>That map declares no reliability map, so lines are drawn with fixed length and uniform opacity.</p> : null}
+          </More>
         </>
       ) : null}
       {isCat && cat ? (
@@ -223,6 +221,7 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
             <option value="">One colour</option>
             {numeric.map((c) => <option key={c.name} value={c.name}>{c.name}{c.unit ? ` (${c.unit})` : ""}</option>)}
           </Select>
+          <More summary="Filter rows" open={!!draft.filterColumn}>
           <div className={s.fields}>
             <Select label="Keep rows where" value={draft.filterColumn} onChange={(e) => set({ filterColumn: e.target.value })}>
               <option value="">All rows</option>
@@ -235,6 +234,7 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
             <Input label="is at least" inputMode="decimal" value={draft.filterMin} disabled={!draft.filterColumn} onChange={(e) => set({ filterMin: e.target.value })} />
           </div>
           <p className={s.hint}>A row whose value or uncertainty is missing does not pass the filter; the overlay counts such rows, and rows outside this map.</p>
+          </More>
         </>
       ) : null}
       {draft.kind === "beam" ? (
@@ -252,19 +252,32 @@ function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApp
           <option value="galactic">Galactic (l, b)</option>
         </Select>
       ) : null}
-      <div className={s.fields}>
-        <Select label="Colour" value={draft.color} onChange={(e) => set({ color: e.target.value as Draft["color"] })}>
-          {OVERLAY_COLOR_NAMES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </Select>
-        <Select label="Width" value={draft.width} onChange={(e) => set({ width: e.target.value })}>
-          <option value="">Default</option>
-          {["0.5", "1", "1.5", "2", "3"].map((w) => <option key={w} value={w}>{w} px</option>)}
-        </Select>
-        <Select label="Line" value={draft.dash} onChange={(e) => set({ dash: e.target.value as Draft["dash"] })}>
-          <option value="solid">Solid</option>
-          <option value="dashed">Dashed</option>
-        </Select>
-      </div>
+      <More open={draft.kind === "contours" && draft.levelMode !== "sigma"}>
+        {draft.kind === "contours" && ds ? (
+          <>
+            <Select label="Levels" value={draft.levelMode} onChange={(e) => set({ levelMode: e.target.value as Draft["levelMode"], values: e.target.value === "sigma" ? "3, 5, 10" : draft.levelMode === "sigma" ? "" : draft.values })}>
+              <option value="sigma">Multiples of σ (robust, from the channel)</option>
+              <option value="list">A list of values</option>
+              <option value="linear">Start, step, count</option>
+              <option value="geometric">Start, factor, count</option>
+            </Select>
+            <p className={s.hint}>{unit ? `Levels are in the file's unit, ${unit}.` : "The file states no unit: levels are plain numbers."}{draft.levelMode === "sigma" ? " σ is 1.4826 × the median absolute deviation of the channel's finite pixels, signal included." : ""}</p>
+          </>
+        ) : null}
+        <div className={s.fields}>
+          <Select label="Colour" value={draft.color} onChange={(e) => set({ color: e.target.value as Draft["color"] })}>
+            {OVERLAY_COLOR_NAMES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </Select>
+          <Select label="Width" value={draft.width} onChange={(e) => set({ width: e.target.value })}>
+            <option value="">Default</option>
+            {["0.5", "1", "1.5", "2", "3"].map((w) => <option key={w} value={w}>{w} px</option>)}
+          </Select>
+          <Select label="Line" value={draft.dash} onChange={(e) => set({ dash: e.target.value as Draft["dash"] })}>
+            <option value="solid">Solid</option>
+            <option value="dashed">Dashed</option>
+          </Select>
+        </div>
+      </More>
       {problem ? <p className={s.refused} role="alert">{problem}</p> : null}
       <div className={s.actions}>
         <Button type="submit" variant="primary" disabled={draft.kind !== "grid" && pool.length === 0}>{adding ? "Add" : "Apply"}</Button>

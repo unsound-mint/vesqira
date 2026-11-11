@@ -216,10 +216,16 @@ const grid: Renderer<"grid"> = (o, _scene, { plane, geometry }) => {
   const out = polylines(g.paths, h, "grid", () => stroke);
   for (const l of g.head.labels ?? []) {
     const [x, y] = toPicture(l.x, l.y, h);
-    out.push({ type: "text", role: "grid", x, y, text: l.text, color: stroke.color, ...labelAnchor(x, y, plane.head.width, h) });
+    out.push({ type: "text", role: "grid", x, y, text: `${axisName(g.head.frame, l.axis)} ${l.text}`, color: stroke.color, ...labelAnchor(x, y, plane.head.width, h) });
   }
   return out;
 };
+
+/** The coordinate a grid label is of, so "236.8°" is never left to be guessed: RA and Dec in the equatorial frames, l and b in Galactic. */
+export function axisName(frame: string | undefined, axis: "lon" | "lat"): string {
+  if (frame?.toLowerCase().startsWith("galactic")) return axis === "lon" ? "l" : "b";
+  return axis === "lon" ? "RA" : "Dec";
+}
 
 /**
  * Where a grid label sits so it stays inside the picture: against the edge its line leaves by (the nearest one), reading

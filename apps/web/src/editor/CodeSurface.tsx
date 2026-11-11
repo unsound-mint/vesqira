@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { editor as MonacoEditor } from "monaco-editor";
+import { appIsLight, monacoColors } from "./theme";
 import s from "./Editor.module.css";
 
 /** Monaco's language id for a file name, or plaintext. Only languages with a bundled grammar are listed (no language servers). */
@@ -34,7 +35,12 @@ function loadMonaco(): Promise<Monaco> {
   return loading;
 }
 
-const lightTheme = () => document.documentElement.getAttribute("data-theme") === "light" || (document.documentElement.getAttribute("data-theme") !== "dark" && !!matchMedia?.("(prefers-color-scheme: light)").matches);
+/** Defines and selects the editor theme from the design tokens in force now; run again when the app theme changes. */
+function applyTheme(monaco: Monaco) {
+  const cs = getComputedStyle(document.documentElement);
+  monaco.editor.defineTheme("vesqira", { base: appIsLight() ? "vs" : "vs-dark", inherit: true, rules: [], colors: monacoColors((name) => cs.getPropertyValue(name)) });
+  monaco.editor.setTheme("vesqira");
+}
 
 /**
  * The text surface of the editor. `value` is text with "\n" line ends; changes come out through `onChange`. If Monaco
@@ -46,6 +52,7 @@ export function CodeSurface({ value, onChange, language, label }: { value: strin
   const emit = useRef(onChange);
   emit.current = onChange;
   const initial = useRef(value);
+  const stopTheme = useRef<(() => void) | null>(null);
   const [state, setState] = useState<"loading" | "monaco" | "plain">("loading");
 
   useEffect(() => {
@@ -53,11 +60,12 @@ export function CodeSurface({ value, onChange, language, label }: { value: strin
     loadMonaco().then(
       (monaco) => {
         if (!live || !host.current) return;
+        applyTheme(monaco);
         const e = monaco.editor.create(host.current, {
           value: initial.current,
           language,
           ariaLabel: label,
-          theme: lightTheme() ? "vs" : "vs-dark",
+          theme: "vesqira",
           automaticLayout: true,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
@@ -70,11 +78,23 @@ export function CodeSurface({ value, onChange, language, label }: { value: strin
         e.onDidChangeModelContent(() => emit.current(e.getValue()));
         editor.current = e;
         setState("monaco");
+        // the editor follows the app: a data-theme change or a change of the system preference re-themes it live
+        const retheme = () => applyTheme(monaco);
+        const mq = matchMedia?.("(prefers-color-scheme: light)");
+        mq?.addEventListener?.("change", retheme);
+        const mo = new MutationObserver(retheme);
+        mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+        stopTheme.current = () => { mq?.removeEventListener?.("change", retheme); mo.disconnect(); };
+        // focus lands in the text unless the person has already moved to a control of the screen
+        const at = document.activeElement;
+        if (!at || !(at instanceof HTMLElement) || !at.closest("button, input, select, textarea")) e.focus();
       },
       () => live && setState("plain"),
     );
     return () => {
       live = false;
+      stopTheme.current?.();
+      stopTheme.current = null;
       editor.current?.dispose();
       editor.current = null;
     };

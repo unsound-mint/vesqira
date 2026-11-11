@@ -7,7 +7,7 @@ import s from "./SpectrumPlot.module.css";
 
 const W = 320;
 const H = 168;
-const M = { l: 8, r: 8, t: 8, b: 40 };
+const M = { l: 64, r: 10, t: 10, b: 40 }; // the left margin holds the value labels, so no text sits on the curve
 
 /** Display units for the axis: m/s as km/s, Hz as MHz. Conversion for reading only. */
 export function axisDisplay(unit: string | null): { factor: number; label: string } {
@@ -83,8 +83,9 @@ export function SpectrumPlot({ v }: { v: Viewer }) {
         <text className={s.tick} x={M.l} y={H - M.b + 18}>{num(xlo)}</text>
         <text className={s.tick} x={W - M.r} y={H - M.b + 18} textAnchor="end">{num(xhi)}</text>
         <text className={s.tick} x={W / 2} y={H - 4} textAnchor="middle">{xName}</text>
-        <text className={s.tick} x={M.l + 2} y={M.t + 10}>{num(yhi)}</text>
-        <text className={s.tick} x={M.l + 2} y={H - M.b - 4}>{num(ylo)}</text>
+        <text className={s.tick} x={M.l - 5} y={py(yhi) + 4} textAnchor="end">{num(yhi)}</text>
+        <text className={s.tick} x={M.l - 5} y={py(ylo) + 4} textAnchor="end">{num(ylo)}</text>
+        <text className={s.tick} transform={`translate(11 ${(M.t + H - M.b) / 2}) rotate(-90)`} textAnchor="middle">{sp.head.bunit ?? "unit unresolved"}</text>
       </svg>
       <p className={s.note}>
         Mean over the pixels with a value, in {unit}. {missing > 0 ? `${missing} of ${n} channels have no pixel with a value and are left as gaps. ` : ""}Click the plot to go to that channel.
