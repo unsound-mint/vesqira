@@ -2,7 +2,7 @@ import { REGIONS_ID } from "../scene/scene";
 import type { Scene } from "../scene/scene";
 import type { StepKind } from "../api/history";
 
-// Which scene changes are exploration steps, and when to write one (ADR 0055). A step is a meaningful state, not every change:
+// Which scene changes are exploration steps, and when to write one (ADR 0057). A step is a meaningful state, not every change:
 // a dataset opened, a channel the person stayed on, a region drawn, an overlay added, a link changed. Zooming, colour and
 // stretch settings are not steps (they stay in the scene a step records, and in the undo stack).
 

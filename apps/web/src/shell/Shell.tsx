@@ -280,7 +280,7 @@ export function Shell() {
     setCompareId(b);
     setMode("viewer");
   };
-  // Exploration history of the primary pane, per project, and undo of the active pane's edits (ADR 0055). "Continue from here" may
+  // Exploration history of the primary pane, per project, and undo of the active pane's edits (ADR 0057). "Continue from here" may
   // have to open another dataset first; the scene is applied once that pane has started over on it.
   const [pendingScene, setPendingScene] = useState<Scene | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false); // up to 500 rows are only drawn while the section is open

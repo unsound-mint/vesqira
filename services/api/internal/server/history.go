@@ -14,7 +14,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/scene"
 )
 
-// The viewer's exploration history (ADR 0055): owner routes only. The reviewer listener (internal/review) has no history
+// The viewer's exploration history (ADR 0057): owner routes only. The reviewer listener (internal/review) has no history
 // route and cannot import this store, so a published review never exposes the owner's dataset ids or what was looked at.
 
 type stepBody struct {

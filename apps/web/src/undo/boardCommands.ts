@@ -1,15 +1,19 @@
 import * as api from "../api/boards";
 import type { Board, BoardItem } from "../api/boards";
+import { ApiError } from "../api/http";
 import { Conflict, UndoStack } from "./stack";
 
-// Board edits as commands with an inverse (roadmap Stage 6, ADR 0055). Each function performs the edit through the existing
+// Board edits as commands with an inverse (roadmap Stage 6, ADR 0057). Each function performs the edit through the existing
 // API and, once it succeeded, records the command on that board's stack. A board is mutable working state: its edits are
 // undoable while the session lasts. What is pinned evidence is not: publishing a review freezes the board and has no command,
 // and an owner's reply to a reviewer is not undoable either (the reviewer may already have read it). Pinning a finished run's
 // result over its panel is automatic (a system action, JobPanel), not an edit: undoing it would only pin it again.
 //
-// The server has no board revision; items are addressed by position. So every undo and redo first reads the board and checks
-// that the item it is about to change is the one it left there; if not it throws Conflict without sending anything.
+// The server has no board revision; items are addressed by position. So an undo or redo of an edit at a position sends `expect`
+// (what the panel there was when the command ran): the server applies the edit in one transaction only if the panel still
+// matches, else answers 409 and changes nothing, and that is a Conflict here. Re-adding a panel and checking the board's length
+// (reinsert, redo of an add) cannot be guarded that way, as an add has no position: those still read the board first, which is
+// not atomic.
 
 const stacks = new Map<number, UndoStack>();
 /** One stack per board, for the whole session (the board screen unmounting does not forget it). */
@@ -28,11 +32,20 @@ const label = (it: BoardItem) => (it.kind === "job" ? `run ${it.job.name}` : `â€
 
 const CHANGED = "The board has changed since (in another window, or by a later edit that cannot be undone first). The board was not changed.";
 
-async function expectAt(boardId: number, pos: number, key: string): Promise<{ board: Board; item: BoardItem }> {
-  const board = await api.getBoard(boardId);
-  const item = board.items[pos];
-  if (!item || itemKey(item) !== key) throw new Conflict(CHANGED);
-  return { board, item };
+const expectOf = (item: BoardItem, note?: string): api.BoardExpect => ({ kind: item.kind, id: item.kind === "job" ? item.job.id : item.figure.id, ...(note === undefined ? {} : { note }) });
+const expectKey = (key: string): api.BoardExpect => {
+  const [kind, id] = key.split(":") as ["figure" | "job", string];
+  return { kind, id: Number(id) };
+};
+
+/** Runs a guarded edit: the server's 409 (the panel is not the one expected) is a Conflict, anything else passes through. */
+async function guarded<T>(edit: () => Promise<T>): Promise<T> {
+  try {
+    return await edit();
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) throw new Conflict(CHANGED);
+    throw e;
+  }
 }
 
 async function expectLength(boardId: number, n: number): Promise<Board> {
@@ -48,10 +61,10 @@ async function reinsert(boardId: number, item: BoardItem, pos: number, note: str
   let at = b.items.length - 1;
   try {
     while (at > pos) {
-      await api.moveItem(boardId, at, -1);
+      await api.moveItem(boardId, at, -1, expectOf(item));
       at -= 1;
     }
-    if (note) await api.setNote(boardId, at, note);
+    if (note) await api.setNote(boardId, at, note, expectOf(item, ""));
   } catch (e) {
     throw new Conflict(`${label(item)} was put back on the board, at the end rather than its old place${note ? " and without its note" : ""}, because a later step failed (${e instanceof Error ? e.message : "error"}).`);
   }
@@ -64,8 +77,7 @@ export async function addFigure(boardId: number, figureId: number): Promise<Boar
   boardStack(boardId).push({
     name: "add figure to board",
     undo: async () => {
-      await expectAt(boardId, length - 1, `figure:${figureId}`);
-      await api.removeItem(boardId, length - 1);
+      await guarded(() => api.removeItem(boardId, length - 1, expectKey(`figure:${figureId}`)));
     },
     redo: async () => {
       await expectLength(boardId, length - 1);
@@ -82,8 +94,7 @@ export async function addJob(boardId: number, jobId: number): Promise<Board> {
   boardStack(boardId).push({
     name: "add run to board",
     undo: async () => {
-      await expectAt(boardId, length - 1, `job:${jobId}`);
-      await api.removeItem(boardId, length - 1);
+      await guarded(() => api.removeItem(boardId, length - 1, expectKey(`job:${jobId}`)));
     },
     redo: async () => {
       await expectLength(boardId, length - 1);
@@ -102,12 +113,10 @@ export async function moveItem(boardId: number, board: Board, pos: number, delta
   boardStack(boardId).push({
     name: "move panel",
     undo: async () => {
-      await expectAt(boardId, pos + delta, key);
-      await api.moveItem(boardId, pos + delta, delta === 1 ? -1 : 1);
+      await guarded(() => api.moveItem(boardId, pos + delta, delta === 1 ? -1 : 1, expectKey(key)));
     },
     redo: async () => {
-      await expectAt(boardId, pos, key);
-      await api.moveItem(boardId, pos, delta);
+      await guarded(() => api.moveItem(boardId, pos, delta, expectKey(key)));
     },
   });
   return b;
@@ -124,8 +133,7 @@ export async function removeItem(boardId: number, board: Board, pos: number): Pr
     name: "remove panel",
     undo: () => reinsert(boardId, item, pos, item.note, length - 1),
     redo: async () => {
-      await expectAt(boardId, pos, key);
-      await api.removeItem(boardId, pos);
+      await guarded(() => api.removeItem(boardId, pos, expectKey(key)));
     },
   });
   return b;
@@ -139,9 +147,7 @@ export async function setNote(boardId: number, board: Board, pos: number, note: 
   const key = itemKey(item);
   const prev = item.note;
   const set = (from: string, to: string) => async () => {
-    const { item: cur } = await expectAt(boardId, pos, key);
-    if (cur.note !== from) throw new Conflict(CHANGED);
-    await api.setNote(boardId, pos, to);
+    await guarded(() => api.setNote(boardId, pos, to, { ...expectKey(key), note: from }));
   };
   boardStack(boardId).push({ name: "edit note", undo: set(note, prev), redo: set(prev, note) });
   return b;

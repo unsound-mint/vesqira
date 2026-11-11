@@ -26,6 +26,10 @@ beforeEach(() => {
     if (init?.method === "POST" && m) {
       const body = init.body ? JSON.parse(String(init.body)) : {};
       const pos = Number(m[1]);
+      const e = body.expect as { id: number; note?: string } | undefined; // the server's guard: the panel there must still be the expected one
+      if (e && (panels[pos]?.id !== e.id || (e.note !== undefined && panels[pos]!.note !== e.note))) {
+        return new Response(JSON.stringify({ error: "the board has changed", board: board() }), { status: 409, headers: { "Content-Type": "application/json" } });
+      }
       calls.push(`${m[2] ?? "add"} ${m[1] ?? ""} ${init.body ?? ""}`.trim());
       if (!m[2]) panels.push({ id: body.figureId, note: "" });
       else if (m[2] === "move") [panels[pos], panels[pos + body.delta]] = [panels[pos + body.delta]!, panels[pos]!];
@@ -59,7 +63,12 @@ describe("undo on a board", () => {
     await waitFor(() => expect(titles()).toEqual(["Figure 2", "Figure 1", "Figure 3"]));
     fireEvent.keyDown(document.body, { key: "z", metaKey: true });
     await waitFor(() => expect(titles()).toEqual(["Figure 1", "Figure 2", "Figure 3"]));
-    expect(calls.filter((c) => c.startsWith("move"))).toEqual(['move 0 {"delta":1}', 'move 1 {"delta":-1}', 'move 0 {"delta":1}', 'move 1 {"delta":-1}']);
+    expect(calls.filter((c) => c.startsWith("move"))).toEqual([
+      'move 0 {"delta":1}',
+      'move 1 {"delta":-1,"expect":{"kind":"figure","id":1}}',
+      'move 0 {"delta":1,"expect":{"kind":"figure","id":1}}',
+      'move 1 {"delta":-1,"expect":{"kind":"figure","id":1}}',
+    ]);
   });
 
   it("puts a removed panel back in its place with its note", async () => {
@@ -84,7 +93,7 @@ describe("undo on a board", () => {
     expect(titles()[0]).toBe("Figure 2"); // not undone from inside the field
   });
 
-  it("fails clearly when the board changed elsewhere, sends nothing, and drops the redo stack", async () => {
+  it("fails clearly when the board changed elsewhere, changes nothing, and drops the redo stack", async () => {
     render(<BoardsView />);
     await screen.findByText("Figure 1");
     await userEvent.click(screen.getAllByRole("button", { name: "Move down" })[0]!);

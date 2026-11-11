@@ -1,7 +1,7 @@
 import { REGIONS_ID, paneReducer, regionsOf } from "../scene/scene";
 import type { PaneAction, PaneState, Scene, SceneAction } from "../scene/scene";
 
-// The command registry for a viewer pane (roadmap Stage 6, ADR 0055). A command is a named, serialisable scene action; its
+// The command registry for a viewer pane (roadmap Stage 6, ADR 0057). A command is a named, serialisable scene action; its
 // inverse is computed from the state before it ran (the scene as it was), so undo and redo put back exactly what the command
 // changed instead of trying to reverse each action by hand (and leave alone what changed since that is not the command's: see revert). The reducer in scene/scene.ts stays the only place a scene changes: undo and redo are
 // themselves PaneActions of the wrapper below, applied through it.

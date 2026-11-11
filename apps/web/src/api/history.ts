@@ -3,7 +3,7 @@ import type { components } from "./schema";
 
 type Schemas = components["schemas"];
 
-/** One meaningful state of the viewer (ADR 0055): a scene, not pixels. Mutable working state, pruned oldest first. */
+/** One meaningful state of the viewer (ADR 0057): a scene, not pixels. Mutable working state, pruned oldest first. */
 export type ExplorationStep = Schemas["ExplorationStep"];
 export type ExplorationStepWithScene = Schemas["ExplorationStepWithScene"];
 export type StepKind = ExplorationStep["kind"];

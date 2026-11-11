@@ -18,16 +18,16 @@ func TestJobPanelPinsInPlaceAndKeepsItsNote(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.AddItem(b.ID, f1.ID)
-	s.SetNote(b.ID, 1, "waiting on this")
+	s.SetNote(b.ID, 1, "waiting on this", nil)
 	got, _ := s.Board(b.ID)
 	if got.Items[1].Kind != KindJob || got.Items[1].Job.ID != 42 || got.Items[1].Figure != nil || got.Items[0].Kind != KindFigure {
 		t.Fatalf("%+v", got.Items)
 	}
 	// moves and removal work for job panels as for figures
-	if err := s.MoveItem(b.ID, 1, -1); err != nil {
+	if err := s.MoveItem(b.ID, 1, -1, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.MoveItem(b.ID, 0, 1); err != nil {
+	if err := s.MoveItem(b.ID, 0, 1, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.PinItem(b.ID, 0, f2.ID); !errors.Is(err, ErrConflict) {
@@ -50,7 +50,7 @@ func TestJobPanelPinsInPlaceAndKeepsItsNote(t *testing.T) {
 	if err := s.PinItem(b.ID, 3, 9999); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("an unknown figure is refused: %v", err)
 	}
-	if err := s.RemoveItem(b.ID, 3); err != nil {
+	if err := s.RemoveItem(b.ID, 3, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -74,7 +74,7 @@ func TestAFrozenJobPanelHasExactlyKindTitleStateAtNote(t *testing.T) {
 	f := fig(t, s, "fig", 10)
 	s.AddItem(b.ID, f.ID)
 	s.AddJobItem(b.ID, 7)
-	s.SetNote(b.ID, 1, "check the ker")
+	s.SetNote(b.ID, 1, "check the ker", nil)
 	jobs := map[int64]JobSnapshot{7: {Name: "vgt-ker16", State: "running"}}
 	pf, err := s.Preflight(b.ID, "q", jobs)
 	if err != nil {

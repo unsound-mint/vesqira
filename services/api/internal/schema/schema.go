@@ -232,7 +232,7 @@ const TransfersTable = `CREATE TABLE IF NOT EXISTS transfers(
 CREATE UNIQUE INDEX IF NOT EXISTS transfers_live_name ON transfers(CASE direction WHEN 'download' THEN 0 ELSE host_id END, dest_dir, final_name)
 	WHERE final_name<>'' AND state IN ('queued','waiting','running','verifying')`
 
-// ExplorationStepsTable is the viewer's exploration history (ADR 0055): per project (0 = none open), one row per meaningful
+// ExplorationStepsTable is the viewer's exploration history (ADR 0057): per project (0 = none open), one row per meaningful
 // scene state. parent_id is the step it was reached from (NULL for the first of a branch, or when that step was pruned); it is
 // deliberately not a foreign key, because pruning the oldest rows must not rewrite or delete their descendants. scene is the
 // scene/1 JSON, validated before it is stored. The history package creates it for a fresh install and the migration for an

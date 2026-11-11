@@ -126,7 +126,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
     else setSnaps([]);
   }, [board?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Undo and redo of this board's edits (ADR 0055). The stack outlives this screen; publishing and replies are not commands.
+  // Undo and redo of this board's edits (ADR 0057). The stack outlives this screen; publishing and replies are not commands.
   const stack = board ? boardStack(board.id) : null;
   const undo = useUndoStack(stack);
   const afterUndo = async () => {

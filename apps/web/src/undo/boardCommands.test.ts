@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Board, BoardItem } from "../api/boards";
+import { ApiError } from "../api/http";
 
 // An in-memory board with the server's semantics (positions are 0..n-1; add appends; remove closes the gap), and a log of calls.
 type Row = { kind: "figure" | "job"; id: number; note: string };
@@ -13,19 +14,30 @@ const item = (r: Row, position: number): BoardItem =>
     : { kind: "figure", position, note: r.note, figure: { id: r.id, title: `fig${r.id}` } }) as unknown as BoardItem;
 const board = (): Board => ({ id: BOARD, title: "b", items: rows.map(item) }) as unknown as Board;
 
+// The server's guard: an edit that names what it expects at a position is applied only if that panel is still there, else 409.
+type Expect = { kind: "figure" | "job"; id: number; note?: string };
+let expects: (Expect | undefined)[] = [];
+const guard = (pos: number, e?: Expect) => {
+  expects.push(e);
+  const r = rows[pos];
+  if (e && (!r || r.kind !== e.kind || r.id !== e.id || (e.note !== undefined && e.note !== r.note))) throw new ApiError("the board has changed", [], 409, { board: board() });
+  if (!r) throw new Error("not found");
+};
+
 vi.mock("../api/boards", () => ({
   getBoard: async () => board(),
   addToBoard: async (_b: number, figureId: number) => { log.push(`add figure ${figureId}`); rows.push({ kind: "figure", id: figureId, note: "" }); return board(); },
   addJobToBoard: async (_b: number, jobId: number) => { log.push(`add job ${jobId}`); rows.push({ kind: "job", id: jobId, note: "" }); return board(); },
-  removeItem: async (_b: number, pos: number) => { log.push(`remove ${pos}`); if (!rows[pos]) throw new Error("not found"); rows.splice(pos, 1); return board(); },
-  moveItem: async (_b: number, pos: number, delta: number) => {
-    log.push(`move ${pos} ${delta}`);
+  removeItem: async (_b: number, pos: number, e?: Expect) => { guard(pos, e); log.push(`remove ${pos}`); rows.splice(pos, 1); return board(); },
+  moveItem: async (_b: number, pos: number, delta: number, e?: Expect) => {
+    guard(pos, e);
     const to = pos + delta;
-    if (!rows[pos] || !rows[to]) throw new Error("not found");
+    if (!rows[to]) throw new Error("not found");
+    log.push(`move ${pos} ${delta}`);
     [rows[pos], rows[to]] = [rows[to]!, rows[pos]!];
     return board();
   },
-  setNote: async (_b: number, pos: number, note: string) => { log.push(`note ${pos} ${JSON.stringify(note)}`); rows[pos]!.note = note; return board(); },
+  setNote: async (_b: number, pos: number, note: string, e?: Expect) => { guard(pos, e); log.push(`note ${pos} ${JSON.stringify(note)}`); rows[pos]!.note = note; return board(); },
   resolveComment: async (id: number, resolved: boolean) => { log.push(`resolve ${id} ${resolved}`); return { id, resolved }; },
   pinJobItem: async () => board(),
 }));
@@ -38,6 +50,7 @@ beforeEach(() => {
   cmds.forgetBoardStacks();
   rows = [{ kind: "figure", id: 1, note: "one" }, { kind: "figure", id: 2, note: "" }, { kind: "job", id: 9, note: "run" }, { kind: "figure", id: 4, note: "four" }];
   log = [];
+  expects = [];
 });
 
 describe("board commands", () => {
@@ -114,10 +127,29 @@ describe("board commands", () => {
     log = [];
     expect(await stack().undo()).toBe(false);
     const snap = stack().getSnapshot();
-    expect(log).toEqual([]); // nothing was sent
+    expect(log).toEqual([]); // the server refused it and nothing changed
+    expect(ids()).toBe("f4 j9 f1 f2"); // the other window's arrangement is untouched
     expect(snap.error).toMatch(/Could not undo “move panel”.*board has changed.*not changed/);
     expect(snap.redoName).toBeNull(); // dropped with the failed one
     expect(snap.undoName).toBeNull();
+  });
+
+  it("undo and redo of an edit at a position send the panel they expect there, and a refusal from the server is a conflict", async () => {
+    await cmds.setNote(BOARD, board(), 3, "changed");
+    expects = [];
+    await stack().undo();
+    expect(expects).toEqual([{ kind: "figure", id: 4, note: "changed" }]);
+    await cmds.moveItem(BOARD, board(), 1, 1); // f1 j9 f2 f4
+    expects = [];
+    await stack().undo();
+    expect(expects).toEqual([{ kind: "figure", id: 2 }]);
+    // another window put a different panel at that position: the guard, not a client read, decides
+    await stack().redo();
+    rows.reverse();
+    log = [];
+    expect(await stack().undo()).toBe(false);
+    expect(log).toEqual([]);
+    expect(stack().getSnapshot().error).toMatch(/board has changed/);
   });
 
   it("a redo that no longer fits also fails clearly and drops the rest of the redo stack", async () => {

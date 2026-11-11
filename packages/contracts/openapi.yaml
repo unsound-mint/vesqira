@@ -242,6 +242,12 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: "The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/BoardConflict"
   /api/boards/{id}/items/{pos}/note:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -282,6 +288,12 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: "The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/BoardConflict"
   /api/boards/{id}/items/{pos}/pin:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -344,11 +356,11 @@ paths:
             type: "integer"
             format: "int64"
       requestBody:
-        required: true
+        required: false
         content:
           "application/json":
             schema:
-              type: "object"
+              $ref: "#/components/schemas/BoardRemoveRequest"
       responses:
         "200":
           description: "ok"
@@ -362,6 +374,12 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: "The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/BoardConflict"
   /api/boards/{id}/preflight:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -5617,6 +5635,8 @@ components:
           enum:
             - -1
             - 1
+        expect:
+          $ref: "#/components/schemas/BoardExpect"
     BoardNoteRequest:
       type: "object"
       required:
@@ -5624,6 +5644,8 @@ components:
       properties:
         note:
           type: "string"
+        expect:
+          $ref: "#/components/schemas/BoardExpect"
     Snapshot:
       type: "object"
       description: "A frozen, published version of a board. Optional fields are omitted when empty."
@@ -11984,7 +12006,7 @@ components:
         - "label"
         - "at"
       additionalProperties: false
-      description: "One meaningful state of the viewer (ADR 0055): what was on screen, not its pixels. Mutable working state, pruned oldest first past the cap; not evidence"
+      description: "One meaningful state of the viewer (ADR 0057): what was on screen, not its pixels. Mutable working state, pruned oldest first past the cap; not evidence"
       properties:
         id:
           type: "integer"
@@ -12111,3 +12133,37 @@ components:
           maxLength: 120
         scene:
           $ref: "#/components/schemas/Scene"
+    BoardExpect:
+      type: "object"
+      description: "What the client last saw at the position it edits (ADR 0057). The edit is applied, in one transaction, only if the panel there is still this one; otherwise nothing changes and the reply is 409 with the current board. Used by undo; a client that omits it gets the unguarded edit."
+      required:
+        - "kind"
+        - "id"
+      properties:
+        kind:
+          type: "string"
+          enum:
+            - "figure"
+            - "job"
+        id:
+          type: "integer"
+          format: "int64"
+          description: "The figure's or the job's id"
+        note:
+          type: "string"
+          description: "The panel's note as the client last saw it; omit when the note does not matter"
+    BoardConflict:
+      type: "object"
+      required:
+        - "error"
+        - "board"
+      properties:
+        error:
+          type: "string"
+        board:
+          $ref: "#/components/schemas/Board"
+    BoardRemoveRequest:
+      type: "object"
+      properties:
+        expect:
+          $ref: "#/components/schemas/BoardExpect"

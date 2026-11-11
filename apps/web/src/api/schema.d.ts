@@ -4223,9 +4223,11 @@ export interface components {
         BoardMoveRequest: {
             /** @enum {integer} */
             delta: -1 | 1;
+            expect?: components["schemas"]["BoardExpect"];
         };
         BoardNoteRequest: {
             note: string;
+            expect?: components["schemas"]["BoardExpect"];
         };
         /** @description A frozen, published version of a board. Optional fields are omitted when empty. */
         Snapshot: {
@@ -6982,7 +6984,7 @@ export interface components {
             prompt?: string;
             sources: components["schemas"]["RedrawSource"][];
         };
-        /** @description One meaningful state of the viewer (ADR 0055): what was on screen, not its pixels. Mutable working state, pruned oldest first past the cap; not evidence */
+        /** @description One meaningful state of the viewer (ADR 0057): what was on screen, not its pixels. Mutable working state, pruned oldest first past the cap; not evidence */
         ExplorationStep: {
             /** Format: int64 */
             id: number;
@@ -7051,6 +7053,25 @@ export interface components {
             kind: "opened" | "channel" | "region" | "overlay" | "link" | "continued";
             label: string;
             scene: components["schemas"]["Scene"];
+        };
+        /** @description What the client last saw at the position it edits (ADR 0057). The edit is applied, in one transaction, only if the panel there is still this one; otherwise nothing changes and the reply is 409 with the current board. Used by undo; a client that omits it gets the unguarded edit. */
+        BoardExpect: {
+            /** @enum {string} */
+            kind: "figure" | "job";
+            /**
+             * Format: int64
+             * @description The figure's or the job's id
+             */
+            id: number;
+            /** @description The panel's note as the client last saw it; omit when the note does not matter */
+            note?: string;
+        };
+        BoardConflict: {
+            error: string;
+            board: components["schemas"]["Board"];
+        };
+        BoardRemoveRequest: {
+            expect?: components["schemas"]["BoardExpect"];
         };
     };
     responses: never;
@@ -7444,6 +7465,15 @@ export interface operations {
                     "application/json": components["schemas"]["Board"];
                 };
             };
+            /** @description The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardConflict"];
+                };
+            };
             /** @description Error */
             default: {
                 headers: {
@@ -7478,6 +7508,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardConflict"];
                 };
             };
             /** @description Error */
@@ -7537,9 +7576,9 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["BoardRemoveRequest"];
             };
         };
         responses: {
@@ -7550,6 +7589,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardConflict"];
                 };
             };
             /** @description Error */

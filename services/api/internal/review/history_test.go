@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// The exploration history holds the owner's dataset ids and what was looked at (ADR 0055). A reviewer's handler has no route to it.
+// The exploration history holds the owner's dataset ids and what was looked at (ADR 0057). A reviewer's handler has no route to it.
 func TestReviewListenerHasNoExplorationHistory(t *testing.T) {
 	dist := t.TempDir()
 	os.WriteFile(filepath.Join(dist, "index.html"), []byte("<html></html>"), 0o644)

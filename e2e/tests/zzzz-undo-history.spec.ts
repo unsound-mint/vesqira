@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Undo and the exploration history (ADR 0055), through the real API, worker and built app on the generated fixtures: draw a
+// Undo and the exploration history (ADR 0057), through the real API, worker and built app on the generated fixtures: draw a
 // region and move a board panel, undo both with the buttons and the keyboard, redo; and continue from an earlier history
 // step, which restores that view, branches, and survives a reload.
 

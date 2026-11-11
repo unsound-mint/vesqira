@@ -1,4 +1,4 @@
-// Package history keeps the viewer's exploration history (ADR 0055): per project, a bounded list of meaningful scene states
+// Package history keeps the viewer's exploration history (ADR 0057): per project, a bounded list of meaningful scene states
 // (a dataset opened, a channel held, a region drawn, an overlay added, a link changed), each with the step it was reached
 // from. "Continue from here" restores a step's scene and the next step is recorded as a new branch from it; nothing later is
 // deleted. It is mutable working state, not evidence: the oldest steps are pruned past Keep, and a step holds only a scene

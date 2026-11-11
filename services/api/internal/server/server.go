@@ -55,7 +55,7 @@ type Server struct {
 	Sweeps     *sweeps.Store    // parameter sweeps (ADR 0048); nil disables their routes
 	Transfers  *transfers.Store // the transfer queue (ADR 0051); nil disables the routes
 	Derived    *derived.Store
-	Masks      *masks.Store // typed masks (ADR 0055); nil disables their routes
+	Masks      *masks.Store // typed masks (ADR 0057); nil disables their routes
 	ManagedDir string
 	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
 	CacheDir  string
@@ -63,7 +63,7 @@ type Server struct {
 	Audit     *audit.Store  // nil records nothing
 	Notes     *notify.Store // events for the owner (jobs ended, results imported); nil records nothing and disables the routes
 	Regions   *regions.Store
-	History   *history.Store // the viewer's exploration history (ADR 0055); nil disables the routes
+	History   *history.Store // the viewer's exploration history (ADR 0057); nil disables the routes
 	SSHConfig string         // the user's ssh_config, only read to offer host aliases; empty offers none
 	Hints     hintSource     // overrides the catalog for the runs list's input hints (tests count calls)
 	WebDist   string         // built web app served at / on this (loopback) listener; empty serves the API only
