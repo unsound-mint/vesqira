@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -99,8 +100,16 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		fail(w, status, m)
 		return
 	}
+	ax, code, msg := s.axialAnalysis(r.Context(), in.Op, d, false)
+	if code != 0 {
+		fail(w, code, msg)
+		return
+	}
 	args := []string{"-P", s.Analysis.Script, in.Op, "--input", real}
 	sources := []int64{d.ID}
+	if ax != nil {
+		args = append(args, ax.args...)
+	}
 	// A unit the person declared for a file with no BUNIT goes with the request, so the result says it, labelled as theirs. The
 	// worker uses it only when the file has no unit of its own. The "=" form keeps a unit that starts with "-" a value.
 	declared := map[string]string{}
@@ -164,6 +173,11 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		outPath = filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("%s-%d-%s.fits", in.Op, d.ID, hex.EncodeToString(b[:])))
 		args = append(args, "--out", outPath)
 	}
+	relPath := ""
+	if ax != nil {
+		relPath = strings.TrimSuffix(outPath, ".fits") + "-reliability.fits"
+		args = append(args, "--rel-out", relPath)
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), s.Analysis.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, s.Analysis.Python, args...)
@@ -180,6 +194,9 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	runErr := cmd.Run()
 	if ctx.Err() != nil {
 		_ = os.Remove(outPath)
+		if relPath != "" {
+			_ = os.Remove(relPath)
+		}
 		fail(w, 504, "the analysis took too long and was stopped")
 		return
 	}
@@ -192,6 +209,9 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	if json.Unmarshal(out.Bytes(), &res) != nil || runErr != nil || !res.OK {
 		if outPath != "" {
 			_ = os.Remove(outPath)
+		}
+		if relPath != "" {
+			_ = os.Remove(relPath)
 		}
 		if res.Error != "" {
 			fail(w, 422, res.Error)
@@ -217,6 +237,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: in.Op, Params: params, Sources: sources, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
+	nd = s.finishAxialResult(analysisOutcome{res.Summary, res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(r.Context(), p) }, in.Op, sources, params)
 	writeJSON(w, 201, map[string]any{"dataset": nd, "summary": res.Summary})
 }
 
@@ -265,6 +286,11 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "this file is on this computer: run the analysis directly")
 		return
 	}
+	ax, code, msg := s.axialAnalysis(r.Context(), in.Op, d, true)
+	if code != 0 {
+		fail(w, code, msg)
+		return
+	}
 	h, err := s.HostDB.Get(d.HostID)
 	if err != nil {
 		fail(w, 404, "host not found")
@@ -298,13 +324,19 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	_, _ = rand.Read(b[:])
 	name := fmt.Sprintf("%s-%d", in.Op, d.ID)
 	out := path.Join(h.Roots[0], "vesqira_derived", name+"-"+hex.EncodeToString(b[:]))
-	script, err := jobs.RenderAnalysis(jobs.AnalysisSettings{Name: name, Python: h.Python, ScriptDir: s.Remote.RemoteDir(), Op: in.Op, Input: d.Path, Reference: refPath,
-		OutDir: out, Args: opts, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time})
+	set := jobs.AnalysisSettings{Name: name, Python: h.Python, ScriptDir: s.Remote.RemoteDir(), Op: in.Op, Input: d.Path, Reference: refPath,
+		OutDir: out, Args: opts, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time}
+	pm := map[string]any{"op": in.Op, "options": opts, "sources": sources}
+	if ax != nil { // the same code path as a run here: the worker gets the declaration and writes the companion reliability map
+		set.AxialUnit, set.AxialFrame, set.Weights = ax.unit, ax.frame, ax.weights
+		pm["axial"] = axialParams{Unit: ax.unit, Frame: ax.interp.Frame, Quantity: ax.interp.Quantity}
+	}
+	script, err := jobs.RenderAnalysis(set)
 	if err != nil {
 		s.jobErr(w, err)
 		return
 	}
-	params, _ := json.Marshal(map[string]any{"op": in.Op, "options": opts, "sources": sources})
+	params, _ := json.Marshal(pm)
 	job, err := s.Jobs.CreateDraft(jobs.Job{HostID: h.ID, Name: name, Template: "analysis", Script: script, OutputDir: out, Params: string(params)})
 	if err != nil {
 		s.jobErr(w, err)
@@ -332,6 +364,7 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 		Op      string            `json:"op"`
 		Options map[string]string `json:"options"`
 		Sources []int64           `json:"sources"`
+		Axial   *axialParams      `json:"axial"`
 	}
 	_ = json.Unmarshal([]byte(j.Params), &p)
 	if p.Op == "stats" {
@@ -344,6 +377,11 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 	params, _ := json.Marshal(map[string]any{"options": p.Options})
 	if err := s.Derived.Save(derived.Record{DatasetID: d.ID, Op: p.Op, Params: params, Sources: p.Sources, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
+	}
+	if p.Axial != nil {
+		in := catalog.Interpretation{Kind: "axial_orientation", Unit: p.Axial.Unit, Frame: p.Axial.Frame, Quantity: p.Axial.Quantity}
+		reg := func(fp string) (catalog.Dataset, int, string) { return s.registerRemoteFile(ctx, h.Host, fp) }
+		d = s.finishAxialResult(analysisOutcome{res.Summary, res.Software}, d, &axialRun{interp: in}, remoteRelPath(j.OutputDir), reg, p.Op, p.Sources, params)
 	}
 	return d, 0, ""
 }

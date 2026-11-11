@@ -38,11 +38,17 @@ type Dataset struct {
 
 // Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).
 type Interpretation struct {
-	Kind          string    `json:"kind"` // "axial_orientation"
-	Unit          string    `json:"unit"` // "deg" or "rad", required
-	ReliabilityID *int64    `json:"reliabilityId"`
-	DeclaredBy    string    `json:"declaredBy"` // "user" or the name of an adapter, e.g. "vgt-run-adapter"
-	DeclaredAt    time.Time `json:"declaredAt"`
+	Kind          string `json:"kind"` // "axial_orientation"
+	Unit          string `json:"unit"` // "deg" or "rad", required
+	ReliabilityID *int64 `json:"reliabilityId"`
+	// Frame is what the angle is measured against: "pixel" (counter-clockwise from +axis 1 towards +axis 2 as stored) or
+	// "sky" (east of north, in the file's own celestial frame). Nil means not declared; the file never says.
+	Frame *string `json:"frame"`
+	// Quantity is what the angle describes: "b_field", "gradient", "dust_polarization", "starlight_polarization" or
+	// "unspecified". Nil means not declared.
+	Quantity   *string   `json:"quantity"`
+	DeclaredBy string    `json:"declaredBy"` // "user" or the name of an adapter, e.g. "vgt-run-adapter"
+	DeclaredAt time.Time `json:"declaredAt"`
 	// Stale is true when the file's registered size or modification time differs from what it was when the user
 	// made the declaration: the declaration may no longer describe these bytes.
 	Stale bool `json:"stale"`
@@ -107,6 +113,12 @@ func Open(dsn string) (*Store, error) {
 	if err == nil {
 		// older catalogs lack the column that records who made a declaration; adding it twice is harmless
 		err = schema.AddColumn(db, "interpretations", "declared_by", "TEXT NOT NULL DEFAULT 'user'")
+		if err == nil {
+			err = schema.AddColumn(db, "interpretations", "frame", "TEXT")
+		}
+		if err == nil {
+			err = schema.AddColumn(db, "interpretations", "quantity", "TEXT")
+		}
 		if err == nil {
 			err = schema.AddColumn(db, "datasets", "host_id", "INTEGER NOT NULL DEFAULT 0")
 		}
@@ -203,8 +215,9 @@ func (s *Store) Get(id int64) (Dataset, error) {
 func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
 	var in Interpretation
 	var rel sql.NullInt64
+	var frame, quantity sql.NullString
 	var at, size, mod int64
-	err := s.db.QueryRow(`SELECT kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by FROM interpretations WHERE dataset_id=?`, id).Scan(&in.Kind, &in.Unit, &rel, &at, &size, &mod, &in.DeclaredBy)
+	err := s.db.QueryRow(`SELECT kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity FROM interpretations WHERE dataset_id=?`, id).Scan(&in.Kind, &in.Unit, &rel, &at, &size, &mod, &in.DeclaredBy, &frame, &quantity)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -213,6 +226,12 @@ func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
 	}
 	if rel.Valid {
 		in.ReliabilityID = &rel.Int64
+	}
+	if frame.Valid {
+		in.Frame = &frame.String
+	}
+	if quantity.Valid {
+		in.Quantity = &quantity.String
 	}
 	in.DeclaredAt = time.Unix(at, 0).UTC()
 	in.Stale = size != d.SizeBytes || mod != d.ModifiedAt.UnixNano()
@@ -249,10 +268,17 @@ func (s *Store) SetInterpretation(d Dataset, in Interpretation) error {
 	if by == "" {
 		by = "user"
 	}
-	_, err := s.db.Exec(`INSERT INTO interpretations(dataset_id,kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by) VALUES(?,?,?,?,?,?,?,?)
+	var frame, quantity any
+	if in.Frame != nil {
+		frame = *in.Frame
+	}
+	if in.Quantity != nil {
+		quantity = *in.Quantity
+	}
+	_, err := s.db.Exec(`INSERT INTO interpretations(dataset_id,kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity) VALUES(?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(dataset_id) DO UPDATE SET kind=excluded.kind,unit=excluded.unit,reliability_id=excluded.reliability_id,declared_at=excluded.declared_at,
-			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns,declared_by=excluded.declared_by`,
-		id, in.Kind, in.Unit, rel, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano(), by)
+			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns,declared_by=excluded.declared_by,frame=excluded.frame,quantity=excluded.quantity`,
+		id, in.Kind, in.Unit, rel, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano(), by, frame, quantity)
 	return err
 }
 
@@ -354,7 +380,7 @@ func (s *Store) FactsByPath(hostID int64) (map[string]PathFacts, error) {
 // ProposedInterpretations returns the interpretations someone other than the user declared (a run import's proposal),
 // by dataset id. Until the user confirms one it stays labelled with its author.
 func (s *Store) ProposedInterpretations() (map[int64]Interpretation, error) {
-	rows, err := s.db.Query(`SELECT dataset_id,kind,unit,reliability_id,declared_by FROM interpretations WHERE declared_by<>'user'`)
+	rows, err := s.db.Query(`SELECT dataset_id,kind,unit,reliability_id,declared_by,frame,quantity FROM interpretations WHERE declared_by<>'user'`)
 	if err != nil {
 		return nil, err
 	}
@@ -364,11 +390,18 @@ func (s *Store) ProposedInterpretations() (map[int64]Interpretation, error) {
 		var id int64
 		var in Interpretation
 		var rel sql.NullInt64
-		if err := rows.Scan(&id, &in.Kind, &in.Unit, &rel, &in.DeclaredBy); err != nil {
+		var frame, quantity sql.NullString
+		if err := rows.Scan(&id, &in.Kind, &in.Unit, &rel, &in.DeclaredBy, &frame, &quantity); err != nil {
 			return nil, err
 		}
 		if rel.Valid {
 			in.ReliabilityID = &rel.Int64
+		}
+		if frame.Valid {
+			in.Frame = &frame.String
+		}
+		if quantity.Valid {
+			in.Quantity = &quantity.String
 		}
 		out[id] = in
 	}

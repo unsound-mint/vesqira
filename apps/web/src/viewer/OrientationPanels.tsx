@@ -1,11 +1,31 @@
 import { useState } from "react";
 import { Button, Select } from "../ui";
 import type { Dataset } from "../api/catalog";
-import type { InterpretationRequest } from "../api/catalog";
+import type { AngleFrame, AngleQuantity, InterpretationRequest } from "../api/catalog";
 import type { AxialSummary } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import s from "./OrientationPanels.module.css";
+
+/** What each choice means, in the words shown under the selector. Declared by the person; the file says none of it. */
+export const FRAME_TEXT: Record<AngleFrame, string> = {
+  pixel: "Pixel grid: measured counter-clockwise from the file’s first axis (+x) towards its second (+y), as stored. Vesqira relates it to the sky with the file’s WCS at each pixel.",
+  sky: "Sky: position angle east of north (IAU) in the file’s own celestial frame.",
+};
+export const QUANTITY_TEXT: Record<AngleQuantity, string> = {
+  b_field: "B-field orientation: the angle of the field itself.",
+  gradient: "Gradient: perpendicular to B, as raw velocity gradients.",
+  dust_polarization: "Dust polarization: the E-vector of emission, perpendicular to B.",
+  starlight_polarization: "Starlight polarization: parallel to B.",
+  unspecified: "Unspecified: you do not know. The map is then refused for comparison with other datasets.",
+};
+const QUANTITY_LABEL: Record<AngleQuantity, string> = {
+  b_field: "B-field orientation",
+  gradient: "Gradient",
+  dust_polarization: "Dust polarization",
+  starlight_polarization: "Starlight polarization",
+  unspecified: "Unspecified (I do not know)",
+};
 
 /** A reliability candidate suggested by file name only: the user confirms it, and the server checks the grid. */
 export function suggestCompanion(name: string, others: Dataset[]): Dataset | null {
@@ -19,6 +39,8 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
   const [kind, setKind] = useState<"scalar" | "axial">(cur ? "axial" : "scalar");
   const [unit, setUnit] = useState<"" | "deg" | "rad">(cur?.unit ?? "");
   const [rel, setRel] = useState<string>(cur?.reliabilityId ? String(cur.reliabilityId) : "");
+  const [frame, setFrame] = useState<"" | AngleFrame>(cur?.frame ?? "");
+  const [quantity, setQuantity] = useState<"" | AngleQuantity>(cur?.quantity ?? "");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (!v.view) return <p className={s.note}>{EM}</p>;
@@ -30,7 +52,7 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
 
   async function apply() {
     setBusy(true);
-    const body: InterpretationRequest = kind === "scalar" ? { kind: "none" } : { kind: "axial_orientation", unit: unit as "deg" | "rad", reliabilityId: rel ? Number(rel) : null };
+    const body: InterpretationRequest = kind === "scalar" ? { kind: "none" } : { kind: "axial_orientation", unit: unit as "deg" | "rad", reliabilityId: rel ? Number(rel) : null, frame: frame || null, quantity: quantity || null };
     setMsg(await declare(dataset.id, body));
     setBusy(false);
   }
@@ -62,16 +84,39 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
             </p>
           ) : null}
           <p className={s.note}>The reliability map must share this map’s grid; its range is not assumed to be 0 to 1.</p>
+          <Select label="Angle frame" value={frame} onChange={(e) => setFrame(e.target.value as "" | AngleFrame)}>
+            <option value="">Not declared</option>
+            <option value="pixel">Pixel grid (counter-clockwise from +x)</option>
+            <option value="sky">Sky (east of north)</option>
+          </Select>
+          <p className={s.note}>{frame ? FRAME_TEXT[frame] : "The file does not declare which direction the angle is measured from. Left undeclared, the map cannot be aligned onto another grid."}</p>
+          <Select label="What the angle is" value={quantity} onChange={(e) => setQuantity(e.target.value as "" | AngleQuantity)}>
+            <option value="">Not declared</option>
+            {(Object.keys(QUANTITY_LABEL) as AngleQuantity[]).map((q) => <option key={q} value={q}>{QUANTITY_LABEL[q]}</option>)}
+          </Select>
+          <p className={s.note}>{quantity ? QUANTITY_TEXT[quantity] : "The file does not declare what the angle describes. Left undeclared, the map is refused for comparison with other datasets; its own statistics still work."}</p>
         </>
       ) : null}
       <Button type="button" variant="primary" disabled={busy || (kind === "axial" && unit === "")} onClick={apply}>{kind === "scalar" ? "Use as scalar" : "Declare axial"}</Button>
       {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
       {cur?.stale ? <p role="alert" className={s.warn}>The file changed since you declared it. Declare it again to confirm the unit still applies.</p> : null}
       <p className={s.note}>
-        {cur ? (cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : `Proposed by the run import (${cur.declaredBy}) as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}: from the pipeline, not from the file. Choose below and apply to override.`) : "Not declared: shown as an ordinary scalar map."} Kept with the catalog; the file is never changed. The file does not declare an angle convention. Vesqira assumes the one the VGT pipeline uses (from the +x pixel axis towards +y, counter-clockwise on screen); check it against your pipeline.
+        {cur ? (cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? `the run import (${cur.declaredBy})` : `the analysis that made this map (${cur.declaredBy})`} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}: not from the file. Choose below and apply to override.`) : "Not declared: shown as an ordinary scalar map."} Kept with the catalog; the file is never changed. The file does not declare the unit, the frame or what the angle is.
       </p>
+      {cur ? <p className={s.note}>{declarationNote(cur)}</p> : null}
     </div>
   );
+}
+
+/** Who says what the angle is, in words: the person, the VGT run import from its pipeline's convention, or an analysis keeping its input's. */
+export function declarationNote(cur: NonNullable<Dataset["interpretation"]>): string {
+  const f = cur.frame ? FRAME_TEXT[cur.frame] : "Frame: not declared.";
+  const q = cur.quantity ? QUANTITY_TEXT[cur.quantity] : "Quantity: not declared.";
+  if (cur.declaredBy === "user") return `${f} ${q}`;
+  if (cur.declaredBy === "vgt-run-adapter") {
+    return `${f} ${q} Proposed by the VGT run import from the pipeline’s convention (ψ = ½ atan2(U,Q) + 90°); not from the file. Override it if your run differs.`;
+  }
+  return `${f} ${q} Proposed by ${cur.declaredBy} from the map it was made from.`;
 }
 
 /** Degrees in [0, 180): a mean that rounds to 180.00 is the same orientation as 0.00, and is shown as 0. */

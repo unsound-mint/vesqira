@@ -687,6 +687,9 @@ type AnalysisSettings struct {
 	Args                    map[string]string
 	CPUs                    int
 	Mem, Time               string
+	// A map the person declared as an axial orientation map (ADR 0042): its unit, its frame when declared, and its reliability
+	// map's absolute host path. align and convolve then resample the doubled angle and write result.reliability.fits.
+	AxialUnit, AxialFrame, Weights string
 }
 
 var (
@@ -712,6 +715,9 @@ func RenderAnalysis(p AnalysisSettings) (string, error) {
 		return "", fmt.Errorf("%w: file and folder paths must be absolute, without spaces, quotes or ..", ErrInvalid)
 	case p.CPUs < 1 || p.CPUs > 256, !memRe.MatchString(p.Mem), !timeRe.MatchString(p.Time):
 		return "", fmt.Errorf("%w: bad resources", ErrInvalid)
+	case p.AxialUnit != "" && p.AxialUnit != "deg" && p.AxialUnit != "rad", p.AxialFrame != "" && p.AxialFrame != "pixel" && p.AxialFrame != "sky",
+		p.Weights != "" && !ValidPath(p.Weights), p.AxialUnit == "" && (p.AxialFrame != "" || p.Weights != ""):
+		return "", fmt.Errorf("%w: bad orientation declaration", ErrInvalid)
 	}
 	var args strings.Builder
 	keys := make([]string, 0, len(p.Args))
@@ -736,6 +742,16 @@ func RenderAnalysis(p AnalysisSettings) (string, error) {
 	ref := ""
 	if p.Op == "align" {
 		ref = " --reference " + p.Reference
+	}
+	if p.AxialUnit != "" {
+		fmt.Fprintf(&args, " --axial-unit %s", p.AxialUnit)
+		if p.AxialFrame != "" {
+			fmt.Fprintf(&args, " --axial-frame %s", p.AxialFrame)
+		}
+		if p.Weights != "" {
+			fmt.Fprintf(&args, " --weights %s", p.Weights)
+		}
+		args.WriteString(" --rel-out \"$out/result.reliability.fits\"")
 	}
 	fmt.Fprintf(&b, "%s -P \"%s/analysis.py\" %s --input %s%s%s --out \"$out/result.fits\" > \"$out/result.json\"\n", p.Python, p.ScriptDir, p.Op, p.Input, ref, args.String())
 	return b.String(), nil

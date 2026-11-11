@@ -100,6 +100,49 @@ describe("declaring an interpretation", () => {
     expect(screen.getByText(/may be its reliability map/)).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText("Angle unit (required)"), "rad");
     await userEvent.click(apply);
-    expect(calls).toEqual([{ kind: "axial_orientation", unit: "rad", reliabilityId: null }]);
+    expect(calls).toEqual([{ kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: null, quantity: null }]);
+  });
+
+  it("says the file declares neither the frame nor the quantity, and lets the person declare both with plain explanations", async () => {
+    const calls: unknown[] = [];
+    render(<InterpretationPanel v={viewer} dataset={ds(1, "psi.fits")} datasets={[ds(1, "psi.fits")]} declare={async (_id, b) => (calls.push(b), null)} />);
+    await userEvent.selectOptions(screen.getByLabelText("Treat this map as"), "axial");
+    expect(screen.getByText(/does not declare which direction the angle is measured from/)).toBeInTheDocument();
+    expect(screen.getByText(/does not declare what the angle describes/)).toBeInTheDocument();
+    expect(screen.queryByText(/assumes/)).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Angle unit (required)"), "deg");
+    await userEvent.selectOptions(screen.getByLabelText("Angle frame"), "sky");
+    expect(screen.getByText(/position angle east of north \(IAU\)/)).toBeInTheDocument();
+    for (const [value, text] of [
+      ["b_field", /the angle of the field itself/],
+      ["gradient", /perpendicular to B, as raw velocity gradients/],
+      ["dust_polarization", /E-vector of emission, perpendicular to B/],
+      ["starlight_polarization", /parallel to B/],
+      ["unspecified", /refused for comparison with other datasets/],
+    ] as const) {
+      await userEvent.selectOptions(screen.getByLabelText("What the angle is"), value);
+      expect(screen.getByText(text)).toBeInTheDocument();
+    }
+    await userEvent.selectOptions(screen.getByLabelText("What the angle is"), "dust_polarization");
+    await userEvent.click(screen.getByRole("button", { name: "Declare axial" }));
+    expect(calls).toEqual([{ kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: "sky", quantity: "dust_polarization" }]);
+  });
+
+  it("shows the VGT import's proposal as the pipeline's convention, overridable, and starts from it", async () => {
+    const proposed: Dataset = { ...ds(1, "psi.fits"), interpretation: { kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "pixel", quantity: "b_field", declaredBy: "vgt-run-adapter", declaredAt: "", stale: false } };
+    const calls: unknown[] = [];
+    render(<InterpretationPanel v={viewer} dataset={proposed} datasets={[proposed]} declare={async (_id, b) => (calls.push(b), null)} />);
+    expect(screen.getByText(/Proposed by the VGT run import from the pipeline’s convention \(ψ = ½ atan2\(U,Q\) \+ 90°\)/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Angle frame")).toHaveValue("pixel");
+    expect(screen.getByLabelText("What the angle is")).toHaveValue("b_field");
+    await userEvent.selectOptions(screen.getByLabelText("What the angle is"), "gradient");
+    await userEvent.click(screen.getByRole("button", { name: "Declare axial" }));
+    expect(calls).toEqual([{ kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "pixel", quantity: "gradient" }]);
+  });
+
+  it("describes a declaration from before the frame and quantity existed as not declared", () => {
+    const old: Dataset = { ...ds(1, "psi.fits"), interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: null, quantity: null, declaredBy: "user", declaredAt: "", stale: false } };
+    render(<InterpretationPanel v={viewer} dataset={old} datasets={[old]} declare={async () => null} />);
+    expect(screen.getByText(/Frame: not declared\. Quantity: not declared\./)).toBeInTheDocument();
   });
 });

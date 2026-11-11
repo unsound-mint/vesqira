@@ -13,7 +13,7 @@ import s from "./CompareInspector.module.css";
 export { metricRows, paramDiff };
 export type { MetricRow, ParamDiff } from "../compare/diff";
 
-const kind = (d: Dataset) => (d.interpretation ? `axial orientation, ${d.interpretation.unit === "deg" ? "degrees" : "radians"} (${d.interpretation.declaredBy === "user" ? "declared by you" : "proposed by the run import"})` : "scalar");
+const kind = (d: Dataset) => (d.interpretation ? `axial orientation, ${d.interpretation.unit === "deg" ? "degrees" : "radians"} (${d.interpretation.declaredBy === "user" ? "declared by you" : (d.interpretation.declaredBy === "vgt-run-adapter" ? "proposed by the run import" : `proposed by ${d.interpretation.declaredBy}`)})` : "scalar");
 const commit = (r: Run | undefined) => (r ? (r.gitCommit ? r.gitCommit.slice(0, 12) + (r.dirty ? " -dirty (not reproducible)" : "") : "no commit recorded") : "not from an imported run");
 
 /** What differs between two maps, and the explicit next steps (axial difference, alignment). Nothing is merged silently. */

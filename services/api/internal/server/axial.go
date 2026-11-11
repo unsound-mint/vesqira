@@ -11,6 +11,12 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
 )
 
+// What an orientation angle is measured against, and what it describes (ADR 0042). Both are declared, never inferred.
+var (
+	axialFrames     = map[string]bool{"pixel": true, "sky": true}
+	axialQuantities = map[string]bool{"b_field": true, "gradient": true, "dust_polarization": true, "starlight_polarization": true, "unspecified": true}
+)
+
 func (s *Server) dataset(id int64) (catalog.Dataset, int, string) {
 	d, err := s.Store.Get(id)
 	if errors.Is(err, catalog.ErrNotFound) {
@@ -34,9 +40,11 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var in struct {
-		Kind          string `json:"kind"`
-		Unit          string `json:"unit"`
-		ReliabilityID *int64 `json:"reliabilityId"`
+		Kind          string  `json:"kind"`
+		Unit          string  `json:"unit"`
+		ReliabilityID *int64  `json:"reliabilityId"`
+		Frame         *string `json:"frame"`
+		Quantity      *string `json:"quantity"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, 400, "invalid request body")
@@ -63,6 +71,14 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "unit is required and must be deg or rad; Vesqira does not guess it from the values")
 			return
 		}
+		if in.Frame != nil && !axialFrames[*in.Frame] {
+			fail(w, 400, "frame must be pixel, sky or null (not declared); Vesqira does not guess it from the values")
+			return
+		}
+		if in.Quantity != nil && !axialQuantities[*in.Quantity] {
+			fail(w, 400, "quantity must be b_field, gradient, dust_polarization, starlight_polarization, unspecified or null (not declared)")
+			return
+		}
 		if in.ReliabilityID != nil {
 			if *in.ReliabilityID == id {
 				fail(w, 422, "a map cannot be its own reliability")
@@ -83,7 +99,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err := s.Store.SetInterpretation(d, catalog.Interpretation{Kind: in.Kind, Unit: in.Unit, ReliabilityID: in.ReliabilityID}); err != nil {
+		if err := s.Store.SetInterpretation(d, catalog.Interpretation{Kind: in.Kind, Unit: in.Unit, ReliabilityID: in.ReliabilityID, Frame: in.Frame, Quantity: in.Quantity}); err != nil {
 			log.Printf("interpret: %v", err)
 			fail(w, 500, "internal error")
 			return

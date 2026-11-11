@@ -12,6 +12,8 @@ Rules this program keeps:
   never a guess. Velocities are not invented for frequency axes.
 - Reprojection is not resolution matching: it changes pixel values by interpolation and says so in the output.
 - Large cubes are processed one channel at a time, so memory stays bounded.
+- A map declared as an axial orientation (--axial-unit) is never averaged as a scalar: align and convolve resample the doubled
+  angle (Q = w cos 2θ, U = w sin 2θ) and moment and slab are refused (ADR 0042).
 """
 from __future__ import annotations
 
@@ -30,6 +32,7 @@ import numpy as np
 from astropy.io import fits
 
 from plane_worker import Cube, Refused, authorize, declared_unit as checked_declared_unit, fits_array
+import orientation as ori
 
 MAX_OUTPUT_ELEMENTS = 1 << 28
 
@@ -149,6 +152,65 @@ def write_fits(path: str, data: np.ndarray, header: fits.Header):
             os.unlink(tmp)
 
 
+
+# ---------------------------------------------------------------------------------------------------------------
+# Axial orientation maps (ADR 0042). The API passes what the person declared; nothing here infers it.
+
+def refuse_axial(args, op: str):
+    if args.axial_unit:
+        fail(f"{op} would average the angles of a map declared as an axial orientation map, which is not a valid operation "
+             "(0 and 180 degrees are the same orientation). Use align or convolve, which resample the doubled angle")
+
+
+def axial_inputs(args, c: Cube) -> tuple[np.ndarray, np.ndarray]:
+    """(angle in degrees, weight) of a declared orientation map: both float64 planes with NaN for no value. The weight is the
+    declared reliability map's values, or 1 when none is declared; it must not be negative (zero is a value: no weight)."""
+    if c.channels != 1:
+        fail("an orientation map is a single plane")
+    _, p = next(planes(c, 0, 0))
+    theta = p * (1.0 if args.axial_unit == "deg" else 180.0 / math.pi)
+    if not args.weights:
+        return theta, np.ones_like(theta)
+    wc = open_cube(args.weights)
+    if wc.channels != 1 or (wc.shape[wc.y], wc.shape[wc.x]) != (c.shape[c.y], c.shape[c.x]):
+        fail("the reliability map does not have the shape of the orientation map")
+    _, w = next(planes(wc, 0, 0))
+    if np.any(w[np.isfinite(w)] < 0):
+        fail("the reliability map has negative values, which cannot be weights")
+    return theta, w
+
+
+DOUBLED_ANGLE = ("Doubled-angle method: the angle θ was resampled as Q = w cos 2θ and U = w sin 2θ (w the declared reliability, or 1), "
+                 "each by the same kernel as a scalar map, and the result is θ = 1/2 atan2(U, Q) in [0, 180) degrees; 1 and 179 degrees "
+                 "average to 0, not 90. The companion reliability map is the resultant length |(Q, U)| / w in [0, 1]. Where the "
+                 "contributing orientations cancel (resultant below 1e-6) the orientation is undefined and is NaN, counted in the summary.")
+
+
+def axial_output(args, theta_deg: np.ndarray, rel: np.ndarray | None):
+    """The angle in the input's unit (deg or rad), in [0, 180) degrees or [0, π) radians, as float32."""
+    out = theta_deg if args.axial_unit == "deg" else np.radians(theta_deg)
+    return out.astype("<f4"), (None if rel is None else rel.astype("<f4"))
+
+
+def write_axial(args, theta_deg, rel, header, summary: dict, history: list[str]):
+    """Write the angle map to --out and, when there is one, its reliability map to --rel-out."""
+    ang, relf = axial_output(args, theta_deg, rel)
+    h = header.copy()
+    for line in history:
+        h["HISTORY"] = line
+    write_fits(args.out, ang, h)
+    summary["reliability_file"] = False
+    if relf is not None and args.rel_out:
+        hr = header.copy()
+        for k in ("BUNIT", "VESQBUNS"):
+            if k in hr:
+                del hr[k]
+        hr["VESQOP"] = h.get("VESQOP", "")
+        hr["HISTORY"] = "Vesqira: companion reliability map of an orientation result; the resultant length of the resampled doubled angles, 0 to 1"
+        write_fits(args.rel_out, relf, hr)
+        summary["reliability_file"] = True
+
+
 # ---------------------------------------------------------------------------------------------------------------
 
 def op_stats(args) -> dict:
@@ -188,6 +250,7 @@ def op_stats(args) -> dict:
 
 
 def op_moment(args) -> dict:
+    refuse_axial(args, "A moment")
     c = open_cube(args.input)
     order = args.order
     if order not in (0, 1, 2):
@@ -272,6 +335,7 @@ def op_cutout(args) -> dict:
 
 
 def op_slab(args) -> dict:
+    refuse_axial(args, "A slab")
     c = open_cube(args.input)
     c0, c1 = chan_range(c, args)
     out = np.stack([p.astype("<f4") for _, p in planes(c, c0, c1)])
@@ -302,6 +366,93 @@ def _write_cube(c: Cube, data: np.ndarray, h: fits.Header, op: str, summary: dic
     return {"ok": True, "op": op, "summary": out}
 
 
+def aligned_header(src: Cube, w_ref, shape_out, cube: bool) -> fits.Header:
+    """The header of an aligned result: the reference's celestial grid, plus the input's spectral axis for a cube."""
+    h = fits.Header()
+    h["SIMPLE"], h["BITPIX"] = True, -32
+    h["NAXIS"] = 3 if cube else 2
+    hdr_ref = w_ref.to_header()
+    h["NAXIS1"], h["NAXIS2"] = shape_out[1], shape_out[0]
+    if cube:
+        h["NAXIS3"] = src.channels
+    for k in hdr_ref:
+        h[k] = hdr_ref[k]
+    if cube:
+        for key in ("CTYPE", "CRVAL", "CRPIX", "CDELT", "CUNIT"):
+            if f"{key}{src.chan + 1}" in src.h:
+                h[f"{key}3"] = src.h[f"{key}{src.chan + 1}"]
+        for key in ("SPECSYS", "RESTFRQ", "RESTFREQ"):
+            if key in src.h:
+                h[key] = src.h[key]
+    return h
+
+
+def align_axial(args, src: Cube, ref: Cube, func, kw: dict, method: str, shape_out) -> dict:
+    """Align an orientation map declared axial onto the reference's celestial grid without ever averaging angles linearly.
+
+    The physical orientation must survive the change of grid, so the angle is carried through the sky:
+    1. a map in the pixel frame is turned into position angles east of north in the input's own celestial frame (astropy,
+       from the WCS at each pixel); a map already in the sky frame is used as it is;
+    2. bilinear and exact methods resample Q = w cos 2θ and U = w sin 2θ and the weight w independently with the scalar
+       path's own kernel, and θ = 1/2 atan2(U, Q); nearest picks one sample and averages nothing, so it resamples θ itself;
+    3. when the reference is in another celestial frame the position angle is rotated into it (astropy), and
+    4. for a pixel-frame map the angle is turned back into the reference grid's own pixel frame.
+    The frame must be declared (a refusal names it); the quantity is not needed, because the same quantity goes in and out."""
+    if src.channels != 1:
+        fail("an orientation map is a single plane")
+    if args.axial_frame not in ori.FRAMES:
+        fail("the angle's frame (pixel or sky) is not declared for this map, so it cannot be aligned onto another grid; declare it first")
+    try:
+        w_src, w_ref = ori.celestial_wcs(src), ori.celestial_wcs(ref)
+        f_src, f_ref = ori.sky_frame(w_src), ori.sky_frame(w_ref)
+    except ori.Undeclared as e:
+        fail(str(e))
+    theta, wgt = axial_inputs(args, src)
+    ny, nx = theta.shape
+    xs, ys = np.meshgrid(np.arange(nx), np.arange(ny))
+    pa = ori.wrap_axial(ori.pixel_to_sky_pa(w_src, xs, ys, theta) if args.axial_frame == "pixel" else theta)
+    ok = np.isfinite(pa) & np.isfinite(wgt)
+    pa, wgt = np.where(ok, pa, np.nan), np.where(ok, wgt, np.nan)
+
+    def resample(a):
+        return np.asarray(func((a, w_src), w_ref, shape_out=shape_out, **kw)[0], dtype=float)
+
+    if method == "nearest":
+        th_ref = resample(pa)
+        rel = resample(wgt) if args.weights else None
+        rel_kind = "the declared reliability, picked with the same nearest sample" if args.weights else None
+        degenerate = 0
+    else:
+        q, u_ = ori.doubled(pa, wgt)
+        th_ref, rel = ori.combine(resample(q), resample(u_), resample(wgt))
+        rel_kind = "resultant length of the resampled doubled angles, |(Q, U)| / w"
+        degenerate = int((np.isfinite(rel) & np.isnan(th_ref)).sum())
+    ry, rx = np.meshgrid(np.arange(shape_out[0]), np.arange(shape_out[1]), indexing="ij")
+    if not f_src.is_equivalent_frame(f_ref):
+        origin = w_ref.pixel_to_world(rx, ry)
+        th_ref = ori.rotate_pa_frame(origin.transform_to(f_src), th_ref, f_ref)
+    out = ori.wrap_axial(ori.sky_pa_to_pixel(w_ref, rx, ry, th_ref) if args.axial_frame == "pixel" else th_ref)
+    h = aligned_header(src, w_ref, shape_out, False)
+    for key in ("BUNIT",):
+        if key in src.h:
+            h[key] = src.h[key]
+    h["VESQOP"] = "align"
+    summary = {"method": method, "axial": True, "angle_unit": args.axial_unit, "angle_frame": args.axial_frame, "shape": list(out.shape),
+               "source_frame": src.sky_facts().get("frame"), "reference_frame": ref.sky_facts().get("frame"),
+               "pixels_without_data": int(np.isnan(out).sum()), "pixels_orientation_undefined": degenerate,
+               "reliability_map": rel_kind, "declared_reliability_used": bool(args.weights)}
+    how = (f"Vesqira align (axial): {method} resampling of the orientation, through the sky frame"
+           + (", back to the reference grid's pixel frame" if args.axial_frame == "pixel" else "")
+           + ("; the doubled angle (Q = w cos 2*theta, U = w sin 2*theta) was resampled, not the angle" if method != "nearest" else "; one sample was picked, nothing was averaged"))
+    summary["policy"] = ((DOUBLED_ANGLE if method != "nearest" else "Nearest-neighbour: each output pixel takes one input sample, so no angles are averaged.")
+                         + " The angle's physical orientation is kept across the change of grid"
+                         + (": the pixel-frame angle was converted to east of north with the file's WCS, resampled, rotated into the reference's celestial frame if it differs, and converted back to the reference grid's pixel frame."
+                            if args.axial_frame == "pixel" else " (position angle east of north in the file's celestial frame, rotated into the reference's if it differs).")
+                         + " Resolution is NOT matched; pixels outside the input's footprint are NaN, never 0.")
+    write_axial(args, out, rel, h, summary, [how])
+    return {"ok": True, "op": "align", "summary": summary}
+
+
 def op_align(args) -> dict:
     """Reproject the input onto the reference's celestial grid (validated provider: astropy reproject)."""
     try:
@@ -319,6 +470,8 @@ def op_align(args) -> dict:
     w_ref = ref.wcs.celestial
     shape_out = (ref.shape[ref.y], ref.shape[ref.x])
     w_src = src.wcs.celestial
+    if args.axial_unit:
+        return align_axial(args, src, ref, func, kw, method, shape_out)
     c0, c1 = (0, src.channels - 1)
     out_planes = []
     for ch, p in planes(src, c0, c1):
@@ -326,22 +479,7 @@ def op_align(args) -> dict:
         out_planes.append(np.asarray(r, dtype="<f4"))          # outside the input's footprint reproject gives NaN
     cube = src.chan is not None and src.channels > 1
     data = np.stack(out_planes) if cube else out_planes[0]
-    h = fits.Header()
-    h["SIMPLE"], h["BITPIX"] = True, -32
-    h["NAXIS"] = 3 if cube else 2
-    hdr_ref = w_ref.to_header()
-    h["NAXIS1"], h["NAXIS2"] = shape_out[1], shape_out[0]
-    if cube:
-        h["NAXIS3"] = src.channels
-    for k in hdr_ref:
-        h[k] = hdr_ref[k]
-    if cube:
-        for key in ("CTYPE", "CRVAL", "CRPIX", "CDELT", "CUNIT"):
-            if f"{key}{src.chan + 1}" in src.h:
-                h[f"{key}3"] = src.h[f"{key}{src.chan + 1}"]
-        for key in ("SPECSYS", "RESTFRQ", "RESTFREQ"):
-            if key in src.h:
-                h[key] = src.h[key]
+    h = aligned_header(src, w_ref, shape_out, cube)
     for key in ("BUNIT",):
         if key in src.h:
             h[key] = src.h[key]
@@ -453,6 +591,37 @@ def _sky_cov(bmaj: float, bmin: float, bpa_deg: float) -> np.ndarray:
     return (bmaj * FWHM_TO_SIGMA) ** 2 * np.outer(u, u) + (bmin * FWHM_TO_SIGMA) ** 2 * np.outer(v, v)
 
 
+def convolve_axial(args, c: Cube, chans, smooth, from_beam, to_beam, n_pix) -> dict:
+    """Convolve an orientation map declared axial: Q = w cos 2θ, U = w sin 2θ and w are each smoothed by the scalar path's
+    kernel (NaN handled the same way) and θ = 1/2 atan2(U, Q). The kernel is applied in the frame the map is stored in (the
+    declared frame is not converted: over a kernel the direction of north changes by far less than the kernel is wide, and
+    nothing is resampled onto another grid). Values are angles, so the beam-area rescaling of a flux unit does not apply."""
+    if len(chans) != 1:
+        fail("an orientation map is a single plane")
+    theta, wgt = axial_inputs(args, c)
+    q, u_ = ori.doubled(theta, wgt)
+    wm = np.where(np.isfinite(q), wgt, np.nan)                                 # the weight only where the angle has a value
+    th, rel = ori.combine(smooth(q), smooth(u_), smooth(wm))
+    nh = c.h.copy()
+    nh["BMAJ"], nh["BMIN"], nh["BPA"] = to_beam[0] / 3600.0, to_beam[1] / 3600.0, to_beam[2]
+    nh["BITPIX"] = -32
+    for k in ("BSCALE", "BZERO", "BLANK"):
+        if k in nh:
+            del nh[k]
+    nh["VESQOP"] = "convolve"
+    summary = {"axial": True, "angle_unit": args.axial_unit, "angle_frame": args.axial_frame or None,
+               "from_beam_arcsec": list(from_beam), "to_beam_arcsec": list(to_beam), "kernel_half_width_pixels": n_pix,
+               "shape": list(th.shape), "pixels_without_data": int(np.isnan(th).sum()),
+               "pixels_orientation_undefined": int((np.isfinite(rel) & np.isnan(th)).sum()),
+               "reliability_map": "resultant length of the smoothed doubled angles, |(Q, U)| / w", "declared_reliability_used": bool(args.weights)}
+    summary["policy"] = (DOUBLED_ANGLE + " Smoothed with a Gaussian kernel to the target beam; pixels without a value stay without a value and neighbours "
+                         "are averaged over the finite pixels the kernel reaches. The kernel is applied in the frame the angles are stored in. "
+                         "Noise becomes correlated over the new beam.")
+    write_axial(args, th, rel, nh, summary, [f"Vesqira convolve (axial) {json.dumps({'from_beam_arcsec': list(from_beam), 'to_beam_arcsec': list(to_beam)})}: "
+                                             "the doubled angle was smoothed, not the angle"])
+    return {"ok": True, "op": "convolve", "summary": summary}
+
+
 def op_convolve(args) -> dict:
     """Smooth to a larger target beam: convolve with the Gaussian that, combined with the current beam, gives it.
 
@@ -497,6 +666,15 @@ def op_convolve(args) -> dict:
         kernel = np.exp(-0.5 * q).reshape(xx.shape)
         kernel /= kernel.sum()
         n_pix = half
+
+    def smooth(p: np.ndarray) -> np.ndarray:
+        """One plane smoothed by the kernel; NaN stays NaN and the finite neighbours are averaged, never a zero."""
+        if kernel is None:
+            return p.copy()
+        padded = np.pad(p, n_pix, constant_values=np.nan)                   # outside the map is missing, not zero
+        return convolve_fft(padded, kernel, nan_treatment="interpolate", preserve_nan=True, normalize_kernel=True,
+                            boundary="fill", fill_value=0.0, allow_huge=True)[n_pix:-n_pix, n_pix:-n_pix]
+
     area = 1.0
     bunit, bu_src = unit_of(c, args.declared_unit)
     per_beam = "beam" in (bunit or "").lower()
@@ -511,16 +689,11 @@ def op_convolve(args) -> dict:
         chans = None
     if chans is None:
         fail("convolution supports an image or a cube with axes (x, y[, channel]) in that order")
+    if args.axial_unit:
+        return convolve_axial(args, c, chans, smooth, (smaj, smin, spa), (tmaj, tmin, tpa), n_pix)
     out = []
     for _, p in chans:
-        p = np.asarray(p, dtype=float)
-        if kernel is None:
-            r = p.copy()
-        else:
-            padded = np.pad(p, n_pix, constant_values=np.nan)               # outside the map is missing, not zero
-            r = convolve_fft(padded, kernel, nan_treatment="interpolate", preserve_nan=True, normalize_kernel=True,
-                             boundary="fill", fill_value=0.0, allow_huge=True)[n_pix:-n_pix, n_pix:-n_pix]
-        out.append((r * area).astype("<f4"))
+        out.append((smooth(np.asarray(p, dtype=float)) * area).astype("<f4"))
     data = np.stack(out) if n == 3 else out[0]
     nh = h.copy()
     nh["BMAJ"], nh["BMIN"], nh["BPA"] = tmaj / 3600.0, tmin / 3600.0, tpa
@@ -581,6 +754,10 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--target-bmin", type=float)
     ap.add_argument("--target-bpa", type=float, default=0.0)
     ap.add_argument("--method", choices=["interp", "nearest", "exact"], default="interp")
+    ap.add_argument("--axial-unit", choices=["deg", "rad"])      # the map is declared an axial orientation map, in this unit (ADR 0042)
+    ap.add_argument("--axial-frame", choices=["pixel", "sky"])   # its declared frame; absent when not declared
+    ap.add_argument("--weights")                                 # its declared reliability map (same grid), a path
+    ap.add_argument("--rel-out")                                 # where an orientation result's companion reliability map goes
     ap.add_argument("--declared-unit")        # the brightness unit its author declared for the input, only for a file without BUNIT
     ap.add_argument("--declared-unit-ref")    # the same for the reference
     args = ap.parse_args(argv)
