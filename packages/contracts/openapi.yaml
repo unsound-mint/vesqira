@@ -2727,6 +2727,319 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/transfers:
+    get:
+      operationId: owner_s_listTransfers_get_api_transfers
+      x-listener: owner
+      summary: "The transfer queue, newest first (at most 200)"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TransferList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: owner_s_createTransfer_post_api_transfers
+      x-listener: owner
+      summary: "Queue a transfer between this computer and a host. Only paths inside the source roots on both sides are accepted; nothing is sent to the host until the queue runs it"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+      responses:
+        "201":
+          description: "queued"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TransferEnvelope"
+        "400":
+          description: "invalid body"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "a local path is not inside the source roots"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "no such host"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "a path, name, policy or limit that is refused, or rsync is not installed on this computer"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/transfers/{id}/cancel:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_cancelTransfer_post_api_transfers_id_cancel
+      x-listener: owner
+      summary: "Cancel a transfer. A running one is stopped with SIGTERM (202; its record becomes cancelled when rsync has stopped) and its partial file is kept unless discardPartial is set"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/TransferCancelRequest"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TransferEnvelope"
+        "404":
+          description: "no such transfer"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "already finished"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "202":
+          description: "the transfer is being stopped"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TransferEnvelope"
+  /api/transfers/{id}/register:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_registerTransfer_post_api_transfers_id_register
+      x-listener: owner
+      summary: "Register a verified downloaded file as a dataset with an external-reference provenance (host, path, hash); the file must still match the verified hash"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      responses:
+        "201":
+          description: "registered"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TransferRegistered"
+        "403":
+          description: "the file is no longer inside the source roots"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "no such transfer"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "not a verified download, or the file changed after verification"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "the file could not be read as a dataset"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "registering is not configured"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "200":
+          description: "already registered"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TransferRegistered"
+  /api/transfers/{id}/remove:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_removeTransfer_post_api_transfers_id_remove
+      x-listener: owner
+      summary: "Forget a finished transfer's record; no file is touched"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "removed"
+                properties:
+                  removed:
+                    type: "boolean"
+        "404":
+          description: "no such transfer"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "not finished"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/transfers/{id}/resolve:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_resolveTransfer_post_api_transfers_id_resolve
+      x-listener: owner
+      summary: "Decide a conflict: skip, keep both under a new name, or replace. Only replace overwrites"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/TransferResolveRequest"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TransferEnvelope"
+        "404":
+          description: "no such transfer"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "not waiting for a decision"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "not a decision"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/transfers/{id}/retry:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_retryTransfer_post_api_transfers_id_retry
+      x-listener: owner
+      summary: "Put a failed or cancelled transfer back in the queue (the partial file is resumed), or copy again a transfer that arrived unverified (contents are compared and the copy this transfer made may be replaced)"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TransferEnvelope"
+        "404":
+          description: "no such transfer"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "not in a state that can be tried again"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /publish-api/assets/{sha}:
     parameters:
       - {name: sha, in: path, required: true, schema: {type: string}}
@@ -3693,6 +4006,7 @@ components:
             - "preview"
             - "hosts"
             - "jobs"
+            - "transfers"
             - "analysis"
             - "remoteAnalysis"
             - "runs"
@@ -3726,6 +4040,9 @@ components:
             editor:
               type: "boolean"
               description: "The text editor for local files is on (--enable-editor, ADR 0029)."
+            transfers:
+              type: "boolean"
+              description: "The resumable transfer queue is on (ADR 0051)."
           description: "True when this running server was started with what the feature needs"
         limits:
           type: "object"
@@ -4710,7 +5027,10 @@ components:
             - "unknown"
             - "imported"
             - "import_failed"
-          description: "How the job ended (the first five; unknown means Slurm no longer lists it and Vesqira did not mark it finished), or what happened to its results (the last two)"
+            - "transfer_done"
+            - "transfer_failed"
+            - "transfer_conflict"
+          description: "How the job ended (the first five; unknown means Slurm no longer lists it and Vesqira did not mark it finished), or what happened to its results (the last two). transfer_done: a transfer finished and was verified; transfer_failed: it failed or arrived but could not be verified; transfer_conflict: a name exists at the destination and a decision is needed."
         title:
           type: "string"
         body:
@@ -8722,3 +9042,258 @@ components:
         basis:
           type: "string"
           description: "Where the numbers come from, in words"
+    TransferVerification:
+      type: "object"
+      description: "What was checked after the bytes arrived. status is empty until then. verified means the size and the SHA-256 (for a folder, rsync's content checksum, which is not SHA-256: see method) matched on both ends after the transfer; anything else is unverified, with the reason in note. A copy is never called verified on the strength of rsync finishing."
+      required:
+        - "status"
+        - "method"
+        - "note"
+        - "sourceSha256"
+        - "destSha256"
+        - "bytes"
+      properties:
+        status:
+          type: "string"
+          enum:
+            - ""
+            - "verified"
+            - "unverified"
+        method:
+          type: "string"
+          enum:
+            - ""
+            - "sha256"
+            - "rsync-checksum"
+        note:
+          type: "string"
+        sourceSha256:
+          type: "string"
+          description: "Computed on the source's own machine after the transfer; empty when it could not be"
+        destSha256:
+          type: "string"
+        bytes:
+          type: "integer"
+          format: "int64"
+    Transfer:
+      type: "object"
+      description: "One entry of the transfer queue between this computer and a host (ADR 0051). sourcePath is read, destDir is the existing folder written into; direction says which is on the host."
+      required:
+        - "id"
+        - "hostId"
+        - "direction"
+        - "kind"
+        - "sourcePath"
+        - "destDir"
+        - "name"
+        - "finalName"
+        - "destPath"
+        - "policy"
+        - "state"
+        - "detail"
+        - "totalBytes"
+        - "doneBytes"
+        - "rateBps"
+        - "etaSeconds"
+        - "bwlimitKBps"
+        - "compress"
+        - "checksum"
+        - "attempts"
+        - "fails"
+        - "nextAttemptAt"
+        - "warning"
+        - "verification"
+        - "datasetId"
+        - "createdAt"
+        - "startedAt"
+        - "finishedAt"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        hostId:
+          type: "integer"
+          format: "int64"
+        direction:
+          type: "string"
+          enum:
+            - "download"
+            - "upload"
+        kind:
+          type: "string"
+          enum:
+            - ""
+            - "file"
+            - "dir"
+          description: "Empty until the source has been looked at (a download)"
+        sourcePath:
+          type: "string"
+        destDir:
+          type: "string"
+        name:
+          type: "string"
+          description: "The wanted name at the destination"
+        finalName:
+          type: "string"
+          description: "The name chosen when the first attempt started (it differs from name for keep_both); never changes afterwards"
+        destPath:
+          type: "string"
+        policy:
+          type: "string"
+          enum:
+            - "ask"
+            - "skip"
+            - "keep_both"
+            - "replace"
+          description: "What to do when the name exists at the destination. Only replace ever overwrites."
+        state:
+          type: "string"
+          enum:
+            - "queued"
+            - "waiting"
+            - "running"
+            - "verifying"
+            - "conflict"
+            - "done"
+            - "failed"
+            - "cancelled"
+            - "skipped"
+          description: "waiting is a retry after a lost connection (nextAttemptAt); conflict waits for the owner's decision. done says the bytes arrived, not that they are verified: see verification."
+        detail:
+          type: "string"
+        totalBytes:
+          type: "integer"
+          format: "int64"
+          description: "0 when not known"
+        doneBytes:
+          type: "integer"
+          format: "int64"
+        rateBps:
+          type: "integer"
+          format: "int64"
+        etaSeconds:
+          type: "integer"
+          format: "int64"
+          description: "-1 when not known"
+        bwlimitKBps:
+          type: "integer"
+          description: "0 means no limit"
+        compress:
+          type: "boolean"
+        checksum:
+          type: "boolean"
+          description: "The next attempt compares contents instead of trusting size and time"
+        attempts:
+          type: "integer"
+        fails:
+          type: "integer"
+          description: "Attempts in a row that moved no data; the wait before the next one grows with it"
+        nextAttemptAt:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        warning:
+          type: "string"
+          description: "From the host's last storage look, for an upload that may not fit; empty when there is nothing to say"
+        verification:
+          $ref: "#/components/schemas/TransferVerification"
+        datasetId:
+          type: "integer"
+          format: "int64"
+          nullable: true
+          description: "The dataset a verified download was registered as"
+        createdAt:
+          type: "string"
+          format: "date-time"
+        startedAt:
+          type: "string"
+          format: "date-time"
+          nullable: true
+        finishedAt:
+          type: "string"
+          format: "date-time"
+          nullable: true
+    TransferList:
+      type: "object"
+      required:
+        - "transfers"
+      properties:
+        transfers:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Transfer"
+    TransferEnvelope:
+      type: "object"
+      required:
+        - "transfer"
+      properties:
+        transfer:
+          $ref: "#/components/schemas/Transfer"
+    TransferRequest:
+      type: "object"
+      required:
+        - "direction"
+        - "hostId"
+        - "sourcePath"
+        - "destDir"
+      description: "Queue a transfer. A download reads a path inside the host's source roots into an existing folder inside this computer's source roots; an upload reads a file or folder inside this computer's source roots into an existing folder inside the host's source roots. Paths are absolute; a remote source may not contain * ? [ (rsync would expand them)."
+      properties:
+        direction:
+          type: "string"
+          enum:
+            - "download"
+            - "upload"
+        hostId:
+          type: "integer"
+          format: "int64"
+        sourcePath:
+          type: "string"
+        destDir:
+          type: "string"
+        name:
+          type: "string"
+          description: "Name at the destination; the source's own name by default"
+        policy:
+          type: "string"
+          enum:
+            - "ask"
+            - "skip"
+            - "keep_both"
+            - "replace"
+          description: "Default ask: an identical file counts as already there, a different one waits for a decision"
+        bwlimitKBps:
+          type: "integer"
+          minimum: 0
+          maximum: 10000000
+          description: "rsync --bwlimit; 0 or absent means none"
+        compress:
+          type: "boolean"
+          description: "rsync -z; default true"
+    TransferCancelRequest:
+      type: "object"
+      properties:
+        discardPartial:
+          type: "boolean"
+          description: "Delete the unfinished file of a download. A partial file on a host is never deleted by Vesqira."
+    TransferResolveRequest:
+      type: "object"
+      required:
+        - "policy"
+      properties:
+        policy:
+          type: "string"
+          enum:
+            - "skip"
+            - "keep_both"
+            - "replace"
+    TransferRegistered:
+      type: "object"
+      required:
+        - "dataset"
+        - "transfer"
+      properties:
+        dataset:
+          $ref: "#/components/schemas/Dataset"
+        transfer:
+          $ref: "#/components/schemas/Transfer"
+      description: "The dataset a verified download was registered as (201 the first time, 200 when it already was). Its derived record names the host and path as an external reference and the hash compared."

@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { API } from "../ports";
 
-// The transfer queue (ADR 0048) through the real API and the real rsync, with the stand-in ssh that runs the "host" on this
+// The transfer queue (ADR 0051) through the real API and the real rsync, with the stand-in ssh that runs the "host" on this
 // machine: download a file, see it verified by hash, meet a conflict, keep both, and check nothing was overwritten.
 
 const here = path.dirname(fileURLToPath(import.meta.url));

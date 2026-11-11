@@ -18,7 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
 )
 
-// Transfers between this computer and a host (ADR 0048): a persistent queue, one transfer per host at a time, retried with
+// Transfers between this computer and a host (ADR 0051): a persistent queue, one transfer per host at a time, retried with
 // backoff and resumed from the partial file, verified by sha256 on both ends. The routes exist only on the owner's loopback
 // listener; the reviewer handler has no transfer route.
 

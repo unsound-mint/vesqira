@@ -464,7 +464,7 @@ func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset
 	return d, 0, ""
 }
 
-// inPartialFolder reports whether a path is inside a folder where rsync keeps an unfinished transfer (ADR 0048).
+// inPartialFolder reports whether a path is inside a folder where rsync keeps an unfinished transfer (ADR 0051).
 func inPartialFolder(p string) bool {
 	for _, c := range strings.Split(filepath.ToSlash(p), "/") {
 		if c == hosts.PartialDir {

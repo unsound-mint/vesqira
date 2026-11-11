@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// An unfinished transfer lives in .vesqira-partial next to its destination (ADR 0048). A half-copied cube is never data, and
+// An unfinished transfer lives in .vesqira-partial next to its destination (ADR 0051). A half-copied cube is never data, and
 // the folder is not reported as skipped either: it is Vesqira's own.
 func TestAnUnfinishedTransferIsNeverListedAsData(t *testing.T) {
 	root := canonical(t)

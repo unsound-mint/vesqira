@@ -19,7 +19,7 @@ const (
 	KindUnknown      = "unknown"
 	KindImported     = "imported"
 	KindImportFailed = "import_failed"
-	// A transfer between this computer and a host finished, did not (or arrived unverified), or needs a decision (ADR 0048).
+	// A transfer between this computer and a host finished, did not (or arrived unverified), or needs a decision (ADR 0051).
 	KindTransferDone     = "transfer_done"
 	KindTransferFailed   = "transfer_failed"
 	KindTransferConflict = "transfer_conflict"

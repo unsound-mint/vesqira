@@ -1,4 +1,4 @@
-// Package transfers is the queue of file and folder transfers between this computer and a host (ADR 0048). It holds only
+// Package transfers is the queue of file and folder transfers between this computer and a host (ADR 0051). It holds only
 // what must survive a restart: what was asked, the conflict decision, where the transfer is, and what was verified. The
 // work itself (rsync, hashing) is done by the server's runner through internal/hosts.
 package transfers
@@ -363,7 +363,7 @@ func (s *Store) Requeue(id int64, checksum bool) (bool, error) {
 }
 
 // Recover is run once at start: a transfer that was running or verifying when the app closed goes back to the queue, to
-// resume from its partial file, after a short wait so an rsync that a crash orphaned (it ends by itself, see ADR 0048) is gone. It
+// resume from its partial file, after a short wait so an rsync that a crash orphaned (it ends by itself, see ADR 0051) is gone. It
 // returns how many.
 func (s *Store) Recover(now time.Time, wait time.Duration) (int, error) {
 	res, err := s.db.Exec(`UPDATE transfers SET state='queued', next_at=?, rate_bps=0, eta_s=-1,

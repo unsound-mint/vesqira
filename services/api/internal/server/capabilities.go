@@ -28,7 +28,7 @@ type Capabilities struct {
 		Preview        bool `json:"preview"` // reduced plane previews (the step parameter)
 		Hosts          bool `json:"hosts"`
 		Jobs           bool `json:"jobs"`
-		Transfers      bool `json:"transfers"` // the resumable transfer queue (ADR 0048)
+		Transfers      bool `json:"transfers"` // the resumable transfer queue (ADR 0051)
 		Analysis       bool `json:"analysis"`
 		RemoteAnalysis bool `json:"remoteAnalysis"`
 		Runs           bool `json:"runs"`

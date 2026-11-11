@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-// Transfers between this computer and a host (ADR 0048). The bytes travel through the system rsync over the same ssh
+// Transfers between this computer and a host (ADR 0051). The bytes travel through the system rsync over the same ssh
 // configuration every other host command uses; Vesqira never opens a connection of its own and never builds a shell
 // command out of a caller's text. Everything caller-supplied reaches a process as one argv element (rsync, with
 // --protect-args so the remote side does not parse it either) or as a positional argument of a fixed sh script, single-quoted

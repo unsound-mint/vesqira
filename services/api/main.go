@@ -208,7 +208,7 @@ func main() {
 	if *jobWatch > 0 { // follow queued and running jobs on the hosts while the app runs (ADR 0043)
 		go srv.WatchJobs(stop, *jobWatch)
 	}
-	transfersStopped := make(chan struct{}) // the transfer queue (ADR 0048); on shutdown rsync gets SIGTERM and keeps its partial files
+	transfersStopped := make(chan struct{}) // the transfer queue (ADR 0051); on shutdown rsync gets SIGTERM and keeps its partial files
 	go func() {
 		srv.RunTransfers(stop)
 		close(transfersStopped)

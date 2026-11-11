@@ -99,7 +99,7 @@ func TestCapabilitiesSayWhetherTransfersAreAvailable(t *testing.T) {
 	_, b := get(t, e.api("/api/capabilities"))
 	var c Capabilities
 	_ = json.Unmarshal(b, &c)
-	if !c.Features.Transfers || c.Schema < 13 {
+	if !c.Features.Transfers || c.Schema < 14 {
 		t.Fatalf("%s", b)
 	}
 	e.srv.Transfers = nil

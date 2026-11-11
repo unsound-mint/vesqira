@@ -2797,6 +2797,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/transfers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The transfer queue, newest first (at most 200) */
+        get: operations["owner_s_listTransfers_get_api_transfers"];
+        put?: never;
+        /** Queue a transfer between this computer and a host. Only paths inside the source roots on both sides are accepted; nothing is sent to the host until the queue runs it */
+        post: operations["owner_s_createTransfer_post_api_transfers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/transfers/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a transfer. A running one is stopped with SIGTERM (202; its record becomes cancelled when rsync has stopped) and its partial file is kept unless discardPartial is set */
+        post: operations["owner_s_cancelTransfer_post_api_transfers_id_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/transfers/{id}/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a verified downloaded file as a dataset with an external-reference provenance (host, path, hash); the file must still match the verified hash */
+        post: operations["owner_s_registerTransfer_post_api_transfers_id_register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/transfers/{id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget a finished transfer's record; no file is touched */
+        post: operations["owner_s_removeTransfer_post_api_transfers_id_remove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/transfers/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide a conflict: skip, keep both under a new name, or replace. Only replace overwrites */
+        post: operations["owner_s_resolveTransfer_post_api_transfers_id_resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/transfers/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put a failed or cancelled transfer back in the queue (the partial file is resumed), or copy again a transfer that arrived unverified (contents are compared and the copy this transfer made may be replaced) */
+        post: operations["owner_s_retryTransfer_post_api_transfers_id_retry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/publish-api/assets/{sha}": {
         parameters: {
             query?: never;
@@ -3416,6 +3529,8 @@ export interface components {
                 audit: boolean;
                 /** @description The text editor for local files is on (--enable-editor, ADR 0029). */
                 editor: boolean;
+                /** @description The resumable transfer queue is on (ADR 0051). */
+                transfers: boolean;
             };
             limits: {
                 previewStepMax: number;
@@ -3850,10 +3965,10 @@ export interface components {
             /** Format: date-time */
             at: string;
             /**
-             * @description How the job ended (the first five; unknown means Slurm no longer lists it and Vesqira did not mark it finished), or what happened to its results (the last two)
+             * @description How the job ended (the first five; unknown means Slurm no longer lists it and Vesqira did not mark it finished), or what happened to its results (the last two). transfer_done: a transfer finished and was verified; transfer_failed: it failed or arrived but could not be verified; transfer_conflict: a name exists at the destination and a decision is needed.
              * @enum {string}
              */
-            kind: "completed" | "failed" | "cancelled" | "timeout" | "unknown" | "imported" | "import_failed";
+            kind: "completed" | "failed" | "cancelled" | "timeout" | "unknown" | "imported" | "import_failed" | "transfer_done" | "transfer_failed" | "transfer_conflict";
             title: string;
             body: string;
             /** Format: int64 */
@@ -5581,6 +5696,128 @@ export interface components {
             scriptPartition: string;
             /** @description Where the numbers come from, in words */
             basis: string;
+        };
+        /** @description What was checked after the bytes arrived. status is empty until then. verified means the size and the SHA-256 (for a folder, rsync's content checksum, which is not SHA-256: see method) matched on both ends after the transfer; anything else is unverified, with the reason in note. A copy is never called verified on the strength of rsync finishing. */
+        TransferVerification: {
+            /** @enum {string} */
+            status: "" | "verified" | "unverified";
+            /** @enum {string} */
+            method: "" | "sha256" | "rsync-checksum";
+            note: string;
+            /** @description Computed on the source's own machine after the transfer; empty when it could not be */
+            sourceSha256: string;
+            destSha256: string;
+            /** Format: int64 */
+            bytes: number;
+        };
+        /** @description One entry of the transfer queue between this computer and a host (ADR 0051). sourcePath is read, destDir is the existing folder written into; direction says which is on the host. */
+        Transfer: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            hostId: number;
+            /** @enum {string} */
+            direction: "download" | "upload";
+            /**
+             * @description Empty until the source has been looked at (a download)
+             * @enum {string}
+             */
+            kind: "" | "file" | "dir";
+            sourcePath: string;
+            destDir: string;
+            /** @description The wanted name at the destination */
+            name: string;
+            /** @description The name chosen when the first attempt started (it differs from name for keep_both); never changes afterwards */
+            finalName: string;
+            destPath: string;
+            /**
+             * @description What to do when the name exists at the destination. Only replace ever overwrites.
+             * @enum {string}
+             */
+            policy: "ask" | "skip" | "keep_both" | "replace";
+            /**
+             * @description waiting is a retry after a lost connection (nextAttemptAt); conflict waits for the owner's decision. done says the bytes arrived, not that they are verified: see verification.
+             * @enum {string}
+             */
+            state: "queued" | "waiting" | "running" | "verifying" | "conflict" | "done" | "failed" | "cancelled" | "skipped";
+            detail: string;
+            /**
+             * Format: int64
+             * @description 0 when not known
+             */
+            totalBytes: number;
+            /** Format: int64 */
+            doneBytes: number;
+            /** Format: int64 */
+            rateBps: number;
+            /**
+             * Format: int64
+             * @description -1 when not known
+             */
+            etaSeconds: number;
+            /** @description 0 means no limit */
+            bwlimitKBps: number;
+            compress: boolean;
+            /** @description The next attempt compares contents instead of trusting size and time */
+            checksum: boolean;
+            attempts: number;
+            /** @description Attempts in a row that moved no data; the wait before the next one grows with it */
+            fails: number;
+            /** Format: date-time */
+            nextAttemptAt: string | null;
+            /** @description From the host's last storage look, for an upload that may not fit; empty when there is nothing to say */
+            warning: string;
+            verification: components["schemas"]["TransferVerification"];
+            /**
+             * Format: int64
+             * @description The dataset a verified download was registered as
+             */
+            datasetId: number | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            finishedAt: string | null;
+        };
+        TransferList: {
+            transfers: components["schemas"]["Transfer"][];
+        };
+        TransferEnvelope: {
+            transfer: components["schemas"]["Transfer"];
+        };
+        /** @description Queue a transfer. A download reads a path inside the host's source roots into an existing folder inside this computer's source roots; an upload reads a file or folder inside this computer's source roots into an existing folder inside the host's source roots. Paths are absolute; a remote source may not contain * ? [ (rsync would expand them). */
+        TransferRequest: {
+            /** @enum {string} */
+            direction: "download" | "upload";
+            /** Format: int64 */
+            hostId: number;
+            sourcePath: string;
+            destDir: string;
+            /** @description Name at the destination; the source's own name by default */
+            name?: string;
+            /**
+             * @description Default ask: an identical file counts as already there, a different one waits for a decision
+             * @enum {string}
+             */
+            policy?: "ask" | "skip" | "keep_both" | "replace";
+            /** @description rsync --bwlimit; 0 or absent means none */
+            bwlimitKBps?: number;
+            /** @description rsync -z; default true */
+            compress?: boolean;
+        };
+        TransferCancelRequest: {
+            /** @description Delete the unfinished file of a download. A partial file on a host is never deleted by Vesqira. */
+            discardPartial?: boolean;
+        };
+        TransferResolveRequest: {
+            /** @enum {string} */
+            policy: "skip" | "keep_both" | "replace";
+        };
+        /** @description The dataset a verified download was registered as (201 the first time, 200 when it already was). Its derived record names the host and path as an external reference and the hash compared. */
+        TransferRegistered: {
+            dataset: components["schemas"]["Dataset"];
+            transfer: components["schemas"]["Transfer"];
         };
     };
     responses: never;
@@ -9909,6 +10146,413 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Sweep"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listTransfers_get_api_transfers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createTransfer_post_api_transfers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferRequest"];
+            };
+        };
+        responses: {
+            /** @description queued */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferEnvelope"];
+                };
+            };
+            /** @description invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a local path is not inside the source roots */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such host */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a path, name, policy or limit that is refused, or rsync is not installed on this computer */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_cancelTransfer_post_api_transfers_id_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferEnvelope"];
+                };
+            };
+            /** @description the transfer is being stopped */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferEnvelope"];
+                };
+            };
+            /** @description no such transfer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description already finished */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_registerTransfer_post_api_transfers_id_register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description already registered */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferRegistered"];
+                };
+            };
+            /** @description registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferRegistered"];
+                };
+            };
+            /** @description the file is no longer inside the source roots */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such transfer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not a verified download, or the file changed after verification */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the file could not be read as a dataset */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description registering is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_removeTransfer_post_api_transfers_id_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        removed: boolean;
+                    };
+                };
+            };
+            /** @description no such transfer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not finished */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_resolveTransfer_post_api_transfers_id_resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferEnvelope"];
+                };
+            };
+            /** @description no such transfer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not waiting for a decision */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not a decision */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_retryTransfer_post_api_transfers_id_retry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferEnvelope"];
+                };
+            };
+            /** @description no such transfer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not in a state that can be tried again */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Error */

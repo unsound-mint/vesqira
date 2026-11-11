@@ -24,7 +24,7 @@ const TONE = (t: Transfer): "neutral" | "ok" | "warn" | "err" | "accent" => {
 };
 
 /**
- * The transfer queue between this computer and a host (ADR 0048): one transfer per host at a time, resumed after a lost
+ * The transfer queue between this computer and a host (ADR 0051): one transfer per host at a time, resumed after a lost
  * connection or a restart from the partial file, verified by hash on both ends. Nothing here overwrites a file unless Replace is
  * confirmed, and nothing is called verified because rsync finished.
  */

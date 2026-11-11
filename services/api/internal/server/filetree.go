@@ -14,7 +14,7 @@ import (
 // tree (GET /api/projects/{id}/tree), which groups what discovery found; this one shows the folder as it is on disk.
 
 // neverListed are folders that hold credentials, and the folder where an unfinished transfer waits; they are neither shown in the tree nor listed.
-var neverListed = map[string]bool{".ssh": true, ".gnupg": true, hosts.PartialDir: true} // the last is where an unfinished transfer waits (ADR 0048)
+var neverListed = map[string]bool{".ssh": true, ".gnupg": true, hosts.PartialDir: true} // the last is where an unfinished transfer waits (ADR 0051)
 
 func holdsCredentials(real string) bool {
 	for _, part := range strings.Split(real, string(filepath.Separator)) {

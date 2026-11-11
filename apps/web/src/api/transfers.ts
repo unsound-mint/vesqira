@@ -4,7 +4,7 @@ import type { components } from "./schema";
 
 type Schemas = components["schemas"];
 
-/** One entry of the transfer queue between this computer and a host (ADR 0048). */
+/** One entry of the transfer queue between this computer and a host (ADR 0051). */
 export type Transfer = Schemas["Transfer"];
 export type TransferVerification = Schemas["TransferVerification"];
 export type TransferRequest = Schemas["TransferRequest"];

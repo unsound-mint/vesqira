@@ -5,14 +5,14 @@ import (
 	"testing"
 )
 
-// A schema 12 catalog upgrades to the transfer queue with every existing table kept; no transfer is invented.
+// A schema 13 catalog upgrades to the transfer queue with every existing table kept; no transfer is invented.
 func TestTransfersMigrationAddsAnEmptyQueue(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.db")
 	db := open(t, p)
 	for _, q := range []string{
 		`CREATE TABLE hosts(id INTEGER PRIMARY KEY, name TEXT NOT NULL)`,
 		`INSERT INTO hosts(id,name) VALUES (1, 'login1')`,
-		`PRAGMA user_version = 12`,
+		`PRAGMA user_version = 13`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatal(err)
@@ -25,7 +25,7 @@ func TestTransfersMigrationAddsAnEmptyQueue(t *testing.T) {
 	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM hosts), (SELECT COUNT(*) FROM transfers)`).Scan(&hosts, &transfers); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 13 || hosts != 1 || transfers != 0 {
+	if version(t, db) != Version || Version < 14 || hosts != 1 || transfers != 0 {
 		t.Fatalf("version %d, %d hosts, %d transfers", version(t, db), hosts, transfers)
 	}
 	// the table is usable and refuses a row without its required columns

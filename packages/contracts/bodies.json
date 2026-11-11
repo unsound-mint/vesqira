@@ -838,7 +838,7 @@
       },
       "transfers": {
        "type": "boolean",
-       "description": "The resumable transfer queue is on (ADR 0048)."
+       "description": "The resumable transfer queue is on (ADR 0051)."
       }
      },
      "description": "True when this running server was started with what the feature needs"
@@ -7792,7 +7792,7 @@
   },
   "Transfer": {
    "type": "object",
-   "description": "One entry of the transfer queue between this computer and a host (ADR 0048). sourcePath is read, destDir is the existing folder written into; direction says which is on the host.",
+   "description": "One entry of the transfer queue between this computer and a host (ADR 0051). sourcePath is read, destDir is the existing folder written into; direction says which is on the host.",
    "required": [
     "id",
     "hostId",
