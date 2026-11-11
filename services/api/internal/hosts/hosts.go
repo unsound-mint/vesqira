@@ -205,7 +205,7 @@ func (s *Store) Delete(id int64) error {
 // load on a shared login node) and deploys the worker scripts to the host by content hash.
 type Manager struct {
 	Ssh        string            // the ssh binary; "ssh" unless a test substitutes one
-	Files      map[string][]byte // worker script files to deploy: plane_worker.py, fits_header.py, convert.py, orientation.py, rohsa.py (and analysis.py)
+	Files      map[string][]byte // worker script files to deploy: the modules listed in the worker directory's DEPLOY file (LoadWorkerFiles)
 	ControlDir string            // where ssh keeps its multiplexing sockets (short path)
 	Timeout    time.Duration
 
@@ -450,4 +450,29 @@ func (m *Manager) BrowseDirs(ctx context.Context, dest, dir string) (string, []D
 	}
 	sort.Slice(dirs, func(i, j int) bool { return strings.ToLower(dirs[i].Name) < strings.ToLower(dirs[j].Name) })
 	return lines[0], dirs, nil
+}
+
+// LoadWorkerFiles reads the worker modules listed in dir/DEPLOY (one name per line, # comments): the single list of what
+// ships to a remote host. tools/check_worker_manifest.py keeps it equal to what the worker imports.
+func LoadWorkerFiles(dir string) (map[string][]byte, error) {
+	list, err := os.ReadFile(filepath.Join(dir, "DEPLOY"))
+	if err != nil {
+		return nil, err
+	}
+	files := map[string][]byte{}
+	for _, line := range strings.Split(string(list), "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" || strings.HasPrefix(name, "#") {
+			continue
+		}
+		if name != filepath.Base(name) {
+			return nil, fmt.Errorf("DEPLOY: %q is not a plain file name", name)
+		}
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, err
+		}
+		files[name] = b
+	}
+	return files, nil
 }

@@ -24,6 +24,8 @@
   --accent:#3cc4e8; --accent-hover:#6fd6f0; --accent-ink:#04202a; --accent-bg:rgba(60,196,232,.14);
   --ok:#4cc38a; --ok-bg:rgba(76,195,138,.14); --warn:#f0b04c; --warn-bg:rgba(240,176,76,.14); --err:#ff7b7b; --err-bg:rgba(255,123,123,.14);
   --ring-accent:0 0 0 1px var(--accent); --nodata-a:#1b222c; --nodata-b:#556275; --nodata-hatch:repeating-linear-gradient(45deg,#1b222c 0 4px,#556275 4px 8px); --canvas-text:#e7ecf2; --canvas-text-2:#a7b3c1; --focus:#7cd8f2; --shadow:0 8px 28px rgba(0,0,0,.5);
+  /* overlay inks on the image canvas, which is dark in both themes, so they are not redefined for light (apps/web/src/scene/palette.ts holds the same values for figures) */
+  --overlay-white:#e7ecf2; --overlay-cyan:#3cc4e8; --overlay-amber:#f0b04c; --overlay-magenta:#f07ad8; --overlay-lime:#9be36a;
   color-scheme:dark;
 }
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]){

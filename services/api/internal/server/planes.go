@@ -243,13 +243,18 @@ func (s *Server) headerCards(w http.ResponseWriter, r *http.Request) {
 // (little-endian numbers, layout stated in the header). The JSON is padded with spaces so the payload starts
 // 8-byte aligned and the browser can view it in place.
 func writeFrame(w http.ResponseWriter, rep worker.Reply) {
+	writeFrameAs(w, rep, "application/vnd.vesqira.plane")
+}
+
+// writeFrameAs is writeFrame with another media type for the same framing (overlay geometry).
+func writeFrameAs(w http.ResponseWriter, rep worker.Reply, contentType string) {
 	head := rep.Head
 	if pad := (8 - (4+len(head))%8) % 8; pad > 0 {
 		head = append(append(make([]byte, 0, len(head)+pad), head...), "       "[:pad]...)
 	}
 	var n [4]byte
 	binary.LittleEndian.PutUint32(n[:], uint32(len(head)))
-	w.Header().Set("Content-Type", "application/vnd.vesqira.plane")
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(n[:])

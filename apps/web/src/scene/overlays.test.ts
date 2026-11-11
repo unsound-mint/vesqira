@@ -37,13 +37,15 @@ describe("the overlay registry", () => {
     expect(sceneLayers(hidden, ctx).map((l) => l.kind)).toEqual(["regions"]);
   });
 
-  it("draws nothing for a kind it cannot draw yet, or for orientation lines of another dataset", () => {
+  it("draws nothing for the catalog kind, or for an overlay whose geometry has not arrived", () => {
     let s = orientationScene();
     s = sceneReducer(s, { type: "addOverlay", overlay: { id: "beam", kind: "beam", datasetId: 1, visible: true } });
+    s = sceneReducer(s, { type: "addOverlay", overlay: { id: "cat", kind: "catalog", datasetId: 3, visible: true, columns: { lon: "RA", lat: "DEC" } } });
     s = sceneReducer(s, { type: "updateOverlay", id: "orientation", patch: { datasetId: 2 } });
-    const layers = sceneLayers(s, { plane: plane(), scale: 16, interp, reliability: null });
-    expect(layers.map((l) => l.kind)).toEqual(["orientation", "regions"]);
+    const layers = sceneLayers(s, { plane: plane(), scale: 16, interp, reliability: null, geometry: { beam: { key: "k", status: "loading" } } });
+    expect(layers.map((l) => l.kind)).toEqual(["orientation", "regions", "beam"]);
     expect(layers[0]!.marks).toEqual([]);
+    expect(layers[2]!.marks).toEqual([]);
     expect(sceneLayers(orientationScene(), { plane: plane(), scale: 16, interp: null, reliability: null })[0]!.marks).toEqual([]); // not declared axial: no lines
   });
 

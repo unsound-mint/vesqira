@@ -41,8 +41,11 @@ func TestAFigureSceneIsValidatedAgainstTheContractAndTheFigure(t *testing.T) {
 	defer owner.Close()
 	file := filepath.Join(base, "cube.fits")
 	os.WriteFile(file, []byte("x"), 0o644)
-	var d catalog.Dataset
+	var d, other catalog.Dataset
 	json.NewDecoder(post(t, owner, file, nil).Body).Decode(&d)
+	otherFile := filepath.Join(base, "co.fits")
+	os.WriteFile(otherFile, []byte("y"), 0o644)
+	json.NewDecoder(post(t, owner, otherFile, nil).Body).Decode(&other)
 	view := map[string]any{"kind": "plane", "channel": 3, "colormap": "viridis", "stretch": "linear", "range": "percentile"}
 	fig := func(sc any, v map[string]any) map[string]any {
 		return map[string]any{"datasetId": d.ID, "title": "t", "view": v, "previewPng": testPNG(t), "scene": sc}
@@ -63,7 +66,16 @@ func TestAFigureSceneIsValidatedAgainstTheContractAndTheFigure(t *testing.T) {
 			s["overlays"] = append(ov(s), map[string]any{"id": "x", "kind": "heatmap", "datasetId": d.ID, "visible": true})
 		}), view),
 		"a kind not drawn yet": fig(with(func(s map[string]any) {
-			s["overlays"] = append(ov(s), map[string]any{"id": "b", "kind": "beam", "datasetId": d.ID, "visible": true})
+			s["overlays"] = append(ov(s), map[string]any{"id": "c", "kind": "catalog", "datasetId": d.ID, "visible": true, "columns": map[string]any{"lon": "RA", "lat": "DEC"}})
+		}), view),
+		"contours from a dataset that is not registered": fig(with(func(s map[string]any) {
+			s["overlays"] = append(ov(s), map[string]any{"id": "c", "kind": "contours", "datasetId": d.ID + 50, "visible": true, "channel": 0, "levels": map[string]any{"mode": "list", "values": []any{1}}, "unit": "K"})
+		}), view),
+		"orientation lines from a map not declared axial": fig(with(func(s map[string]any) {
+			s["overlays"] = append(ov(s), map[string]any{"id": "o", "kind": "orientation", "datasetId": other.ID, "visible": true, "sampling": map[string]any{"mode": "step", "step": 2}, "length": "fixed", "opacity": "uniform"})
+		}), view),
+		"a grid of another dataset": fig(with(func(s map[string]any) {
+			s["overlays"] = append(ov(s), map[string]any{"id": "g", "kind": "grid", "datasetId": other.ID, "visible": true, "frame": "icrs"})
 		}), view),
 		"17 overlays":                      fig(with(func(s map[string]any) { s["overlays"] = many }), view),
 		"null zoom (NaN from a client)":    fig(with(func(s map[string]any) { s["view"] = map[string]any{"zoom": nil} }), view),
@@ -118,6 +130,28 @@ func TestAFigureSceneIsValidatedAgainstTheContractAndTheFigure(t *testing.T) {
 	json.Unmarshal(out, &plain)
 	if r.StatusCode != 201 || plain.Scene != nil || strings.Contains(string(out), `"scene"`) {
 		t.Fatalf("a figure without a scene: %d %s", r.StatusCode, out)
+	}
+	// contours and a beam from another registered file, and the base's own grid, are kept as read (every setting), and the
+	// provenance names the other file by name, never by id
+	layered := with(func(s map[string]any) {
+		s["overlays"] = append(ov(s),
+			map[string]any{"id": "co", "kind": "contours", "datasetId": other.ID, "visible": true, "channel": 0, "levels": map[string]any{"mode": "sigma", "multiples": []any{3, 5}, "sigma": 0.17}, "unit": "K", "color": "amber", "width": 1.5},
+			map[string]any{"id": "beam", "kind": "beam", "datasetId": other.ID, "visible": true, "corner": "top-left"},
+			map[string]any{"id": "grid", "kind": "grid", "datasetId": d.ID, "visible": true, "frame": "fk5", "dash": "dashed"})
+	})
+	r, out = postJSON(t, owner.URL+"/api/figures", fig(layered, view))
+	var lf boards.Figure
+	json.Unmarshal(out, &lf)
+	if r.StatusCode != 201 {
+		t.Fatalf("overlays from another file: %d %s", r.StatusCode, out)
+	}
+	for _, want := range []string{`"levels":{"mode":"sigma","multiples":[3,5],"sigma":0.17}`, `"color":"amber"`, `"width":1.5`, `"corner":"top-left"`, `"frame":"fk5"`, `"dash":"dashed"`} {
+		if !strings.Contains(string(lf.Scene), want) {
+			t.Errorf("stored scene lost %s: %s", want, lf.Scene)
+		}
+	}
+	if !strings.Contains(string(out), "Overlay drawn from another file, co.fits") || strings.Contains(string(lf.Provenance), `"datasetId"`) {
+		t.Errorf("provenance of the overlay file: %s", lf.Provenance)
 	}
 	r, out = postJSON(t, owner.URL+"/api/figures", fig(planeScene(d.ID), view))
 	var withScene boards.Figure
