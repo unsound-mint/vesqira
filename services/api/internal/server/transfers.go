@@ -802,7 +802,11 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 		if tot == 0 && p.Percent > 0 {
 			tot = p.Bytes * 100 / int64(p.Percent)
 		}
-		_ = s.Transfers.Progress(t.ID, p.Bytes, tot, p.RateBps, p.EtaSec)
+		done := p.Bytes
+		if tot > 0 && done > tot { // after a resume rsync may count the matched bytes again; never show more than the whole
+			done = tot
+		}
+		_ = s.Transfers.Progress(t.ID, done, tot, p.RateBps, p.EtaSec)
 	})
 	if err != nil {
 		return classify(err)
@@ -855,7 +859,7 @@ func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h ho
 			}
 			return e, nil
 		}
-		st, err := s.Remote.StatPath(ctx, h, destReal, name, hash)
+		st, err := s.Remote.StatPath(ctx, h, t.DestDir, name, hash) // the lexical folder: the host resolves it itself (a root may be a symbolic link)
 		return fromRemote(st), err
 	}
 	ret := func(o outcome) (*outcome, string) { return &o, "" }
@@ -877,7 +881,7 @@ func (s *Server) resolveConflict(ctx context.Context, t transfers.Transfer, h ho
 		var aerr, berr error
 		if download {
 			var st hosts.RemoteStat
-			st, aerr = s.Remote.StatPath(ctx, h, path.Dir(src.real), path.Base(src.real), true)
+			st, aerr = s.Remote.StatPath(ctx, h, path.Dir(t.SourcePath), path.Base(t.SourcePath), true)
 			a = fromRemote(st)
 			b, berr = look(t.Name, true)
 		} else {
@@ -974,7 +978,7 @@ func (s *Server) verify(ctx context.Context, t transfers.Transfer, h hosts.Host,
 	var srcSum, dstSum string
 	var srcSize, dstSize int64
 	if download {
-		st, err := s.Remote.StatPath(ctx, h, path.Dir(src.real), path.Base(src.real), true)
+		st, err := s.Remote.StatPath(ctx, h, path.Dir(t.SourcePath), path.Base(t.SourcePath), true)
 		if err != nil {
 			if errors.Is(err, hosts.ErrTransferRefused) {
 				return done(transfers.Verif{Status: transfers.Unverified, Method: transfers.MethodSHA256, Note: "the source could not be looked at again after the transfer: " + err.Error()}, "The file arrived but could not be checked.")
@@ -999,7 +1003,7 @@ func (s *Server) verify(ctx context.Context, t transfers.Transfer, h hosts.Host,
 			return done(transfers.Verif{Status: transfers.Unverified, Method: transfers.MethodSHA256, Note: "the source on this computer could not be read again: " + err.Error()}, "The file arrived but could not be checked.")
 		}
 		srcSum, srcSize = sum, n
-		st, err := s.Remote.StatPath(ctx, h, destReal, final, true)
+		st, err := s.Remote.StatPath(ctx, h, t.DestDir, final, true)
 		if err != nil {
 			if errors.Is(err, hosts.ErrTransferRefused) {
 				return done(transfers.Verif{Status: transfers.Unverified, Method: transfers.MethodSHA256, Note: "the copy on the host could not be looked at: " + err.Error()}, "The file arrived but could not be checked.")
