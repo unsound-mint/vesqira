@@ -24,3 +24,34 @@ export function outline(r: RegionShape, height: number): { kind: "rect"; x: numb
 }
 
 export const sameRegion = (a: RegionShape | null, b: RegionShape | null) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The pixels of a region inside a width x height grid, as one inclusive x-span per row (y from the bottom, 0-based), by the
+ * pixel-centre rule: a circle holds the pixels with dx^2 + dy^2 <= r^2. Clipped at the image edge; rows outside are skipped.
+ * Everything that counts a region's pixels (the histogram, the pixel count) goes through this, so they cannot disagree.
+ */
+export function regionRows(r: RegionShape, width: number, height: number, row: (y: number, xa: number, xb: number) => void): void {
+  if (r.shape === "rect") {
+    const xa = Math.max(0, r.x0), xb = Math.min(width - 1, r.x1);
+    if (xa > xb) return;
+    for (let y = Math.max(0, r.y0); y <= Math.min(height - 1, r.y1); y++) row(y, xa, xb);
+    return;
+  }
+  const r2 = r.r * r.r;
+  for (let y = Math.max(0, r.cy - r.r); y <= Math.min(height - 1, r.cy + r.r); y++) {
+    const dy = y - r.cy;
+    const room = r2 - dy * dy;
+    let h = Math.floor(Math.sqrt(room));
+    while (h * h > room) h--;
+    while ((h + 1) * (h + 1) <= room) h++;
+    const xa = Math.max(0, r.cx - h), xb = Math.min(width - 1, r.cx + h);
+    if (xa <= xb) row(y, xa, xb);
+  }
+}
+
+/** The number of grid pixels in a region after clipping at the image edge. */
+export function regionPixelCount(r: RegionShape, width: number, height: number): number {
+  let n = 0;
+  regionRows(r, width, height, (_y, xa, xb) => { n += xb - xa + 1; });
+  return n;
+}

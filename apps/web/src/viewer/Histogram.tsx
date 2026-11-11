@@ -1,23 +1,35 @@
 import { useRef } from "react";
 import type { PointerEvent } from "react";
-import type { PlaneStats } from "../api/planes";
+import type { PlaneStats, RegionShape } from "../api/planes";
 import { useHistogram } from "./useHistogram";
 import { valueText } from "./format";
 import s from "./Histogram.module.css";
 
 const BINS = 64;
 
+/** A region to count instead of the whole plane. `preview`: the plane is a block-mean preview, not the full-resolution data. */
+export type HistogramScope = { name: string; shape: RegionShape; width: number; height: number; preview: boolean };
+
 /**
- * The values of the visible plane with the two display limits on them. Drag near a limit, or type the numbers.
+ * The values of the visible plane (or of `scope`, a region of it, drawn on the plane's own value range so the limits keep their place) with the two display limits on them. Drag near a limit, or type the numbers.
  * Only finite pixels are counted: no-value pixels are not in the histogram and zero is just a value.
  */
-export function Histogram({ data, stats, limits, unit, onChange }: { data: Float32Array; stats: PlaneStats; limits: [number, number] | null; unit: string | null; onChange: (lo: number, hi: number) => void }) {
+export function Histogram({ data, stats, limits, unit, onChange, scope = null }: { data: Float32Array; stats: PlaneStats; limits: [number, number] | null; unit: string | null; onChange: (lo: number, hi: number) => void; scope?: HistogramScope | null }) {
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<0 | 1 | null>(null);
   const { min, max } = stats;
-  const counted = useHistogram(data, min, max, BINS);
+  const result = useHistogram(data, min, max, BINS, scope?.shape ?? null, scope?.width, scope?.height);
+  const counted = result ? result.counts : null;
   const counts = counted ?? []; // null while counting: the plot stays empty rather than show another channel's counts
-  if (min === null || max === null || (counted !== null && counted.length === 0)) return <p className={s.note}>No histogram: the plane has no finite value.</p>;
+  const fmt = (n: number | null) => (n === null ? "…" : n.toLocaleString("en-US"));
+  const regionDone = scope && result && result.pixels !== null;
+  const finite = scope ? (regionDone ? result.pixels! - (result.nonfinite ?? 0) : null) : stats.finite_count;
+  const nonfinite = scope ? (result?.nonfinite ?? null) : stats.nonfinite_count;
+  const label = scope
+    ? `Region: ${scope.name}${regionDone ? `, ${fmt(result.pixels)} pixels, ${fmt(result.nonfinite)} not finite` : ""}${scope.preview ? " (from the preview)" : ""}`
+    : "Plane";
+  if (min === null || max === null || (!scope && counted !== null && counted.length === 0)) return <p className={s.note}>No histogram: the plane has no finite value.</p>;
+  if (scope && finite === 0) return <p className={s.note} data-testid="histogram-scope">{label}. No histogram: the region has no finite value.</p>;
   const lo0: number = min;
   const hi0: number = max;
   const top = Math.max(...counts.map(Math.sqrt), 1);
@@ -49,6 +61,7 @@ export function Histogram({ data, stats, limits, unit, onChange }: { data: Float
   };
   return (
     <div className={s.wrap}>
+      <p className={s.note} data-testid="histogram-scope">{label}</p>
       <svg
         ref={svg}
         className={s.plot}
@@ -56,7 +69,7 @@ export function Histogram({ data, stats, limits, unit, onChange }: { data: Float
         preserveAspectRatio="none"
         role="img"
         aria-busy={counted === null}
-        aria-label={`Histogram of ${stats.finite_count.toLocaleString("en-US")} finite pixels from ${valueText(min, unit)} to ${valueText(max, unit)}${limits ? `; display limits ${valueText(limits[0], unit)} to ${valueText(limits[1], unit)}` : ""}`}
+        aria-label={`Histogram of ${fmt(finite)} finite pixels${scope ? " in the region" : ""} from ${valueText(min, unit)} to ${valueText(max, unit)}${limits ? `; display limits ${valueText(limits[0], unit)} to ${valueText(limits[1], unit)}` : ""}`}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={() => { drag.current = null; }}
@@ -70,7 +83,7 @@ export function Histogram({ data, stats, limits, unit, onChange }: { data: Float
           </>
         ) : null}
       </svg>
-      <p className={s.note}>Counts are drawn on a square-root scale. {stats.nonfinite_count.toLocaleString("en-US")} pixels with no value are not counted.</p>
+      <p className={s.note}>Counts are drawn on a square-root scale. {fmt(nonfinite)} pixels with no value are not counted.</p>
       {limits ? (
         <div className={s.inputs}>
           <label>Lower limit<input key={`lo${limits[0]}`} className={s.num} inputMode="decimal" defaultValue={Number(limits[0].toPrecision(6))} onBlur={(e) => set(0, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") set(0, e.currentTarget.value); }} /></label>
