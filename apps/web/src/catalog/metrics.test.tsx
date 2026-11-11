@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Metric } from "../api/metrics";
+import type { Provenance } from "../api/boards";
 import { metricText } from "../api/metrics";
 import { RunLine } from "../boards/RunLine";
 
@@ -18,7 +19,7 @@ describe("metrics", () => {
   });
 
   it("the reviewer sees the results of the run with their definitions", () => {
-    const run = { name: "r1", kind: "vgt", role: "psi", gitCommit: "abc", dirty: false, reproducibleFromCommit: true, generatedAt: "", params: [], metrics: [am, { ...am, key: "other", value: null, definition: "" }] };
+    const run: NonNullable<Provenance["run"]> = { name: "r1", kind: "vgt", role: "psi", gitCommit: "abc", dirty: false, reproducibleFromCommit: true, generatedAt: "", review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, params: [], metrics: [am, { ...am, key: "other", value: null, definition: "" }] };
     render(<RunLine run={run} />);
     expect(screen.getByText("0.344 ± 0.02 (standard error), n = 2695")).toBeTruthy();
     expect(screen.getByText("Axial agreement with Planck 353 GHz")).toBeTruthy();

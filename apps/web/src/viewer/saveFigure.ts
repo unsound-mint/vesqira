@@ -1,6 +1,6 @@
 import type { Dataset } from "../api/catalog";
 import { createFigure } from "../api/boards";
-import type { Figure } from "../api/boards";
+import type { Figure, FigureRequest } from "../api/boards";
 import { lut } from "./colormaps";
 import { blobToBase64, captionLines, composeImageFigure, composeSpectrumFigure, FIGURE_WIDTH } from "./figure";
 import { orientationLinesFor } from "./glyphs";
@@ -47,7 +47,7 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
     });
   }
   const r = v.region;
-  const viewParams: Record<string, unknown> = {
+  const viewParams: FigureRequest["view"] = {
     kind: axial ? "orientation" : kind,
     channel: plane.head.channel,
     ...(plane.head.spectral_value !== null ? { spectralValue: plane.head.spectral_value, spectralUnit: plane.head.spectral_unit ?? undefined } : {}),

@@ -300,7 +300,9 @@ func (s *Server) listFigures(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"figures": fs})
+	writeJSON(w, 200, struct {
+		Figures []boards.Figure `json:"figures"`
+	}{fs})
 }
 
 func (s *Server) figurePreview(w http.ResponseWriter, r *http.Request) {
@@ -385,7 +387,9 @@ func (s *Server) listBoards(w http.ResponseWriter, r *http.Request) {
 	for i := range bs {
 		bs[i] = s.boardView(r.Context(), bs[i], false)
 	}
-	writeJSON(w, 200, map[string]any{"boards": bs})
+	writeJSON(w, 200, struct {
+		Boards []boards.Board `json:"boards"`
+	}{bs})
 }
 
 func (s *Server) createBoard(w http.ResponseWriter, r *http.Request) {
@@ -501,6 +505,14 @@ func (s *Server) boardItem(op string) http.HandlerFunc {
 	}
 }
 
+// publishResponse is the body of POST /api/boards/{id}/publish.
+type publishResponse struct {
+	Snapshot   boards.Snapshot `json:"snapshot"`
+	Token      string          `json:"token"`
+	ReviewPath string          `json:"reviewPath"`
+	Note       string          `json:"note"`
+}
+
 // publish freezes the board and returns the review token once. Only its hash is kept.
 func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathInt(w, r, "id")
@@ -531,8 +543,8 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Audit.Record("review published", "snapshot", sn.ID, "board "+strconv.FormatInt(id, 10)+", label: "+in.Label)
-	writeJSON(w, 201, map[string]any{"snapshot": sn, "token": tok, "reviewPath": "/#/review/" + tok,
-		"note": "Shown once. Anyone with this link can read the frozen board and comment; revoke it to end access."})
+	writeJSON(w, 201, publishResponse{Snapshot: sn, Token: tok, ReviewPath: "/#/review/" + tok,
+		Note: "Shown once. Anyone with this link can read the frozen board and comment; revoke it to end access."})
 }
 
 func (s *Server) snapshots(w http.ResponseWriter, r *http.Request) {
@@ -545,7 +557,9 @@ func (s *Server) snapshots(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"snapshots": sn})
+	writeJSON(w, 200, struct {
+		Snapshots []boards.Snapshot `json:"snapshots"`
+	}{sn})
 }
 
 func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {

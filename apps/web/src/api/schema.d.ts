@@ -109,8 +109,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List boards, most recently updated first (job panels use cached state) */
         get: operations["owner_s_listBoards_get_api_boards"];
         put?: never;
+        /** Create a board */
         post: operations["owner_s_createBoard_post_api_boards"];
         delete?: never;
         options?: never;
@@ -127,6 +129,7 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** One board with the live state of its job panels (reads their logs; the list does not) */
         get: operations["owner_s_getBoard_get_api_boards_id"];
         put?: never;
         post?: never;
@@ -147,6 +150,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add a figure, or a panel that follows a job, to a board */
         post: operations["owner_s_boardAdd_post_api_boards_id_items"];
         delete?: never;
         options?: never;
@@ -166,6 +170,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Move a panel one place up or down */
         post: operations["owner_s_boardItem_post_api_boards_id_items_pos_move"];
         delete?: never;
         options?: never;
@@ -185,6 +190,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Set a panel's note */
         post: operations["owner_s_boardItem_post_api_boards_id_items_pos_note"];
         delete?: never;
         options?: never;
@@ -204,6 +210,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Replace a job panel with the figure made from its result */
         post: operations["owner_s_boardPin_post_api_boards_id_items_pos_pin"];
         delete?: never;
         options?: never;
@@ -223,6 +230,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Remove a panel */
         post: operations["owner_s_boardItem_post_api_boards_id_items_pos_remove"];
         delete?: never;
         options?: never;
@@ -239,6 +247,7 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** Show what publishing would expose, without publishing */
         get: operations["owner_s_preflight_get_api_boards_id_preflight"];
         put?: never;
         post?: never;
@@ -259,6 +268,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Freeze the board and return the review token once */
         post: operations["owner_s_publish_post_api_boards_id_publish"];
         delete?: never;
         options?: never;
@@ -275,6 +285,7 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** Published versions of a board, newest first */
         get: operations["owner_s_snapshots_get_api_boards_id_snapshots"];
         put?: never;
         post?: never;
@@ -291,6 +302,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** What this server can do */
         get: operations["owner_s_capabilities_get_api_capabilities"];
         put?: never;
         post?: never;
@@ -650,8 +662,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List figures, newest first */
         get: operations["owner_s_listFigures_get_api_figures"];
         put?: never;
+        /** Save a figure from a view and the picture the browser drew */
         post: operations["owner_s_createFigure_post_api_figures"];
         delete?: never;
         options?: never;
@@ -668,6 +682,7 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** The figure's picture as a PNG that carries its title and provenance inside the file */
         get: operations["owner_s_figureDownload_get_api_figures_id_download"];
         put?: never;
         post?: never;
@@ -686,6 +701,7 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** The figure's picture */
         get: operations["owner_s_figurePreview_get_api_figures_id_preview"];
         put?: never;
         post?: never;
@@ -706,6 +722,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Edit a figure's title and caption; the evidence is unchanged */
         post: operations["owner_s_figureText_post_api_figures_id_text"];
         delete?: never;
         options?: never;
@@ -2451,6 +2468,394 @@ export interface components {
             /** @description The file's size or modification time differs from when the unit was declared: it may no longer describe these bytes. */
             stale: boolean;
         };
+        /** @description What this running server can do, so a client can show a feature as unavailable instead of failing on a 404. */
+        Capabilities: {
+            app: {
+                name: string;
+                /** @description "dev" for a plain build */
+                version: string;
+            };
+            /** @description Changes only when an existing route or field changes meaning in a way an older client would misread */
+            protocol: number;
+            /** @description Version of the local data schema */
+            schema: number;
+            /** @description True when this running server was started with what the feature needs */
+            features: {
+                planes: boolean;
+                planeCache: boolean;
+                preview: boolean;
+                hosts: boolean;
+                jobs: boolean;
+                analysis: boolean;
+                remoteAnalysis: boolean;
+                runs: boolean;
+                boards: boolean;
+                regions: boolean;
+                audit: boolean;
+            };
+            limits: {
+                previewStepMax: number;
+                metricsPerRunMax: number;
+            };
+        };
+        /** @description An axis as the file declared it; null means the file did not say. */
+        FigureAxis: {
+            axis: number;
+            length: number;
+            ctype: string | null;
+            cunit: string | null;
+            crval: number | null;
+            cdelt: number | null;
+        };
+        /** @description Header facts declared by the file and not verified; null means absent. */
+        FigureHeader: {
+            axes: components["schemas"]["FigureAxis"][];
+            bunit: string | null;
+            radesys: string | null;
+            specsys: string | null;
+            bitpix: number | null;
+        };
+        /** @description Pixel region; rect uses x0,y0,x1,y1 and circle uses cx,cy,r. */
+        FigureRegion: {
+            /** @enum {string} */
+            shape: "rect" | "circle";
+            x0?: number;
+            y0?: number;
+            x1?: number;
+            y1?: number;
+            cx?: number;
+            cy?: number;
+            r?: number;
+        };
+        /** @description What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. */
+        FigureView: {
+            /** @enum {string} */
+            kind: "plane" | "spectrum" | "orientation";
+            channel?: number;
+            spectralValue?: number;
+            /** @description At most 16 characters of letters, digits and / * ^ . - space */
+            spectralUnit?: string;
+            region?: components["schemas"]["FigureRegion"];
+            /** @enum {string} */
+            colormap?: "viridis" | "inferno" | "gray" | "twilight";
+            /** @enum {string} */
+            stretch?: "linear" | "sqrt" | "asinh";
+            /** @enum {string} */
+            range?: "percentile" | "minmax" | "custom";
+            limits?: number[];
+            /** @description Must be the file's BUNIT, or the unit the author declared for a file without one */
+            limitsUnit?: string;
+            showLines?: boolean;
+        };
+        /** @description The orientation meaning declared for the file, said to be the author's or the import adapter's, never the file's. */
+        FigureInterpretation: {
+            kind: string;
+            unit: string;
+            declaredBy: string;
+            hasReliabilityMap: boolean;
+        };
+        /** @description The brightness unit the author declared because the file has no BUNIT. */
+        FigureUnitDeclaration: {
+            unit: string;
+            declaredBy: string;
+        };
+        RunParam: {
+            key: string;
+            value: string;
+            /** @enum {string} */
+            source: "config" | "run_parameters";
+        };
+        /** @description One measured result of a run, as the run's metadata declares it. */
+        RunMetric: {
+            key: string;
+            /** @description Null when not recorded; never zero */
+            value: number | null;
+            unit: string;
+            uncertainty: number | null;
+            /**
+             * @description Empty when the run did not say; it is not guessed
+             * @enum {string}
+             */
+            uncertaintyKind: "" | "standard_deviation" | "standard_error" | "confidence_68" | "confidence_95" | "other";
+            /** Format: int64 */
+            n: number | null;
+            definition: string;
+            /** @enum {string} */
+            status: "declared";
+        };
+        /** @description The researcher's own assessment, kept apart from whether the computation finished. */
+        RunReview: {
+            /** @enum {string} */
+            qc: "not_assessed" | "passed" | "failed" | "inconclusive";
+            /** @enum {string} */
+            interpretation: "not_interpreted" | "supports" | "challenges" | "inconclusive";
+            note: string;
+        };
+        /** @description The run that produced a dataset, without paths, ids or locations. */
+        RunSummary: {
+            name: string;
+            kind: string;
+            role: string;
+            gitCommit: string;
+            dirty: boolean;
+            reproducibleFromCommit: boolean;
+            generatedAt: string;
+            params: components["schemas"]["RunParam"][];
+            metrics: components["schemas"]["RunMetric"][];
+            review: components["schemas"]["RunReview"];
+        };
+        /** @description How a derived dataset was made; sources are file names. */
+        DerivedSummary: {
+            op: string;
+            /** @description Operation parameters, as recorded; free-form JSON */
+            params: unknown;
+            sources: string[];
+            policy: string;
+            /** @description Software identity, as recorded; free-form JSON */
+            software: unknown;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description Reviewer-safe account of where a figure came from. It has no path and no dataset id. */
+        FigureProvenance: {
+            /** @description The source file by name only; no path and no dataset id. */
+            source: {
+                name: string;
+                /** Format: int64 */
+                sizeBytes: number;
+                /** Format: date-time */
+                modifiedAt: string;
+                identity: string;
+                headerDeclaredByFile: components["schemas"]["FigureHeader"];
+            };
+            interpretation?: components["schemas"]["FigureInterpretation"];
+            unitDeclaration?: components["schemas"]["FigureUnitDeclaration"];
+            /**
+             * @description As declared by the author; absent when not declared
+             * @enum {string}
+             */
+            nature?: "observed" | "simulated" | "constructed_control";
+            run?: components["schemas"]["RunSummary"];
+            derived?: components["schemas"]["DerivedSummary"];
+            view: components["schemas"]["FigureView"];
+            statements: string[];
+        };
+        /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. */
+        Figure: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            datasetId: number;
+            title: string;
+            caption: string;
+            /** Format: date-time */
+            createdAt: string;
+            revision: string;
+            previewSha: string;
+            width: number;
+            height: number;
+            provenance: components["schemas"]["FigureProvenance"];
+        };
+        FigureList: {
+            figures: components["schemas"]["Figure"][];
+        };
+        CreateFigureRequest: {
+            /** Format: int64 */
+            datasetId: number;
+            title: string;
+            caption?: string;
+            view: components["schemas"]["FigureView"];
+            /**
+             * Format: byte
+             * @description The picture as the author's browser drew it, PNG, base64
+             */
+            previewPng: string;
+        };
+        /** @description Unknown keys are refused. */
+        FigureTextRequest: {
+            title: string;
+            caption?: string;
+        };
+        JobProgress: {
+            done: number;
+            total: number;
+            /**
+             * Format: int64
+             * @description An estimate at the rate so far; null when there is nothing to base it on
+             */
+            etaSeconds: number | null;
+        };
+        /** @description What the owner's board shows about a followed job. A reviewer never gets it. */
+        JobInfo: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /**
+             * @description unknown when the job no longer exists
+             * @enum {string}
+             */
+            state: "draft" | "submitting" | "submitted" | "running" | "completed" | "failed" | "cancelled" | "unknown";
+            /** Format: date-time */
+            submittedAt: string | null;
+            /** Format: date-time */
+            finishedAt: string | null;
+            /** Format: int64 */
+            runId: number | null;
+            /** @description Present only when the job's log says how far it is */
+            progress?: components["schemas"]["JobProgress"];
+        };
+        FigureBoardItem: {
+            position: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "figure";
+            figure: components["schemas"]["Figure"];
+            note: string;
+        };
+        /** @description A panel that follows a job and becomes its result when pinned. */
+        JobBoardItem: {
+            position: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "job";
+            job: components["schemas"]["JobInfo"];
+            note: string;
+        };
+        BoardItem: components["schemas"]["FigureBoardItem"] | components["schemas"]["JobBoardItem"];
+        Board: {
+            /** Format: int64 */
+            id: number;
+            title: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            items: components["schemas"]["BoardItem"][];
+        };
+        BoardList: {
+            boards: components["schemas"]["Board"][];
+        };
+        /** @description Unknown keys are refused. */
+        CreateBoardRequest: {
+            title: string;
+        };
+        /** @description Give exactly one of figureId and jobId; both or neither is refused with 422. */
+        BoardAddItemRequest: {
+            /** Format: int64 */
+            figureId?: number;
+            /** Format: int64 */
+            jobId?: number;
+        };
+        /** @description The figure made from the result of the job a panel follows. */
+        BoardPinRequest: {
+            /** Format: int64 */
+            figureId: number;
+        };
+        BoardMoveRequest: {
+            /** @enum {integer} */
+            delta: -1 | 1;
+        };
+        BoardNoteRequest: {
+            note: string;
+        };
+        /** @description A frozen, published version of a board. Optional fields are omitted when empty. */
+        Snapshot: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            boardId: number;
+            label: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            revoked: boolean;
+            items: number;
+            question?: string;
+            /**
+             * @description What the reviewer said about this version; empty means not yet reviewed. Not a scientific assessment of any run.
+             * @enum {string}
+             */
+            outcome: "" | "commented" | "changes_requested" | "reviewed";
+            outcomeNote?: string;
+            outcomeBy?: string;
+            /** Format: date-time */
+            outcomeAt?: string;
+            /** Format: int64 */
+            supersededBy?: number;
+            /** @description Reviewers' comments, not the author's replies */
+            comments: number;
+            /** Format: date-time */
+            lastActivity?: string;
+        };
+        SnapshotList: {
+            snapshots: components["schemas"]["Snapshot"][];
+        };
+        /** @description A figure as a reviewer sees it. kind is omitted for a figure. */
+        FrozenFigure: {
+            /** @enum {string} */
+            kind?: "figure";
+            revision: string;
+            title: string;
+            caption: string;
+            note: string;
+            previewSha: string;
+            width: number;
+            height: number;
+            provenance: components["schemas"]["FigureProvenance"];
+        };
+        /** @description A run that had not finished: only its name and state at that moment. */
+        FrozenJob: {
+            /** @enum {string} */
+            kind: "job";
+            title: string;
+            /** @description As of at; it never changes */
+            state: string;
+            /** Format: date-time */
+            at: string;
+            note: string;
+        };
+        FrozenItem: components["schemas"]["FrozenFigure"] | components["schemas"]["FrozenJob"];
+        /** @description Everything a reviewer may see of a board: there is no path, dataset id or credential field. */
+        Frozen: {
+            boardTitle: string;
+            label: string;
+            question?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            items: components["schemas"]["FrozenItem"][];
+        };
+        /** @description What publishing would expose and what a careful author would want to know first. Creates nothing. */
+        Preflight: {
+            frozen: components["schemas"]["Frozen"];
+            warnings: string[];
+        };
+        /** @description Unknown keys are refused. */
+        PublishRequest: {
+            label?: string;
+            question?: string;
+            /** @description Lifetime of the link; 0 or absent means 14 days; beyond 90 days is refused */
+            hours?: number;
+            /**
+             * Format: int64
+             * @description The snapshot this one replaces
+             */
+            supersedes?: number;
+            reason?: string;
+        };
+        PublishResponse: {
+            snapshot: components["schemas"]["Snapshot"];
+            /** @description Shown once; only its hash is kept */
+            token: string;
+            reviewPath: string;
+            note: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -2584,7 +2989,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BoardList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2595,14 +3011,29 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBoardRequest"];
+            };
+        };
         responses: {
-            /** @description ok */
-            200: {
+            /** @description created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2611,7 +3042,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
@@ -2622,7 +3053,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2631,18 +3073,33 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardAddItemRequest"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2651,19 +3108,34 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
-                pos: string;
+                id: number;
+                pos: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardMoveRequest"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2672,19 +3144,34 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
-                pos: string;
+                id: number;
+                pos: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardNoteRequest"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2693,19 +3180,34 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
-                pos: string;
+                id: number;
+                pos: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardPinRequest"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2714,28 +3216,45 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
-                pos: string;
+                id: number;
+                pos: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
     owner_s_preflight_get_api_boards_id_preflight: {
         parameters: {
-            query?: never;
+            query?: {
+                question?: string;
+            };
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
@@ -2746,7 +3265,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Preflight"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2755,18 +3285,33 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"];
+            };
+        };
         responses: {
-            /** @description ok */
-            200: {
+            /** @description created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PublishResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2775,7 +3320,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
@@ -2786,7 +3331,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SnapshotList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2804,7 +3360,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Capabilities"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3285,7 +3852,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["FigureList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3296,14 +3874,29 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFigureRequest"];
+            };
+        };
         responses: {
-            /** @description ok */
-            200: {
+            /** @description created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Figure"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3312,7 +3905,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
@@ -3321,9 +3914,22 @@ export interface operations {
             /** @description ok */
             200: {
                 headers: {
+                    "X-Content-Type-Options"?: "nosniff";
+                    "Content-Disposition"?: string;
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3332,7 +3938,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
@@ -3341,9 +3947,21 @@ export interface operations {
             /** @description ok */
             200: {
                 headers: {
+                    "X-Content-Type-Options"?: "nosniff";
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -3352,18 +3970,33 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FigureTextRequest"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Figure"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

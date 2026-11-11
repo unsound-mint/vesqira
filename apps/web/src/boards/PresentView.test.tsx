@@ -2,13 +2,13 @@ import { useState } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PresentView } from "./PresentView";
-import type { Board } from "../api/boards";
+import type { Board, Figure } from "../api/boards";
 
-const prov = { source: { name: "cube.fits", sizeBytes: 1, modifiedAt: "", identity: "a reference by name, size and modification time" }, view: { kind: "plane", channel: 1 }, statements: ["Header values are declared by the file and are not verified."] };
+const prov: Figure["provenance"] = { source: { name: "cube.fits", sizeBytes: 1, modifiedAt: "", identity: "a reference by name, size and modification time", headerDeclaredByFile: { axes: [], bunit: null, radesys: null, specsys: null, bitpix: null } }, view: { kind: "plane", channel: 1 }, statements: ["Header values are declared by the file and are not verified."] };
 const fig = (id: number, title: string) => ({ id, datasetId: 1, title, caption: `${title} caption`, createdAt: "", revision: `r${id}`, previewSha: "a".repeat(64), width: 4, height: 3, provenance: prov });
 const board: Board = { id: 1, title: "Meeting", createdAt: "", updatedAt: "", items: [
-  { position: 0, figure: fig(1, "First"), note: "private reminder" },
-  { position: 1, figure: fig(2, "Second"), note: "" },
+  { position: 0, kind: "figure", figure: fig(1, "First"), note: "private reminder" },
+  { position: 1, kind: "figure", figure: fig(2, "Second"), note: "" },
 ] };
 
 describe("presenting a board", () => {
