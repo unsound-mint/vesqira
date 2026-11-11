@@ -1,4 +1,5 @@
-import { request as call, postJSON as post } from "./http";
+import { request as call, postJSON as post, putJSON as put } from "./http";
+import type { components } from "./schema";
 
 /** One project in the recent list. hostId 0 is this computer. */
 export type ProjectListItem = {
@@ -81,6 +82,8 @@ export type ProjectSummary = {
   /** The proposed .vesqira/project.toml text when none exists; null when it does. Nothing is written until you confirm. */
   proposedProjectFile: string | null;
   registration: { registered: number; failed: number; errors: string[]; capped: boolean };
+  /** What the saved import rules select, counted by the last scan; null when the project has no rules. A scan never registers these. */
+  importRules: ImportSummary | null;
   health: HealthItem[];
   needsCount: number;
 };
@@ -169,3 +172,26 @@ export const answerNeed = (id: number, need: string, answer: string, value = "",
   post<AnswerResult>(`/api/projects/${id}/answers`, { need, answer, value, write });
 /** Writes the proposed (or the given) .vesqira/project.toml. Only after the researcher confirms; never committed. */
 export const writeProjectFile = (id: number, text = "") => post<{ written: boolean; path: string; replaced: boolean }>(`/api/projects/${id}/project-file`, { write: true, text });
+
+// ---- generic import (ADR 0058) ----
+type Schemas = components["schemas"];
+export type ImportRule = Schemas["ImportRule"];
+export type ImportSummary = Schemas["ImportSummary"];
+export type ImportRulesState = Schemas["ImportRulesState"];
+export type ImportPreview = Schemas["ImportPreview"];
+export type ImportGroup = Schemas["ImportGroup"];
+export type ImportProposal = Schemas["ImportProposal"];
+export type ImportApplyReply = Schemas["ImportApplyReply"];
+export type ImportApplyResult = Schemas["ImportApplyResult"];
+export type RuleRole = ImportRule["role"];
+
+export const importRules = (id: number) => call<ImportRulesState>(`/api/projects/${id}/import/rules`);
+/** Saves the whole ordered list in the catalog (a 422 carries every reason). project.toml is not touched. */
+export const saveImportRules = (id: number, rules: ImportRule[]) => put<ImportRulesState>(`/api/projects/${id}/import/rules`, { rules });
+/** Writes the saved rules into .vesqira/project.toml. Call it only after the researcher confirms. */
+export const writeImportRules = (id: number) => post<Schemas["ImportRulesWriteReply"]>(`/api/projects/${id}/import/rules/write`, { write: true });
+/** Read-only. `rules` previews a draft; omit it for the saved rules. */
+export const importPreview = (id: number, body: { folder?: string; rescan?: boolean; rules?: ImportRule[]; expand?: string }, signal?: AbortSignal) =>
+  post<ImportPreview>(`/api/projects/${id}/import/preview`, body, signal);
+/** Registers what the saved rules select. Call it only after the researcher confirms. */
+export const importApply = (id: number, body: { folder?: string; paths?: string[]; asNew?: string[] }) => post<ImportApplyReply>(`/api/projects/${id}/import/apply`, { confirm: true, ...body });
