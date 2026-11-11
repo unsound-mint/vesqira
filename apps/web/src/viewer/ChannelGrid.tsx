@@ -28,6 +28,10 @@ function useInView(ref: React.RefObject<Element | null>): boolean {
   useEffect(() => {
     const el = ref.current;
     if (seen || !el) return;
+    if (typeof IntersectionObserver === "undefined") { // checked again here: it can vanish after the first render (a webview, a test teardown)
+      setSeen(true);
+      return;
+    }
     const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setSeen(true), { rootMargin: "200px" });
     io.observe(el);
     return () => io.disconnect();

@@ -79,6 +79,7 @@ describe("ChannelGrid", () => {
     await screen.findByText("Channel 1 · -3000 m/s");
     expect(urls.filter((u) => u.includes("/plane?"))).toEqual([]);
     expect(screen.getByRole("status")).toHaveTextContent("0 of 4 panels loaded");
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0)); // the observer is made in an effect, after the first paint
     seen[0]!([{ isIntersecting: true }]);
     await waitFor(() => expect(urls.filter((u) => u.includes("/plane?"))).toHaveLength(1));
     await userEvent.click(screen.getByRole("button", { name: "Load all" }));
