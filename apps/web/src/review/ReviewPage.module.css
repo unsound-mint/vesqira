@@ -110,3 +110,35 @@
   flex-wrap: wrap;
   gap: var(--sp-2);
 }
+
+/* the figures of a board nobody arranged stack as they always did; an arranged board keeps its columns (ADR 0060) */
+.board {
+  display: grid;
+  gap: var(--sp-6);
+}
+
+.board[data-arranged] {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--sp-4);
+  width: min(1180px, calc(100vw - 2 * var(--sp-4)));
+  justify-self: center;
+}
+
+.board[data-arranged] > article {
+  grid-column: var(--col);
+  grid-row: var(--rows);
+  min-width: 0;
+}
+
+@media (width <= 700px) {
+  .board[data-arranged] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-6);
+    width: auto;
+  }
+
+  .board[data-arranged] > article {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}

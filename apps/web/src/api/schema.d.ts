@@ -309,6 +309,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/boards/{id}/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save the places of all panels on the board's grid */
+        post: operations["owner_s_boardLayout_post_api_boards_id_layout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/boards/{id}/preflight": {
         parameters: {
             query?: never;
@@ -4332,6 +4351,8 @@ export interface components {
             kind: "figure";
             figure: components["schemas"]["Figure"];
             note: string;
+            /** @description Absent until the board is first arranged; the client then derives a place from the order and writes nothing. */
+            layout?: components["schemas"]["BoardRect"];
         };
         /** @description A panel that follows a job and becomes its result when pinned. */
         JobBoardItem: {
@@ -4343,6 +4364,8 @@ export interface components {
             kind: "job";
             job: components["schemas"]["JobInfo"];
             note: string;
+            /** @description Absent until the board is first arranged; the client then derives a place from the order and writes nothing. */
+            layout?: components["schemas"]["BoardRect"];
         };
         BoardItem: components["schemas"]["FigureBoardItem"] | components["schemas"]["JobBoardItem"];
         Board: {
@@ -4430,6 +4453,8 @@ export interface components {
             width: number;
             height: number;
             provenance: components["schemas"]["FigureProvenance"];
+            /** @description The place as saved when the board was published; absent for a board that was never arranged and for snapshots made before layouts, which the reader lays out from the order. */
+            layout?: components["schemas"]["BoardRect"];
         };
         /** @description A run that had not finished: only its name and state at that moment. */
         FrozenJob: {
@@ -4441,6 +4466,8 @@ export interface components {
             /** Format: date-time */
             at: string;
             note: string;
+            /** @description The place as saved when the board was published; absent for a board that was never arranged and for snapshots made before layouts, which the reader lays out from the order. */
+            layout?: components["schemas"]["BoardRect"];
         };
         FrozenItem: components["schemas"]["FrozenFigure"] | components["schemas"]["FrozenJob"];
         /** @description Everything a reviewer may see of a board: there is no path, dataset id or credential field. */
@@ -7550,6 +7577,19 @@ export interface components {
                 clipped: boolean;
             };
         };
+        /** @description A panel's place on the board's 12-column grid (ADR 0060): column x (0-based) and row y, spanning w columns and h rows. Rows have one fixed height, so y and h count rows. */
+        BoardRect: {
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+        };
+        /** @description The places of every panel of a board, in position order (ADR 0060). A null place clears that panel's. Places must be inside the grid and must not overlap; the server does not compact. expect names the panel at each position and must cover the whole board; from, when present, is the layout being replaced. A mismatch of either is a 409 and nothing changes. */
+        BoardLayoutRequest: {
+            layout: (components["schemas"]["BoardRect"] | null)[];
+            expect: components["schemas"]["BoardExpect"][];
+            from?: (components["schemas"]["BoardRect"] | null)[];
+        };
     };
     responses: never;
     parameters: never;
@@ -8069,6 +8109,50 @@ export interface operations {
                 };
             };
             /** @description The panel at that position is not the one `expect` named; nothing was changed. `board` is the board as it is now. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardConflict"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_boardLayout_post_api_boards_id_layout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardLayoutRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description The board's panels or their places are not the ones the request names; nothing was changed. `board` is the board as it is now. */
             409: {
                 headers: {
                     [name: string]: unknown;

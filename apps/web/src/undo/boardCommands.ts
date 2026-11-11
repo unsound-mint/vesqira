@@ -54,8 +54,11 @@ async function expectLength(boardId: number, n: number): Promise<Board> {
   return board;
 }
 
-/** Puts item back at pos: appended (the API only appends), then moved up to its place, then its note restored. */
-async function reinsert(boardId: number, item: BoardItem, pos: number, note: string, length: number): Promise<void> {
+/** What a panel's removal took with it besides the panel: every panel's place on the grid, so undo can put them all back. */
+type Places = { items: BoardItem[]; before: (api.BoardRect | null)[] };
+
+/** Puts item back at pos: appended (the API only appends), then moved up to its place, then its note, then the board's grid layout restored. */
+async function reinsert(boardId: number, item: BoardItem, pos: number, note: string, length: number, places?: Places): Promise<void> {
   let b = await expectLength(boardId, length);
   b = item.kind === "job" ? await api.addJobToBoard(boardId, item.job.id) : await api.addToBoard(boardId, item.figure.id);
   let at = b.items.length - 1;
@@ -67,6 +70,13 @@ async function reinsert(boardId: number, item: BoardItem, pos: number, note: str
     if (note) await api.setNote(boardId, at, note, expectOf(item, ""));
   } catch (e) {
     throw new Conflict(`${label(item)} was put back on the board, at the end rather than its old place${note ? " and without its note" : ""}, because a later step failed (${e instanceof Error ? e.message : "error"}).`);
+  }
+  if (places && places.before.some((r) => r !== null)) {
+    try {
+      await api.setLayout(boardId, places.before, places.items.map((it) => expectOf(it)));
+    } catch {
+      throw new Conflict(`${label(item)} was put back on the board, in its old order, but its place on the grid could not be restored; it was placed below the others.`);
+    }
   }
 }
 
@@ -122,6 +132,27 @@ export async function moveItem(boardId: number, board: Board, pos: number, delta
   return b;
 }
 
+/**
+ * Saves the places of every panel on the grid as one command: a drag, a keyboard move or resize, an automatic arrangement or a
+ * reset is one step. `before` is what is stored now (null for a panel nobody placed), so undoing the first change of a board that
+ * was never arranged returns it to having no layout. The server applies each direction only if the board still has the same
+ * panels and the stored places are the ones being replaced (409 otherwise, and nothing changes).
+ */
+export async function setLayout(boardId: number, items: BoardItem[], before: (api.BoardRect | null)[], next: (api.BoardRect | null)[], name: string): Promise<Board> {
+  const expect = items.map((it) => expectOf(it));
+  const b = await api.setLayout(boardId, next, expect, before);
+  boardStack(boardId).push({
+    name,
+    undo: async () => {
+      await guarded(() => api.setLayout(boardId, before, expect, next));
+    },
+    redo: async () => {
+      await guarded(() => api.setLayout(boardId, next, expect, before));
+    },
+  });
+  return b;
+}
+
 /** Takes the panel at pos off the board; undo puts it back in the same place with the same note. */
 export async function removeItem(boardId: number, board: Board, pos: number): Promise<Board> {
   const item = board.items[pos];
@@ -131,7 +162,7 @@ export async function removeItem(boardId: number, board: Board, pos: number): Pr
   const length = board.items.length;
   boardStack(boardId).push({
     name: "remove panel",
-    undo: () => reinsert(boardId, item, pos, item.note, length - 1),
+    undo: () => reinsert(boardId, item, pos, item.note, length - 1, { items: board.items, before: board.items.map((it) => it.layout ?? null) }),
     redo: async () => {
       await guarded(() => api.removeItem(boardId, pos, expectKey(key)));
     },

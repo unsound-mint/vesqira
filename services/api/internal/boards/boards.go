@@ -58,6 +58,7 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS board_items(
 			board_id INTEGER NOT NULL, position INTEGER NOT NULL, figure_id INTEGER, job_id INTEGER, note TEXT NOT NULL DEFAULT '',
+			layout_x INTEGER, layout_y INTEGER, layout_w INTEGER, layout_h INTEGER,
 			PRIMARY KEY(board_id, position), CHECK((figure_id IS NULL) <> (job_id IS NULL)))`,
 		`CREATE TABLE IF NOT EXISTS snapshots(
 			id INTEGER PRIMARY KEY AUTOINCREMENT, board_id INTEGER NOT NULL, label TEXT NOT NULL, created_at INTEGER NOT NULL,
@@ -77,6 +78,12 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS snapshot_outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, at INTEGER NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL, author TEXT NOT NULL)`); err != nil {
 		return nil, err
+	}
+	// a panel may carry its place on the board's grid (ADR 0060); older boards have none and the client derives one
+	for _, c := range []string{"layout_x", "layout_y", "layout_w", "layout_h"} {
+		if err := schema.AddColumn(db, "board_items", c, "INTEGER"); err != nil {
+			return nil, err
+		}
 	}
 	// a figure may record the scene it was drawn from (ADR 0042); older figures have none
 	if err := schema.AddColumn(db, "figures", "scene", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -305,6 +312,31 @@ type Item struct {
 	Figure   *Figure  `json:"figure,omitempty"`
 	Job      *JobInfo `json:"job,omitempty"`
 	Note     string   `json:"note"`
+	// Layout is the panel's place on the board's grid; nil until the researcher first arranges the board (ADR 0060).
+	Layout *Rect `json:"layout,omitempty"`
+}
+
+// Grid limits (ADR 0060). The grid has GridCols columns of equal width; rows have a fixed height, so y and h are counted in rows.
+const (
+	GridCols = 12
+	MaxRows  = 10000 // y of the top edge
+	MaxSpan  = 200   // h
+)
+
+// Rect is a panel's place on the grid: column X (0-based) and row Y, spanning W columns and H rows.
+type Rect struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	W int `json:"w"`
+	H int `json:"h"`
+}
+
+func (r Rect) valid() bool {
+	return r.X >= 0 && r.W >= 1 && r.X+r.W <= GridCols && r.Y >= 0 && r.Y <= MaxRows && r.H >= 1 && r.H <= MaxSpan
+}
+
+func (r Rect) overlaps(o Rect) bool {
+	return r.X < o.X+o.W && o.X < r.X+r.W && r.Y < o.Y+o.H && o.Y < r.Y+r.H
 }
 
 // JobInfo is what the owner's board shows about a followed job. Progress is present only when the job's log says how
@@ -395,7 +427,7 @@ func (s *Store) Board(id int64) (Board, error) {
 		return b, err
 	}
 	b.CreatedAt, b.UpdatedAt = time.Unix(c, 0).UTC(), time.Unix(u, 0).UTC()
-	rows, err := s.db.Query(`SELECT i.position, i.note, i.figure_id, i.job_id FROM board_items i WHERE i.board_id=? ORDER BY i.position`, id)
+	rows, err := s.db.Query(`SELECT i.position, i.note, i.figure_id, i.job_id, i.layout_x, i.layout_y, i.layout_w, i.layout_h FROM board_items i WHERE i.board_id=? ORDER BY i.position`, id)
 	if err != nil {
 		return b, err
 	}
@@ -404,13 +436,18 @@ func (s *Store) Board(id int64) (Board, error) {
 		note string
 		fid  sql.NullInt64
 		jid  sql.NullInt64
+		rect *Rect
 	}
 	var rs []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.pos, &r.note, &r.fid, &r.jid); err != nil {
+		var x, y, w, h sql.NullInt64
+		if err := rows.Scan(&r.pos, &r.note, &r.fid, &r.jid, &x, &y, &w, &h); err != nil {
 			rows.Close()
 			return b, err
+		}
+		if x.Valid && y.Valid && w.Valid && h.Valid {
+			r.rect = &Rect{int(x.Int64), int(y.Int64), int(w.Int64), int(h.Int64)}
 		}
 		rs = append(rs, r)
 	}
@@ -418,14 +455,14 @@ func (s *Store) Board(id int64) (Board, error) {
 	b.Items = []Item{}
 	for _, r := range rs {
 		if r.jid.Valid {
-			b.Items = append(b.Items, Item{Position: r.pos, Kind: KindJob, Job: &JobInfo{ID: r.jid.Int64}, Note: r.note})
+			b.Items = append(b.Items, Item{Position: r.pos, Kind: KindJob, Job: &JobInfo{ID: r.jid.Int64}, Note: r.note, Layout: r.rect})
 			continue
 		}
 		f, err := s.Figure(r.fid.Int64)
 		if err != nil {
 			return b, err
 		}
-		b.Items = append(b.Items, Item{Position: r.pos, Kind: KindFigure, Figure: &f, Note: r.note})
+		b.Items = append(b.Items, Item{Position: r.pos, Kind: KindFigure, Figure: &f, Note: r.note, Layout: r.rect})
 	}
 	return b, nil
 }
@@ -603,6 +640,99 @@ func (s *Store) SetNote(boardID int64, pos int, note string, expect *Expect) err
 	})
 }
 
+// SetLayout stores the grid places of every panel of the board, in position order, in one transaction (ADR 0060). A nil entry
+// clears that panel's place (the client then derives one). Every non-nil place must be inside the grid and no two may overlap;
+// compaction is the client's business, the server only refuses what cannot be shown. expect names the panel at each position
+// and must cover the whole board: a different count or a different panel is ConflictError and nothing changes. from, when
+// given, is the layout the client is replacing; a different stored layout is also ConflictError, so a second window cannot
+// be overwritten by an undo that it did not see.
+func (s *Store) SetLayout(boardID int64, rects []*Rect, expect []Expect, from []*Rect) error {
+	for i, r := range rects {
+		if r == nil {
+			continue
+		}
+		if !r.valid() {
+			return fmt.Errorf("%w: panel %d is outside the grid", ErrInvalid, i)
+		}
+		for j := 0; j < i; j++ {
+			if rects[j] != nil && r.overlaps(*rects[j]) {
+				return fmt.Errorf("%w: panels %d and %d overlap", ErrInvalid, j, i)
+			}
+		}
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE boards SET updated_at=? WHERE id=?`, time.Now().Unix(), boardID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	rows, err := tx.Query(`SELECT position, figure_id, job_id, layout_x, layout_y, layout_w, layout_h FROM board_items WHERE board_id=? ORDER BY position`, boardID)
+	if err != nil {
+		return err
+	}
+	type cur struct {
+		pos  int
+		kind string
+		id   int64
+		rect *Rect
+	}
+	var items []cur
+	for rows.Next() {
+		var c cur
+		var fid, jid, x, y, w, h sql.NullInt64
+		if err := rows.Scan(&c.pos, &fid, &jid, &x, &y, &w, &h); err != nil {
+			rows.Close()
+			return err
+		}
+		c.kind, c.id = KindFigure, fid.Int64
+		if jid.Valid {
+			c.kind, c.id = KindJob, jid.Int64
+		}
+		if x.Valid && y.Valid && w.Valid && h.Valid {
+			c.rect = &Rect{int(x.Int64), int(y.Int64), int(w.Int64), int(h.Int64)}
+		}
+		items = append(items, c)
+	}
+	rows.Close()
+	if len(items) != len(rects) || len(expect) != len(items) || (from != nil && len(from) != len(items)) {
+		return ConflictError{}
+	}
+	for i, c := range items {
+		if expect[i].Kind != c.kind || expect[i].ID != c.id {
+			return ConflictError{}
+		}
+		if from != nil && !sameRect(from[i], c.rect) {
+			return ConflictError{}
+		}
+	}
+	for i, c := range items {
+		r := rects[i]
+		var args []any
+		if r == nil {
+			args = []any{nil, nil, nil, nil}
+		} else {
+			args = []any{r.X, r.Y, r.W, r.H}
+		}
+		if _, err := tx.Exec(`UPDATE board_items SET layout_x=?, layout_y=?, layout_w=?, layout_h=? WHERE board_id=? AND position=?`, append(args, boardID, c.pos)...); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func sameRect(a, b *Rect) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
 // ---------- snapshots, tokens, review ----------
 
 // FrozenItem is everything a reviewer may see about one figure. There is deliberately no path, dataset id or
@@ -622,17 +752,21 @@ type FrozenItem struct {
 	Width      int             `json:"width"`
 	Height     int             `json:"height"`
 	Provenance json.RawMessage `json:"provenance"`
+	// Layout is the panel's place on the grid as saved when the board was published; absent when the board was never arranged
+	// (and on snapshots made before layouts), in which case the reader derives it from the order.
+	Layout *Rect `json:"layout,omitempty"`
 }
 
 func (f FrozenItem) MarshalJSON() ([]byte, error) {
 	if f.Kind == KindJob {
 		return json.Marshal(struct {
-			Kind  string     `json:"kind"`
-			Title string     `json:"title"`
-			State string     `json:"state"`
-			At    *time.Time `json:"at"`
-			Note  string     `json:"note"`
-		}{f.Kind, f.Title, f.State, f.At, f.Note})
+			Kind   string     `json:"kind"`
+			Title  string     `json:"title"`
+			State  string     `json:"state"`
+			At     *time.Time `json:"at"`
+			Note   string     `json:"note"`
+			Layout *Rect      `json:"layout,omitempty"`
+		}{f.Kind, f.Title, f.State, f.At, f.Note, f.Layout})
 	}
 	type plain FrozenItem
 	return json.Marshal(plain(f))
@@ -652,11 +786,11 @@ func freeze(items []Item, jobs map[int64]JobSnapshot, at time.Time) []FrozenItem
 				js = JobSnapshot{Name: "Run", State: "unknown"}
 			}
 			t := at.UTC()
-			out = append(out, FrozenItem{Kind: KindJob, Title: clip(js.Name, 200), State: js.State, At: &t, Note: it.Note})
+			out = append(out, FrozenItem{Kind: KindJob, Title: clip(js.Name, 200), State: js.State, At: &t, Note: it.Note, Layout: it.Layout})
 			continue
 		}
 		out = append(out, FrozenItem{Revision: it.Figure.Revision, Title: it.Figure.Title, Caption: it.Figure.Caption, Note: it.Note,
-			PreviewSHA: it.Figure.PreviewSHA, Width: it.Figure.Width, Height: it.Figure.Height, Provenance: it.Figure.Provenance})
+			PreviewSHA: it.Figure.PreviewSHA, Width: it.Figure.Width, Height: it.Figure.Height, Provenance: it.Figure.Provenance, Layout: it.Layout})
 	}
 	return out
 }

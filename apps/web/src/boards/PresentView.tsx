@@ -5,6 +5,7 @@ import { Modal } from "../ui/Modal";
 import { RunLine } from "./RunLine";
 import { figurePreviewUrl } from "../api/boards";
 import type { Board } from "../api/boards";
+import { placed } from "./layout";
 import s from "./PresentView.module.css";
 
 /**
@@ -17,8 +18,9 @@ export function PresentView({ board, onClose }: { board: Board; onClose: () => v
   const [prov, setProv] = useState(false);
   const [notes, setNotes] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  const n = board.items.length;
-  const it = board.items[i];
+  const items = placed(board.items).map((p) => p.item); // the board's reading order, as arranged on the grid
+  const n = items.length;
+  const it = items[i];
 
   useEffect(() => {
     root.current?.focus();

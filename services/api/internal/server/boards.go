@@ -879,6 +879,40 @@ func (s *Server) boardItem(op string) http.HandlerFunc {
 	}
 }
 
+// boardLayout is POST /api/boards/{id}/layout: the grid places of every panel in one write (ADR 0060). It is the only way a
+// layout is stored; the review listener has no such route.
+func (s *Server) boardLayout(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathInt(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		Layout []*boards.Rect  `json:"layout"`
+		Expect []boards.Expect `json:"expect"`
+		From   []*boards.Rect  `json:"from"`
+	}
+	if !body(w, r, 512<<10, &in, true) {
+		return
+	}
+	if in.Layout == nil || in.Expect == nil {
+		fail(w, 400, "layout and expect are required")
+		return
+	}
+	err := s.Boards.SetLayout(id, in.Layout, in.Expect, in.From)
+	var ce boards.ConflictError
+	if errors.As(err, &ce) {
+		cur, _ := s.boardByID(r.Context(), id, false)
+		writeJSON(w, 409, map[string]any{"error": ce.Error(), "board": cur})
+		return
+	}
+	if err != nil {
+		s.boardErr(w, err)
+		return
+	}
+	b, _ := s.boardByID(r.Context(), id, false)
+	writeJSON(w, 200, b)
+}
+
 // publishResponse is the body of POST /api/boards/{id}/publish.
 type publishResponse struct {
 	Snapshot   boards.Snapshot `json:"snapshot"`
