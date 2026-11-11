@@ -7,6 +7,8 @@ import { NotificationBell } from "../notifications/NotificationBell";
 import { useNotifications } from "../notifications/useNotifications";
 import { FigurePanel } from "../viewer/FigurePanel";
 import { DatasetInspector } from "../catalog/DatasetInspector";
+import { CatalogView } from "../catalog/CatalogView";
+import { CatalogInspector } from "../catalog/CatalogInspector";
 import { UnitControl } from "../catalog/UnitControl";
 import { fileStatesItsUnit } from "../catalog/unit";
 import { Explorer } from "../catalog/Explorer";
@@ -53,6 +55,8 @@ import s from "./Shell.module.css";
 // Loaded when a file is first opened for editing: it brings Monaco (ADR 0029).
 const EditorScreen = lazy(() => import("../editor/EditorScreen"));
 
+const CATALOG_PROBLEM = "This catalog has changed on disk, is missing or is outside the source folders since it was registered, so its rows cannot be read until it is registered again.";
+
 /** Workbench frame (ADR 0005). Panels hold honest empty states until datasets exist. */
 export function Shell() {
   const { layout: L, set, toggle } = useLayout();
@@ -73,9 +77,9 @@ export function Shell() {
   // a job ended or its results were imported: the lists the links point into are refreshed before anyone follows one
   const notes = useNotifications(useCallback(() => { void refreshDatasets(); void refreshRuns(); }, [refreshDatasets, refreshRuns]));
   const hostName = (id: number) => cat.hosts.find((h) => h.id === id)?.name ?? "host";
-  const viewerA = useViewer(cat.selected);
+  const viewerA = useViewer(cat.selectedImage);
   const [compareId, setCompareId] = useState<number | null>(null);
-  const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== cat.selected?.id) ?? null;
+  const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== cat.selectedImage?.id) ?? null;
   const viewerB = useViewer(compareDs);
   const [active, setActive] = useState<"a" | "b">("a");
   const [compat, setCompat] = useState<Compat | null>(null);
@@ -85,7 +89,7 @@ export function Shell() {
   const [sharedLimits, setSharedLimits] = useState<[number, number] | null>(null);
   const useB = active === "b" && compareDs !== null;
   const viewer = useB ? viewerB : viewerA;
-  const actDs = useB ? compareDs : cat.selected;
+  const actDs = useB ? compareDs : cat.selectedImage;
   const other = useB ? viewerA : viewerB;
   // The two panes are one link group when their grids are confirmed identical (ADR 0042: linking by WCS comes later).
   const group = compareGroup(compareDs !== null && linkState(compat, compatLoading).linked);
@@ -140,17 +144,17 @@ export function Shell() {
   useEffect(() => {
     setCompat(null);
     setCompatErr(null);
-    if (!cat.selected || !compareDs) return;
+    if (!cat.selectedImage || !compareDs) return;
     let live = true;
     setCompatLoading(true);
-    getCompat(cat.selected.id, compareDs.id)
+    getCompat(cat.selectedImage.id, compareDs.id)
       .then((c) => live && setCompat(c))
       .catch((e: unknown) => live && setCompatErr(e instanceof Error ? e.message : "Could not compare the grids."))
       .finally(() => live && setCompatLoading(false));
     return () => {
       live = false;
     };
-  }, [cat.selected?.id, compareDs?.id, cat.selected?.modifiedAt, compareDs?.modifiedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cat.selectedImage?.id, compareDs?.id, cat.selectedImage?.modifiedAt, compareDs?.modifiedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const collapsedForCompare = useRef(false);
   useEffect(() => {
     if (!compareDs) {
@@ -194,7 +198,7 @@ export function Shell() {
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
   // The run page is a full page of its own: the map inspector and channel timeline describe the viewer, not the run.
   const projectPage = mode === "open" || mode === "look" || mode === "needs" || mode === "health";
-  const noProjectYet = mode === "viewer" && !project && !cat.selected; // nothing open at all: the way in is opening a folder
+  const noProjectYet = mode === "viewer" && !project && !cat.selectedImage && !cat.selectedCatalog; // nothing open at all: the way in is opening a folder
   const onPage = mode === "run" || mode === "rerun" || mode === "reports" || projectPage || noProjectYet;
   // On a narrow screen the explorer is an overlay on the canvas: choosing a project page has to uncover it.
   useEffect(() => {
@@ -230,7 +234,7 @@ export function Shell() {
       <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0}>
         <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
       </Section>
-      <Section title="Datasets" meta={String(cat.datasets.length)}>
+      <Section title="Datasets" meta={String(cat.datasets.length + cat.catalogCount)}>
         <Explorer hosts={cat.hosts} datasets={cat.allDatasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={selectDataset} onRegister={cat.register} />
       </Section>
     </>
@@ -284,7 +288,7 @@ export function Shell() {
               <Button onClick={() => setMode("open")}>Open a project…</Button>
             </div>
           )}
-          {project ? <Section key={project.id} title="Everything registered" meta={String(cat.datasets.length)} defaultOpen={false}>{catalog}</Section> : catalog}
+          {project ? <Section key={project.id} title="Everything registered" meta={String(cat.datasets.length + cat.catalogCount)} defaultOpen={false}>{catalog}</Section> : catalog}
         </div>
         <ResizeHandle orientation="vertical" label="Resize explorer" value={L.side} min={LIMITS.side.min} max={LIMITS.side.max} onChange={(v) => set("side", v)} />
       </aside>
@@ -322,12 +326,14 @@ export function Shell() {
           <ReportsView onOpenRun={openRun} />
         ) : mode === "boards" ? (
           <BoardsView onCompare={compareInViewer} />
-        ) : cat.selected ? (
+        ) : cat.selectedCatalog ? (
+          <CatalogView dataset={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} />
+        ) : cat.selectedImage ? (
           <div className={s.compare}>
-            <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selected.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} />
+            <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} />
             <div className={compareDs ? s.panes2 : s.panes1}>
-              <section className={s.pane} aria-label={`Map: ${cat.selected.name}`}>
-                {compareDs ? <PaneHeader name={cat.selected.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} /> : null}
+              <section className={s.pane} aria-label={`Map: ${cat.selectedImage.name}`}>
+                {compareDs ? <PaneHeader name={cat.selectedImage.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} /> : null}
                 <div className={s.paneBody}><PlaneViewer v={viewerA} onProbe={(p) => links(group, "cursor") && viewerB.setMirror(p)} /></div>
               </section>
               {compareDs ? (
@@ -349,9 +355,21 @@ export function Shell() {
       <aside className={s.insp} aria-label="Inspector" hidden={!inspShown}>
         <ResizeHandle orientation="vertical" direction={-1} label="Resize inspector" value={L.insp} min={LIMITS.insp.min} max={LIMITS.insp.max} onChange={(v) => set("insp", v)} />
         <div className={s.scroll}>
-          {compareDs && cat.selected ? (
+          {cat.selectedCatalog ? (
+            <>
+              <CatalogInspector d={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} onDeclare={cat.declareCatalog} onReread={() => { void cat.register(cat.selectedCatalog!.path); }} />
+              <Section title="Nature of the data">
+                <NatureControl dataset={cat.selectedCatalog} onChange={cat.declareNature} />
+              </Section>
+              <Section title="Archive or delete" defaultOpen={false} meta={cat.selectedCatalog.archived ? "archived" : undefined}>
+                <EntryActions key={cat.selectedCatalog.id} kind="datasets" id={cat.selectedCatalog.id} name={cat.selectedCatalog.name} archived={cat.selectedCatalog.archived === true} onChanged={async (c) => { await cat.refreshDatasets(); if (c === "deleted") { void cat.refreshRuns(); cat.select(null); } }} />
+              </Section>
+            </>
+          ) : null}
+          {cat.selectedCatalog ? null : <>
+          {compareDs && cat.selectedImage ? (
             <Section title="Comparison">
-              <CompareInspector a={cat.selected} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
+              <CompareInspector a={cat.selectedImage} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
             </Section>
           ) : null}
           {actDs && runFor(cat.runs, actDs.id) ? (
@@ -365,7 +383,7 @@ export function Shell() {
             </Section>
           ) : null}
           <Section title="Coordinates">
-            {actDs ? <CoordinateReadout v={viewer} other={linked && other.view ? { name: (useB ? cat.selected : compareDs)?.name ?? "", v: other } : null} /> : <p className={s.empty}>{EM}</p>}
+            {actDs ? <CoordinateReadout v={viewer} other={linked && other.view ? { name: (useB ? cat.selectedImage : compareDs)?.name ?? "", v: other } : null} /> : <p className={s.empty}>{EM}</p>}
           </Section>
           {actDs && (viewer.view === null || viewer.view.channels === 1) ? (
             <Section title="Interpretation">
@@ -427,13 +445,14 @@ export function Shell() {
           <Section title="Dataset">
             {actDs ? <DatasetInspector d={actDs} problem={cat.problems[String(actDs.id)]} onReread={() => { void cat.register(actDs.path); }} /> : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
           </Section>
+          </>}
         </div>
       </aside>
 
       <section className={s.timeline} aria-label="Channels" hidden={!timelineShown}>
         <ResizeHandle orientation="horizontal" direction={-1} label="Resize timeline" value={L.timeline} min={LIMITS.timeline.min} max={LIMITS.timeline.max} onChange={(v) => set("timeline", v)} />
         <div className={s.scroll}>
-          {actDs ? <ChannelTimeline v={viewer} /> : <p className={s.empty}>No spectral axis. Channels appear here once a cube is open.</p>}
+          {actDs ? <ChannelTimeline v={viewer} /> : <p className={s.empty}>{cat.selectedCatalog ? "A catalog has rows, not channels." : "No spectral axis. Channels appear here once a cube is open."}</p>}
         </div>
       </section>
 

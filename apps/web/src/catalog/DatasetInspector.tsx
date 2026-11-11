@@ -1,4 +1,4 @@
-import type { Dataset, Problem } from "../api/catalog";
+import type { ImageDataset, Problem } from "../api/catalog";
 import { Button } from "../ui";
 import { bytes, show } from "./format";
 import { beamText, pixelScale } from "./resolution";
@@ -14,7 +14,7 @@ const PROBLEM_TEXT: Record<Problem, string> = {
 };
 
 /** The unit as the file gave it, or as you declared it (said so), or unresolved: the three are never mixed up. */
-function unitText(d: Dataset): string {
+function unitText(d: ImageDataset): string {
   if (fileStatesItsUnit(d)) return show(d.header.bunit);
   if (d.interpretation) return `${show(d.header.bunit)} (orientation map: values are angles, not a brightness)`;
   const u = d.unitDeclaration;
@@ -22,7 +22,7 @@ function unitText(d: Dataset): string {
   return u.stale ? `${show(d.header.bunit)} (unresolved; you declared ${u.unit} for an earlier version of the file, not applied)` : `${u.unit} (declared by you, not in the file)`;
 }
 
-export function DatasetInspector({ d, problem, onReread }: { d: Dataset; problem?: Problem; onReread?: () => void }) {
+export function DatasetInspector({ d, problem, onReread }: { d: ImageDataset; problem?: Problem; onReread?: () => void }) {
   const h = d.header;
   return (
     <div className={s.wrap}>

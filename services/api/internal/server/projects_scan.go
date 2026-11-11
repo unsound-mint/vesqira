@@ -330,6 +330,7 @@ func (s *Server) runScan(ctx context.Context, p projects.Project, st *scanState)
 	opt := discover.Options{Layout: pf.ScanLayout(), ManualRuns: manual, Progress: func(n int, _ string) { st.set(func() { st.Entries = n }) }}
 	if !remote {
 		opt.Dirty = localDirty(p.Path)
+		opt.Catalogs = true
 	}
 	var walkTruncated bool
 	var walkWhy string
@@ -424,7 +425,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 	facts, _ := s.Store.FactsByPath(p.HostID)
 	var fits []discover.File
 	for _, d := range res.Data {
-		if d.Format == "FITS" {
+		if d.Format == "FITS" || d.Format == "Catalog" { // registerPath tells the two apart
 			fits = append(fits, d)
 		}
 	}

@@ -93,7 +93,10 @@ type Layout struct {
 }
 
 type Options struct {
-	Layout      Layout
+	Layout Layout
+	// Catalogs offers tables as point catalogs (ADR 0044). Off for a project on another host: catalogs are read from this
+	// computer only, and deciding that a text file is a table would cost a remote read per file.
+	Catalogs    bool
 	ManualRuns  []ManualRun
 	MaxEntries  int           // 0 means DefaultMaxEntries
 	MaxDuration time.Duration // 0 means DefaultMaxDuration
@@ -650,6 +653,10 @@ func (s *scanner) file(dir, rel string, e Entry, in *runCtx, names map[string]bo
 		s.addData(rel, e, in, f)
 		return
 	}
+	if s.isCatalog(rel, e.Name) {
+		s.addData(rel, e, in, format{"Catalog", true})
+		return
+	}
 	if isArchive(e.Name) {
 		st, err := s.fs.Stat(rel) // the size only: an archive is never opened
 		if err == nil {
@@ -682,6 +689,91 @@ func (s *scanner) file(dir, rel string, e Entry, in *runCtx, names map[string]bo
 		return
 	}
 	s.res.OtherFiles++
+}
+
+// isCatalog says whether a file is offered as a point catalog (ADR 0044) instead of "other discipline". The extensions that only
+// tables use (.ecsv, .vot) count anywhere. The plain-text ones (.csv, .tsv, .dat, .txt, ...) also hold READMEs and logs, so they
+// count only in a folder the researcher declared as data and only when the first lines look like a table: the same number of
+// columns on nearly every line.
+func (s *scanner) isCatalog(rel, name string) bool {
+	switch l := strings.ToLower(name); {
+	case !s.opt.Catalogs:
+		return false
+	case strings.HasSuffix(l, ".ecsv"), strings.HasSuffix(l, ".vot"), strings.HasSuffix(l, ".votable"):
+		return true
+	case !within(rel, s.layDat):
+		return false
+	case hasAnySuffix(l, ".csv", ".tsv", ".dat", ".txt", ".tbl", ".cat", ".xcat"):
+		head, truncated, err := s.fs.ReadFile(rel, jobPeek)
+		return err == nil && looksTabular(head, truncated)
+	}
+	return false
+}
+
+func hasAnySuffix(s string, suffixes ...string) bool {
+	for _, x := range suffixes {
+		if strings.HasSuffix(s, x) {
+			return true
+		}
+	}
+	return false
+}
+
+// looksTabular reports whether the head of a text file reads as a table: an ECSV or IPAC marker, or at least two lines that split
+// into the same two or more fields (tab, comma or blanks; trailing empty fields do not count) on most lines. Comment lines
+// are ignored. It decides only what is offered; the worker still reads and bounds the file when it is registered.
+func looksTabular(head []byte, truncated bool) bool {
+	text := string(head)
+	if strings.HasPrefix(strings.TrimLeft(text, "\ufeff \t\r\n"), "# %ECSV") {
+		return true
+	}
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	if truncated && len(lines) > 1 {
+		lines = lines[:len(lines)-1] // the last line was cut
+	}
+	var rows []string
+	for _, ln := range lines {
+		t := strings.TrimSpace(ln)
+		switch {
+		case t == "", strings.HasPrefix(t, `\`):
+		case strings.HasPrefix(t, "|"):
+			return true // IPAC
+		case strings.HasPrefix(t, "#"):
+		default:
+			rows = append(rows, ln)
+		}
+		if len(rows) == 20 {
+			break
+		}
+	}
+	if len(rows) < 2 {
+		return false
+	}
+	split := func(ln string) int {
+		var f []string
+		switch {
+		case strings.Contains(ln, "\t"):
+			f = strings.Split(ln, "\t")
+		case strings.Contains(ln, ","):
+			f = strings.Split(ln, ",")
+		default:
+			f = strings.Fields(ln)
+		}
+		for len(f) > 0 && strings.TrimSpace(f[len(f)-1]) == "" {
+			f = f[:len(f)-1]
+		}
+		return len(f)
+	}
+	counts := map[int]int{}
+	best := 0
+	for _, ln := range rows {
+		n := split(ln)
+		counts[n]++
+		if counts[n] > counts[best] {
+			best = n
+		}
+	}
+	return best >= 2 && counts[best]*5 >= len(rows)*4
 }
 
 func (s *scanner) addPlain(to *[]File, rel string) {

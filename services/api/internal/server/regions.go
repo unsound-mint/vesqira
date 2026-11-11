@@ -42,6 +42,10 @@ func (s *Server) datasetFor(w http.ResponseWriter, r *http.Request) (catalog.Dat
 		fail(w, 500, "internal error")
 		return d, false
 	}
+	if d.Kind == catalog.KindCatalog {
+		fail(w, 409, "regions are drawn on images; a point catalog has no pixel grid")
+		return d, false
+	}
 	return d, true
 }
 

@@ -436,7 +436,7 @@ func (s *Server) projectTree(w http.ResponseWriter, r *http.Request) {
 			var f discover.File
 			_ = json.Unmarshal(row.Data, &f)
 			tf := &treeFile{Size: f.Size, MtimeNS: f.MtimeNS, Format: f.Format, Viewer: f.Viewer, Role: f.Role, ReadOnly: f.ReadOnly}
-			if f.Format == "FITS" {
+			if f.Format == "FITS" || f.Format == "Catalog" {
 				if fa, ok := facts[absFor(p, row.Path)]; ok && fa.Size == f.Size && fa.MtimeNS == f.MtimeNS {
 					id := fa.ID
 					tf.DatasetID = &id

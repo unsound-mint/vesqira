@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { Database } from "lucide-react";
+import { Database, Table } from "lucide-react";
+import { isCatalog } from "../api/catalog";
 import type { Dataset, Problem } from "../api/catalog";
 import { Button, FilterBox, PathField, TreeRow } from "../ui";
 import { bytes } from "./format";
@@ -10,7 +11,8 @@ import { previewFile } from "../api/catalog";
 import type { Preview } from "../api/catalog";
 import s from "./Explorer.module.css";
 
-const FITS_EXT = [".fits", ".fit", ".fits.gz"];
+const FITS_EXT = [".fits", ".fit", ".fits.gz", ".csv", ".tsv", ".ecsv", ".dat", ".txt", ".tbl", ".cat", ".xcat", ".vot", ".votable"];
+const isFitsPath = (p: string) => /\.(fits?|fits\.gz)$/i.test(p.trim());
 const PROBLEM_SHORT: Record<string, string> = { modified: " · changed on disk", missing: " · missing", not_allowed: " · outside the source folders" };
 
 type Props = {
@@ -60,9 +62,9 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
   return (
     <div className={s.wrap}>
       <form className={s.form} onSubmit={submit}>
-        <PathField label="Register a FITS file" kind="file" ext={FITS_EXT} placeholder="/absolute/path/to/cube.fits" value={path} onChange={setPath} />
+        <PathField label="Register a FITS file or a catalog" kind="file" ext={FITS_EXT} placeholder="/absolute/path/to/cube.fits or stars.csv" value={path} onChange={setPath} />
         <Button type="submit" variant="primary" disabled={busy || !path.trim()}>{busy ? "Reading header…" : "Register"}</Button>
-        <Button type="button" disabled={busy || !path.trim()} onClick={doPreview}>Preview before registering</Button>
+        <Button type="button" disabled={busy || !isFitsPath(path)} onClick={doPreview} title={path.trim() && !isFitsPath(path) ? "The preview is for FITS files; a catalog shows its rows once registered." : undefined}>Preview before registering</Button>
         {preview ? (
           <div className={s.note} role="status">
             <p style={{ margin: 0 }}><span className="mono">{preview.name}</span>: {bytes(preview.sizeBytes)}, {preview.planes.toLocaleString("en-US")} plane{preview.planes === 1 ? "" : "s"} of about {bytes(preview.planeBytes)} each.</p>
@@ -80,7 +82,7 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
       <div role="list" aria-label="Datasets">
         {shown.map((d) => (
           <div role="listitem" key={d.id}>
-            <TreeRow icon={Database} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.hostId ? `${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
+            <TreeRow icon={isCatalog(d) ? Table : Database} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.hostId ? `${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
           </div>
         ))}
       </div>

@@ -94,6 +94,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/datasets/availability", s.availability)
 	mux.HandleFunc("GET /api/datasets/{id}", s.get)
 	mux.HandleFunc("POST /api/datasets", s.register)
+	mux.HandleFunc("POST /api/catalogs", s.registerCatalog)
+	mux.HandleFunc("GET /api/datasets/{id}/catalog/report", s.catalogReport)
+	mux.HandleFunc("GET /api/datasets/{id}/catalog/rows", s.catalogRows)
+	mux.HandleFunc("GET /api/datasets/{id}/catalog/positions", s.catalogPositions)
+	mux.HandleFunc("PUT /api/datasets/{id}/catalog/declaration", s.putCatalogDeclaration)
+	mux.HandleFunc("DELETE /api/datasets/{id}/catalog/declaration", s.deleteCatalogDeclaration)
 	mux.HandleFunc("GET /api/datasets/{id}/impact", s.lifecycleImpact("dataset"))
 	mux.HandleFunc("POST /api/datasets/{id}/archive", s.lifecycleArchive("dataset", true))
 	mux.HandleFunc("POST /api/datasets/{id}/restore", s.lifecycleArchive("dataset", false))
@@ -374,10 +380,25 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 }
 
 // registerPath reads the header of an already-authorized file and records the reference.
+//
+// A file named like a table (.csv, .ecsv, .vot, ...) is a point catalog (ADR 0044). A FITS file with no image axes may be a
+// table extension: the worker is asked, and only a table it can read becomes a catalog; otherwise it stays a FITS dataset
+// exactly as before.
 func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset, int, string) {
+	if hasCatalogExt(real) {
+		return s.registerCatalogPath(ctx, real)
+	}
 	hdr, err := s.Worker.Header(ctx, real)
 	if err != nil {
 		return catalog.Dataset{}, 422, err.Error()
+	}
+	var axes struct {
+		Naxis *int `json:"naxis"`
+	}
+	if json.Unmarshal(hdr, &axes) == nil && axes.Naxis != nil && *axes.Naxis == 0 && s.Planes != nil {
+		if d, code, _ := s.registerCatalogPath(ctx, real); code == 0 {
+			return d, 0, ""
+		}
 	}
 	info, err := statFile(real)
 	if err != nil {

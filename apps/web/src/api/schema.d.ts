@@ -384,6 +384,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalogs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a file as a point catalog (a table of sources); the path is authorised like a FITS registration */
+        post: operations["owner_s_registerCatalog_post_api_catalogs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/comments/{id}/resolve": {
         parameters: {
             query?: never;
@@ -499,6 +516,83 @@ export interface paths {
             cookie?: never;
         };
         get: operations["owner_s_axial_get_api_datasets_id_axial"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/catalog/declaration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Declare a catalog's columns (positions, format, frame, optional angle and values); validated, never inferred */
+        put: operations["owner_s_putCatalogDeclaration_put_api_datasets_id_catalog_declaration"];
+        post?: never;
+        /** Withdraw a catalog's declaration */
+        delete: operations["owner_s_deleteCatalogDeclaration_delete_api_datasets_id_catalog_declaration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/catalog/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Sky positions of a catalog's rows from its declaration, optionally transformed to another frame */
+        get: operations["owner_s_catalogPositions_get_api_datasets_id_catalog_positions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/catalog/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** How a catalog was read, what its column names suggest, and how its declaration reads every row */
+        get: operations["owner_s_catalogReport_get_api_datasets_id_catalog_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/catalog/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** A page of a catalog's rows (at most 500) */
+        get: operations["owner_s_catalogRows_get_api_datasets_id_catalog_rows"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2737,7 +2831,8 @@ export interface components {
             modifiedAt: string;
             /** Format: date-time */
             addedAt: string;
-            header: components["schemas"]["FitsHeader"];
+            /** @description FitsHeader when kind is fits, CatalogHeader when kind is catalog */
+            header: components["schemas"]["FitsHeader"] | components["schemas"]["CatalogHeader"];
             /**
              * Format: int64
              * @description 0 for a file on this computer, otherwise the remote host that holds it
@@ -2751,6 +2846,13 @@ export interface components {
             interpretation: components["schemas"]["Interpretation"] | null;
             /** @description Present when the person declared a unit for a file without BUNIT. The header's own bunit and bunit_status stay as the file gave them. */
             unitDeclaration: components["schemas"]["UnitDeclaration"] | null;
+            /**
+             * @description An image or cube (fits) or a table of sources (catalog, ADR 0044)
+             * @enum {string}
+             */
+            kind: "fits" | "catalog";
+            /** @description What the person declared about a catalog's columns; null for anything else */
+            catalogDeclaration: components["schemas"]["CatalogDeclaration"] | null;
         };
         DatasetList: {
             datasets: components["schemas"]["Dataset"][];
@@ -3669,6 +3771,273 @@ export interface components {
             datasetId: number;
             visible: boolean;
         };
+        /** @description One column of a point catalog as the worker read it. */
+        CatalogColumn: {
+            name: string;
+            /** @enum {string} */
+            dtype: "float" | "int" | "bool" | "string" | "other";
+            /** @description Only when the file declares it (ECSV meta, VOTable unit, FITS TUNITn). Never inferred from the name. */
+            unit: string | null;
+            /** @description False for a column of arrays: it is listed but cannot be used as a position, angle or value. */
+            scalar: boolean;
+        };
+        /** @description What the worker read from a point catalog when it was registered (ADR 0044). The rows stay in the file. */
+        CatalogHeader: {
+            /** @enum {string} */
+            kind: "catalog";
+            /** @enum {string} */
+            format: "csv" | "tsv" | "text table" | "ecsv" | "ipac" | "votable" | "fits";
+            rows: number;
+            columns: components["schemas"]["CatalogColumn"][];
+        };
+        CatalogAngle: {
+            column: string;
+            /**
+             * @description Required: never guessed from the values.
+             * @enum {string}
+             */
+            unit: "deg" | "rad";
+            /**
+             * @description A catalog has no pixel grid: the angle is a position angle east of north in the catalog's own celestial frame.
+             * @enum {string}
+             */
+            frame: "sky";
+            /**
+             * @description What the angle describes, as for an orientation map. Null means not declared.
+             * @enum {string|null}
+             */
+            quantity: "b_field" | "gradient" | "dust_polarization" | "starlight_polarization" | "unspecified" | null;
+            /** @description Column holding the angle's uncertainty, in the angle's unit. */
+            sigmaColumn: string | null;
+        };
+        /** @description What a person declares about a catalog's columns. Validated against the table; unknown fields are refused. */
+        CatalogDeclarationRequest: {
+            /** @description Longitude (right ascension, Galactic longitude, ...) column */
+            lon: string;
+            /** @description Latitude column */
+            lat: string;
+            /**
+             * @description How positions are written. hours_degrees is longitude in decimal hours and latitude in degrees; sexagesimal_hours_degrees is h m s and d m s.
+             * @enum {string}
+             */
+            format: "degrees" | "hours_degrees" | "sexagesimal_hours_degrees" | "sexagesimal_degrees";
+            /**
+             * @description The celestial frame. Never assumed.
+             * @enum {string}
+             */
+            frame: "icrs" | "fk5" | "fk4" | "galactic";
+            /** @description J2000-style for fk5, B1950-style for fk4; null for icrs and galactic. */
+            equinox: string | null;
+            /** @description An optional angle column (a position angle on the sky) with its unit, quantity and uncertainty. */
+            angle: components["schemas"]["CatalogAngle"] | null;
+            /** @description Further columns to show next to each source. */
+            values: string[];
+        };
+        /** @description An overlay: the file and the columns the worker read are never changed. */
+        CatalogDeclaration: {
+            /** @description Longitude (right ascension, Galactic longitude, ...) column */
+            lon: string;
+            /** @description Latitude column */
+            lat: string;
+            /**
+             * @description How positions are written. hours_degrees is longitude in decimal hours and latitude in degrees; sexagesimal_hours_degrees is h m s and d m s.
+             * @enum {string}
+             */
+            format: "degrees" | "hours_degrees" | "sexagesimal_hours_degrees" | "sexagesimal_degrees";
+            /**
+             * @description The celestial frame. Never assumed.
+             * @enum {string}
+             */
+            frame: "icrs" | "fk5" | "fk4" | "galactic";
+            /** @description J2000-style for fk5, B1950-style for fk4; null for icrs and galactic. */
+            equinox: string | null;
+            /** @description An optional angle column (a position angle on the sky) with its unit, quantity and uncertainty. */
+            angle: components["schemas"]["CatalogAngle"] | null;
+            /** @description Further columns to show next to each source. */
+            values: string[];
+            /** @description "user" */
+            declaredBy: string;
+            /** Format: date-time */
+            declaredAt: string;
+            /** @description True when the file's size or modification time differs from when this was declared. A stale declaration is not applied: positions are refused until it is confirmed again. */
+            stale: boolean;
+        };
+        RegisterPathRequest: {
+            /** @description Absolute path inside a source root; resolved and authorised like a FITS registration */
+            path: string;
+        };
+        CatalogProposal: {
+            /**
+             * @description Always shown with the proposal. A proposal is never stored or applied until the person confirms it.
+             * @enum {string}
+             */
+            basis: "proposed from the column names";
+            lon: string | null;
+            lat: string | null;
+            format: string | null;
+            format_basis?: string;
+            frame: string | null;
+            frame_basis?: string;
+            equinox: string | null;
+            angle: {
+                column?: string;
+                unit?: string | null;
+                unit_basis?: string | null;
+                quantity?: string | null;
+                quantity_basis?: string;
+            } | null;
+            sigma: string | null;
+            /** @description What the names do not settle, for the person to choose. */
+            notes: string[];
+        };
+        CatalogParseReport: {
+            rows: number;
+            /** @description Rows whose longitude and latitude were both read */
+            placed: number;
+            /** @description Rows with a longitude or latitude that is there but cannot be read; counted over the whole table */
+            unreadable: number;
+            /** @description Rows with an empty longitude or latitude (not the same as unreadable), not counted above */
+            missing: number;
+            /** @description The first unreadable values, with their line */
+            samples: {
+                /** @description 1-based row of the table */
+                row: number;
+                /** @description 1-based line of the file (text tables); null for VOTable and FITS */
+                line: number | null;
+                column: string;
+                /** @description At most 40 characters of the value */
+                value: string;
+                reason: string;
+            }[];
+            lon: {
+                column: string;
+                missing: number;
+                invalid: number;
+                samples: {
+                    /** @description 1-based row of the table */
+                    row: number;
+                    /** @description 1-based line of the file (text tables); null for VOTable and FITS */
+                    line: number | null;
+                    column: string;
+                    /** @description At most 40 characters of the value */
+                    value: string;
+                    reason: string;
+                }[];
+            };
+            lat: {
+                column: string;
+                missing: number;
+                invalid: number;
+                samples: {
+                    /** @description 1-based row of the table */
+                    row: number;
+                    /** @description 1-based line of the file (text tables); null for VOTable and FITS */
+                    line: number | null;
+                    column: string;
+                    /** @description At most 40 characters of the value */
+                    value: string;
+                    reason: string;
+                }[];
+            };
+            angle?: {
+                column: string;
+                missing: number;
+                invalid: number;
+                samples: {
+                    /** @description 1-based row of the table */
+                    row: number;
+                    /** @description 1-based line of the file (text tables); null for VOTable and FITS */
+                    line: number | null;
+                    column: string;
+                    /** @description At most 40 characters of the value */
+                    value: string;
+                    reason: string;
+                }[];
+            };
+            sigma?: {
+                column: string;
+                missing: number;
+                invalid: number;
+                samples: {
+                    /** @description 1-based row of the table */
+                    row: number;
+                    /** @description 1-based line of the file (text tables); null for VOTable and FITS */
+                    line: number | null;
+                    column: string;
+                    /** @description At most 40 characters of the value */
+                    value: string;
+                    reason: string;
+                }[];
+            };
+        };
+        CatalogReport: {
+            format: string;
+            rows: number;
+            columns: components["schemas"]["CatalogColumn"][];
+            /** @description The first rows. A missing value is null, never 0; text is cut at 64 characters. */
+            preview: {
+                columns: string[];
+                rows: unknown[][];
+            };
+            read: {
+                /** @description Lines that are not rows (wrong number of fields); each is listed with its line */
+                skippedTotal: number;
+                skipped: {
+                    line: number;
+                    reason: string;
+                    text: string;
+                }[];
+                headerless: boolean;
+                notes: string[];
+            };
+            proposal: components["schemas"]["CatalogProposal"];
+            limits: {
+                fileBytes: number;
+                rows: number;
+                columns: number;
+            };
+            declaration: components["schemas"]["CatalogDeclaration"] | null;
+            /** @description Present when a fresh declaration is in force */
+            parse: components["schemas"]["CatalogParseReport"] | null;
+            /** @description Why the declaration could not be applied (stale, or too many sexagesimal values to place) */
+            parseError: string | null;
+        };
+        CatalogRows: {
+            offset: number;
+            total: number;
+            columns: string[];
+            /** @description Cells in column order; null is a missing value or a column of arrays */
+            rows: unknown[][];
+            /** @description The file line of each row (text tables) */
+            lines: number[] | null;
+        };
+        /** @description Positions in the declared frame, or in the frame asked for (transformed with astropy, angles carried with them). */
+        CatalogPositions: {
+            /** @enum {string} */
+            frame: "icrs" | "fk5" | "fk4" | "galactic";
+            equinox: string | null;
+            offset: number;
+            count: number;
+            total: number;
+            /** @description 1-based row numbers */
+            row: number[];
+            /** @description Degrees in [0, 360); null for a row whose position could not be read, never 0 */
+            lon: (number | null)[];
+            /** @description Degrees; null as above */
+            lat: (number | null)[];
+            /** @description Position angle in degrees east of north, in [0, 180) for an orientation quantity; null where missing */
+            angle?: (number | null)[] | null;
+            /** @description Uncertainty in degrees */
+            sigma?: (number | null)[];
+            /** @enum {string} */
+            angleUnit?: "deg";
+            angleQuantity?: string | null;
+            /** @enum {string} */
+            angleFrame?: "sky";
+            angleAxial?: boolean;
+            note?: string;
+            report: components["schemas"]["CatalogParseReport"];
+        };
     };
     responses: never;
     parameters: never;
@@ -4268,6 +4637,57 @@ export interface operations {
             };
         };
     };
+    owner_s_registerCatalog_post_api_catalogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterPathRequest"];
+            };
+        };
+        responses: {
+            /** @description registered (kind catalog) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dataset"];
+                };
+            };
+            /** @description outside the source roots */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not a readable table, or over the size, row or column limits */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_resolveComment_post_api_comments_id_resolve: {
         parameters: {
             query?: never;
@@ -4454,6 +4874,224 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_putCatalogDeclaration_put_api_datasets_id_catalog_declaration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogDeclarationRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dataset"];
+                };
+            };
+            /** @description incomplete or inconsistent; reasons lists each problem */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not a catalog */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_deleteCatalogDeclaration_delete_api_datasets_id_catalog_declaration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dataset"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_catalogPositions_get_api_datasets_id_catalog_positions: {
+        parameters: {
+            query?: {
+                /** @description First row (0-based) */
+                offset?: number;
+                /** @description Rows (at most 100000) */
+                limit?: number;
+                /** @description Transform to this frame (icrs, fk5, fk4, galactic) */
+                frame?: "icrs" | "fk5" | "fk4" | "galactic";
+                /** @description Needed for fk5 (J...) and fk4 (B...) */
+                equinox?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogPositions"];
+                };
+            };
+            /** @description no declaration, or a stale one: the response names what is missing */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_catalogReport_get_api_datasets_id_catalog_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogReport"];
+                };
+            };
+            /** @description not a catalog, or the file changed since it was registered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_catalogRows_get_api_datasets_id_catalog_rows: {
+        parameters: {
+            query?: {
+                /** @description First row (0-based) */
+                offset?: number;
+                /** @description Rows in the page */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogRows"];
+                };
+            };
+            /** @description bad offset or limit */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

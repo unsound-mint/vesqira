@@ -3,11 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { DatasetInspector } from "./DatasetInspector";
 import { Explorer } from "./Explorer";
 import { bytes, show } from "./format";
-import type { Dataset } from "../api/catalog";
+import type { ImageDataset } from "../api/catalog";
 
 const unresolved = { crval: null, crval_status: "unresolved", crpix: null, crpix_status: "unresolved", cdelt: null, cdelt_status: "unresolved", cunit: null, cunit_status: "unresolved" } as const;
 
-const ds: Dataset = {
+const ds: ImageDataset = {
   interpretation: null,
   nature: "", unitDeclaration: null,
   hostId: 0,
@@ -50,10 +50,10 @@ describe("Explorer", () => {
     const user = userEvent.setup();
     const onRegister = vi.fn().mockResolvedValue("path is outside the configured source roots");
     render(<Explorer datasets={[]} selectedId={null} loading={false} error={null} onSelect={() => {}} onRegister={onRegister} />);
-    await user.type(screen.getByLabelText("Register a FITS file"), "/etc/passwd");
+    await user.type(screen.getByLabelText("Register a FITS file or a catalog"), "/etc/passwd");
     await user.click(screen.getByRole("button", { name: "Register" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("outside the configured source roots");
-    expect(screen.getByLabelText("Register a FITS file")).toHaveValue("/etc/passwd");
+    expect(screen.getByLabelText("Register a FITS file or a catalog")).toHaveValue("/etc/passwd");
   });
 
   it("lists datasets and reports the empty state", () => {
@@ -83,7 +83,7 @@ describe("raw header cards", () => {
 });
 
 describe("files that changed on disk", () => {
-  const d = { id: 7, name: "cube.fits", path: "/data/cube.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", unitDeclaration: null, interpretation: null, header: { ok: true, naxis: 3, bitpix: -32, axes: [] } } as unknown as Dataset;
+  const d = { id: 7, name: "cube.fits", path: "/data/cube.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", unitDeclaration: null, interpretation: null, header: { ok: true, naxis: 3, bitpix: -32, axes: [] } } as unknown as ImageDataset;
   it("says so in the list and the inspector, and offers to read the file again only when it changed", async () => {
     const reread = vi.fn();
     render(<Explorer datasets={[d]} selectedId={7} problems={{ "7": "modified" }} loading={false} error={null} onSelect={() => {}} onRegister={async () => null} />);

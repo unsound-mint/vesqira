@@ -312,7 +312,7 @@ func datasetImpact(q querier, b *builder, id int64) error {
 		return plural(n, "saved region goes", "saved regions go") + " with it."
 	})
 	var decl []Item
-	for i, d := range []struct{ table, label string }{{"interpretations", "orientation declaration"}, {"dataset_nature", "declared nature"}, {"dataset_units", "declared unit"}} {
+	for i, d := range []struct{ table, label string }{{"interpretations", "orientation declaration"}, {"dataset_nature", "declared nature"}, {"dataset_units", "declared unit"}, {"catalog_declarations", "declared catalog columns"}} {
 		got, err := items(q, d.table, `SELECT dataset_id, '`+d.label+`' FROM `+d.table+` WHERE dataset_id=?`, id)
 		if err != nil {
 			return err
@@ -561,7 +561,7 @@ func deleteSteps(kind string) []string {
 	case KindDataset:
 		return []string{
 			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
-			`DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`,
+			`DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`, `DELETE FROM catalog_declarations WHERE dataset_id=?`,
 			`DELETE FROM datasets WHERE id=?`}
 	case KindRun:
 		return []string{

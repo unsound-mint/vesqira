@@ -29,6 +29,15 @@ func (s *Server) dataset(id int64) (catalog.Dataset, int, string) {
 	return d, 0, ""
 }
 
+// imageDataset is dataset for operations that need a pixel grid: a point catalog (ADR 0044) is refused with 409.
+func (s *Server) imageDataset(id int64) (catalog.Dataset, int, string) {
+	d, code, msg := s.dataset(id)
+	if code == 0 && d.Kind == catalog.KindCatalog {
+		return d, 409, "this is a point catalog: it has no pixel grid, so this operation does not apply to it"
+	}
+	return d, code, msg
+}
+
 // interpret records what the user declares about a dataset: today only "axial_orientation" with a required unit
 // and an optional reliability companion on the same grid. Nothing is inferred and the file is never modified.
 // POST, so the JSON content-type and cross-site guards apply.
@@ -53,6 +62,10 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 	d, code, msg := s.dataset(id)
 	if code != 0 {
 		fail(w, code, msg)
+		return
+	}
+	if d.Kind == catalog.KindCatalog {
+		fail(w, 409, "a point catalog has no pixel grid: declare its angle column in the catalog declaration instead")
 		return
 	}
 	switch in.Kind {
@@ -84,7 +97,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 				fail(w, 422, "a map cannot be its own reliability")
 				return
 			}
-			rel, code, msg := s.dataset(*in.ReliabilityID)
+			rel, code, msg := s.imageDataset(*in.ReliabilityID)
 			if code != 0 {
 				fail(w, 422, "reliability dataset: "+msg)
 				return
@@ -135,7 +148,7 @@ func (s *Server) axial(w http.ResponseWriter, r *http.Request) {
 	req := map[string]any{"op": "axial", "path": real, "unit": in.Unit}
 	k.op, k.q = "axial", in.Unit
 	if in.ReliabilityID != nil {
-		rel, code, msg := s.dataset(*in.ReliabilityID)
+		rel, code, msg := s.imageDataset(*in.ReliabilityID)
 		if code != 0 {
 			fail(w, 409, "the declared reliability dataset: "+msg)
 			return
@@ -215,12 +228,12 @@ func (s *Server) compatibility(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "a and b must be dataset ids")
 		return
 	}
-	da, code, msg := s.dataset(a)
+	da, code, msg := s.imageDataset(a)
 	if code != 0 {
 		fail(w, code, msg)
 		return
 	}
-	db, code, msg := s.dataset(b)
+	db, code, msg := s.imageDataset(b)
 	if code != 0 {
 		fail(w, code, msg)
 		return

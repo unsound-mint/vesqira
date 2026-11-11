@@ -10,8 +10,21 @@ export type Status = Schemas["Axis"]["ctype_status"];
 export type Axis = Schemas["Axis"];
 export type Header = Schemas["FitsHeader"];
 export type Interpretation = Schemas["Interpretation"];
-/** `archived` is set by the server on every dataset it sends (ADR 0041); the generated type predates it. */
-export type Dataset = Schemas["Dataset"] & { archived?: boolean };
+export type CatalogHeader = Schemas["CatalogHeader"];
+export type CatalogColumn = Schemas["CatalogColumn"];
+export type CatalogDeclaration = Schemas["CatalogDeclaration"];
+export type CatalogDeclarationRequest = Schemas["CatalogDeclarationRequest"];
+export type CatalogReport = Schemas["CatalogReport"];
+export type CatalogRows = Schemas["CatalogRows"];
+export type CatalogPositions = Schemas["CatalogPositions"];
+type DatasetBase = Omit<Schemas["Dataset"], "header" | "kind" | "catalogDeclaration">;
+/** An image or cube. `kind` is optional so that a dataset built without it (tests, older answers) is an image, as before. */
+export type ImageDataset = DatasetBase & { kind?: "fits"; header: Header; catalogDeclaration?: null };
+/** A table of sources (ADR 0044): no planes, no pixel grid. */
+export type CatalogDataset = DatasetBase & { kind: "catalog"; header: CatalogHeader; catalogDeclaration: CatalogDeclaration | null };
+/** `archived` is set by the server on every dataset it sends (ADR 0041); the generated type predates it. Narrow on `kind`. */
+export type Dataset = (ImageDataset | CatalogDataset) & { archived?: boolean };
+export const isCatalog = (d: Dataset): d is CatalogDataset & { archived?: boolean } => d.kind === "catalog";
 
 /** Files on this computer that are no longer what was registered. Remote files are not checked here. */
 export type Problem = "modified" | "missing" | "not_allowed";
@@ -22,6 +35,15 @@ export const headerCards = (id: number) => call<{ cards: string[]; truncated: bo
 export const listRoots = () => call<{ roots: string[] }>("/api/roots").then((r) => r.roots);
 export const registerDataset = (path: string) =>
   call<Dataset>("/api/datasets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
+
+/** Register a file as a point catalog whatever its name (a FITS table is called .fits). */
+export const registerCatalog = (path: string) =>
+  call<CatalogDataset>("/api/catalogs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
+export const catalogReport = (id: number) => call<CatalogReport>(`/api/datasets/${id}/catalog/report`);
+export const catalogRows = (id: number, offset: number, limit: number) => call<CatalogRows>(`/api/datasets/${id}/catalog/rows?offset=${offset}&limit=${limit}`);
+export const putCatalogDeclaration = (id: number, body: CatalogDeclarationRequest) =>
+  call<CatalogDataset>(`/api/datasets/${id}/catalog/declaration`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+export const deleteCatalogDeclaration = (id: number) => call<CatalogDataset>(`/api/datasets/${id}/catalog/declaration`, { method: "DELETE" });
 
 export type Compat = { compatible: boolean; reasons: string[] };
 export const getCompat = (a: number, b: number) => call<Compat>(`/api/compat?a=${a}&b=${b}`);

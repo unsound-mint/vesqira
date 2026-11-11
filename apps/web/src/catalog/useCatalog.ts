@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, getAvailability, listDatasets, registerDataset, setInterpretation, setNature, setUnit } from "../api/catalog";
-import type { Dataset, InterpretationRequest, Nature, Problem } from "../api/catalog";
+import { ApiError, deleteCatalogDeclaration, getAvailability, isCatalog, listDatasets, putCatalogDeclaration, registerDataset, setInterpretation, setNature, setUnit } from "../api/catalog";
+import type { CatalogDataset, CatalogDeclarationRequest, Dataset, ImageDataset, InterpretationRequest, Nature, Problem } from "../api/catalog";
 import { listHosts } from "../api/hosts";
 import { listJobs } from "../api/jobs";
 import type { Job } from "../api/jobs";
@@ -12,7 +12,8 @@ export function useCatalog() {
   // Every dataset, archived ones included: an archived one still opens and still resolves for what refers to it. `datasets`
   // below is what lists and pickers offer.
   const [allDatasets, setDatasets] = useState<Dataset[]>([]);
-  const datasets = useMemo(() => allDatasets.filter((d) => !d.archived), [allDatasets]);
+  // The pickers (compare, reliability, analysis) offer images only: a point catalog has no pixel grid.
+  const datasets = useMemo(() => allDatasets.filter((d): d is ImageDataset & { archived?: boolean } => !d.archived && !isCatalog(d)), [allDatasets]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -95,6 +96,17 @@ export function useCatalog() {
     setJobs(await listJobs());
   }, []);
 
+  /** Declare (null withdraws) which columns of a catalog are positions, their frame and an optional angle. Returns an error text with reasons, or null. */
+  const declareCatalog = useCallback(async (id: number, body: CatalogDeclarationRequest | null): Promise<string | null> => {
+    try {
+      const d: CatalogDataset = body === null ? await deleteCatalogDeclaration(id) : await putCatalogDeclaration(id, body);
+      setDatasets((cur) => cur.map((x) => (x.id === d.id ? { ...d, archived: x.archived } : x)));
+      return null;
+    } catch (e) {
+      return e instanceof ApiError ? [e.message, ...e.reasons].join(" · ") : "Could not save the declaration.";
+    }
+  }, []);
+
   /** Declare or withdraw the unit of a file without BUNIT. Returns an error text, or null on success. */
   const declareUnit = useCallback(async (id: number, unit: string | null): Promise<string | null> => {
     try {
@@ -116,5 +128,10 @@ export function useCatalog() {
     }
   }, []);
 
-  return { problems, declareNature, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected: allDatasets.find((d) => d.id === selectedId) ?? null };
+  const catalogCount = useMemo(() => allDatasets.filter((d) => !d.archived && isCatalog(d)).length, [allDatasets]);
+  const selected = allDatasets.find((d) => d.id === selectedId) ?? null;
+  const selectedImage = selected && !isCatalog(selected) ? selected : null;
+  const selectedCatalog = selected && isCatalog(selected) ? selected : null;
+
+  return { problems, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
 }
