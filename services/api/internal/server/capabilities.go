@@ -35,7 +35,8 @@ type Capabilities struct {
 		Boards         bool `json:"boards"`
 		Regions        bool `json:"regions"`
 		Audit          bool `json:"audit"`
-		Editor         bool `json:"editor"` // the text editor (--enable-editor, ADR 0029)
+		Editor         bool `json:"editor"`   // the text editor (--enable-editor, ADR 0029)
+		Terminal       bool `json:"terminal"` // the integrated terminal (--enable-terminal, ADR 0029)
 	} `json:"features"`
 	Limits struct {
 		PreviewStepMax   int `json:"previewStepMax"`
@@ -56,7 +57,7 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 	f.Transfers = remote && s.Transfers != nil
 	f.Analysis, f.RemoteAnalysis = s.analysisDeps(), s.analysisDeps() && remote && s.Jobs != nil
 	f.Runs, f.Boards, f.Regions, f.Audit = s.Runs != nil, s.Boards != nil, s.Regions != nil, s.Audit != nil
-	f.Editor = s.EditorEnabled
+	f.Editor, f.Terminal = s.EditorEnabled, s.TerminalEnabled
 	c.Limits.PreviewStepMax, c.Limits.MetricsPerRunMax = 64, 50
 	writeJSON(w, 200, c)
 }

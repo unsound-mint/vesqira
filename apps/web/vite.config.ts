@@ -7,7 +7,8 @@ import { defineConfig } from "vitest/config";
 // the page's own Host (127.0.0.1:<page port>, a loopback name) next to the same Origin.
 // Playwright (e2e/ports.ts) points the proxies at its own API block through these variables; unset, the dev defaults apply.
 declare const process: { env: Record<string, string | undefined> };
-const api ={ target: `http://127.0.0.1:${process.env.VESQIRA_API_PORT ?? 8787}`, changeOrigin: false };
+// ws: the integrated terminal (ADR 0029) is a WebSocket at /api/terminal; the upgrade must reach the API with the page's Host and Origin untouched.
+const api ={ target: `http://127.0.0.1:${process.env.VESQIRA_API_PORT ?? 8787}`, changeOrigin: false, ws: true };
 const review = { target: `http://127.0.0.1:${process.env.VESQIRA_REVIEW_PORT ?? 8788}`, changeOrigin: false };
 const proxy = { "/api": api, "/review-api": review };
 

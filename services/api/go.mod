@@ -6,7 +6,9 @@ toolchain go1.26.11
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/creack/pty v1.1.24
 	github.com/getkin/kin-openapi v0.153.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	go.yaml.in/yaml/v4 v4.0.0
 	modernc.org/sqlite v1.62.0

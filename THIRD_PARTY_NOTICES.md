@@ -429,3 +429,11 @@ The scientific worker (`services/scientific-worker`) imports these packages at r
 ## Tauri (desktop shell, MIT OR Apache-2.0)
 
 `tauri` (2.12.5) and `tauri-plugin-dialog` (2.8.4) are the desktop shell's window and native file dialog (`apps/desktop`). Licensed MIT OR Apache-2.0, Copyright (c) 2017 – present Tauri Programme within The Commons Conservancy. Full texts: each crate's `LICENSE_MIT` and `LICENSE_APACHE-2.0`. Their transitive crates are listed in `apps/desktop/Cargo.lock`.
+
+## Terminal (Go API and web app)
+
+`github.com/gorilla/websocket` (v1.5.3) carries the integrated terminal's WebSocket. BSD-2-Clause License, Copyright (c) 2013 The Gorilla WebSocket Authors. Full text: the module's `LICENSE`.
+
+`github.com/creack/pty` (v1.1.24) opens the terminal's pseudo-terminal. MIT License, Copyright (c) 2011 Keith Rarick. Full text: the module's `LICENSE`.
+
+`@xterm/xterm` (6.0.0) and `@xterm/addon-fit` (0.11.0) draw the terminal in the web app. MIT License, Copyright (c) 2017-2019 The xterm.js authors. Full text: each package's `LICENSE`.
