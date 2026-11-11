@@ -147,13 +147,37 @@ func TestResponsesMatchTheSpecForCapabilitiesFiguresAndBoards(t *testing.T) {
 		t.Errorf("the preflight should freeze the job panel: %s", pf)
 	}
 	call("GET", "/api/boards/{id}/snapshots", api+"/api/boards/"+bid+"/snapshots", nil, 200) // none yet
-	call("POST", "/api/boards/{id}/publish", api+"/api/boards/"+bid+"/publish", map[string]any{"label": "v1", "hours": 24, "question": "Is it real?"}, 201)
+	var pub struct {
+		Snapshot boards.Snapshot `json:"snapshot"`
+		Token    string          `json:"token"`
+	}
+	json.Unmarshal(call("POST", "/api/boards/{id}/publish", api+"/api/boards/"+bid+"/publish", map[string]any{"label": "v1", "hours": 24, "question": "Is it real?"}, 201), &pub)
 	call("POST", "/api/boards/{id}/publish", api+"/api/boards/"+bid+"/publish", map[string]any{"label": "v2", "hours": 24, "supersedes": 1, "reason": "rescaled"}, 201)
 	var snaps struct{ Snapshots []json.RawMessage }
 	json.Unmarshal(call("GET", "/api/boards/{id}/snapshots", api+"/api/boards/"+bid+"/snapshots", nil, 200), &snaps)
 	if len(snaps.Snapshots) != 2 {
 		t.Fatalf("want 2 snapshots, got %d", len(snaps.Snapshots))
 	}
+
+	// the author's side of a review: read the reviewers' comments, answer in a thread, close it, end the link
+	sid := itoa(int(pub.Snapshot.ID))
+	call("GET", "/api/snapshots/{id}/comments", api+"/api/snapshots/"+sid+"/comments", nil, 200) // none yet: an empty list, not null
+	first, err := bs.AddComment(pub.Token, boards.CommentInput{FigureRevision: fig1.Revision, Author: "Sam", Body: "Is this a ring?", Anchor: &boards.Anchor{Kind: "point", X: 0.2, Y: 0.3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call("POST", "/api/snapshots/{id}/comments", api+"/api/snapshots/"+sid+"/comments", map[string]any{"parentId": first.ID, "body": "An artefact"}, 201)
+	list := call("GET", "/api/snapshots/{id}/comments", api+"/api/snapshots/"+sid+"/comments", nil, 200)
+	if !strings.Contains(string(list), `"fromOwner":true`) {
+		t.Errorf("the author's reply should be listed: %s", list)
+	}
+	call("POST", "/api/comments/{id}/resolve", api+"/api/comments/"+itoa(int(first.ID))+"/resolve", map[string]any{"resolved": true}, 200)
+	// revoke takes no body (the web client sends {}), so it does not go through call
+	rr, rb := postJSON(t, api+"/api/snapshots/"+sid+"/revoke", map[string]any{})
+	if rr.StatusCode != 200 {
+		t.Fatalf("revoke: %d %s", rr.StatusCode, rb)
+	}
+	conforms(t, responseSchema(t, doc, "/api/snapshots/{id}/revoke", "POST", "application/json"), "POST /api/snapshots/{id}/revoke", rb)
 
 	// the spec names the Error shape for failures of these routes too
 	for _, u := range []string{"/api/boards/999"} {

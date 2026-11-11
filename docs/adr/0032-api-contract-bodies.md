@@ -1,13 +1,13 @@
 # ADR 0032: Request and response bodies in the API contract
 
-- Status: accepted; implemented for the datasets group (list, dataset, view, plane header), `GET /api/capabilities`, and every figures and boards operation (16: figure list, create, text, preview, download; board list, create, get, add item, move, note, pin, remove, preflight, publish, snapshots). The remaining groups are specified, not implemented
+- Status: accepted; implemented for the datasets group (list, dataset, view, plane header), `GET /api/capabilities`, and the review surface (the four `/review-api` JSON and PNG operations, the snapshot comments, reply and revoke, and thread resolve), and every figures and boards operation (16: figure list, create, text, preview, download; board list, create, get, add item, move, note, pin, remove, preflight, publish, snapshots). The remaining groups are specified, not implemented
 - Date: 2026-11-10
 
 ## Context
 `packages/contracts/openapi.yaml` lists routes only. The TypeScript types in `apps/web/src/api` are written by hand next to Go structs, so a renamed or retyped JSON field breaks the browser at run time and no check notices. Route extraction is guarded (`tools/contracts.py --check` fails on registrations it cannot read); bodies are the remaining gap. The README deferred this until shapes settle; the API now has about 150 operations and an installable app, so the drift risk is real.
 
 ## Decision
-Describe bodies spec-first, one route group at a time, starting with the groups the viewer and review depend on (planes, catalog, figures, boards, review). The OpenAPI file stays the single source; `openapi-typescript` generates `apps/web/src/api/schema.d.ts` from it and the hand-written modules import those types. Each described operation gets a Go contract test that decodes a real handler response into the spec's schema (kin-openapi), so Go and the spec cannot diverge either. Undescribed operations stay allowed, but `contracts.py --check` reports how many are still undescribed so the number only goes down.
+Describe bodies spec-first, one route group at a time, starting with the groups the viewer and review depend on (planes, catalog, figures, boards, review). The OpenAPI file stays the single source; `openapi-typescript` generates `apps/web/src/api/schema.d.ts` from it and the hand-written modules import those types. Each described operation gets a Go contract test that decodes a real handler response into the spec's schema (kin-openapi), so Go and the spec cannot diverge either. Undescribed operations stay allowed, but `packages/contracts/undescribed.txt` is a ratchet: `contracts.py --check` fails for a new undescribed operation and for a listed one that has since been described, so the number only goes down.
 
 Implementation notes (first slice): the descriptions live in `packages/contracts/bodies.json` and `tools/contracts.py` merges them into the generated `openapi.yaml` (the generator stays standard-library only). The type generator runs from `packages/contracts`, not `apps/web`, because `openapi-typescript` needs the TypeScript 5 compiler API and the web app uses TypeScript 7.
 

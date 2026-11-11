@@ -395,6 +395,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close or reopen a thread (author only; the id is a thread's first comment) */
         post: operations["owner_s_resolveComment_post_api_comments_id_resolve"];
         delete?: never;
         options?: never;
@@ -2246,8 +2247,10 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** Comments on a published snapshot, for its author */
         get: operations["owner_s_snapshotComments_get_api_snapshots_id_comments"];
         put?: never;
+        /** The author replies inside a reviewer's thread */
         post: operations["owner_s_ownerReply_post_api_snapshots_id_comments"];
         delete?: never;
         options?: never;
@@ -2266,6 +2269,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** End a review link; the snapshot and its comments stay readable to the author */
         post: operations["owner_s_revoke_post_api_snapshots_id_revoke"];
         delete?: never;
         options?: never;
@@ -2581,6 +2585,7 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** The frozen board a reviewer opens, with its comments and outcome */
         get: operations["review_h_snapshot_get_review_api_token"];
         put?: never;
         post?: never;
@@ -2601,6 +2606,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** A reviewer starts a thread or replies in one */
         post: operations["review_h_comment_post_review_api_token_comments"];
         delete?: never;
         options?: never;
@@ -2619,6 +2625,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** A reviewer's word on this version; each call is kept and the latest counts */
         post: operations["review_h_outcome_post_review_api_token_outcome"];
         delete?: never;
         options?: never;
@@ -2636,6 +2643,7 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** One published preview picture of the snapshot */
         get: operations["review_h_preview_get_review_api_token_preview_sha"];
         put?: never;
         post?: never;
@@ -3316,6 +3324,114 @@ export interface components {
             ids?: number[];
             all?: boolean;
         };
+        /** @description A point on the published picture, in fractions of its width and height from the top left (0 to 1). It refers to the picture as drawn, not to a sky position. */
+        AnchorPoint: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "point";
+            x: number;
+            y: number;
+        };
+        /** @description A box on the published picture; (x, y) is the top left corner and (x1, y1) the opposite one, with x < x1 and y < y1. */
+        AnchorBox: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "box";
+            x: number;
+            y: number;
+            x1: number;
+            y1: number;
+        };
+        Anchor: components["schemas"]["AnchorPoint"] | components["schemas"]["AnchorBox"];
+        /** @description A reviewer's comment, or the author's reply, in a thread on one figure of a snapshot. */
+        Comment: {
+            /** Format: int64 */
+            id: number;
+            figureRevision: string;
+            /**
+             * Format: int64
+             * @description 0 for the first comment of a thread
+             */
+            parentId: number;
+            author: string;
+            fromOwner: boolean;
+            body: string;
+            anchor?: components["schemas"]["Anchor"];
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Set on a thread's first comment when the author closes it
+             */
+            resolvedAt?: string;
+        };
+        CommentList: {
+            comments: components["schemas"]["Comment"][];
+        };
+        /** @description A new thread needs figureRevision (a figure of this snapshot) and may carry an anchor; a reply names parentId instead and takes the thread's figure, with no anchor. author defaults to Reviewer. */
+        ReviewCommentRequest: {
+            figureRevision?: string;
+            /** Format: int64 */
+            parentId?: number;
+            author?: string;
+            body: string;
+            anchor?: components["schemas"]["Anchor"];
+        };
+        OwnerReplyRequest: {
+            /**
+             * Format: int64
+             * @description The first comment of the thread being answered
+             */
+            parentId: number;
+            body: string;
+        };
+        /**
+         * @description What the reviewer thought of the review itself; not a scientific assessment of any run.
+         * @enum {string}
+         */
+        OutcomeValue: "commented" | "changes_requested" | "reviewed";
+        OutcomeRequest: {
+            outcome: components["schemas"]["OutcomeValue"];
+            note?: string;
+            author?: string;
+        };
+        Outcome: {
+            /**
+             * @description Empty: not yet reviewed
+             * @enum {string}
+             */
+            value: "" | "commented" | "changes_requested" | "reviewed";
+            note?: string;
+            by?: string;
+            /** Format: date-time */
+            at?: string;
+        };
+        /** @description Set when the author has replaced this version; the link keeps working. */
+        Superseded: {
+            reason: string;
+            /** Format: date-time */
+            at: string;
+        };
+        /** @description Everything a reviewer's browser receives for one link. */
+        Review: {
+            snapshot: components["schemas"]["Frozen"];
+            comments: components["schemas"]["Comment"][];
+            outcome: components["schemas"]["Outcome"];
+            superseded?: components["schemas"]["Superseded"];
+        };
+        Revoked: {
+            revoked: boolean;
+        };
+        Resolved: {
+            resolved: boolean;
+        };
+        ResolveRequest: {
+            resolved: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -3920,18 +4036,33 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveRequest"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Resolved"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -6396,7 +6527,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
@@ -6407,7 +6538,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CommentList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -6416,18 +6558,33 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OwnerReplyRequest"];
+            };
+        };
         responses: {
-            /** @description ok */
-            200: {
+            /** @description created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -6436,7 +6593,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                id: number;
             };
             cookie?: never;
         };
@@ -6447,7 +6604,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Revoked"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -6807,6 +6975,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The review link's secret; an unknown, expired or revoked one is the same 404 */
                 token: string;
             };
             cookie?: never;
@@ -6816,9 +6985,42 @@ export interface operations {
             /** @description ok */
             200: {
                 headers: {
+                    "Cache-Control"?: "no-store";
+                    "Referrer-Policy"?: "no-referrer";
+                    "X-Content-Type-Options"?: "nosniff";
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Review"];
+                };
+            };
+            /** @description Unknown, expired or revoked link (always the same body) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many failed links from this address; plain text, not the Error shape */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Plain text, not the Error shape: 400 (bad body), 415 (not application/json), 500 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
             };
         };
     };
@@ -6827,18 +7029,65 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The review link's secret; an unknown, expired or revoked one is the same 404 */
                 token: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewCommentRequest"];
+            };
+        };
         responses: {
-            /** @description ok */
-            200: {
+            /** @description created */
+            201: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "Referrer-Policy"?: "no-referrer";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            /** @description Unknown, expired or revoked link (always the same body) */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The comment needs text, a figure of this snapshot, and a valid place if one is marked */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many failed links from this address; plain text, not the Error shape */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Plain text, not the Error shape: 400 (bad body), 415 (not application/json), 500 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
             };
         };
     };
@@ -6847,18 +7096,65 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The review link's secret; an unknown, expired or revoked one is the same 404 */
                 token: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeRequest"];
+            };
+        };
         responses: {
-            /** @description ok */
-            200: {
+            /** @description created */
+            201: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "Referrer-Policy"?: "no-referrer";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Outcome"];
+                };
+            };
+            /** @description Unknown, expired or revoked link (always the same body) */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The outcome is not one of commented, changes_requested, reviewed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many failed links from this address; plain text, not the Error shape */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Plain text, not the Error shape: 400 (bad body), 415 (not application/json), 500 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
             };
         };
     };
@@ -6867,7 +7163,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The review link's secret; an unknown, expired or revoked one is the same 404 */
                 token: string;
+                /** @description previewSha of a figure of this snapshot; any other hash is a 404 */
                 sha: string;
             };
             cookie?: never;
@@ -6877,9 +7175,42 @@ export interface operations {
             /** @description ok */
             200: {
                 headers: {
+                    "Cache-Control"?: "no-store";
+                    "Referrer-Policy"?: "no-referrer";
+                    "X-Content-Type-Options"?: "nosniff";
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Unknown, expired or revoked link (always the same body) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many failed links from this address; plain text, not the Error shape */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Plain text, not the Error shape: 400 (bad body), 415 (not application/json), 500 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
             };
         };
     };
