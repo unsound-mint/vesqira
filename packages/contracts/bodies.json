@@ -10858,6 +10858,717 @@
      "$ref": "#/components/schemas/BoardExpect"
     }
    }
+  },
+  "ImportRule": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string",
+     "description": "Unique in the project; what its declarations are labelled with (\"declared by your rule <name>\"). 1 to 40 letters, digits, blanks, dots, dashes or underscores."
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "glob",
+      "regex"
+     ],
+     "description": "glob: a pattern without \"/\" matches the file name at any depth, one with \"/\" is anchored at the project folder, \"**\" stands for any number of folders, matching is case-sensitive. regex: Go (RE2) syntax searched in the relative path."
+    },
+    "pattern": {
+     "type": "string",
+     "maxLength": 300
+    },
+    "role": {
+     "type": "string",
+     "enum": [
+      "dataset",
+      "orientation",
+      "catalog",
+      "ignore"
+     ]
+    },
+    "unit": {
+     "type": "string",
+     "description": "dataset: the unit the files are declared to have. A file that states its own BUNIT keeps it."
+    },
+    "angleUnit": {
+     "type": "string",
+     "enum": [
+      "deg",
+      "rad",
+      ""
+     ],
+     "description": "orientation (required) and catalog angle column: never defaulted."
+    },
+    "angleFrame": {
+     "type": "string",
+     "enum": [
+      "pixel",
+      "sky",
+      ""
+     ],
+     "description": "orientation: empty means not declared."
+    },
+    "quantity": {
+     "type": "string",
+     "description": "orientation and catalog angle: b_field, gradient, dust_polarization, starlight_polarization or unspecified; empty means not declared."
+    },
+    "lon": {
+     "type": "string"
+    },
+    "lat": {
+     "type": "string"
+    },
+    "coordFormat": {
+     "type": "string",
+     "description": "catalog: degrees, hours_degrees, sexagesimal_hours_degrees or sexagesimal_degrees."
+    },
+    "coordFrame": {
+     "type": "string",
+     "description": "catalog: icrs, fk5, fk4 or galactic. Required: the file does not say."
+    },
+    "equinox": {
+     "type": "string"
+    },
+    "angleColumn": {
+     "type": "string"
+    },
+    "sigmaColumn": {
+     "type": "string"
+    },
+    "values": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "name",
+    "kind",
+    "pattern",
+    "role"
+   ],
+   "description": "A researcher import rule (ADR 0058). Which declaration fields a role accepts is checked when the rules are saved."
+  },
+  "ImportRulesFile": {
+   "type": "object",
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "none",
+      "same",
+      "differs",
+      "foreign"
+     ],
+     "description": "none: project.toml holds no rules; same: it holds the saved rules; differs: it holds others; foreign: it holds [[import.rules]] Vesqira did not write, which it never rewrites."
+    },
+    "error": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "state"
+   ]
+  },
+  "ImportSummary": {
+   "type": "object",
+   "properties": {
+    "rules": {
+     "type": "integer"
+    },
+    "matched": {
+     "type": "integer",
+     "description": "Files a rule selects for registration (dataset, orientation or catalog) in the last scan."
+    },
+    "pending": {
+     "type": "integer",
+     "description": "Of those, files not applied yet at their current size and time."
+    },
+    "new": {
+     "type": "integer",
+     "description": "Of the pending ones, files the previous scan did not know: \"N new files match your rules\". Never registered by a scan."
+    }
+   },
+   "required": [
+    "rules",
+    "matched",
+    "pending",
+    "new"
+   ]
+  },
+  "ImportRulesState": {
+   "type": "object",
+   "properties": {
+    "rules": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ImportRule"
+     }
+    },
+    "file": {
+     "$ref": "#/components/schemas/ImportRulesFile"
+    },
+    "summary": {
+     "nullable": true,
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/ImportSummary"
+      }
+     ]
+    }
+   },
+   "required": [
+    "rules",
+    "file"
+   ]
+  },
+  "ImportRulesRequest": {
+   "type": "object",
+   "properties": {
+    "rules": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ImportRule"
+     }
+    }
+   },
+   "required": [
+    "rules"
+   ],
+   "description": "The whole ordered list; the first matching rule wins."
+  },
+  "ImportRulesWriteRequest": {
+   "type": "object",
+   "properties": {
+    "write": {
+     "type": "boolean",
+     "description": "Must be true: the rules are written to .vesqira/project.toml only on this confirmation."
+    }
+   },
+   "required": [
+    "write"
+   ]
+  },
+  "ImportRulesWriteReply": {
+   "type": "object",
+   "properties": {
+    "written": {
+     "type": "boolean"
+    },
+    "path": {
+     "type": "string"
+    },
+    "rules": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "written",
+    "path",
+    "rules"
+   ]
+  },
+  "ImportPreviewRequest": {
+   "type": "object",
+   "properties": {
+    "folder": {
+     "type": "string",
+     "description": "A folder inside the project, relative to it; empty for the whole project."
+    },
+    "rescan": {
+     "type": "boolean",
+     "description": "Walk again; otherwise the last walk (at most ten minutes old) is matched again."
+    },
+    "rules": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ImportRule"
+     },
+     "description": "A draft list to preview; when absent the saved rules are used. Nothing is saved."
+    },
+    "expand": {
+     "type": "string",
+     "description": "A group key (role|extension|author) whose files are all listed (up to 500)."
+    }
+   }
+  },
+  "ImportProposal": {
+   "type": "object",
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "size": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "mtimeNs": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "format": {
+     "type": "string"
+    },
+    "role": {
+     "type": "string",
+     "description": "The built-in role: dataset, catalog, run_record, vgt_psi, vgt_reliability, vgt_support, vgt_fit_rbar2, run_output, rohsa_fit, rohsa_product, config, job_template, archive, other_discipline, declared_data or other."
+    },
+    "why": {
+     "type": "string",
+     "description": "The built-in rule behind the role."
+    },
+    "runPath": {
+     "type": "string"
+    },
+    "locked": {
+     "type": "boolean"
+    },
+    "proposedRole": {
+     "type": "string",
+     "description": "The built-in role, or the winning rule's role."
+    },
+    "by": {
+     "type": "string",
+     "description": "\"built-in\" or the name of the rule that won."
+    },
+    "rule": {
+     "type": "string"
+    },
+    "matched": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Every rule that matched, in order."
+    },
+    "declares": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "What the winning rule would declare, each statement labelled \"declared by your rule <name>\"."
+    },
+    "warnings": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "path",
+    "size",
+    "mtimeNs",
+    "role",
+    "why",
+    "proposedRole",
+    "by"
+   ]
+  },
+  "ImportGroup": {
+   "type": "object",
+   "properties": {
+    "role": {
+     "type": "string"
+    },
+    "ext": {
+     "type": "string"
+    },
+    "by": {
+     "type": "string"
+    },
+    "why": {
+     "type": "string"
+    },
+    "count": {
+     "type": "integer"
+    },
+    "bytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "samples": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ImportProposal"
+     }
+    }
+   },
+   "required": [
+    "role",
+    "ext",
+    "by",
+    "why",
+    "count",
+    "bytes",
+    "samples"
+   ]
+  },
+  "ImportRuleReport": {
+   "type": "object",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "error": {
+     "type": "string"
+    },
+    "matches": {
+     "type": "integer"
+    },
+    "wins": {
+     "type": "integer"
+    },
+    "shadowed": {
+     "type": "integer"
+    },
+    "examples": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "name",
+    "matches",
+    "wins",
+    "shadowed",
+    "examples"
+   ]
+  },
+  "ImportConflict": {
+   "type": "object",
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "rules": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "winner": {
+     "type": "string"
+    },
+    "differ": {
+     "type": "boolean",
+     "description": "The rules would not say the same thing."
+    }
+   },
+   "required": [
+    "path",
+    "rules",
+    "winner",
+    "differ"
+   ]
+  },
+  "ImportPreview": {
+   "type": "object",
+   "properties": {
+    "folder": {
+     "type": "string"
+    },
+    "scannedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "entries": {
+     "type": "integer"
+    },
+    "truncated": {
+     "type": "boolean",
+     "description": "The walk stopped at its entry, time or depth budget; what is listed is what was reached."
+    },
+    "truncatedWhy": {
+     "type": "string"
+    },
+    "othersTruncated": {
+     "type": "boolean",
+     "description": "More unrecognised files exist than the 50 000 that are listed."
+    },
+    "notes": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "files": {
+     "type": "integer"
+    },
+    "groups": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ImportGroup"
+     }
+    },
+    "rulesFrom": {
+     "type": "string",
+     "enum": [
+      "draft",
+      "saved"
+     ]
+    },
+    "rules": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ImportRuleReport"
+     }
+    },
+    "conflicts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ImportConflict"
+     }
+    },
+    "conflictCount": {
+     "type": "integer"
+    },
+    "selected": {
+     "type": "object",
+     "properties": {
+      "files": {
+       "type": "integer"
+      },
+      "byRole": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "integer"
+       }
+      },
+      "pending": {
+       "type": "integer"
+      },
+      "applied": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "files",
+      "byRole",
+      "pending",
+      "applied"
+     ]
+    },
+    "skipped": {
+     "type": "object",
+     "properties": {
+      "dirs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "dirCount": {
+       "type": "integer"
+      },
+      "neverRead": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "archiveCount": {
+       "type": "integer"
+      },
+      "archiveBytes": {
+       "type": "integer",
+       "format": "int64"
+      },
+      "links": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "dirs",
+      "dirCount",
+      "neverRead",
+      "archiveCount",
+      "archiveBytes",
+      "links"
+     ]
+    }
+   },
+   "required": [
+    "folder",
+    "scannedAt",
+    "entries",
+    "truncated",
+    "files",
+    "groups",
+    "rulesFrom",
+    "rules",
+    "conflicts",
+    "conflictCount",
+    "selected",
+    "skipped"
+   ],
+   "description": "What a folder holds under the built-in rules and a list of rules. Read-only: it registers nothing and writes nothing."
+  },
+  "ImportApplyRequest": {
+   "type": "object",
+   "properties": {
+    "confirm": {
+     "type": "boolean",
+     "description": "Must be true: files are registered only on this confirmation."
+    },
+    "folder": {
+     "type": "string"
+    },
+    "paths": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Only these files (each must be selected by a saved rule); default: every selected file not settled at its current size and time. At most 200 are handled per request; the rest is reported as remaining."
+    },
+    "asNew": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Register these files although a dataset already holds the same bytes (ADR 0053)."
+    }
+   },
+   "required": [
+    "confirm"
+   ]
+  },
+  "ImportApplyResult": {
+   "type": "object",
+   "properties": {
+    "path": {
+     "type": "string"
+    },
+    "rule": {
+     "type": "string"
+    },
+    "role": {
+     "type": "string"
+    },
+    "outcome": {
+     "type": "string",
+     "enum": [
+      "registered",
+      "declared",
+      "duplicate",
+      "skipped",
+      "failed"
+     ],
+     "description": "declared: already registered, only the rule's declarations applied. duplicate: offered, not registered. skipped: nothing changed, the detail says why."
+    },
+    "detail": {
+     "type": "string"
+    },
+    "datasetId": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true
+    },
+    "declared": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Each declaration applied, labelled \"declared by your rule <name>\"."
+    },
+    "matches": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "datasetId": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "locationId": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "name": {
+        "type": "string"
+       },
+       "relation": {
+        "type": "string",
+        "enum": [
+         "verified",
+         "probable"
+        ]
+       }
+      },
+      "required": [
+       "datasetId",
+       "relation"
+      ]
+     },
+     "description": "duplicate: the datasets that already hold the same bytes."
+    }
+   },
+   "required": [
+    "path",
+    "rule",
+    "role",
+    "outcome",
+    "detail",
+    "declared"
+   ]
+  },
+  "ImportApplyReply": {
+   "type": "object",
+   "properties": {
+    "results": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ImportApplyResult"
+     }
+    },
+    "summary": {
+     "type": "object",
+     "properties": {
+      "registered": {
+       "type": "integer"
+      },
+      "declared": {
+       "type": "integer"
+      },
+      "duplicates": {
+       "type": "integer"
+      },
+      "skipped": {
+       "type": "integer"
+      },
+      "failed": {
+       "type": "integer"
+      },
+      "remaining": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "registered",
+      "declared",
+      "duplicates",
+      "skipped",
+      "failed",
+      "remaining"
+     ]
+    },
+    "importSummary": {
+     "nullable": true,
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/ImportSummary"
+      }
+     ]
+    }
+   },
+   "required": [
+    "results",
+    "summary"
+   ]
   }
  },
  "operations": {
@@ -11446,7 +12157,8 @@
     "content": {
      "application/json": {
       "schema": {
-       "$ref": "#/components/schemas/BoardRemoveRequest"
+       "$ref": "#/components/schemas/BoardRemoveRequest",
+       "type": "object"
       }
      }
     }
@@ -15892,6 +16604,346 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/ExplorationStep"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/projects/{id}/import/rules": {
+   "summary": "The project's saved import rules in priority order, whether project.toml holds them, and what the last scan counted",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ImportRulesState"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such project",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "PUT /api/projects/{id}/import/rules": {
+   "summary": "Replace the saved import rules (the order is the priority). Saved in the catalog only; project.toml changes only through the write route",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/ImportRulesRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ImportRulesState"
+       }
+      }
+     }
+    },
+    "422": {
+     "description": "a rule is not valid (reasons)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such project",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/projects/{id}/import/rules/write": {
+   "summary": "Write the saved rules into .vesqira/project.toml as a section Vesqira marks as its own, on explicit confirmation; the rest of the file is kept byte for byte",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/ImportRulesWriteRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ImportRulesWriteReply"
+       }
+      }
+     }
+    },
+    "400": {
+     "description": "not confirmed",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "the file holds [[import.rules]] Vesqira did not write, or (on a host) was not written by Vesqira",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such project",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/projects/{id}/import/preview": {
+   "summary": "Scan preview: every file of a folder with its built-in role and why, grouped by role and extension, and what a list of rules (draft or saved) does to them. Read-only",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/ImportPreviewRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ImportPreview"
+       }
+      }
+     }
+    },
+    "422": {
+     "description": "not a folder inside the project",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such project",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/projects/{id}/import/apply": {
+   "summary": "Register the files the saved rules select through the existing registration paths and apply their declarations as declared by the rule; duplicates are offered, not registered",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/ImportApplyRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ImportApplyReply"
+       }
+      }
+     }
+    },
+    "400": {
+     "description": "not confirmed",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "no saved rules, or an import is already running",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "422": {
+     "description": "a path no saved rule selects",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "no such project",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
        }
       }
      }

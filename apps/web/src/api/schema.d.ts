@@ -2152,6 +2152,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}/import/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register the files the saved rules select through the existing registration paths and apply their declarations as declared by the rule; duplicates are offered, not registered */
+        post: operations["owner_s_importApplyRoute_post_api_projects_id_import_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/import/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan preview: every file of a folder with its built-in role and why, grouped by role and extension, and what a list of rules (draft or saved) does to them. Read-only */
+        post: operations["owner_s_importPreviewRoute_post_api_projects_id_import_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/import/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The project's saved import rules in priority order, whether project.toml holds them, and what the last scan counted */
+        get: operations["owner_s_importRulesGet_get_api_projects_id_import_rules"];
+        /** Replace the saved import rules (the order is the priority). Saved in the catalog only; project.toml changes only through the write route */
+        put: operations["owner_s_importRulesPut_put_api_projects_id_import_rules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/import/rules/write": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Write the saved rules into .vesqira/project.toml as a section Vesqira marks as its own, on explicit confirmation; the rest of the file is kept byte for byte */
+        post: operations["owner_s_importRulesWrite_post_api_projects_id_import_rules_write"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{id}/needs": {
         parameters: {
             query?: never;
@@ -7086,6 +7163,220 @@ export interface components {
         BoardRemoveRequest: {
             expect?: components["schemas"]["BoardExpect"];
         };
+        /** @description A researcher import rule (ADR 0058). Which declaration fields a role accepts is checked when the rules are saved. */
+        ImportRule: {
+            /** @description Unique in the project; what its declarations are labelled with ("declared by your rule <name>"). 1 to 40 letters, digits, blanks, dots, dashes or underscores. */
+            name: string;
+            /**
+             * @description glob: a pattern without "/" matches the file name at any depth, one with "/" is anchored at the project folder, "**" stands for any number of folders, matching is case-sensitive. regex: Go (RE2) syntax searched in the relative path.
+             * @enum {string}
+             */
+            kind: "glob" | "regex";
+            pattern: string;
+            /** @enum {string} */
+            role: "dataset" | "orientation" | "catalog" | "ignore";
+            /** @description dataset: the unit the files are declared to have. A file that states its own BUNIT keeps it. */
+            unit?: string;
+            /**
+             * @description orientation (required) and catalog angle column: never defaulted.
+             * @enum {string}
+             */
+            angleUnit?: "deg" | "rad" | "";
+            /**
+             * @description orientation: empty means not declared.
+             * @enum {string}
+             */
+            angleFrame?: "pixel" | "sky" | "";
+            /** @description orientation and catalog angle: b_field, gradient, dust_polarization, starlight_polarization or unspecified; empty means not declared. */
+            quantity?: string;
+            lon?: string;
+            lat?: string;
+            /** @description catalog: degrees, hours_degrees, sexagesimal_hours_degrees or sexagesimal_degrees. */
+            coordFormat?: string;
+            /** @description catalog: icrs, fk5, fk4 or galactic. Required: the file does not say. */
+            coordFrame?: string;
+            equinox?: string;
+            angleColumn?: string;
+            sigmaColumn?: string;
+            values?: string[];
+        };
+        ImportRulesFile: {
+            /**
+             * @description none: project.toml holds no rules; same: it holds the saved rules; differs: it holds others; foreign: it holds [[import.rules]] Vesqira did not write, which it never rewrites.
+             * @enum {string}
+             */
+            state: "none" | "same" | "differs" | "foreign";
+            error?: string;
+        };
+        ImportSummary: {
+            rules: number;
+            /** @description Files a rule selects for registration (dataset, orientation or catalog) in the last scan. */
+            matched: number;
+            /** @description Of those, files not applied yet at their current size and time. */
+            pending: number;
+            /** @description Of the pending ones, files the previous scan did not know: "N new files match your rules". Never registered by a scan. */
+            new: number;
+        };
+        ImportRulesState: {
+            rules: components["schemas"]["ImportRule"][];
+            file: components["schemas"]["ImportRulesFile"];
+            summary?: components["schemas"]["ImportSummary"] | null;
+        };
+        /** @description The whole ordered list; the first matching rule wins. */
+        ImportRulesRequest: {
+            rules: components["schemas"]["ImportRule"][];
+        };
+        ImportRulesWriteRequest: {
+            /** @description Must be true: the rules are written to .vesqira/project.toml only on this confirmation. */
+            write: boolean;
+        };
+        ImportRulesWriteReply: {
+            written: boolean;
+            path: string;
+            rules: number;
+        };
+        ImportPreviewRequest: {
+            /** @description A folder inside the project, relative to it; empty for the whole project. */
+            folder?: string;
+            /** @description Walk again; otherwise the last walk (at most ten minutes old) is matched again. */
+            rescan?: boolean;
+            /** @description A draft list to preview; when absent the saved rules are used. Nothing is saved. */
+            rules?: components["schemas"]["ImportRule"][];
+            /** @description A group key (role|extension|author) whose files are all listed (up to 500). */
+            expand?: string;
+        };
+        ImportProposal: {
+            path: string;
+            /** Format: int64 */
+            size: number;
+            /** Format: int64 */
+            mtimeNs: number;
+            format?: string;
+            /** @description The built-in role: dataset, catalog, run_record, vgt_psi, vgt_reliability, vgt_support, vgt_fit_rbar2, run_output, rohsa_fit, rohsa_product, config, job_template, archive, other_discipline, declared_data or other. */
+            role: string;
+            /** @description The built-in rule behind the role. */
+            why: string;
+            runPath?: string;
+            locked?: boolean;
+            /** @description The built-in role, or the winning rule's role. */
+            proposedRole: string;
+            /** @description "built-in" or the name of the rule that won. */
+            by: string;
+            rule?: string;
+            /** @description Every rule that matched, in order. */
+            matched?: string[];
+            /** @description What the winning rule would declare, each statement labelled "declared by your rule <name>". */
+            declares?: string[];
+            warnings?: string[];
+        };
+        ImportGroup: {
+            role: string;
+            ext: string;
+            by: string;
+            why: string;
+            count: number;
+            /** Format: int64 */
+            bytes: number;
+            samples: components["schemas"]["ImportProposal"][];
+        };
+        ImportRuleReport: {
+            name: string;
+            error?: string;
+            matches: number;
+            wins: number;
+            shadowed: number;
+            examples: string[];
+        };
+        ImportConflict: {
+            path: string;
+            rules: string[];
+            winner: string;
+            /** @description The rules would not say the same thing. */
+            differ: boolean;
+        };
+        /** @description What a folder holds under the built-in rules and a list of rules. Read-only: it registers nothing and writes nothing. */
+        ImportPreview: {
+            folder: string;
+            /** Format: date-time */
+            scannedAt: string;
+            entries: number;
+            /** @description The walk stopped at its entry, time or depth budget; what is listed is what was reached. */
+            truncated: boolean;
+            truncatedWhy?: string;
+            /** @description More unrecognised files exist than the 50 000 that are listed. */
+            othersTruncated?: boolean;
+            notes?: string[];
+            files: number;
+            groups: components["schemas"]["ImportGroup"][];
+            /** @enum {string} */
+            rulesFrom: "draft" | "saved";
+            rules: components["schemas"]["ImportRuleReport"][];
+            conflicts: components["schemas"]["ImportConflict"][];
+            conflictCount: number;
+            selected: {
+                files: number;
+                byRole: {
+                    [key: string]: number;
+                };
+                pending: number;
+                applied: number;
+            };
+            skipped: {
+                dirs: string[];
+                dirCount: number;
+                neverRead: string[];
+                archiveCount: number;
+                /** Format: int64 */
+                archiveBytes: number;
+                links: number;
+            };
+        };
+        ImportApplyRequest: {
+            /** @description Must be true: files are registered only on this confirmation. */
+            confirm: boolean;
+            folder?: string;
+            /** @description Only these files (each must be selected by a saved rule); default: every selected file not settled at its current size and time. At most 200 are handled per request; the rest is reported as remaining. */
+            paths?: string[];
+            /** @description Register these files although a dataset already holds the same bytes (ADR 0053). */
+            asNew?: string[];
+        };
+        ImportApplyResult: {
+            path: string;
+            rule: string;
+            role: string;
+            /**
+             * @description declared: already registered, only the rule's declarations applied. duplicate: offered, not registered. skipped: nothing changed, the detail says why.
+             * @enum {string}
+             */
+            outcome: "registered" | "declared" | "duplicate" | "skipped" | "failed";
+            detail: string;
+            /** Format: int64 */
+            datasetId?: number | null;
+            /** @description Each declaration applied, labelled "declared by your rule <name>". */
+            declared: string[];
+            /** @description duplicate: the datasets that already hold the same bytes. */
+            matches?: {
+                /** Format: int64 */
+                datasetId: number;
+                /** Format: int64 */
+                locationId?: number;
+                name?: string;
+                /** @enum {string} */
+                relation: "verified" | "probable";
+            }[];
+        };
+        ImportApplyReply: {
+            results: components["schemas"]["ImportApplyResult"][];
+            summary: {
+                registered: number;
+                declared: number;
+                duplicates: number;
+                skipped: number;
+                failed: number;
+                remaining: number;
+            };
+            importSummary?: components["schemas"]["ImportSummary"] | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -10927,6 +11218,285 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_importApplyRoute_post_api_projects_id_import_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportApplyReply"];
+                };
+            };
+            /** @description not confirmed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no saved rules, or an import is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a path no saved rule selects */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_importPreviewRoute_post_api_projects_id_import_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreview"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not a folder inside the project */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_importRulesGet_get_api_projects_id_import_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRulesState"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_importRulesPut_put_api_projects_id_import_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRulesRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRulesState"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a rule is not valid (reasons) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_importRulesWrite_post_api_projects_id_import_rules_write: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRulesWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRulesWriteReply"];
+                };
+            };
+            /** @description not confirmed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the file holds [[import.rules]] Vesqira did not write, or (on a host) was not written by Vesqira */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

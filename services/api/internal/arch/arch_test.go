@@ -28,7 +28,7 @@ var allowed = map[string][]string{
 	"sweeps":     {"schema"},
 	"runs":       {"schema"},
 	"discover":   {"runs"},
-	"projects":   {"discover"},
+	"projects":   {"discover", "schema"},
 	"fullschema": {"audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "projects", "regions", "reports", "runs", "sweeps", "transfers"},
 	"hosts":      {"worker"},
 	"review":     {"boards"},
