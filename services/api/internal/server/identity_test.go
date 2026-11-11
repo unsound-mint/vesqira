@@ -137,7 +137,6 @@ func (e *idEnv) addLocation(id int64, path string, declare bool) (int, catalog.L
 	return code, l, m
 }
 
-
 func fileSHA(t *testing.T, p string) string {
 	t.Helper()
 	b, err := os.ReadFile(p)
