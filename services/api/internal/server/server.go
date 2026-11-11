@@ -171,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 			mux.HandleFunc("POST /api/jobs/{id}/reopen", s.reopenJob)
 			mux.HandleFunc("POST /api/jobs/{id}/cancel", s.cancelJob)
 			mux.HandleFunc("GET /api/jobs/{id}/log", s.jobLog)
+			mux.HandleFunc("GET /api/jobs/{id}/rerun-check", s.getRerunCheck)
 			mux.HandleFunc("POST /api/jobs/{id}/register", s.registerJobOutputs)
 			mux.HandleFunc("GET /api/jobs/{id}/result", s.jobResult)
 			if s.Sweeps != nil {
@@ -203,6 +204,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/runs/{id}", s.getRun)
 		mux.HandleFunc("GET /api/runs/{id}/rerun", s.rerunRun)
 		mux.HandleFunc("POST /api/runs/{id}/review", s.setRunReview)
+		mux.HandleFunc("PUT /api/runs/{id}/controls", s.setRunControls)
 		mux.HandleFunc("GET /api/runs/{id}/history", s.runHistory)
 		mux.HandleFunc("GET /api/runs/{id}/impact", s.lifecycleImpact("run"))
 		mux.HandleFunc("POST /api/runs/{id}/archive", s.lifecycleArchive("run", true))

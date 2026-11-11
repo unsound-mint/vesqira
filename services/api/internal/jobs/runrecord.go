@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
 // RunRecordName is the file Vesqira writes next to a job's outputs. It is a record format discovery already reads
@@ -72,6 +74,12 @@ func FoundEvidence(slurmID string, at time.Time) StateEvidence {
 //
 // Top-level keys are limited to `settings` on purpose: discovery would show any other top-level scalar as a setting.
 func RunRecord(j Job, hostName string, inputs []RunInput, ev StateEvidence, now time.Time) ([]byte, error) {
+	return RunRecordWithEnvironment(j, hostName, inputs, ev, now, nil)
+}
+
+// RunRecordWithEnvironment is RunRecord plus, when env is not empty, what the job itself observed about where it ran (read
+// from its vesqira-env.json), each fact with its status. Only a finished job has such a file, so earlier writes pass nil.
+func RunRecordWithEnvironment(j Job, hostName string, inputs []RunInput, ev StateEvidence, now time.Time, env []runs.EnvFact) ([]byte, error) {
 	settings := map[string]string{}
 	add := func(k, v string) {
 		if k == "" || len(k) > 80 || len(settings) >= maxRecordSettings {
@@ -112,6 +120,10 @@ func RunRecord(j Job, hostName string, inputs []RunInput, ev StateEvidence, now 
 	for _, m := range sbatchRe.FindAllStringSubmatch(j.Script, -1) {
 		add("slurm."+m[1], m[2])
 	}
+	rerunMode := ""
+	if r, ok := j.configRequestAny(); ok {
+		rerunMode = r.RerunMode
+	}
 	rec := map[string]any{
 		"settings": settings,
 		"vesqira": map[string]any{
@@ -136,6 +148,7 @@ func RunRecord(j Job, hostName string, inputs []RunInput, ev StateEvidence, now 
 				"host":          hostName,
 				"submitted_at":  stamp(j.SubmittedAt),
 				"finished_at":   stamp(j.FinishedAt),
+				"rerun_mode":    nilIfEmpty(rerunMode),
 			},
 			"code":   codeIdentity(j),
 			"inputs": inputsOrEmpty(input),
@@ -149,7 +162,45 @@ func RunRecord(j Job, hostName string, inputs []RunInput, ev StateEvidence, now 
 			},
 		},
 	}
+	if len(env) > 0 {
+		v := rec["vesqira"].(map[string]any)
+		v["environment"] = env
+		v["provenance"].(map[string]string)["environment"] = "verified for a fact whose status says so: observed by the job's own script when it ran, from vesqira-env.json next to the outputs (not signed); an unresolved fact says why it was not read"
+	}
 	return json.MarshalIndent(rec, "", "  ")
+}
+
+func nilIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// EmbeddedConfig is the config text a VGT or ROHSA script carries (what the program will read), if it has one.
+func EmbeddedConfig(script string) (string, bool) {
+	if m := cfgBlock.FindStringSubmatch(script); m != nil {
+		return m[1], true
+	}
+	return "", false
+}
+
+// EffectiveVGTSettings are the values a VGT job runs with: the config text it started from, with the settings the draft
+// changed over it, as "section.key" entries (the form the run page lists them in).
+func EffectiveVGTSettings(req VGTRequest) map[string]string {
+	out := map[string]string{}
+	var cfg map[string]any
+	if _, err := toml.Decode(req.BaseConfigText, &cfg); err == nil {
+		for _, f := range flatten(cfg) {
+			out[f[0]] = f[1]
+		}
+	}
+	for k, v := range req.Set {
+		if spec, ok := configKeys[k]; ok {
+			out[spec.Section+"."+k] = v
+		}
+	}
+	return out
 }
 
 func codeIdentity(j Job) map[string]any {

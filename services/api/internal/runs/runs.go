@@ -60,6 +60,10 @@ type Run struct {
 	Review Review `json:"review"`
 	// Archived runs are hidden from the lists but still resolve by id (ADR 0041).
 	Archived bool `json:"archived"`
+	// Environment is what the job observed about where it ran (ADR 0054), empty for a run no Vesqira job produced.
+	Environment []EnvFact `json:"environment"`
+	// Controls are the smoothing, noise model and control construction stated for the run; null when none was stated.
+	Controls *Controls `json:"controls"`
 }
 
 // Review separates three different things: the computation finishing (the run exists), scientific QC, and interpretation.
@@ -84,6 +88,9 @@ type Summary struct {
 	Params       []Param  `json:"params"`
 	Metrics      []Metric `json:"metrics"`
 	Review       Review   `json:"review"`
+	// Controls travel with the run to a reviewer: what was smoothed, the noise model and how a control was built, each with who
+	// said so. Absent in summaries frozen before they existed.
+	Controls *Controls `json:"controls,omitempty"`
 }
 
 // ---- parsing ----
@@ -226,6 +233,11 @@ func Open(db *sql.DB) (*Store, error) {
 	if err := schema.AddColumn(db, "runs", "metrics", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
 		return nil, err
 	}
+	for _, c := range []string{"environment", "controls"} {
+		if err := schema.AddColumn(db, "runs", c, "TEXT NOT NULL DEFAULT ''"); err != nil {
+			return nil, err
+		}
+	}
 	if err := schema.EnsureArchive(db); err != nil {
 		return nil, err
 	}
@@ -290,14 +302,14 @@ func (s *Store) Save(dir string, p Parsed, outs []Output) (Run, error) {
 	return s.Get(id)
 }
 
-var runCols = `id,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,` + schema.ArchivedExpr("run", "runs.id")
+var runCols = `id,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,environment,controls,` + schema.ArchivedExpr("run", "runs.id")
 
 func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	var r Run
 	var at int64
 	var el sql.NullFloat64
-	var pj, dj, mj string
-	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj, &mj, &r.Archived); err != nil {
+	var pj, dj, mj, ej, cj string
+	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj, &mj, &ej, &cj, &r.Archived); err != nil {
 		return Run{}, err
 	}
 	r.ImportedAt = time.Unix(at, 0).UTC()
@@ -310,6 +322,14 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	_ = jsonUnmarshal(dj, &r.Diagnostics)
 	_ = jsonUnmarshal(mj, &r.Metrics)
 	r.Metrics = nonNil(r.Metrics)
+	_ = jsonUnmarshal(ej, &r.Environment)
+	if r.Environment == nil {
+		r.Environment = []EnvFact{}
+	}
+	var c Controls
+	if jsonUnmarshal(cj, &c) == nil && !c.Empty() {
+		r.Controls = &c
+	}
 	if r.Params == nil {
 		r.Params = []Param{}
 	}
@@ -486,7 +506,7 @@ func (s *Store) SummaryOf(id int64, role string) (*Summary, error) {
 	} else if len(commit) > 12 && i < 0 {
 		commit = commit[:12]
 	}
-	return &Summary{Name: r.Name, Kind: r.Kind, Role: role, GitCommit: commit, Dirty: r.Dirty, Reproducible: r.Reproducible, GeneratedAt: r.GeneratedAt, Params: r.Params, Metrics: r.Metrics, Review: r.Review}, nil
+	return &Summary{Name: r.Name, Kind: r.Kind, Role: role, GitCommit: commit, Dirty: r.Dirty, Reproducible: r.Reproducible, GeneratedAt: r.GeneratedAt, Params: r.Params, Metrics: r.Metrics, Review: r.Review, Controls: r.Controls}, nil
 }
 
 // mergeParams keeps one row for a setting recorded identically in both sections, and both rows when they disagree.
@@ -503,4 +523,40 @@ func mergeParams(a, b []Param) []Param {
 		out = append(out, p)
 	}
 	return out
+}
+
+// SetEnvironment keeps what a job observed about where it ran. It replaces an earlier record: the latest import of the run's
+// folder is the one that read the file.
+func (s *Store) SetEnvironment(id int64, facts []EnvFact) error {
+	b, err := jsonMarshal(facts)
+	if err != nil {
+		return err
+	}
+	res, err := s.db.Exec(`UPDATE runs SET environment=? WHERE id=?`, b, id)
+	return affected(res, err)
+}
+
+// SetControls replaces the controls stated for a run; nil or an empty set clears them. Blocks must already be validated and
+// stamped (Controls.Declare).
+func (s *Store) SetControls(id int64, c *Controls) error {
+	j := ""
+	if !c.Empty() {
+		b, err := jsonMarshal(c)
+		if err != nil {
+			return err
+		}
+		j = b
+	}
+	res, err := s.db.Exec(`UPDATE runs SET controls=? WHERE id=?`, j, id)
+	return affected(res, err)
+}
+
+func affected(res sql.Result, err error) error {
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

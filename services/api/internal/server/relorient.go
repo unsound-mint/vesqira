@@ -13,10 +13,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
 // Relative orientation (ADR 0047): a declared orientation map against a point catalog with a declared angle (mode A) or against
@@ -265,7 +267,11 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The parameters as the worker used them (defaults filled in, seed included) are in the summary; params keep what was asked.
-	rec, _ := json.Marshal(map[string]any{"options": params, "mode": map[bool]string{true: "map_catalog", false: "map_map"}[catalogMode]})
+	recParams := map[string]any{"options": params, "mode": map[bool]string{true: "map_catalog", false: "map_map"}[catalogMode]}
+	if k := relorientConstruction(catalogMode, res.Summary, time.Now()); k != nil { // Vesqira ran the null, so it records how it was built
+		recParams["controls"] = runs.Controls{Construction: k}
+	}
+	rec, _ := json.Marshal(recParams)
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: op, Params: rec, Sources: []int64{d.ID, other.ID}, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
@@ -323,4 +329,36 @@ func (s *Server) relativeOrientationTable(w http.ResponseWriter, r *http.Request
 		return
 	}
 	http.ServeContent(w, r, "", st.ModTime(), f)
+}
+
+// relorientConstruction is how the chance-level null of a relative-orientation result was built, read from the summary the worker
+// returned: the method it names and the parameters it says it used (defaults filled in, seed included). It is verified because
+// Vesqira ran the analysis and records what the worker reported, and only when the null actually ran: a summary whose null was
+// skipped, or that does not say, yields nil and nothing is claimed.
+func relorientConstruction(catalogMode bool, summary json.RawMessage, now time.Time) *runs.Construction {
+	var sum struct {
+		Parameters map[string]json.Number `json:"parameters"`
+		Null       struct {
+			Method  string          `json:"method"`
+			Skipped json.RawMessage `json:"skipped"`
+			Kept    *int            `json:"kept"`
+		} `json:"null"`
+	}
+	if json.Unmarshal(summary, &sum) != nil || sum.Null.Method == "" || (len(sum.Null.Skipped) > 0 && string(sum.Null.Skipped) != "null") {
+		return nil
+	}
+	k := &runs.Construction{Kind: "shifted_map_null", Params: []runs.ControlParam{}, Note: sum.Null.Method,
+		Stated: runs.Stated{Basis: runs.BasisVerified, By: runs.ByVesqira, At: now.UTC().Format(time.RFC3339)}}
+	if catalogMode {
+		k.Kind = "other" // the catalog null moves the source pattern over the map, not a map over a map
+	}
+	for _, name := range []string{"n_shifts", "min_shift_deg", "keep_fraction", "seed"} {
+		if v, ok := sum.Parameters[name]; ok {
+			k.Params = append(k.Params, runs.ControlParam{Key: name, Value: v.String()})
+		}
+	}
+	if sum.Null.Kept != nil {
+		k.Params = append(k.Params, runs.ControlParam{Key: "shifts_kept", Value: strconv.Itoa(*sum.Null.Kept)})
+	}
+	return k
 }

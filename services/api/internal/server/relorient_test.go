@@ -16,6 +16,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
@@ -153,6 +154,23 @@ func TestRelativeOrientationNeedsDeclarationsAndKeepsAResult(t *testing.T) {
 	if err != nil || rec.Op != "relorient_catalog" || len(rec.Sources) != 2 || rec.Sources[0] != tang.ID || rec.Sources[1] != stars.ID {
 		t.Fatalf("derived record: %+v %v", rec, err)
 	}
+	// the null Vesqira ran is recorded as how this control was built, verified, with the parameters the worker used
+	var recParams struct {
+		Controls *runs.Controls `json:"controls"`
+	}
+	json.Unmarshal(rec.Params, &recParams)
+	if c := recParams.Controls; c == nil || c.Construction == nil || c.Smoothing != nil || c.Noise != nil {
+		t.Fatalf("controls of a result whose null ran: %s", rec.Params)
+	} else {
+		k := c.Construction
+		got := map[string]string{}
+		for _, p := range k.Params {
+			got[p.Key] = p.Value
+		}
+		if k.Basis != "verified" || k.By != "vesqira" || k.Kind != "other" || !strings.Contains(k.Note, "shifted source pattern") || got["seed"] != "5" || got["n_shifts"] != "200" || got["keep_fraction"] != "0.9" || got["shifts_kept"] == "" {
+			t.Errorf("construction: %+v params %v", k, got)
+		}
+	}
 	resp, err := http.Get(ts.URL + "/api/datasets/" + itoa(int(res.ID)) + "/relative-orientation.csv")
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +212,36 @@ func TestRelativeOrientationNeedsDeclarationsAndKeepsAResult(t *testing.T) {
 	if res.Kind == catalog.KindCatalog || res.Interpretation != nil {
 		t.Fatalf("the |Δψ| map is an image with no orientation declaration: %+v", res)
 	}
+	// no shifts were asked for: the null did not run, so nothing is claimed about how it was built
+	if rec, err := ds.Get(res.ID); err != nil || strings.Contains(string(rec.Params), "controls") {
+		t.Fatalf("a skipped null must not be recorded as a construction: %+v %v", rec, err)
+	}
 	if st, b := callJSON(t, "GET", ts.URL+"/api/datasets/"+itoa(int(res.ID))+"/relative-orientation.csv", nil); st != 200 || !strings.HasPrefix(string(b), "x_fits,y_fits") {
 		t.Fatalf("map table: %d %s", st, b)
+	}
+}
+
+func TestRelorientConstructionIsVerifiedOnlyWhenTheNullRan(t *testing.T) {
+	now := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
+	ran := json.RawMessage(`{"parameters":{"n_shifts":1000,"min_shift_deg":1.0,"keep_fraction":0.9,"seed":20261020,"bins":18},"null":{"method":"shifted map: the second map moved by whole pixels with wrap, values kept","skipped":null,"kept":987}}`)
+	k := relorientConstruction(false, ran, now)
+	if k == nil || k.Kind != "shifted_map_null" || k.Basis != runs.BasisVerified || k.By != runs.ByVesqira || k.At != "2026-11-11T12:00:00Z" {
+		t.Fatalf("map null: %+v", k)
+	}
+	if fmt.Sprint(k.Params) != "[{n_shifts 1000} {min_shift_deg 1.0} {keep_fraction 0.9} {seed 20261020} {shifts_kept 987}]" {
+		t.Errorf("params: %v", k.Params)
+	}
+	if c := relorientConstruction(true, ran, now); c == nil || c.Kind != "other" {
+		t.Errorf("a catalog null moves the pattern, not a map: %+v", c)
+	}
+	for name, raw := range map[string]string{
+		"skipped": `{"parameters":{"n_shifts":0},"null":{"method":"shifted map","skipped":"no shifts were asked for"}}`,
+		"no null": `{"parameters":{"n_shifts":10}}`,
+		"no text": `{"null":{"skipped":null}}`,
+		"garbage": `[1,2`,
+	} {
+		if c := relorientConstruction(false, json.RawMessage(raw), now); c != nil {
+			t.Errorf("%s: a construction was claimed: %+v", name, c)
+		}
 	}
 }
