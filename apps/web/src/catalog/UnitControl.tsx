@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { Dataset } from "../api/catalog";
 import { Button, Input } from "../ui";
+import { TierBadge } from "../ui/TierBadge";
 import { fileStatesItsUnit } from "./unit";
 import s from "./AnalysisPanel.module.css";
 
@@ -49,7 +50,7 @@ export function UnitControl({ dataset, onDeclare, onWithdraw }: {
             <dt>Unit</dt>
             <dd className="mono">{d.unit}</dd>
             <dt>Source</dt>
-            <dd>declared by you, {new Date(d.declaredAt).toLocaleDateString()}</dd>
+            <dd>{d.declaredBy === "user" ? "declared by you" : `proposed by ${d.declaredBy}`}, {new Date(d.declaredAt).toLocaleDateString()} <TierBadge tier={d.tier} mappingVersion={d.mappingVersion} rule={d.declaredBy === "user" ? null : d.declaredBy} /></dd>
           </dl>
           <p className={s.note}>The file has no BUNIT. This is your declaration, kept apart from the file, which is not changed.</p>
           {d.stale ? (

@@ -12,6 +12,7 @@ import { CatalogInspector } from "../catalog/CatalogInspector";
 import { LocationsPanel } from "../catalog/LocationsPanel";
 import { NewerNotices } from "../catalog/NewerNotices";
 import { UnitControl } from "../catalog/UnitControl";
+import { MasksPanel } from "../catalog/MasksPanel";
 import { fileStatesItsUnit } from "../catalog/unit";
 import { Explorer } from "../catalog/Explorer";
 import { AnalysisPanel, DerivedPanel } from "../catalog/AnalysisPanel";
@@ -35,7 +36,7 @@ import { useProject } from "../projects/useProject";
 import { writeProjectFile } from "../api/projects";
 import { editorEnabled } from "../api/editor";
 import { terminalEnabled } from "../api/terminal";
-import { getCompat } from "../api/catalog";
+import { getCompat, isCatalog } from "../api/catalog";
 import type { Compat } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
 import { CompareBar, linkState } from "../viewer/CompareBar";
@@ -534,6 +535,11 @@ export function Shell() {
           {actDs && !fileStatesItsUnit(actDs) && !actDs.interpretation ? (
             <Section title="Unit of the values">
               <UnitControl key={actDs.id} dataset={actDs} onDeclare={cat.declareUnit} onWithdraw={(id) => cat.declareUnit(id, null)} />
+            </Section>
+          ) : null}
+          {actDs && !isCatalog(actDs) ? (
+            <Section title="Masks" defaultOpen={false}>
+              <MasksPanel key={actDs.id} dataset={actDs} datasets={cat.datasets} />
             </Section>
           ) : null}
           {actDs ? (

@@ -8,7 +8,7 @@ import { UnitControl } from "./UnitControl";
 const header = (over: Record<string, unknown> = {}) => ({ naxis: 2, bitpix: -32, bunit: null, bunit_status: "unresolved", specsys: null, radesys: null, axes: [], ...over });
 const ds = (over: Partial<ImageDataset> = {}, h: Record<string, unknown> = {}): ImageDataset =>
   ({ id: 7, path: "/data/a.fits", name: "a.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", interpretation: null, unitDeclaration: null, header: header(h), ...over }) as unknown as ImageDataset;
-const declared = (over: Record<string, unknown> = {}) => ({ unit: "Jy/beam", declaredBy: "user", declaredAt: "2026-11-10T10:00:00Z", stale: false, ...over });
+const declared = (over: Record<string, unknown> = {}) => ({ ...{} as object, unit: "Jy/beam", declaredBy: "user", tier: "declared" as const, mappingVersion: "", declaredAt: "2026-11-10T10:00:00Z", stale: false, ...over });
 
 describe("the unit of the values", () => {
   it("is shown as the file's, as yours, or as unresolved: never mixed up", () => {

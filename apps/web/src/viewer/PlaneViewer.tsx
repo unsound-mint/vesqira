@@ -16,6 +16,7 @@ import { dashOf, LABEL_PX, lineMarks, nearestMarker, sceneMarks } from "../scene
 import { placeLabels } from "../scene/labelPlacement";
 import type { Box, PlacedLabel } from "../scene/labelPlacement";
 import { SourcePopover } from "./SourceRow";
+import { MaskLegend, MaskOverlay, useShownMaskList } from "./MaskOverlay";
 import type { Mark } from "../scene/overlays";
 import { dragCentre, placement } from "../scene/view";
 import s from "./PlaneViewer.module.css";
@@ -223,6 +224,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
     setChrome((c) => (c.length === next.length && c.every((b, i) => b.x === next[i]!.x && b.y === next[i]!.y && b.w === next[i]!.w && b.h === next[i]!.h) ? c : next));
   });
 
+  const shownMasks = useShownMaskList(v.datasetId);
   const probe = v.probe;
   const cell = plane ? shape.width / plane.head.width : 0;
   const mark = Math.max(cell, 10);
@@ -304,6 +306,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
           <svg className={s.overlay} viewBox={`0 0 ${plane.head.width} ${plane.head.height}`} preserveAspectRatio="none" aria-hidden="true" data-testid="overlay-marks">
             <Marks marks={marks} />
           </svg>
+          {shownMasks.length > 0 ? <MaskOverlay list={shownMasks} channel={plane.head.channel} width={plane.head.width} height={plane.head.height} cell={cell} /> : null}
           {labels.length || sources.length ? (
             // labels and catalog markers in screen pixels, so text and dots keep their size at every zoom
             <svg className={s.overlay} width={shape.width} height={shape.height} aria-hidden="true">
@@ -342,6 +345,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
           <IconButton icon={Maximize2} label="Fit to the pane" disabled={v.zoom === 1} onClick={() => v.setZoom(1)} />
         </div>
       ) : null}
+      {shownMasks.length > 0 ? <MaskLegend list={shownMasks} /> : null}
       {allNoValue ? <p className={s.warn} role="status" ref={(el) => { chromeEls.current[2] = el; }}>Every pixel in this plane has no value (NaN or BLANK).</p> : null}
     </div>
   );

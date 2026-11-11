@@ -5,6 +5,11 @@ import type { AnalysisOp, Derived, StatsSummary } from "../api/analysis";
 import type { Dataset } from "../api/catalog";
 import type { Job } from "../api/jobs";
 import { ControlsView } from "../runs/ControlsView";
+import { MaskPolicies, badWeight, usesOf } from "./MaskPolicies";
+import type { PolicyChoice } from "./MaskPolicies";
+import { useMasks } from "../viewer/useMasks";
+import { TierBadge } from "../ui/TierBadge";
+import { maskTypeLabel } from "../api/masks";
 import { EM } from "./format";
 import { beamText } from "./resolution";
 import s from "./AnalysisPanel.module.css";
@@ -29,6 +34,9 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const remote = dataset.hostId !== 0;
+  const takesMasks = !remote && (op === "stats" || op === "moment");
+  const { masks } = useMasks(takesMasks ? dataset.id : null);
+  const [policy, setPolicy] = useState<PolicyChoice>({});
   const set = (k: string, val: string) => setV({ ...v, [k]: val });
   const info = OPS.find((o) => o.id === op)!;
   const candidates = datasets.filter((d) => d.id !== dataset.id && d.hostId === dataset.hostId);
@@ -50,7 +58,8 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
     setErr(null);
     setStats(null);
     try {
-      const req = { op, datasetId: dataset.id, referenceId: ref ? Number(ref) : undefined, params: params() };
+      const uses = takesMasks ? usesOf(policy) : [];
+      const req = { op, datasetId: dataset.id, referenceId: ref ? Number(ref) : undefined, params: params(), ...(uses.length ? { masks: uses } : {}) };
       if (remote) onJob(await createAnalysisJob(req));
       else {
         const r = await runAnalysis(req);
@@ -116,7 +125,8 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
           </>
         </>
       ) : null}
-      <Button variant="primary" disabled={busy || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0))} onClick={go}>
+      {takesMasks && masks && masks.length > 0 ? <MaskPolicies masks={masks} choice={policy} onChange={setPolicy} /> : null}
+      <Button variant="primary" disabled={busy || badWeight(policy) || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0))} onClick={go}>
         {busy ? "Working…" : remote ? "Create a job on the host" : op === "stats" ? "Compute statistics" : "Create the new file"}
       </Button>
       {remote ? <p className={s.note}>This file lives on a host. The analysis becomes a Slurm job whose script you read and submit; the result stays on the host and is registered afterwards.</p> : null}
@@ -132,8 +142,8 @@ export function StatsView({ st }: { st: StatsSummary }) {
       <dl className={s.facts}>
         <dt>Channels</dt>
         <dd className="mono">{st.channels[0] + 1} to {st.channels[1] + 1}</dd>
-        <dt>Pixels with a value</dt>
-        <dd className="mono">{st.finite.toLocaleString("en-US")}</dd>
+        <dt>Pixels used</dt>
+        <dd className="mono">{st.finite.toLocaleString("en-US")}{st.excluded_by_mask ? ` (${st.excluded_by_mask.toLocaleString("en-US")} more left out by masks)` : ""}</dd>
         <dt>No value (NaN or BLANK)</dt>
         <dd className="mono">{st.no_value.toLocaleString("en-US")}</dd>
         <dt>Mean</dt>
@@ -145,6 +155,13 @@ export function StatsView({ st }: { st: StatsSummary }) {
         <dt>Peak</dt>
         <dd className="mono">{st.peak ? `${fmt(st.peak.value)} at x ${st.peak.x + 1}, y ${st.peak.y + 1}, channel ${st.peak.channel + 1}` : EM}</dd>
       </dl>
+      {st.masks && st.masks.length > 0 ? (
+        <ul className={s.note} aria-label="Masks applied" data-testid="stats-masks">
+          {st.masks.map((m) => (
+            <li key={m.id}>{maskTypeLabel(m.type as never)} mask “{m.name}”: policy {m.policy}{m.weight !== undefined ? ` (factor ${m.weight})` : ""}; {m.pixels_flagged_with_value.toLocaleString("en-US")} pixels with a value flagged, {m.pixels_excluded.toLocaleString("en-US")} left out. {m.tier ? <TierBadge tier={m.tier} /> : null}</li>
+          ))}
+        </ul>
+      ) : null}
       <p className={s.note}>{st.policy}. Noise per channel (robust, from the median absolute deviation) is in the result for each of the {st.per_channel.length} channels.</p>
     </div>
   );
@@ -172,6 +189,12 @@ export function DerivedPanel({ dataset, datasets }: { dataset: Dataset; datasets
           <>
             <dt>Controls</dt>
             <dd><ControlsView controls={d.params.controls} /></dd>
+          </>
+        ) : null}
+        {d.params.masks && d.params.masks.length > 0 ? (
+          <>
+            <dt>Masks applied</dt>
+            <dd data-testid="derived-masks">{d.params.masks.map((m, i) => <div key={i}>{maskTypeLabel(m.type as never)} “{m.name}”: {m.policy}{m.weight !== undefined ? ` ×${m.weight}` : ""} <TierBadge tier={m.tier} mappingVersion={m.mappingVersion} /></div>)}</dd>
           </>
         ) : null}
         <dt>Software</dt>

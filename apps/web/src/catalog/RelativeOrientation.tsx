@@ -7,6 +7,9 @@ import type { RelOrientParams, RelOrientSummary } from "../api/analysis";
 import type { Controls } from "../api/runs";
 import { ControlsView } from "../runs/ControlsView";
 import { EM } from "./format";
+import { MaskPolicies, badWeight, usesOf } from "./MaskPolicies";
+import type { PolicyChoice } from "./MaskPolicies";
+import { useMasks } from "../viewer/useMasks";
 import s from "./RelativeOrientation.module.css";
 
 /* Relative orientation (ADR 0047). Results are agreement statistics between two tracers: worded neutrally, never as a
@@ -69,6 +72,11 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   const candidates = datasets.filter((d) => d.id !== dataset.id && !d.archived && (fromCatalog ? !isCatalog(d) && d.interpretation?.kind === "axial_orientation" : isCatalog(d) ? d.catalogDeclaration?.angle : d.interpretation?.kind === "axial_orientation"));
   const chosen = datasets.find((d) => String(d.id) === other) ?? null;
   const catalogMode = fromCatalog || (chosen !== null && isCatalog(chosen));
+  const mapMode = !catalogMode && chosen !== null && dataset.hostId === 0 && chosen.hostId === 0;
+  const own = useMasks(mapMode ? dataset.id : null);
+  const theirs = useMasks(mapMode && chosen ? chosen.id : null);
+  const [ownPolicy, setOwnPolicy] = useState<PolicyChoice>({});
+  const [theirPolicy, setTheirPolicy] = useState<PolicyChoice>({});
   const chosenWhy = chosen ? notReady(chosen) : null;
   const val = (k: keyof typeof DEFAULTS) => v[k] ?? DEFAULTS[k];
   const set = (k: string) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
@@ -98,7 +106,8 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
     const ctl = new AbortController();
     abort.current = ctl;
     try {
-      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params }, ctl.signal);
+      const mu = mapMode ? usesOf(ownPolicy) : [], ou = mapMode ? usesOf(theirPolicy) : [];
+      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params, ...(mu.length ? { masks: mu } : {}), ...(ou.length ? { otherMasks: ou } : {}) }, ctl.signal);
       onCreated(r.dataset);
     } catch (e) {
       if (ctl.signal.aborted) setErr({ msg: "Cancelled: the computation was stopped and nothing was kept.", reasons: [] });
@@ -130,6 +139,13 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
             {catalogMode ? <Input label="Disk radius (arcmin)" value={val("radiusArcmin")} onChange={set("radiusArcmin")} inputMode="decimal" /> : null}
             <Input label="Shifts in the null" value={val(catalogMode ? "nShiftsCatalog" : "nShiftsMaps")} onChange={set(catalogMode ? "nShiftsCatalog" : "nShiftsMaps")} inputMode="numeric" />
           </div>
+          {mapMode && own.masks && theirs.masks && (own.masks.length > 0 || theirs.masks.length > 0) ? (
+            <>
+              <MaskPolicies masks={own.masks} choice={ownPolicy} onChange={setOwnPolicy} allowWeight label={`Masks of ${dataset.name}`} />
+              <MaskPolicies masks={theirs.masks} choice={theirPolicy} onChange={setTheirPolicy} allowWeight label={`Masks of ${chosen?.name ?? "the second map"}`} />
+              {badWeight(ownPolicy) || badWeight(theirPolicy) ? <p role="alert" className={s.note}>A weight factor is a number from 0 to 1.</p> : null}
+            </>
+          ) : null}
           <More summary="Advanced settings" open={unreadable.length > 0 || snrOn || snrHalf}>
             <div className={s.grid}>
               {catalogMode ? <Input label="Fewest pixels in a disk" value={val("minPixels")} onChange={set("minPixels")} inputMode="numeric" /> : null}

@@ -1,5 +1,6 @@
 import type { ImageDataset, Problem } from "../api/catalog";
 import { Button } from "../ui";
+import { tierText } from "../api/tier";
 import { bytes, show } from "./format";
 import { beamText, pixelScale } from "./resolution";
 import { HeaderCards } from "./HeaderCards";
@@ -20,6 +21,14 @@ function unitText(d: ImageDataset): string {
   const u = d.unitDeclaration;
   if (!u) return `${show(d.header.bunit)} (unresolved)`;
   return u.stale ? `${show(d.header.bunit)} (unresolved; you declared ${u.unit} for an earlier version of the file, not applied)` : `${u.unit} (declared by you, not in the file)`;
+}
+
+/** How far the unit is established (ADR 0055): verified when the file's BUNIT was read, else the declaration's tier, else unresolved. */
+function unitTier(d: ImageDataset): string {
+  if (fileStatesItsUnit(d)) return `${tierText("verified")}: BUNIT is in the file and was read (not checked against the data)`;
+  const u = d.unitDeclaration;
+  if (d.interpretation || !u || u.stale) return tierText("unresolved");
+  return tierText(u.tier, u.mappingVersion, u.declaredBy === "user" ? null : u.declaredBy);
 }
 
 /** A value of the sheet. It is cut at the edge of the column, so the whole text is its tooltip. */
@@ -44,6 +53,8 @@ export function DatasetInspector({ d, problem, onReread }: { d: ImageDataset; pr
         <Val text={bytes(d.sizeBytes)} />
         <dt>Brightness unit</dt>
         <Val text={unitText(d)} />
+        <dt>Unit tier</dt>
+        <Val text={unitTier(d)} />
         <dt>Pixel scale</dt>
         <Val text={pixelScale(d)} />
         <dt>Beam</dt>
