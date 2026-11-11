@@ -1,6 +1,6 @@
 # ADR 0028: People and access
 
-Status: **accepted: option B** (owner decision, 2026-11-05). No code before a design ADR for B: identity provider, password or OIDC, key custody for per-user ssh, the PostgreSQL move, and an actor and permission check on every route. Until that lands the app stays single-owner on loopback.
+Status: **accepted: option B** (owner decision, 2026-11-05). No code before a design ADR for B: identity provider, password or OIDC, key custody for per-user ssh, the PostgreSQL move, and an actor and permission check on every route. Until that lands the app stays single-owner on loopback. That design ADR is ADR 0050 (proposed; awaiting owner review).
 
 ## Context
 Today there is one principal, the owner, on a loopback address. Others reach the app only through a review link: read-only, revocable, no data, no paths, no credentials. The requirements ask for colleagues and a supervisor to take part (comment, request runs, see results per cluster) without ever being given the owner's cluster access (AGENTS.md: SSH credentials are user-scoped and never shared).
