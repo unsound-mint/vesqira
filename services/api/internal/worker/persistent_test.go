@@ -30,6 +30,8 @@ for line in sys.stdin.buffer:
         sys.stdout.write('{"ok":false,"code":"bad_request","error":"channel out of range","nbytes":0}\n'); sys.stdout.flush(); continue
     if m == "big":
         sys.stdout.buffer.write(b'{"ok":true,"marker":"intact","nbytes":300000}\n' + b"z" * 300000); sys.stdout.flush(); continue
+    if m == "echoid":
+        sys.stdout.write('{"ok":true,"id":%s,"nbytes":0}\n' % json.dumps(r.get("requestId"))); sys.stdout.flush(); continue
     if m == "slow":
         time.sleep(0.3)
     sys.stdout.buffer.write(b'{"ok":true,"nbytes":4}\n' + b"abcd"); sys.stdout.flush()
@@ -231,5 +233,27 @@ func TestHeaderTimeoutAndCancelWhileQueued(t *testing.T) {
 	start := time.Now()
 	if _, err := p.Header(ctx, "ok"); !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 200*time.Millisecond {
 		t.Fatalf("err=%v after %v", err, time.Since(start))
+	}
+}
+
+func TestRequestIDInContextReachesTheWorkerAndOnlyAsAPlainToken(t *testing.T) {
+	p := newFake(t, 5*time.Second)
+	ask := func(ctx context.Context) string {
+		r, err := p.Do(ctx, map[string]any{"op": "plane", "path": "echoid"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(r.Head)
+	}
+	if h := ask(WithRequestID(context.Background(), "abcd1234ef567890")); !strings.Contains(h, `"id":"abcd1234ef567890"`) {
+		t.Fatalf("id not forwarded: %s", h)
+	}
+	for _, bad := range []string{"", "short", `has"quote12345`, "new\nline12345", strings.Repeat("a", 65)} {
+		if h := ask(WithRequestID(context.Background(), bad)); !strings.Contains(h, `"id":null`) {
+			t.Fatalf("id %q must not be forwarded: %s", bad, h)
+		}
+	}
+	if h := ask(context.Background()); !strings.Contains(h, `"id":null`) {
+		t.Fatalf("no id expected: %s", h)
 	}
 }

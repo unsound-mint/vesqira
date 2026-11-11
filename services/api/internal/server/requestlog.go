@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
 type ctxKey int
@@ -24,6 +26,8 @@ func RequestID(ctx context.Context) string {
 	id, _ := ctx.Value(requestIDKey).(string)
 	return id
 }
+
+// The id also travels to the scientific worker (worker.WithRequestID) so its log lines for this request can be matched.
 
 // requestLogger writes one JSON line per request to stderr. Level is info for failures and slow requests and debug for the
 // rest, so by default the log is quiet; VESQIRA_LOG=debug shows everything.
@@ -82,7 +86,7 @@ func logRequests(next http.Handler) http.Handler {
 		w.Header().Set("X-Request-Id", id)
 		sw := &statusWriter{ResponseWriter: w}
 		start := time.Now()
-		next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), requestIDKey, id)))
+		next.ServeHTTP(sw, r.WithContext(worker.WithRequestID(context.WithValue(r.Context(), requestIDKey, id), id)))
 		if sw.status == 0 {
 			sw.status = http.StatusOK
 		}

@@ -12,7 +12,9 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import sys
+import time
 import warnings
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -P does not add the script dir
@@ -994,24 +996,54 @@ def limit_memory() -> None:
         pass
 
 
+SLOW_REQUEST_S = 0.5
+_REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
+
+
+def request_id(req) -> str:
+    """The API's correlation id for this request, for log lines only; "-" when absent or not a plain token.
+
+    It is never echoed in a reply and never reaches scientific outputs or provenance.
+    """
+    rid = req.get("requestId") if isinstance(req, dict) else None
+    return rid if isinstance(rid, str) and _REQUEST_ID.fullmatch(rid) else "-"
+
+
+def log_line(rid: str, op, what: str) -> None:
+    """One stderr line (stdout is the protocol), only for a request that carries an API id: background header reads
+    (project scans) have none and routinely refuse non-FITS files. The op is logged only when it is a short identifier; never a path."""
+    if rid == "-":
+        return
+    op = op if isinstance(op, str) and len(op) <= 16 and op.isidentifier() else "?"
+    print(f"worker request={rid} op={op} {what}", file=sys.stderr, flush=True)
+
+
 def main() -> int:
     limit_memory()
     out = sys.stdout.buffer
     sys.stdout = sys.stderr                                 # stray prints must never corrupt the protocol
     for line in sys.stdin.buffer:
+        t0, rid, op = time.perf_counter(), "-", None
         try:
             if len(line) > MAX_REQUEST_BYTES:
                 raise Refused("bad_request", "request too large")
             req = json.loads(line)
             if not isinstance(req, dict):
                 raise Refused("bad_request", "bad request")
+            rid, op = request_id(req), req.get("op")
             head, payload = handle(req)
         except Refused as e:
             head, payload = {"ok": False, "code": e.code, "error": e.message, "nbytes": 0}, b""
+            log_line(rid, op, f"refused code={e.code}")
         except (OSError, ValueError, KeyError, TypeError, IndexError, MemoryError) as e:
             head, payload = {"ok": False, "code": "unreadable", "error": "cannot read this file (truncated, corrupt or unsupported)", "nbytes": 0}, b""
-        except Exception:                                    # keep the worker alive on anything astropy raises
+            log_line(rid, op, f"failed {type(e).__name__}")
+        except Exception as e:                               # keep the worker alive on anything astropy raises
             head, payload = {"ok": False, "code": "unreadable", "error": "cannot read file", "nbytes": 0}, b""
+            log_line(rid, op, f"failed {type(e).__name__}")
+        elapsed = time.perf_counter() - t0
+        if elapsed > SLOW_REQUEST_S:
+            log_line(rid, op, f"slow ms={int(elapsed * 1000)}")
         try:
             line_out = json.dumps(head, allow_nan=False).encode()
         except ValueError:                                   # a non-finite number leaked into the header
