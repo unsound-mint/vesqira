@@ -1,5 +1,4 @@
 import { axialDegrees } from "./render";
-import type { Viewer } from "./useViewer";
 
 export type Glyph = { x1: number; y1: number; x2: number; y2: number; opacity: number };
 
@@ -43,16 +42,4 @@ export function orientationLines(
 /** Sampling step in image pixels so that lines are about `gap` display pixels apart. */
 export function glyphStride(cell: number, gap = 16): number {
   return cell > 0 ? Math.max(1, Math.ceil(gap / cell)) : 1;
-}
-
-/** Orientation lines for the plane on screen (or in a figure), at `scale` display pixels per image pixel. */
-export function orientationLinesFor(v: Pick<Viewer, "plane" | "interp" | "reliability">, scale: number): Glyph[] {
-  const { plane, interp, reliability } = v;
-  if (!plane || !interp || scale <= 0) return [];
-  const rel = reliability && reliability.head.width === plane.head.width && reliability.head.height === plane.head.height ? reliability : null;
-  return orientationLines(plane.data, plane.head.width, plane.head.height, interp.unit === "deg" ? 1 : 180 / Math.PI, {
-    stride: glyphStride(scale),
-    reliability: rel?.data ?? null,
-    relScale: rel ? (rel.head.stats.p99 ?? undefined) : undefined,
-  });
 }

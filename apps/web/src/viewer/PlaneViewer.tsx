@@ -3,17 +3,18 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { Button, IconButton } from "../ui";
 import { lut } from "./colormaps";
-import { fit, pixelAt } from "./geometry";
+import { pixelAt } from "./geometry";
 import { limits, outputSize, renderPlane } from "./render";
 import { GlPlaneRenderer, cpuNote, forcedCpu, gpuSupported, setRendererNote } from "./glRenderer";
-import { orientationLinesFor } from "./glyphs";
 import type { Rgb } from "./render";
 import type { Viewer } from "./useViewer";
 import { channelLabel } from "./format";
-import { fromDrag, outline } from "./region";
+import { fromDrag } from "./region";
 import type { Pt } from "./region";
 import type { RegionShape } from "../api/planes";
-import { toShape } from "../api/regions";
+import { sceneMarks } from "../scene/overlays";
+import type { Mark } from "../scene/overlays";
+import { dragCentre, placement } from "../scene/view";
 import s from "./PlaneViewer.module.css";
 
 function token(name: string, fallback: Rgb): Rgb {
@@ -46,16 +47,12 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
     return () => ro.disconnect();
   }, []);
 
-  const fitted = plane ? fit(size.w, size.h, plane.head.width, plane.head.height) : { width: 0, height: 0, scale: 0 };
-  const shape = { width: fitted.width * v.zoom, height: fitted.height * v.zoom, scale: fitted.scale * v.zoom };
+  // the scene's view (an image window, independent of the screen) placed in this pane
+  const sceneView = v.scene?.view ?? { zoom: 1 };
+  const image = plane ? { w: plane.head.width, h: plane.head.height } : { w: 0, h: 0 };
+  const shape = placement(sceneView, size, image);
   const moved = useRef(false);
-  const panStart = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
-  // the picture may be larger than its pane; keep part of it in view
-  const clampPan = (x: number, y: number) => {
-    const mx = Math.max(0, (shape.width - size.w) / 2) + 40;
-    const my = Math.max(0, (shape.height - size.h) / 2) + 40;
-    return { x: Math.min(mx, Math.max(-mx, x)), y: Math.min(my, Math.max(-my, y)) };
-  };
+  const panStart = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
 
   // the wheel zooms; it has to be a native listener to stop the page scrolling
   useEffect(() => {
@@ -175,7 +172,11 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
     body = <p className={s.note}>Loading channel {v.channel + 1}…</p>;
   }
 
-  const lines = useMemo(() => (v.showLines ? orientationLinesFor(v, shape.scale) : []), [v.plane, v.interp, v.showLines, v.reliability, shape.scale]); // eslint-disable-line react-hooks/exhaustive-deps
+  // every overlay, in scene order, through the overlay registry (the same marks a saved figure strokes)
+  const marks = useMemo(
+    () => (v.scene && plane ? sceneMarks(v.scene, { plane, scale: shape.scale, interp: v.interp, reliability: v.reliability, draft }) : []),
+    [v.scene?.overlays, v.scene?.base.datasetId, plane, shape.scale, v.interp, v.reliability, draft], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const probe = v.probe;
   const cell = plane ? shape.width / plane.head.width : 0;
@@ -194,7 +195,7 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
     >
       {body}
       {plane && shape.width > 0 ? (
-        <div className={s.frame} style={{ width: shape.width, height: shape.height, transform: `translate(${v.pan.x}px, ${v.pan.y}px)` }}>
+        <div className={s.frame} style={{ width: shape.width, height: shape.height, transform: `translate(${shape.offset.x}px, ${shape.offset.y}px)` }}>
           <canvas
             key={canvasKey}
             ref={cv}
@@ -205,7 +206,7 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
             onMouseDown={(e) => {
               if (v.tool === "pointer") {
                 moved.current = false;
-                if (v.zoom > 1) panStart.current = { x: e.clientX, y: e.clientY, px: v.pan.x, py: v.pan.y };
+                if (v.zoom > 1) panStart.current = { x: e.clientX, y: e.clientY, ox: shape.offset.x, oy: shape.offset.y };
                 return;
               }
               const p = pick(e);
@@ -219,7 +220,8 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
                 const dx = e.clientX - panStart.current.x;
                 const dy = e.clientY - panStart.current.y;
                 if (Math.abs(dx) + Math.abs(dy) > 3) moved.current = true;
-                if (moved.current) v.setPan(clampPan(panStart.current.px + dx, panStart.current.py + dy));
+                const c = moved.current ? dragCentre({ x: panStart.current.ox, y: panStart.current.oy }, dx, dy, sceneView, size, image) : null;
+                if (c) v.setCentre(c);
               }
               const p = pick(e);
               v.setHover(p);
@@ -242,23 +244,7 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
             }}
           />
           <svg className={s.overlay} viewBox={`0 0 ${plane.head.width} ${plane.head.height}`} preserveAspectRatio="none" aria-hidden="true">
-            {lines.map((l, i) => (
-              <g key={i} opacity={l.opacity}>
-                <line className={s.lineHalo} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
-                <line className={s.lineTop} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} />
-              </g>
-            ))}
-            {v.savedRegions.saved.filter((r) => !v.savedRegions.hidden.has(r.id)).map((r) => {
-              const o = outline(toShape(r), plane.head.height);
-              const cls = r.id === v.savedRegions.selectedId ? s.region : s.saved;
-              return o.kind === "rect" ? <rect key={`s${r.id}`} className={cls} x={o.x} y={o.y} width={o.w} height={o.h} /> : <circle key={`s${r.id}`} className={cls} cx={o.cx} cy={o.cy} r={o.r} />;
-            })}
-            {[v.region, draft].map((r, i) => {
-              if (!r) return null;
-              const o = outline(r, plane.head.height);
-              const cls = i === 0 ? s.region : s.draft;
-              return o.kind === "rect" ? <rect key={i} className={cls} x={o.x} y={o.y} width={o.w} height={o.h} /> : <circle key={i} className={cls} cx={o.cx} cy={o.cy} r={o.r} />;
-            })}
+            <Marks marks={marks} />
           </svg>
           {probe && probe.x < plane.head.width && probe.y < plane.head.height ? (
             <span
@@ -291,6 +277,22 @@ export function PlaneViewer({ v, onProbe, onDrawn }: { v: Viewer; onProbe?: (p: 
       {allNoValue ? <p className={s.warn} role="status">Every pixel in this plane has no value (NaN or BLANK).</p> : null}
     </div>
   );
+}
+
+/** The SVG side of the overlay registry: one element per mark, styled by role with the design tokens. */
+function Marks({ marks }: { marks: Mark[] }) {
+  return marks.map((m, i) => {
+    if (m.type === "line") {
+      return (
+        <g key={i} opacity={m.opacity}>
+          <line className={s.lineHalo} x1={m.x1} y1={m.y1} x2={m.x2} y2={m.y2} />
+          <line className={s.lineTop} x1={m.x1} y1={m.y1} x2={m.x2} y2={m.y2} />
+        </g>
+      );
+    }
+    const cls = m.role === "region" ? s.region : m.role === "saved" ? s.saved : s.draft;
+    return m.type === "rect" ? <rect key={i} className={cls} x={m.x} y={m.y} width={m.w} height={m.h} /> : <circle key={i} className={cls} cx={m.cx} cy={m.cy} r={m.r} />;
+  });
 }
 
 function Problem({ text, onRetry }: { text: string; onRetry: () => void }) {

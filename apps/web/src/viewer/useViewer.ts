@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
 import { expandPreview, getAxial, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
 import type { AxialStats, Conversions, Converted, Coord, Plane, RegionShape, Spectrum, View } from "../api/planes";
@@ -6,8 +6,11 @@ import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
 import { channelForKey } from "./geometry";
 import { useSavedRegions } from "./useSavedRegions";
+import { toShape } from "../api/regions";
 import type { ColormapId } from "./colormaps";
 import type { RangeMode, Stretch } from "./render";
+import { initialPane, orientationOf, paneReducer, regionsOf, ORIENTATION_ID, REGIONS_ID } from "../scene/scene";
+import type { PaneAction, ScenePoint } from "../scene/scene";
 
 export type Pixel = { x: number; y: number };
 
@@ -19,7 +22,12 @@ export const NO_CONV: ConvChoice = { spectral: "", convention: "radio", frame: "
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
-/** Everything the viewer panels share for one open dataset. Pixel and channel indices are 0-based here. */
+/**
+ * Everything the viewer panels share for one open dataset. Pixel and channel indices are 0-based here.
+ * What the pane draws is its Scene (scene/scene.ts): channel, display, overlays and view, changed only through dispatch with
+ * serialisable actions. Everything else here is ephemeral: pointer, pinned pixel, tool, server replies, loading and errors.
+ * The setters are thin wrappers over dispatch, so the panels read as before.
+ */
 export function useViewer(dataset: Dataset | null) {
   const datasetId = dataset?.id ?? null;
   const fileTime = dataset?.modifiedAt ?? null; // a file that was read again starts the viewer over
@@ -32,15 +40,12 @@ export function useViewer(dataset: Dataset | null) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState<View | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
-  const [channel, setChannel] = useState(0);
   const [plane, setPlane] = useState<Plane | null>(null);
   const [planeError, setPlaneError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [colormap, setColormap] = useState<ColormapId>("viridis");
-  const [stretch, setStretch] = useState<Stretch>("linear");
-  const [range, setRange] = useState<RangeMode>("percentile");
-  const [customLimits, setCustomLimits] = useState<[number, number] | null>(null);
+  const [pane, dispatch] = useReducer(paneReducer, null, () => initialPane(datasetId, interp !== null));
+  const scene = pane.scene;
   const [hover, setHover] = useState<Pixel | null>(null);
   const [pinned, setPinned] = useState<Pixel | null>(null);
   // the pixel under the cursor in the linked pane, when the two maps share a grid
@@ -52,22 +57,49 @@ export function useViewer(dataset: Dataset | null) {
   const [converted, setConverted] = useState<{ key: string; r: Converted } | null>(null);
   const [convError, setConvError] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>("pointer");
-  const [region, setRegion] = useState<RegionShape | null>(null);
   const [spectrum, setSpectrum] = useState<Spectrum | null>(null);
   const [spectrumError, setSpectrumError] = useState<string | null>(null);
   const [spectrumLoading, setSpectrumLoading] = useState(false);
   const [reliability, setReliability] = useState<Plane | null>(null);
   const [axial, setAxial] = useState<AxialStats | null>(null);
   const [axialError, setAxialError] = useState<string | null>(null);
-  const [showLines, setShowLines] = useState(true);
-  const [zoom, setZoomRaw] = useState(1);              // 1 = the picture fitted to its pane
-  const [pan, setPan] = useState({ x: 0, y: 0 });       // screen pixels
-  const setZoom = useCallback((z: number) => {
-    const c = Math.min(16, Math.max(1, z));
-    setZoomRaw(c);
-    if (c === 1) setPan({ x: 0, y: 0 });
-  }, []);
+
+  // the scene, read the way the panels always have
+  const display = scene?.base.display ?? pane.keep.display;
+  const channel = scene?.base.channel ?? 0;
+  const colormap = display.colormap as ColormapId;
+  const stretch = display.stretch as Stretch;
+  const range = display.range as RangeMode;
+  const customLimits = (display.limits as [number, number] | undefined) ?? null;
+  const region: RegionShape | null = regionsOf(scene)?.active ?? null; // keeps its identity across unrelated actions
+  const showLines = orientationOf(scene)?.visible ?? pane.keep.linesVisible;
+  const zoom = scene?.view.zoom ?? 1; // 1 = the picture fitted to its pane
+
+  const setChannel = useCallback((c: number) => dispatch({ type: "setChannel", channel: c }), []);
+  const setColormap = useCallback((c: ColormapId) => dispatch({ type: "setDisplay", display: { colormap: c } }), []);
+  const setStretch = useCallback((x: Stretch) => dispatch({ type: "setDisplay", display: { stretch: x } }), []);
+  const setRange = useCallback((r: RangeMode) => dispatch({ type: "setDisplay", display: { range: r } }), []);
+  const setCustomLimits = useCallback((l: [number, number] | null) => dispatch({ type: "setDisplay", display: { limits: l } }), []);
+  const setScaleGroup = useCallback((g: string | null) => dispatch({ type: "setDisplay", display: { scaleGroup: g } }), []);
+  const setRegion = useCallback((r: RegionShape | null) => dispatch({ type: "updateOverlay", id: REGIONS_ID, patch: { active: r } }), []);
+  const setShowLines = useCallback((on: boolean) => dispatch({ type: "updateOverlay", id: ORIENTATION_ID, patch: { visible: on } }), []);
+  const setZoom = useCallback((z: number) => dispatch({ type: "setView", view: { zoom: z } }), []);
+  const setCentre = useCallback((c: ScenePoint | null) => dispatch({ type: "setView", view: { centre: c } }), []);
   const savedRegions = useSavedRegions(datasetId, setRegion);
+
+  // The declaration can change while the map is open (declared axial, or withdrawn); the scene's mapping and its own
+  // orientation lines follow it.
+  const isAxial = interp !== null;
+  useEffect(() => dispatch({ type: "syncAxial", axial: isAxial }), [isAxial]);
+
+  // Saved regions are server rows. The scene keeps the shapes it draws (the shown ones, the selected one emphasised), so
+  // a scene says what is on screen without a lookup.
+  const { saved: savedList, hidden: hiddenSaved, selectedId: selectedSaved } = savedRegions;
+  const sceneDataset = scene?.base.datasetId ?? null;
+  useEffect(() => {
+    const saved = savedList.filter((r) => !hiddenSaved.has(r.id)).map((r) => ({ id: r.id, shape: toShape(r), ...(r.id === selectedSaved ? { selected: true } : {}) }));
+    dispatch({ type: "updateOverlay", id: REGIONS_ID, patch: { saved } });
+  }, [savedList, hiddenSaved, selectedSaved, sceneDataset]);
 
   // A different dataset: forget everything that belonged to the previous one.
   useEffect(() => {
@@ -75,25 +107,22 @@ export function useViewer(dataset: Dataset | null) {
     setViewError(null);
     setPlane(null);
     setPlaneError(null);
-    setChannel(0);
+    dispatch({ type: "resetForDataset", datasetId, axial: interp !== null }); // channel 0, fitted, no region; colours carry over
     setHover(null);
     setPinned(null);
     setCoord(null);
     setConv(NO_CONV);
     setOffers(null);
     setConverted(null);
-    setRegion(null);
     setSpectrum(null);
     setTool("pointer");
-    setZoomRaw(1);
-    setPan({ x: 0, y: 0 });
     if (datasetId === null) return;
     const ac = new AbortController();
     getView(datasetId, ac.signal)
       .then(setView)
       .catch((e: unknown) => !isAbort(e) && setViewError(message(e, "Could not read the dataset layout.")));
     return () => ac.abort();
-  }, [datasetId, retry, fileTime]);
+  }, [datasetId, retry, fileTime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Declaring or withdrawing a unit changes what every head says. Read the layout again (the plane and the spectrum follow the
   // new view) without starting over: the channel and the region stay. A different dataset starts over by itself, above.
@@ -114,7 +143,6 @@ export function useViewer(dataset: Dataset | null) {
   // neighbouring channels are requested quietly so the next step is already cached by the server.
   const lastStep = useRef(1);
   const remote = (dataset?.hostId ?? 0) !== 0;
-  const isAxial = interp !== null;
   useEffect(() => {
     if (datasetId === null || !view) return;
     const ac = new AbortController();
@@ -164,6 +192,13 @@ export function useViewer(dataset: Dataset | null) {
 
   const probe = pinned ?? hover ?? mirror;
   const shownChannel = plane?.head.channel ?? null;
+
+  // The scene records the shown channel's spectral world value as the worker reported it, never one computed here.
+  useEffect(() => {
+    if (!plane || plane.head.preview) return;
+    const v = plane.head.spectral_value;
+    dispatch({ type: "setSpectral", channel: plane.head.channel, spectral: v !== null ? { value: v, unit: plane.head.spectral_unit ?? "" } : null });
+  }, [plane]);
 
   // World coordinates come from the worker (astropy), for the pixel under the pointer in the plane on screen.
   useEffect(() => {
@@ -332,8 +367,8 @@ export function useViewer(dataset: Dataset | null) {
   const pixelValue = pixelNumber;
 
   return {
-    datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
-    zoom, setZoom, pan, setPan, colormap, setColormap, stretch, setStretch, range, setRange, customLimits, setCustomLimits,
+    scene, dispatch: dispatch as (a: PaneAction) => void, datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
+    zoom, setZoom, setCentre, colormap, setColormap, stretch, setStretch, range, setRange, customLimits, setCustomLimits, setScaleGroup,
     hover, setHover, mirror, setMirror, pinned, setPinned, probe, pixelValue, coord, coordError,
     conv, setConv, offers, convError, convertedNow: converted && converted.key === convKey ? converted.r : null,
     canvas, interp, reliability, axial, axialError, showLines, setShowLines,

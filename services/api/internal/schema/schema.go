@@ -22,7 +22,8 @@ import (
 // ADR 0042).
 // Version 8: a job remembers whether its results are imported automatically when it finishes, and whether that was
 // tried (jobs.auto_import, jobs.auto_import_tried); finished jobs leave notifications (ADR 0043).
-const Version = 8
+// Version 9: a figure may record the scene it was drawn from (figures.scene; ADR 0042).
+const Version = 9
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -39,6 +40,7 @@ var migrations = []Migration{
 	{To: 6, Name: "archived entries", Up: archivedEntries},
 	{To: 7, Name: "orientation frame and quantity", Up: orientationFrameAndQuantity},
 	{To: 8, Name: "automatic import and notifications", Up: autoImportAndNotifications},
+	{To: 9, Name: "figure scene", Up: figureScene},
 }
 
 // autoImportAndNotifications adds the two job columns. Every existing job gets 0 for both: a job submitted before the
@@ -55,6 +57,16 @@ func autoImportAndNotifications(tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+// figureScene adds figures.scene, the scene/1 a figure was drawn from (ADR 0042). Every existing figure gets the empty text (no
+// scene): it stays a PNG with provenance, as it was saved. A catalog without a figures table needs nothing.
+func figureScene(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='figures'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	return AddColumn(tx, "figures", "scene", "TEXT NOT NULL DEFAULT ''")
 }
 
 // runRecordOwed adds jobs.record_owed. Every existing job gets 0: no record is owed for a job submitted before records

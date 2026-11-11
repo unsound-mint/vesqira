@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -17,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/scene"
 )
 
 // ---- figure provenance: built here from catalogued facts and a validated, whitelisted view description ----
@@ -206,6 +208,83 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 
 var errBadView = errors.New("view does not match the dataset")
 
+// checkScene holds a figure's scene to the dataset and to the view description sent with it, so the two cannot tell
+// different stories about one picture. In this version every layer is drawn from the figure's own dataset, and a spectrum
+// figure (a plot, not a pane) has no scene.
+func checkScene(sc scene.Scene, d catalog.Dataset, vp ViewParams) error {
+	refuse := func(why string) error { return fmt.Errorf("%w: %s", scene.ErrInvalid, why) }
+	if vp.Kind == "spectrum" {
+		return refuse("a spectrum figure has no scene")
+	}
+	if sc.Base.DatasetID != d.ID {
+		return refuse("the scene's base is not the figure's dataset")
+	}
+	for _, o := range sc.Overlays {
+		if o.DatasetID != d.ID {
+			return refuse("overlays from another dataset are not drawn in this version")
+		}
+		if o.Kind == "orientation" && d.Interpretation == nil {
+			return refuse("orientation lines need a map declared axial")
+		}
+		// opacities from a reliability map are only reproducible when the figure names that map, and it is the declared one
+		if o.Kind == "orientation" && o.Opacity == "reliability" && (o.ReliabilityID == nil || d.Interpretation.ReliabilityID == nil || *o.ReliabilityID != *d.Interpretation.ReliabilityID) {
+			return refuse("orientation opacity from reliability must name the declared reliability map")
+		}
+	}
+	disp := sc.Base.Display
+	if (disp.Mapping == "axial") != (d.Interpretation != nil) || (disp.Mapping == "axial") != (vp.Kind == "orientation") {
+		return refuse("the scene's mapping does not match the dataset's declaration or the figure kind")
+	}
+	if vp.Channel == nil || *vp.Channel != sc.Base.Channel {
+		return refuse("the scene's channel is not the figure's")
+	}
+	if (vp.SpectralValue == nil) != (sc.Base.Spectral == nil) || (vp.SpectralValue != nil && (*vp.SpectralValue != sc.Base.Spectral.Value || vp.SpectralUnit != sc.Base.Spectral.Unit)) {
+		return refuse("the scene's spectral value is not the figure's")
+	}
+	if disp.Mapping == "scalar" && (disp.Colormap != vp.Colormap || disp.Stretch != vp.Stretch || disp.Range != vp.Range) {
+		return refuse("the scene's display settings are not the figure's")
+	}
+	// custom limits are the scene's own; limits another range gave are recomputed from the data, and the view records them
+	if disp.Mapping == "scalar" && disp.Range == "custom" && (disp.LimitsUnit != vp.LimitsUnit || !sameFloats(disp.Limits, vp.Limits)) {
+		return refuse("the scene's custom limits are not the figure's")
+	}
+	var active *scene.Region
+	for _, o := range sc.Overlays {
+		if o.Kind == "regions" && o.Active != nil {
+			active = o.Active
+		}
+	}
+	a, _ := json.Marshal(active)
+	b, _ := json.Marshal(vp.Region)
+	if string(a) != string(b) {
+		return refuse("the scene's working region is not the figure's")
+	}
+	var h safeHeader
+	if err := json.Unmarshal(d.Header, &h); err != nil {
+		return refuse("the dataset header cannot be read")
+	}
+	maxLen := 0
+	for _, ax := range h.Axes {
+		maxLen = max(maxLen, ax.Length)
+	}
+	if c := sc.View.Centre; c != nil && (c.X > float64(maxLen) || c.Y > float64(maxLen)) {
+		return refuse("the view centre is outside the image")
+	}
+	return nil
+}
+
+func sameFloats(a, b []float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // ---- handlers ----
 
 func (s *Server) boardErr(w http.ResponseWriter, err error) {
@@ -250,6 +329,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		Title      string          `json:"title"`
 		Caption    string          `json:"caption"`
 		View       json.RawMessage `json:"view"`
+		Scene      json.RawMessage `json:"scene"`      // optional: the scene the picture was drawn from (ADR 0042)
 		PreviewPNG string          `json:"previewPng"` // base64
 	}
 	if !body(w, r, 12<<20, &in, false) {
@@ -280,6 +360,21 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	if s.Runs != nil {
 		run, _ = s.Runs.ForDataset(d.ID)
 	}
+	var sceneJSON json.RawMessage
+	if len(in.Scene) > 0 && string(in.Scene) != "null" {
+		sc, err := scene.Parse(in.Scene)
+		if err == nil {
+			err = checkScene(sc, d, vp)
+		}
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		if sceneJSON, err = json.Marshal(sc); err != nil { // what is stored is the server's reading, never the client's bytes
+			fail(w, 500, "internal error")
+			return
+		}
+	}
 	prov, err := buildProvenance(d, vp, run, s.derivedSummary(d.ID))
 	if errors.Is(err, errBadView) {
 		fail(w, 400, "the view description does not match the dataset")
@@ -289,7 +384,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov}, png)
+	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON}, png)
 	if err != nil {
 		s.boardErr(w, err)
 		return

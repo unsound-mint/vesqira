@@ -45,6 +45,7 @@ import { SpectrumPlot } from "../viewer/SpectrumPlot";
 import { flagState } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
 import { limits } from "../viewer/render";
+import { compareGroup, follow, links } from "../scene/link";
 import { Button, IconButton, Pill, ResizeHandle, Section } from "../ui";
 import { LIMITS, useLayout } from "./useLayout";
 import s from "./Shell.module.css";
@@ -86,7 +87,9 @@ export function Shell() {
   const viewer = useB ? viewerB : viewerA;
   const actDs = useB ? compareDs : cat.selected;
   const other = useB ? viewerA : viewerB;
-  const linked = compareDs !== null && linkState(compat, compatLoading).linked;
+  // The two panes are one link group when their grids are confirmed identical (ADR 0042: linking by WCS comes later).
+  const group = compareGroup(compareDs !== null && linkState(compat, compatLoading).linked);
+  const linked = group !== null;
   const flag = flagState(viewer.view, viewer.plane);
 
   // One colour scale for both maps: only for scalar maps in the same brightness unit. The limits start from the two
@@ -128,6 +131,11 @@ export function Shell() {
     }
   }, [shared, sharedLimits, viewerA.range, viewerA.customLimits, viewerB.range, viewerB.customLimits]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // both scenes say their colour scale is shared, also after a pane opens another dataset (which starts a new scene)
+  useEffect(() => {
+    for (const v of [viewerA, viewerB]) v.setScaleGroup(shared ? "compare" : null);
+  }, [shared, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Is the other map known to share this one's grid? Only then are cursor and channel linked.
   useEffect(() => {
     setCompat(null);
@@ -154,12 +162,12 @@ export function Shell() {
       toggle("sideOpen");
     }
   }, [compareDs?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  // the pane you are working in drives the channel of the other one
+  // the pane you are working in drives the other one, for the facets its group links
   useEffect(() => {
-    if (linked && other.channels === viewer.channels && other.channel !== viewer.channel) other.setChannel(viewer.channel);
-  }, [linked, viewer.channel, viewer.channels, other.channels]); // eslint-disable-line react-hooks/exhaustive-deps
+    for (const a of follow(group, viewer.scene, other.scene, { from: viewer.channels, to: other.channels })) other.dispatch(a);
+  }, [linked, viewer.channel, viewer.channels, other.channels, viewer.scene?.view]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!linked) viewerA.setMirror(null), viewerB.setMirror(null);
+    if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null);
   }, [linked]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
   const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "run" | "rerun" | "open" | "look" | "needs" | "health">("viewer");
@@ -320,12 +328,12 @@ export function Shell() {
             <div className={compareDs ? s.panes2 : s.panes1}>
               <section className={s.pane} aria-label={`Map: ${cat.selected.name}`}>
                 {compareDs ? <PaneHeader name={cat.selected.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} /> : null}
-                <div className={s.paneBody}><PlaneViewer v={viewerA} onProbe={(p) => linked && viewerB.setMirror(p)} /></div>
+                <div className={s.paneBody}><PlaneViewer v={viewerA} onProbe={(p) => links(group, "cursor") && viewerB.setMirror(p)} /></div>
               </section>
               {compareDs ? (
                 <section className={s.pane} aria-label={`Map: ${compareDs.name}`}>
                   <PaneHeader name={compareDs.name} axial={viewerB.interp !== null} active={useB} onActivate={() => setActive("b")} />
-                  <div className={s.paneBody}><PlaneViewer v={viewerB} onProbe={(p) => linked && viewerA.setMirror(p)} /></div>
+                  <div className={s.paneBody}><PlaneViewer v={viewerB} onProbe={(p) => links(group, "cursor") && viewerA.setMirror(p)} /></div>
                 </section>
               ) : null}
             </div>

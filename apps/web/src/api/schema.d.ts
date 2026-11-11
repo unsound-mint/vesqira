@@ -3053,6 +3053,8 @@ export interface components {
             provenance: components["schemas"]["FigureProvenance"];
             /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
             archived?: boolean;
+            /** @description The scene the picture was drawn from (ADR 0042); absent for figures saved before scenes. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. */
+            scene?: components["schemas"]["Scene"];
         };
         FigureList: {
             figures: components["schemas"]["Figure"][];
@@ -3068,6 +3070,7 @@ export interface components {
              * @description The picture as the author's browser drew it, PNG, base64
              */
             previewPng: string;
+            scene?: components["schemas"]["Scene"];
         };
         /** @description Unknown keys are refused. */
         FigureTextRequest: {
@@ -3431,6 +3434,240 @@ export interface components {
         };
         ResolveRequest: {
             resolved: boolean;
+        };
+        /** @description What one pane draws (ADR 0042, section 3): a base plane with its display settings, overlays drawn over it in order, and the part of the image in view. A figure stores the scene it was drawn from. Versioned by schema; a change that is not additive gets a new version. */
+        Scene: {
+            /** @enum {string} */
+            schema: "scene/1";
+            base: components["schemas"]["SceneBase"];
+            /** @description Drawn in this order over the base, the first at the bottom */
+            overlays: components["schemas"]["SceneOverlay"][];
+            view: components["schemas"]["SceneView"];
+        };
+        SceneBase: {
+            /** Format: int64 */
+            datasetId: number;
+            /** @description 0-based index along the spectral axis; 0 for a single plane */
+            channel: number;
+            spectral?: components["schemas"]["SceneSpectral"];
+            display: components["schemas"]["SceneDisplay"];
+        };
+        /** @description The channel's spectral world value as the worker reported it for that channel; absent when the axis is unresolved or the plane is not read yet. Never computed in the browser. */
+        SceneSpectral: {
+            value: number;
+            unit: string;
+        };
+        /** @description How base values become colours. For mapping axial (a declared orientation map) the angles are drawn with the cyclic twilight map, 0° = 180°, and stretch, range and limits do not apply. */
+        SceneDisplay: {
+            /** @enum {string} */
+            mapping: "scalar" | "axial";
+            /** @enum {string} */
+            colormap: "viridis" | "inferno" | "gray" | "twilight";
+            /** @enum {string} */
+            stretch: "linear" | "sqrt" | "asinh";
+            /** @enum {string} */
+            range: "percentile" | "minmax" | "custom";
+            /** @description The custom limits, lower then upper, finite; required when range is custom. With another range the limits come from the plane's finite pixels, and these, when present, are only remembered for switching back to custom. */
+            limits?: number[];
+            /** @description The unit of the custom limits: the file's BUNIT, or the unit the author declared for a file without one */
+            limitsUnit?: string;
+            /** @description Panes in the same group share one colour scale (ADR 0027) */
+            scaleGroup?: string;
+        };
+        /** @description The part of the image in view, independent of the screen: the window of width/zoom by height/zoom image pixels around centre is shown whole and as large as the pane allows. */
+        SceneView: {
+            /** @description 1 is the whole image fitted to the pane */
+            zoom: number;
+            centre?: components["schemas"]["ScenePoint"];
+        };
+        /** @description Image coordinates: x from the left edge, y from the bottom edge, in pixels (pixel i covers i to i+1). An absent centre means the image centre. */
+        ScenePoint: {
+            x: number;
+            y: number;
+        };
+        SceneRegion: components["schemas"]["SceneRect"] | components["schemas"]["SceneCircle"];
+        /** @description Inclusive 0-based pixel bounds, y from the bottom */
+        SceneRect: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            shape: "rect";
+            x0: number;
+            y0: number;
+            x1: number;
+            y1: number;
+        };
+        /** @description Centre pixel (0-based, y from the bottom) and radius in pixels; holds the pixels whose centres are within r */
+        SceneCircle: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            shape: "circle";
+            cx: number;
+            cy: number;
+            r: number;
+        };
+        /** @description One layer over the base. Only orientation (of the base map itself) and regions are drawn in this version; the other kinds are specified for the slices that add them, and a figure refuses them until then. */
+        SceneOverlay: components["schemas"]["OrientationOverlay"] | components["schemas"]["RegionsOverlay"] | components["schemas"]["ContoursOverlay"] | components["schemas"]["CatalogOverlay"] | components["schemas"]["BeamOverlay"] | components["schemas"]["GridOverlay"];
+        /** @description Orientation lines of an axial map, sampled on its grid. In this version datasetId is the base map. */
+        OrientationOverlay: {
+            /** @description Stable within the scene; actions name an overlay by it */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "orientation";
+            /** Format: int64 */
+            datasetId: number;
+            visible: boolean;
+            sampling: components["schemas"]["SamplingAuto"] | components["schemas"]["SamplingStep"];
+            /**
+             * @description fixed: 0.8 of the sampling step
+             * @enum {string}
+             */
+            length: "fixed";
+            /**
+             * @description reliability: follows a reliability map on the same grid relative to its 99th percentile, faint where unknown; uniform: every line opaque. A figure records which was used.
+             * @enum {string}
+             */
+            opacity: "reliability" | "uniform";
+            /**
+             * Format: int64
+             * @description The reliability map that set the opacities. A figure states it whenever opacity is reliability, and it must be the map declared with the orientation map.
+             */
+            reliabilityId?: number;
+        };
+        /** @description A step in image pixels chosen so that lines are about gapPx output pixels apart */
+        SamplingAuto: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "auto";
+            gapPx: number;
+        };
+        /** @description Every step-th image pixel; a figure records the step it drew */
+        SamplingStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "step";
+            step: number;
+        };
+        /** @description Pixel regions of the base map: the working region, and saved regions with their shapes as drawn (a saved region can be edited later, so its shape is copied). */
+        RegionsOverlay: {
+            /** @description Stable within the scene; actions name an overlay by it */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "regions";
+            /** Format: int64 */
+            datasetId: number;
+            visible: boolean;
+            active?: components["schemas"]["SceneRegion"];
+            saved: components["schemas"]["SceneSavedRegion"][];
+        };
+        SceneSavedRegion: {
+            /** Format: int64 */
+            id: number;
+            shape: components["schemas"]["SceneRegion"];
+            selected?: boolean;
+        };
+        /** @description Specified, not drawn yet: contours of a map traced on its own grid and placed by WCS. */
+        ContoursOverlay: {
+            /** @description Stable within the scene; actions name an overlay by it */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "contours";
+            /** Format: int64 */
+            datasetId: number;
+            visible: boolean;
+            channel: number;
+            levels: components["schemas"]["LevelsList"] | components["schemas"]["LevelsLinear"] | components["schemas"]["LevelsGeometric"];
+            /** @description The overlay dataset's own brightness unit */
+            unit: string;
+        };
+        LevelsList: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "list";
+            values: number[];
+        };
+        LevelsLinear: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "linear";
+            start: number;
+            step: number;
+            count: number;
+        };
+        LevelsGeometric: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "geometric";
+            start: number;
+            factor: number;
+            count: number;
+        };
+        /** @description Specified, not drawn yet: markers from a catalog dataset, placed by WCS after converting between celestial frames. */
+        CatalogOverlay: {
+            /** @description Stable within the scene; actions name an overlay by it */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "catalog";
+            /** Format: int64 */
+            datasetId: number;
+            visible: boolean;
+            columns: {
+                lon: string;
+                lat: string;
+                angle?: string;
+                angleError?: string;
+            };
+        };
+        /** @description Specified, not drawn yet: the beam from the header's BMAJ, BMIN and BPA only, never a default. */
+        BeamOverlay: {
+            /** @description Stable within the scene; actions name an overlay by it */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "beam";
+            /** Format: int64 */
+            datasetId: number;
+            visible: boolean;
+        };
+        /** @description Specified, not drawn yet: a coordinate grid in the dataset's own celestial frame. */
+        GridOverlay: {
+            /** @description Stable within the scene; actions name an overlay by it */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "grid";
+            /** Format: int64 */
+            datasetId: number;
+            visible: boolean;
         };
     };
     responses: never;

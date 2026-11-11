@@ -1,9 +1,9 @@
 import type { Plane, Spectrum, View } from "../api/planes";
 import { spectralText } from "./format";
 import { axisDisplay, segments } from "./SpectrumPlot";
-import type { Glyph } from "./glyphs";
 import type { RegionShape } from "../api/planes";
-import { outline } from "./region";
+import { strokeMarks } from "../scene/overlays";
+import type { Mark } from "../scene/overlays";
 
 export type FigureFacts = {
   dataset: string;
@@ -62,13 +62,12 @@ function toBlob(c: HTMLCanvasElement): Promise<Blob> {
 
 export const FIGURE_WIDTH = 720;
 
-/** Plane figure: the picture exactly as shown, its overlays, a legend and the caption. Returns a PNG. */
+/** Plane figure: the whole plane as drawn, its overlays (marks from the scene's overlay registry), a legend and the caption. Returns a PNG. */
 export async function composeImageFigure(o: {
   source: HTMLCanvasElement;
   planeW: number;
   planeH: number;
-  lines: Glyph[];
-  region: RegionShape | null;
+  marks: Mark[];
   legend: { kind: "scalar"; lut: Uint8ClampedArray; limits: [number, number] | null; unit: string | null } | { kind: "cyclic"; lut: Uint8ClampedArray };
   title: string;
   captions: string[];
@@ -94,32 +93,9 @@ export async function composeImageFigure(o: {
   const top = pad + 26;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(o.source, pad, top, iw, ih);
-  const sx = iw / o.planeW;
-  const sy = ih / o.planeH;
   ctx.save();
   ctx.translate(pad, top);
-  ctx.lineCap = "round";
-  for (const [w, color] of [[4, "#06080c"], [2, INK]] as const) {
-    ctx.lineWidth = w;
-    ctx.strokeStyle = color;
-    for (const g of o.lines) {
-      ctx.globalAlpha = g.opacity;
-      ctx.beginPath();
-      ctx.moveTo(g.x1 * sx, g.y1 * sy);
-      ctx.lineTo(g.x2 * sx, g.y2 * sy);
-      ctx.stroke();
-    }
-  }
-  ctx.globalAlpha = 1;
-  if (o.region) {
-    const r = outline(o.region, o.planeH);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "#3cc4e8";
-    ctx.beginPath();
-    if (r.kind === "rect") ctx.rect(r.x * sx, r.y * sy, r.w * sx, r.h * sy);
-    else ctx.ellipse(r.cx * sx, r.cy * sy, r.r * sx, r.r * sy, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+  strokeMarks(ctx, o.marks, iw / o.planeW, ih / o.planeH, INK);
   ctx.restore();
   // legend bar
   const by = top + ih + 14;

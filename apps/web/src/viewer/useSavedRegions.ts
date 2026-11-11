@@ -21,7 +21,7 @@ export function useSavedRegions(datasetId: number | null, setRegion: (r: RegionS
     setUndo(null);
     if (datasetId === null) return;
     let ok = true;
-    listSavedRegions(datasetId).then((r) => ok && setSaved(r)).catch(() => undefined); // the list is a convenience; the viewer works without it
+    listSavedRegions(datasetId).then((r) => ok && setSaved(Array.isArray(r) ? r : [])).catch(() => undefined); // the list is a convenience; the viewer works without it
     return () => {
       ok = false;
     };
