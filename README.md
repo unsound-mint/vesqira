@@ -12,7 +12,7 @@ A researcher registers H I FITS spectral cubes and existing VGT outputs, browses
 
 ```
 sudo dnf install ./vesqira-<version>.fc44.x86_64.rpm     # from the release page, or: tools/build-rpm.sh
-# or, once the COPR project exists (docs/setup/copr.md):
+# or, once the COPR project exists (packaging/COPR.md):
 sudo dnf copr enable <owner>/vesqira && sudo dnf install vesqira
 ```
 

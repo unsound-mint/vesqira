@@ -55,6 +55,6 @@ desktop:
 viewer-bench:
 	node tools/viewer_perf.mjs --check
 
-# Source RPM into dist/srpm/ (vendored Go, crates and npm cache included; needs the network once; see docs/setup/copr.md)
+# Source RPM into dist/srpm/ (vendored Go, crates and npm cache included; needs the network once; see packaging/COPR.md)
 srpm:
 	tools/build-srpm.sh
