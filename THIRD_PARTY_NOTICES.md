@@ -1,6 +1,6 @@
 # Third-party notices
 
-Vesqira bundles the following assets in the web app. Their licence texts are reproduced in full as required. Build and development tools are not bundled and are listed in `apps/web/package-lock.json`.
+Vesqira ships third-party software and assets: the web app bundles the front-end packages and assets, the Go API links the modules below, and the scientific worker runs the Python packages listed at the end. Licence texts are reproduced where the licence requires it, or point to the full text shipped with the package. Build and development tools are not bundled; they are listed in `apps/web/package-lock.json` and the Go and Python lock files.
 
 ## Geist and Geist Mono (SIL Open Font License 1.1)
 
@@ -393,3 +393,39 @@ SOFTWARE.
 ## kin-openapi (Go API tests)
 
 `github.com/getkin/kin-openapi` validates handler responses against `packages/contracts/openapi.yaml` in the Go tests. It is not linked into the shipped binary. MIT License, Copyright (c) 2017-2018 the project authors.
+
+## React and React DOM (MIT)
+
+`react` and `react-dom` (19.3.1) render the web app. MIT License, Copyright (c) Meta Platforms, Inc. and affiliates. Full texts: `node_modules/react/LICENSE` and `node_modules/react-dom/LICENSE`.
+
+## Monaco Editor (MIT)
+
+`monaco-editor` (0.52.2) provides the code editor. MIT License, Copyright (c) 2016 - present Microsoft Corporation. Full text: `node_modules/monaco-editor/LICENSE`.
+
+## modernc.org/sqlite (BSD-3-Clause)
+
+`modernc.org/sqlite` (v1.62.0) is the pure-Go SQLite driver used by the Go API. BSD-3-Clause License, Copyright (c) 2017 The Sqlite Authors. Full text: the module's `LICENSE`. Bundled third-party code and its notices are listed in the module's `LICENSE-3RD-PARTY.md`.
+
+## Scientific worker Python packages
+
+The scientific worker (`services/scientific-worker`) imports these packages at run time. Each is pinned in `services/scientific-worker/requirements.txt`. The full licence texts are in each wheel's `*.dist-info/licenses/` directory.
+
+### astropy (BSD-3-Clause)
+
+`astropy` (8.0.2). BSD-3-Clause License, Copyright (c) 2011-2026, Astropy Developers. Its wheel also carries licence texts for bundled components (`licenses/`).
+
+### contourpy (BSD-3-Clause)
+
+`contourpy` (1.3.3). BSD-3-Clause License, Copyright (c) 2021-2025, ContourPy Developers.
+
+### numpy (BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0)
+
+`numpy` (2.5.4). The licence expression is as declared by the wheel. Copyright (c) 2005-2025, NumPy Developers; the other licences cover vendored components, whose texts are in the wheel's `*.dist-info/licenses/` directory.
+
+### reproject (BSD-3-Clause)
+
+`reproject` (0.21.0). BSD-3-Clause License, Copyright (c) 2011-16, Thomas P. Robitaille.
+
+## Tauri (desktop shell, MIT OR Apache-2.0)
+
+`tauri` (2.12.5) and `tauri-plugin-dialog` (2.8.4) are the desktop shell's window and native file dialog (`apps/desktop`). Licensed MIT OR Apache-2.0, Copyright (c) 2017 – present Tauri Programme within The Commons Conservancy. Full texts: each crate's `LICENSE_MIT` and `LICENSE_APACHE-2.0`. Their transitive crates are listed in `apps/desktop/Cargo.lock`.

@@ -44,6 +44,11 @@ contracts = subprocess.run([sys.executable, str(ROOT / "tools" / "contracts.py")
 if contracts.returncode != 0:
     errors.extend(contracts.stdout.strip().splitlines() or ["tools/contracts.py --check failed"])
 
+# every direct dependency must have an entry in THIRD_PARTY_NOTICES.md
+notices = subprocess.run([sys.executable, str(ROOT / "tools" / "check_notices.py")], capture_output=True, text=True)
+if notices.returncode != 0:
+    errors.extend(notices.stdout.strip().splitlines() or ["tools/check_notices.py failed"])
+
 for e in errors:
     print("FAIL", e)
 print("ok" if not errors else f"{len(errors)} problem(s)")
