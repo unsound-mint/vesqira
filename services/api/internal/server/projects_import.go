@@ -702,6 +702,7 @@ func (s *Server) applyOne(ctx context.Context, p projects.Project, h hosts.Host,
 				select {
 				case s.lane() <- struct{}{}:
 					defer func() { <-s.lane() }()
+					// Not waiting(ctx): an apply can register hundreds of files, and the interactive class is the viewer's (ADR 0056).
 					tctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 					defer cancel()
 					if rule.Role == discover.RoleCatalog { // the researcher says it is a table, whatever its name

@@ -1,0 +1,48 @@
+.h {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--text-lg);
+}
+
+.note {
+  margin: var(--sp-2) 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.err {
+  margin: var(--sp-2) 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}
+
+.row {
+  margin: var(--sp-3) 0;
+}
+
+.files {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.size {
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.text {
+  max-height: 14rem;
+  margin: var(--sp-1) 0 var(--sp-2);
+  padding: var(--sp-2);
+  overflow: auto;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

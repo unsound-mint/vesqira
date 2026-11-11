@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Basis, Button, Input, More, Section, Select } from "../ui";
+import { QueueNote, useQueueReason } from "../ui/QueueNote";
+import { newRequestId } from "../api/http";
 import { ApiError, isCatalog } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
 import { getDerived, relativeOrientationTableUrl, runRelativeOrientation } from "../api/analysis";
@@ -64,6 +66,8 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   const [other, setOther] = useState("");
   const [v, setV] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [rid, setRid] = useState<string | null>(null);
+  const queued = useQueueReason(busy, rid);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
   const [err, setErr] = useState<{ msg: string; reasons: string[] } | null>(null);
@@ -96,6 +100,8 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   async function go() {
     if (!chosen) return;
     setBusy(true);
+    const id = newRequestId();
+    setRid(id);
     setErr(null);
     const n = (k: keyof typeof DEFAULTS) => Number(val(k));
     const params: RelOrientParams = { nShifts: n(catalogMode ? "nShiftsCatalog" : "nShiftsMaps"), minShiftDeg: n("minShiftDeg"), keepFraction: n("keepFraction"), seed: n("seed"), bins: n("bins") };
@@ -107,7 +113,7 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
     abort.current = ctl;
     try {
       const mu = mapMode ? usesOf(ownPolicy) : [], ou = mapMode ? usesOf(theirPolicy) : [];
-      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params, ...(mu.length ? { masks: mu } : {}), ...(ou.length ? { otherMasks: ou } : {}) }, ctl.signal);
+      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params, ...(mu.length ? { masks: mu } : {}), ...(ou.length ? { otherMasks: ou } : {}) }, ctl.signal, id);
       onCreated(r.dataset);
     } catch (e) {
       if (ctl.signal.aborted) setErr({ msg: "Cancelled: the computation was stopped and nothing was kept.", reasons: [] });
@@ -183,6 +189,7 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
           {unreadable.length ? <p className={s.err}>Every parameter needs a number; {unreadable.length === 1 ? "one is" : `${unreadable.length} are`} empty or not a number.</p> : null}
           <Button variant="primary" disabled={busy || unreadable.length > 0 || snrHalf} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
           {busy ? <Button onClick={() => abort.current?.abort()}>Cancel</Button> : null}
+          <QueueNote reason={queued} />
           <p className={s.note}>A null of thousands of shifts can take minutes on a large map.</p>
         </>
       ) : null}

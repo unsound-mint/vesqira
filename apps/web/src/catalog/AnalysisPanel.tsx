@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Input, Select } from "../ui";
+import { QueueNote, useQueueReason } from "../ui/QueueNote";
+import { newRequestId } from "../api/http";
 import { createAnalysisJob, getDerived, runAnalysis } from "../api/analysis";
 import type { AnalysisOp, Derived, StatsSummary } from "../api/analysis";
 import type { Dataset } from "../api/catalog";
@@ -33,6 +35,8 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
   const [stats, setStats] = useState<StatsSummary | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [rid, setRid] = useState<string | null>(null);
+  const queued = useQueueReason(busy, rid);
   const remote = dataset.hostId !== 0;
   const takesMasks = !remote && (op === "stats" || op === "moment");
   const { masks } = useMasks(takesMasks ? dataset.id : null);
@@ -55,6 +59,8 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
 
   async function go() {
     setBusy(true);
+    const id = newRequestId();
+    setRid(id);
     setErr(null);
     setStats(null);
     try {
@@ -62,7 +68,7 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
       const req = { op, datasetId: dataset.id, referenceId: ref ? Number(ref) : undefined, params: params(), ...(uses.length ? { masks: uses } : {}) };
       if (remote) onJob(await createAnalysisJob(req));
       else {
-        const r = await runAnalysis(req);
+        const r = await runAnalysis(req, undefined, id);
         if (op === "stats") setStats(r.summary as StatsSummary);
         else if (r.dataset) onCreated(r.dataset);
       }
@@ -129,6 +135,7 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
       <Button variant="primary" disabled={busy || badWeight(policy) || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0))} onClick={go}>
         {busy ? "Working…" : remote ? "Create a job on the host" : op === "stats" ? "Compute statistics" : "Create the new file"}
       </Button>
+      <QueueNote reason={queued} />
       {remote ? <p className={s.note}>This file lives on a host. The analysis becomes a Slurm job whose script you read and submit; the result stays on the host and is registered afterwards.</p> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
       {stats ? <StatsView st={stats} /> : null}

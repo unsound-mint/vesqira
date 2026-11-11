@@ -210,7 +210,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"summary": res.Summary, "software": derived.CleanSoftware(res.Software)})
 		return
 	}
-	nd, code, msg := s.registerPath(r.Context(), outPath)
+	nd, code, msg := s.registerPath(waiting(r.Context()), outPath)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -226,7 +226,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: in.Op, Params: params, Sources: sources, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
-	nd = s.finishAxialResult(analysisOutcome{res.Summary, res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(r.Context(), p) }, in.Op, sources, params)
+	nd = s.finishAxialResult(analysisOutcome{res.Summary, res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(waiting(r.Context()), p) }, in.Op, sources, params)
 	writeJSON(w, 201, map[string]any{"dataset": nd, "summary": res.Summary})
 }
 
@@ -239,6 +239,17 @@ func (s *Server) runAnalysisProgram(r *http.Request, args []string) (analysisOut
 
 // runAnalysisProgramCtx is runAnalysisProgram for a caller with a context and no request (an import rule applying a mask).
 func (s *Server) runAnalysisProgramCtx(parent context.Context, args []string) (analysisOutcome, int, string) {
+	if s.Load != nil { // heavy class: wait for a slot, visible to the person who asked (workload.go)
+		label := "analysis"
+		if len(args) > 2 {
+			label = analysisLabel(args[2])
+		}
+		_, release, err := s.Load.Acquire(parent, worker.Heavy, label)
+		if err != nil {
+			return analysisOutcome{}, 499, "request cancelled"
+		}
+		defer release()
+	}
 	ctx, cancel := context.WithTimeout(parent, s.Analysis.Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, s.Analysis.Python, args...)
@@ -246,7 +257,7 @@ func (s *Server) runAnalysisProgramCtx(parent context.Context, args []string) (a
 	if id := RequestID(parent); id != "" { // already validated as a plain token
 		cmd.Env = append(cmd.Env, "VESQIRA_REQUEST_ID="+id)
 	}
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = worker.StderrTail.Writer(nil)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = time.Second

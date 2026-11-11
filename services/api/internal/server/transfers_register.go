@@ -71,7 +71,7 @@ func (s *Server) registerTransfer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	d, code, msg := s.registerPath(r.Context(), real)
+	d, code, msg := s.registerPath(waiting(r.Context()), real)
 	if code != 0 {
 		fail(w, code, msg)
 		return

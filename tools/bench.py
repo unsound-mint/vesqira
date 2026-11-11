@@ -105,6 +105,51 @@ def run(path: str, nx: int, ny: int, nc: int, repeats: int) -> dict:
     return out
 
 
+def load_bench(path: str, nx: int, ny: int, nc: int, repeats: int) -> dict:
+    """Planes on their own worker process while a heavy worker (large-region spectra, back to back) and a background worker
+    (header reads, back to back) are busy: the workload classes of ADR 0056, each with its own process. What it measures is
+    what separate processes do not isolate: CPU, memory bandwidth and the page cache."""
+    import threading
+    inter, heavy, back = Worker(), Worker(), Worker()
+    mid, c = nc // 2, min(nx, ny) // 2
+    side = min(nx, ny) // 4
+    stop = threading.Event()
+    served = {"heavy": 0, "background": 0}
+
+    def flood(w: Worker, key: str, **req) -> None:
+        while not stop.is_set():
+            w.ask(**req)
+            served[key] += 1
+
+    threads = [
+        threading.Thread(target=flood, args=(heavy, "heavy"), kwargs=dict(op="spectrum", path=path, shape="rect", x0=c, y0=c, x1=c + side - 1, y1=c + side - 1)),
+        threading.Thread(target=flood, args=(back, "background"), kwargs=dict(op="describe", path=path)),
+    ]
+    for t in threads:
+        t.start()
+    time.sleep(0.5)
+    times: list[float] = []
+    err = None
+    for i in range(max(repeats, 4)):
+        for ch in (0, mid, mid + 1, nc - 1, mid - 1):
+            ms, head = inter.ask(op="plane", path=path, channel=ch)
+            if not head.get("ok"):
+                err = head.get("error") or head.get("code") or "failed"
+            times.append(ms)
+    stop.set()
+    for t in threads:
+        t.join()
+    entry: dict = {"rss_mb": inter.rss_mb()}
+    if err:
+        entry["error"] = err
+    else:
+        entry.update(first_ms=round(times[0], 1), median_ms=round(statistics.median(times), 1), p95_ms=round(p95(times), 1), n=len(times),
+                     heavy_served=served["heavy"], background_served=served["background"])
+    for w in (inter, heavy, back):
+        w.close()
+    return entry
+
+
 HEADER_SCRIPT = os.path.join(ROOT, "services", "scientific-worker", "fits_header.py")
 
 
@@ -156,6 +201,7 @@ def main() -> int:
         make_cube(path, nx, ny, nc)
         res = run(path, nx, ny, nc, a.repeats)
         res["ops"]["register"], res["register_one_process_per_file"] = register_bench(d, a.register_files, 20)
+        res["ops"]["plane_under_load"] = load_bench(path, nx, ny, nc, a.repeats)
     print(f"sparse cube {nx}x{ny}x{nc} ({res['cube']['logical_gib']:.1f} GiB logical); page-cache speed, not disk")
     print(f"{'op':18s} {'first ms':>9s} {'median':>8s} {'p95':>8s} {'rss MB':>7s}")
     for name, e in res["ops"].items():
@@ -163,6 +209,9 @@ def main() -> int:
             print(f"{name:18s} {'refused: ' + str(e['error']):>34s} {e['rss_mb']:7d}")
         else:
             print(f"{name:18s} {e['first_ms']:9.1f} {e['median_ms']:8.1f} {e['p95_ms']:8.1f} {e['rss_mb']:7d}")
+    pl = res["ops"]["plane_under_load"]
+    if "error" not in pl:
+        print(f"plane_under_load: planes while the heavy worker served {pl['heavy_served']} spectra and the background worker {pl['background_served']} header reads")
     old = res["register_one_process_per_file"]
     print(f"register: {res['ops']['register']['n']} small files per request through the persistent worker; "
           f"previously one process per file: median {old['median_ms']} ms (n={old['n']})")

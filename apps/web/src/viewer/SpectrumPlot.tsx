@@ -3,6 +3,7 @@ import type { Spectrum } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { unitLabel } from "./format";
+import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import s from "./SpectrumPlot.module.css";
 
 const W = 320;
@@ -32,10 +33,11 @@ export function segments(x: number[], y: number[]): string[][] {
 
 export function SpectrumPlot({ v }: { v: Viewer }) {
   const sp: Spectrum | null = v.spectrum;
+  const queued = useQueueReason(v.spectrumLoading && !sp, v.spectrumRequestId);
   if (v.interp) return <p className={s.note}>A spectrum averages values over channels, which is not defined for angles of an axial map. See the orientation statistics.</p>;
   if (!v.region) return <p className={s.note}>Draw a region (Region section) to see its mean spectrum.</p>;
   if (v.spectrumError) return <p role="alert" className={s.err}>{v.spectrumError}</p>;
-  if (!sp) return <p className={s.note}>{v.spectrumLoading ? "Computing the spectrum…" : EM}</p>;
+  if (!sp) return <><p className={s.note}>{v.spectrumLoading ? "Computing the spectrum…" : EM}</p><QueueNote reason={queued} className={s.note} /></>;
 
   const { factor, label } = axisDisplay(sp.head.axis.unit);
   const n = sp.head.channels;

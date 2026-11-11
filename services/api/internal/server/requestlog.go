@@ -34,7 +34,10 @@ func RequestID(ctx context.Context) string {
 
 // requestLogger writes one JSON line per request to stderr. Level is info for failures and slow requests and debug for the
 // rest, so by default the log is quiet; VESQIRA_LOG=debug shows everything.
-var requestLogger = slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel()}))
+// apiLogTail keeps the last log lines for the support bundle (support.go).
+var apiLogTail = worker.NewTail(300)
+
+var requestLogger = slog.New(slog.NewJSONHandler(apiLogTail.Writer(os.Stderr), &slog.HandlerOptions{Level: logLevel()}))
 
 func logLevel() slog.Level {
 	if strings.EqualFold(os.Getenv("VESQIRA_LOG"), "debug") {

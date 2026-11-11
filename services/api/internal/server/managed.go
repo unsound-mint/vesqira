@@ -28,7 +28,7 @@ func (s *Server) previewFile(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, err.Error())
 		return
 	}
-	hdr, err := s.Worker.Header(r.Context(), real)
+	hdr, err := s.Worker.Header(waiting(r.Context()), real)
 	if err != nil {
 		fail(w, 422, err.Error())
 		return
@@ -117,7 +117,7 @@ func (s *Server) copyDataset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = os.Chmod(dst, 0o444) // a managed copy is evidence: read-only
-	nd, code, msg := s.registerPath(r.Context(), dst)
+	nd, code, msg := s.registerPath(waiting(r.Context()), dst)
 	if code != 0 {
 		fail(w, code, msg)
 		return

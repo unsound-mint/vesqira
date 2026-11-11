@@ -41,12 +41,15 @@ type HeaderReader interface {
 }
 
 type Server struct {
-	pictures   sync.Map         // sha of an attachment or figure preview -> cleanedPicture (reports.go); the zero value is ready
-	Roots      sourceroot.Roots // folders that may be read; grows when the owner opens a folder (use roots())
-	Store      *catalog.Store
-	Worker     HeaderReader
-	Planes     PlaneService // persistent plane worker; nil answers 503
-	Cache      *PlaneCache  // optional; nil disables caching
+	pictures sync.Map         // sha of an attachment or figure preview -> cleanedPicture (reports.go); the zero value is ready
+	Roots    sourceroot.Roots // folders that may be read; grows when the owner opens a folder (use roots())
+	Store    *catalog.Store
+	Worker   HeaderReader
+	Planes   PlaneService // persistent plane worker; nil answers 503
+	// Load is the workload governor shared with Planes (worker.Persistent.Load): analysis programs take a heavy slot from it, and
+	// GET /api/workload reports it. Nil runs analyses ungoverned and reports nothing.
+	Load       *worker.Load
+	Cache      *PlaneCache // optional; nil disables caching
 	Boards     *boards.Store
 	Runs       *runs.Store
 	HostDB     *hosts.Store // remote hosts; nil disables them
@@ -128,6 +131,7 @@ type Server struct {
 	hashing     hashRegistry
 	hashes      sync.WaitGroup // full hashes in flight
 
+	support  supportStore  // support bundle previews waiting to be saved (support.go)
 	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
 }
@@ -135,6 +139,9 @@ type Server struct {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/capabilities", s.capabilities)
+	mux.HandleFunc("GET /api/workload", s.workload)
+	mux.HandleFunc("POST /api/support/preview", s.supportPreview)
+	mux.HandleFunc("GET /api/support/bundle/{id}", s.supportDownload)
 	mux.HandleFunc("GET /api/roots", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"roots": s.roots()}) })
 	mux.HandleFunc("GET /api/files/tree", s.fileTree)
 	mux.HandleFunc("GET /api/datasets", s.list)
@@ -577,7 +584,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	d, code, msg := s.registerPath(r.Context(), real)
+	d, code, msg := s.registerPath(waiting(r.Context()), real)
 	if code != 0 {
 		fail(w, code, msg)
 		return

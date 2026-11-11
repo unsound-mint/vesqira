@@ -29,8 +29,8 @@ One workspace: inspect, change parameters, run on HPC, add to a board with the s
 - [x] A board panel that follows a run still running and pins its result when it finishes. Built: a job on a board shows its state, progress (from the VGT chunk log) and an estimate, becomes its default output once imported as a run, and is pinned as a figure; a snapshot freezes it as a placeholder. Adding the drafted job to a board from the rerun form is built. A finished VGT job is imported automatically once (per-job option, ADR 0043).
 - [x] Change parameters from the cube view and run in one click (pulls shape.md slice 2 forward). Built: "Run again with…" drafts a job from a run (or from runs matched to the open input file), owner-only; submit stays on the Jobs screen after reading the script. Not yet: region-based entry from the viewer, "add to a board when it starts".
 - [x] Parameter grid board from a sweep: job panels in parameter order, a metric table and metric-vs-parameter plot, no "best" label (ADR 0048).
-- [~] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39). ADR 0029 (accepted): owner-only, off by default, the editor first. Built: the editor for local text files (`--enable-editor`; confined saves, conflict view, audited opens and saves). Not built: editing files on a host, the terminal.
-- [ ] Optional VPN companion (gpclient): a per-host connect command run through polkit, ADR 0029 (accepted); built after the editor and terminal.
+- [~] Integrated editor and terminal (Monaco, xterm.js over the local backend) (Q39). ADR 0029 (accepted): owner-only, off by default, the editor first. Built: the editor for local text files (`--enable-editor`; confined saves, conflict view, audited opens and saves). Built since: editing text files on a host (same confinement and verified atomic save, ADR 0029) and the terminal (`--enable-terminal`: single-use token in the WebSocket subprotocol, sessions killed with their jobs, audit without content). The owner API refuses other OS accounts on Linux (peer gate).
+- [x] Optional VPN companion (gpclient): a per-host connect command run through polkit, ADR 0029 (accepted); built after the editor and terminal.
 
 ## Stage W — Projects as folders (owner direction, 2026-11-05)
 
@@ -63,11 +63,11 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 The owner asked for the most convenient app for this kind of work, beyond the interview list. Items come from the owner's own research (VGT and ROHSA on LMC H I and CO, Slurm over a VPN, weekly reports) and from common radio-astronomy practice (contours, vectors, channel maps, PV diagrams, relative-orientation statistics). Design: ADR 0042. New screens do not wait for an approved mock during this push; the owner reviews afterwards.
 
 - [x] Declared angle frame and quantity (pixel or sky; B-field, gradient, dust or starlight polarization), and axial-aware resampling for align and convolve (fixes the shipped linear interpolation of axial maps); previews of axial maps stay disabled.
-- [~] Viewer scene: base plus ordered overlays, placed by WCS geometry, not resampling. Built: the scene/1 contract and viewer store (figures store their scene, never shown to reviewers), and overlays from other datasets: contours (levels incl. k×σ by MAD), orientation lines, beam ellipse, coordinate grid, each stating its basis or why it is not drawn. Catalog markers and B-field vectors from point catalogs (row filter shared with relative orientation, click a marker for its row, a keyboard list of sources). Not built: linked views by WCS, draw again and SVG export.
+- [~] Viewer scene: base plus ordered overlays, placed by WCS geometry, not resampling. Built: the scene/1 contract and viewer store (figures store their scene, never shown to reviewers), and overlays from other datasets: contours (levels incl. k×σ by MAD), orientation lines, beam ellipse, coordinate grid, each stating its basis or why it is not drawn. Catalog markers and B-field vectors from point catalogs (row filter shared with relative orientation, click a marker for its row, a keyboard list of sources). Linked views by WCS and redrawable figures with SVG export are built (see below).
 - [x] Point catalogs as datasets (CSV, TSV, whitespace tables, ECSV, IPAC, VOTable, FITS table; sexagesimal or degrees; declared frame and angle columns; parse report by line), e.g. starlight polarization and absorption sightlines (ADR 0044). On this computer only.
 - [x] Relative orientation between two orientation maps or a map and a catalog: alignment measure (weighted too), projected Rayleigh statistic (no p-value: correlated pixels) and histogram, the owner's shifted-pattern null reproduced, an optional P/σP cut, deterministic seeds (ADR 0047). Remote inputs, Planck HEALPix ingestion and block averaging are not built.
-- [ ] Linked view groups by sky position and spectral value (Stage 3 item, through ADR 0042).
-- [ ] Figures as scenes: draw again, change announced, SVG export (Stage 6 item).
+- [x] Linked view groups by sky position and spectral value (ADR 0042 §4): the worker's affine over the visible region with its stated error; channels by spectral value with the residual; SPECSYS must match for a channel link (same-grid pairs too).
+- [x] Figures as scenes: draw again (data and declaration changes announced first; a redraw is a new linked figure), SVG export from the same marks (ADR 0042 §5).
 - [x] Channel-map grid (shared scale, converted spectral labels, slab means) and position-velocity diagram along a line or polyline (offsets as sky separations; bilinear or nearest sampling, stated) (ADR 0049).
 - [x] Gaussian decomposition browser for ROHSA results: component curves over the spectrum at a pixel (streamed index of the .dat), component and residual maps, CNM versus the rest with the width cut as a declared input (ADR 0046).
 - [x] Job finished: jobs are watched while the app runs (batched squeue/sacct per host, backoff when unreachable), a notification list and an optional desktop notification, and finished VGT outputs imported once as a run (ADR 0043).
@@ -109,8 +109,8 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 - [x] Scalar difference map between two compatible maps with the same declared unit (ADR 0017 amendment); a map declared axial uses the axial difference.
 - Channel animation: dropped for now.
 - [x] Saved, named regions: create, rename, change shape, duplicate, hide, delete with undo, export as DS9 (ADR 0026). DS9 import in image coordinates and in sky coordinates (FK5/ICRS/galactic circles and unrotated boxes, placed with the file's WCS and listed as approximated) with a preview.
-- [ ] Exploration history and "continue from here" (Q96–Q98).
-- [ ] Linked views can be grouped and unlinked by the user; linking through a validated transformation (Q174).
+- [x] Exploration history and "continue from here" (Q96–Q98): per-project steps, continue branches without deleting later steps (ADR 0057).
+- [x] Linked views can be grouped and unlinked by the user; linking through a validated transformation (Q174): see Stage S.
 - [x] Keyboard pixel cursor (Shift+arrows) and a table alternative for the spectrum plot (Q176).
 - [x] Raw FITS header cards viewable and exportable (Q211).
 
@@ -118,19 +118,19 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 
 - [~] Typed run metrics with units and uncertainty are in (stage L); cross-run filtering and plotting (Q128–Q131) are not.
 - [~] Parameter sweeps and "explore variations" as a set of linked runs (Q128, Q222): VGT sweeps built (drafts read before submitting, concurrency limit, exactly once per job, ADR 0048); ROHSA reruns and sweeps edit the config line by line with a sizing suggestion from the owner's submit script, one job at a time by default; ROHSA fits on a host import, index on the host and auto-import when a job ends (ADRs 0046, 0048).
-- [x] Reproducibility facts beyond the git flag, each declared, inferred or unresolved (Q121–Q125, Q198). Capturing environment and hashes is still to do.
-- [ ] Rerun modes: strict, best effort, adapted (Q123).
+- [x] Reproducibility facts beyond the git flag, each declared, inferred or unresolved (Q121–Q125, Q198). The job captures its environment itself (code commit and diff hash, manifests, modules, node, input fingerprint), each labelled (ADR 0054).
+- [x] Rerun modes: strict, best effort, adapted (Q123, ADR 0054).
 - [x] Accounting of failed evaluations when the run reports them; cancelled and excluded are stated as not recorded (Q224).
-- [ ] Structured fields for controls: smoothing, noise model, how a control was constructed (Q246).
+- [x] Structured fields for controls: smoothing, noise model, how a control was constructed (Q246, ADR 0054); relative orientation records its null as verified.
 - [x] ROHSA job template next to the existing VGT one (follows the pipeline's ROHSA cluster script; results are not imported as a run).
 - [x] Beam matching (convolution to a common beam) as an explicit derived resource; never implied by reprojection (Q205).
 - [~] Unit conversion with dimensional checks; frame transform between declared frames (Q204, Q209). Built for the viewer readout (ADR 0040): spectral units and velocity conventions, brightness K and Jy/beam with the file's beam, sky frames ICRS/FK5/Galactic, each with its basis or a refusal. Not built: conversions in figures, plots and the compare view; spectral reference frame changes.
 
 ## Stage 5 — Data model and catalog
 
-- [ ] Typed masks: low SNR, saturated, user excluded; masks as derived resources carried by outputs (Q201).
-- [ ] Interpretation tiers: add `verified` and `inferred` with a mapping version (Q211).
-- [ ] Dataset identity independent of the path: several locations per dataset, content fingerprint, "newer result available" notice (Q83, Q84, Q136).
+- [~] Typed masks: low SNR, saturated, user excluded; masks as derived resources carried by outputs (Q201, ADR 0055). Applied in statistics, moments and map-vs-map relative orientation; not yet in region histograms and spectra, align, convolve, remote analyses or figure PNGs.
+- [x] Interpretation tiers: add `verified` and `inferred` with a mapping version (Q211, ADR 0055).
+- [x] Dataset identity independent of the path: several locations per dataset, content fingerprint, "newer result available" notice (Q83, Q84, Q136; ADR 0053): sampled and full fingerprints labelled honestly, verified/probable/declared links, verified downloads linked.
   - [x] First part (Q83): a registered file on this computer that changed (size or modification time) or vanished is flagged in the list and the inspector, checked at start, when the window returns and after registering; a changed file offers "Read it again" and the viewer restarts on it. Remote files are not checked (that waits on the network). Identity, fingerprints and several locations are not built.
 - [~] WCS and unit corrections as a layer with history, never an edit of the original (Q143). Built: a unit declared for a file with no BUNIT (ADR 0038; audited, with staleness). Not built: correcting a unit the file does state, WCS corrections, a history view, sidecar import and export, impact analysis.
 - [x] Filter boxes in the explorer: datasets by name, unit, host or nature; runs by parameters (key=value, <, >, <=, >=), QC and text (Q19–Q21, Q163). A sortable table is still to do.
@@ -149,8 +149,8 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 - [ ] Workload classes: reserved interactive capacity, queue reasons shown to the user (Q169).
 - [x] Every API request gets a correlation id (the caller's `X-Request-Id` when it is a plain token, else generated) returned in the response, and one JSON log line (method, path, status, size, duration; never the query string); quiet by default (failures and slow requests), `VESQIRA_LOG=debug` shows all. The id reaches the scientific workers, whose failure and slow-request log lines name it; it is not shown in the UI, and the support bundle is not built (Q158, Q163).
 - [x] Dependency boundaries enforced by tests: a layering table for the Go packages and the reviewer-reachable set (`internal/arch`), and the reviewer page's imports in the web app (`boundaries.test.ts`) (Q180).
-- [ ] Command registry with undo for board and review edits (Q175).
-- [ ] Figures stored as a re-renderable specification, with SVG export; board layout grid with snap and resize (Q186, Q187, Q10–Q13).
+- [x] Command registry with undo for board and review edits (Q175, ADR 0057); board edits guarded on the server; publishing is never undoable.
+- [~] Figures stored as a re-renderable specification, with SVG export; board layout grid with snap and resize (Q186, Q187, Q10–Q13). Built: re-renderable scenes and SVG export. Not built: the board layout grid with snap and resize.
 - [ ] Map every case of the scientific acceptance pack to a test id once the pack is available (35 cases).
 
 ## Stage 7 — People and access (design first)

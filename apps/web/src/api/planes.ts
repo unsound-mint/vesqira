@@ -1,4 +1,4 @@
-import { ApiError, requestRaw } from "./http";
+import { ApiError, idHeader, requestRaw } from "./http";
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
@@ -162,8 +162,8 @@ export function parseSpectrum(buf: ArrayBuffer): Spectrum {
   return { head, axis: f64(at), mean: f64(at + c * 8), count };
 }
 
-export const getSpectrum = (id: number, r: RegionShape, signal?: AbortSignal) =>
-  request(`${base(id)}/spectrum?${regionQuery(r)}`, signal).then((x) => x.arrayBuffer()).then(parseSpectrum);
+export const getSpectrum = (id: number, r: RegionShape, signal?: AbortSignal, requestId?: string) =>
+  requestRaw(`${base(id)}/spectrum?${regionQuery(r)}`, { signal, headers: idHeader(requestId) }).then((x) => x.arrayBuffer()).then(parseSpectrum);
 
 export type AxialSummary = { n: number; resultant: number | null; mean_deg: number | null; defined: boolean; reason: string | null };
 export type AxialStats = {

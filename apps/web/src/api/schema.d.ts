@@ -3041,6 +3041,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/support/bundle/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The previewed bundle as a zip (owner listener only; the preview expires after ten minutes) */
+        get: operations["owner_s_supportDownload_get_api_support_bundle_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/support/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build a support bundle and return every file's text for review before saving (owner listener only) */
+        post: operations["owner_s_supportPreview_post_api_support_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sweeps": {
         parameters: {
             query?: never;
@@ -3334,6 +3370,23 @@ export interface paths {
         put?: never;
         /** Put a failed or cancelled transfer back in the queue (the partial file is resumed), or copy again a transfer that arrived unverified (contents are compared and the copy this transfer made may be replaced) */
         post: operations["owner_s_retryTransfer_post_api_transfers_id_retry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Budget, running and waiting tasks per workload class; with ?request=<X-Request-Id> whether that request waits and why */
+        get: operations["owner_s_workload_get_api_workload"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7392,6 +7445,45 @@ export interface components {
                 remaining: number;
             };
             importSummary?: components["schemas"]["ImportSummary"] | null;
+        };
+        WorkloadClass: {
+            /** @enum {string} */
+            class: "interactive" | "heavy" | "background";
+            /** @description tasks of this class that may run at once (--workers-interactive, --workers-heavy, --workers-background) */
+            budget: number;
+            running: number;
+            waiting: number;
+        };
+        WorkloadRequest: {
+            /**
+             * @description unknown: finished, never queued, or not a request of the scientific workers
+             * @enum {string}
+             */
+            state: "waiting" | "running" | "unknown";
+            class?: string;
+            /** @description present while waiting: what holds the class's slots, and that interactive viewing is unaffected (heavy and background classes) */
+            reason?: string;
+        };
+        /** @description Workload classes (ADR 0056). Names only operations, never files or datasets. */
+        Workload: {
+            classes: components["schemas"]["WorkloadClass"][];
+            request?: components["schemas"]["WorkloadRequest"];
+        };
+        SupportFile: {
+            name: string;
+            bytes: number;
+            /** @description the whole file, plain text, as it is in the zip */
+            text: string;
+        };
+        /** @description A support bundle built and kept in memory for ten minutes; GET /api/support/bundle/{id} returns exactly these files. */
+        SupportPreview: {
+            id: string;
+            bytes: number;
+            files: components["schemas"]["SupportFile"][];
+        };
+        SupportPreviewRequest: {
+            /** @description default false: dataset names and file names are removed from every file */
+            includeDatasetNames?: boolean;
         };
     };
     responses: never;
@@ -12580,6 +12672,88 @@ export interface operations {
             };
         };
     };
+    owner_s_supportDownload_get_api_support_bundle_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description zip */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            /** @description Error */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_supportPreview_post_api_support_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SupportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportPreview"];
+                };
+            };
+            /** @description Error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listSweeps_get_api_sweeps: {
         parameters: {
             query?: never;
@@ -13408,6 +13582,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_workload_get_api_workload: {
+        parameters: {
+            query?: {
+                /** @description the X-Request-Id the slow request was sent with */
+                request?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workload"];
                 };
             };
             /** @description Error */

@@ -43,7 +43,7 @@ func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
 func main() {
-	if archiveCommand(os.Args[1:]) || publishServerCommand(os.Args[1:]) || agentCommand(os.Args[1:]) {
+	if archiveCommand(os.Args[1:]) || publishServerCommand(os.Args[1:]) || agentCommand(os.Args[1:]) || supportCommand(os.Args[1:]) {
 		return
 	}
 	var roots multi
@@ -63,9 +63,17 @@ func main() {
 	enableTerminal := flag.Bool("enable-terminal", false, "let the owner open a shell on this computer or on a registered host from the app (ADR 0029); runs commands as you; off by default, never on the review address")
 	enableVPN := flag.Bool("enable-vpn", false, "let the owner set a VPN client command per host and run it from the app (ADR 0029); runs that command as you, without a shell; off by default, never on the review address")
 	allowOthers := flag.Bool("allow-other-local-users", false, "DANGEROUS: do not check which user account connects to the owner address; on a shared computer any other account can then use the app as you (and open a shell with --enable-terminal)")
+	wInteractive := flag.Int("workers-interactive", worker.DefaultBudgets().Interactive, "worker processes reserved for interactive viewing (planes, coordinates, overlays); never used by heavy or background work (ADR 0056)")
+	wHeavy := flag.Int("workers-heavy", worker.DefaultBudgets().Heavy, "heavy tasks at once: spectra over large regions, PV, channel grids, index builds, and analysis programs")
+	wBackground := flag.Int("workers-background", worker.DefaultBudgets().Background, "background tasks at once: project scans, fingerprints; at most one of them is a full file hash, which takes the last slot only when this is 1 (ADR 0056)")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
 
+	budgets := worker.Budgets{Interactive: *wInteractive, Heavy: *wHeavy, Background: *wBackground}
+	if err := budgets.Validate(); err != nil {
+		log.Fatalf("workload budgets: %v", err)
+	}
+	load := worker.NewLoad(budgets)
 	// Resolve the interpreter once, in this process's environment, so the workers (which run with a minimal PATH)
 	// use the same Python, and the same astropy, as the one the operator started the API with.
 	if p, err := exec.LookPath(*python); err == nil {
@@ -199,9 +207,9 @@ func main() {
 		}()
 		log.Printf("review surface on http://%s (published previews only)", *reviewAddr)
 	}
-	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second}
+	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second, Load: load}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, Masks: maskStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, History: historyStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, VPNEnabled: *enableVPN, VPNLogDir: filepath.Join(dir, "vpn"), Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
+	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Load: load, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, Masks: maskStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, History: historyStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, VPNEnabled: *enableVPN, VPNLogDir: filepath.Join(dir, "vpn"), Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)

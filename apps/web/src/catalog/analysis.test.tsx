@@ -66,3 +66,23 @@ describe("analysis panel", () => {
     expect(screen.getByText(/nothing is treated as zero/)).toBeInTheDocument();
   });
 });
+
+describe("analysis panel queue note", () => {
+  it("sends an X-Request-Id and shows why the request waits, instead of a silent spinner", async () => {
+    let release: (r: Response) => void = () => {};
+    const seen: { url: string; id: string | null }[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      seen.push({ url, id: new Headers(init?.headers).get("X-Request-Id") });
+      if (url.startsWith("/api/workload")) return Promise.resolve(new Response(JSON.stringify({ classes: [], request: { state: "waiting", class: "heavy", reason: "waiting: 2 heavy analyses are running" } }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      return new Promise<Response>((res) => { release = res; });
+    }));
+    render(<AnalysisPanel dataset={cube} datasets={[cube]} channels={64} onCreated={() => {}} onJob={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "Create the new file" }));
+    expect(await screen.findByText("waiting: 2 heavy analyses are running", {}, { timeout: 3000 })).toBeInTheDocument();
+    const post = seen.find((c) => c.url === "/api/analysis")!;
+    expect(post.id).toMatch(/^[A-Za-z0-9._-]{8,64}$/);
+    expect(seen.find((c) => c.url.startsWith("/api/workload"))!.url).toBe(`/api/workload?request=${post.id}`);
+    release(new Response(JSON.stringify({ summary: {} }), { status: 201, headers: { "Content-Type": "application/json" } }));
+    await waitFor(() => expect(screen.queryByText(/2 heavy analyses/)).not.toBeInTheDocument());
+  });
+});

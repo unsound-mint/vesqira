@@ -3525,6 +3525,69 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/support/bundle/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_supportDownload_get_api_support_bundle_id
+      x-listener: owner
+      summary: "The previewed bundle as a zip (owner listener only; the preview expires after ten minutes)"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "zip"
+          content:
+            "application/zip":
+              schema:
+                type: "string"
+                format: "binary"
+        "404":
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/support/preview:
+    post:
+      operationId: owner_s_supportPreview_post_api_support_preview
+      x-listener: owner
+      summary: "Build a support bundle and return every file's text for review before saving (owner listener only)"
+      requestBody:
+        required: false
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SupportPreviewRequest"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SupportPreview"
+        "400":
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/sweeps:
     get:
       operationId: owner_s_listSweeps_get_api_sweeps
@@ -4134,6 +4197,31 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/workload:
+    get:
+      operationId: owner_s_workload_get_api_workload
+      x-listener: owner
+      summary: "Budget, running and waiting tasks per workload class; with ?request=<X-Request-Id> whether that request waits and why"
+      parameters:
+        - name: "request"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "the X-Request-Id the slow request was sent with"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Workload"
         default:
           description: "Error"
           content:
@@ -12980,3 +13068,90 @@ components:
       required:
         - "results"
         - "summary"
+    WorkloadClass:
+      type: "object"
+      required:
+        - "class"
+        - "budget"
+        - "running"
+        - "waiting"
+      properties:
+        class:
+          type: "string"
+          enum:
+            - "interactive"
+            - "heavy"
+            - "background"
+        budget:
+          type: "integer"
+          description: "tasks of this class that may run at once (--workers-interactive, --workers-heavy, --workers-background)"
+        running:
+          type: "integer"
+        waiting:
+          type: "integer"
+    WorkloadRequest:
+      type: "object"
+      required:
+        - "state"
+      properties:
+        state:
+          type: "string"
+          enum:
+            - "waiting"
+            - "running"
+            - "unknown"
+          description: "unknown: finished, never queued, or not a request of the scientific workers"
+        class:
+          type: "string"
+        reason:
+          type: "string"
+          description: "present while waiting: what holds the class's slots, and that interactive viewing is unaffected (heavy and background classes)"
+    Workload:
+      type: "object"
+      required:
+        - "classes"
+      description: "Workload classes (ADR 0056). Names only operations, never files or datasets."
+      properties:
+        classes:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/WorkloadClass"
+        request:
+          $ref: "#/components/schemas/WorkloadRequest"
+    SupportFile:
+      type: "object"
+      required:
+        - "name"
+        - "bytes"
+        - "text"
+      properties:
+        name:
+          type: "string"
+        bytes:
+          type: "integer"
+        text:
+          type: "string"
+          description: "the whole file, plain text, as it is in the zip"
+    SupportPreview:
+      type: "object"
+      required:
+        - "id"
+        - "files"
+        - "bytes"
+      description: "A support bundle built and kept in memory for ten minutes; GET /api/support/bundle/{id} returns exactly these files."
+      properties:
+        id:
+          type: "string"
+        bytes:
+          type: "integer"
+        files:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SupportFile"
+    SupportPreviewRequest:
+      type: "object"
+      additionalProperties: false
+      properties:
+        includeDatasetNames:
+          type: "boolean"
+          description: "default false: dataset names and file names are removed from every file"

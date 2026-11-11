@@ -5,7 +5,8 @@ import { createFigure } from "../api/boards";
 import type { Figure } from "../api/boards";
 import { getChannelGrid, getPanel } from "../api/channelmaps";
 import type { ChannelGridPlan, GridPanel } from "../api/channelmaps";
-import { ApiError } from "../api/http";
+import { ApiError, newRequestId } from "../api/http";
+import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import type { Plane } from "../api/planes";
 import { lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
@@ -52,11 +53,15 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
   const want = near || request > 0; // "Load all" asks every panel to read
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<Loaded | undefined>(cached);
+  const [rid, setRid] = useState<string | null>(null);
+  const queued = useQueueReason(want && !data && !error, rid);
 
   useEffect(() => {
     if (!want || data) return;
     const ac = new AbortController();
-    getPanel(datasetId, panel, plan.step, ac.signal)
+    const id = newRequestId();
+    setRid(id);
+    getPanel(datasetId, panel, plan.step, ac.signal, id)
       .then((p) => {
         const l = { plane: { head: p.head, data: p.data }, slab: p.slab as Loaded["slab"] };
         setData(l);
@@ -81,7 +86,7 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
     <figure className={s.panel} ref={box} style={{ aspectRatio: `${plan.panel_width} / ${plan.panel_height}` }}>
       <canvas ref={canvas} className={s.canvas} role="img" aria-label={`${label}, ${plan.panel_width} by ${plan.panel_height} pixels`} />
       <figcaption className={s.label}>{label}</figcaption>
-      {!data && !error ? <span className={s.state}>{want ? "Loading…" : EM}</span> : null}
+      {!data && !error ? (queued ? <QueueNote reason={queued} className={s.state} /> : <span className={s.state}>{want ? "Loading…" : EM}</span>) : null}
       {error ? <span className={s.state} role="alert">{error}</span> : null}
       {none ? <span className={s.state}>No value in any pixel</span> : null}
       {panel.flagged ? <span className={s.flag} title="The file flags a channel of this panel; its data are shown.">▲ flagged</span> : null}

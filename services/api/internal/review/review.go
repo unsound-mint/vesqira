@@ -111,7 +111,7 @@ func (h *Handler) Handler() http.Handler {
 	if h.WebDist != "" {
 		mux.Handle("GET /", h.static())
 	}
-	return mux
+	return withRequestID(mux)
 }
 
 // static serves the built web app. It never serves anything under /api, which does not exist here.

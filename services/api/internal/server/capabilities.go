@@ -49,6 +49,10 @@ type Capabilities struct {
 // feature as unavailable instead of failing on a 404. Application version, protocol version and data-schema version are
 // reported separately because compatibility depends on the contract, not on matching version numbers.
 func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, s.currentCapabilities())
+}
+
+func (s *Server) currentCapabilities() Capabilities {
 	remote := s.HostDB != nil && s.Remote != nil
 	c := Capabilities{Protocol: ProtocolVersion, Schema: schema.Version}
 	c.App.Name, c.App.Version = "vesqira", Version
@@ -61,5 +65,5 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 	f.Editor, f.Terminal = s.EditorEnabled, s.TerminalEnabled
 	f.VPN = s.VPNEnabled && remote
 	c.Limits.PreviewStepMax, c.Limits.MetricsPerRunMax = 64, 50
-	writeJSON(w, 200, c)
+	return c
 }
