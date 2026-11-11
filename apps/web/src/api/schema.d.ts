@@ -766,6 +766,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open a text file for editing (only with --enable-editor) */
+        get: operations["owner_s_getText_get_api_files_text"];
+        /** Save a text file atomically, only if it is unchanged since it was opened (only with --enable-editor) */
+        put: operations["owner_s_putText_put_api_files_text"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/tree": {
         parameters: {
             query?: never;
@@ -2528,6 +2546,8 @@ export interface components {
                 boards: boolean;
                 regions: boolean;
                 audit: boolean;
+                /** @description The text editor for local files is on (--enable-editor, ADR 0029). */
+                editor: boolean;
             };
             limits: {
                 previewStepMax: number;
@@ -2891,6 +2911,41 @@ export interface components {
             token: string;
             reviewPath: string;
             note: string;
+        };
+        /** @description A text file as the editor saw it (ADR 0029). A save must send these three values from when the file was opened; all three must still match the file on disk. */
+        TextVersion: {
+            /**
+             * Format: int64
+             * @description bytes
+             */
+            size: number;
+            /** @description modification time in nanoseconds since the epoch, as a decimal string (a JSON number would lose digits in a browser) */
+            mtime: string;
+            /** @description hex SHA-256 of the file bytes */
+            sha256: string;
+        };
+        /** @description A text file inside a source root, opened for editing. */
+        TextFile: {
+            /** @description canonical path, symbolic links resolved */
+            path: string;
+            name: string;
+            /** @description UTF-8 text, at most 2 MiB */
+            content: string;
+            /** Format: int64 */
+            size: number;
+            mtime: string;
+            sha256: string;
+        };
+        TextSave: {
+            /** @description absolute path of an existing file; a save never creates one */
+            path: string;
+            content: string;
+            base: components["schemas"]["TextVersion"];
+        };
+        /** @description The file changed on disk since it was opened. Nothing was written; current is what is on disk now. */
+        TextConflict: {
+            error: string;
+            current: components["schemas"]["TextFile"];
         };
     };
     responses: never;
@@ -4063,6 +4118,160 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Figure"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_getText_get_api_files_text: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextFile"];
+                };
+            };
+            /** @description foreign Host, cross-site or cross-origin request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not an existing file inside a readable folder (also: outside the roots, symbolic-link escape, credential folders) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description larger than 2 MiB */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not editable text: FITS, binary, invalid UTF-8, or an extension the editor does not open */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_putText_put_api_files_text: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextSave"];
+            };
+        };
+        responses: {
+            /** @description saved; the answer is the new base */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextFile"];
+                };
+            };
+            /** @description bad request (missing base) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description foreign Host, cross-site or cross-origin request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not an existing file inside a readable folder (also: outside the roots, symbolic-link escape, credential folders) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description changed on disk since it was opened; nothing written */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextConflict"];
+                };
+            };
+            /** @description larger than 2 MiB */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not editable text: FITS, binary, invalid UTF-8, or an extension the editor does not open */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Error */
