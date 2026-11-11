@@ -76,7 +76,7 @@ Project discovery offers catalogs instead of "files of other disciplines without
 - **Fake a FITS header for a catalog.** Every FITS-only surface would then fail in confusing ways. A kind with a typed header makes the refusal explicit.
 
 ## Consequences
-- Schema 9 adds `catalog_declarations`. Existing catalogs get the empty table; no row changes. Datasets deleted take their declaration with them; the impact preview names it.
+- Schema 10 adds `catalog_declarations`. Existing catalogs get the empty table; no row changes. Datasets deleted take their declaration with them; the impact preview names it.
 - The web client's `Dataset` is a union on `kind`; code that reads a header narrows first.
 - Later overlay slices read `catalog_positions` and `catalog_transform` instead of parsing tables themselves.
 - Catalogs over 200,000 sexagesimal positions are refused for positions (decimal degrees work up to the row cap).

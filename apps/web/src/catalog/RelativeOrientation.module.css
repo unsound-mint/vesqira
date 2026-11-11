@@ -1,0 +1,157 @@
+.wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
+.kicker {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.facts dt {
+  color: var(--text-2);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.big {
+  font-family: var(--font-data);
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--sp-4);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.note,
+.err {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.err {
+  color: var(--err);
+}
+
+.err p,
+.err ul {
+  margin: 0;
+}
+
+.fig {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+
+.bar {
+  fill: var(--accent);
+}
+
+.band {
+  stroke: var(--text);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.median {
+  fill: var(--text);
+  stroke: var(--bg-2);
+  stroke-width: 1px;
+}
+
+.rule {
+  stroke: var(--line);
+}
+
+.axis {
+  stroke: var(--line-strong);
+}
+
+.tick {
+  fill: var(--text-2);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+}
+
+.outline {
+  fill: none;
+  stroke: var(--line-strong);
+}
+
+.segMap {
+  stroke: var(--accent);
+  stroke-width: 2px;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.segOther {
+  stroke: var(--text);
+  stroke-width: 1.5px;
+  stroke-dasharray: 3 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.keyMap,
+.keyOther {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  vertical-align: middle;
+  border-top: 2px solid var(--accent);
+}
+
+.keyOther {
+  border-top: 2px dashed var(--text);
+}
+
+.link {
+  color: var(--accent);
+  font-size: var(--text-sm);
+}
+
+.details summary {
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.details[open] {
+  display: grid;
+  gap: var(--sp-2);
+}

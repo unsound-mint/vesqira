@@ -161,6 +161,8 @@ func (s *Server) Handler() http.Handler {
 	if s.analysisDeps() {
 		mux.HandleFunc("POST /api/analysis", s.analyze)
 		mux.HandleFunc("GET /api/datasets/{id}/derived", s.getDerived)
+		mux.HandleFunc("POST /api/analysis/relative-orientation", s.relativeOrientation)
+		mux.HandleFunc("GET /api/datasets/{id}/relative-orientation.csv", s.relativeOrientationTable)
 		if s.HostDB != nil && s.Remote != nil && s.Jobs != nil {
 			mux.HandleFunc("POST /api/analysis/job", s.analysisJob)
 		}

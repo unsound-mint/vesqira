@@ -52,6 +52,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/relative-orientation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Relative orientation of a declared orientation map against a catalog or a second map: alignment measure, projected Rayleigh statistic, histogram and a shifted null; the result is registered with its provenance */
+        post: operations["owner_s_relativeOrientation_post_api_analysis_relative_orientation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/attachments": {
         parameters: {
             query?: never;
@@ -873,6 +890,25 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_importRegions_post_api_datasets_id_regions_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/relative-orientation.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The per-sample table of a relative-orientation result as CSV (missing values are empty cells) */
+        get: operations["owner_s_relativeOrientationTable_get_api_datasets_id_relative_orientation_csv"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4524,6 +4560,156 @@ export interface components {
             /** Format: date-time */
             measuredAt: string;
         };
+        /** @description Each is optional; the default is stated in the result's parameters (ADR 0047). */
+        RelativeOrientationParams: {
+            /** @description Map vs catalog only: disk radius on the sky (default 10) */
+            radiusArcmin?: number;
+            /** @description Map vs catalog only: fewest usable pixels in a disk (default 5) */
+            minPixels?: number;
+            /** @description Null shifts (default 3000 for a catalog, 1000 for two maps; 0 for none) */
+            nShifts?: number;
+            /** @description Shortest shift in degrees (default 1) */
+            minShiftDeg?: number;
+            /** @description A shift is kept when this share of the real samples stays usable (default 0.9) */
+            keepFraction?: number;
+            /**
+             * Format: int64
+             * @description Seed of the null's random stream (default 20261020); recorded in the result
+             */
+            seed?: number;
+            /** @description Equal-width bins of |Δψ| over [0, 90] degrees (default 9) */
+            bins?: number;
+            /** @description Map vs catalog only: the declared value column holding P, for the optional filter P/σP ≥ snrMin; off unless both columns are named */
+            snrColumn?: string;
+            /** @description Map vs catalog only: the declared value column holding σP */
+            snrSigmaColumn?: string;
+            /** @description The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason */
+            snrMin?: number;
+        };
+        RelativeOrientationRequest: {
+            /**
+             * Format: int64
+             * @description A map declared as an axial orientation map, with its frame and quantity
+             */
+            datasetId: number;
+            /**
+             * Format: int64
+             * @description A point catalog with a declared angle, or a second declared orientation map on the same grid
+             */
+            otherId: number;
+            params?: components["schemas"]["RelativeOrientationParams"];
+        };
+        RelativeOrientationHistogram: {
+            edges_deg: number[];
+            counts: number[];
+            fractions: number[];
+            bins?: string;
+        };
+        RelativeOrientationNull: {
+            method: string;
+            skipped?: string | null;
+            kept?: number;
+            attempted?: number;
+            n_sub?: number;
+            chance95?: number | null;
+            p_one_sided?: number | null;
+            mean?: number | null;
+            std?: number | null;
+            wrapped_below_min_shift?: number;
+            sources_shifted?: number;
+            scored_on?: string;
+            histogram_band?: {
+                lo: number[];
+                median: number[];
+                hi: number[];
+                what?: string;
+            } | null;
+        };
+        /** @description Every number with its definition, the parameters as used (defaults filled in, seed included), counts and exclusions (ADR 0047). */
+        RelativeOrientationSummary: {
+            /** @enum {string} */
+            label: "agreement statistic";
+            /** @enum {string} */
+            mode: "map_catalog" | "map_map";
+            definitions?: {
+                [key: string]: string;
+            };
+            parameters: {
+                [key: string]: number | string;
+            };
+            /** @description The map's declaration as used (unit, frame, quantity, rotation to B, celestial frame, reliability), its size nx, ny and pixel scale */
+            map?: {
+                [key: string]: unknown;
+            };
+            /** @description The second map's declaration as used (map vs map) */
+            other?: {
+                [key: string]: unknown;
+            };
+            /** @description The catalog's frame, angle quantity, rotation to B, row count and uncertainty column (map vs catalog) */
+            catalog?: {
+                [key: string]: unknown;
+            };
+            conversion?: string;
+            sampling?: string;
+            weighting?: string | {
+                [key: string]: string;
+            };
+            counts: {
+                rows?: number;
+                pixels?: number;
+                used: number;
+                share_used?: number | null;
+                excluded?: {
+                    [key: string]: number;
+                };
+                disks_truncated_by_search_box?: number;
+            };
+            am: number;
+            am_weighted?: number | null;
+            median_abs_dpsi_deg?: number;
+            bootstrap_am_16_84?: number[] | null;
+            bootstrap_note?: string;
+            prs?: {
+                V?: number | null;
+                V_weighted?: number | null;
+                n?: number;
+                note?: string;
+            };
+            independent_samples?: {
+                value?: number | null;
+                reason?: string;
+                beam_area_arcmin2?: number;
+                method?: string;
+                caveat?: string;
+            };
+            histogram: components["schemas"]["RelativeOrientationHistogram"];
+            null: components["schemas"]["RelativeOrientationNull"];
+            segments?: {
+                x: number[];
+                y: number[];
+                map_pix_deg: (number | null)[];
+                other_pix_deg: number[];
+                used: boolean[];
+                truncated: boolean;
+                frame?: string;
+            };
+            table?: {
+                file?: string | null;
+                rows?: number;
+                columns?: string[];
+                note?: string;
+                reason?: string | null;
+            };
+            policy: string;
+            /** @description The P/σP filter as applied (columns, k, rule, rows excluded below k and for missing values); null when it was off */
+            snr_filter?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        RelativeOrientationResult: {
+            dataset: components["schemas"]["Dataset"];
+            summary: components["schemas"]["RelativeOrientationSummary"];
+        };
         /** @description Levels at multiples of a robust noise estimate of the contoured channel: sigma = 1.4826 x MAD of its finite pixels (astropy.stats.mad_std). It is the scatter of the whole plane, signal included, and is labelled as such. */
         LevelsSigma: {
             /**
@@ -5029,6 +5215,66 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_relativeOrientation_post_api_analysis_relative_orientation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelativeOrientationRequest"];
+            };
+        };
+        responses: {
+            /** @description computed and registered (the per-source table for a catalog, the |Δψ| map for two maps) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelativeOrientationResult"];
+                };
+            };
+            /** @description a parameter outside its range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a stale declaration, data on another host, or two maps not known to share a grid (reasons listed) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a missing declaration (named), or the worker refused (for example no source could be compared) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -6377,6 +6623,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_relativeOrientationTable_get_api_datasets_id_relative_orientation_csv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "X-Content-Type-Options"?: "nosniff";
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description not a relative-orientation result, or no table (a map comparison over the row limit) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

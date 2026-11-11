@@ -4637,6 +4637,480 @@
    },
    "description": "`du -sk` of one folder: disk blocks used, not the sum of file lengths."
   },
+  "RelativeOrientationParams": {
+   "type": "object",
+   "additionalProperties": false,
+   "description": "Each is optional; the default is stated in the result's parameters (ADR 0047).",
+   "properties": {
+    "radiusArcmin": {
+     "type": "number",
+     "minimum": 0.001,
+     "maximum": 600,
+     "description": "Map vs catalog only: disk radius on the sky (default 10)"
+    },
+    "minPixels": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "Map vs catalog only: fewest usable pixels in a disk (default 5)"
+    },
+    "nShifts": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 20000,
+     "description": "Null shifts (default 3000 for a catalog, 1000 for two maps; 0 for none)"
+    },
+    "minShiftDeg": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 180,
+     "description": "Shortest shift in degrees (default 1)"
+    },
+    "keepFraction": {
+     "type": "number",
+     "minimum": 0.05,
+     "maximum": 1,
+     "description": "A shift is kept when this share of the real samples stays usable (default 0.9)"
+    },
+    "seed": {
+     "type": "integer",
+     "format": "int64",
+     "minimum": 0,
+     "description": "Seed of the null's random stream (default 20261020); recorded in the result"
+    },
+    "bins": {
+     "type": "integer",
+     "minimum": 2,
+     "maximum": 90,
+     "description": "Equal-width bins of |Δψ| over [0, 90] degrees (default 9)"
+    },
+    "snrColumn": {
+     "type": "string",
+     "description": "Map vs catalog only: the declared value column holding P, for the optional filter P/σP ≥ snrMin; off unless both columns are named"
+    },
+    "snrSigmaColumn": {
+     "type": "string",
+     "description": "Map vs catalog only: the declared value column holding σP"
+    },
+    "snrMin": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1000000,
+     "description": "The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason"
+    }
+   }
+  },
+  "RelativeOrientationRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "datasetId",
+    "otherId"
+   ],
+   "properties": {
+    "datasetId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "A map declared as an axial orientation map, with its frame and quantity"
+    },
+    "otherId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "A point catalog with a declared angle, or a second declared orientation map on the same grid"
+    },
+    "params": {
+     "$ref": "#/components/schemas/RelativeOrientationParams"
+    }
+   }
+  },
+  "RelativeOrientationHistogram": {
+   "type": "object",
+   "required": [
+    "edges_deg",
+    "counts",
+    "fractions"
+   ],
+   "properties": {
+    "edges_deg": {
+     "type": "array",
+     "items": {
+      "type": "number"
+     }
+    },
+    "counts": {
+     "type": "array",
+     "items": {
+      "type": "integer"
+     }
+    },
+    "fractions": {
+     "type": "array",
+     "items": {
+      "type": "number"
+     }
+    },
+    "bins": {
+     "type": "string"
+    }
+   }
+  },
+  "RelativeOrientationNull": {
+   "type": "object",
+   "required": [
+    "method"
+   ],
+   "properties": {
+    "method": {
+     "type": "string"
+    },
+    "skipped": {
+     "type": "string",
+     "nullable": true
+    },
+    "kept": {
+     "type": "integer"
+    },
+    "attempted": {
+     "type": "integer"
+    },
+    "n_sub": {
+     "type": "integer"
+    },
+    "chance95": {
+     "type": "number",
+     "nullable": true
+    },
+    "p_one_sided": {
+     "type": "number",
+     "nullable": true
+    },
+    "mean": {
+     "type": "number",
+     "nullable": true
+    },
+    "std": {
+     "type": "number",
+     "nullable": true
+    },
+    "wrapped_below_min_shift": {
+     "type": "integer"
+    },
+    "sources_shifted": {
+     "type": "integer"
+    },
+    "scored_on": {
+     "type": "string"
+    },
+    "histogram_band": {
+     "type": "object",
+     "nullable": true,
+     "properties": {
+      "lo": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "median": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "hi": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "what": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "lo",
+      "median",
+      "hi"
+     ]
+    }
+   }
+  },
+  "RelativeOrientationSummary": {
+   "type": "object",
+   "required": [
+    "label",
+    "mode",
+    "am",
+    "parameters",
+    "counts",
+    "histogram",
+    "null",
+    "policy"
+   ],
+   "description": "Every number with its definition, the parameters as used (defaults filled in, seed included), counts and exclusions (ADR 0047).",
+   "properties": {
+    "label": {
+     "type": "string",
+     "enum": [
+      "agreement statistic"
+     ]
+    },
+    "mode": {
+     "type": "string",
+     "enum": [
+      "map_catalog",
+      "map_map"
+     ]
+    },
+    "definitions": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "parameters": {
+     "type": "object",
+     "additionalProperties": {
+      "oneOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "string"
+       }
+      ]
+     }
+    },
+    "map": {
+     "type": "object",
+     "additionalProperties": true,
+     "description": "The map's declaration as used (unit, frame, quantity, rotation to B, celestial frame, reliability), its size nx, ny and pixel scale"
+    },
+    "other": {
+     "type": "object",
+     "additionalProperties": true,
+     "description": "The second map's declaration as used (map vs map)"
+    },
+    "catalog": {
+     "type": "object",
+     "additionalProperties": true,
+     "description": "The catalog's frame, angle quantity, rotation to B, row count and uncertainty column (map vs catalog)"
+    },
+    "conversion": {
+     "type": "string"
+    },
+    "sampling": {
+     "type": "string"
+    },
+    "weighting": {
+     "oneOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
+     ]
+    },
+    "counts": {
+     "type": "object",
+     "required": [
+      "used"
+     ],
+     "properties": {
+      "rows": {
+       "type": "integer"
+      },
+      "pixels": {
+       "type": "integer"
+      },
+      "used": {
+       "type": "integer"
+      },
+      "share_used": {
+       "type": "number",
+       "nullable": true
+      },
+      "excluded": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "integer"
+       }
+      },
+      "disks_truncated_by_search_box": {
+       "type": "integer"
+      }
+     }
+    },
+    "am": {
+     "type": "number"
+    },
+    "am_weighted": {
+     "type": "number",
+     "nullable": true
+    },
+    "median_abs_dpsi_deg": {
+     "type": "number"
+    },
+    "bootstrap_am_16_84": {
+     "type": "array",
+     "items": {
+      "type": "number"
+     },
+     "nullable": true
+    },
+    "bootstrap_note": {
+     "type": "string"
+    },
+    "prs": {
+     "type": "object",
+     "properties": {
+      "V": {
+       "type": "number",
+       "nullable": true
+      },
+      "V_weighted": {
+       "type": "number",
+       "nullable": true
+      },
+      "n": {
+       "type": "integer"
+      },
+      "note": {
+       "type": "string"
+      }
+     }
+    },
+    "independent_samples": {
+     "type": "object",
+     "properties": {
+      "value": {
+       "type": "number",
+       "nullable": true
+      },
+      "reason": {
+       "type": "string"
+      },
+      "beam_area_arcmin2": {
+       "type": "number"
+      },
+      "method": {
+       "type": "string"
+      },
+      "caveat": {
+       "type": "string"
+      }
+     }
+    },
+    "histogram": {
+     "$ref": "#/components/schemas/RelativeOrientationHistogram"
+    },
+    "null": {
+     "$ref": "#/components/schemas/RelativeOrientationNull"
+    },
+    "segments": {
+     "type": "object",
+     "properties": {
+      "x": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "y": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "map_pix_deg": {
+       "type": "array",
+       "items": {
+        "type": "number",
+        "nullable": true
+       }
+      },
+      "other_pix_deg": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "used": {
+       "type": "array",
+       "items": {
+        "type": "boolean"
+       }
+      },
+      "truncated": {
+       "type": "boolean"
+      },
+      "frame": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "x",
+      "y",
+      "map_pix_deg",
+      "other_pix_deg",
+      "used",
+      "truncated"
+     ]
+    },
+    "table": {
+     "type": "object",
+     "properties": {
+      "file": {
+       "type": "string",
+       "nullable": true
+      },
+      "rows": {
+       "type": "integer"
+      },
+      "columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "note": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string",
+       "nullable": true
+      }
+     }
+    },
+    "policy": {
+     "type": "string"
+    },
+    "snr_filter": {
+     "type": "object",
+     "nullable": true,
+     "additionalProperties": true,
+     "description": "The P/σP filter as applied (columns, k, rule, rows excluded below k and for missing values); null when it was off"
+    }
+   }
+  },
+  "RelativeOrientationResult": {
+   "type": "object",
+   "required": [
+    "dataset",
+    "summary"
+   ],
+   "properties": {
+    "dataset": {
+     "$ref": "#/components/schemas/Dataset"
+    },
+    "summary": {
+     "$ref": "#/components/schemas/RelativeOrientationSummary"
+    }
+   }
+  },
   "LevelsSigma": {
    "type": "object",
    "additionalProperties": false,
@@ -8370,6 +8844,132 @@
     },
     "502": {
      "description": "the host did not answer, du timed out, or the folder is not there",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/analysis/relative-orientation": {
+   "summary": "Relative orientation of a declared orientation map against a catalog or a second map: alignment measure, projected Rayleigh statistic, histogram and a shifted null; the result is registered with its provenance",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelativeOrientationRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "computed and registered (the per-source table for a catalog, the |Δψ| map for two maps)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelativeOrientationResult"
+       }
+      }
+     }
+    },
+    "400": {
+     "description": "a parameter outside its range",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "a stale declaration, data on another host, or two maps not known to share a grid (reasons listed)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "422": {
+     "description": "a missing declaration (named), or the worker refused (for example no source could be compared)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/relative-orientation.csv": {
+   "summary": "The per-sample table of a relative-orientation result as CSV (missing values are empty cells)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "headers": {
+      "X-Content-Type-Options": {
+       "schema": {
+        "type": "string",
+        "enum": [
+         "nosniff"
+        ]
+       }
+      },
+      "Content-Disposition": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     },
+     "content": {
+      "text/csv": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "404": {
+     "description": "not a relative-orientation result, or no table (a map comparison over the row limit)",
      "content": {
       "application/json": {
        "schema": {
