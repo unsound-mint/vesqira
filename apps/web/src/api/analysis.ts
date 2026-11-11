@@ -28,7 +28,8 @@ type Schemas = components["schemas"];
 /** Relative orientation (ADR 0047): a declared orientation map against a catalog with a declared angle, or against a second map. */
 export type RelOrientParams = Schemas["RelativeOrientationParams"];
 export type RelOrientSummary = Schemas["RelativeOrientationSummary"];
-export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams }) =>
-  post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r);
+/** Aborting the request stops the computation: the server kills the program when its request ends. */
+export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams }, signal?: AbortSignal) =>
+  post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal);
 export const relativeOrientationTableUrl = (id: number) => `/api/datasets/${id}/relative-orientation.csv`;
 export const jobResult = (id: number) => call<{ summary: StatsSummary | Record<string, unknown> }>(`/api/jobs/${id}/result`);

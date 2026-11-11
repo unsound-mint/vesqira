@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Button, Input, Section, Select } from "../ui";
 import { ApiError, isCatalog } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
@@ -37,6 +37,8 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   const [other, setOther] = useState("");
   const [v, setV] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const abort = useRef<AbortController | null>(null);
+  useEffect(() => () => abort.current?.abort(), []);
   const [err, setErr] = useState<{ msg: string; reasons: string[] } | null>(null);
   const why = notReady(dataset);
   const fromCatalog = isCatalog(dataset);
@@ -46,6 +48,9 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   const chosenWhy = chosen ? notReady(chosen) : null;
   const val = (k: keyof typeof DEFAULTS) => v[k] ?? DEFAULTS[k];
   const set = (k: string) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
+  // every field must be a number: an empty or unreadable one is never sent as a silent default
+  const fields: (keyof typeof DEFAULTS)[] = [...(catalogMode ? (["radiusArcmin", "minPixels", "nShiftsCatalog"] as const) : (["nShiftsMaps"] as const)), "minShiftDeg", "keepFraction", "seed", "bins"];
+  const unreadable = fields.filter((k) => val(k).trim() === "" || !Number.isFinite(Number(val(k))));
 
   if (why) return <p className={s.note}>To compare this {fromCatalog ? "catalog" : "map"} with another orientation tracer, declare it first: {why}.</p>;
 
@@ -58,12 +63,16 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
     if (catalogMode) Object.assign(params, { radiusArcmin: n("radiusArcmin"), minPixels: n("minPixels") });
     const map = fromCatalog ? chosen : dataset;
     const otherDs = fromCatalog ? dataset : chosen;
+    const ctl = new AbortController();
+    abort.current = ctl;
     try {
-      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params });
+      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params }, ctl.signal);
       onCreated(r.dataset);
     } catch (e) {
-      setErr({ msg: e instanceof Error ? e.message : "The comparison did not run.", reasons: e instanceof ApiError ? e.reasons : [] });
+      if (ctl.signal.aborted) setErr({ msg: "Cancelled: the computation was stopped and nothing was kept.", reasons: [] });
+      else setErr({ msg: e instanceof Error ? e.message : "The comparison did not run.", reasons: e instanceof ApiError ? e.reasons : [] });
     }
+    abort.current = null;
     setBusy(false);
   }
 
@@ -92,7 +101,9 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
             <Input label="Seed" value={val("seed")} onChange={set("seed")} inputMode="numeric" />
             <Input label="Histogram bins (equal width)" value={val("bins")} onChange={set("bins")} inputMode="numeric" />
           </div>
-          <Button variant="primary" disabled={busy} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
+          {unreadable.length ? <p className={s.err}>Every parameter needs a number; {unreadable.length === 1 ? "one is" : `${unreadable.length} are`} empty or not a number.</p> : null}
+          <Button variant="primary" disabled={busy || unreadable.length > 0} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
+          {busy ? <Button onClick={() => abort.current?.abort()}>Cancel</Button> : null}
           <p className={s.note}>The seed is recorded with the result: the same inputs and seed give the same numbers. A null of thousands of shifts can take minutes on a large map.</p>
         </>
       ) : null}
@@ -239,7 +250,7 @@ export function SegmentsFigure({ s: r }: { s: RelOrientSummary }) {
   const scale = (SW - 2 * pad) / Math.max(nx, ny);
   const w = nx * scale + 2 * pad;
   const h = ny * scale + 2 * pad;
-  const len = Math.max(8, Math.min(22, (SW / Math.sqrt(Math.max(1, g.x.length))) * 0.5));
+  const len = Math.max(8, Math.min(40, (SW / Math.sqrt(Math.max(1, g.x.length))) * 0.5));
   const X = (x: number) => pad + (x + 0.5) * scale;
   const Y = (y: number) => h - pad - (y + 0.5) * scale;                   // FITS y up
   // the catalog's segment is the longer one, so it shows past the map's when the two agree

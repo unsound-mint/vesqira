@@ -58,6 +58,7 @@ test("compare a declared orientation map with a starlight catalog and read the a
   await expectNoAxeViolations(page);
   // pictures for the visual review (not assertions): the result at desktop width in dark, and in light
   await result.screenshot({ path: path.resolve(here, "../test-results/relorient-result-1440-dark.png") });
+  await result.getByRole("img", { name: /Orientations at 4 sources/ }).screenshot({ path: path.resolve(here, "../test-results/relorient-segments-dark.png") });
   await page.emulateMedia({ colorScheme: "light" });
   await result.screenshot({ path: path.resolve(here, "../test-results/relorient-result-1440-light.png") });
 });

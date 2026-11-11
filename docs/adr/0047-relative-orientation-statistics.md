@@ -48,7 +48,7 @@ The ADR 0042 rules apply: a gradient or dust polarization is rotated by +90°; s
 | Δψ | ψ_map − ψ_other folded into [−90°, 90°) (`compare_vgt_polarization.py:44-45`). The relative orientation is \|Δψ\| ∈ [0°, 90°], so 1° and 179° are 2° apart |
 | AM | mean of cos 2Δψ: 1 parallel, 0 no preferred relative orientation, −1 perpendicular |
 | Weighted AM | Σ w cos 2Δψ / Σ w (`star_vgt_scale_analysis.py:63-69`). Mode A uses w = 1/max(σ, 1°)², σ in radians, from the catalog's declared uncertainty column (line 269). Mode B uses w = the product of the two declared reliabilities, 1 for a map without one |
-| Projected Rayleigh statistic (mode B) | V = Σ w cos θ / sqrt(Σ w² / 2) with θ = 2Δψ. This is Jow et al. 2018 (MNRAS 474, 1018; arXiv:1708.04063), eq. 8, and eq. 6 when every w is 1; eq. 2 defines the relative angle in [−90°, 90°] and the doubling. The paper writes Z_x; V is the name later papers use. Positive means preferentially parallel. It is asymptotically N(0, 1) only for independent angles |
+| Projected Rayleigh statistic (mode B) | V = Σ w cos θ / sqrt(Σ w² / 2) with θ = 2Δψ. This is Jow et al. 2018 (MNRAS 474, 1018; arXiv:1708.04063), eq. 8, and eq. 6 when every w is 1; eq. 2 defines the relative angle in [−90°, 90°] and the doubling. The paper writes Z_x (eq. 6) and Z*_x (eq. 8) and introduces it as the V statistic of Durand & Greenwood (1958), renamed the projected Rayleigh statistic; V here follows that origin. Positive means preferentially parallel. It is asymptotically N(0, 1) only for independent angles |
 | Histogram | \|Δψ\| in equal-width bins over [0°, 90°]: 9 bins of 10° by default, 2 to 90 bins as a parameter. Every bin is the same width, so no split needs a separate reason |
 | Bootstrap (mode A) | 16th to 84th percentile of AM over 2000 resamples with replacement (`star_vgt_scale_analysis.py:82-87`) |
 
@@ -86,7 +86,7 @@ Known properties, ported unchanged and reported:
 - The length test applies to the wrapped displacement, so a near-identity shift is never accepted.
   - Why wrap rather than excluding the wrapped edge: wrapping keeps the overlap size independent of the shift. Excluding the edge would shrink the overlap with distance and bias the null toward short shifts. VGT maps usually have NaN borders, so the seam mostly falls in no-data.
 - A shift is kept when the overlap of usable pixels is at least keep · n_real. It is scored on every overlap pixel, not on exactly n_sub drawn pixels.
-  - With thousands of correlated pixels, the overlap size changes the spread of the null negligibly. Drawing millions of pixels per shift cost 0.6 s per shift against 0.15 s on a 2048 × 2048 map (measured).
+  - With thousands of correlated pixels, the overlap size changes the spread of the null negligibly. Drawing millions of pixels per shift cost about 0.6 s per shift on a 2048 × 2048 map. Scoring every overlap pixel takes under 0.05 s per shift: 200 shifts in about 10 s for the whole run (measured).
 - The default is 1000 shifts.
 
 ### Correlated pixels
@@ -127,7 +127,7 @@ Every result carries `label: "agreement statistic"` and a policy saying that it 
 - `analysis.go` has one runner for the analysis program (`runAnalysisProgram`), and `analysis_axial.go` one check of a declared reliability map (`reliabilityPath`). Both are reused.
 - Measured on one machine, with page cache:
   - A 2048² map against 300 stars, a 30-pixel radius and 3000 shifts took 225 s, at about 1 GB peak resident memory for the run.
-  - A 2048² map against a map took about 10 s for 200 shifts, and 1000 shifts take well under a minute.
+  - A 2048² map against a map took about 10 s for 200 shifts, whole run included. 1000 shifts should take under a minute by that rate; this was not measured.
   - Both are inside the 30-minute analysis timeout.
 
 ### Not claimed, deliberately

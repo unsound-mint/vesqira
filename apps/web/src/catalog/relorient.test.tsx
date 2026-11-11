@@ -65,6 +65,8 @@ describe("relative orientation", () => {
     expect(screen.getByLabelText("Disk radius (arcmin)")).toHaveValue("10");
     expect(screen.getByLabelText("Shifts in the null")).toHaveValue("3000");
     await userEvent.clear(screen.getByLabelText("Disk radius (arcmin)"));
+    expect(screen.getByRole("button", { name: "Compute the alignment measure" })).toBeDisabled();   // empty is never a silent default
+    expect(screen.getByText(/one is empty or not a number/)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Disk radius (arcmin)"), "6.7");
     await userEvent.click(screen.getByRole("button", { name: "Compute the alignment measure" }));
     await waitFor(() => expect(created).toHaveLength(1));

@@ -270,8 +270,8 @@ def null_maps(ca, sa, cb, sb, valid_a, valid_b, am_real: float, n_real: int, *, 
     length test is on the wrapped displacement, so a near-identity shift is never accepted. A shift is kept when the overlap of
     usable pixels is at least n_sub = int(keep * n_real), and is scored on every overlap pixel. Unlike the catalog null it does not
     draw exactly n_sub of them: with thousands of correlated pixels the overlap changes the spread of the null by a negligible
-    amount, and drawing millions of pixels per shift would make the null several times slower (measured: 0.6 s against
-    0.15 s per shift on a 2048 x 2048 map)."""
+    amount, and drawing millions of pixels per shift would make the null many times slower (measured on a 2048 x 2048 map:
+    about 0.6 s per shift with the draw, under 0.05 s without)."""
     ny, nx = valid_a.shape
     if min_shift_px >= math.hypot(nx / 2.0, ny / 2.0):
         raise Refusal("the minimum shift is longer than any shift of this map can be after wrapping; lower it")
@@ -643,7 +643,7 @@ def op_maps(args, params: dict) -> dict:
     summary = {
         "label": LABEL, "mode": "map_map",
         "definitions": {**DEFINITIONS, "prs": "projected Rayleigh statistic V = Σ w cos 2Δψ / sqrt(Σ w² / 2) (Jow et al. 2018, MNRAS 474, 1018, eq. 8; "
-                                              "eq. 6 when every w is 1, written Z_x there). Positive means preferentially parallel, negative perpendicular."},
+                                              "eq. 6 when every w is 1; written Z_x there, the V statistic of Durand & Greenwood 1958). Positive means preferentially parallel, negative perpendicular."},
         "parameters": p,
         "map": {**fa, "nx": nx, "ny": ny, "pixel_scale_arcmin": pixel_scale_deg(wa2) * 60.0}, "other": fb,
         "conversion": "Both maps as B-field orientation in their common pixel frame (each rotated by its quantity; a sky-frame map carried into the "
