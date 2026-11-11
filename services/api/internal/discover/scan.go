@@ -553,13 +553,13 @@ func (s *scanner) readRecord(r *Run, kind recordKind) bool {
 		if strings.HasSuffix(r.Record, ".json") {
 			s.fromJSON(r, data)
 		} else {
-			r.Notes = append(r.Notes, "params.yaml is a run record; its settings are not read (no YAML reader yet)")
+			s.fromYAML(r, data)
 		}
 	case recMLflow:
 		if !strings.Contains(string(data), "run_id") {
 			return false
 		}
-		r.Notes = append(r.Notes, "MLflow run record; its settings are not read (no YAML reader yet)")
+		s.fromYAML(r, data)
 	}
 	return true
 }
@@ -576,6 +576,20 @@ func (s *scanner) fromJSON(r *Run, data []byte) {
 		r.Notes = append(r.Notes, r.Record+" is not valid JSON; no settings are shown")
 		return
 	}
+	s.fromMap(r, m)
+}
+
+// fromYAML reads a YAML run record the way fromJSON reads a JSON one; what it shows is declared by the record.
+func (s *scanner) fromYAML(r *Run, data []byte) {
+	m, err := parseYAMLRecord(data)
+	if err != nil {
+		r.Notes = append(r.Notes, r.Record+" "+err.Error()+"; no settings are shown")
+		return
+	}
+	s.fromMap(r, m)
+}
+
+func (s *scanner) fromMap(r *Run, m map[string]any) {
 	top := map[string]any{}
 	for k, v := range m {
 		l := strings.ToLower(k)
