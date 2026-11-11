@@ -90,7 +90,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   const peak = await pixelAt(page, 32, 24, 20, 9);
   await page.mouse.move(peak.x, peak.y);
   await expect(inspector(page).getByText("x 21, y 10")).toBeVisible(); // FITS pixel numbers start at 1
-  await expect(inspector(page).getByText(/^12\.\d+ K$/)).toBeVisible();
+  await expect(inspector(page).locator("dd", { hasText: /^12\.\d+ K$/ })).toBeVisible(); // the readout, not the histogram's axis label
   await expect(inspector(page).getByText("149.94997°")).toBeVisible();
   await expect(inspector(page).getByText("1.98000°")).toBeVisible();
   await expect(inspector(page).getByText("8 km/s")).toBeVisible();
@@ -104,7 +104,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await inspector(page).getByLabel("Value unit").selectOption("mK");
   await expect(inspector(page).getByText(/^12\d{3}(\.\d+)? mK$/)).toBeVisible();
   await expect(inspector(page).getByText(/doppler_radio/)).toBeVisible();
-  await expect(inspector(page).getByText(/12\.\d+ K$/)).toBeVisible(); // the native value is still listed
+  await expect(inspector(page).locator("dd", { hasText: /12\.\d+ K$/ })).toBeVisible(); // the native value is still listed
   await expect(inspector(page).getByText(/a frame change such as TOPOCENT to LSRK is not offered/)).toBeVisible();
   await expectNoAxeViolations(page);
   await inspector(page).getByLabel("Spectral unit").selectOption("");
@@ -122,7 +122,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await slider.focus();
   await page.keyboard.press("Home");
   for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowRight"); // channel 11 (flagged by the fixture)
-  await expect(page.getByRole("contentinfo").getByText("Channel flagged by provider")).toBeVisible();
+  await expect(page.getByRole("contentinfo").getByText("Channel flagged in the file")).toBeVisible();
   await expect(page.getByText(/valid/i)).toHaveCount(0);
   await page.keyboard.press("PageUp");
   await page.keyboard.press("PageUp");
@@ -221,7 +221,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   // 0 and 90 degrees cancel: no mean exists
   for (const [label, value] of [["y from", "4"], ["y to", "4"]] as const) await inspector(page).getByLabel(label, { exact: true }).fill(value);
   await inspector(page).getByRole("button", { name: "Set region" }).click();
-  await expect(section.getByText("undefined").first()).toBeVisible();
+  await expect(section.getByText("no mean orientation (the orientations cancel)", { exact: true }).first()).toBeVisible();
   await expect(section.getByText(/orientations cancel/).first()).toBeVisible();
   await expect(inspector(page).getByText(/not defined for angles of an axial map/)).toBeVisible();
   // and the server refuses an arithmetic mean of angles outright
@@ -387,6 +387,9 @@ test("a VGT run is imported with its parameters, linked to its outputs and carri
   await runPage.getByRole("button", { name: "Back" }).click();
 
   // the adapter proposed the orientation: shown as the run import's, not the file's and not the user's
+  await expect(insp.getByText(/^Proposed by the run import as axial orientation in (degrees|radians); not from the file\.$/)).toBeVisible();
+  // the adapter's identity is in the Basis disclosure, one click away
+  await insp.locator("details", { hasText: /vgt-run-adapter/ }).getByText("Basis", { exact: true }).click();
   await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
   await expect(insp.getByText("Mean orientation")).toBeVisible();
 
@@ -521,6 +524,9 @@ test("a Slurm job: render, read, submit exactly that text, follow it, import its
   await runPage.getByRole("button", { name: "Open in the viewer" }).first().click();
   const insp = inspector(page);
   await expect(insp.getByText(/vgt-ker8 · 4242 · completed/)).toBeVisible();
+  await expect(insp.getByText(/^Proposed by the run import as axial orientation in (degrees|radians); not from the file\.$/)).toBeVisible();
+  // the adapter's identity is in the Basis disclosure, one click away
+  await insp.locator("details", { hasText: /vgt-run-adapter/ }).getByText("Basis", { exact: true }).click();
   await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
 });
 
