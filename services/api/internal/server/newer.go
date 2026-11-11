@@ -218,13 +218,16 @@ type identityValue struct {
 }
 
 type figureDatasetIdentity struct {
-	Role       string         `json:"role"` // source | overlay
+	Role       string         `json:"role"` // source | overlay | reliability
 	DatasetID  int64          `json:"datasetId"`
 	Name       string         `json:"name"`
 	SizeBytes  int64          `json:"sizeBytes"`
 	ModifiedAt time.Time      `json:"modifiedAt"`
 	Sampled    *identityValue `json:"sampledFingerprint"` // null: not computed
 	Full       *identityValue `json:"fullSha256"`         // null: not computed
+	// Declarations are the declared unit, orientation interpretation and catalog declaration in force when the figure was
+	// saved (ADR 0042, section 5). Absent on figures saved before they were recorded.
+	Declarations *figureDeclarations `json:"declarations,omitempty"`
 }
 
 // figureIdentity is the owner-side record of each dataset's identity when a figure is saved (figures.identity). "Draw again"
@@ -232,6 +235,14 @@ type figureDatasetIdentity struct {
 type figureIdentity struct {
 	Schema   string                  `json:"schema"`
 	Datasets []figureDatasetIdentity `json:"datasets"`
+	// RedrawnFrom is set on a figure made by "draw again": the figure it redraws. The original is never changed; this is the
+	// only link between them (ADR 0042, section 5).
+	RedrawnFrom *redrawnFrom `json:"redrawnFrom,omitempty"`
+}
+
+type redrawnFrom struct {
+	FigureID int64  `json:"figureId"`
+	Revision string `json:"revision"`
 }
 
 func figureDiffers(src figureDatasetIdentity, d catalog.Dataset) []string {
@@ -249,15 +260,15 @@ func figureDiffers(src figureDatasetIdentity, d catalog.Dataset) []string {
 	return differs(src.SizeBytes, src.ModifiedAt, fpA, d.SizeBytes, d.ModifiedAt, fpB)
 }
 
-func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset, overlays []catalog.Dataset) json.RawMessage {
-	doc := figureIdentity{Schema: "figure-identity/1"}
+func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset, overlays, reliability []catalog.Dataset, from *redrawnFrom) json.RawMessage {
+	doc := figureIdentity{Schema: "figure-identity/1", RedrawnFrom: from}
 	add := func(role string, d catalog.Dataset) {
 		locs, err := s.Store.Locations(d.ID)
 		if err != nil {
 			return
 		}
 		p, _ := primaryOf(locs)
-		e := figureDatasetIdentity{Role: role, DatasetID: d.ID, Name: d.Name, SizeBytes: d.SizeBytes, ModifiedAt: d.ModifiedAt.UTC()}
+		e := figureDatasetIdentity{Role: role, DatasetID: d.ID, Name: d.Name, SizeBytes: d.SizeBytes, ModifiedAt: d.ModifiedAt.UTC(), Declarations: declarationsOf(d)}
 		if p.Sampled != nil {
 			e.Sampled = &identityValue{Value: p.Sampled.Value, Algorithm: idty.SampledAlgorithm, Covers: idty.Covers, At: p.Sampled.At, By: p.Sampled.By}
 		}
@@ -269,6 +280,9 @@ func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset
 	add("source", source)
 	for _, o := range overlays {
 		add("overlay", o)
+	}
+	for _, r := range reliability {
+		add("reliability", r)
 	}
 	b, err := json.Marshal(doc)
 	if err != nil {

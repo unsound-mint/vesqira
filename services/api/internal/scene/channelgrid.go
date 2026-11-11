@@ -40,6 +40,18 @@ type ChannelGrid struct {
 	Display  GridDisplay   `json:"display"`
 	// Preview records the block-mean step the panels were drawn at (1 = the full plane) and their size as drawn.
 	Preview GridPreview `json:"preview"`
+	// Render records what the composed picture said beyond the description: the width it was composed at and how many
+	// overlays of the map were visible but not drawn on the panels (the caption states it). Absent from grids saved before
+	// "draw again", which draw from their PNG only.
+	Render *GridRender `json:"render,omitempty"`
+}
+
+type GridRender struct {
+	FigureWidth      int `json:"figureWidth"`
+	OverlaysNotDrawn int `json:"overlaysNotDrawn"`
+	// ScaleSource is the worker's whole sentence on where the shared limits came from, as the caption printed it;
+	// display.source keeps only its first 190 characters.
+	ScaleSource string `json:"scaleSource"`
 }
 
 type GridSpectral struct {
@@ -75,6 +87,9 @@ func GridPanels(first, last, stride int) int {
 // control characters or markup.
 var sourceText = regexp.MustCompile(`^[^\x00-\x1f<>"&\\]{1,200}$`)
 
+// longSourceText is the same sentence in full, as the caption printed it.
+var longSourceText = regexp.MustCompile(`^[^\x00-\x1f<>"&\\]{1,600}$`)
+
 // ParseChannelGrid reads and validates a channel-grid/1 description. Required values are read through pointers, so a missing
 // or null one is refused rather than read as zero.
 func ParseChannelGrid(raw []byte) (ChannelGrid, error) {
@@ -106,6 +121,11 @@ func ParseChannelGrid(raw []byte) (ChannelGrid, error) {
 			PanelWidth  *int `json:"panelWidth"`
 			PanelHeight *int `json:"panelHeight"`
 		} `json:"preview"`
+		Render *struct {
+			FigureWidth      *int    `json:"figureWidth"`
+			OverlaysNotDrawn *int    `json:"overlaysNotDrawn"`
+			ScaleSource      *string `json:"scaleSource"`
+		} `json:"render"`
 	}
 	if err := strict(raw, &in); err != nil {
 		return ChannelGrid{}, bad("not a channel grid object: %v", err)
@@ -166,6 +186,13 @@ func ParseChannelGrid(raw []byte) (ChannelGrid, error) {
 		return ChannelGrid{}, bad("the panels hold %d pixels each and %d together: more than the %d and %d a grid may transfer", px, px*g.Panels, MaxGridPanelPixels, MaxGridPixels)
 	}
 	g.Preview = GridPreview{Step: *p.Step, PanelWidth: *p.PanelWidth, PanelHeight: *p.PanelHeight}
+	if r := in.Render; r != nil {
+		if r.FigureWidth == nil || *r.FigureWidth < 200 || *r.FigureWidth > 4096 || r.OverlaysNotDrawn == nil || *r.OverlaysNotDrawn < 0 || *r.OverlaysNotDrawn > MaxOverlays ||
+			r.ScaleSource == nil || !longSourceText.MatchString(*r.ScaleSource) {
+			return ChannelGrid{}, bad("render needs the figure width (200 to 4096), the number of overlays not drawn (0 to %d) and the whole sentence on where the scale came from (600 characters at most, plain text)", MaxOverlays)
+		}
+		g.Render = &GridRender{FigureWidth: *r.FigureWidth, OverlaysNotDrawn: *r.OverlaysNotDrawn, ScaleSource: *r.ScaleSource}
+	}
 	return g, nil
 }
 

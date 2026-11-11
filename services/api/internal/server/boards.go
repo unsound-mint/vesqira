@@ -524,6 +524,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		Scene       json.RawMessage `json:"scene"`       // optional: the scene the picture was drawn from (ADR 0042)
 		ChannelGrid json.RawMessage `json:"channelGrid"` // a channel-grid figure: the channel-grid/1 description (ADR 0049)
 		PreviewPNG  string          `json:"previewPng"`  // base64
+		RedrawnFrom *int64          `json:"redrawnFrom"` // "draw again": the figure this one redraws (ADR 0042, section 5)
 	}
 	if !body(w, r, 12<<20, &in, false) {
 		return
@@ -554,6 +555,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		run, _ = s.Runs.ForDataset(d.ID)
 	}
 	var sceneJSON json.RawMessage
+	var sceneRead *scene.Scene // the validated scene, when the figure has one
 	var others []catalog.Dataset
 	hasGrid := len(in.ChannelGrid) > 0 && string(in.ChannelGrid) != "null"
 	hasScene := len(in.Scene) > 0 && string(in.Scene) != "null"
@@ -584,6 +586,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, err.Error())
 			return
 		}
+		sceneRead = &sc
 		for _, o := range others { // every file the picture drew from is still the one that was registered
 			if _, _, status, m := s.authorize(r.Context(), o); status != 0 {
 				fail(w, status, "overlay "+o.Name+": "+m)
@@ -595,9 +598,23 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var link *redrawnFrom
+	var linkRev string
+	if in.RedrawnFrom != nil {
+		orig, err := s.redrawLink(*in.RedrawnFrom, d.ID, hasGrid)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		link, linkRev = &redrawnFrom{FigureID: orig.ID, Revision: orig.Revision}, orig.Revision
+	}
 	d = s.ensureFingerprinted(r.Context(), d)
 	for i := range others {
 		others[i] = s.ensureFingerprinted(r.Context(), others[i])
+	}
+	rels := s.reliabilityMaps(sceneRead, d, others)
+	for i := range rels {
+		rels[i] = s.ensureFingerprinted(r.Context(), rels[i])
 	}
 	prov, err := buildProvenance(d, vp, run, s.derivedSummary(d.ID), others)
 	if errors.Is(err, errBadView) {
@@ -608,7 +625,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: s.buildFigureIdentity(r.Context(), d, others)}, png)
+	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: s.buildFigureIdentity(r.Context(), d, others, rels, link), RedrawnFrom: linkRev}, png)
 	if err != nil {
 		s.boardErr(w, err)
 		return

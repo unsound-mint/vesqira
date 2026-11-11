@@ -108,10 +108,29 @@ func TestResponsesMatchTheSpecForCapabilitiesFiguresAndBoards(t *testing.T) {
 				"display": map[string]any{"mapping": "scalar", "colormap": "gray", "stretch": "asinh", "range": "custom", "limits": []float64{0, 2}, "limitsUnit": "Jy/beam"}},
 			"overlays": []any{map[string]any{"id": "regions", "kind": "regions", "datasetId": noUnit, "visible": true,
 				"active": map[string]any{"shape": "rect", "x0": 1, "y0": 1, "x1": 4, "y1": 4}, "saved": []any{}}},
-			"view": map[string]any{"zoom": 1}}}
+			"view": map[string]any{"zoom": 1},
+			// how the base raster was drawn, so the figure can be drawn again
+			"render": map[string]any{"canvas": map[string]any{"width": 16, "height": 12}, "nodata": []any{[]any{27, 34, 44}, []any{85, 98, 117}}, "figureWidth": 720}}}
 	json.Unmarshal(call("POST", "/api/figures", api+"/api/figures", f2, 201), &fig2)
 	if len(fig2.Scene) == 0 {
 		t.Fatal("the figure did not keep its scene")
+	}
+	// "draw again": the check before drawing, and a redrawing saved as a new revision linked to the original; both conform
+	var check redrawResult
+	json.Unmarshal(call("GET", "/api/figures/{id}/redraw-check", api+"/api/figures/"+itoa(int(fig2.ID))+"/redraw-check", nil, 200), &check)
+	if check.State != "ready" || len(check.Sources) != 1 {
+		t.Fatalf("redraw check: %+v", check)
+	}
+	call("GET", "/api/figures/{id}/redraw-check", api+"/api/figures/"+itoa(int(fig1.ID))+"/redraw-check", nil, 200) // a figure with no description: state none
+	f3 := map[string]any{}
+	for k, v := range f2 {
+		f3[k] = v
+	}
+	f3["redrawnFrom"] = fig2.ID
+	var fig3 boards.Figure
+	json.Unmarshal(call("POST", "/api/figures", api+"/api/figures", f3, 201), &fig3)
+	if fig3.ID == fig2.ID || !strings.Contains(string(fig3.Identity), `"redrawnFrom"`) {
+		t.Fatalf("the redrawing: %+v", fig3)
 	}
 	call("GET", "/api/figures", api+"/api/figures", nil, 200)
 	call("POST", "/api/figures/{id}/text", api+"/api/figures/"+itoa(int(fig1.ID))+"/text", map[string]any{"title": "Peak", "caption": "edited"}, 200)
