@@ -659,18 +659,18 @@ func TestImportRescanCountsNewMatchesAndNeverRegistersThem(t *testing.T) {
 			t.Fatalf("a scan applied a declaration: %+v", d)
 		}
 	}
-	// a project whose catalog has no rules takes them from project.toml
-	e.putJSON(t, fmt.Sprintf("/api/projects/%d/import/rules", s.ID), map[string]any{"rules": []any{}})
-	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/import/rules/write", s.ID), map[string]any{"write": true}, 200, nil) // writes nothing to keep
-	e.settle(t, s.ID)
-	file := filepath.Join(root, ".vesqira", "project.toml")
-	b, _ := os.ReadFile(file)
-	os.WriteFile(file, append(b, []byte("\n[[import.rules]]\nname = \"from file\"\nkind = \"glob\"\npattern = \"*_kms.fits\"\nrole = \"dataset\"\nunit = \"km/s\"\n")...), 0o644)
-	if loaded := scan(); loaded.ImportRules == nil || loaded.ImportRules.Rules != 1 {
-		t.Fatalf("%+v", loaded.ImportRules)
-	}
-	if rs, _ := e.srv.Projects.Rules(s.ID); len(rs) != 1 || rs[0].Name != "from file" {
+	// a project opened on a computer that has never saved a list takes its rules from project.toml
+	other := e.project(t, "from-file")
+	put(t, other, ".vesqira/project.toml", "[[import.rules]]\nname = \"from file\"\nkind = \"glob\"\npattern = \"*_kms.fits\"\nrole = \"dataset\"\nunit = \"km/s\"\n")
+	tinyFITS(t, other, "m_kms.fits", 3, "")
+	o := e.open(t, other)
+	if rs, _ := e.srv.Projects.Rules(o.ID); len(rs) != 1 || rs[0].Name != "from file" {
 		t.Fatalf("%+v", rs)
+	}
+	var st struct{ File struct{ State string } }
+	e.json(t, "GET", fmt.Sprintf("/api/projects/%d/import/rules", o.ID), nil, 200, &st)
+	if st.File.State != "foreign" { // the researcher wrote them there themselves: Vesqira reads them and never rewrites them
+		t.Fatalf("%+v", st)
 	}
 }
 

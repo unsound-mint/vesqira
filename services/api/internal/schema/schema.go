@@ -202,11 +202,13 @@ func hostVPNCommands(tx *sql.Tx) error {
 
 // ImportRulesTables is the DDL of the researcher's import rules and of the record of what they were applied to (ADR 0058),
 // shared by the projects package (a fresh catalog) and the migration (an upgraded one). import_rules is the ordered list of one
-// project (rule: JSON of discover.Rule; the first matching rule wins). import_applied has one row per file a rule's application
+// project (rule: JSON of discover.Rule; the first matching rule wins; import_lists says a list was saved). import_applied has one row per file a rule's application
 // registered, skipped or failed on, with the size and modification time it had, so a rescan does not count it as new again.
 const ImportRulesTables = `CREATE TABLE IF NOT EXISTS import_rules(
 	project_id INTEGER NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL, rule TEXT NOT NULL, saved_at INTEGER NOT NULL,
 	PRIMARY KEY(project_id, position));
+-- one row once the researcher has saved a rule list, even an empty one: from then on project.toml is not read back over it
+CREATE TABLE IF NOT EXISTS import_lists(project_id INTEGER PRIMARY KEY, saved_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS import_applied(
 	project_id INTEGER NOT NULL, path TEXT NOT NULL, rule TEXT NOT NULL, size_bytes INTEGER NOT NULL, mtime_ns INTEGER NOT NULL,
 	outcome TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', applied_at INTEGER NOT NULL, PRIMARY KEY(project_id, path))`

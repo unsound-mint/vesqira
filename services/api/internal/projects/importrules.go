@@ -29,6 +29,13 @@ func (s *Store) Rules(id int64) ([]discover.Rule, error) {
 	return out, rows.Err()
 }
 
+// RulesSaved says whether the researcher has ever saved a rule list for the project, even an empty one.
+func (s *Store) RulesSaved(id int64) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM import_lists WHERE project_id=?`, id).Scan(&n)
+	return n > 0, err
+}
+
 // SetRules replaces the project's rule list, in order, in one transaction. The caller has validated the rules.
 func (s *Store) SetRules(id int64, rules []discover.Rule) error {
 	tx, err := s.db.Begin()
@@ -40,6 +47,9 @@ func (s *Store) SetRules(id int64, rules []discover.Rule) error {
 		return err
 	}
 	now := time.Now().Unix()
+	if _, err := tx.Exec(`INSERT INTO import_lists(project_id,saved_at) VALUES(?,?) ON CONFLICT(project_id) DO UPDATE SET saved_at=excluded.saved_at`, id, now); err != nil {
+		return err
+	}
 	for i, r := range rules {
 		b, err := json.Marshal(r)
 		if err != nil {

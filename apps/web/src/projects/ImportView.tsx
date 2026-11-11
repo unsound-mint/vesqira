@@ -158,8 +158,8 @@ export function ImportView({ project, version, onChanged }: { project: ProjectSu
     setConfirmWrite(false);
     try {
       const r = await writeImportRules(pid);
-      setFileState("same");
-      setNotice(`Wrote ${num(r.rules)} ${r.rules === 1 ? "rule" : "rules"} to ${r.path}. Nothing was committed.`);
+      setFileState(r.rules === 0 ? "none" : "same");
+      setNotice(r.rules === 0 ? `Removed the rules section from ${r.path}. Nothing else in the file changed and nothing was committed.` : `Wrote ${num(r.rules)} ${r.rules === 1 ? "rule" : "rules"} to ${r.path}. Nothing was committed.`);
       onChanged();
     } catch (e) {
       setNotice("");
@@ -256,19 +256,19 @@ export function ImportView({ project, version, onChanged }: { project: ProjectSu
             <Button variant="primary" disabled={!dirty || busy} onClick={() => void save()}>Save rules</Button>
             {dirty ? <span className={s.dim}>Unsaved edits: the preview above uses them; Register uses the saved rules.</span> : null}
           </div>
-          {problems.length > 0 ? <ul role="alert" className={s.ruleProblems} aria-label="Problems">{problems.map((p) => <li key={p}>{p}</li>)}</ul> : null}
+          {problems.length > 0 ? <div role="alert"><ul className={s.ruleProblems} aria-label="Problems">{problems.map((p) => <li key={p}>{p}</li>)}</ul></div> : null}
           <p className={s.saved} role="status">{notice}</p>
 
           <div className={s.rowBlock}>
             <p className={s.note}>{fileNote[fileState]}</p>
-            {saved && saved.length > 0 && fileState !== "same" && fileState !== "foreign" && !dirty ? (
+            {saved && !dirty && fileState !== "same" && fileState !== "foreign" && (saved.length > 0 || fileState === "differs") ? (
               confirmWrite ? (
                 <div className={s.actions}>
-                  <span className={s.note}>Add the rules to .vesqira/project.toml? Only a marked section of that file changes. It is never committed.</span>
-                  <Button variant="primary" onClick={() => void write()}>Write the rules</Button>
+                  <span className={s.note}>{saved.length === 0 ? "Remove the rules section from .vesqira/project.toml?" : "Add the rules to .vesqira/project.toml?"} Only a marked section of that file changes. It is never committed.</span>
+                  <Button variant="primary" onClick={() => void write()}>{saved.length === 0 ? "Remove the rules" : "Write the rules"}</Button>
                   <Button onClick={() => setConfirmWrite(false)}>Cancel</Button>
                 </div>
-              ) : <div><Button onClick={() => setConfirmWrite(true)}>Write the rules to project.toml…</Button></div>
+              ) : <div><Button onClick={() => setConfirmWrite(true)}>{saved.length === 0 ? "Remove the rules from project.toml…" : "Write the rules to project.toml…"}</Button></div>
             ) : null}
           </div>
         </section>

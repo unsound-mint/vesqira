@@ -1,4 +1,5 @@
 import type { ImageDataset, Problem } from "../api/catalog";
+import { ruleOf } from "../api/declared";
 import { Button } from "../ui";
 import { tierText } from "../api/tier";
 import { bytes, show } from "./format";
@@ -20,7 +21,9 @@ function unitText(d: ImageDataset): string {
   if (d.interpretation) return `${show(d.header.bunit)} (orientation map: values are angles, not a brightness)`;
   const u = d.unitDeclaration;
   if (!u) return `${show(d.header.bunit)} (unresolved)`;
-  return u.stale ? `${show(d.header.bunit)} (unresolved; you declared ${u.unit} for an earlier version of the file, not applied)` : `${u.unit} (declared by you, not in the file)`;
+  const rule = ruleOf(u.declaredBy);
+  const who = rule !== null ? `your rule ${rule}` : "you";
+  return u.stale ? `${show(d.header.bunit)} (unresolved; ${rule !== null ? `your rule ${rule}` : "you"} declared ${u.unit} for an earlier version of the file, not applied)` : `${u.unit} (declared by ${who}, not in the file)`;
 }
 
 /** How far the unit is established (ADR 0055): verified when the file's BUNIT was read, else the declaration's tier, else unresolved. */

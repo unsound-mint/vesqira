@@ -85,9 +85,10 @@ type Server struct {
 	laneOnce  sync.Once
 	heavy     chan struct{} // one FITS header registration at a time, across projects
 
-	importMu   sync.Mutex
-	importInvs map[int64]*importInv // the last import-preview walk of each project (projects_import.go)
-	importBusy sync.Map             // project id: an import apply is running
+	importMu    sync.Mutex
+	importInvs  map[int64]*importInv // the last import-preview walk of each project (projects_import.go)
+	importBusy  sync.Map             // project id: an import apply is running
+	importWalks sync.Map             // project id: *sync.Mutex held across an import-preview walk
 
 	// EditorEnabled mounts the text editor routes (--enable-editor, ADR 0029). Off by default.
 	EditorEnabled bool

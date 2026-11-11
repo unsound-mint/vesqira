@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
@@ -117,10 +118,15 @@ func (s *Server) walkForImport(ctx context.Context, p projects.Project, folder s
 
 // inventory returns the cached walk for the project and folder, or walks (fresh forces it).
 func (s *Server) inventory(ctx context.Context, p projects.Project, folder string, fresh bool) (*importInv, int, string) {
+	// one walk per project at a time: a preview asked for while another walks (the page's own debounce, a second tab) waits for it
+	// and, when it was for the same folder, uses its answer instead of walking again
+	mu, _ := s.importWalks.LoadOrStore(p.ID, &sync.Mutex{})
+	mu.(*sync.Mutex).Lock()
+	defer mu.(*sync.Mutex).Unlock()
 	s.importMu.Lock()
 	cur := s.importInvs[p.ID]
 	s.importMu.Unlock()
-	if !fresh && cur != nil && cur.folder == folder && time.Since(cur.at) < importCacheTTL {
+	if cur != nil && cur.folder == folder && time.Since(cur.at) < importCacheTTL && (!fresh || time.Since(cur.at) < time.Second) {
 		return cur, 0, ""
 	}
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
@@ -260,6 +266,12 @@ func (s *Server) importRulesPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Audit.Record("import rules saved", "project", p.ID, fmt.Sprintf("%d rules", len(in.Rules)))
+	s.importMu.Lock()
+	cur := s.importInvs[p.ID]
+	s.importMu.Unlock()
+	if cur != nil && cur.folder == "" { // the banner counts what the new rules select in the last whole-project walk
+		s.refreshImportSummary(p, cur, in.Rules)
+	}
 	writeJSON(w, 200, map[string]any{"rules": in.Rules, "file": s.projectRulesFile(r.Context(), p, in.Rules), "summary": s.storedSummaryOf(p).ImportRules})
 }
 
@@ -626,7 +638,9 @@ func (s *Server) importApplyRoute(w http.ResponseWriter, r *http.Request) {
 		log.Printf("import: %v", err)
 	}
 	s.Audit.Record("import rules applied", "project", p.ID, fmt.Sprintf("%d registered, %d declared, %d offered as duplicates, %d skipped, %d failed", sum.Registered, sum.Declared, sum.Duplicates, sum.Skipped, sum.Failed))
-	s.refreshImportSummary(p, inv, rules)
+	if inv.folder == "" { // the summary counts the whole project; a walk of a subfolder would shrink it
+		s.refreshImportSummary(p, inv, rules)
+	}
 	writeJSON(w, 200, map[string]any{"results": results, "summary": sum, "importSummary": s.storedSummaryOf(mustProject(s, p)).ImportRules})
 }
 
@@ -726,8 +740,8 @@ func (s *Server) applyOne(ctx context.Context, p projects.Project, h hosts.Host,
 		res.Outcome = "skipped" // already registered and nothing declared: say why in the detail
 	}
 	res.Detail = strings.Join(notes, "; ")
-	if res.Detail == "" && registered {
-		res.Detail = "registered"
+	if res.Detail == "" {
+		res.Detail = map[bool]string{true: "registered", false: "already registered; this rule declares nothing for it"}[registered]
 	}
 	return res
 }
@@ -869,20 +883,31 @@ func (s *Server) refreshImportSummary(p projects.Project, inv *importInv, rules 
 
 // importAfterScan is the scan's step for rules: when the project file holds rules and the catalog has none, they are loaded (a
 // project opened on another computer); then the saved rules are counted against what the scan listed.
-func (s *Server) importAfterScan(p projects.Project, pf discover.ProjectFile, res *discover.Result) {
+func (s *Server) importAfterScan(p projects.Project, pf discover.ProjectFile, res *discover.Result) (ignored map[string]bool) {
 	saved, err := s.Projects.Rules(p.ID)
 	if err != nil {
-		return
+		return nil
 	}
-	if len(saved) == 0 && len(pf.Import.Rules) > 0 && len(checkRules(pf.Import.Rules)) == 0 {
+	// a project opened on another computer takes the rules from its project.toml; once the researcher has saved a list here
+	// (even an empty one) the file is never read back over it
+	if listed, _ := s.Projects.RulesSaved(p.ID); !listed && len(saved) == 0 && len(pf.Import.Rules) > 0 && len(checkRules(pf.Import.Rules)) == 0 {
 		if err := s.Projects.SetRules(p.ID, pf.Import.Rules); err == nil {
 			saved = pf.Import.Rules
 		}
 	}
 	if len(saved) == 0 {
 		s.updateSummary(p.ID, func(st *storedSummary) { st.ImportRules = nil })
-		return
+		return nil
 	}
 	inv := &importInv{items: discover.Items(res)}
 	s.refreshImportSummary(p, inv, saved)
+	// a file an "ignore" rule claims is not registered by the scan either (the researcher said they do not want it); it stays
+	// listed. The outputs of a run belong to the run import, which a rule does not stop.
+	ignored = map[string]bool{}
+	for _, pr := range discover.Classify(inv.items, saved).Proposals {
+		if pr.Rule != "" && pr.ProposedRole == discover.RoleIgnore && pr.RunPath == "" {
+			ignored[pr.Path] = true
+		}
+	}
+	return ignored
 }

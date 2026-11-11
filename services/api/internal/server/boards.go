@@ -275,15 +275,7 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		pr.Statements = append(pr.Statements, "The brightness unit ("+declaredUnit+") was declared by the author of this board, not by the file: the file has no BUNIT.")
 	}
 	if d.Interpretation != nil {
-		by := "the author of this board"
-		if d.Interpretation.DeclaredBy != "user" {
-			by = "the run import adapter (" + d.Interpretation.DeclaredBy + "), not the file"
-			if _, isRule := discover.RuleName(d.Interpretation.DeclaredBy); isRule {
-				by = "an import rule of the author's project, not the file"
-			} else if d.Interpretation.DeclaredBy != "vgt-run-adapter" {
-				by = "the analysis that made this map (" + d.Interpretation.DeclaredBy + "), not the file"
-			}
-		}
+		by := reviewerAuthor(d.Interpretation.DeclaredBy)
 		it, imv := tierOf(d.Interpretation.Tier, d.Interpretation.MappingVersion, d.Interpretation.DeclaredBy)
 		pr.Interpretation = &safeInterpretation{Kind: d.Interpretation.Kind, Unit: d.Interpretation.Unit, DeclaredBy: by, Tier: it, MappingVersion: imv, HasReliability: d.Interpretation.ReliabilityID != nil}
 		pr.Tiers = append(pr.Tiers, safeTier{What: "orientation (axial angle, its unit and meaning)", Tier: it, MappingVersion: imv, Rule: ruleOf(it, d.Interpretation.DeclaredBy),
@@ -1024,4 +1016,18 @@ func (s *Server) preflight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, p)
+}
+
+// reviewerAuthor says, in a reviewer's words, who declared an orientation: the board's author, an import rule of theirs (its name
+// stays with the author), the run import adapter, or the analysis that made the map. Never the file.
+func reviewerAuthor(by string) string {
+	switch {
+	case by == "user":
+		return "the author of this board"
+	case strings.HasPrefix(by, discover.RulePrefix):
+		return "an import rule of the author's project, not the file"
+	case by == "vgt-run-adapter":
+		return "the run import adapter (" + by + "), not the file"
+	}
+	return "the analysis that made this map (" + by + "), not the file"
 }

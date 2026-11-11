@@ -165,7 +165,7 @@ describe("the import page", () => {
     render(<ImportView project={project} version={0} onChanged={vi.fn()} />);
     await user.click(await screen.findByRole("button", { name: "Add a rule" }));
     await user.click(screen.getByRole("button", { name: "Save rules" }));
-    const problems = await screen.findByRole("alert", { name: "Problems" });
+    const problems = within(await screen.findByRole("alert")).getByRole("list", { name: "Problems" });
     expect(problems).toHaveTextContent("pattern: is empty");
     expect(problems).toHaveTextContent("angle unit is required");
     expect(screen.getByLabelText("Rule 1: rule 1", { exact: false })).toBeInTheDocument();
