@@ -190,7 +190,7 @@ describe("PvPanel", () => {
 
   it("refuses an orientation map and a file with one channel, with the reason", () => {
     const { unmount } = render(<PvPanel v={viewer({ interp: { kind: "axial_orientation" } })} />);
-    expect(screen.getByText(/not defined for angles of an axial map/)).toBeInTheDocument();
+    expect(screen.getByText(/not defined for the angles of an orientation map declared as axial/)).toBeInTheDocument();
     unmount();
     render(<PvPanel v={viewer({ view: { channels: 1, bunit: "K", spectral: null } })} />);
     expect(screen.getByText(/no channel axis of more than one channel/)).toBeInTheDocument();

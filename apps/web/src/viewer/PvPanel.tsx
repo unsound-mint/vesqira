@@ -211,7 +211,7 @@ export function PvPanel({ v }: { v: Viewer }) {
   ] : []), [result]);
 
   if (!v.view) return <p className={s.note}>{EM}</p>;
-  if (v.interp) return <p className={s.note}>A position-velocity cut averages values across channels and along a width, which is not defined for angles of an axial map.</p>;
+  if (v.interp) return <p className={s.note}>A position-velocity cut averages values across channels and along a width, which is not defined for the angles of an orientation map declared as axial.</p>;
   if (channels < 2) return <p className={s.note}>This file has no channel axis of more than one channel, so there is no velocity axis to cut.</p>;
 
   return (

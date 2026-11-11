@@ -96,6 +96,7 @@ class CubeSlices(unittest.TestCase):
     def no(self, head, msg=None):
         self.assertFalse(head["ok"], msg)
         self.assertTrue(head["error"])
+        self.assertIn(head["code"], ("bad_request", "unsupported"), (msg, head))   # a refusal, never a crash reported as unreadable
         return head
 
     # ---------- position-velocity ----------
@@ -226,9 +227,23 @@ class CubeSlices(unittest.TestCase):
 
     def test_caps_refuse_before_any_read(self):
         for kw in (dict(points=[[0, 0], [40, 20]], width=100, width_unit="pixel"),
-                   dict(points=[[0, 0]]), dict(points=[[0, 0], [5000, 5000]]),
+                   dict(points=[[0, 0]]), dict(points=[[0, 0], [40000, 40000]]),
                    dict(width=0), dict(interpolation="cubic"), dict(first=5, last=2), dict(points=[[3, 3], [3, 3]])):
             self.no(self.pv(**kw)[0], str(kw))
+
+    def test_a_path_leaving_the_image_at_an_angle_gives_no_value_outside_and_never_fails(self):
+        # a diagonal that runs far past the corner: clipped lookups must not reach beyond the block that was read
+        for mode in ("linear", "nearest"):
+            head, payload = self.pv(points=[[30, 15], [400, 300]], interpolation=mode)
+            self.assertTrue(head["ok"], head)
+            off, _, data, counts = pv_arrays(head, payload)
+            self.assertGreater(head["outside_samples"], 0)
+            self.assertTrue(np.all(np.isnan(data[:, -1])) and np.all(counts[:, -1] == 0))
+        head, payload = self.pv(points=[[0, 0], [5000, 5000]])
+        self.assertTrue(head["ok"], head)        # inside the caps: long, mostly outside, and well defined
+        _, _, data, _ = pv_arrays(head, payload)
+        self.assertTrue(np.all(np.isnan(data[:, -1])))
+        self.assertTrue(np.any(np.isfinite(data[:, 0])))
 
     def test_a_path_leaving_the_image_gives_no_value_there(self):
         head, payload = self.pv(points=[[-10, 10], [30, 10]])

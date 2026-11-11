@@ -305,31 +305,35 @@ def interpolate(block: np.ndarray, x0: int, y0: int, x: np.ndarray, y: np.ndarra
     """Values of `block` (channels, h, w), whose pixel [0, 0] is image pixel (x0, y0), at image positions x, y (any shape)
     -> (channels, *x.shape). linear: bilinear from the four surrounding pixels; the result is NaN if any neighbour with a
     non-zero weight is not finite, or the position lies outside [0, n-1]. nearest: the pixel whose centre is nearest, no
-    interpolation; outside [-0.5, n-0.5) is NaN. An exact pixel position gives that pixel under both."""
+    interpolation; outside [-0.5, n-0.5) is NaN. An exact pixel position gives that pixel under both. Positions outside the
+    image are never looked up (the block need not cover them); the block must cover every position inside it."""
     shape = x.shape
     xf, yf = x.ravel(), y.ravel()
+    out = np.full((block.shape[0], xf.size), np.nan)
     if mode == "nearest":
-        xi, yi = np.floor(xf + 0.5).astype(np.int64), np.floor(yf + 0.5).astype(np.int64)
-        ok = (xi >= 0) & (xi < nx) & (yi >= 0) & (yi < ny)
-        out = block[:, np.clip(yi, 0, ny - 1) - y0, np.clip(xi, 0, nx - 1) - x0].astype(np.float64)
-        out[:, ~ok] = np.nan
+        ok = (xf >= -0.5) & (xf < nx - 0.5) & (yf >= -0.5) & (yf < ny - 0.5)
+        at = np.flatnonzero(ok)
+        if at.size:
+            xi, yi = np.floor(xf[at] + 0.5).astype(np.int64), np.floor(yf[at] + 0.5).astype(np.int64)
+            out[:, at] = block[:, yi - y0, xi - x0]
         return out.reshape((block.shape[0],) + shape)
     ok = (xf >= 0) & (xf <= nx - 1) & (yf >= 0) & (yf <= ny - 1)
-    xc, yc = np.clip(xf, 0, nx - 1), np.clip(yf, 0, ny - 1)
-    xa, ya = np.floor(xc).astype(np.int64), np.floor(yc).astype(np.int64)
-    xb, yb = np.minimum(xa + 1, nx - 1), np.minimum(ya + 1, ny - 1)
-    fx, fy = xc - xa, yc - ya
-    acc = np.zeros((block.shape[0], xf.size))
-    bad = np.zeros((block.shape[0], xf.size), dtype=bool)
-    for xi, yi, w in ((xa, ya, (1 - fx) * (1 - fy)), (xb, ya, fx * (1 - fy)), (xa, yb, (1 - fx) * fy), (xb, yb, fx * fy)):
-        v = block[:, yi - y0, xi - x0].astype(np.float64)
-        used = w > 0
-        fin = np.isfinite(v)
-        bad |= used[None, :] & ~fin
-        acc += np.where(fin, v, 0.0) * w[None, :]
-    acc[bad] = np.nan
-    acc[:, ~ok] = np.nan
-    return acc.reshape((block.shape[0],) + shape)
+    at = np.flatnonzero(ok)
+    if at.size:
+        xs, ys = xf[at], yf[at]
+        xa, ya = np.floor(xs).astype(np.int64), np.floor(ys).astype(np.int64)
+        xb, yb = np.minimum(xa + 1, nx - 1), np.minimum(ya + 1, ny - 1)
+        fx, fy = xs - xa, ys - ya
+        acc = np.zeros((block.shape[0], at.size))
+        bad = np.zeros((block.shape[0], at.size), dtype=bool)
+        for xi, yi, w in ((xa, ya, (1 - fx) * (1 - fy)), (xb, ya, fx * (1 - fy)), (xa, yb, (1 - fx) * fy), (xb, yb, fx * fy)):
+            v = block[:, yi - y0, xi - x0].astype(np.float64)
+            fin = np.isfinite(v)
+            bad |= (w > 0)[None, :] & ~fin
+            acc += np.where(fin, v, 0.0) * w[None, :]
+        acc[bad] = np.nan
+        out[:, at] = acc
+    return out.reshape((block.shape[0],) + shape)
 
 
 def offsets_arcsec(c, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, str, dict]:

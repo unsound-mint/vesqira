@@ -186,15 +186,19 @@ func (s *Server) pv(w http.ResponseWriter, r *http.Request) {
 		key += strconv.Itoa(p[0]) + "," + strconv.Itoa(p[1]) + ";"
 	}
 	key += "w" + strconv.FormatFloat(*in.Width, 'g', -1, 64) + in.WidthUnit + "|" + in.Interpolation
-	for name, v := range map[string]*int{"first": in.First, "last": in.Last} {
-		if v == nil {
+	// a fixed order: the cache key must not depend on map iteration
+	for _, c := range []struct {
+		name string
+		v    *int
+	}{{"first", in.First}, {"last", in.Last}} {
+		if c.v == nil {
 			continue
 		}
-		if *v < 0 || *v > scene.MaxGridChannels {
-			fail(w, 400, name+" must be a channel number")
+		if *c.v < 0 || *c.v > scene.MaxGridChannels {
+			fail(w, 400, c.name+" must be a channel number")
 			return
 		}
-		req[name], key = *v, key+"|"+name+strconv.Itoa(*v)
+		req[c.name], key = *c.v, key+"|"+c.name+strconv.Itoa(*c.v)
 	}
 	sk, ok := spectralAsk(w, in.Unit, in.Convention, req)
 	if !ok {

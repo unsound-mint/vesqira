@@ -198,8 +198,15 @@ func TestChannelMapRoutesEndToEndWithRealWorker(t *testing.T) {
 	if c, _, _ := ask(hi, pvBody(nil)); c != 200 || cp.ops["pv"] != 0 {
 		t.Errorf("a repeated pv reached the worker %d times", cp.ops["pv"])
 	}
+	// a request that names its channel range is cached too, whichever order the keys were read in
+	for i := 0; i < 5; i++ {
+		ask(hi, pvBody(map[string]any{"first": 2, "last": 20}))
+	}
+	if cp.ops["pv"] != 1 {
+		t.Errorf("a repeated pv with a channel range reached the worker %d times in all, want 1", cp.ops["pv"])
+	}
 	// the same path with another width is another answer
-	if c, _, _ := ask(hi, pvBody(map[string]any{"width": 3})); c != 200 || cp.ops["pv"] != 1 {
+	if c, _, _ := ask(hi, pvBody(map[string]any{"width": 3})); c != 200 || cp.ops["pv"] != 2 {
 		t.Errorf("another width: %d, worker calls %d", c, cp.ops["pv"])
 	}
 	for name, m := range map[string]map[string]any{
