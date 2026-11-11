@@ -383,17 +383,16 @@ func (s *Server) refreshJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if j.SlurmID != "" && (j.State == jobs.StateSubmitted || j.State == jobs.StateRunning) {
-		cmd, err := jobs.StatusCommand(j.SlurmID)
-		if err != nil {
+		if _, err := jobs.StatusCommand(j.SlurmID); err != nil {
 			s.jobErr(w, err)
 			return
 		}
-		out, err := s.Remote.RunShell(r.Context(), h, cmd, nil, 30*time.Second)
+		st, err := s.hostStatus(r.Context(), h, []string{j.SlurmID}, time.Now())
 		if err != nil {
 			fail(w, 502, err.Error())
 			return
 		}
-		s.applyJobStatus(j, h, jobs.ParseStatusFull(string(out)), time.Now())
+		s.applyJobStatus(j, h, st[j.SlurmID], time.Now())
 	} else if j.RecordOwed && j.SlurmID != "" && isTerminal(j.State) {
 		s.retryOwedRecord(j, h)
 	}

@@ -24,7 +24,8 @@ import (
 // tried (jobs.auto_import, jobs.auto_import_tried); finished jobs leave notifications (ADR 0043).
 // Version 9: a figure may record the scene it was drawn from (figures.scene; ADR 0042).
 // Version 10: a point catalog's declared columns (catalog_declarations; ADR 0044).
-const Version = 10
+// Version 11: a finished job keeps what sacct reported it used (jobs.usage, JSON; ADR 0045).
+const Version = 11
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -43,6 +44,17 @@ var migrations = []Migration{
 	{To: 8, Name: "automatic import and notifications", Up: autoImportAndNotifications},
 	{To: 9, Name: "figure scene", Up: figureScene},
 	{To: 10, Name: "catalog declarations", Up: catalogDeclarations},
+	{To: 11, Name: "job usage", Up: jobUsage},
+}
+
+// jobUsage adds jobs.usage. Every existing job gets ” (nothing was recorded; its use is not known, not zero). A catalog
+// without a jobs table needs nothing.
+func jobUsage(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='jobs'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	return AddColumn(tx, "jobs", "usage", "TEXT NOT NULL DEFAULT ''")
 }
 
 // autoImportAndNotifications adds the two job columns. Every existing job gets 0 for both: a job submitted before the

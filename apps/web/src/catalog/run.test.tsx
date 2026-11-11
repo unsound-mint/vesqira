@@ -13,7 +13,7 @@ const run = (over: Partial<Run> = {}): Run => ({
   inputName: "hnv1.fits", inputSizeBytes: 4007885760, inputHint: null, metrics: [],
   outputs: [{ role: "psi", datasetId: 5, name: "psi.fits" }, { role: "reliability", datasetId: 6, name: "rel.fits" }], review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, ...over,
 });
-const job: Job = { id: 7, hostId: 1, name: "vgt-ker8", template: "vgt", script: "", scriptHash: "", state: "running", detail: "", slurmId: "48235", workDir: "", outputDir: "", createdAt: "", submittedAt: null, finishedAt: null, runId: 1, parentRunId: null, note: "", autoImport: true };
+const job: Job = { id: 7, hostId: 1, name: "vgt-ker8", template: "vgt", script: "", scriptHash: "", state: "running", detail: "", slurmId: "48235", workDir: "", outputDir: "", createdAt: "", submittedAt: null, finishedAt: null, runId: 1, parentRunId: null, note: "", autoImport: true, usage: null };
 const page = (r: Run, over: { runs?: Run[]; datasets?: Dataset[]; job?: Job | null } = {}) =>
   render(<RunPage run={r} runs={over.runs ?? [r]} datasets={over.datasets ?? []} job={over.job ?? null} onBack={() => {}} onOpenRun={() => {}} onOpenInViewer={() => {}} />);
 

@@ -152,14 +152,13 @@ func (s *Server) watchHost(ctx context.Context, w *jobWatcher, hw *hostWatch, h 
 	for _, j := range active {
 		slurm = append(slurm, j.SlurmID)
 	}
-	cmd, err := jobs.BatchStatusCommand(slurm)
-	if err != nil {
+	if _, err := jobs.BatchStatusCommand(slurm); err != nil { // the ids are checked before anything is run
 		hw.next = now.Add(w.interval)
 		log.Printf("jobs: watch %s: %v", h.Name, err)
 		return
 	}
 	hw.next = now.Add(w.interval) // the slot is taken before the call, so a slow answer cannot cause a second call
-	out, err := s.Remote.RunShell(ctx, h, cmd, nil, 30*time.Second)
+	st, err := s.hostStatus(ctx, h, slurm, now)
 	if err != nil {
 		hw.fails++
 		hw.next = now.Add(w.backoff(hw.fails))
@@ -172,7 +171,6 @@ func (s *Server) watchHost(ctx context.Context, w *jobWatcher, hw *hostWatch, h 
 		log.Printf("jobs: %s answers again", h.Name)
 	}
 	hw.fails = 0
-	st := jobs.ParseBatchStatus(string(out), slurm)
 	for _, j := range active {
 		s.applyJobStatus(j, h, st[j.SlurmID], now)
 	}
@@ -194,6 +192,12 @@ func (s *Server) applyJobStatus(j jobs.Job, h hosts.Host, st jobs.Status, obtain
 		return // another caller already moved this job on, and it handles the record and the announcement
 	}
 	ended := isTerminal(st.State)
+	if ended && st.Usage != nil {
+		// what the scheduler recorded the job used, kept with the job; only the caller that saw the end stores it
+		if err := s.Jobs.SetUsage(j.ID, *st.Usage); err != nil {
+			log.Printf("jobs: usage of job %d: %v", j.ID, err)
+		}
+	}
 	// the record says how the job ended; and it is retried while it is still owed (folder not there yet, host down)
 	if j.RecordOwed || ended {
 		s.recordRunAsync(j.ID, h, jobs.ReportedEvidence(st.State, st.Detail, obtained))

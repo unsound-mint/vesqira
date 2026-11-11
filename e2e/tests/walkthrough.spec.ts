@@ -509,6 +509,8 @@ test("a Slurm job: render, read, submit exactly that text, follow it, import its
   writeFileSync(state, "COMPLETED\n");
   await page.getByRole("button", { name: "Refresh status" }).click();
   await expect(page.locator("body")).toContainText("exit 0:0");
+  // what the scheduler recorded the job used, in words (the stand-in's accounting row: 1 GiB peak of 4 GiB, 9 s of a 30 min limit)
+  await expect(page.getByRole("region", { name: "What this job used" })).toContainText(/Used 1\.00 GiB of 4\.00 GiB requested; ran 9 s of a 30 min limit; CPU efficiency 67 %/);
   await page.getByRole("button", { name: "Import results as a run" }).click();
   await expect(page.getByText("Results imported.")).toBeVisible();
   await page.getByRole("button", { name: "Open the run" }).click();

@@ -9,6 +9,7 @@ import { getRerun } from "../api/runs";
 import type { Rerun, Run } from "../api/runs";
 import { bytes, EM } from "../catalog/format";
 import { NOISE_MODES, SETTINGS } from "../jobs/JobsView";
+import { SizingHint } from "../jobs/JobUsage";
 import s from "./RerunDraft.module.css";
 
 const MAX_NOTE = 500;
@@ -219,6 +220,7 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
         <Input label="Account (optional)" value={res.account} onChange={(e) => setRes({ ...res, account: e.target.value })} />
       </fieldset>
       {run.elapsedSeconds !== null && run.elapsedSeconds !== undefined ? <p className={s.note}>The last run took {duration(run.elapsedSeconds)}.</p> : null}
+      {rerun.lastJob?.usage ? <SizingHint jobId={rerun.lastJob.id} jobName={rerun.lastJob.name} usage={rerun.lastJob.usage} mem={res.mem} time={res.time} onUseMem={(mem) => setRes((r) => ({ ...r, mem }))} onUseTime={(time) => setRes((r) => ({ ...r, time }))} /> : null}
 
       <Input label="Job name" value={name} onChange={(e) => setName(e.target.value)} required />
       {boards.length > 0 ? (

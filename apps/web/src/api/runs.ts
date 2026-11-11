@@ -1,4 +1,5 @@
 import { request as call } from "./http";
+import type { JobUsage } from "./jobs";
 
 export type RunParam = { key: string; value: string; source: "config" | "run_parameters" };
 export type RunOutput = { role: "psi" | "reliability" | "support" | "fit_rbar2"; datasetId: number; name: string };
@@ -58,6 +59,8 @@ export type Rerun = {
   notes: string[];
   /** The stored config text compared with the file on the host now; null when unknown or the host cannot be reached. */
   configChanged: boolean | null;
+  /** The job that produced the run and what it used, for sizing the next request; null for an imported run. */
+  lastJob: { id: number; name: string; usage: JobUsage | null } | null;
 };
 
 export const listRuns = (opts: { archived?: "all" | "only" } = {}) => call<{ runs: Run[] }>(`/api/runs${opts.archived ? `?archived=${opts.archived}` : ""}`).then((r) => r.runs);

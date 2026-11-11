@@ -1,0 +1,73 @@
+.root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font-size: var(--text-sm);
+}
+
+.h {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--text-sm);
+  font-weight: var(--w-strong);
+}
+
+.note,
+.raw {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-1);
+  min-width: 0;
+  padding-bottom: var(--sp-2);
+  border-bottom: var(--bw) solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.entry:last-child {
+  border-bottom: 0;
+}
+
+.meter {
+  width: 100%;
+  height: 8px;
+}

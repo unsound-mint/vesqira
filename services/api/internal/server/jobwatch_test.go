@@ -58,19 +58,6 @@ func newWatchEnv(t *testing.T) *watchEnv {
 	os.MkdirAll(filepath.Join(base, "localroot"), 0o755)
 	bin := filepath.Join(base, "slurm-bin")
 	fakeSlurm(t, bin)
-	state := filepath.Join(bin, "state")
-	write := func(name, body string) {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// squeue -h -j LIST -o FMT: one line per id still queued or running ("%T" alone for a single job, "id|STATE" otherwise)
-	write("squeue", fmt.Sprintf(`for id in $(echo "$3" | tr , ' '); do s=$(cat %[1]s/$id 2>/dev/null); case "$s" in PENDING|RUNNING) if [ "$5" = "%%T" ]; then echo $s; else echo "$id|$s"; fi;; esac; done
-`, state))
-	// sacct -n -P -X -j LIST -o COLS: one line per id that has ended
-	write("sacct", fmt.Sprintf(`for id in $(echo "$5" | tr , ' '); do s=$(cat %[1]s/$id 2>/dev/null); ec=0:0; [ "$s" = FAILED ] && ec=1:0
-case "$s" in COMPLETED|FAILED|CANCELLED|TIMEOUT) line="$s|$ec|00:00:09|2026-11-04T10:00:00|2026-11-04T10:00:09"; case "$7" in JobID*) line="$id|$line";; esac; echo "$line";; esac; done
-`, state))
 	sshScript := fmt.Sprintf(`#!/bin/sh
 while [ $# -gt 0 ]; do case "$1" in -o) shift 2;; -T) shift;; *) break;; esac; done
 shift
@@ -155,9 +142,12 @@ func (e *watchEnv) setSlurm(slurmID, state string) {
 }
 
 // statusCalls counts the squeue/sacct commands the host has been given.
-func (e *watchEnv) statusCalls() int {
-	b, _ := os.ReadFile(filepath.Join(filepath.Dir(e.bin), "ssh.log"))
-	return strings.Count(string(b), "squeue -h -j")
+func (e *watchEnv) statusCalls() int { return e.sshLines("squeue -h -j") }
+
+// attempts counts the times the watcher has reached for the host: a status call, or the probe of the host's sacct columns
+// that comes first (once per 6 hours) and is the only thing asked of a host that is down.
+func (e *watchEnv) attempts() int {
+	return e.sshLines("squeue -h -j") + e.sshLines("sacct --helpformat")
 }
 
 func (e *watchEnv) job(id int64) jobs.Job {
@@ -266,29 +256,29 @@ func TestWatcherBacksOffWhenTheHostIsUnreachableAndSaysNothingAboutTheJob(t *tes
 	e.setSlurm(j.SlurmID, "RUNNING")
 	w := newJobWatcher(MinWatchInterval)
 	os.WriteFile(filepath.Join(e.home, "DOWN"), nil, 0o644)
-	base := e.statusCalls()
+	base := e.attempts()
 	t0 := time.Now()
 	e.srv.watchOnce(ctx, w, t0)
-	if e.statusCalls()-base != 1 {
+	if e.attempts()-base != 1 {
 		t.Fatalf("the first attempt must be made")
 	}
 	// the wait grows with each failure: 2, then 4, then 8 intervals
 	e.srv.watchOnce(ctx, w, t0.Add(MinWatchInterval+time.Second)) // inside the first backoff
-	if e.statusCalls()-base != 1 {
+	if e.attempts()-base != 1 {
 		t.Fatalf("asked again inside the backoff")
 	}
 	t2 := t0.Add(2*MinWatchInterval + time.Second)
 	e.srv.watchOnce(ctx, w, t2)
-	if e.statusCalls()-base != 2 {
+	if e.attempts()-base != 2 {
 		t.Fatalf("no second attempt after the first backoff")
 	}
 	e.srv.watchOnce(ctx, w, t2.Add(3*MinWatchInterval))
-	if e.statusCalls()-base != 2 {
+	if e.attempts()-base != 2 {
 		t.Fatalf("the second wait must be longer than three intervals")
 	}
 	t3 := t2.Add(4*MinWatchInterval + time.Second)
 	e.srv.watchOnce(ctx, w, t3)
-	if e.statusCalls()-base != 3 {
+	if e.attempts()-base != 3 {
 		t.Fatalf("no third attempt after the second backoff")
 	}
 	if got := w.backoff(30); got != maxWatchBackoff {

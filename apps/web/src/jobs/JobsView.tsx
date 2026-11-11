@@ -6,6 +6,8 @@ import { cancelJob, createJob, editScript, getJob, hostText, jobLog, listJobs, r
 import type { Job, JobState } from "../api/jobs";
 import type { Host } from "../api/hosts";
 import type { Run } from "../api/runs";
+import { HostStorage } from "../hosts/HostStorage";
+import { SizingHint, UsageSummary } from "./JobUsage";
 import s from "./JobsView.module.css";
 
 export const TONE: Record<JobState, "neutral" | "ok" | "warn" | "err" | "accent"> = { draft: "neutral", submitting: "warn", submitted: "accent", running: "accent", completed: "ok", failed: "err", cancelled: "warn" };
@@ -74,7 +76,7 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { ho
           {job ? (
             <JobDetail job={job} host={hosts.find((h) => h.id === job.hostId) ?? null} onChange={replace} onImported={onImported} onOpenRun={onOpenRun} />
           ) : (
-            <NewJob hosts={hosts} onCreated={(j) => { replace(j); setSel(j.id); }} />
+            <NewJob hosts={hosts} jobs={jobs} onCreated={(j) => { replace(j); setSel(j.id); }} />
           )}
         </div>
       </div>
@@ -82,7 +84,14 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { ho
   );
 }
 
-function NewJob({ hosts, onCreated }: { hosts: Host[]; onCreated: (j: Job) => void }) {
+/** The most recent finished job of this kind on this host that has a measured use, to size a new request from. */
+export function previousUse(jobs: Job[], hostId: number | null, template: string): Job | null {
+  let best: Job | null = null;
+  for (const j of jobs) if (j.hostId === hostId && j.template === template && j.usage && (!best || j.id > best.id)) best = j;
+  return best;
+}
+
+function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCreated: (j: Job) => void }) {
   const [hostId, setHostId] = useState<string>(hosts[0] ? String(hosts[0].id) : "");
   const [kind, setKind] = useState<"vgt" | "rohsa">("vgt");
   const [name, setName] = useState("vgt-run");
@@ -166,6 +175,10 @@ function NewJob({ hosts, onCreated }: { hosts: Host[]; onCreated: (j: Job) => vo
           )}
         </fieldset>
       ) : null}
+      {(() => {
+        const prev = previousUse(jobs, hostNum, kind);
+        return prev?.usage ? <SizingHint jobId={prev.id} jobName={prev.name} usage={prev.usage} mem={res.mem} time={res.time} onUseMem={(mem) => setRes((r) => ({ ...r, mem }))} onUseTime={(time) => setRes((r) => ({ ...r, time }))} /> : null;
+      })()}
       <fieldset className={s.fields}>
         <legend>Resources</legend>
         <Input label="CPUs" value={res.cpus} onChange={(e) => setRes({ ...res, cpus: e.target.value })} inputMode="numeric" />
@@ -217,6 +230,7 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; h
         <span className={s.note}>{host?.name ?? "host removed"}{job.slurmId ? ` · Slurm job ${job.slurmId}` : ""}{job.detail ? ` · ${job.detail}` : ""}</span>
       </div>
       {job.note ? <p className={s.note}>Why: {job.note}</p> : null}
+      {job.usage ? <UsageSummary usage={job.usage} /> : null}
       <label className={s.label} htmlFor="job-script">Script{draft ? " (this exact text is what will be submitted; you can edit it)" : " as submitted"} · sha256 <span className="mono">{job.scriptHash.slice(0, 12)}</span></label>
       <textarea id="job-script" className={s.script} readOnly={!draft} rows={18} value={script} onChange={(e) => setScript(e.target.value)} spellCheck={false} />
       {draft ? (
@@ -242,6 +256,7 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; h
       {job.runId ? <p className={s.note}>Results imported. {run ? <Button onClick={() => onOpenRun(run)}>Open the run</Button> : "Find the run in the explorer."}</p> : null}
       {log !== null ? <pre className={s.log} aria-label="Job log">{log || "No output yet."}</pre> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
+      {host ? <HostStorage host={host} /> : null}
     </div>
   );
 }

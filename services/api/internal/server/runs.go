@@ -295,6 +295,15 @@ type rerunJSON struct {
 	Notes       []string     `json:"notes"`
 	// ConfigChanged compares the stored config text with the file on the host now; null when not asked or not reachable.
 	ConfigChanged *bool `json:"configChanged"`
+	// LastJob is the job that produced the run and what the scheduler recorded it used, for sizing the next request
+	// (ADR 0045). Null for an imported run.
+	LastJob *rerunJob `json:"lastJob"`
+}
+
+type rerunJob struct {
+	ID    int64       `json:"id"`
+	Name  string      `json:"name"`
+	Usage *jobs.Usage `json:"usage"`
 }
 
 var notNameChar = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -348,6 +357,7 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 	}
 	hid := job.HostID
 	out.HostID = &hid
+	out.LastJob = &rerunJob{ID: job.ID, Name: job.Name, Usage: job.Usage}
 	req, ok := job.VGTRequest()
 	if !ok {
 		out.Notes = append(out.Notes, "This run came from a job recorded before its settings were kept, so the code folder, config and resources it ran with are not known here.")
