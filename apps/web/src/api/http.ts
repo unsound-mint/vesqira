@@ -1,8 +1,10 @@
 /**
  * The one fetch wrapper for every client in api/. Both listeners answer errors their own way: the owner API sends JSON
  * `{error}`, the reviewer listener and the proxies in front of either send text/plain (400, 415, 429, 500). Both end as an
- * ApiError whose message is the server's own words. It imports nothing, so the reviewer bundle can reach it.
+ * ApiError whose message is the server's own words. It imports only offlineState (React and nothing else), so the reviewer bundle can reach it.
  */
+
+import { observeFailure, observeResponse } from "./offlineState";
 
 export class ApiError extends Error {
   /** `status` is 0 when no response arrived; `body` is the parsed JSON error body (or null), for callers with a special case such as a 409 carrying `current`. */
@@ -77,7 +79,12 @@ export async function requestRaw(url: string, init?: RequestInit, opts: RequestO
     if (e instanceof DOMException && e.name === "AbortError") throw e;
     throw unreachable(url);
   }
-  if (!res.ok && !opts.allow?.includes(res.status)) { const e = await failure(res, url); throw opts.quiet ? e : announce(e); }
+  if (!res.ok && !opts.allow?.includes(res.status)) {
+    const e = await failure(res, url);
+    observeFailure(url, res.status, e.body);
+    throw opts.quiet ? e : announce(e);
+  }
+  observeResponse(url, res);
   return res;
 }
 

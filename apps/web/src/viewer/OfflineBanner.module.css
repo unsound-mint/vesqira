@@ -1,0 +1,19 @@
+.banner {
+  position: absolute;
+  top: var(--sp-2);
+  left: var(--sp-3);
+  right: var(--sp-3);
+  z-index: 2;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+.missing {
+  color: var(--text-2);
+}

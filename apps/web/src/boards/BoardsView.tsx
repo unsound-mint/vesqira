@@ -22,6 +22,7 @@ import { SweepGrid } from "../sweeps/SweepGrid";
 import { defaultOutput, JobFrame, JobLines, jobIsActive, LiveResult } from "./JobPanel";
 import { EM } from "../catalog/format";
 import { EntryActions } from "../catalog/EntryActions";
+import { BoardOffline } from "../catalog/OfflineAction";
 import { RunLine } from "./RunLine";
 import { BoardCompare } from "./BoardCompare";
 import { BoardGrid } from "./BoardGrid";
@@ -183,6 +184,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
       </div>
       <div className={s.row}>
         <Checkbox label="Show archived boards" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+        {board ? <BoardOffline key={`offline-${board.id}`} id={board.id} name={board.title} /> : null}
         {board ? <EntryActions key={board.id} kind="boards" id={board.id} name={board.title} archived={board.archived === true} onChanged={async (c) => { if (c === "deleted" || (c === "archived" && !showArchived)) setId(null); await reload(c === "restored" ? board.id : null); }} /> : null}
       </div>
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
