@@ -162,6 +162,10 @@ SOFTWARE.
 
 `github.com/BurntSushi/toml` is used to read run metadata. MIT License, Copyright (c) 2013 TOML authors.
 
+## go.yaml.in/yaml/v4 (Go API)
+
+`go.yaml.in/yaml/v4` reads `params.yaml` and `meta.yaml` run records during project discovery. Apache License 2.0, with parts ported from libyaml under the MIT License (Copyright (c) 2006-2010 Kirill Simonov; Copyright (c) 2011-2019 Canonical Ltd; Copyright (c) 2025 the yaml authors). The full texts ship in the module's `LICENSE` and `NOTICE` files.
+
 ## Material Icon Theme (file and folder icons)
 
 `material-icon-theme` supplies the file-type icons in the project file tree. MIT License, Copyright (c) Material Extensions. Its full license text ships in the package (`node_modules/material-icon-theme/LICENSE`).
