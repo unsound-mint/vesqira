@@ -146,7 +146,7 @@ export function BoardGrid({ board, onBoard, onChanged, onError, renderCard }: {
   const reset = () => { commit(resolve(items.map(() => null), items.map((it) => it.kind)), "reset layout", true); setNote("The panels are back in their original order, one per row. The layout is no longer saved with the board."); };
 
   if (none) return null;
-  const ordered = readingOrder(shown);
+  const ordered = readingOrder(drag ? base : shown); // not while dragging: moving the dragged element in the page would drop its pointer capture
   return (
     <div className={s.wrap}>
       <div className={s.tools}>

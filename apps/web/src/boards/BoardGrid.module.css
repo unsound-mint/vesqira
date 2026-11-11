@@ -1,7 +1,7 @@
 /* The board as a grid (ADR 0060): 12 equal columns, rows of one fixed height. Panels are placed by custom properties set from
    layout.ts, so that a narrow board can drop the placement and stack in reading order without touching the markup. */
 .wrap {
-  container-type: inline-size;
+  container: board / inline-size;
   display: grid;
   gap: var(--sp-3);
 }
@@ -76,7 +76,7 @@
   grid-row: var(--rows);
   min-width: 0;
   min-height: 0;
-  container-type: inline-size;
+  container: cell / inline-size;
   border-radius: var(--r-lg);
 }
 
@@ -175,7 +175,7 @@
 }
 
 /* a narrow board has no room for twelve columns: panels stack in reading order, full width, as tall as their content */
-@container (max-width: 560px) {
+@container board (max-width: 560px) {
   .tools {
     display: none;
   }

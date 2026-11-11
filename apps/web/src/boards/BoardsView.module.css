@@ -44,7 +44,7 @@
 }
 
 /* a panel resized narrower than its two columns need: picture over text */
-@container (max-width: 560px) {
+@container cell (max-width: 560px) {
   .card,
   .cardJob {
     grid-template-columns: minmax(0, 1fr);
