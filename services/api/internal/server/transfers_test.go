@@ -80,7 +80,9 @@ case "$cmd" in
 esac
 if [ -e %[1]s/NOSHA ]; then PATH=%[1]s/minbin; else PATH=%[1]s/bin:$PATH; fi
 export PATH
-exec sh -c "$cmd"
+# The rsync server must BE this process: dash (Ubuntu's /bin/sh) forks for "sh -c", so killing $me would orphan the server and
+# the copy would finish under the final name instead of being cut.
+case "$cmd" in *"rsync --server"*) eval "exec $cmd";; *) exec sh -c "$cmd";; esac
 `, base)
 	sshBin := filepath.Join(base, "ssh")
 	os.WriteFile(sshBin, []byte(script), 0o755)

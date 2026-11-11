@@ -37,7 +37,9 @@ case "$cmd" in
     ( while :; do s=$(cat %q/.[!.]* %q/.vesqira-partial/* 2>/dev/null | wc -c); [ "$s" -ge %d ] && break; sleep 0.01; done; kill -KILL $me ) &
   fi;;
 esac
-exec sh -c "$cmd"
+# The rsync server must BE this process: dash (Ubuntu's /bin/sh) forks for "sh -c", so killing $me would orphan the server and
+# the copy would finish under the final name instead of being cut.
+case "$cmd" in *"rsync --server"*) eval "exec $cmd";; *) exec sh -c "$cmd";; esac
 `, filepath.Join(dir, "dropped"), filepath.Join(dir, "dropped"), watch, watch, dropAt)
 	p := filepath.Join(dir, "ssh")
 	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
