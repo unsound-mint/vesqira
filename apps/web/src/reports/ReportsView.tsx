@@ -65,13 +65,17 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
   const [open, setOpen] = useState<Set<number>>(loadOpen);
   const [summaryDraft, setSummaryDraft] = useState<string | null>(null);
   const [dateEdit, setDateEdit] = useState(false);
-  const saving = useRef(false);
+  // Saves run one after another, each on the report as the previous one left it. A save made while another is in flight used to be
+  // dropped (and built from the stale body), so an edit made quickly after another (a summary right after a text part) was lost silently.
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const viewRef = useRef<ReportView | null>(null);
   const renameNext = useRef<number | null>(null); // a report just created opens with its title ready to type
 
   const refreshList = useCallback(() => api.listReports().then(setList).catch((e: unknown) => setError(msg(e))), []);
   const load = useCallback(async (id: number) => {
     try {
       const v = await api.getReport(id);
+      viewRef.current = v;
       setView(v);
       setSource(v.body);
       setError(null);
@@ -169,23 +173,33 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
   const openThreads = threads.filter((t) => !t.resolvedAt).length;
   const quotes = useMemo(() => threads.filter((t) => t.quote && !t.resolvedAt).map((t) => ({ block: t.block, quote: t.quote as string })), [threads]);
 
-  async function save(body: string | undefined, title?: string) {
-    if (!view || saving.current) return;
-    if ((body === undefined || body === view.body) && (title === undefined || title === view.title)) return;
-    saving.current = true;
+  type Body = string | undefined | ((cur: ReportView) => string | undefined);
+  function save(body: Body, title?: string): Promise<void> {
+    const id = viewRef.current?.id;
+    if (id === undefined) return Promise.resolve();
+    const run = queue.current.then(() => doSave(id, body, title));
+    queue.current = run;
+    return run;
+  }
+  async function doSave(id: number, update: Body, title?: string) {
     try {
-      await api.saveReport(view.id, view.revision, { body, title });
-      await load(view.id);
-      void refreshList();
+      const cur = viewRef.current?.id === id ? viewRef.current : await api.getReport(id);
+      const body = typeof update === "function" ? update(cur) : update;
+      if ((body === undefined || body === cur.body) && (title === undefined || title === cur.title)) return;
+      try {
+        await api.saveReport(id, cur.revision, { body, title });
+        if (viewRef.current?.id === id) await load(id);
+        void refreshList();
+      } catch (e) {
+        if (e instanceof api.ConflictError) {
+          setNotice(`${e.current.lastAuthor === "agent" ? "The agent" : "Someone"} saved this report while you were editing. Your text is kept below; the page shows their version.`);
+          if (body !== undefined) setSource(body);
+          await load(id);
+          setMode("source");
+        } else setError(msg(e));
+      }
     } catch (e) {
-      if (e instanceof api.ConflictError) {
-        setNotice(`${e.current.lastAuthor === "agent" ? "The agent" : "Someone"} saved this report while you were editing. Your text is kept below; the page shows their version.`);
-        if (body !== undefined) setSource(body);
-        await load(view.id);
-        setMode("source");
-      } else setError(msg(e));
-    } finally {
-      saving.current = false;
+      setError(msg(e));
     }
   }
 
@@ -201,7 +215,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     if (editIndex >= parts.length) parts.push(draft);
     else parts[editIndex] = draft;
     setEditIndex(null);
-    void save(withFront(view?.body ?? "", joinBlocks(parts)));
+    void save((cur) => withFront(cur.body, joinBlocks(parts)));
   }
   function editKeys(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Escape") {
@@ -218,7 +232,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     if (editIndex !== null) parts[editIndex] = draft;
     parts.splice(at, 0, markdown);
     setEditIndex(null);
-    void save(withFront(view?.body ?? "", joinBlocks(parts)));
+    void save((cur) => withFront(cur.body, joinBlocks(parts)));
   }
 
   async function newReport(parent = 0) {
@@ -308,14 +322,14 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
               <button type="button" className={s.ghost} aria-pressed={mode === "source"} onClick={() => { if (mode === "source") { void save(source); setMode("page"); } else { setSource(view.body); setMode("source"); } }}>{mode === "source" ? "Done" : "Markdown"}</button>
               <button type="button" className={s.ghost} aria-pressed={panel === "comments"} onClick={() => setPanel(panel === "comments" ? null : "comments")}><Icon icon={MessageSquare} />Comments{openThreads ? <span className={s.badge}>{openThreads}</span> : null}</button>
               <button type="button" className={s.ghost} aria-pressed={panel === "share"} onClick={() => setPanel(panel === "share" ? null : "share")}><Icon icon={Share2} />Share</button>
-              <Button variant="primary" icon={Upload} onClick={() => { if (editIndex !== null) commitEdit(); setPublishing(true); }}>Publish…</Button>
+              <Button variant="primary" icon={Upload} onClick={() => { if (editIndex !== null) commitEdit(); void queue.current.then(() => setPublishing(true)); }}>Publish…</Button>
               <PageMenu
                 view={view}
                 list={list}
                 onAddChild={() => void newReport(view.id)}
                 onMove={async (parent) => { try { await api.moveReport(view.id, parent); await refreshList(); await load(view.id); } catch (e) { setError(msg(e)); } }}
                 onWithdraw={async () => { try { await api.withdrawReport(view.id); await load(view.id); await refreshList(); setNotice(`“${view.title}” was withdrawn: readers no longer see it.`); } catch (e) { setError(msg(e)); } }}
-                onDelete={async () => { try { await api.deleteReport(view.id); setCurrent(null); setView(null); await refreshList(); } catch (e) { setError(msg(e)); } }}
+                onDelete={async () => { try { await api.deleteReport(view.id); setCurrent(null); viewRef.current = null; setView(null); await refreshList(); } catch (e) { setError(msg(e)); } }}
               />
             </>
           ) : null}
@@ -365,7 +379,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
                     rows={2}
                     aria-label="Summary, one or two sentences under the title"
                     onChange={(e) => setSummaryDraft(e.target.value.replace(/\n/g, " "))}
-                    onBlur={() => { const v = summaryDraft; setSummaryDraft(null); if (v.trim() !== summaryText) void save(setFrontValue(view.body, "summary", v)); }}
+                    onBlur={() => { const v = summaryDraft; setSummaryDraft(null); if (v.trim() !== summaryText) void save((cur) => setFrontValue(cur.body, "summary", v)); }}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } if (e.key === "Escape") setSummaryDraft(null); }}
                   />
                 ) : (
@@ -383,7 +397,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
                       autoFocus
                       defaultValue={dateValue}
                       aria-label="Date of this report"
-                      onBlur={(e) => { setDateEdit(false); if (e.target.value !== dateValue) void save(setFrontValue(view.body, "date", e.target.value)); }}
+                      onBlur={(e) => { setDateEdit(false); if (e.target.value !== dateValue) void save((cur) => setFrontValue(cur.body, "date", e.target.value)); }}
                       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setDateEdit(false); }}
                     />
                   ) : (

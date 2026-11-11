@@ -15,7 +15,8 @@ async function expectNoAxeViolations(page: Page) {
   expect(r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
 }
 
-test("write, publish, read from a named link, comment, and answer", async ({ page, browser }) => {
+test("write, publish, read from a named link, comment, and answer", async ({ page, browser }, info) => {
+  const TITLE = info.repeatEachIndex ? `Block size 32 vs 64 (run ${info.repeatEachIndex + 1})` : "Block size 32 vs 64"; // report titles are unique, so repeated runs on one instance need their own
   const key = fs.readFileSync(path.resolve(here, "../.run-publish/key"), "utf8").trim();
   await page.goto("/");
   await page.getByRole("button", { name: "Reports", exact: true }).click();
@@ -23,9 +24,9 @@ test("write, publish, read from a named link, comment, and answer", async ({ pag
   // a new report: rename, then write two parts in place
   await page.getByRole("button", { name: "New report" }).first().click();
   const title = page.getByRole("textbox", { name: "Title" });
-  await title.fill("Block size 32 vs 64");
+  await title.fill(TITLE);
   await title.press("Enter");
-  await expect(page.getByRole("heading", { level: 1, name: "Block size 32 vs 64" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: TITLE })).toBeVisible();
   await page.getByRole("button", { name: "Text", exact: true }).click();
   await page.getByRole("textbox", { name: /Edit this part/ }).fill("## Question\n\nDoes the alignment $\\langle \\cos 2\\theta \\rangle$ change with block size?");
   await page.getByRole("textbox", { name: /Edit this part/ }).press("Control+Enter");
@@ -63,7 +64,7 @@ test("write, publish, read from a named link, comment, and answer", async ({ pag
   const seen: string[] = [];
   reader.on("response", (r) => { if (r.url().includes("/read-api/")) void r.text().then((t) => seen.push(t)).catch(() => {}); });
   await reader.goto(link);
-  await expect(reader.getByRole("heading", { level: 1, name: "Block size 32 vs 64" })).toBeVisible();
+  await expect(reader.getByRole("heading", { level: 1, name: TITLE })).toBeVisible();
   await expect(reader.getByText("By Denis")).toBeVisible();
   await expect(reader.locator("article .katex").first()).toBeVisible();
   await expectNoAxeViolations(reader);
