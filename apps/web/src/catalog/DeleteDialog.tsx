@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { deleteEntry, getImpact, ImpactChanged } from "../api/lifecycle";
 import type { EntryKind, Impact, ImpactEffect } from "../api/lifecycle";
 import { Button } from "../ui";
-import { Modal } from "../ui/Modal";
+import { Modal, ModalActions } from "../ui/Modal";
 import { bytes } from "./format";
 import s from "./EntryActions.module.css";
 
@@ -51,7 +51,7 @@ export default function DeleteDialog({ kind, id, name, onClose, onDeleted }: { k
   }
 
   return (
-    <Modal label={`Delete ${NOUN[kind]} ${name}`} onClose={onClose} className={s.dialog}>
+    <Modal label={`Delete ${NOUN[kind]} ${name}`} onClose={onClose}>
       <h2 className={s.title}>Delete “{name}” from the catalog?</h2>
       {!impact && !err ? <p className={s.note} role="status">Working out what depends on it…</p> : null}
       {impact ? (
@@ -82,10 +82,10 @@ export default function DeleteDialog({ kind, id, name, onClose, onDeleted }: { k
         </div>
       ) : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
-      <div className={s.buttons}>
+      <ModalActions>
         <Button type="button" onClick={onClose}>Cancel</Button>
-        <Button type="button" variant="primary" disabled={!impact || impact.blocked || needsChoice || busy} onClick={() => void confirm()}>{busy ? "Deleting…" : "Delete from catalog"}</Button>
-      </div>
+        <Button type="button" variant="danger" disabled={!impact || impact.blocked || needsChoice || busy} onClick={() => void confirm()}>{busy ? "Deleting…" : "Delete from catalog"}</Button>
+      </ModalActions>
     </Modal>
   );
 }

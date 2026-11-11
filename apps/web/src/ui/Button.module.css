@@ -94,3 +94,22 @@
   color: var(--text-2);
   opacity: 1;
 }
+
+/* a destructive confirm: the error colour, never the accent, and legible without it (the label says what it does) */
+.danger {
+  background: var(--err);
+  border-color: var(--err);
+  color: var(--bg-0);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--err);
+  border-color: var(--text);
+}
+
+.danger:disabled {
+  border-color: var(--line-strong);
+  background: var(--bg-3);
+  color: var(--text-2);
+  opacity: 1;
+}

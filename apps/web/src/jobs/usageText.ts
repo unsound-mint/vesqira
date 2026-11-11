@@ -1,16 +1,6 @@
 import { bytes } from "../catalog/format";
 import type { JobUsage } from "../api/jobs";
-
-/** "3 d", "1 d 2 h", "6 h 12 min", "45 s": a span for reading, from whole seconds. */
-export function span(seconds: number): string {
-  const t = Math.round(seconds);
-  if (t < 60) return `${t} s`;
-  const d = Math.floor(t / 86400);
-  const h = Math.floor((t % 86400) / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  if (d > 0) return h > 0 ? `${d} d ${h} h` : `${d} d`;
-  return h > 0 ? `${h} h ${m} min` : `${m} min`;
-}
+import { formatDuration } from "../ui/duration";
 
 /** A Slurm --mem value ("64G", "4000M", "2T", a bare number is MiB) in bytes, or null when it is not one. */
 export function parseMem(text: string): number | null {
@@ -18,20 +8,6 @@ export function parseMem(text: string): number | null {
   if (!m) return null;
   const unit = { "": 2 ** 20, K: 2 ** 10, M: 2 ** 20, G: 2 ** 30, T: 2 ** 40 }[m[2]!.toUpperCase() as "" | "K" | "M" | "G" | "T"];
   return Math.round(Number(m[1]) * unit);
-}
-
-/** A Slurm --time value in seconds ("90" minutes, "MM:SS", "HH:MM:SS", "D-HH", "D-HH:MM", "D-HH:MM:SS"), or null when it is not one. */
-export function parseTime(text: string): number | null {
-  const t = text.trim();
-  let m = /^(\d+)-(\d+)(?::(\d+))?(?::(\d+))?$/.exec(t);
-  if (m) return Number(m[1]) * 86400 + Number(m[2]) * 3600 + Number(m[3] ?? 0) * 60 + Number(m[4] ?? 0);
-  m = /^(\d+)$/.exec(t);
-  if (m) return Number(m[1]) * 60;
-  m = /^(\d+):(\d+)$/.exec(t);
-  if (m) return Number(m[1]) * 60 + Number(m[2]);
-  m = /^(\d+):(\d+):(\d+)$/.exec(t);
-  if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
-  return null;
 }
 
 /** The sentences that describe what a finished job used. Each says what the scheduler reported; none is a verdict on the result. */
@@ -43,7 +19,7 @@ export function usageLines(u: JobUsage): string[] {
       : u.reqMemBytes === null
         ? `used ${bytes(u.maxRssBytes)} (the request is not recorded)`
         : `used ${bytes(u.maxRssBytes)} of ${bytes(u.reqMemBytes)} requested`;
-  const time = u.timelimitSeconds === null ? `ran ${span(u.elapsedSeconds)} (no time limit recorded)` : `ran ${span(u.elapsedSeconds)} of a ${span(u.timelimitSeconds)} limit`;
+  const time = u.timelimitSeconds === null ? `ran ${formatDuration(u.elapsedSeconds)} (no time limit recorded)` : `ran ${formatDuration(u.elapsedSeconds)} of a ${formatDuration(u.timelimitSeconds)} limit`;
   const cpu = u.cpuNotAccounted ? "CPU time not accounted by Slurm for this job" : u.cpuEfficiency === null ? "CPU time not recorded" : `CPU efficiency ${Math.round(u.cpuEfficiency * 100)} %`;
   const sentence = [mem, time, cpu].join("; ");
   out.push(`${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`);
@@ -61,7 +37,7 @@ export function usageLines(u: JobUsage): string[] {
   }
   if (u.state === "TIMEOUT") {
     out.push(
-      `Slurm stopped this job at its time limit${u.timelimitSeconds === null ? "" : ` (${span(u.timelimitSeconds)})`}. ` +
+      `Slurm stopped this job at its time limit${u.timelimitSeconds === null ? "" : ` (${formatDuration(u.timelimitSeconds)})`}. ` +
         "Anything it wrote before then may be incomplete, and the elapsed time is a floor on how long the work needs, not an estimate of it.",
     );
   }

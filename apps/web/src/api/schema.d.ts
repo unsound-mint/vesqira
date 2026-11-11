@@ -5358,6 +5358,8 @@ export interface components {
             baseJobId: number;
             baseName: string;
             baseScript: string;
+            /** @description Lines (removed and added together) by which the base job's script differs from what its own settings render: the owner edited it by hand. Drafts are rendered from the settings and do not carry those edits; they are compared with the rendered text, so these lines never show as unexpected */
+            baseEditedLines: number;
             keys: string[];
             jobs: components["schemas"]["SweepReviewJob"][];
             /** @description Names the exact scripts shown; approval must quote it */

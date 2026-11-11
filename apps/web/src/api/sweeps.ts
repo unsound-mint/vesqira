@@ -35,12 +35,4 @@ export const sweepGrid = (id: number, metric?: string, x?: string) => {
 /** "8, 12, 16" -> ["8","12","16"]: the list as typed, trimmed, empty entries dropped. */
 export const parseValues = (text: string) => text.split(/[,\s]+/).map((v) => v.trim()).filter(Boolean);
 
-/** "2 h 05 min" style spans for requested and estimated time. */
-export function span(seconds: number): string {
-  const m = Math.round(seconds / 60);
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  return h >= 48 ? `${(h / 24).toFixed(1)} days` : `${h} h ${String(m % 60).padStart(2, "0")} min`;
-}
-
 export const gib = (bytes: number) => `${(bytes / 2 ** 30).toFixed(bytes % 2 ** 30 === 0 ? 0 : 1)} GiB`;

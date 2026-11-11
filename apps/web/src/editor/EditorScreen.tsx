@@ -90,7 +90,7 @@ export default function EditorScreen({ path, onClose }: { path: string; onClose:
         {confirmClose ? (
           <div role="alert" className={s.notice}>
             <p>This file has changes that are not saved.</p>
-            <Button onClick={onClose}>Discard changes</Button>
+            <Button variant="danger" onClick={onClose}>Discard changes</Button>
             <Button onClick={() => setConfirmClose(false)}>Keep editing</Button>
           </div>
         ) : null}

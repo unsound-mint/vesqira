@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Database, Table } from "lucide-react";
 import { isCatalog } from "../api/catalog";
 import type { Dataset, Problem } from "../api/catalog";
-import { Button, FilterBox, PathField, TreeRow } from "../ui";
+import { Button, FilterBox, PathField, TreeRow, useRoving } from "../ui";
 import { bytes } from "./format";
 import { matchDataset } from "./filter";
 import { datasetVocabulary } from "./vocabulary";
@@ -38,6 +38,7 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
   const shown = datasets.filter((d) => matchDataset(d, q, hosts.find((h) => h.id === d.hostId)?.name));
   const vocabulary = useMemo(() => datasetVocabulary(datasets, hosts), [datasets, hosts]);
   const active = datasets.filter((d) => !d.archived).length;
+  const roving = useRoving(shown.map((d) => String(d.id)), selectedId === null ? null : String(selectedId));
 
   async function doPreview() {
     try {
@@ -79,10 +80,10 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
       {!loading && !error && datasets.length === 0 ? <p className={s.note}>No datasets yet. Files are referenced where they are; nothing is copied.</p> : null}
       {datasets.length > 5 || datasets.length > active ? <FilterBox label="Filter datasets" placeholder="Filter datasets" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={active} noun="datasets" /> : null}
       {datasets.length > 0 && shown.length === 0 ? <p className={s.note}>{active === 0 && !q.includes("archived:") ? "All datasets are archived. Filter with archived:yes to see them." : "No dataset matches."}</p> : null}
-      <div role="list" aria-label="Datasets">
+      <div role="list" aria-label="Datasets" {...roving.listProps}>
         {shown.map((d) => (
           <div role="listitem" key={d.id}>
-            <TreeRow icon={isCatalog(d) ? Table : Database} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.hostId ? `${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
+            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.hostId ? `${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
           </div>
         ))}
       </div>

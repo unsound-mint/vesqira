@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Pencil, Plus, X } from "lucide-react";
-import { Button, IconButton, Input, Select, Switch } from "../ui";
+import { Basis, Button, IconButton, Input, Select, Switch, leadClause } from "../ui";
 import type { Dataset } from "../api/catalog";
 import { overlayBasis, overlayTitle } from "../scene/basis";
 import { needsGeometry } from "../scene/geometry";
@@ -112,10 +112,17 @@ function Row({ o, i, n, scene, geometry, nameOf, dispatch, onEdit, editing, pick
       </div>
       {computing ? <p className={s.basis} role="status">Computing its placement on this map…</p>
         : refused ? <p className={s.refused} role="status">{basis}</p>
-          : basis ? <p className={s.basis}>{basis}</p> : null}
+          : basis ? <OverlayBasis text={basis} /> : null}
       {o.kind === "catalog" && o.visible ? <CatalogSources o={o} entry={entry} picked={picked} onPick={onPick} /> : null}
     </li>
   );
+}
+
+/** One line of what an overlay draws, with the placement and conventions behind "Basis" (the figure keeps the whole sentence). */
+function OverlayBasis({ text }: { text: string }) {
+  const lead = leadClause(text);
+  if (lead === text.replace(/\.$/, "")) return <p className={s.basis}>{text}</p>;
+  return <Basis summary={lead}>{text}</Basis>;
 }
 
 function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApply, onCancel }: {

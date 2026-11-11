@@ -68,7 +68,7 @@ describe("sweep form", () => {
 });
 
 const review: SweepReview = {
-  sweep: { id: 9, name: "s" } as Sweep, baseJobId: 3, baseName: "vgt-base", baseScript: "#!/bin/bash\n", keys: ["dn"], sweepHash: "h".repeat(64), totals, estimate: null, maxConcurrency: 16,
+  sweep: { id: 9, name: "s" } as Sweep, baseJobId: 3, baseName: "vgt-base", baseScript: "#!/bin/bash\n", baseEditedLines: 0, keys: ["dn"], sweepHash: "h".repeat(64), totals, estimate: null, maxConcurrency: 16,
   template: "vgt", defaultConcurrency: 1, concurrencyNote: "",
   jobs: [{ jobId: 10, name: "s-dn8", label: "dn = 8", values: { dn: "8" }, scriptHash: "a".repeat(64), script: "#!/bin/bash\ndn = 8\n", unexpected: 0, requested: { cpus: 8, memBytes: 0, timeSeconds: 0 }, sizing: null,
     diff: [{ op: "-", kind: "parameter", text: "dn = 20" }, { op: "+", kind: "parameter", text: "dn = 8" }, { op: "+", kind: "output", text: 'output_dir = "/r/x"' }] }],

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toShape } from "../api/regions";
 import { sameRegion } from "./region";
-import { Select, Switch } from "../ui";
+import { Basis, Select, Switch } from "../ui";
 import { COLORMAPS, lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
 import { RANGES, STRETCHES, limits, normalize } from "./render";
@@ -132,6 +132,17 @@ function ConvertedRows({ v }: { v: Viewer }) {
 }
 
 /** Pixel, world and spectral readout for the pointer (or pinned) pixel. World values come from the worker's WCS. */
+/** What the Frame row says about how its frame was obtained, short for the row and in full for the Basis; null when the header declares it. */
+function frameCaveat(status: string | undefined, assumed: boolean): { short: string; long: string } | null {
+  if (status === "unresolved") {
+    return assumed
+      ? { short: "assumed", long: "The header declares no celestial frame, so the FITS standard default applies. The frame is assumed, not read from the file." }
+      : { short: "unresolved", long: "The header declares no celestial frame and none was assumed: sky positions have no stated frame." };
+  }
+  if (status === "inferred") return { short: "inferred from EQUINOX", long: "The header names no frame; it was inferred from EQUINOX." };
+  return null;
+}
+
 export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: string; v: Viewer } | null }) {
   const { view, probe, plane } = v;
   // a readout is shown only for the pixel and channel it was computed for; otherwise it is still loading
@@ -139,6 +150,7 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
   if (!view) return <p className={s.note}>{EM}</p>;
   const sky = view.sky;
   const spec = view.spectral;
+  const frameNote = sky.kind === "celestial" ? frameCaveat(sky.frame_status, v.offers?.sky?.frame_status === "assumed" && !!v.offers.sky.source) : null;
   return (
     <div className={s.wrap}>
       <dl className={s.facts} aria-live="off">
@@ -167,9 +179,7 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
             <dt>Frame</dt>
             <dd className="mono">
               {sky.frame ?? (sky.frame_status === "unresolved" && v.offers?.sky?.frame_status === "assumed" ? v.offers.sky.source : null) ?? EM}
-              {sky.frame_status === "unresolved"
-                ? v.offers?.sky?.frame_status === "assumed" && v.offers.sky.source ? " (assumed: the header declares none, so the FITS standard default applies)" : " (unresolved)"
-                : sky.frame_status === "inferred" ? " (inferred from EQUINOX)" : ""}
+              {frameNote ? ` (${frameNote.short})` : ""}
             </dd>
           </>
         ) : (
@@ -195,11 +205,16 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
         <ConvertedRows v={v} />
       </dl>
       <ConversionControls v={v} />
-      <p className={s.note}>
-        {view.bunit_status === "unresolved" ? "Brightness unit unresolved: the header has no BUNIT. " : ""}
-        {view.bunit_status === "user" ? `Brightness unit (${view.bunit}) declared by you: the header has no BUNIT. ` : ""}
-        {v.coordError ?? "Pixel numbers follow FITS (start at 1). Click the image to pin a pixel; Esc releases it."}
-      </p>
+      {view.bunit_status === "unresolved" || view.bunit_status === "user" || v.coordError ? (
+        <p className={s.note}>
+          {view.bunit_status === "unresolved" ? "Brightness unit unresolved: the header has no BUNIT. " : ""}
+          {view.bunit_status === "user" ? `Brightness unit (${view.bunit}) declared by you: the header has no BUNIT. ` : ""}
+          {v.coordError ?? ""}
+        </p>
+      ) : null}
+      <Basis summary="Pixel numbers follow FITS (start at 1). Click the image to pin a pixel; Esc releases it." tone="note">
+        {frameNote ? <p>{frameNote.long}</p> : null}
+      </Basis>
     </div>
   );
 }

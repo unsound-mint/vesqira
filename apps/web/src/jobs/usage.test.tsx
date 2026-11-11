@@ -4,7 +4,8 @@ import type { Host } from "../api/hosts";
 import type { Job, JobUsage } from "../api/jobs";
 import { JobsView, previousUse } from "./JobsView";
 import { SizingHint, UsageSummary } from "./JobUsage";
-import { parseMem, parseTime, span, usageLines } from "./usageText";
+import { parseTime } from "../ui/duration";
+import { parseMem, usageLines } from "./usageText";
 
 const GiB = 2 ** 30;
 const usage = (over: Partial<JobUsage> = {}): JobUsage => ({
@@ -16,7 +17,7 @@ const usage = (over: Partial<JobUsage> = {}): JobUsage => ({
 describe("what a finished job used, in words", () => {
   it("reads like the owner's own sentence: memory used of requested, time of the limit, CPU efficiency", () => {
     const [first] = usageLines(usage());
-    expect(first).toBe("Used 79.0 GiB of 140.0 GiB requested; ran 6 h 12 min of a 3 d limit; CPU efficiency 43 %.");
+    expect(first).toBe("Used 79.0 GiB of 140.0 GiB requested; ran 6 h 12 min of a 3 days limit; CPU efficiency 43 %.");
   });
 
   it("says the CPU time is not accounted instead of showing 0 %", () => {
@@ -43,7 +44,7 @@ describe("what a finished job used, in words", () => {
     expect(oom).toMatch(/stopped this job because it used more memory than was requested \(140.0 GiB\)/);
     expect(oom).toMatch(/real need is higher/);
     const to = usageLines(usage({ state: "TIMEOUT", elapsedSeconds: 3 * 86400 })).join(" ");
-    expect(to).toMatch(/stopped this job at its time limit \(3 d\)/);
+    expect(to).toMatch(/stopped this job at its time limit \(3 days\)/);
     expect(to).toMatch(/floor on how long the work needs/);
     expect(to).not.toMatch(/success/i);
   });
@@ -63,8 +64,6 @@ describe("what a finished job used, in words", () => {
     expect(parseTime("90")).toBe(5400);
     expect(parseTime("2-12")).toBe(2 * 86400 + 12 * 3600);
     expect(parseTime("soon")).toBeNull();
-    expect(span(45)).toBe("45 s");
-    expect(span(86400 + 7200)).toBe("1 d 2 h");
   });
 });
 
@@ -75,7 +74,7 @@ describe("sizing the next request from a measured one", () => {
     render(<SizingHint jobId={12} jobName="vgt-a" usage={usage()} mem="64G" time="1-00:00:00" onUseMem={mem} onUseTime={time} />);
     const box = screen.getByRole("region", { name: "Measured use of job 12" });
     expect(box).toHaveTextContent("peak memory 79.0 GiB (requested 140.0 GiB)");
-    expect(box).toHaveTextContent("ran 6 h 12 min (limit 3 d)");
+    expect(box).toHaveTextContent("ran 6 h 12 min (limit 3 days)");
     expect(box).toHaveTextContent("You are asking for 64G and 1-00:00:00");
     expect(box).toHaveTextContent("Suggested from job 12’s measured use: memory 103G, time 09:19:00");
     expect(box).toHaveTextContent(/partition.s own maximum time is not known here/);

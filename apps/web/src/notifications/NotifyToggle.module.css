@@ -1,0 +1,14 @@
+.hint {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--sp-1) var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+
+.hint > span {
+  padding-top: var(--sp-1);
+}

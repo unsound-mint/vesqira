@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Checkbox, Input, PathField, Pill, Select } from "../ui";
+import { slurmLimitGloss } from "../ui/duration";
 import { NotifyToggle } from "../notifications/NotifyToggle";
 import { jobResult } from "../api/analysis";
 import { KERNELS, ROHSA_SETTINGS, readRohsaSetting, sameValue } from "./rohsaSettings";
@@ -227,7 +228,7 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
         <legend>Resources</legend>
         <Input label="CPUs" value={res.cpus} onChange={(e) => setRes({ ...res, cpus: e.target.value })} inputMode="numeric" />
         <Input label="Memory" value={res.mem} onChange={(e) => setRes({ ...res, mem: e.target.value })} />
-        <Input label="Time limit" value={res.time} onChange={(e) => setRes({ ...res, time: e.target.value })} />
+        <Input label="Time limit" hint={slurmLimitGloss(res.time)} value={res.time} onChange={(e) => setRes({ ...res, time: e.target.value })} />
         <Input label="Partition (optional)" value={res.partition} onChange={(e) => setRes({ ...res, partition: e.target.value })} />
         <Input label="Account (optional)" value={res.account} onChange={(e) => setRes({ ...res, account: e.target.value })} />
       </fieldset>
