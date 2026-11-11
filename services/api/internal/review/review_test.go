@@ -107,6 +107,31 @@ func TestNothingOfTheOwnerAPIIsReachable(t *testing.T) {
 	}
 }
 
+// The editor (ADR 0029) is a route of the owner listener only. The reviewer handler is a different package that does not
+// reach the server package at all (internal/arch), and answers nothing under /api, whatever the method.
+func TestEditorRoutesAreNotOnTheReviewListener(t *testing.T) {
+	ts, _, _, _, dir := setup(t)
+	target := filepath.Join(dir, "secret.txt")
+	before, _ := os.ReadFile(target)
+	for _, method := range []string{"GET", "PUT", "POST", "DELETE"} {
+		body := `{"path":` + `"` + target + `","content":"owned","base":{"size":1,"mtime":"1","sha256":"a"}}`
+		req, _ := http.NewRequest(method, ts.URL+"/api/files/text?path="+target, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode == 200 || strings.Contains(string(b), "root:x") {
+			t.Errorf("%s /api/files/text on the review listener: %d %s", method, resp.StatusCode, b)
+		}
+	}
+	if after, _ := os.ReadFile(target); !bytes.Equal(before, after) {
+		t.Error("a request to the review listener changed a file")
+	}
+}
+
 func TestEveryBadTokenIsTheSame404AndFailuresAreLimited(t *testing.T) {
 	ts, _, tok, _, _ := setup(t)
 	var first string

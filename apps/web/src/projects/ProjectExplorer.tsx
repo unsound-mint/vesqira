@@ -3,6 +3,7 @@ import { Database, File, FileCode, Folder, FolderOpen, GitBranch, Settings2 } fr
 import type { LucideIcon } from "lucide-react";
 import { projectTree } from "../api/projects";
 import type { ProjectSummary, TreeEntry, TreeGroup } from "../api/projects";
+import { looksEditable } from "../api/editor";
 import { bytes } from "../catalog/format";
 import { Button, Input, Section, TreeRow } from "../ui";
 import { location, num } from "./format";
@@ -29,7 +30,8 @@ export function matchEntry(e: TreeEntry, q: string): boolean {
   return words.every((w) => hay.includes(w));
 }
 
-type Handlers = { selectedDatasetId: number | null; onOpenRun: (runId: number) => void; onSelectDataset: (id: number) => void };
+/** `onEditFile` is given only when the server has the editor on (ADR 0029); it receives the file's absolute path. */
+type Handlers = { selectedDatasetId: number | null; onOpenRun: (runId: number) => void; onSelectDataset: (id: number) => void; onEditFile?: (path: string) => void };
 
 /** One page of a group, or of one folder in it; more pages on request. Children are fetched when the folder is opened. */
 function Listing({ project, version, group, path, level, filter, ...h }: Handlers & { project: ProjectSummary; version: number; group: TreeGroup; path: string; level: number; filter: string }) {
@@ -74,13 +76,13 @@ function Listing({ project, version, group, path, level, filter, ...h }: Handler
   );
 }
 
-function Entry({ project, version, group, entry: e, level, filter, selectedDatasetId, onOpenRun, onSelectDataset }: Handlers & { project: ProjectSummary; version: number; group: TreeGroup; entry: TreeEntry; level: number; filter: string }) {
+function Entry({ project, version, group, entry: e, level, filter, selectedDatasetId, onOpenRun, onSelectDataset, onEditFile }: Handlers & { project: ProjectSummary; version: number; group: TreeGroup; entry: TreeEntry; level: number; filter: string }) {
   const [open, setOpen] = useState(false);
   if (e.kind === "dir") {
     return (
       <>
         <TreeRow icon={open ? FolderOpen : Folder} level={level} expanded={open} onSelect={() => setOpen(!open)} trailing={e.count !== null ? num(e.count) : undefined}>{e.name}</TreeRow>
-        {open ? <Listing project={project} version={version} group={group} path={e.path} level={level + 1} filter={filter} selectedDatasetId={selectedDatasetId} onOpenRun={onOpenRun} onSelectDataset={onSelectDataset} /> : null}
+        {open ? <Listing project={project} version={version} group={group} path={e.path} level={level + 1} filter={filter} selectedDatasetId={selectedDatasetId} onOpenRun={onOpenRun} onSelectDataset={onSelectDataset} onEditFile={onEditFile} /> : null}
       </>
     );
   }
@@ -100,6 +102,8 @@ function Entry({ project, version, group, entry: e, level, filter, selectedDatas
     );
   }
   const f = e.file;
+  // Only a config or job file of a project on this computer, that is not marked read-only, and that the server would open as text.
+  const editPath = onEditFile && project.hostId === 0 && (e.kind === "config" || e.kind === "job") && !f?.readOnly && looksEditable(e.name) ? `${project.path.replace(/\/+$/, "")}/${e.path}` : null;
   const datasetId = f?.datasetId ?? null;
   const trailing = !f ? "" : !f.viewer ? "no viewer yet" : datasetId === null ? "header not read" : bytes(f.size);
   return (
@@ -107,8 +111,8 @@ function Entry({ project, version, group, entry: e, level, filter, selectedDatas
       icon={e.kind === "data" ? Database : File}
       level={level}
       selected={datasetId !== null && datasetId === selectedDatasetId}
-      title={`${e.path}${f?.role ? ` · ${f.role}${f.readOnly ? ", read-only" : ""}` : ""}${f && f.viewer && datasetId === null ? "\nFITS header not registered yet or changed since the scan." : ""}`}
-      onSelect={datasetId !== null ? () => onSelectDataset(datasetId) : undefined}
+      title={`${e.path}${editPath ? " · opens in the editor" : ""}${f?.role ? ` · ${f.role}${f.readOnly ? ", read-only" : ""}` : ""}${f && f.viewer && datasetId === null ? "\nFITS header not registered yet or changed since the scan." : ""}`}
+      onSelect={datasetId !== null ? () => onSelectDataset(datasetId) : editPath ? () => onEditFile?.(editPath) : undefined}
       trailing={e.kind === "data" ? trailing : f ? bytes(f.size) : undefined}
     >
       {e.name}
@@ -132,7 +136,7 @@ function Group({ project, version, def, filter, setFilter, ...h }: Handlers & { 
 }
 
 /** Screen 3: the open project in the explorer, grouped, lazy and paged. */
-export function ProjectExplorer({ project, version, hostName, selectedDatasetId, onOpenRun, onSelectDataset, onOverview, onCancel }: Handlers & { project: ProjectSummary; version: number; hostName: (id: number) => string; onOverview: () => void; onCancel: () => void }) {
+export function ProjectExplorer({ project, version, hostName, selectedDatasetId, onOpenRun, onSelectDataset, onEditFile, onOverview, onCancel }: Handlers & { project: ProjectSummary; version: number; hostName: (id: number) => string; onOverview: () => void; onCancel: () => void }) {
   const [filter, setFilter] = useState("");
   const ch = project.changes;
   return (
@@ -146,7 +150,7 @@ export function ProjectExplorer({ project, version, hostName, selectedDatasetId,
         <div><Button onClick={onOverview}>What is in this folder</Button></div>
       </div>
       {!project.scanned ? <p className={s.rowNote}>{isScanning(project) ? "Reading the folder. The groups appear when the first scan has finished." : "Not scanned yet."}</p> : null}
-      {project.scanned ? GROUPS.map((def) => <Group key={def.group} project={project} version={version} def={def} filter={filter} setFilter={setFilter} selectedDatasetId={selectedDatasetId} onOpenRun={onOpenRun} onSelectDataset={onSelectDataset} />) : null}
+      {project.scanned ? GROUPS.map((def) => <Group key={def.group} project={project} version={version} def={def} filter={filter} setFilter={setFilter} selectedDatasetId={selectedDatasetId} onOpenRun={onOpenRun} onSelectDataset={onSelectDataset} onEditFile={onEditFile} />) : null}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 # ADR 0029: Terminal, editor and VPN inside the app
 
-Status: **accepted** (owner decision, 2026-11-05): owner-only, off by default; built in the order editor, terminal, VPN.
+Status: **accepted**; editor for local files implemented (`--enable-editor`, `GET`/`PUT /api/files/text`, Monaco loaded on demand; host files, terminal and VPN not built). Owner decision 2026-11-05: owner-only, off by default; built in the order editor, terminal, VPN.
 
 ## Context
 The owner wants a researcher never to leave the app: edit a pipeline config or Julia file, run a command, bring the cluster VPN up. The interview decided an integrated editor with external IDE hand-off (Q39) and named Monaco and xterm.js for the desktop shell (Q148); an integrated terminal appears in the workspace panels (Q9). No VPN client appears anywhere in the interview; the host form today tells the user to bring the VPN up themselves (for example `gpclient`).
@@ -35,6 +35,17 @@ Do A in three independent steps, each behind its own switch, in this order: edit
 
 ## Validation (when built)
 Cross-site and cross-origin WebSocket attempts, a missing or wrong token, and a request on the review listener are refused; a save over a changed file is refused with both versions shown; a path outside the roots or through a symlink is refused; the audit log shows opens, closes and saves without contents; the VPN command is stored verbatim, run without a shell, and never receives anything from the page except "run".
+
+## Implementation notes: editor, step 1 (local files only)
+- **Switch.** `--enable-editor` sets `Server.EditorEnabled`; the routes are registered only then (off: 404) and `GET /api/capabilities` reports `features.editor`. The web app shows the entry point only when that is true; a failed capabilities request counts as off.
+- **Where.** Routes live in `internal/server`, the owner listener. The review handler is a different package that `internal/arch` already forbids from reaching the server package; `TestEditorRoutesAreNotOnTheReviewListener` sends GET, PUT, POST and DELETE to it.
+- **Authorisation.** The path goes through `s.roots().Resolve`, the check that gates reading (symlinks resolved first, containment by `filepath.Rel`, regular file only; opened project folders count as roots). Everything after that uses the resolved path. Also refused: credential folders (`holdsCredentials`, as the file tree), extensions outside the text allowlist (toml, yaml, yml, json, jl, py, sh, slurm, sbatch, md, txt, cfg, ini, conf, log; no extension is allowed), FITS by extension and by `SIMPLE  =`, NUL bytes, invalid UTF-8, and files over 2 MiB. A save never creates a file.
+- **Concurrency.** `GET` returns content, size, `mtime` (nanoseconds as a decimal string, since a JSON number loses digits in a browser) and the SHA-256. `PUT` must send those three as `base`; if any differs from the file on disk it answers 409 with the current file and writes nothing. "Keep mine" in the UI resends with the base the conflict returned, after an explicit confirmation. One save at a time per process; another program writing in the instant between comparison and rename is not excluded (the rename itself is atomic).
+- **Atomic save.** Temporary file in the same folder, permission bits copied from the original, fsync, rename, fsync of the folder (`writeFileAtomic`, shared with the project file writer). Owner, ACLs and extended attributes are not carried over; a read-only folder fails the save.
+- **Audit.** `file saved`, kind `file`, detail `sha256 <before> -> <after> <path>` (hashes first because the detail is cut at 300 characters). Never contents. Opens are not audited in this slice.
+- **Writes are guarded like the other mutating routes**, plus: `PUT` now requires `application/json` (the check covered POST only), and any non-GET request carrying an `Origin` that differs from `Host` is refused.
+- **Not yet:** host files (a later slice, with the host's declared roots), the terminal, the VPN button, language servers. The editor screen is a first version that has not been through a design review.
+- **Validation done:** Go tests for outside root, sibling prefix, `..`, symlink escape (file and folder), credential folder, binary, FITS (extension, magic, symlinked), oversize, unknown extension, stale base (409 with current content), keep-mine resend, removed file, mode preserved, audit without content, cross-site and foreign Host and Origin, switch off, review listener, and the responses against the OpenAPI spec; web tests for the conflict flow.
 
 ## Rollback
 All routes are additive and off by default; remove the flags and the routes disappear.
