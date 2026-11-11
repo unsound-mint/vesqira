@@ -1,4 +1,4 @@
-import { ApiError } from "./catalog";
+import { request as call, postJSON as post } from "./http";
 import type { Run } from "./runs";
 
 export type JobState = "draft" | "submitting" | "submitted" | "running" | "completed" | "failed" | "cancelled";
@@ -44,20 +44,6 @@ export type VgtJobRequest = {
   /** With configText the host's file is not read again: a rerun passes the config text the parent started from. */
   vgt: { repoDir: string; configPath: string; configText?: string; set: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string };
 };
-
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API.");
-  }
-  const body = (await res.json().catch(() => null)) as { error?: string } | null;
-  if (!res.ok) throw new ApiError(body?.error ?? `Request failed (${res.status})`);
-  return body as T;
-}
-
-const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 export const listJobs = () => call<{ jobs: Job[] }>("/api/jobs").then((r) => r.jobs);
 export const getJob = (id: number) => call<Job>(`/api/jobs/${id}`);

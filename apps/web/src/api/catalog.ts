@@ -1,3 +1,7 @@
+import { request as call } from "./http";
+
+/** Where callers have always imported it from. */
+export { ApiError } from "./http";
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
@@ -8,24 +12,6 @@ export type Header = Schemas["FitsHeader"];
 export type Interpretation = Schemas["Interpretation"];
 /** `archived` is set by the server on every dataset it sends (ADR 0041); the generated type predates it. */
 export type Dataset = Schemas["Dataset"] & { archived?: boolean };
-
-export class ApiError extends Error {
-  constructor(message: string, readonly reasons: string[] = []) {
-    super(message);
-  }
-}
-
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API. Is it running on 127.0.0.1:8787?");
-  }
-  const body = (await res.json().catch(() => null)) as { error?: string; reasons?: string[] } | null;
-  if (!res.ok) throw new ApiError(body?.error ?? `Request failed (${res.status})`, body?.reasons ?? []);
-  return body as T;
-}
 
 /** Files on this computer that are no longer what was registered. Remote files are not checked here. */
 export type Problem = "modified" | "missing" | "not_allowed";

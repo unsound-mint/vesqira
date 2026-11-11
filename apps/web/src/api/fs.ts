@@ -1,4 +1,4 @@
-import { ApiError } from "./catalog";
+import { ApiError, getJSON, requestRaw } from "./http";
 
 export type PathEntry = { name: string; path: string; dir: boolean };
 export type Completion = { base: string; entries: PathEntry[]; truncated: boolean };
@@ -10,9 +10,7 @@ export async function completePath(prefix: string, o: { kind?: PathKind; ext?: s
   if (o.kind) q.set("kind", o.kind);
   if (o.ext?.length) q.set("ext", o.ext.join(","));
   const url = o.hostId !== undefined ? `/api/hosts/${o.hostId}/complete` : "/api/fs/complete";
-  const res = await fetch(`${url}?${q}`, { signal });
-  if (!res.ok) throw new ApiError(`Completion failed (${res.status})`);
-  const body = (await res.json()) as Completion;
+  const body = await getJSON<Completion>(`${url}?${q}`, signal);
   return { base: body.base, entries: Array.isArray(body.entries) ? body.entries : [], truncated: !!body.truncated };
 }
 
@@ -30,15 +28,10 @@ export type ChooseResult = { status: "chosen"; chosen: Chosen } | { status: "can
 
 /** Opens the desktop's own file chooser through the local server. "unavailable" means this desktop has none. */
 export async function chooseFile(o: { mode: "folder" | "file"; title: string; ext?: string[] }): Promise<ChooseResult> {
-  let res: Response;
-  try {
-    res = await fetch("/api/fs/choose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: o.mode, title: o.title, ext: o.ext ?? [] }) });
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API.");
-  }
+  const res = await requestRaw("/api/fs/choose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: o.mode, title: o.title, ext: o.ext ?? [] }) }, { allow: [501] });
   if (res.status === 501) return { status: "unavailable" };
   if (res.status === 204) return { status: "cancelled" };
-  const body = (await res.json().catch(() => null)) as (Chosen & { error?: string }) | null;
-  if (!res.ok || !body) throw new ApiError(body?.error ?? `The file chooser failed (${res.status})`);
+  const body = (await res.json().catch(() => null)) as Chosen | null;
+  if (!body) throw new ApiError(`The file chooser failed (${res.status})`, [], res.status);
   return { status: "chosen", chosen: body };
 }

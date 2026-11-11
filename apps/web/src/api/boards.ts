@@ -1,4 +1,4 @@
-import { ApiError } from "./catalog";
+import { request as call, postJSON as post } from "./http";
 import type { components } from "./schema";
 
 type Schemas = components["schemas"];
@@ -25,20 +25,6 @@ export type FrozenItem = Schemas["FrozenItem"];
 /** What a reviewer's browser receives for one link. */
 export type Review = Schemas["Review"];
 export type Preflight = Schemas["Preflight"];
-
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch {
-    throw new ApiError("Cannot reach the Vesqira API.");
-  }
-  const body = (await res.json().catch(() => null)) as { error?: string } | null;
-  if (!res.ok) throw new ApiError(res.status === 404 && url.startsWith("/review-api") ? "This review link is not valid, has expired, or was revoked." : (body?.error ?? `Request failed (${res.status})`));
-  return body as T;
-}
-
-const post = <T,>(url: string, body: unknown) => call<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 export type FigureRequest = Schemas["CreateFigureRequest"];
 
