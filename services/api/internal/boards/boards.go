@@ -138,6 +138,10 @@ type NewFigure struct {
 	Provenance json.RawMessage
 	Scene      json.RawMessage
 	Identity   json.RawMessage // optional: the figure-identity/1 document (internal/server figureIdentity)
+	// RedrawnFrom is the revision of the figure this one is a redrawing of (ADR 0042, section 5). It is part of the new
+	// figure's revision, so a redrawing is a figure of its own even when its pixels equal the original's, and it never
+	// finds (or replaces) the original. Empty for every other figure, which keeps the revision it always had.
+	RedrawnFrom string
 }
 
 func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
@@ -159,7 +163,11 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 	sha := hex.EncodeToString(sum[:])
 	// The scene is part of the evidence. Without one the bytes hashed are what they always were, so a figure saved again
 	// without a scene still finds its older twin.
-	rev := sha256.Sum256(append(append(append([]byte{}, in.Provenance...), in.Scene...), sum[:]...))
+	revBytes := append(append(append([]byte{}, in.Provenance...), in.Scene...), sum[:]...)
+	if in.RedrawnFrom != "" {
+		revBytes = append(revBytes, []byte("redrawn-from:"+in.RedrawnFrom)...)
+	}
+	rev := sha256.Sum256(revBytes)
 	revision := hex.EncodeToString(rev[:])
 	file := filepath.Join(s.dir, "figures", sha+".png")
 	if _, err := os.Stat(file); err != nil {

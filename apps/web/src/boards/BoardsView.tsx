@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Download, Printer, Trash2 } from "lucide-react";
 import { Button, Checkbox, IconButton, Input, LinkButton, Select } from "../ui";
-import { createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
+import { addToBoard, createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, moveItem, publish, removeItem, revokeSnapshot, setNote, snapshotComments, ownerReply, resolveComment, preflight, OUTCOME_TEXT } from "../api/boards";
 import { Threads } from "./Threads";
 // loaded when someone presents: it brings the modal primitives (ADR 0033), which the rest of the app does not need
 const PresentView = lazy(() => import("./PresentView").then((m) => ({ default: m.PresentView })));
@@ -9,6 +9,7 @@ import { markSeen, readSeen } from "./seen";
 import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
 import type { NewerNotice } from "../api/catalog";
 import { NewerNotices } from "../catalog/NewerNotices";
+import { FigureRedraw } from "./FigureRedraw";
 import { listDatasets } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
 import { listRuns } from "../api/runs";
@@ -208,6 +209,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
                     {f.provenance.run ? <RunLine run={f.provenance.run} /> : null}
                     <ul>{f.provenance.statements.map((t) => <li key={t}>{t}</li>)}</ul>
                     <p className={s.src}>{f.provenance.source.identity}. Revision <span className="mono">{f.revision.slice(0, 12)}</span></p>
+                    {f.identity?.redrawnFrom ? <p className={s.src}>Drawn again from its stored description; a redrawing of figure {f.identity.redrawnFrom.figureId} (revision <span className="mono">{f.identity.redrawnFrom.revision.slice(0, 12)}</span>), which is kept as it was.</p> : null}
                   </details>
                 </>
               ) : null}
@@ -232,6 +234,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
                 {f ? <LinkButton icon={Download} href={`/api/figures/${f.id}/download`} download>Download PNG</LinkButton> : null}
                 <IconButton icon={Trash2} label="Remove from board" onClick={() => run(() => removeItem(board.id, it.position))} />
               </div>
+              {f ? <FigureRedraw figure={f} addTo={(figureId) => run(() => addToBoard(board.id, figureId))} /> : null}
             </div>
           </li>
           );

@@ -1551,6 +1551,11 @@
       }
      ],
      "description": "Required for, and only for, a figure of kind channelgrid; carries no scene."
+    },
+    "redrawnFrom": {
+     "type": "integer",
+     "format": "int64",
+     "description": "\"Draw again\": the id of the figure this one redraws, of the same dataset and the same kind of description. The new figure is a revision of its own; the original is untouched."
     }
    }
   },
@@ -2658,6 +2663,9 @@
     },
     "link": {
      "$ref": "#/components/schemas/SceneLink"
+    },
+    "render": {
+     "$ref": "#/components/schemas/SceneRender"
     }
    }
   },
@@ -7112,6 +7120,35 @@
        "minimum": 1
       }
      }
+    },
+    "render": {
+     "type": "object",
+     "additionalProperties": false,
+     "description": "What the composed picture said beyond the description, so \"draw again\" reproduces it. Absent from grids saved before.",
+     "required": [
+      "figureWidth",
+      "overlaysNotDrawn",
+      "scaleSource"
+     ],
+     "properties": {
+      "figureWidth": {
+       "type": "integer",
+       "minimum": 200,
+       "maximum": 4096
+      },
+      "overlaysNotDrawn": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 16,
+       "description": "How many overlays of the map were visible but not drawn on the panels (the caption states it)"
+      },
+      "scaleSource": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 600,
+       "description": "The whole sentence on where the shared limits came from, as the caption printed it; display.source keeps its first 190 characters"
+      }
+     }
     }
    }
   },
@@ -8582,8 +8619,10 @@
         "type": "string",
         "enum": [
          "source",
-         "overlay"
-        ]
+         "overlay",
+         "reliability"
+        ],
+        "description": "source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines."
        },
        "datasetId": {
         "type": "integer",
@@ -8647,7 +8686,96 @@
           "type": "string"
          }
         }
+       },
+       "declarations": {
+        "type": "object",
+        "description": "The declarations in force when the figure was saved (ADR 0042, section 5): the declared unit, the orientation interpretation and a hash of the catalog declaration, each with who declared it. An empty object records that none existed. Absent on figures saved before this was recorded.",
+        "properties": {
+         "unit": {
+          "type": "object",
+          "required": [
+           "unit",
+           "declaredBy"
+          ],
+          "properties": {
+           "unit": {
+            "type": "string"
+           },
+           "declaredBy": {
+            "type": "string"
+           }
+          }
+         },
+         "orientation": {
+          "type": "object",
+          "required": [
+           "kind",
+           "unit",
+           "frame",
+           "quantity",
+           "reliabilityId",
+           "declaredBy"
+          ],
+          "properties": {
+           "kind": {
+            "type": "string"
+           },
+           "unit": {
+            "type": "string"
+           },
+           "frame": {
+            "type": "string",
+            "nullable": true
+           },
+           "quantity": {
+            "type": "string",
+            "nullable": true
+           },
+           "reliabilityId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+           },
+           "declaredBy": {
+            "type": "string"
+           }
+          }
+         },
+         "catalog": {
+          "type": "object",
+          "required": [
+           "hash",
+           "declaredBy"
+          ],
+          "properties": {
+           "hash": {
+            "type": "string",
+            "description": "SHA-256 of the declaration's content (not of its time or staleness)"
+           },
+           "declaredBy": {
+            "type": "string"
+           }
+          }
+         }
+        }
        }
+      }
+     }
+    },
+    "redrawnFrom": {
+     "type": "object",
+     "required": [
+      "figureId",
+      "revision"
+     ],
+     "description": "Set on a figure made by \"draw again\": the figure it redraws, which is never changed (ADR 0042, section 5). Owner API only.",
+     "properties": {
+      "figureId": {
+       "type": "integer",
+       "format": "int64"
+      },
+      "revision": {
+       "type": "string"
       }
      }
     }
@@ -9922,6 +10050,179 @@
     "message": {
      "type": "string",
      "description": "for example: VPN client started; the host became reachable after 12 s"
+    }
+   }
+  },
+  "SceneRender": {
+   "type": "object",
+   "additionalProperties": false,
+   "description": "How the base raster of a saved figure was drawn, so \"draw again\" reproduces it (ADR 0042, section 5). Only a stored figure has one; a live pane's scene and a figure saved before it existed have none, and draw again from their PNG only.",
+   "required": [
+    "canvas",
+    "nodata",
+    "figureWidth"
+   ],
+   "properties": {
+    "canvas": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "width",
+      "height"
+     ],
+     "description": "The canvas the plane was drawn on: a whole multiple of the plane when zoomed in, the display size when zoomed out. At most 2^26 pixels; a figure whose canvas is larger is stored without this record and is drawn from its PNG only.",
+     "properties": {
+      "width": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 65536
+      },
+      "height": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 65536
+      }
+     }
+    },
+    "nodata": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 2,
+     "description": "The two colours of the hatching that marks a pixel with no value (never a colour of the scale), as the theme gave them",
+     "items": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 255
+      }
+     }
+    },
+    "figureWidth": {
+     "type": "integer",
+     "minimum": 200,
+     "maximum": 4096,
+     "description": "The width in pixels the figure was composed at"
+    }
+   }
+  },
+  "RedrawSource": {
+   "type": "object",
+   "required": [
+    "role",
+    "datasetId",
+    "name",
+    "status",
+    "differs",
+    "readable",
+    "text"
+   ],
+   "properties": {
+    "role": {
+     "type": "string",
+     "enum": [
+      "source",
+      "overlay",
+      "reliability"
+     ],
+     "description": "source: the figure's dataset. overlay: a dataset an overlay was drawn from. reliability: a reliability map that set the opacity, length or threshold of orientation lines."
+    },
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "status": {
+     "type": "string",
+     "enum": [
+      "unchanged",
+      "probable",
+      "changed",
+      "changed_on_disk",
+      "missing"
+     ],
+     "description": "unchanged: equal full SHA-256. probable: nothing differs but what was recorded cannot prove the bytes are the same (an equal sampled fingerprint has a blind spot, ADR 0053). changed: the registered file is not what the figure was drawn from (it can be read). changed_on_disk: the file on disk is not what is registered (register it again first). missing: no longer registered, or no readable file."
+    },
+    "differs": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "size",
+       "time",
+       "fingerprint"
+      ]
+     }
+    },
+    "readable": {
+     "type": "boolean"
+    },
+    "text": {
+     "type": "string",
+     "description": "The sentence the owner reads about this file"
+    },
+    "declaration": {
+     "type": "string",
+     "enum": [
+      "unchanged",
+      "changed",
+      "removed",
+      "not_recorded"
+     ],
+     "description": "The declarations (unit, orientation interpretation, catalog) in force now against those recorded when the figure was saved. changed and removed are treated like changed data: the owner is asked. not_recorded: the figure was saved before declarations were recorded (not an error). Absent when the dataset is no longer registered."
+    },
+    "declarationText": {
+     "type": "string",
+     "description": "The sentence the owner reads about the declarations, e.g. \"declaration unchanged\" or \"declaration changed: unit was K (declared by you), now Jy/beam (declared by you)\""
+    }
+   }
+  },
+  "RedrawCheck": {
+   "type": "object",
+   "required": [
+    "figureId",
+    "kind",
+    "state",
+    "sources"
+   ],
+   "description": "What \"draw again\" must tell the owner before it draws. Reads and changes nothing.",
+   "properties": {
+    "figureId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "scene",
+      "channel-grid",
+      "none"
+     ],
+     "description": "The description the figure was drawn from; none when it keeps none"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "ready",
+      "ask",
+      "blocked",
+      "none"
+     ],
+     "description": "ready: every file is unchanged, draw. ask: say what changed and ask before drawing. blocked: a file cannot be read. none: this figure cannot be drawn again, it is shown as its PNG."
+    },
+    "prompt": {
+     "type": "string",
+     "description": "The question or the reason, for ask, blocked and none"
+    },
+    "sources": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RedrawSource"
+     }
     }
    }
   }
@@ -14559,6 +14860,43 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/figures/{id}/redraw-check": {
+   "summary": "Compare what a figure recorded about each file it was drawn from with the files now, before it is drawn again",
+   "description": "Only files on this computer are looked at; a file on a host is never better than probable. Never draws, swaps or changes anything.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RedrawCheck"
        }
       }
      }
