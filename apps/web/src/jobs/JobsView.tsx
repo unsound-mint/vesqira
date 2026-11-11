@@ -8,6 +8,10 @@ import type { Host } from "../api/hosts";
 import type { Run } from "../api/runs";
 import { HostStorage } from "../hosts/HostStorage";
 import { SizingHint, UsageSummary } from "./JobUsage";
+import { listSweeps } from "../api/sweeps";
+import type { Sweep } from "../api/sweeps";
+import { SweepForm } from "../sweeps/SweepForm";
+import { SweepView } from "../sweeps/SweepView";
 import s from "./JobsView.module.css";
 
 export const TONE: Record<JobState, "neutral" | "ok" | "warn" | "err" | "accent"> = { draft: "neutral", submitting: "warn", submitted: "accent", running: "accent", completed: "ok", failed: "err", cancelled: "warn" };
@@ -32,8 +36,12 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { ho
   const [jobs, setJobs] = useState<Job[]>([]);
   const [sel, setSel] = useState<number | null>(focusJob);
   const [err, setErr] = useState<string | null>(null);
+  const [sweeps, setSweeps] = useState<Sweep[]>([]);
+  const [selSweep, setSelSweep] = useState<number | null>(null);
+  const [newSweep, setNewSweep] = useState<{ base: number | null } | null>(null);
 
   const reload = useCallback(async () => {
+    listSweeps().then((x) => Array.isArray(x) && setSweeps(x)).catch(() => undefined); // sweeps are optional here: without them the list is simply empty
     try {
       setJobs(await listJobs());
     } catch (e) {
@@ -47,6 +55,9 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { ho
     if (focusJob !== null) setSel(focusJob);
   }, [focusJob]);
   const job = jobs.find((j) => j.id === sel) ?? null;
+  const sweep = sweeps.find((x) => x.id === selSweep) ?? null;
+  const pickJob = (id: number | null) => { setSel(id); setSelSweep(null); setNewSweep(null); };
+  const replaceSweep = (x: Sweep) => { setSweeps((cur) => (cur.some((y) => y.id === x.id) ? cur.map((y) => (y.id === x.id ? x : y)) : [x, ...cur])); void listJobs().then(setJobs).catch(() => undefined); };
   const replace = (j: Job) => setJobs((cur) => (cur.some((x) => x.id === j.id) ? cur.map((x) => (x.id === j.id ? j : x)) : [j, ...cur]));
 
   // follow an active job: ask the scheduler every 15 s while it is queued or running
@@ -62,19 +73,31 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { ho
       <div className={s.cols}>
         <section className={s.list} aria-label="Jobs">
           <h2 className={s.h}>Jobs</h2>
-          <button type="button" className={s.item} aria-pressed={sel === null} onClick={() => setSel(null)}>+ New job</button>
+          <button type="button" className={s.item} aria-pressed={sel === null && selSweep === null && !newSweep} onClick={() => pickJob(null)}>+ New job</button>
+          <button type="button" className={s.item} aria-pressed={newSweep !== null} onClick={() => { setSel(null); setSelSweep(null); setNewSweep({ base: null }); }}>+ New sweep</button>
           {jobs.map((j) => (
-            <button key={j.id} type="button" className={s.item} aria-pressed={sel === j.id} onClick={() => setSel(j.id)}>
+            <button key={j.id} type="button" className={s.item} aria-pressed={sel === j.id} onClick={() => pickJob(j.id)}>
               <span className={s.nm}>{j.name}</span>
               <Pill tone={TONE[j.state]}>{j.state}</Pill>
             </button>
           ))}
           {jobs.length === 0 ? <p className={s.note}>No jobs yet.</p> : null}
+          {sweeps.length > 0 ? <h2 className={s.h}>Sweeps</h2> : null}
+          {sweeps.map((x) => (
+            <button key={`sweep-${x.id}`} type="button" className={s.item} aria-pressed={selSweep === x.id} onClick={() => { setSel(null); setNewSweep(null); setSelSweep(x.id); }}>
+              <span className={s.nm}>{x.name}</span>
+              <Pill tone="neutral">{x.state}</Pill>
+            </button>
+          ))}
           <NotifyToggle className={s.note} />
         </section>
         <div className={s.main}>
-          {job ? (
-            <JobDetail job={job} host={hosts.find((h) => h.id === job.hostId) ?? null} onChange={replace} onImported={onImported} onOpenRun={onOpenRun} />
+          {newSweep ? (
+            <SweepForm jobs={jobs} baseJobId={newSweep.base} onCreated={(x) => { replaceSweep(x); setNewSweep(null); setSelSweep(x.id); }} />
+          ) : sweep ? (
+            <SweepView sweep={sweep} onChange={replaceSweep} onOpenJob={pickJob} />
+          ) : job ? (
+            <JobDetail job={job} host={hosts.find((h) => h.id === job.hostId) ?? null} onChange={replace} onImported={onImported} onOpenRun={onOpenRun} onSweep={job.template === "vgt" ? () => { setSel(null); setNewSweep({ base: job.id }); } : undefined} />
           ) : (
             <NewJob hosts={hosts} jobs={jobs} onCreated={(j) => { replace(j); setSel(j.id); }} />
           )}
@@ -193,7 +216,7 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
   );
 }
 
-function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; host: Host | null; onChange: (j: Job) => void; onImported: (run: Run | null) => void; onOpenRun: (run: Run) => void }) {
+function JobDetail({ job, host, onChange, onImported, onOpenRun, onSweep }: { job: Job; host: Host | null; onChange: (j: Job) => void; onImported: (run: Run | null) => void; onOpenRun: (run: Run) => void; onSweep?: () => void }) {
   const [script, setScript] = useState(job.script);
   const [log, setLog] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -253,6 +276,7 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun }: { job: Job; h
         </div>
       ) : null}
       {!draft && job.template === "vgt" && !job.runId ? <p className={s.note}>{job.autoImport ? "Its results will be imported as a run when it completes." : "Its results are not imported automatically."}</p> : null}
+      {onSweep ? <div className={s.row}><Button onClick={onSweep}>Sweep from this job…</Button></div> : null}
       {job.runId ? <p className={s.note}>Results imported. {run ? <Button onClick={() => onOpenRun(run)}>Open the run</Button> : "Find the run in the explorer."}</p> : null}
       {log !== null ? <pre className={s.log} aria-label="Job log">{log || "No output yet."}</pre> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}

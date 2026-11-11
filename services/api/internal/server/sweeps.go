@@ -424,7 +424,7 @@ func (s *Server) reviewSweep(w http.ResponseWriter, r *http.Request) {
 			Script: j.Script, Diff: d, Unexpected: sweeps.Unexpected(d), Requested: jobs.RequestedOf(j.Script)})
 		scripts = append(scripts, j.Script)
 	}
-	writeJSON(w, 200, map[string]any{"sweep": sw, "baseJobId": base.ID, "baseName": base.Name, "baseScript": base.Script, "keys": keys, "jobs": list,
+	writeJSON(w, 200, map[string]any{"sweep": s.sweepView(sw), "baseJobId": base.ID, "baseName": base.Name, "baseScript": base.Script, "keys": keys, "jobs": list,
 		"sweepHash": sweepHash(pj), "totals": sumRequested(scripts), "estimate": estimateFrom(base), "maxConcurrency": sweeps.MaxConcurrency})
 }
 

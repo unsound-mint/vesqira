@@ -32,7 +32,7 @@ func TestExpandKeepsParameterOrderAndCapsTheProduct(t *testing.T) {
 	vals := func(n int) []string {
 		out := make([]string, n)
 		for i := range out {
-			out[i] = string(rune('a' + i%26)) + string(rune('a'+i/26))
+			out[i] = string(rune('a'+i%26)) + string(rune('a'+i/26))
 		}
 		return out
 	}
