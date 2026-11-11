@@ -19,6 +19,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import tempfile
 import warnings
@@ -553,6 +554,13 @@ def op_convolve(args) -> dict:
 OPS = {"convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
 
 
+def log_failure(op: str, what: str) -> None:
+    """A stderr line naming the API request (VESQIRA_REQUEST_ID, set by the API from its validated id) for a failed run."""
+    rid = os.environ.get("VESQIRA_REQUEST_ID", "")
+    rid = rid if re.fullmatch(r"[A-Za-z0-9._-]{8,64}", rid) else "-"
+    print(f"analysis request={rid} op={op} failed {what}", file=sys.stderr, flush=True)
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("op", choices=sorted(OPS))
@@ -590,9 +598,11 @@ def main(argv: list[str]) -> int:
         print(json.dumps(result, allow_nan=False))
         return 0
     except Refused as e:
+        log_failure(args.op, "refused")
         print(json.dumps({"ok": False, "error": e.message}))
         return 2
-    except (OSError, ValueError, KeyError, TypeError, IndexError, MemoryError):
+    except (OSError, ValueError, KeyError, TypeError, IndexError, MemoryError) as e:
+        log_failure(args.op, type(e).__name__)
         print(json.dumps({"ok": False, "error": "cannot read or process this file"}))
         return 2
 

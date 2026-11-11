@@ -168,6 +168,10 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, s.Analysis.Python, args...)
 	cmd.Env = []string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C.UTF-8"}
+	if id := RequestID(r.Context()); id != "" { // already validated as a plain token
+		cmd.Env = append(cmd.Env, "VESQIRA_REQUEST_ID="+id)
+	}
+	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = time.Second

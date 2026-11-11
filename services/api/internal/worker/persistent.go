@@ -22,6 +22,31 @@ const (
 	maxReqBytes  = 8 << 10
 )
 
+type idKey struct{}
+
+// WithRequestID attaches the API request's correlation id to ctx so Do forwards it to the worker, which names it in its
+// own log lines. Only plain tokens (letters, digits, '.', '_', '-', 8 to 64 long) are kept: the worker never receives
+// any other caller-supplied string, and the id needs no JSON escaping.
+func WithRequestID(ctx context.Context, id string) context.Context {
+	if !plainID(id) {
+		return ctx
+	}
+	return context.WithValue(ctx, idKey{}, id)
+}
+
+func plainID(id string) bool {
+	if len(id) < 8 || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
 // Reply is one worker answer: the JSON header line verbatim plus its binary payload.
 type Reply struct {
 	Head    json.RawMessage
@@ -97,6 +122,7 @@ func (p *Persistent) start() (*proc, error) {
 	cmd := exec.Command(p.Command[0], p.Command[1:]...)
 	cmd.Env = append([]string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME"), "LC_ALL=C.UTF-8"}, p.ExtraEnv...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Stderr = os.Stderr // the worker's log lines (failures, slow requests) name the API request id
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, ErrUnavailable
@@ -148,7 +174,13 @@ func (p *Persistent) Do(ctx context.Context, req map[string]any) (Reply, error) 
 	defer func() { <-l.sem }()
 
 	line, err := json.Marshal(req)
-	if err != nil || len(line) > maxReqBytes {
+	if err != nil {
+		return Reply{}, errors.New("request too large")
+	}
+	if id, _ := ctx.Value(idKey{}).(string); id != "" && len(line) > 2 && line[len(line)-1] == '}' {
+		line = append(line[:len(line)-1], `,"requestId":"`+id+`"}`...) // plainID: nothing to escape
+	}
+	if len(line) > maxReqBytes {
 		return Reply{}, errors.New("request too large")
 	}
 	if l.proc == nil {

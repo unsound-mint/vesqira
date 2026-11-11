@@ -837,5 +837,32 @@ class ProjectWalk(unittest.TestCase):
         self.assertEqual(self.ask(op="readtext", path=str(t), max=0)["code"], "bad_request")
 
 
+class RequestIdLogging(unittest.TestCase):
+    """The API's correlation id appears in the worker's stderr line for a failing request, and only there."""
+
+    def run_worker(self, *reqs):
+        lines = b"".join(json.dumps(r).encode() + b"\n" for r in reqs)
+        done = subprocess.run([sys.executable, "-P", SCRIPT], input=lines, capture_output=True, timeout=60)
+        heads = [json.loads(x) for x in done.stdout.splitlines()]
+        return heads, done.stderr.decode()
+
+    def test_a_failing_request_logs_its_id_and_the_reply_does_not_carry_it(self):
+        heads, err = self.run_worker({"op": "plane", "path": "relative", "requestId": "abcd1234ef567890"})
+        self.assertFalse(heads[0]["ok"])
+        self.assertIn("request=abcd1234ef567890 op=plane refused", err)
+        self.assertNotIn("abcd1234ef567890", json.dumps(heads))
+        self.assertNotIn("relative", err)
+
+    def test_a_request_without_an_id_still_works_and_logs_nothing(self):
+        heads, err = self.run_worker({"op": "plane", "path": "relative"}, {"op": "ping"})
+        self.assertEqual(len(heads), 2)
+        self.assertEqual(err, "")
+
+    def test_an_id_that_is_not_a_plain_token_is_not_logged(self):
+        _, err = self.run_worker({"op": "plane", "path": "relative", "requestId": "bad id\nforged line"})
+        self.assertEqual(err, "")
+        self.assertNotIn("forged", err)
+
+
 if __name__ == "__main__":
     unittest.main()
