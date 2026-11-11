@@ -49,6 +49,11 @@ export type BoardExpect = Schemas["BoardExpect"];
 export const removeItem = (boardId: number, pos: number, expect?: BoardExpect) => post<Board>(`/api/boards/${boardId}/items/${pos}/remove`, expect ? { expect } : {});
 export const moveItem = (boardId: number, pos: number, delta: -1 | 1, expect?: BoardExpect) => post<Board>(`/api/boards/${boardId}/items/${pos}/move`, { delta, ...(expect ? { expect } : {}) });
 export const setNote = (boardId: number, pos: number, note: string, expect?: BoardExpect) => post<Board>(`/api/boards/${boardId}/items/${pos}/note`, { note, ...(expect ? { expect } : {}) });
+/** A panel's place on the board's 12-column grid (ADR 0060). */
+export type BoardRect = Schemas["BoardRect"];
+/** Saves every panel's place in one write. `expect` names the panel at each position, `from` the layout being replaced; a mismatch is a 409. A null place clears it. */
+export const setLayout = (boardId: number, layout: (BoardRect | null)[], expect: BoardExpect[], from?: (BoardRect | null)[]) =>
+  post<Board>(`/api/boards/${boardId}/layout`, { layout, expect, ...(from ? { from } : {}) });
 export const publish = (boardId: number, label: string, hours: number, extra: { question?: string; supersedes?: number; reason?: string } = {}) =>
   post<Schemas["PublishResponse"]>(`/api/boards/${boardId}/publish`, { label, hours, ...extra });
 export const preflight = (boardId: number, question: string) => call<Preflight>(`/api/boards/${boardId}/preflight?question=${encodeURIComponent(question)}`);

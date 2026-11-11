@@ -4,6 +4,7 @@ import { tierLine } from "../api/tier";
 import { RunLine } from "./RunLine";
 import { figurePreviewUrl, listBoards } from "../api/boards";
 import type { Board } from "../api/boards";
+import { placed } from "./layout";
 import s from "./PrintBoard.module.css";
 
 /**
@@ -41,7 +42,7 @@ export function PrintBoard({ boardId }: { boardId: number }) {
         <p className={s.meta}>Printed {new Date().toLocaleDateString()}. Pictures are as drawn in the author's browser, not re-renderings of the data.</p>
         <div className={s.noPrint}><Button variant="primary" onClick={() => window.print()}>Print or save as PDF</Button></div>
       </header>
-      {board.items.map((it, i) => {
+      {placed(board.items).map(({ item: it }, i) => {
         if (it.kind === "job") {
           return (
             <section key={`job-${it.job.id}-${i}`} className={s.fig} aria-label={`Run ${it.job.name}`}>

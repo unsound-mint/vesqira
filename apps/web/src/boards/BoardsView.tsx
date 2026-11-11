@@ -24,6 +24,7 @@ import { EM } from "../catalog/format";
 import { EntryActions } from "../catalog/EntryActions";
 import { RunLine } from "./RunLine";
 import { BoardCompare } from "./BoardCompare";
+import { BoardGrid } from "./BoardGrid";
 import s from "./BoardsView.module.css";
 
 const BASE_KEY = "vesqira.reviewBase";
@@ -202,15 +203,14 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
         return sid && sid.kind === "job" && sid.job.sweepId != null ? <SweepGrid sweepId={sid.job.sweepId} refreshKey={board.items.filter((x) => x.kind === "job" && x.job.runId != null).length} /> : null;
       })() : null}
       {board && newer ? <BoardNewerLine board={board} newer={newer} /> : null}
-      <ol className={s.items} aria-label="Figures on the board">
-        {board?.items.map((it, i) => {
+      {board ? <BoardGrid board={board} onBoard={replaceBoard} onChanged={() => void reload(id)} onError={setErr} renderCard={(it, i) => {
           const f = it.kind === "job" ? null : it.figure;
           const job = it.kind === "job" ? it.job : null;
           const jobRun = job?.runId != null ? lookup.runs.find((r) => r.id === job.runId) : undefined;
           const out = jobRun ? defaultOutput(jobRun) : undefined;
           const outData = out ? lookup.datasets.find((d) => d.id === out.datasetId) : undefined;
           return (
-          <li key={it.position} className={`${s.card} ${job && !(jobRun && outData) ? s.cardJob : ""}`}>
+          <div className={`${s.card} ${job && !(jobRun && outData) ? s.cardJob : ""}`}>
             {f ? <img className={s.img} src={figurePreviewUrl(f.id)} alt={`${f.title}. ${provenanceLine(f.provenance)}`} width={f.width} height={f.height} /> : null}
             {job && jobRun && outData ? <LiveResult key={`${job.id}-${it.position}`} boardId={board.id} position={it.position} job={job} run={jobRun} dataset={outData} onPinned={replaceBoard} /> : null}
             {job && !(jobRun && outData) ? <JobFrame job={job} /> : null}
@@ -246,17 +246,17 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
               </label>
               {f ? <Checkbox label="Compare" aria-label={`Compare ${f.title}`} checked={ticked.includes(it.position)} onChange={(e) => tick(it.position, e.target.checked)} /> : null}
               <div className={s.row}>
-                <IconButton icon={ArrowUp} label="Move up" disabled={i === 0} onClick={() => run(() => moveItem(board.id, board, it.position, -1))} />
-                <IconButton icon={ArrowDown} label="Move down" disabled={i === board.items.length - 1} onClick={() => run(() => moveItem(board.id, board, it.position, 1))} />
+                {/* once the board has a grid layout the order is what the grid says; the handle moves a panel, "Back to reading order" returns here */}
+                {board.items.some((x) => x.layout) ? null : <><IconButton icon={ArrowUp} label="Move up" disabled={i === 0} onClick={() => run(() => moveItem(board.id, board, it.position, -1))} />
+                <IconButton icon={ArrowDown} label="Move down" disabled={i === board.items.length - 1} onClick={() => run(() => moveItem(board.id, board, it.position, 1))} /></>}
                 {f ? <LinkButton icon={Download} href={`/api/figures/${f.id}/download`} download>Download PNG</LinkButton> : null}
                 <IconButton icon={Trash2} label="Remove from board" onClick={() => run(() => removeItem(board.id, board, it.position))} />
               </div>
               {f ? <FigureRedraw figure={f} addTo={(figureId) => run(() => addToBoard(board.id, figureId))} /> : null}
             </div>
-          </li>
+          </div>
           );
-        })}
-      </ol>
+        }} /> : null}
       {board && board.items.length > 0 ? (
         <section className={s.share} aria-label="Share for review">
           <h3 className={s.h}>Share for review</h3>

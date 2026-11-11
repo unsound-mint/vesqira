@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { Button, ErrorReference, Input } from "../ui";
 import { ApiError } from "../api/http";
 import { tierLine } from "../api/tier";
@@ -7,12 +8,15 @@ import { addReviewComment, getReview, OUTCOME_TEXT, reviewPreviewUrl, setOutcome
 import type { OutcomeValue } from "../api/boards";
 import type { Anchor, Comment, Review } from "../api/boards";
 import { Threads, threadNumbers } from "../boards/Threads";
+import { placed } from "../boards/layout";
+import type { Rect } from "../boards/layout";
 import { AnchorImage } from "./AnchorImage";
 import { markSeen, readName, readSeen, saveName } from "../boards/seen";
 import s from "./ReviewPage.module.css";
 
 type Problem = { text: string; id?: string };
 const problem = (e: unknown, fallback: string): Problem => ({ text: e instanceof Error ? e.message : fallback, id: e instanceof ApiError ? e.requestId : undefined });
+const place = (r: Rect): CSSProperties => ({ "--col": `${r.x + 1} / span ${r.w}`, "--rows": `${r.y + 1} / span ${r.h}` } as CSSProperties);
 const Shown = ({ p }: { p: Problem }) => <>{p.text}{p.id ? <> <ErrorReference id={p.id} /></> : null}</>;
 
 /** What a supervisor sees: a frozen board of published previews with provenance, and a way to comment. No data, no paths. */
@@ -81,14 +85,16 @@ export function ReviewPage({ token }: { token: string }) {
       {rv.superseded ? <p role="status" className={s.noteBox}><strong>The author has replaced this version.</strong> {rv.superseded.reason} Ask for the new link; this one stays readable.</p> : null}
       {snap.question ? <p className={s.noteBox}><strong>What the author asks you to look at:</strong> {snap.question}</p> : null}
       {msg ? <p role="alert" className={s.err}><Shown p={msg} /></p> : null}
-      {snap.items.map((it, n) => it.kind === "job" ? (
-        <article key={`job-${n}`} className={s.fig} aria-label={`Run ${it.title}`}>
+      {/* the author's saved layout, read-only: the same columns and reading order; rows size to their content here */}
+      <div className={s.board} data-arranged={snap.items.some((x) => x.layout) || undefined}>
+      {placed(snap.items).map(({ item: it, rect }, n) => it.kind === "job" ? (
+        <article key={`job-${n}`} className={s.fig} style={place(rect)} aria-label={`Run ${it.title}`}>
           <h2 className={s.h2}>Run {it.title}</h2>
           <p className={s.noteBox}>Run {it.title}: {it.state} when this snapshot was published ({new Date(it.at).toLocaleString()}). Its result was not on the board then and this page will not change.</p>
           {it.note ? <p className={s.noteBox}><strong>Note from the author:</strong> {it.note}</p> : null}
         </article>
       ) : (
-        <article key={it.revision} className={s.fig}>
+        <article key={it.revision} className={s.fig} style={place(rect)}>
           <h2 className={s.h2}>{it.title}</h2>
           <AnchorImage
             src={reviewPreviewUrl(token, it.previewSha)}
@@ -127,6 +133,7 @@ export function ReviewPage({ token }: { token: string }) {
           </section>
         </article>
       ))}
+      </div>
       <section className={s.fig} aria-label="Your outcome">
         <h2 className={s.h2}>Your outcome for this version</h2>
         <p className={s.note}>This says what you thought of the review itself. It is not an assessment of any run: the author keeps that separately.{rv.outcome?.value ? ` Currently: ${OUTCOME_TEXT[rv.outcome.value]}.` : " Not sent yet."}</p>

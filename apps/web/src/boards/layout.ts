@@ -97,6 +97,18 @@ export function resolve(stored: readonly (Rect | null)[], kinds: readonly PanelK
   return compact(rects);
 }
 
+type Placeable = { kind?: string | undefined; layout?: Rect | undefined };
+
+/**
+ * The panels of a board (the owner's, or a reviewer's frozen copy) with the place each has, in reading order. The one answer to
+ * "in what order, and where" for the presentation, the printed page and the reviewer: a board nobody arranged comes back in its
+ * stored order, each panel full width, which is how it was always shown. A frozen panel's kind is absent for a figure.
+ */
+export function placed<T extends Placeable>(items: readonly T[]): { item: T; rect: Rect }[] {
+  const rects = resolve(items.map((it) => it.layout ?? null), items.map((it) => (it.kind === "job" ? "job" : "figure")));
+  return readingOrder(rects).map((i) => ({ item: items[i] as T, rect: rects[i] as Rect }));
+}
+
 export const hasStoredLayout = (stored: readonly (Rect | null)[]) => stored.some((r) => r !== null);
 
 export type Step = { rects: Rect[]; changed: boolean; reason?: "edge" | "limit" };

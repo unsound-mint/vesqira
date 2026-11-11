@@ -24,19 +24,13 @@
   align-items: flex-end;
 }
 
-.items {
-  display: grid;
-  gap: var(--sp-4);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
 .card {
   display: grid;
   grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
   gap: var(--sp-4);
+  min-height: 0;
   padding: var(--sp-3);
+  overflow: auto; /* a panel on the grid has a fixed height: its content scrolls inside it rather than overflowing the next panel */
   border: var(--bw) solid var(--line);
   border-radius: var(--r-lg);
   background: var(--bg-1);
@@ -47,6 +41,15 @@
   grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
   gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-3);
+}
+
+/* a panel resized narrower than its two columns need: picture over text */
+@container (max-width: 560px) {
+  .card,
+  .cardJob {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+  }
 }
 
 .img {

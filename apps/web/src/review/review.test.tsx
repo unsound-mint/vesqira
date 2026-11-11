@@ -49,6 +49,26 @@ describe("review page", () => {
     expect(JSON.parse(String(post.init!.body))).toEqual({ figureRevision: "r1", author: "Dr. X", body: "Why this stretch?" });
   });
 
+  it("shows the author's saved layout read-only: panels in reading order, placed by their columns, with no way to move them", async () => {
+    const item = (rev: string, title: string, layout?: object) => ({ ...review.snapshot.items[0]!, revision: rev, title, ...(layout ? { layout } : {}) });
+    const arranged = { ...review, snapshot: { ...review.snapshot, items: [item("r1", "Right", { x: 6, y: 0, w: 6, h: 4 }), item("r2", "Left", { x: 0, y: 0, w: 6, h: 4 }), item("r3", "Below", { x: 0, y: 4, w: 12, h: 3 })] } };
+    mockFetch({ "/review-api/tok": () => ({ body: arranged }) });
+    render(<ReviewPage token="tok" />);
+    await screen.findByRole("heading", { name: "Group meeting" });
+    const articles = screen.getAllByRole("article");
+    expect(articles.map((a) => a.querySelector("h2")?.textContent)).toEqual(["Left", "Right", "Below"]);
+    expect(articles[1]!.style.getPropertyValue("--col")).toBe("7 / span 6");
+    expect(articles[2]!.style.getPropertyValue("--rows")).toBe("5 / span 3");
+    expect(screen.queryByRole("button", { name: /Move or resize/ })).toBeNull();
+  });
+
+  it("lays out a snapshot made before layouts from its order, one panel per row", async () => {
+    mockFetch({ "/review-api/tok": () => ({ body: review }) });
+    render(<ReviewPage token="tok" />);
+    await screen.findByRole("heading", { name: "Group meeting" });
+    expect(screen.getByRole("article").style.getPropertyValue("--col")).toBe("1 / span 12");
+  });
+
   it("gives one message for an invalid, expired or revoked link", async () => {
     mockFetch({ "/review-api/bad": () => ({ status: 404, body: { error: "not found" } }) });
     render(<ReviewPage token="bad" />);
