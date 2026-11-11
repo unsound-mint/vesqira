@@ -9,8 +9,11 @@ jobs:
     timeout-minutes: 20
     container: registry.fedoraproject.org/fedora:44
     steps:
-      - run: dnf -y -q install git golang nodejs npm rpm-build python3-astropy python3-contourpy python3-numpy python3-reproject curl tar gzip
+      - run: dnf -y -q install git rpm-build python3-astropy python3-contourpy python3-numpy python3-reproject curl tar gzip
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the build requirements come from the spec itself, so CI, mock and COPR need the same packages
+      - run: dnf -y -q builddep packaging/vesqira.spec
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: tools/build-rpm.sh "${{ github.event_name == 'release' && github.event.release.tag_name || '0.0.0' }}"
       # the installed package must work with the distribution's own Python packages
       - run: dnf -y -q install dist/rpm/vesqira-*.rpm
@@ -28,8 +31,12 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vesqira-rpm
-          path: dist/rpm/*.rpm
+          path: |
+            dist/rpm/*.rpm
+            dist/srpm/*.src.rpm
       - if: github.event_name == 'release'
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          files: dist/rpm/*.rpm
+          files: |
+            dist/rpm/*.rpm
+            dist/srpm/*.src.rpm

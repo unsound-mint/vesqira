@@ -12,6 +12,8 @@ A researcher registers H I FITS spectral cubes and existing VGT outputs, browses
 
 ```
 sudo dnf install ./vesqira-<version>.fc44.x86_64.rpm     # from the release page, or: tools/build-rpm.sh
+# or, once the COPR project exists (docs/setup/copr.md):
+sudo dnf copr enable <owner>/vesqira && sudo dnf install vesqira
 ```
 
 Then start **Vesqira** from the applications menu (or run `vesqira`): it starts a local server and opens it in your browser. Choose which folders it may read with `vesqira add-root /path/to/fits` (the first run creates `~/Vesqira`); `vesqira stop`, `vesqira status` and `vesqira logs` do what they say. Only files inside those folders are ever read, and the server listens on 127.0.0.1 only.

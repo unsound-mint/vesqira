@@ -1,7 +1,7 @@
 # `make setup` creates .venv; recipes use it when present, so python3 below has numpy and astropy without activating anything
 export PATH := $(CURDIR)/.venv/bin:$(PATH)
 
-.PHONY: setup check docs web fixtures api e2e e2e-isolateddemo bench viewer-bench desktop
+.PHONY: setup check docs web fixtures api e2e e2e-isolateddemo bench viewer-bench desktop srpm
 # Check tools, create .venv, install web, e2e and Playwright dependencies (tools/setup.sh); safe to repeat
 setup:
 	tools/setup.sh
@@ -54,3 +54,7 @@ desktop:
 # Viewer timings in a real Chromium (key to pixels, main-thread blocking, CPU renderer) against tools/viewer_perf_budgets.json
 viewer-bench:
 	node tools/viewer_perf.mjs --check
+
+# Source RPM into dist/srpm/ (vendored Go, crates and npm cache included; needs the network once; see docs/setup/copr.md)
+srpm:
+	tools/build-srpm.sh
