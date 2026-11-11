@@ -487,6 +487,10 @@ func (s *Server) regionMasks(w http.ResponseWriter, r *http.Request, d catalog.D
 	if len(raw) == 0 {
 		return nil, "", true
 	}
+	if k.off != nil { // offline copies are unmasked replies (ADR 0059); a masked answer needs the file
+		fail(w, 503, "masks cannot be applied while the file's host is unreachable; offline copies are unmasked")
+		return nil, "", false
+	}
 	if k.host != 0 {
 		fail(w, 409, "masks are applied to files on this computer; this file is read on another host")
 		return nil, "", false
