@@ -55,6 +55,9 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 		ReliabilityID *int64  `json:"reliabilityId"`
 		Frame         *string `json:"frame"`
 		Quantity      *string `json:"quantity"`
+		// FromFile adopts the declaration the file's own header makes (PSIFRAME, PSIANGLE, BUNIT), labelled as declared by the file;
+		// unit, frame and quantity are then taken from the header, and sending any of them is refused.
+		FromFile bool `json:"fromFile"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, 400, "invalid request body")
@@ -80,6 +83,22 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 		if n := nonDegenerateAxes(d.Header); n != 2 {
 			fail(w, 422, "an orientation map must be a single plane (two axes longer than 1)")
 			return
+		}
+		author := ""
+		if in.FromFile {
+			if in.Unit != "" || in.Frame != nil || in.Quantity != nil {
+				fail(w, 400, "fromFile takes the unit, frame and quantity from the file's header; do not send them with it")
+				return
+			}
+			if d.VGT == nil || d.VGT.Orientation == nil {
+				fail(w, 422, "the file's header does not declare an angle frame (PSIFRAME), so there is nothing to adopt from it; declare it yourself")
+				return
+			}
+			o := d.VGT.Orientation
+			in.Unit, in.Frame, in.Quantity, author = o.Unit, &o.Frame, o.Quantity, catalog.FileHeaderAuthor
+			if in.ReliabilityID == nil && d.Interpretation != nil {
+				in.ReliabilityID = d.Interpretation.ReliabilityID // adopting the frame must not unpair the reliability map
+			}
 		}
 		if in.Unit != "deg" && in.Unit != "rad" {
 			fail(w, 400, "unit is required and must be deg or rad; Vesqira does not guess it from the values")
@@ -113,7 +132,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err := s.Store.SetInterpretation(d, catalog.Interpretation{Kind: in.Kind, Unit: in.Unit, ReliabilityID: in.ReliabilityID, Frame: in.Frame, Quantity: in.Quantity}); err != nil {
+		if err := s.Store.SetInterpretation(d, catalog.Interpretation{Kind: in.Kind, Unit: in.Unit, ReliabilityID: in.ReliabilityID, Frame: in.Frame, Quantity: in.Quantity, DeclaredBy: author}); err != nil {
 			log.Printf("interpret: %v", err)
 			fail(w, 500, "internal error")
 			return

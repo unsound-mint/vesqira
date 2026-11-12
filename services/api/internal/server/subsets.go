@@ -645,7 +645,11 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: "subset", Params: params, Sources: []int64{src.ID}, Summary: sraw, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
-	if in := src.Interpretation; in != nil && in.Kind == "axial_orientation" {
+	if in := src.Interpretation; in != nil && in.Kind == "axial_orientation" && in.SkyFrame != nil {
+		// the angles are stated in another celestial frame than the grid's (the file's header says so, and the window's header keeps those
+		// cards): the operation does not restate that, so the window is left undeclared and the file's own declaration is offered for it
+		log.Printf("subsets: %s is stated in the %s frame; the window is not declared by the operation", src.Name, *in.SkyFrame)
+	} else if in != nil && in.Kind == "axial_orientation" {
 		// a window does not turn angles (a step keeps source pixels, nothing is averaged), so the file is the same kind of map, said by the
 		// operation and not by the researcher; its reliability map is another file and is not carried
 		out := catalog.Interpretation{Kind: in.Kind, Unit: in.Unit, Frame: in.Frame, Quantity: in.Quantity, DeclaredBy: analysisAuthor}

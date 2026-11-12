@@ -28,6 +28,8 @@ type declOrientation struct {
 	Quantity      *string `json:"quantity"`
 	ReliabilityID *int64  `json:"reliabilityId"`
 	DeclaredBy    string  `json:"declaredBy"`
+	// SkyFrame is the celestial frame a sky angle is stated in when it is not the grid's own (a declaration the file's header made).
+	SkyFrame *string `json:"skyFrame,omitempty"`
 }
 
 type declCatalog struct {
@@ -65,7 +67,7 @@ func declarationsOf(d catalog.Dataset) *figureDeclarations {
 		out.Unit = &declUnit{Unit: u.Unit, DeclaredBy: u.DeclaredBy}
 	}
 	if o := d.Interpretation; o != nil {
-		out.Orientation = &declOrientation{Kind: o.Kind, Unit: o.Unit, Frame: o.Frame, Quantity: o.Quantity, ReliabilityID: o.ReliabilityID, DeclaredBy: o.DeclaredBy}
+		out.Orientation = &declOrientation{Kind: o.Kind, Unit: o.Unit, Frame: o.Frame, Quantity: o.Quantity, ReliabilityID: o.ReliabilityID, DeclaredBy: o.DeclaredBy, SkyFrame: o.SkyFrame}
 	}
 	if c := d.CatalogDeclaration; c != nil {
 		b, _ := json.Marshal(struct {
@@ -136,7 +138,11 @@ func orientationText(o *declOrientation) string {
 	if o.ReliabilityID != nil {
 		rel = fmt.Sprintf("dataset %d", *o.ReliabilityID)
 	}
-	return fmt.Sprintf("%s in %s, frame %s, quantity %s, reliability %s (%s)", o.Kind, o.Unit, optText(o.Frame), optText(o.Quantity), rel, declBy(o.DeclaredBy))
+	frame := optText(o.Frame)
+	if o.SkyFrame != nil {
+		frame += " (" + catalog.SkyFrameName(*o.SkyFrame) + ")"
+	}
+	return fmt.Sprintf("%s in %s, frame %s, quantity %s, reliability %s (%s)", o.Kind, o.Unit, frame, optText(o.Quantity), rel, declBy(o.DeclaredBy))
 }
 
 func catalogText(c *declCatalog) string {
@@ -160,7 +166,7 @@ func compareDeclarations(rec, cur *figureDeclarations) (status, text string) {
 	}
 	ro, co := rec.Orientation, cur.Orientation
 	if (ro == nil) != (co == nil) || (ro != nil && (ro.Kind != co.Kind || ro.Unit != co.Unit || !sameStr(ro.Frame, co.Frame) ||
-		!sameStr(ro.Quantity, co.Quantity) || ro.DeclaredBy != co.DeclaredBy || (ro.ReliabilityID == nil) != (co.ReliabilityID == nil) ||
+		!sameStr(ro.Quantity, co.Quantity) || !sameStr(ro.SkyFrame, co.SkyFrame) || ro.DeclaredBy != co.DeclaredBy || (ro.ReliabilityID == nil) != (co.ReliabilityID == nil) ||
 		(ro.ReliabilityID != nil && *ro.ReliabilityID != *co.ReliabilityID))) {
 		parts = append(parts, fmt.Sprintf("orientation was %s, now %s", orientationText(ro), orientationText(co)))
 	}

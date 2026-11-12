@@ -127,8 +127,8 @@ func (s *Server) overlayGeometry(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "the orientation map changed since it was declared; declare it again to confirm its unit and convention still apply")
 			return
 		}
-		req["overlay_interp"] = map[string]any{"unit": in.Unit, "frame": in.Frame, "quantity": in.Quantity}
-		k.q += "|i" + in.Unit + "," + deref(in.Frame) + "," + deref(in.Quantity)
+		req["overlay_interp"] = map[string]any{"unit": in.Unit, "frame": in.Frame, "quantity": in.Quantity, "sky_frame": in.SkyFrame}
+		k.q += "|i" + in.Unit + "," + deref(in.Frame) + "," + deref(in.Quantity) + "," + deref(in.SkyFrame)
 		needsRel := o.Opacity == "reliability" || o.Length == "reliability" || o.Threshold != nil
 		if needsRel && in.ReliabilityID != nil {
 			relReal, relKey, code, msg := s.reliabilityFor(r, ov, *in.ReliabilityID)

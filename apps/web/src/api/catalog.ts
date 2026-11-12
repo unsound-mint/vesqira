@@ -78,7 +78,9 @@ export type AngleQuantity = NonNullable<Interpretation["quantity"]>;
 /** frame and quantity are null when the person has not declared them: the file never says. */
 export type InterpretationRequest =
   | { kind: "none" }
-  | { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null; frame: AngleFrame | null; quantity: AngleQuantity | null };
+  | { kind: "axial_orientation"; unit: "deg" | "rad"; reliabilityId: number | null; frame: AngleFrame | null; quantity: AngleQuantity | null }
+  /** Adopt what the file's own header declares (PSIFRAME, PSIANGLE, BUNIT); the server reads it, the client sends no values. */
+  | { kind: "axial_orientation"; fromFile: true };
 export const setInterpretation = (id: number, body: InterpretationRequest) =>
   call<Dataset>(`/api/datasets/${id}/interpretation`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 

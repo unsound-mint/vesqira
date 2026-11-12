@@ -288,6 +288,46 @@ def _map_header(shape_yx: tuple[int, int]) -> fits.Header:
     return h
 
 
+VGT_DN, VGT_KER, VGT_INPUT_BEAM_ARCSEC = 10, 8.0, (60.0, 48.0, 30.0)   # window side and Q/U sigma in input pixels; input beam bmaj, bmin, bpa
+
+
+def vgt_product_cards(product: str = "psi", psiframe: str | None = "PIXEL", beam_unit_comment: str | None = "arcsec") -> list:
+    """The cards VGT.jl writes into a product header (src/pipeline/outputs.jl, vgt_product_header): VGTPROD and the run parameters
+    on every product; PSIFRAME and PSIANGLE on psi only (psiframe None leaves them out, like an older output). The input beam
+    cards INBMAJ/INBMIN/INBPA are as VGT issue 119 describes; `beam_unit_comment` is the unit the INBMAJ comment states (None: it
+    states none), because the unit is not documented anywhere else."""
+    cards = [("BUNIT", "rad" if product == "psi" else "", ""), ("VGTPROD", product, ""),
+             ("VGTDN", VGT_DN, "VGT gradient window side, input pixels"), ("VGTKER", VGT_KER, "Q/U Gaussian smoothing sigma, input pixels"),
+             ("VGTKFWHM", 2 * math.sqrt(2 * math.log(2)) * VGT_KER, "Q/U Gaussian smoothing FWHM, input pixels"),
+             ("VGTMINV", 8, "min valid gradients per window"), ("VGTFIT", "axial_vonmises", "window angle estimator"),
+             ("VGTGRAD", "sobel", "gradient mode"), ("VGTNMODE", "constant", "noise model"), ("VGTNOISE", 0.37, "noise threshold input (K)")]
+    bmaj, bmin, bpa = VGT_INPUT_BEAM_ARCSEC
+    cards += [("INBMAJ", bmaj, f"input beam major FWHM, {beam_unit_comment}" if beam_unit_comment else "input beam major FWHM"),
+              ("INBMIN", bmin, "input beam minor FWHM"), ("INBPA", bpa, "input beam position angle, deg")]
+    if product == "psi" and psiframe is not None:
+        cards += [("PSIFRAME", psiframe, "CCW from +axis 1 in pixel grid; not east of N" if psiframe == "PIXEL" else "IAU position angle, east of north in this frame"),
+                  ("PSIANGLE", "BFIELD", "gradient angle + 90 deg (B-field, not pol.)")]
+    return cards
+
+
+def vgt_psi_with_cards(unit: str, cards: list, header: fits.Header | None = None) -> fits.HDUList:
+    """vgt_psi with extra header cards (name, value, comment), on `header`'s grid when given."""
+    a = vgt_angle_map()["angle_deg"]
+    data = a if unit == "deg" else np.radians(a)
+    h = header if header is not None else _map_header(a.shape)
+    for k, v, c in cards:
+        h[k] = (v, c)
+    return fits.HDUList([fits.PrimaryHDU(data.astype(np.float64), header=h)])
+
+
+def vgt_psi_galactic_grid() -> fits.Header:
+    """The psi grid in Galactic coordinates (GLON/GLAT), near the Galactic plane: a map whose grid frame equals PSIFRAME=GALACTIC."""
+    h = fits.PrimaryHDU(np.zeros((4, 4), dtype=np.float32)).header
+    for i, (ct, cv, cd, cp) in enumerate([("GLON-TAN", 280.0, -CDELT_DEG, 2.5), ("GLAT-TAN", -33.0, CDELT_DEG, 2.5)], start=1):
+        h[f"CTYPE{i}"], h[f"CRVAL{i}"], h[f"CDELT{i}"], h[f"CRPIX{i}"], h[f"CUNIT{i}"] = ct, cv, cd, cp, "deg"
+    return h
+
+
 def vgt_psi(unit: str) -> fits.HDUList:
     """VGT-style orientation product in a primary HDU, like the real pipeline's psi files (one product per file).
 
@@ -339,21 +379,86 @@ definition = "Fraction of fit attempts that failed (a real zero, not a missing v
 """
 
 
-def write_vgt_run(directory: Path, dirty: bool = True, metrics: bool = False) -> Path:
+# run_metadata.toml as VGT writes it now: project name "VGT", and no finalize_mask_mode, histogram_edge_mode, gradient_sample_mode or
+# noise exponents in [config] (the old layout, kept in write_vgt_run's default, has the project name "Astronomy")
+CURRENT_RUN_METADATA = """generated_at_utc = "2026-11-10T09:21:44Z"
+gitcommit = "@COMMIT@"
+
+[config]
+angle_frame = "galactic"
+dn = 10
+fitter_mode = "axial_vonmises"
+input_file = "/tmp/vgt_inputs/demo_cube.fits"
+ker = 8
+noise = 0.37
+output_dir = "validation_output/demo_run"
+
+[diagnostics]
+fit_attempts = 1000
+fit_failures = 0
+
+[input]
+absolute_path = "/tmp/vgt_inputs/demo_cube.fits"
+path = "/tmp/vgt_inputs/demo_cube.fits"
+size_bytes = 207360
+stem = "demo_cube"
+
+[outputs]
+fit_rbar2_path = "validation_output/demo_run/psi_fit_rbar2_demo.fits"
+metadata_path = "validation_output/demo_run/run_metadata.toml"
+psi_path = "validation_output/demo_run/psi_demo.fits"
+reliability_path = "validation_output/demo_run/psi_reliability_demo.fits"
+support_path = "validation_output/demo_run/psi_support_demo.fits"
+
+[performance]
+elapsed_seconds = 106.162
+finished_at_utc = "2026-11-10T09:21:20Z"
+julia_threads = 16
+
+[project]
+drwatson_projectdir = "/home/someone/Projects/VGT"
+name = "VGT"
+
+[run_parameters]
+angle_frame = "galactic"
+dn = 10
+fitter = "axial_vonmises"
+input = "demo_cube"
+ker = 8
+label = "vgt"
+noise = 0.37
+"""
+
+
+def write_vgt_run(directory: Path, dirty: bool = True, metrics: bool = False, current: bool = False, psiframe: str | None = "GALACTIC") -> Path:
     """A VGT-style run folder: the four output maps and a run_metadata.toml shaped like the real pipeline's.
 
     The metadata keeps the pipeline's habit of recording output paths relative to the machine it ran on, an input
     path under /tmp and a "-dirty" commit, so importers can be tested against what real runs contain.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    psi = vgt_psi("rad")
-    psi.writeto(directory / "psi_demo.fits", overwrite=True)
-    vgt_reliability_map().writeto(directory / "psi_reliability_demo.fits", overwrite=True)
-    support = fits.HDUList([fits.PrimaryHDU(np.ones((4, 4), dtype=np.float32), header=_map_header((4, 4)))])
-    support.writeto(directory / "psi_support_demo.fits", overwrite=True)
-    fit = fits.HDUList([fits.PrimaryHDU(np.full((4, 4), 0.2, dtype=np.float64), header=_map_header((4, 4)))])
-    fit.writeto(directory / "psi_fit_rbar2_demo.fits", overwrite=True)
+    if current:   # what VGT.jl writes now: the keywords in every product header, and a run_metadata.toml without the retired keys
+        vgt_psi_with_cards("rad", vgt_product_cards("psi", psiframe)).writeto(directory / "psi_demo.fits", overwrite=True)
+        rel = vgt_reliability_map()
+        for k, v, c in vgt_product_cards("reliability", None):
+            rel[0].header[k] = (v, c)
+        rel.writeto(directory / "psi_reliability_demo.fits", overwrite=True)
+        for name, fill, product in (("psi_support_demo.fits", 1.0, "support"), ("psi_fit_rbar2_demo.fits", 0.2, "fit_rbar2")):
+            h = _map_header((4, 4))
+            for k, v, c in vgt_product_cards(product, None):
+                h[k] = (v, c)
+            fits.HDUList([fits.PrimaryHDU(np.full((4, 4), fill, dtype=np.float32), header=h)]).writeto(directory / name, overwrite=True)
+    else:
+        vgt_psi("rad").writeto(directory / "psi_demo.fits", overwrite=True)
+        vgt_reliability_map().writeto(directory / "psi_reliability_demo.fits", overwrite=True)
+        support = fits.HDUList([fits.PrimaryHDU(np.ones((4, 4), dtype=np.float32), header=_map_header((4, 4)))])
+        support.writeto(directory / "psi_support_demo.fits", overwrite=True)
+        fit = fits.HDUList([fits.PrimaryHDU(np.full((4, 4), 0.2, dtype=np.float64), header=_map_header((4, 4)))])
+        fit.writeto(directory / "psi_fit_rbar2_demo.fits", overwrite=True)
     commit = "bcbaed4ec9800ef95c561cfb4ad45c344743e469" + ("-dirty" if dirty else "")
+    if current:
+        (directory / "run_metadata.toml").write_text(CURRENT_RUN_METADATA.replace("@COMMIT@", commit))
+        return directory / "run_metadata.toml"
     (directory / "run_metadata.toml").write_text(f"""generated_at_utc = "2026-06-25T09:21:44Z"
 gitcommit = "{commit}"
 
@@ -550,12 +655,21 @@ def write_all(directory: Path) -> dict[str, Path]:
         "vgt_psi_deg.fits": vgt_psi("deg"),
         "vgt_psi_rad.fits": vgt_psi("rad"),
         "vgt_reliability.fits": vgt_reliability_map(),
+        # VGT.jl products, one per PSIFRAME case (all on the ICRS grid but the last): the angle's frame travels in the header
+        "vgt_psi_pixel_frame.fits": vgt_psi_with_cards("rad", vgt_product_cards("psi", "PIXEL")),
+        "vgt_psi_galactic_frame.fits": vgt_psi_with_cards("rad", vgt_product_cards("psi", "GALACTIC")),
+        "vgt_psi_icrs_frame.fits": vgt_psi_with_cards("rad", vgt_product_cards("psi", "ICRS")),
+        "vgt_psi_no_frame.fits": vgt_psi_with_cards("rad", vgt_product_cards("psi", None)),
+        "vgt_psi_unknown_frame.fits": vgt_psi_with_cards("rad", vgt_product_cards("psi", "ECLIPTIC")),
+        "vgt_psi_galactic_on_galactic_grid.fits": vgt_psi_with_cards("rad", vgt_product_cards("psi", "GALACTIC"), vgt_psi_galactic_grid()),
+        "vgt_psi_beam_unit_unstated.fits": vgt_psi_with_cards("rad", vgt_product_cards("psi", "GALACTIC", None)),
         "vgt_tangential_deg.fits": vgt_tangential_deg(),
     }.items():
         path = directory / name
         hdul.writeto(path, overwrite=True)
         out[name] = path
     write_vgt_run(directory / "vgt_run_demo", metrics=True)
+    write_vgt_run(directory / "vgt_run_current", dirty=False, current=True)
     write_rohsa_run(directory / "rohsa_run_demo")
     return out
 

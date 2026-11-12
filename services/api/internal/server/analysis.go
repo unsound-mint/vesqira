@@ -57,7 +57,9 @@ type analysisReq struct {
 	Time string `json:"time"`
 }
 
-var optionNames = map[string]string{"order": "order", "chanStart": "chan-start", "chanEnd": "chan-end", "threshold": "threshold", "x0": "x0", "x1": "x1", "y0": "y0", "y1": "y1", "method": "method", "targetBmaj": "target-bmaj", "targetBmin": "target-bmin", "targetBpa": "target-bpa"}
+var optionNames = map[string]string{"order": "order", "chanStart": "chan-start", "chanEnd": "chan-end", "threshold": "threshold", "x0": "x0", "x1": "x1", "y0": "y0", "y1": "y1", "method": "method", "targetBmaj": "target-bmaj", "targetBmin": "target-bmin", "targetBpa": "target-bpa",
+	// the resolution a convolution starts from when the file declares no beam (a VGT map): accepted from the VGT keywords or entered, never read from BMAJ
+	"sourceBmaj": "source-bmaj", "sourceBmin": "source-bmin", "sourceBpa": "source-bpa", "sourceBeamBasis": "source-beam-basis"}
 
 func (a analysisReq) options() (map[string]string, error) {
 	out := map[string]string{}
@@ -108,6 +110,10 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		fail(w, status, m)
 		return
 	}
+	if code, msg := acceptSourceBeam(in.Op, d, opts); code != 0 {
+		fail(w, code, msg)
+		return
+	}
 	ax, code, msg := s.axialAnalysis(r.Context(), in.Op, d, false)
 	if code != 0 {
 		fail(w, code, msg)
@@ -156,6 +162,10 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 			ia, ib := d.Interpretation, ref.Interpretation
 			if ia == nil || ib == nil || ia.Kind != "axial_orientation" || ib.Kind != "axial_orientation" {
 				fail(w, 422, "both maps must be declared as axial orientation maps (with a unit) before they can be differenced")
+				return
+			}
+			if why := axialStatedDifferently(ia, ib); why != "" {
+				fail(w, 422, why)
 				return
 			}
 			if why, err := compat.Grids(effectiveHeader(d), effectiveHeader(ref)); err != nil || len(why) > 0 {
@@ -238,6 +248,9 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pm := map[string]any{"options": opts}
+	if ax != nil && ax.interp.SkyFrame != nil {
+		pm["axialSkyFrame"] = *ax.interp.SkyFrame // the input's angles were stated in this frame, carried into the grid's before the operation (the result is in the grid's)
+	}
 	if carried != nil {
 		pm["maskCarry"] = carried // not `masks`: those were applied by the operation; these were carried into its result (no ids, no paths)
 	}
@@ -411,6 +424,10 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 		b, _ := json.Marshal(strict)
 		maskText, maskSafe = string(b), safe
 	}
+	if code, msg := acceptSourceBeam(in.Op, d, opts); code != 0 {
+		fail(w, code, msg)
+		return
+	}
 	ax, code, msg := s.axialAnalysis(r.Context(), in.Op, d, true)
 	if code != 0 {
 		fail(w, code, msg)
@@ -484,7 +501,10 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if ax != nil { // the same code path as a run here: the worker gets the declaration and writes the companion reliability map
 		set.AxialUnit, set.AxialFrame, set.Weights = ax.unit, ax.frame, ax.weights
-		pm["axial"] = axialParams{Unit: ax.unit, Frame: ax.interp.Frame, Quantity: ax.interp.Quantity}
+		if ax.interp.SkyFrame != nil {
+			set.AxialSkyFrame = *ax.interp.SkyFrame
+		}
+		pm["axial"] = axialParams{Unit: ax.unit, Frame: ax.interp.Frame, Quantity: ax.interp.Quantity, SkyFrame: ax.interp.SkyFrame}
 	}
 	script, err := jobs.RenderAnalysis(set)
 	if err != nil {

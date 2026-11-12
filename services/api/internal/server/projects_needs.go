@@ -191,8 +191,8 @@ func (s *Server) computeNeeds(ws workspace.ID, p projects.Project) ([]need, erro
 				continue
 			}
 			in, ok := props[fa.ID]
-			if !ok || in.Kind != "axial_orientation" {
-				continue
+			if !ok || in.Kind != "axial_orientation" || in.DeclaredBy == catalog.FileHeaderAuthor {
+				continue // the file's own header is not a proposal to confirm: it says what it says, and is shown as declared by the file
 			}
 			id := fa.ID
 			out = append(out, need{
@@ -495,6 +495,9 @@ func (s *Server) applyAnswer(ws workspace.ID, n need, in answerIn) error {
 		if d.Interpretation == nil {
 			return fmt.Errorf("%w: the dataset no longer has a proposed interpretation", errAnswer)
 		}
+		if d.Interpretation.SkyFrame != nil {
+			return fmt.Errorf("%w: the file's header states this map's angles in the %s frame, which is not its grid's; a confirmation here would restate them as east of north in the grid's own frame. The file's declaration stays in use; to declare it yourself, use the map's orientation panel", errAnswer, catalog.SkyFrameName(*d.Interpretation.SkyFrame))
+		}
 		unit := in.Value
 		if unit == "" {
 			unit = d.Interpretation.Unit
@@ -557,6 +560,9 @@ func (s *Server) recordAnswer(ctx context.Context, p projects.Project, n need, i
 func proposalSource(by string) string {
 	if n, ok := discover.RuleName(by); ok {
 		return "your import rule " + n + ": declared by the rule, not by you; confirm it to make it your own declaration"
+	}
+	if by == catalog.FileHeaderAuthor {
+		return "the file's own header (PSIFRAME and PSIANGLE): declared by the file; confirm it to make it your own declaration"
 	}
 	if by == analysisAuthor {
 		return "the analysis that made this map (" + by + "): a proposal, not your declaration"

@@ -134,7 +134,7 @@ def pixel_scale_deg(w2) -> float:
     return float(np.mean(proj_plane_pixel_scales(w2)))
 
 
-def pixel_b_field(w2, theta_deg: np.ndarray, frame, quantity) -> np.ndarray:
+def pixel_b_field(w2, theta_deg: np.ndarray, frame, quantity, sky_frame_name=None) -> np.ndarray:
     """The B-field orientation in the map's pixel frame (counter-clockwise from +x, degrees in [0, 180)) of a declared axial map.
     A pixel-frame angle is only rotated by its quantity; a sky-frame one is carried into the pixel frame at each pixel by astropy."""
     ori.check_frame(frame)
@@ -146,7 +146,9 @@ def pixel_b_field(w2, theta_deg: np.ndarray, frame, quantity) -> np.ndarray:
     ok = np.isfinite(t)
     if ok.any():
         yy, xx = np.nonzero(ok)
-        out[ok] = ori.wrap_axial(ori.sky_pa_to_pixel(w2, xx.astype(float), yy.astype(float), t[ok] + rot))
+        xs, ys = xx.astype(float), yy.astype(float)
+        pa = ori.sky_pa_in_grid_frame(w2, xs, ys, t[ok] + rot, sky_frame_name)    # stated in another celestial frame than the grid's: carried first
+        out[ok] = ori.wrap_axial(ori.sky_pa_to_pixel(w2, xs, ys, pa))
     return out
 
 
@@ -426,8 +428,9 @@ def _map_side(args, cube, prefix=""):
     ns = type("A", (), {"axial_unit": unit, "weights": getattr(args, f"{prefix}weights")})
     theta, weight = axial_inputs(ns, cube)
     frame, quantity = getattr(args, f"{prefix}axial_frame"), getattr(args, f"{prefix}axial_quantity")
-    phi = _undeclared(pixel_b_field, w2, theta, frame, quantity, what=which)
-    facts = {"unit": unit, "frame": frame, "quantity": quantity, "rotation_to_b_deg": ori.QUANTITY_ROTATION[quantity],
+    sky_decl = getattr(args, f"{prefix}axial_sky_frame", None)
+    phi = _undeclared(pixel_b_field, w2, theta, frame, quantity, sky_decl, what=which)
+    facts = {"unit": unit, "frame": frame, "angle_stated_in": sky_decl or ("the grid's own celestial frame" if frame == "sky" else None), "quantity": quantity, "rotation_to_b_deg": ori.QUANTITY_ROTATION[quantity],
              "celestial_frame": _frame_name(_undeclared(ori.sky_frame, w2, what=which)), "reliability": bool(getattr(args, f"{prefix}weights"))}
     return phi, weight, w2, facts
 

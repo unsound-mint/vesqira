@@ -10,6 +10,18 @@ import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import s from "./OrientationPanels.module.css";
 
+/** The author label of a declaration read from the file's own header (VGT.jl's PSIFRAME and PSIANGLE). */
+export const FILE_HEADER = "vgt-file-header";
+const SKY_NAME: Record<string, string> = { galactic: "Galactic", icrs: "ICRS" };
+
+/** The frame of a declaration in words. A header may state the angle in a frame other than its grid's: then every comparison carries it through the sky. */
+export function skyText(cur: NonNullable<Dataset["interpretation"]>): string {
+  if (cur.frame === "sky" && cur.skyFrame) {
+    return `Sky: position angle east of north in the ${SKY_NAME[cur.skyFrame] ?? cur.skyFrame} frame, as the file’s header states it; carried through the sky into this grid’s own frame wherever it is compared or drawn over another map. Its own orientation lines are not drawn on itself, because they would use the stored angle as a pixel direction; show this map as an overlay on another map’s view instead.`;
+  }
+  return cur.frame ? FRAME_TEXT[cur.frame] : "Frame: not declared.";
+}
+
 /** What each choice means, in the words shown under the selector. Declared by the person; the file says none of it. */
 export const FRAME_TEXT: Record<AngleFrame, string> = {
   pixel: "Pixel grid: measured counter-clockwise from the file’s first axis (+x) towards its second (+y), as stored. Vesqira relates it to the sky with the file’s WCS at each pixel.",
@@ -132,9 +144,10 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
       <Button type="button" variant="primary" disabled={busy || (kind === "axial" && unit === "")} onClick={apply}>{kind === "scalar" ? "Use as scalar" : "Declare axial"}</Button>
       {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
       {cur?.stale ? <p role="alert" className={s.warn}>The file changed since you declared it. Declare it again to confirm the unit still applies.</p> : null}
-      <Basis summary={cur ? (cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : ruleOf(cur.declaredBy) !== null ? `Declared by your rule ${ruleOf(cur.declaredBy)} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.` : `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? "the run import" : "the analysis that made this map"} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.`) : "Not declared: shown as an ordinary scalar map."}>
+      <FileDeclaration dataset={dataset} busy={busy} onAdopt={async () => { setBusy(true); setMsg(await declare(dataset.id, { kind: "axial_orientation", fromFile: true })); setBusy(false); }} />
+      <Basis summary={cur ? (cur.declaredBy === FILE_HEADER ? `Declared by the file’s own header as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : ruleOf(cur.declaredBy) !== null ? `Declared by your rule ${ruleOf(cur.declaredBy)} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.` : `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? "the run import" : "the analysis that made this map"} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.`) : "Not declared: shown as an ordinary scalar map."}>
         <p>
-          {cur && ruleOf(cur.declaredBy) !== null ? `Declared by your import rule ${ruleOf(cur.declaredBy)}, not by you and not by the file. Choose above and apply to make it your own. ` : cur && cur.declaredBy !== "user" ? `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? `the run import (${cur.declaredBy})` : `the analysis that made this map (${cur.declaredBy})`}. Choose above and apply to override. ` : ""}Kept with the catalog; the file is never changed. The file does not declare the unit, the frame or what the angle is.
+          {cur && cur.declaredBy === FILE_HEADER ? "Read from the file’s own header (PSIFRAME, PSIANGLE and BUNIT, as VGT writes them); choose above and apply to replace it with your own declaration. " : cur && ruleOf(cur.declaredBy) !== null ? `Declared by your import rule ${ruleOf(cur.declaredBy)}, not by you and not by the file. Choose above and apply to make it your own. ` : cur && cur.declaredBy !== "user" && cur.declaredBy !== FILE_HEADER ? `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? `the run import (${cur.declaredBy})` : `the analysis that made this map (${cur.declaredBy})`}. Choose above and apply to override. ` : ""}Kept with the catalog; the file is never changed.{cur && cur.declaredBy === FILE_HEADER ? "" : " The file does not declare the unit, the frame or what the angle is."}
         </p>
         {cur ? <p>{declarationNote(cur)}</p> : null}
         {cur ? <p>How far this is established: <TierBadge tier={cur.tier} mappingVersion={cur.mappingVersion} rule={cur.declaredBy === "user" ? null : cur.declaredBy} /></p> : null}
@@ -143,8 +156,49 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
   );
 }
 
+/**
+ * What the file's own header says about its angle (VGT.jl writes PSIFRAME, PSIANGLE, VGTPROD and the run parameters), the places where the
+ * declaration in force disagrees with it, and the run parameters for a file imported without a run record. Nothing here is applied
+ * silently: a conflict is shown with both sides, and adopting the file's declaration is a button.
+ */
+export function FileDeclaration({ dataset, busy, onAdopt }: { dataset: Dataset; busy: boolean; onAdopt: () => void }) {
+  const h = dataset.vgtHeader;
+  if (!h) return null;
+  const cur = dataset.interpretation;
+  const o = h.orientation;
+  const inForce = cur?.declaredBy === FILE_HEADER;
+  return (
+    <div className={s.wrap}>
+      {h.conflicts.length > 0 ? (
+        <div role="alert" className={s.warn}>
+          <p>The file’s header disagrees with the declaration in force. The declaration in force stays in use; nothing was changed.</p>
+          <ul>{h.conflicts.map((c) => <li key={c}>{c[0]!.toUpperCase() + c.slice(1)}.</li>)}</ul>
+        </div>
+      ) : null}
+      {o && !inForce ? (
+        <p className={s.note}>
+          The file declares its angle as {o.frame === "pixel" ? "measured on the pixel grid" : `a position angle east of north in the ${SKY_NAME[o.skyFrame ?? ""] ?? ""} frame`}
+          {o.quantity ? ", the B-field" : ", without saying what the angle is"}, in {o.unit === "deg" ? "degrees" : "radians"}{o.basis.unit === "convention" ? " (the unit is VGT’s convention: BUNIT does not state it)" : ""}.{" "}
+          <Button type="button" disabled={busy} onClick={onAdopt}>Use the file’s declaration</Button>
+        </p>
+      ) : null}
+      {!o && h.psiFrame === null ? <p className={s.note}>This file carries VGT keywords but no PSIFRAME (older VGT output): its angle frame is not stated, and it is not inferred from the WCS.</p> : null}
+      {h.notes.map((n) => <p key={n} className={s.note}>{n}.</p>)}
+      {h.params.length > 0 ? (
+        <Basis summary={`VGT keywords in the file${h.product ? ` (${h.product})` : ""}: ${h.params.length} declared`}>
+          <p>Declared by the file’s header; nothing here is verified.</p>
+          <dl>{h.params.map((p) => <div key={p.key}><dt className="mono">{p.key}</dt><dd>{p.value}</dd></div>)}</dl>
+        </Basis>
+      ) : null}
+    </div>
+  );
+}
+
 /** Who says what the angle is, in words: the person, the VGT run import from its pipeline's convention, or an analysis keeping its input's. */
 export function declarationNote(cur: NonNullable<Dataset["interpretation"]>): string {
+  if (cur.declaredBy === FILE_HEADER) {
+    return `${skyText(cur)} ${cur.quantity ? QUANTITY_TEXT[cur.quantity] : "Quantity: not declared (the header does not say what the angle is)."} Declared by the file’s own header; not verified.`;
+  }
   const f = cur.frame ? FRAME_TEXT[cur.frame] : "Frame: not declared.";
   const q = cur.quantity ? QUANTITY_TEXT[cur.quantity] : "Quantity: not declared.";
   if (cur.declaredBy === "user") return `${f} ${q}`;

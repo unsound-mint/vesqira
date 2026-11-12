@@ -4931,7 +4931,7 @@ export interface components {
             radesys: string | null;
             beam?: components["schemas"]["Beam"];
         };
-        /** @description What the user declared about the data; the file itself declares none of it. */
+        /** @description What was declared about the data: by the researcher, by an adapter or rule, or by the file's own header (VGT.jl's PSIFRAME). Other files declare none of it. */
         Interpretation: {
             /** @enum {string} */
             kind: "axial_orientation";
@@ -4940,7 +4940,7 @@ export interface components {
             /** Format: int64 */
             reliabilityId: number | null;
             /**
-             * @description What the angle is measured against: pixel (counter-clockwise from +axis 1 towards +axis 2 as stored) or sky (east of north in the file's own celestial frame). Null means not declared; the file never says.
+             * @description What the angle is measured against: pixel (counter-clockwise from +axis 1 towards +axis 2 as stored) or sky (east of north in the file's own celestial frame). Null means not declared; older files never say, a file with PSIFRAME does.
              * @enum {string|null}
              */
             frame: "pixel" | "sky" | null;
@@ -4954,12 +4954,17 @@ export interface components {
             declaredAt: string;
             stale: boolean;
             /**
-             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
+             * @description How far the interpretation is established (ADR 0055): verified (a check the app ran), declared (the researcher, or the file's own header), inferred (a rule, named by declaredBy, with its mapping version) or unresolved. Not the worker's header statuses: "declared" there means the file says it.
              * @enum {string}
              */
             tier: "verified" | "declared" | "inferred" | "unresolved";
             /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
             mappingVersion: string;
+            /**
+             * @description The celestial frame a sky angle is stated in when that is not the grid's own: only a declaration the file's own header made (declaredBy vgt-file-header) has one, computed from the stored header on read. Null means the grid's own frame, which is what a person's sky declaration always means (ADR 0014 amendment).
+             * @enum {string|null}
+             */
+            skyFrame?: "galactic" | "icrs" | null;
         };
         /** @description A registered dataset: a reference to the original file plus header facts. The file itself is never altered. */
         Dataset: {
@@ -5001,6 +5006,8 @@ export interface components {
             corrections?: components["schemas"]["Corrections"] | null;
             /** @description Only on the dataset list: the datasets this file is the imported mask file of, when that is its only role (a file also used for a figure, region, analysis, run, or opened in the viewer has none). Derived from the masks' rows; nothing is hidden or unregistered by it (ADR 0058, mask files). */
             maskSourceFor?: components["schemas"]["MaskSourceRef"][];
+            /** @description What the file's own header says when it carries VGT.jl's keywords (PSIFRAME, PSIANGLE, VGTPROD, the VGT* run parameters, the input beam), and where the declaration in force disagrees with it; null for any other file. Computed on read (ADR 0014 amendment). */
+            vgtHeader?: components["schemas"]["VgtHeader"] | null;
         };
         DatasetList: {
             datasets: components["schemas"]["Dataset"][];
@@ -9560,6 +9567,43 @@ export interface components {
             /** @description tokens that still work */
             tokensKept: number;
             note: string;
+        };
+        /** @description The VGT.jl keywords of a product header as the file states them, mapped onto Vesqira's orientation declaration by one reading (mapping version 1). Everything here is declared by the file and none of it is verified. */
+        VgtHeader: {
+            /** @description VGTPROD: the product's role (psi, reliability, fit_rbar2, support). */
+            product: string | null;
+            /** @description PSIFRAME as written. Absent in older VGT output; its absence is never inferred from the WCS. */
+            psiFrame: string | null;
+            /** @description PSIANGLE as written. */
+            psiAngle: string | null;
+            /** @description The VGT* run parameters and the input beam (INB*), for a file imported without a run_metadata.toml. Values that name a place on a machine are dropped. */
+            params: {
+                key: string;
+                value: string;
+            }[];
+            /** @description The worker's reading of the keywords' resolution. status is approximate (the input beam and the smoothing Gaussian in quadrature, in arcseconds; the dn window is a top-hat and is not included) or not_established, with reasons. Declared and approximate, never verified; unlike a beam it is not read from BMAJ. */
+            resolution: {
+                [key: string]: unknown;
+            } | null;
+            /** @description The declaration the header makes; null when PSIFRAME is absent or unknown (nothing is inferred). */
+            orientation: {
+                /** @enum {string} */
+                unit: "rad" | "deg";
+                /** @enum {string} */
+                frame: "pixel" | "sky";
+                /** @enum {string|null} */
+                skyFrame: "galactic" | "icrs" | null;
+                /** @enum {string|null} */
+                quantity: "b_field" | null;
+                /** @description Per field: file (the header states it) or convention (only the unit, when BUNIT does not state rad or deg). */
+                basis: {
+                    [key: string]: "file" | "convention";
+                };
+            } | null;
+            /** @description Why part of the header was not used (an unknown PSIFRAME or PSIANGLE, a BUNIT that is not an angle unit). */
+            notes: string[];
+            /** @description Where the declaration in force differs from the header, in full sentences. The declaration in force stays in use; nothing is resolved silently. */
+            conflicts: string[];
         };
         /** @description A workspace: the access unit of the group server (ADR 0050 slice 3). */
         Workspace: {

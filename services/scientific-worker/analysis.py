@@ -84,6 +84,17 @@ def chan_range(c: Cube, args) -> tuple[int, int]:
     return c0, c1
 
 
+PRODUCER_CARDS = re.compile(r"PSIFRAME|PSIANGLE|INB(MAJ|MIN|PA)|VGT[A-Z0-9]{1,5}")
+
+
+def drop_producer_cards(h: fits.Header) -> None:
+    """Remove the cards a pipeline wrote to describe its own product (VGT's PSIFRAME, PSIANGLE, VGTPROD, the VGT* parameters, INB*) from the
+    header of a file Vesqira derives from it. They describe the angles and the resolution of the original; a smoothed or resampled map is
+    neither, so keeping them would make the result re-declare itself from a header that is no longer true. The derivation says what it did."""
+    for k in [k for k in h.keys() if PRODUCER_CARDS.fullmatch(k)]:
+        del h[k]
+
+
 def image_header(c: Cube, extra: dict) -> fits.Header:
     """A 2D header carrying the cube's spatial WCS (and nothing spectral)."""
     h = fits.Header()
@@ -444,6 +455,11 @@ def op_subset(args) -> dict:
     note = (args.note or "").strip()
     if note:
         h["HISTORY"] = "Vesqira: " + note
+    if rep["step"] > 1:
+        # a strided window multiplies the pixel scale, so the VGT widths stated in input pixels no longer describe this grid: dropped, never left to be misread
+        for k in ("VGTDN", "VGTKER", "VGTKFWHM"):
+            if k in h:
+                del h[k]
     h["HISTORY"] = f"Vesqira: window of the source, 0-based pixels x {rep['x0']}-{rep['x1']}, y {rep['y0']}-{rep['y1']}, every {rep['step']}, channels {rep['c0']}-{rep['c1']}"
     summary = {k: rep[k] for k in ("x0", "x1", "y0", "y1", "step", "c0", "c1", "world", "source")}
     res = _write_cube(c, out, h, "subset", summary, args)
@@ -523,7 +539,8 @@ def align_axial(args, src: Cube, ref: Cube, func, kw: dict, method: str, shape_o
        from the WCS at each pixel); a map already in the sky frame is used as it is;
     2. bilinear and exact methods resample Q = w cos 2θ and U = w sin 2θ and the weight w independently with the scalar
        path's own kernel, and θ = 1/2 atan2(U, Q); nearest picks one sample and averages nothing, so it resamples θ itself;
-    3. when the reference is in another celestial frame the position angle is rotated into it (astropy), and
+    3. a sky-frame map whose header states its angles in another celestial frame than its grid's (--axial-sky-frame) is first carried
+       into the grid's own frame at each pixel, and when the reference is in another celestial frame the position angle is rotated into it (astropy), and
     4. for a pixel-frame map the angle is turned back into the reference grid's own pixel frame.
     The frame must be declared (a refusal names it); the quantity is not needed, because the same quantity goes in and out."""
     if src.channels != 1:
@@ -538,7 +555,11 @@ def align_axial(args, src: Cube, ref: Cube, func, kw: dict, method: str, shape_o
     theta, wgt = axial_inputs(args, src)
     ny, nx = theta.shape
     xs, ys = np.meshgrid(np.arange(nx), np.arange(ny))
-    pa = ori.wrap_axial(ori.pixel_to_sky_pa(w_src, xs, ys, theta) if args.axial_frame == "pixel" else theta)
+    try:
+        pa = ori.wrap_axial(ori.pixel_to_sky_pa(w_src, xs, ys, theta) if args.axial_frame == "pixel"
+                            else ori.sky_pa_in_grid_frame(w_src, xs, ys, theta, args.axial_sky_frame))
+    except ori.Undeclared as e:
+        fail(str(e))
     ok = np.isfinite(pa) & np.isfinite(wgt)
     pa, wgt = np.where(ok, pa, np.nan), np.where(ok, wgt, np.nan)
 
@@ -730,10 +751,20 @@ def convolve_axial(args, c: Cube, chans, smooth, from_beam, to_beam, n_pix) -> d
     if len(chans) != 1:
         fail("an orientation map is a single plane")
     theta, wgt = axial_inputs(args, c)
+    if args.axial_sky_frame:
+        # the angles are stated in another celestial frame than the grid's: carry them into the grid's own frame first, so the smoothed
+        # map is a plain sky-frame map of its grid and its declaration needs no second frame
+        try:
+            w = ori.celestial_wcs(c)
+            ys, xs = np.mgrid[0:theta.shape[0], 0:theta.shape[1]]
+            theta = ori.wrap_axial(ori.sky_pa_in_grid_frame(w, xs, ys, theta, args.axial_sky_frame))
+        except ori.Undeclared as e:
+            fail(str(e))
     q, u_ = ori.doubled(theta, wgt)
     wm = np.where(np.isfinite(q), wgt, np.nan)                                 # the weight only where the angle has a value
     th, rel = ori.combine(smooth(q), smooth(u_), smooth(wm))
     nh = c.h.copy()
+    drop_producer_cards(nh)
     nh["BMAJ"], nh["BMIN"], nh["BPA"] = to_beam[0] / 3600.0, to_beam[1] / 3600.0, to_beam[2]
     nh["BITPIX"] = -32
     for k in ("BSCALE", "BZERO", "BLANK"):
@@ -746,12 +777,30 @@ def convolve_axial(args, c: Cube, chans, smooth, from_beam, to_beam, n_pix) -> d
                "pixels_orientation_undefined": int((np.isfinite(rel) & np.isnan(th)).sum()),
                "reliability_map": "resultant length of the smoothed doubled angles, |(Q, U)| / w", "declared_reliability_used": bool(args.weights)}
     summary["policy"] = (DOUBLED_ANGLE + " Smoothed with a Gaussian kernel to the target beam; pixels without a value stay without a value and neighbours "
-                         "are averaged over the finite pixels the kernel reaches. The kernel is applied in the frame the angles are stored in. "
-                         "Noise becomes correlated over the new beam.")
+                         "are averaged over the finite pixels the kernel reaches. The kernel is applied in the frame the angles are stored in"
+                         + (f"; they were first carried from the {ori.SKY_FRAMES[args.axial_sky_frame]} frame the file states them in into the grid's own frame, so the result is east of north in the grid's frame. "
+                            if args.axial_sky_frame else ". ")
+                         + "Noise becomes correlated over the new beam.")
     write_axial(args, th, rel, nh, summary, [f"Vesqira convolve (axial) {json.dumps({'from_beam_arcsec': list(from_beam), 'to_beam_arcsec': list(to_beam)})}: "
                                              "the doubled angle was smoothed, not the angle"])
     return carry_masks(args, {"ok": True, "op": "convolve", "summary": summary}, c, mk.dilate_flags(n_pix),
                        f"convolve to the target beam (kernel half-width {n_pix} pixels)", mk.CONVOLVE_RULE.format(n=n_pix))
+
+
+SOURCE_BEAM_POLICY = {
+    "vgt_approximate": ("The source resolution is the approximation the VGT keywords give (input beam and smoothing Gaussian in quadrature; the "
+                        "gradient window is a top-hat and is not included), accepted by the researcher: declared by the file and approximate, "
+                        "never verified, so the target resolution is reached only approximately."),
+    "user": "The source resolution was entered by the researcher; the file declares none.",
+}
+
+
+def note_source_beam(res: dict, source_beam) -> dict:
+    """Record on a convolution's summary which source resolution it started from when the file declared none."""
+    if source_beam:
+        res["summary"]["source_beam"] = source_beam
+        res["summary"]["policy"] += " " + SOURCE_BEAM_POLICY.get(source_beam["basis"], "")
+    return res
 
 
 def op_convolve(args) -> dict:
@@ -766,13 +815,26 @@ def op_convolve(args) -> dict:
     if not c.celestial or c.wcs is None or c.wcs.wcs.lng != c.x or c.wcs.wcs.lat != c.y:
         fail("the file needs a fully declared celestial WCS with the sky axes as its first two")
     h = c.h
-    try:
-        smaj, smin = float(h["BMAJ"]) * 3600.0, float(h["BMIN"]) * 3600.0
-    except (KeyError, TypeError, ValueError):
-        fail("the file does not declare its beam (BMAJ and BMIN), so the target cannot be reached by convolution")
-    if not (smaj > 0 and smin > 0):
-        fail("the declared beam is not positive")
-    spa = float(h["BPA"]) if "BPA" in h else None
+    supplied = args.source_bmaj is not None or args.source_bmin is not None
+    source_beam = None
+    if supplied:
+        # A product that states no beam of its own (VGT's maps: their resolution is the input beam widened by a kernel and a window) can be
+        # convolved from a resolution the person accepted or entered. A file that does declare a beam is never overridden.
+        if "BMAJ" in h or "BMIN" in h:
+            fail("the file declares its own beam (BMAJ, BMIN); that one is used, so a resolution given for it is refused rather than silently ignored")
+        if args.source_bmaj is None or args.source_bmin is None or not (args.source_bmaj > 0 and args.source_bmin > 0):
+            fail("give the source resolution as positive major and minor FWHM in arcseconds")
+        smaj, smin, spa = args.source_bmaj, args.source_bmin, args.source_bpa
+        basis = args.source_beam_basis or "user"
+        source_beam = {"basis": basis, "approximate": basis != "user"}
+    else:
+        try:
+            smaj, smin = float(h["BMAJ"]) * 3600.0, float(h["BMIN"]) * 3600.0
+        except (KeyError, TypeError, ValueError):
+            fail("the file does not declare its beam (BMAJ and BMIN), so the target cannot be reached by convolution")
+        if not (smaj > 0 and smin > 0):
+            fail("the declared beam is not positive")
+        spa = float(h["BPA"]) if "BPA" in h else None
     if spa is None and abs(smaj - smin) > 1e-6 * smaj:
         fail("the beam is elliptical but its position angle (BPA) is not declared")
     spa = 0.0 if spa is None else spa
@@ -822,12 +884,13 @@ def op_convolve(args) -> dict:
     if chans is None:
         fail("convolution supports an image or a cube with axes (x, y[, channel]) in that order")
     if args.axial_unit:
-        return convolve_axial(args, c, chans, smooth, (smaj, smin, spa), (tmaj, tmin, tpa), n_pix)
+        return note_source_beam(convolve_axial(args, c, chans, smooth, (smaj, smin, spa), (tmaj, tmin, tpa), n_pix), source_beam)
     out = []
     for _, p in chans:
         out.append((smooth(np.asarray(p, dtype=float)) * area).astype("<f4"))
     data = np.stack(out) if n == 3 else out[0]
     nh = h.copy()
+    drop_producer_cards(nh)
     nh["BMAJ"], nh["BMIN"], nh["BPA"] = tmaj / 3600.0, tmin / 3600.0, tpa
     nh["BITPIX"] = -32
     for k in ("BSCALE", "BZERO", "BLANK"):
@@ -836,6 +899,8 @@ def op_convolve(args) -> dict:
     nh["VESQOP"] = "convolve"
     summary = {"from_beam_arcsec": [smaj, smin, spa], "to_beam_arcsec": [tmaj, tmin, tpa], "kernel_half_width_pixels": n_pix,
                "rescaled_by_beam_area": per_beam, "area_ratio": area}
+    if source_beam:
+        summary["source_beam"] = source_beam
     nh["HISTORY"] = f"Vesqira convolve {json.dumps(summary)}"
     if bu_src in OWNED_UNIT:
         stamp_user_unit(nh, bunit, source=bu_src)
@@ -845,6 +910,8 @@ def op_convolve(args) -> dict:
            "policy": "Smoothed with a Gaussian kernel to the target beam; pixels without a value stay without a value and neighbours are "
                      "averaged over the finite pixels the kernel reaches. Noise becomes correlated over the new beam. "
                      "Units in K are smoothed as they are; Jy/beam values are rescaled by the beam-area ratio."}
+    if source_beam:
+        out["policy"] += " " + SOURCE_BEAM_POLICY.get(source_beam["basis"], "")
     if bu_src == "unresolved":
         # not rescaled is an assumption of surface brightness, and nothing says so: the result says it
         out["policy"] += (" The file has no BUNIT and none was declared, so the values were smoothed as they are, as if in a surface-brightness unit; "
@@ -909,6 +976,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--target-bpa", type=float, default=0.0)
     ap.add_argument("--method", choices=["interp", "nearest", "exact"], default="interp")
     ap.add_argument("--axial-unit", choices=["deg", "rad"])      # the map is declared an axial orientation map, in this unit (ADR 0042)
+    ap.add_argument("--source-bmaj", type=float)    # arcsec: the resolution of a file that declares no beam, accepted or entered by the researcher
+    ap.add_argument("--source-bmin", type=float)
+    ap.add_argument("--source-bpa", type=float)
+    ap.add_argument("--source-beam-basis", choices=["vgt_approximate", "user"])
+    ap.add_argument("--axial-sky-frame", choices=list(ori.SKY_FRAMES))   # the celestial frame a sky-frame map states its angles in, when not its grid's
+    ap.add_argument("--ref-axial-sky-frame", choices=list(ori.SKY_FRAMES))
     ap.add_argument("--axial-frame", choices=["pixel", "sky"])   # its declared frame; absent when not declared
     ap.add_argument("--weights")                                 # its declared reliability map (same grid), a path
     ap.add_argument("--rel-out")                                 # where an orientation result's companion reliability map goes

@@ -1497,7 +1497,7 @@ def orientation_sky(c: Cube, req: dict) -> dict:
         ori.b_rotation_deg(req.get("quantity"))
         if c.channels != 1:
             raise ori.Undeclared("an orientation map is a single plane")
-        w = ori.celestial_wcs(c) if req["frame"] == "pixel" else None
+        w = ori.celestial_wcs(c) if (req["frame"] == "pixel" or req.get("sky_frame")) else None
     except ori.Undeclared as e:
         raise Refused("unsupported", str(e))
     x, y = as_index(req, "x", c.shape[c.x]), as_index(req, "y", c.shape[c.y])
@@ -1513,8 +1513,9 @@ def orientation_sky(c: Cube, req: dict) -> dict:
     deg = v if unit == "deg" else math.degrees(v)
     out["stored"] = v
     try:
-        sky = float(ori.to_sky_b_field(w, x, y, deg, req["frame"], req["quantity"]))
+        sky = float(ori.to_sky_b_field(w, x, y, deg, req["frame"], req["quantity"], req.get("sky_frame")))
         if w is not None:
+            out["angle_stated_in"] = req.get("sky_frame")
             out["north_pixel_angle_deg"] = float(ori.sky_pa_to_pixel(w, x, y, 0.0))
     except ori.Undeclared as e:
         raise Refused("unsupported", str(e))

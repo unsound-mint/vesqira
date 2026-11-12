@@ -29,6 +29,47 @@ const OPS: { id: AnalysisOp; label: string; help: string }[] = [
 
 const fmt = (v: number | null | undefined) => (v === null || v === undefined ? EM : Number(v.toPrecision(6)).toString());
 
+type Resolution = { status?: string; reasons?: string[]; gaussian_arcsec?: { bmaj: number; bmin: number; bpa: number }; window?: { side_pixels: number; side_arcsec: number } };
+
+/**
+ * Where a convolution starts when the file declares no beam. A VGT map has none on purpose: its resolution is the input beam widened by a
+ * Gaussian and a window. The file's keywords give an approximation (declared, never verified) that the person may accept, or they enter
+ * a resolution; with neither, the effective resolution is "not established" and says why.
+ */
+function SourceResolution({ dataset, v, set }: { dataset: Dataset; v: Record<string, string>; set: (k: string, val: string) => void }) {
+  const hasBeam = (dataset as { header?: { beam?: { status?: string } } }).header?.beam?.status === "declared";
+  const r = (dataset.vgtHeader?.resolution ?? null) as Resolution | null;
+  if (hasBeam) return null;
+  const ok = r?.status === "approximate" && r.gaussian_arcsec;
+  return (
+    <div>
+      {r ? (
+        ok ? (
+          <p className={s.note}>
+            Effective resolution of this VGT map, declared by the file’s keywords and approximate: {r.gaussian_arcsec!.bmaj.toPrecision(4)}″ × {r.gaussian_arcsec!.bmin.toPrecision(4)}″ (the input beam and the smoothing Gaussian in quadrature).
+            The {r.window?.side_pixels}×{r.window?.side_pixels} pixel gradient window ({r.window?.side_arcsec.toPrecision(3)}″) is a top-hat and is not included. This is not a measured beam.
+          </p>
+        ) : (
+          <p className={s.note}>Effective resolution: not established. {(r.reasons ?? []).join("; ")}.</p>
+        )
+      ) : <p className={s.note}>The file declares no beam, so a resolution to start from has to be given.</p>}
+      <Select label="Start from" value={v.srcBasis ?? ""} onChange={(e) => set("srcBasis", e.target.value)}>
+        <option value="">The file’s own beam (none declared: convolution is refused)</option>
+        {ok ? <option value="vgt">Accept the VGT approximation above</option> : null}
+        <option value="user">A resolution I enter</option>
+      </Select>
+      {v.srcBasis === "user" ? (
+        <>
+          <Input label="Source major FWHM (arcsec)" value={v.smaj ?? ""} onChange={(e) => set("smaj", e.target.value)} inputMode="decimal" />
+          <Input label="Source minor FWHM (arcsec)" value={v.smin ?? ""} onChange={(e) => set("smin", e.target.value)} inputMode="decimal" />
+          <Input label="Source position angle (deg, north through east)" value={v.spa ?? "0"} onChange={(e) => set("spa", e.target.value)} inputMode="decimal" />
+        </>
+      ) : null}
+      {v.srcBasis ? <p className={s.note}>The choice is recorded in the new map’s provenance; the new map’s beam is the target, reached only as well as this starting resolution is true.</p> : null}
+    </div>
+  );
+}
+
 /** New files from a cube: statistics, moments, cutouts, slabs, and alignment. Results are new datasets with their provenance. */
 export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }: { dataset: Dataset; datasets: Dataset[]; channels: number; onCreated: (d: Dataset) => void; onJob: (j: Job) => void }) {
   const [op, setOp] = useState<AnalysisOp>("moment");
@@ -60,7 +101,11 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
     if (op === "cutout") { p.x0 = String(Number(v.x0 ?? "1") - 1); p.x1 = String(Number(v.x1 ?? "1") - 1); p.y0 = String(Number(v.y0 ?? "1") - 1); p.y1 = String(Number(v.y1 ?? "1") - 1); }
     if (op === "stats" && v.c0?.trim()) { p.chanStart = String(Number(v.c0) - 1); if (v.c1?.trim()) p.chanEnd = String(Number(v.c1) - 1); }
     if (op === "align") p.method = v.method || "interp";
-    if (op === "convolve") { p.targetBmaj = v.tmaj ?? ""; p.targetBmin = v.tmin ?? ""; p.targetBpa = v.tpa || "0"; }
+    if (op === "convolve") {
+      p.targetBmaj = v.tmaj ?? ""; p.targetBmin = v.tmin ?? ""; p.targetBpa = v.tpa || "0";
+      if (v.srcBasis === "vgt") p.sourceBeamBasis = "vgt_approximate"; // the server takes the numbers from the file's keywords, not from here
+      if (v.srcBasis === "user") { p.sourceBeamBasis = "user"; p.sourceBmaj = v.smaj ?? ""; p.sourceBmin = v.smin ?? ""; p.sourceBpa = v.spa || "0"; }
+    }
     return p;
   }
 
@@ -132,6 +177,7 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
       {op === "convolve" ? (
         <>
           <p className={s.note}>Current beam: {beamText(dataset)}</p>
+          <SourceResolution dataset={dataset} v={v} set={set} />
           <>
             <Input label="Target major FWHM (arcsec)" value={v.tmaj ?? ""} onChange={(e) => set("tmaj", e.target.value)} inputMode="decimal" />
             <Input label="Target minor FWHM (arcsec)" value={v.tmin ?? ""} onChange={(e) => set("tmin", e.target.value)} inputMode="decimal" />
@@ -141,7 +187,7 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
       ) : null}
       {takesMasks && masks && masks.length > 0 ? <MaskPolicies masks={masks} choice={policy} onChange={setPolicy} /> : null}
       {carryOp && masks && masks.length > 0 ? <MaskCarry masks={masks} state={carry} onChange={setCarry} op={carryOp} required={carryRequired} /> : null}
-      <Button variant="primary" disabled={busy || badWeight(policy) || (carryOp !== null && !!masks && carryUndecided(masks, carry, carryRequired)) || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0))} onClick={go}>
+      <Button variant="primary" disabled={busy || badWeight(policy) || (carryOp !== null && !!masks && carryUndecided(masks, carry, carryRequired)) || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0)) || (op === "convolve" && v.srcBasis === "user" && !(Number(v.smaj) > 0 && Number(v.smin) > 0))} onClick={go}>
         {busy ? "Working…" : remote ? "Create a job on the host" : op === "stats" ? "Compute statistics" : "Create the new file"}
       </Button>
       <QueueNote reason={queued} />
