@@ -60,6 +60,105 @@ def declared(header: fits.Header, key: str):
     return None, "unresolved"
 
 
+VGT_KEYS = re.compile(r"PSIFRAME|PSIANGLE|INB(MAJ|MIN|PA)|VGT[A-Z0-9]{1,5}")
+ARC_UNITS = (("arcsec", 1.0), ("arcmin", 60.0), ("deg", 3600.0))   # token in the card comment -> arcseconds per unit
+
+
+def _comment_unit(comment: str):
+    """The angle unit a card's comment names (arcsec, arcmin or deg), or None when it names none or more than one.
+    A FITS card has no unit field: the comment is the only place INBMAJ could say what it is in, so it is read, never guessed."""
+    low = comment.lower()
+    found = {name: f for name, f in ARC_UNITS if name in low}
+    if "arcsecond" in low:
+        found["arcsec"] = 1.0
+    if "degree" in low:
+        found["deg"] = 3600.0
+    return next(iter(found.items())) if len(found) == 1 else None
+
+
+def vgt_resolution(h: fits.Header, params: dict) -> dict:
+    """What the VGT keywords establish about a map's resolution (ADR 0018 amendment). The map is the input cube's beam, widened by the
+    Q/U Gaussian (VGTKFWHM, in input pixels) and by a dn x dn gradient window (a top-hat, not a Gaussian: not included). When every
+    input is present and its unit is established the Gaussian part is the input beam and the kernel in quadrature along each axis,
+    which is exact for Gaussians; the result is an approximation (declared, never verified) because of the window. Otherwise
+    nothing is computed and `reasons` says what is missing: absence is never filled with a default."""
+    out = {"status": "not_established", "reasons": [], "approximate": True}
+    kfwhm = params.get("VGTKFWHM")
+    dn = params.get("VGTDN")
+    reasons = out["reasons"]
+    if not (isinstance(kfwhm, (int, float)) and not isinstance(kfwhm, bool) and kfwhm > 0):
+        reasons.append("VGTKFWHM (the smoothing kernel's FWHM in input pixels) is missing or not positive")
+    scale = None
+    try:
+        from astropy.wcs import WCS
+        w = WCS(h, naxis=2)
+        if not w.has_celestial:
+            raise ValueError("axes 1 and 2 are not a celestial pair")
+        m = w.celestial.pixel_scale_matrix * 3600.0
+        sx, sy = float((m[:, 0] ** 2).sum() ** 0.5), float((m[:, 1] ** 2).sum() ** 0.5)
+        if not (sx > 0 and sy > 0):
+            raise ValueError("the pixel scale is zero")
+        if abs(sx - sy) > 1e-3 * max(sx, sy):
+            reasons.append("the pixels are not square on the sky, so a kernel width in pixels is not one width in arcseconds")
+        else:
+            scale = (sx + sy) / 2.0
+    except Exception:
+        reasons.append("the pixel scale in arcseconds is not available (no usable celestial WCS on axes 1 and 2)")
+    beam = {}
+    unit = None
+    if "INBMAJ" not in h:
+        reasons.append("INBMAJ (the input cube's beam) is missing")
+    else:
+        unit = _comment_unit(str(h.comments["INBMAJ"]))
+        if unit is None:
+            reasons.append("the card INBMAJ does not state its unit (arcsec, arcmin or deg) in its comment, and Vesqira does not guess it")
+        for k in ("INBMAJ", "INBMIN", "INBPA"):
+            v = params.get(k)
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                beam[k] = v
+        if "INBMAJ" not in beam or beam["INBMAJ"] <= 0:
+            reasons.append("INBMAJ is not a positive number")
+        elif "INBMIN" not in beam or beam["INBMIN"] <= 0:
+            reasons.append("INBMIN is missing or not positive")
+        elif "INBPA" not in beam and abs(beam["INBMAJ"] - beam["INBMIN"]) > 1e-6 * beam["INBMAJ"]:
+            reasons.append("the input beam is elliptical but INBPA is missing")
+    if isinstance(dn, (int, float)) and not isinstance(dn, bool) and dn > 0 and scale is not None:
+        out["window"] = {"side_pixels": dn, "side_arcsec": dn * scale,
+                         "note": "a top-hat window of this side; it is not a Gaussian and is not included in the beam below"}
+    if reasons:
+        return out
+    f = unit[1]
+    k = kfwhm * scale
+    bmaj, bmin = beam["INBMAJ"] * f, beam["INBMIN"] * f
+    out.update({
+        "status": "approximate",
+        "kernel_fwhm_arcsec": k,
+        "input_beam_arcsec": {"bmaj": bmaj, "bmin": bmin, "bpa": beam.get("INBPA", 0.0), "unit_stated_as": unit[0]},
+        "gaussian_arcsec": {"bmaj": (bmaj ** 2 + k ** 2) ** 0.5, "bmin": (bmin ** 2 + k ** 2) ** 0.5, "bpa": beam.get("INBPA", 0.0)},
+        "note": ("input beam and the smoothing Gaussian combined in quadrature along each axis; the dn window is a top-hat that is not "
+                 "included, so this is declared by the file's keywords and approximate, never verified"),
+    })
+    return out
+
+
+def vgt_keywords(h: fits.Header):
+    """The keywords VGT.jl writes into its products, as the file states them (None when there are none): the angle's frame
+    (PSIFRAME) and meaning (PSIANGLE), the product role (VGTPROD), the run parameters (VGT*) and the input cube's beam (INB*).
+    Nothing is interpreted here; the API maps them onto Vesqira's declarations. Values are cleaned like every header value."""
+    keys = [k for k in h.keys() if VGT_KEYS.fullmatch(k)]
+    if not keys:
+        return None
+    params = {k: clean(h[k]) for k in keys if k not in ("PSIFRAME", "PSIANGLE", "VGTPROD")}
+    params = {k: v for k, v in params.items() if v is not None}
+    return {
+        "psiframe": clean(h["PSIFRAME"]) if "PSIFRAME" in h else None,
+        "psiangle": clean(h["PSIANGLE"]) if "PSIANGLE" in h else None,
+        "vgtprod": clean(h["VGTPROD"]) if "VGTPROD" in h else None,
+        "params": params,
+        "resolution": vgt_resolution(h, params),
+    }
+
+
 def axes_shape(h: fits.Header) -> list[int]:
     """Validated NAXISn list in native FITS order; rejects absurd sizes before anything allocates."""
     if h.get("SIMPLE") is not True:
@@ -108,6 +207,7 @@ def describe(path: str) -> dict:
         "axes": axes,
         "bunit": bunit,
         "bunit_status": bunit_status,
+        "vgt": vgt_keywords(h),
         "specsys": declared(h, "SPECSYS")[0],
         "radesys": declared(h, "RADESYS")[0],
         "provenance_note": "values are declared by the file header; nothing here is verified",

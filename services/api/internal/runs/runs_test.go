@@ -89,3 +89,36 @@ func TestRefusesNonMetadataAndOversizedInput(t *testing.T) {
 		t.Error("oversized metadata accepted")
 	}
 }
+
+// run_metadata.toml changed: the current VGT writes the project name "VGT" and no longer writes finalize_mask_mode, histogram_edge_mode,
+// gradient_sample_mode or the noise exponents. The parser requires none of them, and an old file that has them keeps them as parameters.
+func TestParserNeitherRequiresNorDropsTheRetiredKeys(t *testing.T) {
+	const current = `generated_at_utc = "2026-11-10T09:21:44Z"
+gitcommit = "bcbaed4ec9800ef95c561cfb4ad45c344743e469"
+[config]
+angle_frame = "galactic"
+dn = 10
+ker = 8
+[outputs]
+psi_path = "out/psi_demo.fits"
+[project]
+name = "VGT"
+`
+	p, err := ParseVGT([]byte(current), "run")
+	if err != nil || p.OutputFiles["psi"] != "psi_demo.fits" || !p.Reproducible {
+		t.Fatalf("current layout: %v %+v", err, p)
+	}
+	old := strings.Replace(current, `name = "VGT"`, `name = "Astronomy"`, 1)
+	old = strings.Replace(old, "dn = 10", "dn = 10\nfinalize_mask_mode = \"keep\"\nhistogram_edge_mode = \"clip\"\ngradient_sample_mode = \"center\"\nnoise_exponent = 2", 1)
+	q, err := ParseVGT([]byte(old), "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, x := range q.Params {
+		got[x.Key] = x.Value
+	}
+	if got["finalize_mask_mode"] != "keep" || got["noise_exponent"] != "2" || got["angle_frame"] != "galactic" {
+		t.Errorf("an old file's keys are recorded as written: %v", got)
+	}
+}

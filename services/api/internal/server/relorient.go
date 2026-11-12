@@ -164,6 +164,9 @@ func (s *Server) orientationSide(r *http.Request, d catalog.Dataset, prefix, whi
 		return nil, status, which + ": " + msg
 	}
 	args := []string{"--" + prefix + "axial-unit", in.Unit, "--" + prefix + "axial-frame", *in.Frame, "--" + prefix + "axial-quantity", *in.Quantity}
+	if in.SkyFrame != nil {
+		args = append(args, "--"+prefix+"axial-sky-frame", *in.SkyFrame)
+	}
 	if prefix == "" {
 		args = append([]string{"--input", real}, args...)
 	} else {

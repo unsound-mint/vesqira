@@ -67,7 +67,10 @@ type Renderer<K extends OverlayKind> = (overlay: OverlayOf<K>, scene: Scene, ctx
 const orientation: Renderer<"orientation"> = (o, scene, ctx) => (o.datasetId === scene.base.datasetId ? ownLines(o, ctx) : otherLines(o, scene, ctx));
 
 function ownLines(o: OverlayOf<"orientation">, { plane, interp, reliability, scale }: DrawContext): Mark[] {
-  if (!interp || scale <= 0) return [];
+  // A map whose header states its angles in another celestial frame than its grid's cannot be drawn from its own pixel grid: these lines
+  // use the stored angle as a pixel direction, which would be wrong by the local angle between the two norths. Nothing is drawn (the
+  // orientation panel says why); the same map as another view's overlay goes through the worker, which carries the angle through the sky.
+  if (!interp || interp.skyFrame || scale <= 0) return [];
   const { width: w, height: h } = plane.head;
   const needsRel = o.opacity === "reliability" || o.length === "reliability" || o.threshold !== undefined;
   const rel = needsRel ? reliabilityFor(plane, reliability) : null;

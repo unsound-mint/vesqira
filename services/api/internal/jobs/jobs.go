@@ -1052,6 +1052,8 @@ type AnalysisSettings struct {
 	// A map the person declared as an axial orientation map (ADR 0042): its unit, its frame when declared, and its reliability
 	// map's absolute host path. align and convolve then resample the doubled angle and write result.reliability.fits.
 	AxialUnit, AxialFrame, Weights string
+	// AxialSkyFrame is the celestial frame a sky-frame map states its angles in when that is not its grid's ("icrs" or "galactic").
+	AxialSkyFrame string
 	// Masks to apply (statistics and moment maps, ADR 0064): a JSON list of {path, type, policy[, weight]}, each path a mask file on this
 	// host. Corrections are the researcher's WCS and unit corrections for the input files (ADR 0061), a JSON object {path: {hash, bunit,
 	// wcs}} keyed by Input, Reference or Weights. Both land in the script inside single quotes: RenderAnalysis checks their shape and
@@ -1184,7 +1186,8 @@ var (
 	analysisOp = map[string]bool{"axial_diff": true, "scalar_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true, "convolve": true}
 	argKinds   = map[string]*regexp.Regexp{
 		"order": regexp.MustCompile(`^[012]$`), "chan-start": intRe, "chan-end": intRe, "x0": intRe, "x1": intRe, "y0": intRe, "y1": intRe,
-		"threshold": numRe, "target-bmaj": numRe, "target-bmin": numRe, "target-bpa": numRe, "method": regexp.MustCompile(`^(interp|nearest|exact)$`),
+		"threshold": numRe, "target-bmaj": numRe, "target-bmin": numRe, "target-bpa": numRe, "source-bmaj": numRe, "source-bmin": numRe, "source-bpa": numRe,
+		"source-beam-basis": regexp.MustCompile(`^(vgt_approximate|user)$`), "method": regexp.MustCompile(`^(interp|nearest|exact)$`),
 	}
 )
 
@@ -1201,7 +1204,8 @@ func RenderAnalysis(p AnalysisSettings) (string, error) {
 		return "", fmt.Errorf("%w: file and folder paths must be absolute, without spaces, quotes or ..", ErrInvalid)
 	case p.CPUs < 1 || p.CPUs > 256, !memRe.MatchString(p.Mem), !timeRe.MatchString(p.Time):
 		return "", fmt.Errorf("%w: bad resources", ErrInvalid)
-	case p.AxialUnit != "" && p.AxialUnit != "deg" && p.AxialUnit != "rad", p.AxialFrame != "" && p.AxialFrame != "pixel" && p.AxialFrame != "sky",
+	case p.AxialUnit != "" && p.AxialUnit != "deg" && p.AxialUnit != "rad", p.AxialFrame != "" && p.AxialFrame != "pixel" && p.AxialFrame != "sky", p.AxialSkyFrame != "" && p.AxialSkyFrame != "icrs" && p.AxialSkyFrame != "galactic",
+		p.AxialSkyFrame != "" && p.AxialFrame != "sky",
 		p.Weights != "" && !ValidPath(p.Weights), p.AxialUnit == "" && (p.AxialFrame != "" || p.Weights != ""):
 		return "", fmt.Errorf("%w: bad orientation declaration", ErrInvalid)
 	}
@@ -1242,6 +1246,9 @@ func RenderAnalysis(p AnalysisSettings) (string, error) {
 		fmt.Fprintf(&args, " --axial-unit %s", p.AxialUnit)
 		if p.AxialFrame != "" {
 			fmt.Fprintf(&args, " --axial-frame %s", p.AxialFrame)
+		}
+		if p.AxialSkyFrame != "" {
+			fmt.Fprintf(&args, " --axial-sky-frame %s", p.AxialSkyFrame)
 		}
 		if p.Weights != "" {
 			fmt.Fprintf(&args, " --weights %s", p.Weights)

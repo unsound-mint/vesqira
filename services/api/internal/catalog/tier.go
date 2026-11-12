@@ -9,7 +9,7 @@ const (
 	// TierVerified: established by a check the app ran and that passed (a BUNIT card present and parsed; a mask of the pixels with
 	// no value, computed from the data). Nothing is verified by being stored.
 	TierVerified = "verified"
-	// TierDeclared: the researcher said so.
+	// TierDeclared: the researcher said so, or the file's own header did (declared by the file, with the mapping version of the reading).
 	TierDeclared = "declared"
 	// TierInferred: proposed by an adapter or a rule, named with the version of its mapping; not confirmed by anyone.
 	TierInferred = "inferred"
@@ -24,6 +24,8 @@ var adapterMappings = map[string]string{
 	"vgt-run-adapter":   "1",
 	"rohsa-run-adapter": "1",
 	"vesqira-analysis":  "1",
+	// the file's own header (PSIFRAME and PSIANGLE, VGT.jl): the mapping from those cards to a declaration
+	FileHeaderAuthor: "1",
 }
 
 // RuleAuthorPrefix starts the author of a declaration a researcher's own import rule made ("rule:<name>", ADR 0058). The
@@ -36,6 +38,10 @@ const RuleAuthorPrefix = "rule:"
 func TierOf(by string) (tier, mapping string) {
 	if by == "" || by == "user" || strings.HasPrefix(by, RuleAuthorPrefix) {
 		return TierDeclared, ""
+	}
+	if by == FileHeaderAuthor {
+		// the file states it: "declared" in the sense the header fields use (bunit_status); the mapping version says which reading of the cards made it
+		return TierDeclared, adapterMappings[by]
 	}
 	if v, ok := adapterMappings[by]; ok {
 		return TierInferred, v

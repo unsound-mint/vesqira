@@ -67,6 +67,35 @@ def sky_frame(w):
         raise Undeclared("the celestial frame of this file cannot be determined from its WCS") from e
 
 
+SKY_FRAMES = {"icrs": "ICRS", "galactic": "Galactic"}   # celestial frames a file's header can name for its angles (PSIFRAME)
+
+
+def declared_celestial_frame(name):
+    """The astropy frame a declaration names ("icrs" or "galactic"), or Undeclared for anything else: a name is never guessed."""
+    from astropy.coordinates import ICRS, Galactic
+    try:
+        return {"icrs": ICRS(), "galactic": Galactic()}[name]
+    except (KeyError, TypeError):
+        raise Undeclared(f"the celestial frame {name!r} named for this map's angles is not one Vesqira can carry an angle from (icrs or galactic)") from None
+
+
+def sky_pa_in_grid_frame(w, x, y, pa_deg, declared=None):
+    """Position angle east of north in w's own celestial frame of the sky position angle `pa_deg` that the map states in `declared`
+    (None: it is stated in w's own frame, as a person's "sky" declaration is, and nothing changes). A file may state its angles in
+    a frame other than its grid's (VGT writes PSIFRAME = GALACTIC on an equatorial grid): north differs between the two by a
+    position-dependent angle, so the direction is carried through the sky (astropy) before anything else uses it."""
+    if declared is None:
+        return np.asarray(pa_deg, dtype=float)
+    if w is None:
+        raise Undeclared("the map states its angles in another celestial frame than its grid's, and it has no celestial WCS to carry them into")
+    decl, grid = declared_celestial_frame(declared), sky_frame(w)
+    if grid.is_equivalent_frame(decl):
+        return np.asarray(pa_deg, dtype=float)
+    x, y, pa = np.broadcast_arrays(*(np.asarray(v, dtype=float) for v in (x, y, pa_deg)))
+    origin = w.pixel_to_world(x, y).transform_to(decl)
+    return rotate_pa_frame(origin, pa, grid)
+
+
 def _pa_deg(origin, tip) -> np.ndarray:
     return np.asarray(origin.position_angle(tip).deg, dtype=float) % 360.0
 
@@ -154,14 +183,18 @@ def wrap_axial(deg):
     return np.where(out >= 180.0, 0.0, out)
 
 
-def to_sky_b_field(w, x, y, angle_deg, frame, quantity):
+def to_sky_b_field(w, x, y, angle_deg, frame, quantity, sky_frame_name=None):
     """Sky-frame B-field orientation (degrees east of north in w's frame, in [0, 180)) of an axial angle given in `frame`.
+    `sky_frame_name` is the celestial frame a sky-frame angle is stated in when that is not the grid's own (sky_pa_in_grid_frame).
 
     Refuses, naming the missing declaration, when the frame or the quantity is not declared."""
     check_frame(frame)
     rot = b_rotation_deg(quantity)
     a = np.asarray(angle_deg, dtype=float)
-    pa = pixel_to_sky_pa(w, x, y, a) if frame == "pixel" else a
+    if frame == "pixel":
+        pa = pixel_to_sky_pa(w, x, y, a)
+    else:
+        pa = sky_pa_in_grid_frame(w, x, y, a, sky_frame_name)
     return wrap_axial(pa + rot)
 
 

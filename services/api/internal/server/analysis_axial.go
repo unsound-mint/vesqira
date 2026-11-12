@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"path"
 	"strings"
@@ -55,6 +56,9 @@ func (s *Server) axialAnalysis(ctx context.Context, op string, d catalog.Dataset
 	if a.frame != "" {
 		a.args = append(a.args, "--axial-frame", a.frame)
 	}
+	if in.SkyFrame != nil {
+		a.args = append(a.args, "--axial-sky-frame", *in.SkyFrame) // stated in another celestial frame than the grid's: the worker carries it first
+	}
 	if in.ReliabilityID != nil {
 		p, code, msg := s.reliabilityPath(ctx, d, remote)
 		if code != 0 {
@@ -64,6 +68,69 @@ func (s *Server) axialAnalysis(ctx context.Context, op string, d catalog.Dataset
 		a.args = append(a.args, "--weights", a.weights)
 	}
 	return a, 0, ""
+}
+
+// acceptSourceBeam validates the resolution a convolution is asked to start from when the file declares no beam (ADR 0018, amendment) and,
+// for the VGT approximation, replaces whatever numbers the request carried with the ones the file's own keywords give, so the basis the
+// result records ("vgt_approximate": declared by the file, approximate) is true of the values used. Returns a status and sentence on refusal.
+func acceptSourceBeam(op string, d catalog.Dataset, opts map[string]string) (int, string) {
+	basis := opts["source-beam-basis"]
+	_, hasMaj := opts["source-bmaj"]
+	_, hasMin := opts["source-bmin"]
+	_, hasPA := opts["source-bpa"]
+	if basis == "" && !hasMaj && !hasMin && !hasPA {
+		return 0, ""
+	}
+	if op != "convolve" {
+		return 422, "a source resolution applies to a convolution only"
+	}
+	switch basis {
+	case "user":
+		if !hasMaj || !hasMin {
+			return 422, "enter the source resolution as major and minor FWHM in arcseconds"
+		}
+	case "vgt_approximate":
+		var res struct {
+			Status string `json:"status"`
+			Gauss  *struct {
+				Bmaj float64 `json:"bmaj"`
+				Bmin float64 `json:"bmin"`
+				Bpa  float64 `json:"bpa"`
+			} `json:"gaussian_arcsec"`
+		}
+		if d.VGT == nil || json.Unmarshal(d.VGT.Resolution, &res) != nil || res.Status != "approximate" || res.Gauss == nil {
+			return 422, "the file's header does not establish an approximate resolution (effective resolution: not established), so there is nothing to accept; enter the resolution yourself"
+		}
+		opts["source-bmaj"], opts["source-bmin"], opts["source-bpa"] = fmt.Sprint(res.Gauss.Bmaj), fmt.Sprint(res.Gauss.Bmin), fmt.Sprint(res.Gauss.Bpa)
+	default:
+		return 422, "say whether the source resolution is the VGT approximation or one you entered (sourceBeamBasis)"
+	}
+	return 0, ""
+}
+
+// axialStatedDifferently says, in a sentence, why two axial maps cannot simply be subtracted pixel by pixel: their angles are not stated
+// against the same direction. The difference subtracts the stored numbers, so a pixel-grid angle minus a sky angle, or an angle stated
+// in the Galactic frame minus one stated in the grid's own, would be wrong by an angle that varies across the map. Relative orientation
+// carries both through the sky and is the comparison that is right for them. "" when the statements agree.
+func axialStatedDifferently(a, b *catalog.Interpretation) string {
+	if a.Frame == nil || b.Frame == nil {
+		return "" // an undeclared frame is the person's own business here: a difference of two maps on one grid was always allowed for them
+	}
+	fa, fb := *a.Frame, *b.Frame
+	own := func(in *catalog.Interpretation) string {
+		if in.SkyFrame != nil {
+			return "east of north in the " + catalog.SkyFrameName(*in.SkyFrame) + " frame"
+		}
+		if *in.Frame == "sky" {
+			return "east of north in the grid's own frame"
+		}
+		return "counter-clockwise from +axis 1 on the pixel grid"
+	}
+	if fa != fb || deref(a.SkyFrame) != deref(b.SkyFrame) {
+		return "the two maps state their angles differently (" + own(a) + " against " + own(b) + "), so subtracting them pixel by pixel would be wrong by an angle that changes across the map. " +
+			"Use the relative orientation comparison, which carries both into the sky, or declare both the same way if they really are"
+	}
+	return ""
 }
 
 // reliabilityPath is the path of the reliability map declared for an axial map d, checked: still a scalar map on d's grid and on
@@ -142,6 +209,8 @@ type axialParams struct {
 	Unit     string  `json:"unit"`
 	Frame    *string `json:"frame"`
 	Quantity *string `json:"quantity"`
+	// SkyFrame is the celestial frame the input's angles were stated in when not its grid's; the result is in its grid's own frame.
+	SkyFrame *string `json:"skyFrame,omitempty"`
 }
 
 func remoteRelPath(outDir string) string { return path.Join(outDir, "result.reliability.fits") }

@@ -48,6 +48,9 @@ type Dataset struct {
 	// Corrections are the researcher's WCS and unit corrections in force (or stale), from the latest record of their history
 	// (ADR 0061); nil when nothing is corrected. Header stays what the file said.
 	Corrections *Corrections `json:"corrections"`
+	// VGT is what the file's header says when it carries VGT.jl's keywords (the angle's frame and meaning, the product role, the run
+	// parameters, the resolution), and where a declaration in force disagrees with it; nil for any other file. Computed on read.
+	VGT *VGTHeader `json:"vgtHeader"`
 }
 
 // Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).
@@ -56,12 +59,16 @@ type Interpretation struct {
 	Unit          string `json:"unit"` // "deg" or "rad", required
 	ReliabilityID *int64 `json:"reliabilityId"`
 	// Frame is what the angle is measured against: "pixel" (counter-clockwise from +axis 1 towards +axis 2 as stored) or
-	// "sky" (east of north, in the file's own celestial frame). Nil means not declared; the file never says.
+	// "sky" (east of north, in the file's own celestial frame). Nil means not declared; older files never say, VGT.jl's newer ones do (PSIFRAME).
 	Frame *string `json:"frame"`
 	// Quantity is what the angle describes: "b_field", "gradient", "dust_polarization", "starlight_polarization" or
 	// "unspecified". Nil means not declared.
-	Quantity   *string   `json:"quantity"`
-	DeclaredBy string    `json:"declaredBy"` // "user" or the name of an adapter, e.g. "vgt-run-adapter"
+	Quantity *string `json:"quantity"`
+	// SkyFrame is the celestial frame a "sky" angle is stated in when that is not the grid's own ("galactic" or "icrs"); nil means the
+	// grid's own frame, which is what a person's "sky" declaration always means. Only a declaration the file's own header made
+	// (DeclaredBy FileHeaderAuthor) has one; it is computed from the stored header on read and is not a stored column.
+	SkyFrame   *string   `json:"skyFrame"`
+	DeclaredBy string    `json:"declaredBy"` // "user", the file's header (FileHeaderAuthor) or the name of an adapter, e.g. "vgt-run-adapter"
 	DeclaredAt time.Time `json:"declaredAt"`
 	// Tier is how far this interpretation is established (ADR 0055): declared by the researcher, or inferred by DeclaredBy's
 	// rule, whose mapping version is MappingVersion (empty for a declared one).
@@ -269,6 +276,7 @@ func (s *Store) Get(id int64) (Dataset, error) {
 	if err == nil {
 		d.Corrections, err = s.corrections(d)
 	}
+	d.attachVGT()
 	return d, err
 }
 
@@ -295,6 +303,7 @@ func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
 	}
 	in.DeclaredAt = time.Unix(at, 0).UTC()
 	in.Stale = size != d.SizeBytes || mod != d.ModifiedAt.UnixNano()
+	applyFileSkyFrame(&in, d)
 	return &in, nil
 }
 
@@ -387,6 +396,7 @@ func (s *Store) List() ([]Dataset, error) {
 		if out[i].Corrections, err = s.corrections(out[i]); err != nil {
 			return nil, err
 		}
+		out[i].attachVGT()
 		if out[i].Kind == KindCatalog {
 			if out[i].CatalogDeclaration, err = s.catalogDeclaration(out[i].ID, out[i]); err != nil {
 				return nil, err

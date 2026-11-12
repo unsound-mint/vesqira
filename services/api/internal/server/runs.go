@@ -123,10 +123,7 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 					rel = &rd.ID
 				}
 			}
-			// the pipeline's convention (psi = 1/2 atan2(U,Q) + 90 deg, radians, counter-clockwise from FITS axis 1 in the pixel
-			// grid) is a proposal the person can override; the files themselves say none of it
-			frame, quantity := "pixel", "b_field"
-			if err := s.Store.SetInterpretation(cur, catalog.Interpretation{Kind: "axial_orientation", Unit: "rad", ReliabilityID: rel, Frame: &frame, Quantity: &quantity, DeclaredBy: "vgt-run-adapter"}); err != nil {
+			if err := s.Store.SetInterpretation(cur, proposedPsi(cur, rel)); err != nil {
 				log.Printf("runs: %v", err)
 			}
 		}
@@ -531,6 +528,22 @@ func (s *Server) rohsaSizing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, jobs.SuggestROHSASizing(crop, n, haveCrop, haveN))
+}
+
+// proposedPsi is the orientation declaration a run import writes for the psi map. When the file's header states the angle's frame
+// (PSIFRAME, written by VGT.jl) the declaration is the header's, read by catalog.VGTOf and labelled as declared by the file: PIXEL is
+// the pixel grid, GALACTIC and ICRS are a position angle east of north in that frame (the frame of the angle, not necessarily the
+// grid's: every consumer carries it through the sky), PSIANGLE=BFIELD is the B-field, BUNIT the unit. The header outranks the
+// adapter's assumption. A file without PSIFRAME (an older output) gets the pipeline's convention (psi = 1/2 atan2(U,Q) + 90 deg,
+// radians, counter-clockwise from FITS axis 1 in the pixel grid), labelled as the adapter's proposal; the absence of PSIFRAME is
+// never read as "pixel" from the WCS or from anything else in the file.
+func proposedPsi(d catalog.Dataset, rel *int64) catalog.Interpretation {
+	if d.VGT != nil && d.VGT.Orientation != nil {
+		o := d.VGT.Orientation
+		return catalog.Interpretation{Kind: "axial_orientation", Unit: o.Unit, ReliabilityID: rel, Frame: &o.Frame, Quantity: o.Quantity, DeclaredBy: catalog.FileHeaderAuthor}
+	}
+	frame, quantity := "pixel", "b_field"
+	return catalog.Interpretation{Kind: "axial_orientation", Unit: "rad", ReliabilityID: rel, Frame: &frame, Quantity: &quantity, DeclaredBy: "vgt-run-adapter"}
 }
 
 // adapterMayDeclare says whether a run import may write its proposed orientation over what is there: over nothing, over an earlier

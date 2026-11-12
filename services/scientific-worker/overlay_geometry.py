@@ -387,6 +387,8 @@ def contours(base_cube, ov_cube, spec: dict, ov_unit: tuple, same_dataset: bool)
 
 # ---------- orientation ----------
 
+SKY_NAMES = ori.SKY_FRAMES
+
 def orientation_samples(base_cube, ov_cube, rel_cube, spec: dict, interp: dict, spacing, same_dataset: bool) -> tuple[dict, bytes]:
     unit = interp.get("unit")
     if unit not in ("deg", "rad"):
@@ -444,12 +446,13 @@ def orientation_samples(base_cube, ov_cube, rel_cube, spec: dict, interp: dict, 
     ok = np.isfinite(deg)
     xs, ys, deg, weight = xs[ok], ys[ok], deg[ok], weight[ok]
     with np.errstate(all="ignore"):
-        pa = ori.to_sky_b_field(src.w, xs, ys, deg, interp["frame"], interp["quantity"])   # east of north in the overlay's frame
+        pa = ori.to_sky_b_field(src.w, xs, ys, deg, interp["frame"], interp["quantity"], interp.get("sky_frame"))   # east of north in the overlay's frame
         xb, yb, ang = carry_to_base(base, src.w.pixel_to_world(xs, ys), pa, src.same_frame(base))
     keep = _inside(xb, yb, base.shape) & np.isfinite(ang)
     out = np.column_stack([xb[keep], yb[keep], ang[keep], weight[keep]]).astype("<f4")
     how = {"pixel": f"angles counter-clockwise from the map's +x axis, turned into east of north with its WCS in {src.label}",
-           "sky": f"angles east of north in {src.label}"}[interp["frame"]]
+           "sky": (f"angles east of north in {SKY_NAMES.get(interp.get('sky_frame'), interp.get('sky_frame'))} as the file's header states, carried into {src.label} at each sample"
+                   if interp.get("sky_frame") else f"angles east of north in {src.label}")}[interp["frame"]]
     what = {"b_field": "declared as the B-field", "starlight_polarization": "declared as starlight polarization, parallel to B",
             "gradient": f"declared as a gradient, rotated by {rot:g} degrees to B", "dust_polarization": f"declared as dust polarization, rotated by {rot:g} degrees to B"}[interp["quantity"]]
     conversion = f"{how}; {what}" + ("" if src.same_frame(base) else f"; rotated into {base.label}") + "; then into the base's pixel frame with its WCS"

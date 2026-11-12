@@ -146,6 +146,21 @@ describe("declaring an interpretation", () => {
     render(<InterpretationPanel v={viewer} dataset={old} datasets={[old]} declare={async () => null} />);
     expect(screen.getByText(/Frame: not declared\. Quantity: not declared\./)).toBeInTheDocument();
   });
+
+  it("shows what the file's own header declares, a disagreement with the person's declaration, and adopts it only on request", async () => {
+    const vgtHeader = { product: "psi", psiFrame: "GALACTIC", psiAngle: "BFIELD", params: [{ key: "VGTDN", value: "10" }], resolution: null, notes: [],
+      orientation: { unit: "rad", frame: "sky", skyFrame: "galactic", quantity: "b_field", basis: { frame: "file", quantity: "file", unit: "file" } },
+      conflicts: ["the header states the angle as a position angle east of north in the Galactic frame (PSIFRAME=GALACTIC), which is not this grid's own frame; the declaration in force says east of north in the grid's own frame"] } as unknown as Dataset["vgtHeader"];
+    const mine: Dataset = { ...ds(1, "psi.fits"), vgtHeader, interpretation: { kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "sky", quantity: "b_field", declaredBy: "user", tier: "declared", mappingVersion: "", declaredAt: "", stale: false } };
+    const calls: unknown[] = [];
+    render(<InterpretationPanel v={viewer} dataset={mine} datasets={[mine]} declare={async (_id, b) => (calls.push(b), null)} />);
+    expect(screen.getByRole("alert")).toHaveTextContent(/disagrees with the declaration in force.*stays in use/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Galactic frame/);
+    expect(screen.getByText(/VGT keywords in the file \(psi\)/)).toBeInTheDocument();
+    expect(calls).toEqual([]);                                   // nothing was applied by showing it
+    await userEvent.click(screen.getByRole("button", { name: "Use the file’s declaration" }));
+    expect(calls).toEqual([{ kind: "axial_orientation", fromFile: true }]);
+  });
 });
 
 describe("reliability map choices", () => {
