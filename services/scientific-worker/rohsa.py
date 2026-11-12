@@ -32,7 +32,7 @@ MAX_EXAMPLES = 20
 MAX_CURVE_ELEMENTS = 4_000_000     # channels x (components + 2) in one reply
 INDEX_VERSION = 1
 
-# Pipeline constant (VGT DOPPLER_TEMPERATURE_FACTOR): T_D = m_H sigma^2 / k_B for sigma in km/s, thermal broadening only.
+# T_D = m_H sigma^2 / k_B for sigma in km/s, thermal broadening only. The constant is 121.1 as shipped since the first results; from m_H = 1.6735e-27 kg and k_B = 1.380649e-23 J/K it is 121.2 (0.1% higher), kept so earlier numbers do not change.
 DOPPLER_K_PER_KMS2 = 121.1
 FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))
 

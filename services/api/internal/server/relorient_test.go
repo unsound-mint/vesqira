@@ -155,6 +155,51 @@ func TestRelativeOrientationNeedsDeclarationsAndKeepsAResult(t *testing.T) {
 	if err != nil || rec.Op != "relorient_catalog" || len(rec.Sources) != 2 || rec.Sources[0] != tang.ID || rec.Sources[1] != stars.ID {
 		t.Fatalf("derived record: %+v %v", rec, err)
 	}
+	// the preset is recorded in the derived record: its identity, every value it supplied and the explicit parameters that replaced one
+	var presetRec struct {
+		Preset struct {
+			Name       string             `json:"name"`
+			Version    int                `json:"version"`
+			Values     map[string]float64 `json:"values"`
+			Overridden map[string]struct {
+				Preset, Used float64
+			} `json:"overridden"`
+		} `json:"preset"`
+	}
+	json.Unmarshal(rec.Params, &presetRec)
+	if pr := presetRec.Preset; pr.Name != "standard" || pr.Version != 1 || pr.Values["boot_samples"] != 2000 || pr.Values["sigma_floor_deg"] != 1 ||
+		pr.Values["radius_arcmin"] != 10 || pr.Overridden["n_shifts"].Preset != 3000 || pr.Overridden["n_shifts"].Used != 200 || pr.Overridden["seed"].Used != 5 {
+		t.Errorf("the preset in the derived record: %s", rec.Params)
+	}
+	// the presets are listed for the form, as the file the worker reads; a named preset is used, an unknown one refused
+	const presetsRoute = "/api/analysis/relative-orientation/presets"
+	st, pb := callJSON(t, "GET", ts.URL+presetsRoute, nil)
+	if st != 200 {
+		t.Fatalf("presets: %d %s", st, pb)
+	}
+	conforms(t, responseSchemaAt(t, doc, presetsRoute, "GET", 200, "application/json"), "presets", pb)
+	var listed struct {
+		Default string `json:"default"`
+		Presets []struct {
+			Name   string                    `json:"name"`
+			Values map[string]map[string]any `json:"values"`
+		} `json:"presets"`
+	}
+	json.Unmarshal(pb, &listed)
+	if listed.Default != "standard" || len(listed.Presets) < 2 || listed.Presets[0].Name != "standard" || listed.Presets[1].Name != "lmc-star-comparison" ||
+		listed.Presets[0].Values["radius_arcmin"]["value"] != 10.0 || listed.Presets[0].Values["radius_arcmin"]["reason"] == "" {
+		t.Errorf("listed presets: %s", pb)
+	}
+	if st, o, b := run(map[string]any{"datasetId": tang.ID, "otherId": stars.ID, "params": map[string]any{"radiusArcmin": 1.5, "minShiftDeg": 0.05, "nShifts": 20, "preset": "lmc-star-comparison"}}); st != 201 ||
+		o["summary"].(map[string]any)["preset"].(map[string]any)["name"] != "lmc-star-comparison" {
+		t.Errorf("a named preset: %d %s", st, b)
+	}
+	if st, _, b := run(map[string]any{"datasetId": tang.ID, "otherId": stars.ID, "params": map[string]any{"preset": "nope"}}); st != 422 || !strings.Contains(b, "standard") {
+		t.Errorf("an unknown preset: %d %s", st, b)
+	}
+	if st, _, b := run(map[string]any{"datasetId": tang.ID, "otherId": stars.ID, "params": map[string]any{"preset": "../x"}}); st != 400 {
+		t.Errorf("a malformed preset name: %d %s", st, b)
+	}
 	// the null Vesqira ran is recorded as how this control was built, verified, with the parameters the worker used
 	var recParams struct {
 		Controls *runs.Controls `json:"controls"`

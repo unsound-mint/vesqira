@@ -210,6 +210,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/relative-orientation/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The relative-orientation presets (named sets of defaults, each value with its reason) and which one is the default */
+        get: operations["owner_s_relativeOrientationPresets_get_api_analysis_relative_orientation_presets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/attachments": {
         parameters: {
             query?: never;
@@ -6837,8 +6854,10 @@ export interface components {
             /** Format: date-time */
             measuredAt: string;
         };
-        /** @description Each is optional; the default is stated in the result's parameters (ADR 0047). */
+        /** @description Each is optional; a value not given is the chosen preset's, and the result's parameters state every value used (ADR 0047, ADR 0068). */
         RelativeOrientationParams: {
+            /** @description The name of a preset of defaults (GET /api/analysis/relative-orientation/presets); default `standard`. A parameter set here replaces the preset's value and is listed in the result under `preset.overridden`. An unknown name is refused (422) and the known ones are named */
+            preset?: string;
             /** @description Map vs catalog only: disk radius on the sky (default 10) */
             radiusArcmin?: number;
             /** @description Map vs catalog only: fewest usable pixels in a disk (default 5) */
@@ -6860,7 +6879,7 @@ export interface components {
             snrColumn?: string;
             /** @description Map vs catalog only: the declared value column holding σP */
             snrSigmaColumn?: string;
-            /** @description The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason */
+            /** @description The filter's k (the preset's value, 3 in the standard preset: P/σP ≥ 3 is the usual detection threshold for a polarization angle); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason */
             snrMin?: number;
             /** @description With stratifyId: the number of equal-count bins of the third map (default 5); not with strataEdges. Tied values are never split, so a heavy tie gives fewer bins */
             strataBins?: number;
@@ -6959,6 +6978,9 @@ export interface components {
             median_abs_dpsi_deg?: number;
             bootstrap_am_16_84?: number[] | null;
             bootstrap_note?: string;
+            /** @description Map vs catalog: the number of resamples behind bootstrap_am_16_84 (the preset's boot_samples) */
+            bootstrap_resamples?: number;
+            preset?: components["schemas"]["RelativeOrientationPresetUsed"];
             prs?: {
                 V?: number | null;
                 V_weighted?: number | null;
@@ -7067,6 +7089,44 @@ export interface components {
                 };
                 policy: string;
             };
+        };
+        /** @description The preset a result used: its name and version, every value it supplied (including ones the comparison does not take as a parameter, such as the bootstrap count and the weight floor) and the explicit parameters that replaced one of them. Results made before presets existed have none. */
+        RelativeOrientationPresetUsed: {
+            name: string;
+            version: number;
+            /** @description Preset value key to value (radius_arcmin, min_pixels, snr_min, sigma_floor_deg, boot_samples, n_shifts_catalog, n_shifts_maps, min_shift_deg, keep_fraction, seed, bins, strata_bins) */
+            values: {
+                [key: string]: number;
+            };
+            /** @description Parameter name to the preset's value and the value used, for each explicit parameter that differs from the preset */
+            overridden: {
+                [key: string]: {
+                    preset: number;
+                    used: number;
+                };
+            };
+        };
+        RelativeOrientationPresetValue: {
+            value: number;
+            /** @description One plain sentence on why the value is the default */
+            reason: string;
+        };
+        RelativeOrientationPreset: {
+            name: string;
+            version: number;
+            title: string;
+            description: string;
+            /** @description Keys as in RelativeOrientationPresetUsed.values */
+            values: {
+                [key: string]: components["schemas"]["RelativeOrientationPresetValue"];
+            };
+        };
+        /** @description The analysis presets shipped with the worker (relorient_presets.json), served as the file is. */
+        RelativeOrientationPresets: {
+            schema: number;
+            /** @description The preset used when a request names none */
+            default: string;
+            presets: components["schemas"]["RelativeOrientationPreset"][];
         };
         RelativeOrientationResult: {
             dataset: components["schemas"]["Dataset"];
@@ -7280,7 +7340,7 @@ export interface components {
             sigma: number | null;
             /** @description 2 sqrt(2 ln 2) sigma, km/s */
             fwhm: number | null;
-            /** @description 121.1 K (km/s)^-2 x sigma^2: an upper limit on the kinetic temperature */
+            /** @description 121.1 K (km/s)^-2 x sigma^2 (m_H sigma^2 / k_B for atomic hydrogen; worked out exactly the constant is about 121.2): an upper limit on the kinetic temperature */
             t_doppler_k: number | null;
         };
         /** @description The JSON header of a rohsa components frame. */
@@ -11084,6 +11144,44 @@ export interface operations {
             };
             /** @description a missing declaration (named), or the worker refused (for example no source could be compared) */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relativeOrientationPresets_get_api_analysis_relative_orientation_presets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelativeOrientationPresets"];
+                };
+            };
+            /** @description the presets file is missing or malformed */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

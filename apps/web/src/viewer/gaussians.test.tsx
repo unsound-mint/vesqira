@@ -4,7 +4,7 @@ import type { Components, RohsaRun } from "../api/rohsa";
 import { parseComponents } from "../api/rohsa";
 import type { Spectrum } from "../api/planes";
 import { GaussianComponents } from "./GaussianComponents";
-import { PIPELINE_CNM_SIGMA_KMS, classify, parseCut, residual } from "./rohsa";
+import { CNM_SIGMA_DEFAULT_KMS, CNM_TD_MAX_K, DOPPLER_K_PER_KMS2, classify, cutSigma, cutText, parseCut, residual, sigmaOfTd, tdOfSigma } from "./rohsa";
 import type { Viewer } from "./useViewer";
 
 const run: RohsaRun = { runId: 7, name: "rohsa_n3", nGauss: 3, nGaussBasis: "declared by the run trace", cropDatasetId: 1, cropName: "region_a.fits", cropBunit: "K", isCrop: true, usable: true, refusal: null };
@@ -46,7 +46,19 @@ describe("cut and classification", () => {
     expect(classify(2.029, 2.03)).toBe("cnm");
     expect(classify(2.03, 2.03)).toBe("other");
     expect(classify(2.031, 2.03)).toBe("other");
-    expect(PIPELINE_CNM_SIGMA_KMS).toBe(2.03);
+    expect(CNM_SIGMA_DEFAULT_KMS).toBe(2.03);        // the cut earlier results and class maps used, unchanged
+  });
+
+  it("derives the starting cut from a 500 K Doppler temperature and converts both ways with the worker's constant", () => {
+    expect(DOPPLER_K_PER_KMS2).toBe(121.1);
+    expect(CNM_TD_MAX_K).toBe(500);
+    expect(sigmaOfTd(500)).toBeCloseTo(2.03195, 5);
+    expect(tdOfSigma(2.03)).toBeCloseTo(499.041, 3);
+    expect(cutSigma("2.03", "sigma")).toBe(2.03);
+    expect(cutSigma("500", "td")).toBeCloseTo(2.03195, 5);
+    expect(cutSigma("0", "td")).toBeNull();
+    expect(cutSigma("x", "sigma")).toBeNull();
+    expect(cutSigma(cutText(2.03, "td"), "td")).toBeCloseTo(2.03, 6);      // switching the basis back and forth does not drift
   });
 
   it("accepts a positive number as typed and nothing else", () => {
@@ -122,12 +134,13 @@ describe("Gaussian components over the spectrum", () => {
     expect(within(rows[0]!).getByText("272.5")).toBeInTheDocument();   // T_D = 121.1 * 1.5^2 = 272.475, shown to 4 figures
   });
 
-  it("re-marks the components when the person changes the cut, and says the starting value is the pipeline's, not a result", async () => {
+  it("re-marks the components when the person changes the cut, and says the starting value is a convention, not a result", async () => {
     const user = userEvent.setup();
     render(<GaussianComponents v={viewer} />);
     await user.click(await screen.findByRole("switch", { name: /Gaussian components/ }));
     await screen.findByRole("region", { name: "Fitted components" });
-    expect(screen.getByText(/scan-script default/)).toBeInTheDocument();
+    expect(screen.getByText(/is a convention, not a result/)).toBeInTheDocument();
+    expect(screen.getByText(/CNM when σ < 2.03 km\/s \(T_D < 499 K\)/)).toBeInTheDocument();
     const cut = screen.getByLabelText("CNM width cut σ (km/s)");
     await user.clear(cut);
     await user.type(cut, "2.5");
@@ -141,6 +154,23 @@ describe("Gaussian components over the spectrum", () => {
     for (const r of within(screen.getByRole("region", { name: "Fitted components" })).getAllByRole("row").slice(1)) {
       expect(within(r).queryByText("CNM")).toBeNull(); // no valid cut, no classification
     }
+  });
+
+  it("lets the person set the cut as a Doppler temperature, and classifies by the width it implies", async () => {
+    const user = userEvent.setup();
+    render(<GaussianComponents v={viewer} />);
+    await user.click(await screen.findByRole("switch", { name: /Gaussian components/ }));
+    await screen.findByRole("region", { name: "Fitted components" });
+    await user.selectOptions(screen.getByLabelText("Set the CNM cut as"), "td");
+    const cut = screen.getByLabelText("CNM Doppler temperature cut T_D (K)");
+    expect(cut).toHaveValue("499.041");                       // the starting width 2.03 km/s as a temperature
+    await user.clear(cut);
+    await user.type(cut, "800");                              // sigma < sqrt(800 / 121.1) = 2.57 km/s
+    expect(screen.getByText(/CNM when σ < 2.57 km\/s \(T_D < 800 K\)/)).toBeInTheDocument();
+    const rows = within(screen.getByRole("region", { name: "Fitted components" })).getAllByRole("row").slice(1);
+    expect(within(rows[1]!).getByText("CNM")).toBeInTheDocument();   // sigma 2.03 < 2.57
+    await user.selectOptions(screen.getByLabelText("Set the CNM cut as"), "sigma");
+    expect(screen.getByLabelText("CNM width cut σ (km/s)")).toHaveValue("2.57024");
   });
 
   it("does not draw the data or residual when the brightness unit is not confirmed equal, and says so", async () => {

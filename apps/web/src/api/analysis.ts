@@ -50,6 +50,10 @@ export type RelOrientSummary = Schemas["RelativeOrientationSummary"];
 /** Aborting the request stops the computation: the server kills the program when its request ends. */
 export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams; masks?: MaskUse[]; otherMasks?: MaskUse[]; stratifyId?: number }, signal?: AbortSignal, requestId?: string) =>
   post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal, requestId);
+/** The analysis presets (named sets of defaults, each value with its reason) and which one a request without a name uses (ADR 0068). */
+export type RelOrientPresets = Schemas["RelativeOrientationPresets"];
+export type RelOrientPreset = Schemas["RelativeOrientationPreset"];
+export const getRelativeOrientationPresets = (signal?: AbortSignal) => call<RelOrientPresets>("/api/analysis/relative-orientation/presets", { signal });
 export const relativeOrientationTableUrl = (id: number) => `/api/datasets/${id}/relative-orientation.csv`;
 /** Sample a HEALPix polarization map onto a dataset's celestial grid as Q and U (ADR 0067). The request runs on this computer and stops with its request. */
 export type HealpixSampleRequest = Schemas["HealpixSampleRequest"];

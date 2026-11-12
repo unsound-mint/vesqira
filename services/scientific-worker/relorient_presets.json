@@ -1,0 +1,46 @@
+{
+ "schema": 1,
+ "default": "standard",
+ "presets": [
+  {
+   "name": "standard",
+   "version": 1,
+   "title": "Standard",
+   "description": "The defaults used when no preset is named. They are conventional choices with the reason beside each, not the result of tuning on any dataset.",
+   "values": {
+    "radius_arcmin": {"value": 10.0, "reason": "Map vs catalog: each source is compared with the map averaged over a 10 arcmin disk. The radius sets the map scale being tested, so change it to the scale you want to test."},
+    "min_pixels": {"value": 5, "reason": "Map vs catalog: a disk with fewer than 5 usable pixels gives a very noisy mean orientation, so that source is not used and is counted."},
+    "snr_min": {"value": 3.0, "reason": "P/σP ≥ 3 is the usual detection threshold for a polarization angle: it keeps the angle error at or below about 9.5 degrees. It applies only when the P and σP columns are chosen; the filter is off otherwise."},
+    "sigma_floor_deg": {"value": 1.0, "reason": "Map vs catalog: source weights are 1/max(σ, 1°)², so a very precisely measured source cannot dominate the weighted mean."},
+    "boot_samples": {"value": 2000, "reason": "Resamples for the 16th to 84th percentile range of AM: a count that is cheap to compute and gives a stable range; the seed is recorded."},
+    "n_shifts_catalog": {"value": 3000, "reason": "Map vs catalog: shifted copies of the source pattern drawn for the chance level. Each is cheap, so there are more than for two maps."},
+    "n_shifts_maps": {"value": 1000, "reason": "Map vs map: shifted copies of the second map drawn for the chance level. Each shift costs a pass over the whole map, so there are fewer than for a catalog."},
+    "min_shift_deg": {"value": 1.0, "reason": "A shift shorter than 1 degree leaves the pattern nearly where it was, so it is not a chance arrangement; shorter offsets are redrawn."},
+    "keep_fraction": {"value": 0.9, "reason": "A shift counts only if at least 90% of the real samples still have a usable value there; a shift that pushes more onto empty map is dropped, not redrawn."},
+    "seed": {"value": 20261020, "reason": "Fixed so that the same inputs give the same numbers. The value has no meaning; change it to see how much the chance level depends on the draw."},
+    "bins": {"value": 9, "reason": "Nine equal-width bins of |Δψ| over 0 to 90 degrees, 10 degrees each."},
+    "strata_bins": {"value": 5, "reason": "With a third map: five equal-count bins, enough to show a trend while keeping many pixels in each bin."}
+   }
+  },
+  {
+   "name": "lmc-star-comparison",
+   "version": 1,
+   "title": "LMC star comparison",
+   "description": "The settings of the group's LMC starlight-polarization comparison. Every value is the same as in the standard preset: that analysis keeps stars with P/σP of 3 or more, as the standard preset does, and it uses the same disk, weights, null and bootstrap. The preset exists so a result can say which analysis it follows and so the two can differ later without changing old results.",
+   "values": {
+    "radius_arcmin": {"value": 10.0, "reason": "Same as standard: a 10 arcmin disk around each star."},
+    "min_pixels": {"value": 5, "reason": "Same as standard: a disk needs at least 5 usable pixels."},
+    "snr_min": {"value": 3.0, "reason": "Stars with P/σP below 3 are left out of the LMC comparison; the standard preset has the same threshold."},
+    "sigma_floor_deg": {"value": 1.0, "reason": "Same as standard: weights 1/max(σ, 1°)²."},
+    "boot_samples": {"value": 2000, "reason": "Same as standard."},
+    "n_shifts_catalog": {"value": 3000, "reason": "Same as standard."},
+    "n_shifts_maps": {"value": 1000, "reason": "Same as standard."},
+    "min_shift_deg": {"value": 1.0, "reason": "Same as standard."},
+    "keep_fraction": {"value": 0.9, "reason": "Same as standard."},
+    "seed": {"value": 20261020, "reason": "Same as standard."},
+    "bins": {"value": 9, "reason": "Same as standard."},
+    "strata_bins": {"value": 5, "reason": "Same as standard."}
+   }
+  }
+ ]
+}

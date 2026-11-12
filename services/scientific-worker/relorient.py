@@ -35,12 +35,8 @@ MAX_SHIFT_ATTEMPTS = 10_000          # per null shift; a minimum shift that can 
 MAX_SEGMENTS = 5000                   # star segments kept in the summary for the figure (the table has every row)
 MAX_TABLE_ROWS = 1_000_000            # per-pixel rows written for a map comparison; larger maps keep the FITS of |Δψ| only
 MAX_DISK_WORK = 60_000_000            # pixels gathered per vectorised disk step (memory bound, not a result limit)
-BOOT_SAMPLES = 2000                   # bootstrap resamples (star_vgt_scale_analysis.py:82)
-SNR_DEFAULT = 3.0                     # P/σP >= 3: `keep = p / sp >= min_snr`, min_snr=3.0 (vgt_phase_vs_stars.py:83,87; main passes 3.0 for LMC, 0.0 otherwise, :141)
-SIGMA_FLOOR_DEG = 1.0                 # catalog weights 1/max(σ, 1°)² (star_vgt_scale_analysis.py:269)
 GAUSS_BEAM = math.pi / (4.0 * math.log(2.0))   # area of a Gaussian beam = GAUSS_BEAM * BMAJ * BMIN (1.1331)
 
-STRATA_DEFAULT_BINS = 5
 MAX_STRATA_BINS = 50
 STRATA_BOOT_BUDGET = 40_000_000       # resampled values per bin: the bootstrap's cost is resamples x pixels, so a big bin gets fewer resamples
 
@@ -51,10 +47,77 @@ class Refusal(Exception):
     """A controlled refusal; the message says what is missing or why."""
 
 
+# ------------------------------------------------------------------------------------------------------------- presets
+
+PRESET_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relorient_presets.json")
+PRESET_KEYS = ("radius_arcmin", "min_pixels", "snr_min", "sigma_floor_deg", "boot_samples", "n_shifts_catalog", "n_shifts_maps",
+               "min_shift_deg", "keep_fraction", "seed", "bins", "strata_bins")
+# request parameter -> the preset value that is its default (n_shifts depends on the mode)
+PARAM_OF_PRESET = {"radius_arcmin": "radius_arcmin", "min_pixels": "min_pixels", "snr_min": "snr_min", "min_shift_deg": "min_shift_deg",
+                   "keep_fraction": "keep_fraction", "seed": "seed", "bins": "bins", "strata_bins": "strata_bins"}
+
+
+class Preset:
+    """A named, versioned set of analysis defaults from relorient_presets.json (one reason per value). Explicit parameters win."""
+
+    def __init__(self, raw: dict):
+        self.name, self.version, self.title = raw["name"], raw["version"], raw.get("title", raw["name"])
+        self.description = raw.get("description", "")
+        self.values = {k: raw["values"][k]["value"] for k in PRESET_KEYS}
+
+    def default(self, key: str, mode: str = "catalog"):
+        return self.values["n_shifts_" + ("catalog" if mode == "catalog" else "maps")] if key == "n_shifts" else self.values[key]
+
+    def record(self, params: dict, mode: str) -> dict:
+        """What the result stores: the preset's identity, every value it supplied, and the explicit parameters that replaced one."""
+        over = {}
+        for key in ("n_shifts", *PARAM_OF_PRESET):
+            if params.get(key) is not None and params[key] != self.default(key, mode):
+                over[key] = {"preset": self.default(key, mode), "used": params[key]}
+        return {"name": self.name, "version": self.version, "values": dict(self.values), "overridden": over}
+
+
+_PRESETS: dict | None = None
+
+
+def load_presets() -> dict:
+    """{"default": name, "presets": {name: Preset}, "raw": the file}. A malformed file is a refusal, never a silent fallback."""
+    global _PRESETS
+    if _PRESETS is None:
+        import json
+        try:
+            with open(PRESET_FILE, encoding="utf-8") as f:
+                raw = json.load(f)
+            presets = {r["name"]: Preset(r) for r in raw["presets"]}
+            if raw["default"] not in presets:
+                raise KeyError(raw["default"])
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            raise Refusal(f"the analysis presets file is missing or malformed ({type(e).__name__}); reinstall the app") from None
+        _PRESETS = {"default": raw["default"], "presets": presets, "raw": raw}
+    return _PRESETS
+
+
+def resolve_preset(name) -> Preset:
+    """The named preset, or the default one when none is named; an unknown name is refused and the known ones are listed."""
+    pre = load_presets()
+    if name is None or name == "":
+        name = pre["default"]
+    if not isinstance(name, str) or name not in pre["presets"]:
+        raise Refusal(f"unknown preset {name!r}; the presets are: {', '.join(pre['presets'])}")
+    return pre["presets"][name]
+
+
+_STD = resolve_preset(None)
+BOOT_SAMPLES = _STD.values["boot_samples"]           # defaults of the helpers below; a run passes its preset's value
+SNR_DEFAULT = _STD.values["snr_min"]
+SIGMA_FLOOR_DEG = _STD.values["sigma_floor_deg"]
+STRATA_DEFAULT_BINS = _STD.values["strata_bins"]
+
+
 # ------------------------------------------------------------------------------------------------------------- statistics
 
 def headless_deg(d):
-    """Axial difference folded into [-90, 90) degrees (compare_vgt_polarization.py:44-45, in degrees)."""
+    """Axial difference folded into [-90, 90) degrees."""
     return (np.asarray(d, dtype=float) + 90.0) % 180.0 - 90.0
 
 
@@ -93,8 +156,7 @@ def histogram(abs_deg, bins: int):
 
 
 def bootstrap_am(d_deg, rng, n=BOOT_SAMPLES):
-    """16th and 84th percentiles of AM over resamples with replacement (star_vgt_scale_analysis.py:82-87). Assumes independent
-    samples."""
+    """16th and 84th percentiles of AM over resamples with replacement. Assumes independent samples."""
     d = np.asarray(d_deg, dtype=float)
     d = d[np.isfinite(d)]
     if d.size < 2:
@@ -106,7 +168,7 @@ def bootstrap_am(d_deg, rng, n=BOOT_SAMPLES):
 
 
 def null_rng(seed: int):
-    """The null's stream: the same as numpy.random.default_rng(seed), which the owner's scripts use."""
+    """The null's stream: the same as numpy.random.default_rng(seed)."""
     return np.random.Generator(np.random.PCG64(seed))
 
 
@@ -116,7 +178,7 @@ def side_rng(seed: int, key: int):
 
 
 def summarize_null(null: np.ndarray, am: float, n_hist: list, bins: int) -> dict:
-    """Chance level and one-sided p from the kept null values (vgt_phase_vs_stars.py:115-117)."""
+    """Chance level and one-sided p from the kept null values."""
     out = {"kept": int(null.size), "chance95": None, "p_one_sided": None, "mean": None, "std": None,
            "histogram_band": None}
     if null.size == 0:
@@ -135,7 +197,7 @@ def summarize_null(null: np.ndarray, am: float, n_hist: list, bins: int) -> dict
 # ------------------------------------------------------------------------------------------------------- map preparation
 
 def pixel_scale_deg(w2) -> float:
-    """Mean pixel scale at the reference pixel in degrees (vgt_phase_vs_stars.py:50-52)."""
+    """Mean pixel scale at the reference pixel in degrees."""
     from astropy.wcs.utils import proj_plane_pixel_scales
     return float(np.mean(proj_plane_pixel_scales(w2)))
 
@@ -159,11 +221,11 @@ def pixel_b_field(w2, theta_deg: np.ndarray, frame, quantity, sky_frame_name=Non
 
 
 class Disks:
-    """Axial means in disks of a fixed radius on the sky, centred on the pixel nearest a position (vgt_phase_vs_stars.py:57).
+    """Axial means in disks of a fixed radius on the sky, centred on the pixel nearest a position.
 
     Membership is by angular distance between pixel centres (unit vectors from astropy's pixel_to_world), not pixel distance.
     The search box is (2 ri + 1) pixels wide with ri = ceil(radius / mean pixel scale), and a disk whose box leaves the map is
-    not used (vgt_phase_vs_stars.py:58-60). A disk with fewer than `min_pixels` usable pixels is not used (line 64).
+    not used. A disk with fewer than `min_pixels` usable pixels is not used.
     Pixels count when their angle is finite and their weight (the declared reliability, or 1) is finite; the mean is the
     weighted doubled-angle mean θ = ½ atan2(Σ w sin 2φ, Σ w cos 2φ) with resultant R = |Σ w e^{2iφ}| / Σ w.
     """
@@ -232,13 +294,13 @@ class Disks:
 
 def null_catalog(disks: Disks, x, y, phi_star_pix, am_real: float, n_real: int, *, n_shifts: int, min_shift_px: float,
                  keep: float, rng, bins: int):
-    """The shifted-pattern null of vgt_phase_vs_stars.py:97-117, ported step by step.
+    """The shifted-pattern null (ported from the group's star-comparison script, step by step).
 
     The whole star pattern moves by (dx, dy), each uniform in (-nx, nx) and (-ny, ny), redrawn until hypot(dx, dy) is at least
     the minimum shift; positions wrap modulo the map (x + dx) % nx; each star keeps its pixel-frame angle from its true
     position. A shift is kept when at least n_sub = int(keep * n_real) shifted stars have a usable disk; it is then scored on
     exactly n_sub of them drawn without replacement. Rejected shifts are not redrawn. Every star with a position and an angle
-    takes part, including stars outside the map at their true position (the wrap brings them in), as in the script.
+    takes part, including stars outside the map at their true position (the wrap brings them in), as that script does.
     The length test is on the unwrapped offset, so an offset near ±nx is close to no shift after wrapping; the number of kept
     shifts whose wrapped displacement is below the minimum is reported, not changed."""
     nx, ny = disks.nx, disks.ny
@@ -357,7 +419,7 @@ def uniform_sigma(n: float, w=None):
     return 1.0 / math.sqrt(2.0 * n) if n > 0 else None
 
 
-def stratify(d, third, used, wgt, weighted: bool, ask: dict, *, seed: int, pix_area_deg2: float, beam_cubes, third_unit: dict) -> dict:
+def stratify(d, third, used, wgt, weighted: bool, ask: dict, *, seed: int, pix_area_deg2: float, beam_cubes, third_unit: dict, boot_samples: int = BOOT_SAMPLES) -> dict:
     """The statistics of the whole comparison inside bins of a third scalar map on the same grid.
 
     d is the folded Δψ per pixel (degrees) already computed for the comparison, used the pixels it uses (both maps present,
@@ -393,7 +455,7 @@ def stratify(d, third, used, wgt, weighted: bool, ask: dict, *, seed: int, pix_a
             row["am_weighted"] = alignment_measure(dj, wj) if weighted else None
             row["median_abs_dpsi_deg"] = float(np.median(np.abs(dj)))
             row["prs"] = {"V": projected_rayleigh(dj), "V_weighted": projected_rayleigh(dj, wj) if weighted else None}
-            nb = int(max(100, min(BOOT_SAMPLES, STRATA_BOOT_BUDGET // n)))
+            nb = int(max(100, min(boot_samples, STRATA_BOOT_BUDGET // n)))
             row["bootstrap_am_16_84"] = bootstrap_am(dj, side_rng(seed, 10 + j), nb)
             row["bootstrap_samples"] = nb if row["bootstrap_am_16_84"] else None
             beams = beam_count(beam_cubes, n, pix_area_deg2)
@@ -465,8 +527,9 @@ def histogram_block(abs_used, bins: int) -> dict:
             "bins": "equal-width bins of |Δψ| over [0, 90] degrees; the number of bins is a parameter, every bin is the same width"}
 
 
-def check_params(p: dict, mode: str) -> dict:
-    """Validated parameters, each with its default (ADR 0047)."""
+def check_params(p: dict, mode: str, preset: Preset | None = None) -> dict:
+    """Validated parameters; a parameter not given takes the preset's value (the default preset when none is named). ADR 0047."""
+    preset = preset or resolve_preset(p.get("preset"))
     def num(key, default, lo, hi, integer=False):
         v = p.get(key, default)
         if v is None:
@@ -480,14 +543,14 @@ def check_params(p: dict, mode: str) -> dict:
         if not (lo <= v <= hi) or (not integer and not math.isfinite(v)):
             raise Refusal(f"{key} must be between {lo} and {hi}")
         return v
-    out = {"n_shifts": num("n_shifts", 3000 if mode == "catalog" else 1000, 0, 20000, True),
-           "min_shift_deg": num("min_shift_deg", 1.0, 0.0, 180.0),
-           "keep_fraction": num("keep_fraction", 0.9, 0.05, 1.0),
-           "seed": num("seed", 20261020, 0, 2 ** 63 - 1, True),
-           "bins": num("bins", 9, 2, 90, True)}
+    out = {"n_shifts": num("n_shifts", preset.default("n_shifts", mode), 0, 20000, True),
+           "min_shift_deg": num("min_shift_deg", preset.values["min_shift_deg"], 0.0, 180.0),
+           "keep_fraction": num("keep_fraction", preset.values["keep_fraction"], 0.05, 1.0),
+           "seed": num("seed", preset.values["seed"], 0, 2 ** 63 - 1, True),
+           "bins": num("bins", preset.values["bins"], 2, 90, True)}
     if mode == "catalog":
-        out["radius_arcmin"] = num("radius_arcmin", 10.0, 1e-3, 600.0)
-        out["min_pixels"] = num("min_pixels", 5, 1, 10 ** 6, True)
+        out["radius_arcmin"] = num("radius_arcmin", preset.values["radius_arcmin"], 1e-3, 600.0)
+        out["min_pixels"] = num("min_pixels", preset.values["min_pixels"], 1, 10 ** 6, True)
         # Optional row filter P/σP >= k, off unless both columns are chosen; the three keys are recorded only when it is on.
         cols = [p.get(k) for k in ("snr_column", "snr_sigma_column")]
         if any(c is not None and c != "" for c in cols) or p.get("snr_min") is not None:
@@ -496,7 +559,7 @@ def check_params(p: dict, mode: str) -> dict:
             if cols[0] == cols[1]:
                 raise Refusal("the P/σP filter needs two different columns")
             out["snr_column"], out["snr_sigma_column"] = cols
-            out["snr_min"] = num("snr_min", SNR_DEFAULT, 0.0, 1e6)
+            out["snr_min"] = num("snr_min", preset.values["snr_min"], 0.0, 1e6)
     return out
 
 
@@ -564,7 +627,8 @@ def op_catalog(args, params: dict) -> dict:
     from astropy.coordinates import SkyCoord
     import astropy.units as u
 
-    p = check_params(params, "catalog")
+    preset = resolve_preset(params.get("preset"))
+    p = check_params(params, "catalog", preset)
     cube = open_cube(args.input)
     phi, weight, w2, mfacts = _map_side(args, cube)
     ny, nx = phi.shape
@@ -597,7 +661,7 @@ def op_catalog(args, params: dict) -> dict:
     reason[~np.isfinite(lon)] = "position"
     reason[(reason == "") & ~np.isfinite(ang)] = "angle"
     if "snr_column" in p:
-        # The script drops these rows first, so they also leave the shifted pattern (vgt_phase_vs_stars.py:87-88).
+        # These rows are dropped first, so they also leave the shifted pattern (as in the group's star-comparison script).
         # A missing or unreadable P or σP is its own reason and is never read as 0; σP <= 0 has no ratio.
         pv = ct.number_field(L, p["snr_column"], "").values
         sv = ct.number_field(L, p["snr_sigma_column"], "").values
@@ -606,7 +670,7 @@ def op_catalog(args, params: dict) -> dict:
         reason[todo & (st == "missing")] = "snr_missing"
         reason[todo & (st == "below")] = "snr"
         snr_filter = {"p_column": p["snr_column"], "sigma_column": p["snr_sigma_column"], "min": p["snr_min"],
-                      "rule": f"keep a row when P/σP >= {p['snr_min']:g} (the script's `keep = p / sp >= min_snr`, vgt_phase_vs_stars.py:87)",
+                      "rule": f"keep a row when P/σP >= {p['snr_min']:g}; a row exactly at the threshold is kept",
                       "excluded_below": int((reason == "snr").sum()), "excluded_missing": int((reason == "snr_missing").sum())}
     have = reason == ""
     x = np.full(n, np.nan)
@@ -652,15 +716,16 @@ def op_catalog(args, params: dict) -> dict:
     wts = None
     weighting_star = "none: no uncertainty column is declared for the catalog angle"
     if sigma is not None:
-        wts = 1.0 / np.radians(np.maximum(sigma, SIGMA_FLOOR_DEG)) ** 2
-        weighting_star = (f"weighted AM uses w = 1 / max(σ, {SIGMA_FLOOR_DEG:g}°)² (σ in radians) from the declared uncertainty column "
-                          f"{decl['angle']['sigmaColumn']!r}, as star_vgt_scale_analysis.py:269; a source with no σ is left out of the weighted AM only")
+        floor = preset.values["sigma_floor_deg"]
+        wts = 1.0 / np.radians(np.maximum(sigma, floor)) ** 2
+        weighting_star = (f"weighted AM uses w = 1 / max(σ, {floor:g}°)² (σ in radians) from the declared uncertainty column "
+                          f"{decl['angle']['sigmaColumn']!r}, so a very precise source cannot dominate; a source with no σ is left out of the weighted AM only")
     am_w = alignment_measure(d[used], None if wts is None else wts[used])
     absd = np.abs(d)
     hist = histogram_block(absd[used], p["bins"])
-    # The null shifts every source with a pixel position and an angle, as the script does (it wraps sources outside the map in).
+    # The null shifts every source with a pixel position and an angle (it wraps sources outside the map in).
     part = placed
-    nul = {"method": "shifted source pattern, values kept (vgt_phase_vs_stars.py:97-117)", "skipped": None}
+    nul = {"method": "shifted source pattern, values kept", "skipped": None}
     n_sub = int(p["keep_fraction"] * n_real)
     min_shift_px = p["min_shift_deg"] / pixel_scale_deg(w2)
     if p["n_shifts"] == 0:
@@ -673,7 +738,8 @@ def op_catalog(args, params: dict) -> dict:
         nul.update(null_catalog(disks, x[part], y[part], star_pix[part], am, n_real, n_shifts=p["n_shifts"], min_shift_px=min_shift_px,
                                 keep=p["keep_fraction"], rng=null_rng(p["seed"]), bins=p["bins"]))
         nul["sources_shifted"] = int(part.sum())
-    boot = bootstrap_am(d[used], side_rng(p["seed"], 1))
+    nboot = preset.values["boot_samples"]
+    boot = bootstrap_am(d[used], side_rng(p["seed"], 1), nboot)
     map_sky = np.full(n, np.nan)
     map_sky[used] = ori.wrap_axial(ori.pixel_to_sky_pa(w2, x[used], y[used], v[used]))
     dsky = np.where(used, headless_deg(map_sky - star_sky), np.nan)
@@ -707,13 +773,15 @@ def op_catalog(args, params: dict) -> dict:
         "am": am, "am_weighted": am_w if wts is not None else None,
         "median_abs_dpsi_deg": float(np.median(absd[used])),
         "bootstrap_am_16_84": boot,
-        "bootstrap_note": "16th to 84th percentile of AM over 2000 resamples of the sources with replacement (star_vgt_scale_analysis.py:82-87); it assumes independent sources, which overlapping disks are not",
+        "bootstrap_resamples": nboot,
+        "bootstrap_note": f"16th to 84th percentile of AM over {nboot} resamples of the sources with replacement; it assumes independent sources, which overlapping disks are not",
         "histogram": hist, "null": nul,
         "segments": {"x": [float(x[i]) for i in seg_idx], "y": [float(y[i]) for i in seg_idx],
                      "map_pix_deg": [None if not math.isfinite(v[i]) else float(v[i]) for i in seg_idx],
                      "other_pix_deg": [float(star_pix[i]) for i in seg_idx], "used": [bool(used[i]) for i in seg_idx],
                      "truncated": int(inmap.sum()) > MAX_SEGMENTS,
                      "frame": "0-based pixel coordinates and pixel-frame angles (counter-clockwise from +x) of the map"},
+        "preset": preset.record(params, "catalog"),
         "table": {"file": os.path.basename(args.out), "rows": n, "columns": header,
                   "note": "x_fits, y_fits are 1-based FITS pixel coordinates in the map; catalog_b_deg and map_b_deg are B-field orientations east of north in the map's celestial frame; dpsi_deg is map minus catalog in that frame"},
         "policy": ("Agreement statistic between two tracers, not a validation of either. Pixels in a disk and overlapping disks are correlated, so the "
@@ -739,7 +807,7 @@ def beam_count(cubes, n_used: int, pix_area_deg2: float) -> dict:
                       "than the beam, so it overstates the number of independent samples."}
 
 
-def _strata_of_third(args, third_path, a, b, d, used, wgt, weighted, ask, seed, pix_area, nx, ny) -> dict:
+def _strata_of_third(args, third_path, a, b, d, used, wgt, weighted, ask, seed, pix_area, nx, ny, boot_samples) -> dict:
     """Open the third map, check that it can be binned against this comparison, and stratify. It must be one scalar plane on the
     comparison's grid with a brightness unit from its file or declared by the author; the unit is stated, never assumed."""
     from analysis import open_cube, planes, unit_of
@@ -755,13 +823,14 @@ def _strata_of_third(args, third_path, a, b, d, used, wgt, weighted, ask, seed, 
              "unit_note": {"file": "the unit is the file's BUNIT", "user": "the unit was declared by the author; the file has no BUNIT",
                            "corrected": "the unit is the author's correction; the file states another BUNIT"}.get(src, "")}
     return stratify(d, vals, used, wgt, weighted, ask, seed=seed, pix_area_deg2=pix_area,
-                    beam_cubes=[(a, "the first map"), (b, "the second map")], third_unit=facts)
+                    beam_cubes=[(a, "the first map"), (b, "the second map")], third_unit=facts, boot_samples=boot_samples)
 
 
 def op_maps(args, params: dict) -> dict:
     """Map against map on a common grid (mode B)."""
     from analysis import open_cube, image_header, write_fits, mask_policy
-    p = check_params(params, "maps")
+    preset = resolve_preset(params.get("preset"))
+    p = check_params(params, "maps", preset)
     ask = check_strata(params)
     third_path = getattr(args, "third", None)
     if ask and not third_path:
@@ -838,12 +907,13 @@ def op_maps(args, params: dict) -> dict:
                          note="1-based FITS pixels; lon, lat in the map's celestial frame; both angles are B-field orientations east of north there; dpsi_deg is first minus second")
     strata = None
     if third_path:
-        strata = _strata_of_third(args, third_path, a, b, d, used, wgt, weighted, ask or {"bins": STRATA_DEFAULT_BINS}, p["seed"], pix_area, nx, ny)
+        strata = _strata_of_third(args, third_path, a, b, d, used, wgt, weighted, ask or {"bins": preset.values["strata_bins"]}, p["seed"], pix_area, nx, ny,
+                                 preset.values["boot_samples"])
     summary = {
         "label": LABEL, "mode": "map_map",
         "definitions": {**DEFINITIONS, "prs": "projected Rayleigh statistic V = Σ w cos 2Δψ / sqrt(Σ w² / 2) (Jow et al. 2018, MNRAS 474, 1018, eq. 8; "
                                               "eq. 6 when every w is 1; written Z_x there, the V statistic of Durand & Greenwood 1958). Positive means preferentially parallel, negative perpendicular."},
-        "parameters": p,
+        "parameters": p, "preset": preset.record(params, "maps"),
         "map": {**fa, "nx": nx, "ny": ny, "pixel_scale_arcmin": pixel_scale_deg(wa2) * 60.0, "compass": ori.compass(wa2, (nx - 1) / 2, (ny - 1) / 2)}, "other": fb,
         "conversion": "Both maps as B-field orientation in their common pixel frame (each rotated by its quantity; a sky-frame map carried into the "
                       "pixel frame with astropy); per-pixel Δψ = first − second.",
