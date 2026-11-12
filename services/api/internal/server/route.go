@@ -37,7 +37,7 @@ func (s *Server) route(mux *http.ServeMux, pattern string, perm authz.Permission
 		}
 		h(w, r)
 	}
-	if s.multiUser() && notOnGroupServer[perm] {
+	if s.multiUser() && (notOnGroupServer[perm] || pathsNotOnGroupServer[pattern]) {
 		handler = func(w http.ResponseWriter, r *http.Request) { fail(w, http.StatusNotFound, "not found") }
 	} else if s.onRoute != nil {
 		s.onRoute(pattern, perm)
@@ -50,6 +50,15 @@ func (s *Server) route(mux *http.ServeMux, pattern string, perm authz.Permission
 var notOnGroupServer = map[authz.Permission]bool{
 	authz.LocalOnly: true, authz.ClusterRead: true, authz.ClusterUse: true, authz.ClusterAdmin: true,
 	authz.JobRead: true, authz.JobSubmit: true, authz.JobAccess: true, authz.SweepRead: true, authz.SweepSubmit: true,
+}
+
+// pathsNotOnGroupServer are routes that browse or open arbitrary paths of the server's file system, which share a permission
+// with routes that stay: path completion (not limited to the roots) and opening a folder as a project (which makes it a
+// root). On a cloud VM every account being an admin does not justify that; they return in slice 3, confined to each
+// workspace's data roots. The other path routes (file tree, preview, registration) only reach paths inside the roots.
+var pathsNotOnGroupServer = map[string]bool{
+	"GET /api/fs/complete":    true,
+	"POST /api/projects/open": true,
 }
 
 // withLocalOwner installs the local owner as the actor of every request, the whole of authentication in local mode: the

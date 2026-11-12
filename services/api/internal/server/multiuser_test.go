@@ -522,7 +522,7 @@ func TestGroupServerDoesNotMountDisabledFeatures(t *testing.T) {
 	h := s.Handler()
 	disabled := 0
 	for pattern, perm := range local {
-		if !notOnGroupServer[perm] {
+		if !notOnGroupServer[perm] && !pathsNotOnGroupServer[pattern] {
 			continue
 		}
 		disabled++
@@ -542,6 +542,16 @@ func TestGroupServerDoesNotMountDisabledFeatures(t *testing.T) {
 		h.ServeHTTP(w, q)
 		if w.Code != 404 {
 			t.Errorf("%s answered %d on the group server, want 404", pattern, w.Code)
+		}
+	}
+	for p := range pathsNotOnGroupServer {
+		if _, ok := local[p]; !ok {
+			t.Errorf("%s is listed as left out but no local server declares it", p)
+		}
+	}
+	for _, must := range []string{"GET /api/fs/complete", "POST /api/projects/open"} {
+		if _, ok := declared[must]; ok {
+			t.Errorf("%s browses or opens server paths and is mounted on the group server", must)
 		}
 	}
 	for _, must := range []string{"GET /api/files/text", "PUT /api/files/text", "POST /api/fs/choose", "GET /api/hosts/ssh-config", "GET /api/terminal",
