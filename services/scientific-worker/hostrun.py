@@ -5,6 +5,10 @@ crossing to the researcher's computer.
 
 The request is one JSON object on stdin, never on the command line (a mask's name or a subset's note is free text, and the command
 line goes through the account's login shell): {"op": "mask" | "subset", "name": "<file name>", "argv": [analysis.py options]}.
+A subset may also name the mask files its result carries (ADR 0064, masks carried through a subset, ADR 0055): "carry": [{"name":
+"<file name>", "path": "<source mask>", "type": "<mask type>"}] and "missing": "<file name>" (the result's own no-value mask, computed
+again). They are structured fields, not options: --carry-masks and --missing-out stay out of the allow-list, and hostrun.py builds
+them itself from private temporary names.
 
 What may be written is fixed before the request is read:
 - the folder is VESQIRA_DERIVED, set by the launcher from the host's first source root; it must resolve inside VESQIRA_ROOTS, may
@@ -14,11 +18,14 @@ What may be written is fixed before the request is read:
   succeeded (link() fails if the name exists, so two runs never clobber each other) and is removed on every failure. Just before
   the link a line is written to the caller: a connection already gone (the caller timed out, the VPN dropped) fails that write and
   the run stops there with no file. A connection lost in the last instant can leave a complete file nobody recorded, never half of one.
+- several outputs (the result and its carried masks) are all-or-nothing: every final name must be new and distinct, every temporary is
+  checked, and all are linked together; if any link fails, the ones just linked are removed and nothing stays.
 Only the options each operation reads are accepted, by their exact names (an allow-list: argparse would also take an abbreviation such
 as --miss for --missing-out); --out is added here. The inputs are read through srcopen, which enforces VESQIRA_ROOTS on the resolved
 path like every other read of the host's worker.
 
-The reply is analysis.py's JSON with "file": the resolved path of the file written, on the last line.
+The reply is analysis.py's JSON with "file": the resolved path of the file written, on the last line; with carried masks also
+"carried_files" (resolved paths, in the order asked) and "missing_file" (or null).
 """
 from __future__ import annotations
 
@@ -37,6 +44,8 @@ OPS = ("mask", "subset")
 NAME = re.compile(r"^(mask|subset)-[A-Za-z0-9_-]{1,100}\.fits$")
 ALLOWED = {"mask": {"--input", "--params", "--corrections", "--declared-unit"},
            "subset": {"--input", "--window", "--note", "--declared-unit", "--corrections"}}
+MASK_TYPES = ("invalid", "low_snr", "saturated", "user_excluded", "other")   # a carried mask is never the no-value mask
+MAX_CARRY = 16
 MAX_REQUEST = 64 << 10
 
 
@@ -59,6 +68,34 @@ def options_ok(op: str, argv: list[str]) -> bool:
             i += 1
         i += 1
     return True
+
+
+def mask_name_ok(name: object) -> bool:
+    return isinstance(name, str) and bool(NAME.match(name)) and name.startswith("mask-")
+
+
+def carry_plan(op: str, req: dict, name: str) -> tuple[list[dict], str | None] | None:
+    """The carried masks ([{name, path, type}]) and the no-value mask's file name of a request, or None when they are not acceptable.
+    Only a subset carries masks; every file name has the mask shape and all names (with the result's) are distinct."""
+    carry, missing = req.get("carry", []), req.get("missing")
+    if op != "subset":
+        return ([], None) if not carry and missing is None else None
+    if not isinstance(carry, list) or len(carry) > MAX_CARRY or (missing is not None and not mask_name_ok(missing)):
+        return None
+    for c in carry:
+        if not (isinstance(c, dict) and set(c) == {"name", "path", "type"} and mask_name_ok(c["name"]) and c["type"] in MASK_TYPES
+                and isinstance(c["path"], str) and os.path.isabs(c["path"]) and len(c["path"]) <= 16384 and "\0" not in c["path"]):
+            return None
+    names = [name] + [c["name"] for c in carry] + ([missing] if missing else [])
+    if len(set(names)) != len(names):
+        return None
+    return carry, missing
+
+
+def _unlink_all(paths: list[str]) -> None:
+    for p in paths:
+        with contextlib.suppress(OSError):
+            os.unlink(p)
 
 
 def derived_folder(roots: list[str] | None, raw: str | None) -> str:
@@ -104,16 +141,27 @@ def main() -> int:
         return refuse("bad request")
     if not options_ok(op, argv):
         return refuse("bad request")
-    final = os.path.join(folder, name)
-    if os.path.lexists(final):
+    plan = carry_plan(op, req, name)
+    if plan is None:
+        return refuse("bad request")
+    carry, missing = plan
+    finals = [name] + [c["name"] for c in carry] + ([missing] if missing else [])
+    if any(os.path.lexists(os.path.join(folder, n)) for n in finals):
         return refuse("a file of that name is already in the derived folder; it is left as it is")
-    tmp = os.path.join(folder, f".part-{secrets.token_hex(8)}-{name}")
+    tag = secrets.token_hex(8)
+    tmps = [os.path.join(folder, f".part-{tag}-{n}") for n in finals]   # private names; the first is the result's own
+    extra = []
+    if carry:
+        extra.append("--carry-masks=" + json.dumps([{"path": c["path"], "type": c["type"], "out": tmps[1 + i]} for i, c in enumerate(carry)]))
+    if missing:
+        extra.append("--missing-out=" + tmps[-1])
 
     import analysis
     buf = io.StringIO()
+    linked: list[str] = []
     try:
         with contextlib.redirect_stdout(buf):
-            code = analysis.main([op, *argv, "--out", tmp])
+            code = analysis.main([op, *argv, "--out", tmps[0], *extra])
         out = buf.getvalue().strip().splitlines()
         try:
             res = json.loads(out[-1]) if out else {}
@@ -127,20 +175,26 @@ def main() -> int:
         except OSError:
             return 2
         try:
-            st = os.lstat(tmp)
-            if not stat.S_ISREG(st.st_mode):
-                raise OSError
-            os.link(tmp, final)              # never replaces: fails if the name appeared meanwhile
+            for t in tmps:                   # every output must exist as a plain file before any is put in place
+                if not stat.S_ISREG(os.lstat(t).st_mode):
+                    raise OSError
+            for t, n in zip(tmps, finals):
+                os.link(t, os.path.join(folder, n))   # never replaces: fails if the name appeared meanwhile
+                linked.append(os.path.join(folder, n))
         except FileExistsError:
+            _unlink_all(linked)
             return refuse("a file of that name appeared in the derived folder meanwhile; it is left as it is")
         except OSError:
+            _unlink_all(linked)
             return refuse("the file could not be put in place in the derived folder on the host")
-        res["file"] = final
+        res["file"] = linked[0]
+        if carry or missing:
+            res["carried_files"] = linked[1:1 + len(carry)]
+            res["missing_file"] = linked[-1] if missing else None
         print(json.dumps(res, allow_nan=False))
         return 0
     finally:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
+        _unlink_all(tmps)
 
 
 if __name__ == "__main__":

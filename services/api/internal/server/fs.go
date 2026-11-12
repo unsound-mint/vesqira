@@ -40,6 +40,11 @@ type completeEntry struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Dir  bool   `json:"dir"`
+	// Link and Target mark a symbolic link and say what it points to as written, so the chooser shows it as a link. A completion
+	// is deliberately not limited to the source roots (ADR 0031), so this does not say whether the target is readable; opening it
+	// as a project or registering a file in it still goes through the roots.
+	Link   bool   `json:"link,omitempty"`
+	Target string `json:"target,omitempty"`
 }
 
 type completeQuery struct {
@@ -168,7 +173,11 @@ func listNames(dir, last string, c completeQuery) (completion, error) {
 	}
 	for _, e := range m {
 		isDir := e.IsDir()
+		var link bool
+		var target string
 		if e.Type()&os.ModeSymlink != 0 {
+			link = true
+			target, _ = os.Readlink(filepath.Join(dir, e.Name())) // the link's own text: nothing is followed
 			// A link says what it is only when asked: one stat of the entry itself, never a walk into it.
 			if time.Now().After(deadline) {
 				out.Truncated = true
@@ -179,7 +188,7 @@ func listNames(dir, last string, c completeQuery) (completion, error) {
 		if !isDir && (c.kind == "dir" || !hasExt(e.Name(), c.exts)) {
 			continue
 		}
-		out.Entries = append(out.Entries, completeEntry{Name: e.Name(), Path: filepath.Join(dir, e.Name()), Dir: isDir})
+		out.Entries = append(out.Entries, completeEntry{Name: e.Name(), Path: filepath.Join(dir, e.Name()), Dir: isDir, Link: link, Target: target})
 	}
 	sort.Slice(out.Entries, func(i, j int) bool {
 		a, b := out.Entries[i], out.Entries[j]

@@ -17,6 +17,7 @@ import type { Scene, SceneOverlay } from "../scene/scene";
 import { lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
 import { composeGridFigure, GRID_NODATA, gridCaption, gridFigure, paintPixels, panelLabel, STRETCH_LABEL } from "./channelGrid";
+import { figureCompassOf } from "../ui/compassGeometry";
 import { blobToBase64, figureScale } from "./figure";
 import { sceneMaskOf } from "./figureMasks";
 import type { FigureMaskInput } from "./figureMasks";
@@ -85,6 +86,8 @@ function canon(v: unknown): string {
   return JSON.stringify(v) ?? "null";
 }
 
+const sameCompass = (a: NonNullable<Scene["compass"]>, b: NonNullable<Scene["compass"]>) => canon(a) === canon(b);
+
 const sigmas = (s: Scene) => Object.fromEntries(s.overlays.flatMap((o) => (o.kind === "contours" && o.levels.mode === "sigma" && o.levels.sigma !== undefined ? [[o.id, o.levels.sigma] as const] : [])));
 
 /**
@@ -135,12 +138,17 @@ export async function redrawSceneFigure(f: Figure, o: { refresh: boolean }): Pro
       }),
   );
   const { masks, notes: maskNotes } = await drawableMasks(stored, base.id, plane.head.channel);
-  const drawn = figureScene(stored, { plane, axial, scale: s, bunit: view.bunit, interp: base.interpretation, reliability, geometry, datasets, masks: masks.map((m) => sceneMaskOf(m.mask)) });
+  // A figure that drew the arrows draws them again from the WCS in force now (a changed correction was announced by the redraw check). A figure
+  // saved without them, or before the option existed, draws none: the same picture as before.
+  const compass = stored.compass ? figureCompassOf(view.compass) : undefined;
+  const drawn = figureScene(stored, { plane, axial, scale: s, bunit: view.bunit, interp: base.interpretation, reliability, geometry, datasets, masks: masks.map((m) => sceneMaskOf(m.mask)), compass });
   const input: PlaneFigureInput = { dataset: base, datasets, view, plane, drawn, interp: base.interpretation, reliability, geometry, title: f.title, figureWidth: render.figureWidth, showLines: orientationOf(drawn)?.visible ?? true, masks };
   const source = baseRaster(plane, drawn, base.interpretation, render);
   const made = await composePlaneFigure({ ...input, source });
   const scene: Scene = { ...drawn, render };
   const notes: string[] = [...maskNotes];
+  if (stored.compass && !compass) notes.push(`The north and east arrows are not drawn: ${view.compass?.available === false && view.compass.reason ? view.compass.reason : "the file's WCS gives no north and east now"}.`);
+  else if (stored.compass && compass && !sameCompass(stored.compass, compass)) notes.push("The north and east arrows now rest on a different WCS state than the figure recorded; they are drawn from the one in force now.");
   const was = sigmas(stored), now = sigmas(drawn);
   for (const id of Object.keys(now)) {
     if (was[id] !== undefined && was[id] !== now[id]) {

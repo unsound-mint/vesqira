@@ -84,7 +84,8 @@ func (s *Server) registerCatalogPath(ctx context.Context, real string) (catalog.
 	if err != nil {
 		return catalog.Dataset{}, 404, "file not found"
 	}
-	ds, err := s.Store.Upsert(catalog.Dataset{Path: real, Name: filepath.Base(real), SizeBytes: info.Size(), ModifiedAt: info.ModTime(), Header: hdr})
+	dev, ino := fileIDOf(info)
+	ds, err := s.Store.Upsert(catalog.Dataset{Path: real, Name: filepath.Base(real), SizeBytes: info.Size(), ModifiedAt: info.ModTime(), FileDev: dev, FileIno: ino, Header: hdr})
 	if errors.Is(err, catalog.ErrLocationExists) {
 		return catalog.Dataset{}, 409, "this file is already another location of a dataset: remove that location first, or open that dataset"
 	}

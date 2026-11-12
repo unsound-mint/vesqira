@@ -19,7 +19,7 @@ func TestCrossRunFiguresMigrationKeepsEveryFigureAndItsIds(t *testing.T) {
 		`INSERT INTO figures(dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance) VALUES (2,'Spectrum','',11,'r2','s2',9,7,'{}')`,
 		`INSERT INTO figures(dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance) VALUES (2,'Gone','',12,'r3','s3',9,7,'{}')`,
 		`DELETE FROM figures WHERE id=3`, // the newest id was used and deleted: the counter stays at 3
-		`PRAGMA user_version = 26`,
+		`PRAGMA user_version = 27`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatal(err)
@@ -28,7 +28,7 @@ func TestCrossRunFiguresMigrationKeepsEveryFigureAndItsIds(t *testing.T) {
 	if err := Guard(db, "file:"+p); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 27 {
+	if version(t, db) != Version || Version < 28 {
 		t.Fatalf("version %d", version(t, db))
 	}
 	var title, scene, identity, kind, rev string
@@ -67,7 +67,7 @@ func TestCrossRunFiguresMigrationKeepsEveryFigureAndItsIds(t *testing.T) {
 func TestCrossRunFiguresMigrationNeedsNoTable(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.db")
 	db := open(t, p)
-	if _, err := db.Exec(`PRAGMA user_version = 26`); err != nil {
+	if _, err := db.Exec(`PRAGMA user_version = 27`); err != nil {
 		t.Fatal(err)
 	}
 	if err := Guard(db, "file:"+p); err != nil {

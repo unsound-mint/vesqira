@@ -44,8 +44,9 @@ import (
 // Version 24: saved views of the runs table (run_views; ADR 0062).
 // Version 25: virtual subsets, a saved window onto a dataset with an append-only history of versions (subsets, subset_versions; ADR 0063).
 // Version 26: a mask records the machine its file lives on (masks.host_id, 0 for this computer; ADR 0064).
-// Version 27: a figure may be a cross-run plot with no dataset (figures.dataset_id may be NULL, figures.kind; ADR 0065).
-const Version = 27
+// Version 27: a location records the device and inode of its file, compared when the file is used again (dataset_locations.file_dev, .file_ino; ADR 0050 section 8).
+// Version 28: a figure may be a cross-run plot with no dataset (figures.dataset_id may be NULL, figures.kind; ADR 0065).
+const Version = 28
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -80,7 +81,8 @@ var migrations = []Migration{
 	{To: 24, Name: "saved run views", Up: savedRunViews},
 	{To: 25, Name: "virtual subsets", Up: subsetsTables},
 	{To: 26, Name: "masks on a host", Up: masksHost},
-	{To: 27, Name: "cross-run figures", Up: crossRunFigures},
+	{To: 27, Name: "file identity of a location", Up: locationFileID},
+	{To: 28, Name: "cross-run figures", Up: crossRunFigures},
 }
 
 // FiguresTable is the pinned figures (ADR 0041, 0042, 0053, 0065). A figure of a dataset has dataset_id; a cross-run plot (ADR 0065)
@@ -109,12 +111,12 @@ func crossRunFigures(tx *sql.Tx) error {
 		return err
 	}
 	for _, q := range []string{
-		`DROP TABLE IF EXISTS figures_v27`,
-		strings.Replace(FiguresTable, "IF NOT EXISTS figures(", "figures_v27(", 1),
-		`INSERT INTO figures_v27(id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity)
+		`DROP TABLE IF EXISTS figures_v28`,
+		strings.Replace(FiguresTable, "IF NOT EXISTS figures(", "figures_v28(", 1),
+		`INSERT INTO figures_v28(id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity)
 			SELECT id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity FROM figures`,
 		`DROP TABLE figures`,
-		`ALTER TABLE figures_v27 RENAME TO figures`,
+		`ALTER TABLE figures_v28 RENAME TO figures`,
 	} {
 		if _, err := tx.Exec(q); err != nil {
 			return err
@@ -137,6 +139,23 @@ func crossRunFigures(tx *sql.Tx) error {
 		}
 	}
 	return err
+}
+
+// locationFileID adds the device and inode a location's file had when it was recorded. 0 means not recorded, which is what every
+// existing location is: the first time one is read and still matches its size and modification time, the server records what it
+// sees (the same trust the size and time comparison already gives), and from then on a different file under that name is refused.
+// A catalog without the table (never opened by the catalog package) needs nothing.
+func locationFileID(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='dataset_locations'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, c := range []string{"file_dev", "file_ino"} {
+		if err := AddColumn(tx, "dataset_locations", c, "INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // masksHost records where a mask file lives (ADR 0064): 0 is this computer, which every existing mask is (masks were made only for
@@ -295,6 +314,7 @@ const DatasetLocationsTable = `CREATE TABLE IF NOT EXISTS dataset_locations(
 	added_at INTEGER NOT NULL,
 	sampled_fp TEXT NOT NULL DEFAULT '', sampled_at INTEGER NOT NULL DEFAULT 0, sampled_by TEXT NOT NULL DEFAULT '',
 	full_sha256 TEXT NOT NULL DEFAULT '', full_at INTEGER NOT NULL DEFAULT 0, full_by TEXT NOT NULL DEFAULT '',
+	file_dev INTEGER NOT NULL DEFAULT 0, file_ino INTEGER NOT NULL DEFAULT 0,
 	UNIQUE(host_id, path))`
 
 // datasetIdentity adds dataset_locations and gives every existing dataset its primary location (no fingerprint yet: none was

@@ -57,6 +57,10 @@ type Location struct {
 	// not prove equal bytes. Full is the SHA-256 of every byte. nil means not computed.
 	Sampled *Stamp `json:"sampledFingerprint"`
 	Full    *Stamp `json:"fullSha256"`
+	// FileDev and FileIno are the device and inode of a file on this computer when it was recorded (0: not recorded, and always 0
+	// for a file on a host). They are compared when the file is used again, never shown or sent to a client.
+	FileDev int64 `json:"-"`
+	FileIno int64 `json:"-"`
 }
 
 // Evidence is what is known about this location's bytes.
@@ -71,14 +75,14 @@ func (l Location) Evidence() identity.Evidence {
 	return e
 }
 
-const locCols = `id,dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,sampled_fp,sampled_at,sampled_by,full_sha256,full_at,full_by`
+const locCols = `id,dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,sampled_fp,sampled_at,sampled_by,full_sha256,full_at,full_by,file_dev,file_ino`
 
 func scanLocation(row interface{ Scan(...any) error }) (int64, Location, error) {
 	var l Location
 	var dsID, mod, add, sAt, fAt int64
 	var prim int
 	var sFP, sBy, fSHA, fBy string
-	if err := row.Scan(&l.ID, &dsID, &l.HostID, &l.Path, &l.Kind, &prim, &l.Link, &l.SizeBytes, &mod, &add, &sFP, &sAt, &sBy, &fSHA, &fAt, &fBy); err != nil {
+	if err := row.Scan(&l.ID, &dsID, &l.HostID, &l.Path, &l.Kind, &prim, &l.Link, &l.SizeBytes, &mod, &add, &sFP, &sAt, &sBy, &fSHA, &fAt, &fBy, &l.FileDev, &l.FileIno); err != nil {
 		return 0, l, err
 	}
 	l.Primary = prim == 1
@@ -140,11 +144,12 @@ func (s *Store) Location(datasetID, locID int64) (Location, error) {
 // upsertPrimary keeps the primary location in step with the dataset row. When the file's size or modification time changed,
 // the fingerprints stored for the old bytes are dropped: a hash must never stay attached to bytes it was not computed from.
 func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
-	var oldSize, oldMod int64
+	var oldSize, oldMod, oldDev, oldIno int64 // oldDev is read for completeness; only the inode tells files apart
 	changed := false
-	switch err := s.db.QueryRow(`SELECT size_bytes,modified_at FROM dataset_locations WHERE host_id=? AND path=?`, d.HostID, d.Path).Scan(&oldSize, &oldMod); {
+	switch err := s.db.QueryRow(`SELECT size_bytes,modified_at,file_dev,file_ino FROM dataset_locations WHERE host_id=? AND path=?`, d.HostID, d.Path).Scan(&oldSize, &oldMod, &oldDev, &oldIno); {
 	case err == nil:
-		changed = oldSize != d.SizeBytes || oldMod != d.ModifiedAt.UnixNano()
+		// another file under the same name counts as a change even when its size and time happen to be equal
+		changed = oldSize != d.SizeBytes || oldMod != d.ModifiedAt.UnixNano() || (oldIno != 0 && d.FileIno != 0 && oldIno != d.FileIno) // a new device alone is a remount
 	case !errors.Is(err, sql.ErrNoRows):
 		return err
 	}
@@ -155,16 +160,29 @@ func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
 			return err
 		}
 	}
-	_, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at) VALUES(?,?,?,?,1,?,?,?,?)
+	_, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,file_dev,file_ino) VALUES(?,?,?,?,1,?,?,?,?,?,?)
 		ON CONFLICT(host_id,path) DO UPDATE SET
-			sampled_fp=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN sampled_fp ELSE '' END,
-			sampled_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN sampled_at ELSE 0 END,
-			sampled_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN sampled_by ELSE '' END,
-			full_sha256=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN full_sha256 ELSE '' END,
-			full_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN full_at ELSE 0 END,
-			full_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at THEN full_by ELSE '' END,
-			size_bytes=excluded.size_bytes, modified_at=excluded.modified_at`,
-		datasetID, d.HostID, d.Path, LocRegistered, LinkRegistered, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix())
+			sampled_fp=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN sampled_fp ELSE '' END,
+			sampled_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN sampled_at ELSE 0 END,
+			sampled_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN sampled_by ELSE '' END,
+			full_sha256=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN full_sha256 ELSE '' END,
+			full_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN full_at ELSE 0 END,
+			full_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN full_by ELSE '' END,
+			size_bytes=excluded.size_bytes, modified_at=excluded.modified_at,
+			file_dev=CASE WHEN excluded.file_ino=0 THEN file_dev ELSE excluded.file_dev END, file_ino=CASE WHEN excluded.file_ino=0 THEN file_ino ELSE excluded.file_ino END`,
+		datasetID, d.HostID, d.Path, LocRegistered, LinkRegistered, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix(), d.FileDev, d.FileIno)
+	return err
+}
+
+// NoteFileID records the device and inode of a location's file, for a caller that has just checked it against the recorded size,
+// modification time and inode: it fills them in for a location made before schema 27, and records the new device number of a drive
+// mounted again (same inode). It never replaces a recorded inode: a different file is reported to the person, who registers it
+// again on purpose.
+func (s *Store) NoteFileID(hostID int64, path string, dev, ino int64) error {
+	if ino == 0 || hostID != 0 {
+		return nil
+	}
+	_, err := s.db.Exec(`UPDATE dataset_locations SET file_dev=?, file_ino=? WHERE host_id=0 AND path=? AND (file_ino=0 OR (file_ino=? AND file_dev<>?))`, dev, ino, path, ino, dev)
 	return err
 }
 
@@ -212,8 +230,8 @@ func (s *Store) AddLocation(datasetID int64, l Location) (Location, error) {
 	default:
 		return Location{}, fmt.Errorf("catalog: a location needs a link, got %q", l.Link)
 	}
-	res, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at) VALUES(?,?,?,?,0,?,?,?,?)`,
-		datasetID, l.HostID, l.Path, l.Kind, l.Link, l.SizeBytes, l.ModifiedAt.UnixNano(), time.Now().Unix())
+	res, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,file_dev,file_ino) VALUES(?,?,?,?,0,?,?,?,?,?,?)`,
+		datasetID, l.HostID, l.Path, l.Kind, l.Link, l.SizeBytes, l.ModifiedAt.UnixNano(), time.Now().Unix(), l.FileDev, l.FileIno)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return Location{}, ErrLocationExists
@@ -279,7 +297,7 @@ func (s *Store) FindSame(ev identity.Evidence, skip int64) ([]Match, error) {
 		var dsID, mod, add, sAt, fAt int64
 		var prim int
 		var sFP, sBy, fSHA, fBy, name string
-		if err := rows.Scan(&l.ID, &dsID, &l.HostID, &l.Path, &l.Kind, &prim, &l.Link, &l.SizeBytes, &mod, &add, &sFP, &sAt, &sBy, &fSHA, &fAt, &fBy, &name); err != nil {
+		if err := rows.Scan(&l.ID, &dsID, &l.HostID, &l.Path, &l.Kind, &prim, &l.Link, &l.SizeBytes, &mod, &add, &sFP, &sAt, &sBy, &fSHA, &fAt, &fBy, &l.FileDev, &l.FileIno, &name); err != nil {
 			return nil, err
 		}
 		rel := identity.Relate(ev, identity.Evidence{Size: l.SizeBytes, Sampled: sFP, Full: fSHA})

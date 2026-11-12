@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
@@ -41,6 +42,7 @@ type carryOut struct {
 // when the operation fails.
 type carryPlan struct {
 	op         string
+	hostID     int64 // the machine the result is written on (0: this computer); the carried masks are written there too (ADR 0064)
 	carried    []carryOut
 	left       []masks.Mask // masks of the source that stay behind, with the no-value mask excluded (it is recomputed, below)
 	missingOut string       // where the result's own no-value mask goes; empty when the source has none
@@ -67,7 +69,7 @@ func (p *carryPlan) args() []string {
 
 // cleanup removes the files an operation that failed may have written. The sources are never touched.
 func (p *carryPlan) cleanup() {
-	if p == nil {
+	if p == nil || p.hostID != 0 { // on a host the files stay, inert, in its derived folder: Vesqira deletes nothing there (ADR 0041, 0064)
 		return
 	}
 	for _, c := range p.carried {
@@ -157,7 +159,7 @@ func (s *Server) planCarry(d catalog.Dataset, op string, choices []carryChoice) 
 			return nil, 422, "choose, for each mask of this file, to carry it into the result or leave it behind (nothing is chosen for you): " + strings.Join(undecided, ", ")
 		}
 	}
-	plan := &carryPlan{op: op}
+	plan := &carryPlan{op: op, hostID: d.HostID}
 	for _, m := range all {
 		switch {
 		case m.Type == masks.Missing:
@@ -205,6 +207,12 @@ func (s *Server) recordCarried(p *carryPlan, summary json.RawMessage, src, nd ca
 	if p == nil {
 		return nil, 0, ""
 	}
+	ctx := context.Background()
+	if p.hostID != 0 { // reading a file's identity on a host is a round trip over the VPN: bounded
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+	}
 	cs := &carrySummary{By: p.op}
 	if len(p.carried) > 0 || p.missingOut != "" { // otherwise the program was not asked to write a mask and says nothing of them
 		var wrap struct {
@@ -238,9 +246,9 @@ func (s *Server) recordCarried(p *carryPlan, summary json.RawMessage, src, nd ca
 			"carriedFrom": map[string]any{"mask": c.mask.Name, "dataset": src.Name, "type": c.mask.Type, "tier": c.mask.Tier, "mappingVersion": c.mask.Mapping,
 				"method": c.mask.Method, "fingerprint": "sha256:" + c.mask.SHA256, "rule": orig},
 		})
-		m, err := s.storeMask(context.Background(), nd, masks.Mask{Type: c.mask.Type, Name: c.mask.Name, Path: c.out, Width: got.Width, Height: got.Height, Channels: got.Channels,
+		m, err := s.storeMask(ctx, nd, masks.Mask{Type: c.mask.Type, Name: c.mask.Name, Path: c.out, Width: got.Width, Height: got.Height, Channels: got.Channels,
 			Flagged: got.Flagged, Total: got.Total, Tier: c.mask.Tier, Mapping: c.mask.Mapping, Method: masks.MethodCarried, Rule: rule,
-			Meaning: c.mask.Meaning, Author: "user"})
+			Meaning: c.mask.Meaning, Author: "user", HostID: p.hostID})
 		if err != nil {
 			log.Printf("masks: carrying: %v", err)
 			p.cleanup()
@@ -253,9 +261,9 @@ func (s *Server) recordCarried(p *carryPlan, summary json.RawMessage, src, nd ca
 	}
 	recomputed := []string{}
 	if cs.Missing != nil {
-		m, err := s.storeMask(context.Background(), nd, masks.Mask{Type: masks.Missing, Name: defaultMaskName(masks.Missing, maskReq{}), Path: p.missingOut, Width: cs.Missing.Width,
+		m, err := s.storeMask(ctx, nd, masks.Mask{Type: masks.Missing, Name: defaultMaskName(masks.Missing, maskReq{}), Path: p.missingOut, Width: cs.Missing.Width,
 			Height: cs.Missing.Height, Channels: cs.Missing.Channels, Flagged: cs.Missing.Flagged, Total: cs.Missing.Total, Tier: catalog.TierVerified,
-			Method: masks.MethodComputed, Rule: cs.Missing.Rule, Author: analysisAuthor})
+			Method: masks.MethodComputed, Rule: cs.Missing.Rule, Author: analysisAuthor, HostID: p.hostID})
 		if err != nil {
 			log.Printf("masks: recomputing the no-value mask: %v", err)
 			return nil, 500, "the result was written but its no-value mask could not be recorded"

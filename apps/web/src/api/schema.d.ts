@@ -4799,7 +4799,7 @@ export interface components {
             /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
             archived?: boolean;
             /** @description The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. A cross-run plot holds its cross-run/1 description here (the runs it was drawn from, with their recorded values): owner API only, never in a snapshot or a report. */
-            scene?: components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"] | components["schemas"]["CrossRunDescription"];
+            scene?: components["schemas"]["Scene"] & (components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"] | components["schemas"]["CrossRunDescription"]);
             /** @description Absent for figures saved before identities (ADR 0053). */
             identity?: components["schemas"]["FigureIdentity"];
             /** @enum {string} */
@@ -5233,6 +5233,7 @@ export interface components {
             render?: components["schemas"]["SceneRender"];
             /** @description The masks hatched over the plane of a saved figure, with the legend that names them. Absent from a live pane (what is shown is a view setting) and from a figure saved before it existed. The owner's way back to the mask for "draw again"; a reviewer sees the provenance tiers, never this scene. */
             masks?: components["schemas"]["SceneMask"][];
+            compass?: components["schemas"]["SceneCompass"];
         };
         SceneBase: {
             /** Format: int64 */
@@ -8852,6 +8853,19 @@ export interface components {
              * @description The cross-run plot this one redraws
              */
             redrawnFrom?: number | null;
+        };
+        /** @description The north and east arrows a saved figure drew (ADR 0047, amendment) and the WCS state they rest on, as the worker read it for the viewer (Compass). The arrows stand at pixel (x, y) of the figure's plane: 0-based pixel-centre coordinates, y up. Absent when the figure drew none (the option was off, or the file has no celestial WCS) and from figures saved before it existed, which draw again exactly as before. The server keeps what the browser reported and cannot read the WCS again; the reviewer's provenance says so. */
+        SceneCompass: {
+            x: number;
+            y: number;
+            /** @description Counter-clockwise from +x with y up (FITS), in [0, 360) */
+            northDeg: number;
+            /** @description Counter-clockwise from +x with y up (FITS), in [0, 360) */
+            eastDeg: number;
+            /** @description The astropy name of the celestial frame, when it could be named */
+            frame?: string;
+            /** @description The celestial WCS keywords the researcher corrected (ADR 0061) that the arrows rest on; absent when the file's own WCS is used */
+            corrected?: string[];
         };
     };
     responses: never;

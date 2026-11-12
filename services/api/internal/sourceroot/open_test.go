@@ -131,3 +131,46 @@ func TestOpenFileRefusesADirectoryAndBadPaths(t *testing.T) {
 		}
 	})
 }
+
+func TestOpenDirOpensAFolderAndRefusesALinkSwappedAfterTheCheck(t *testing.T) {
+	each(t, func(t *testing.T) {
+		root, outside := twoTrees(t)
+		f, err := OpenDir(filepath.Join(root, "sub"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		names, _ := f.Readdirnames(-1)
+		f.Close()
+		if len(names) != 1 || names[0] != "cube.fits" {
+			t.Fatalf("names = %v", names)
+		}
+		if _, err := OpenDir(filepath.Join(root, "sub", "cube.fits")); !errors.Is(err, ErrNotAllowed) {
+			t.Fatalf("a file is not a folder: %v", err)
+		}
+		afterResolve = func(string) {
+			os.Rename(filepath.Join(root, "sub"), filepath.Join(root, "sub.moved"))
+			os.Symlink(outside, filepath.Join(root, "sub"))
+		}
+		if _, err := OpenDir(filepath.Join(root, "sub")); !errors.Is(err, ErrNotAllowed) {
+			t.Fatalf("a folder swapped for a link after the check: %v", err)
+		}
+	})
+}
+
+func TestIDOfSeesAnotherFileUnderTheSameNameEvenWithEqualSizeAndTime(t *testing.T) {
+	root, _ := twoTrees(t)
+	p := filepath.Join(root, "sub", "cube.fits")
+	fi, _ := os.Stat(p)
+	before, ok := IDOf(fi)
+	if !ok || !before.Recorded() {
+		t.Fatalf("no id: %+v %v", before, ok)
+	}
+	os.WriteFile(p+".new", []byte("INSIDE"), 0o644) // same size as "inside"
+	os.Chtimes(p+".new", fi.ModTime(), fi.ModTime())
+	os.Rename(p+".new", p)
+	fj, _ := os.Stat(p)
+	after, _ := IDOf(fj)
+	if fj.Size() != fi.Size() || !fj.ModTime().Equal(fi.ModTime()) || after == before {
+		t.Fatalf("size %d/%d, time %v/%v, id %+v/%+v", fi.Size(), fj.Size(), fi.ModTime(), fj.ModTime(), before, after)
+	}
+}

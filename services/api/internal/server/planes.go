@@ -33,9 +33,11 @@ type cacheKey struct {
 	channel int
 	step    int // preview reduction (0 or 1 = full resolution)
 	x, y    int
-	q       string         // canonical region description for spectra
-	unit    string         // a unit the person declared for a file without BUNIT: it changes what every head says, so it is part of the key
-	corr    string         // the hash of the researcher's corrections in force (ADR 0061): a corrected reading is never served for another
+	q       string // canonical region description for spectra
+	unit    string // a unit the person declared for a file without BUNIT: it changes what every head says, so it is part of the key
+	corr    string // the hash of the researcher's corrections in force (ADR 0061): a corrected reading is never served for another
+	dev     int64  // the device and inode the file had when it was checked: sent to the worker, which refuses a file that is not that one (ADR 0050 section 8)
+	ino     int64
 	win     string         // the window of a virtual subset read through this key (ADR 0063), as the JSON sent to the worker; "" is the file itself
 	off     *offlineSource // set only for a request whose file could not be reached; ask then answers from the offline store, never the cache
 }
@@ -114,8 +116,17 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 	if info.Size() != d.SizeBytes || info.ModTime().UnixNano() != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}
+	if differentFile(info, d.FileDev, d.FileIno) {
+		return "", k, 409, msgOtherFile
+	}
+	dev, ino := fileIDOf(info)
+	if d.FileIno == 0 || dev != d.FileDev {
+		if err := s.Store.NoteFileID(0, d.Path, dev, ino); err != nil {
+			log.Printf("authorize: %v", err)
+		}
+	}
 	s.notePath(0, real, d.ID)
-	return real, cacheKey{id: d.ID, host: d.HostID, size: info.Size(), mtime: info.ModTime().UnixNano(), unit: declaredUnitOf(d), corr: corrHash(d)}, 0, ""
+	return real, cacheKey{id: d.ID, host: d.HostID, size: info.Size(), mtime: info.ModTime().UnixNano(), dev: dev, ino: ino, unit: declaredUnitOf(d), corr: corrHash(d)}, 0, ""
 }
 
 // source resolves a dataset id to an authorized, unchanged file.
@@ -180,6 +191,9 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 	}
 	if k.unit != "" {
 		req["declared_bunit"] = k.unit // the worker uses it only for a file with no BUNIT, and labels it as the person's
+	}
+	if k.ino != 0 && k.host == 0 {
+		req["expect"] = []int64{k.dev, k.ino} // the worker opens the path without following a link and refuses another file than the one just checked
 	}
 	if k.win != "" {
 		req["window"] = windowOf(k.win) // a virtual subset: the worker reads this window of the file

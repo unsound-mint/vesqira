@@ -49,7 +49,59 @@ type Scene struct {
 	// was drawn. The id is the owner's way back to the mask ("draw again" checks it); a reviewer never sees the scene, only the provenance.
 	// Absent from a live pane's scene (what is shown is a view setting) and from figures saved before it existed.
 	Masks []Mask `json:"masks,omitempty"`
+	// Compass records that the figure drew north and east arrows, and the WCS state they came from (ADR 0047, amendment). Absent when the
+	// figure drew none (the option was off, the file has no celestial WCS) and from figures saved before it existed, which draw again as before.
+	Compass *Compass `json:"compass,omitempty"`
 }
+
+// Compass is the north/east arrows a figure drew: the worker's reading of the file's WCS (with the researcher's corrections, if any) at
+// the pixel the arrows stand on. Directions are counter-clockwise from +x with y up, in [0, 360). The server keeps what the browser
+// reported; it cannot read the WCS again here, so the provenance says the angles are the worker's, as reported.
+type Compass struct {
+	X         float64  `json:"x"`
+	Y         float64  `json:"y"`
+	NorthDeg  float64  `json:"northDeg"`
+	EastDeg   float64  `json:"eastDeg"`
+	Frame     string   `json:"frame,omitempty"`
+	Corrected []string `json:"corrected,omitempty"`
+}
+
+func parseCompass(raw []byte) (*Compass, error) {
+	var in struct {
+		X         *float64 `json:"x"`
+		Y         *float64 `json:"y"`
+		NorthDeg  *float64 `json:"northDeg"`
+		EastDeg   *float64 `json:"eastDeg"`
+		Frame     *string  `json:"frame"`
+		Corrected []string `json:"corrected"`
+	}
+	if err := strict(raw, &in); err != nil {
+		return nil, bad("compass: %v", err)
+	}
+	if in.X == nil || in.Y == nil || in.NorthDeg == nil || in.EastDeg == nil || !finite(*in.X) || !finite(*in.Y) || *in.X < 0 || *in.Y < 0 ||
+		!finite(*in.NorthDeg) || !finite(*in.EastDeg) || *in.NorthDeg < 0 || *in.NorthDeg >= 360 || *in.EastDeg < 0 || *in.EastDeg >= 360 {
+		return nil, bad("compass needs its pixel (x, y) and the north and east directions in [0, 360) degrees")
+	}
+	c := &Compass{X: *in.X, Y: *in.Y, NorthDeg: *in.NorthDeg, EastDeg: *in.EastDeg}
+	if in.Frame != nil {
+		if utf8.RuneCountInString(*in.Frame) > 64 {
+			return nil, bad("compass: frame is at most 64 characters")
+		}
+		c.Frame = *in.Frame
+	}
+	if len(in.Corrected) > 32 {
+		return nil, bad("compass: at most 32 corrected keywords")
+	}
+	for _, k := range in.Corrected {
+		if !compassKey.MatchString(k) {
+			return nil, bad("compass: a corrected keyword is a FITS keyword name")
+		}
+	}
+	c.Corrected = in.Corrected
+	return c, nil
+}
+
+var compassKey = regexp.MustCompile(`^[A-Z0-9_-]{1,16}$`)
 
 // MaxMasks bounds the masks of one figure: the viewer's hatches are one pattern per type and a legend line each.
 const MaxMasks = 8
@@ -408,6 +460,7 @@ func Parse(raw []byte) (Scene, error) {
 		Link     json.RawMessage   `json:"link"`
 		Render   *json.RawMessage  `json:"render"`
 		Masks    []json.RawMessage `json:"masks"`
+		Compass  json.RawMessage   `json:"compass"`
 	}
 	if err := strict(raw, &in); err != nil {
 		return Scene{}, bad("not a scene object: %v", err)
@@ -444,6 +497,11 @@ func Parse(raw []byte) (Scene, error) {
 	}
 	if in.Masks != nil {
 		if s.Masks, err = parseMasks(in.Masks); err != nil {
+			return Scene{}, err
+		}
+	}
+	if in.Compass != nil { // present: a null is refused too
+		if s.Compass, err = parseCompass(in.Compass); err != nil {
 			return Scene{}, err
 		}
 	}

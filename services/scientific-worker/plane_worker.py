@@ -30,7 +30,7 @@ import rohsa
 import subset
 from memcap import limit_memory, over_cap_message
 from fits_header import axes_shape, clean, read_header
-from srcopen import ROOTS, Refused, fits_open, inside_roots, source_file, stat_source
+from srcopen import ROOTS, Refused, fits_open, inside_roots, parse_expect, source_file, stat_source
 
 MAX_PLANE_ELEMENTS = 1 << 24      # 16.7M pixels = 64 MiB as float32
 MAX_PREVIEW_STEP = 64
@@ -1348,6 +1348,10 @@ def _handle(req: dict) -> tuple[dict, bytes]:
                 "slab", "channel_grid", "pv", "link", "region_histogram")
     if op in file_ops:
         authorize(path)                                          # also enforces the roots on a remote host
+        expect = parse_expect(req.get("expect"))
+        if expect is not None:                                   # the API checked this file's device and inode; the file opened now must be that one
+            with source_file(path, expect):
+                pass
         if op == "axial" and req.get("weights_path") is not None:
             authorize(req.get("weights_path"))
         if op == "link":                                         # the other map of a linked pair
