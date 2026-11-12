@@ -1,6 +1,6 @@
 # ADR 0048: Parameter sweeps
 
-Status: **proposed; implemented, awaiting owner review.** Decided by the implementing agent under the owner's delegation of ADR decisions (roadmap Stage L and Stage 4; Q128, Q222). Real Slurm is not verified (see Validation). The new screens (sweep form, submit dialog, grid with plot) have had no approved mock and no design review.
+Status: **proposed; implemented, awaiting owner review.** Owner decision of 2026-11-12: drafts are rendered from the base job's settings and never carry hand edits to its script; the sweep says how many lines were edited by hand (the behaviour below). Decided by the implementing agent under the owner's delegation of ADR decisions (roadmap Stage L and Stage 4; Q128, Q222). Real Slurm is not verified (see Validation). The new screens (sweep form, submit dialog, grid with plot) have had no approved mock and no design review.
 
 ## Context
 The owner's work is sweeps: ROHSA over N (8, 12, 16, 20, 24) and lambda (3, 10, 30), VGT over block size dn and ker, each run scored afterwards and the runs compared side by side. On the cluster, concurrent jobs that share a source folder broke runs (the ROHSA script rebuilds in the shared source tree), so a sweep must be able to run one job at a time. Until now every variation was a hand-made "Run again with..." draft, and a metric could not be set against a parameter.
