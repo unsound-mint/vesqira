@@ -81,9 +81,10 @@ function Confirm({ minutes, onDone }: { minutes: number; onDone: (s: AuthState) 
 function LinkComputer({ recent }: { recent: boolean }) {
   const [shown, setShown] = useState("");
   const [error, setError] = useState("");
+  const [relay, setRelay] = useState(false);
   const make = () => {
     setError("");
-    createToken({ name: "Linked computer", scopes: ["push"], days: 30 }).then((r) => setShown(r.token), (e) => setError(message(e)));
+    createToken({ name: "Linked computer", scopes: relay ? ["push", "relay"] : ["push"], days: 30 }).then((r) => setShown(r.token), (e) => setError(message(e)));
   };
   return (
     <section className={s.card}>
@@ -97,8 +98,10 @@ function LinkComputer({ recent }: { recent: boolean }) {
           <div className={s.row}><Button onClick={() => setShown("")}>Done</Button></div>
         </div>
       ) : (
-        <div className={s.row}>
-          <Button variant="primary" disabled={!recent} onClick={make}>Link a computer</Button>
+        <div className={s.form}>
+          <Checkbox label="Also take run requests" checked={relay} onChange={(e) => setRelay(e.target.checked)} />
+          <p className={s.note}>For a computer that holds cluster keys: it may publish your inbox, pull the run requests addressed to you and claim one when you approve it. It still cannot read the workspace.</p>
+          <div className={s.row}><Button variant="primary" disabled={!recent} onClick={make}>Link a computer</Button></div>
           {recent ? null : <span className={s.note}>Confirm it is you first.</span>}
         </div>
       )}

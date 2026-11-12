@@ -37,6 +37,7 @@ export function GroupPage() {
     <main className={`${s.page} ${s.wide}`}>
       <div className={s.row}>
         <h1 className={s.h1}>Group server</h1>
+        <LinkButton href="#/inbox">Run requests inbox</LinkButton>
         <LinkButton href="#/">Back to the workbench</LinkButton>
       </div>
       {error ? <p className={s.error} role="alert">{error}</p> : null}

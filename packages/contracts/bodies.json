@@ -18033,11 +18033,16 @@
   "RelayedDetail": {
    "type": "object",
    "required": [
-    "request"
+    "request",
+    "outsideBounds"
    ],
    "properties": {
     "request": {
      "$ref": "#/components/schemas/Relayed"
+    },
+    "outsideBounds": {
+     "type": "string",
+     "description": "empty, or why the request is outside the inbox as it is now (a bound lowered after it arrived); a warning, not a refusal"
     },
     "job": {
      "$ref": "#/components/schemas/RelayedJob"

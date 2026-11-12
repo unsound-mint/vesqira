@@ -11032,6 +11032,8 @@ export interface components {
         };
         RelayedDetail: {
             request: components["schemas"]["Relayed"];
+            /** @description empty, or why the request is outside the inbox as it is now (a bound lowered after it arrived); a warning, not a refusal */
+            outsideBounds: string;
             job?: components["schemas"]["RelayedJob"];
             sweep?: components["schemas"]["RelayedSweep"];
         };
