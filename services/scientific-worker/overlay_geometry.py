@@ -44,6 +44,7 @@ GRID_SAMPLES = 160              # vertices along one grid line before clipping
 
 
 STATUS_TEXT = {"declared": "declared in the header",
+               "corrected": "corrected by the researcher (not the header's own value)",
                "inferred": "inferred from EQUINOX: FITS default, header declares no RADESYS",
                "assumed": "assumed: FITS default, header declares no RADESYS or EQUINOX"}
 

@@ -185,6 +185,10 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 			if code != 0 {
 				return maskView{}, 422, "noise map: " + msg
 			}
+			if nm.Corrections.InForce() != nil {
+				// its path travels inside the mask's parameters, where the analysis program does not apply corrections (ADR 0061)
+				return maskView{}, 409, "noise map: it has WCS or unit corrections in force, which a noise map for a mask does not take yet; withdraw them or use another noise map"
+			}
 			p, shapeOnly, code, msg := s.sameGridLocal(ctx, d, nm)
 			if code != 0 {
 				return maskView{}, code, "noise map: " + msg
@@ -233,6 +237,9 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 		src, code, msg := s.imageDataset(in.ImportDatasetID)
 		if code != 0 {
 			return maskView{}, 422, "mask file: " + msg
+		}
+		if src.Corrections.InForce() != nil {
+			return maskView{}, 409, "mask file: it has WCS or unit corrections in force, which an imported mask file does not take yet; withdraw them first"
 		}
 		if src.ID == d.ID {
 			return maskView{}, 422, "the mask file is the dataset itself"
@@ -344,7 +351,7 @@ func (s *Server) sameGridLocal(ctx context.Context, d, other catalog.Dataset) (r
 	if status != 0 {
 		return "", false, status, m
 	}
-	why, err := compat.Grids(d.Header, other.Header)
+	why, err := compat.Grids(effectiveHeader(d), effectiveHeader(other))
 	if err != nil {
 		return "", false, 422, "its header could not be compared"
 	}

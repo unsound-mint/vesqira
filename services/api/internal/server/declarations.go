@@ -43,10 +43,20 @@ type figureDeclarations struct {
 	Unit        *declUnit        `json:"unit,omitempty"`
 	Orientation *declOrientation `json:"orientation,omitempty"`
 	Catalog     *declCatalog     `json:"catalog,omitempty"`
+	Corrections *declCorrections `json:"corrections,omitempty"`
+}
+
+// declCorrections is the researcher's WCS and unit corrections in force when the figure was drawn (ADR 0061): the hash of their
+// values (what is compared), the keywords, and an id-free snapshot of each (keyword, file value, value, reason) that stays with the
+// figure whatever happens to the history later.
+type declCorrections struct {
+	Hash     string           `json:"hash"`
+	Keys     []string         `json:"keys"`
+	Snapshot []safeCorrection `json:"snapshot"`
 }
 
 func (r *figureDeclarations) empty() bool {
-	return r == nil || (r.Unit == nil && r.Orientation == nil && r.Catalog == nil)
+	return r == nil || (r.Unit == nil && r.Orientation == nil && r.Catalog == nil && r.Corrections == nil)
 }
 
 func declarationsOf(d catalog.Dataset) *figureDeclarations {
@@ -67,7 +77,17 @@ func declarationsOf(d catalog.Dataset) *figureDeclarations {
 		h := sha256.Sum256(b)
 		out.Catalog = &declCatalog{Hash: hex.EncodeToString(h[:]), DeclaredBy: c.DeclaredBy}
 	}
+	if st := d.Corrections.InForce(); st != nil {
+		out.Corrections = &declCorrections{Hash: st.Hash(), Keys: st.Keys(), Snapshot: safeCorrections(*st)}
+	}
 	return out
+}
+
+func correctionsText(c *declCorrections) string {
+	if c == nil {
+		return "none"
+	}
+	return strings.Join(c.Keys, ", ") + " (corrected by you)"
 }
 
 // Declaration statuses of one source.
@@ -146,6 +166,9 @@ func compareDeclarations(rec, cur *figureDeclarations) (status, text string) {
 	}
 	if (rec.Catalog == nil) != (cur.Catalog == nil) || (rec.Catalog != nil && *rec.Catalog != *cur.Catalog) {
 		parts = append(parts, fmt.Sprintf("catalog declaration was %s, now %s", catalogText(rec.Catalog), catalogText(cur.Catalog)))
+	}
+	if (rec.Corrections == nil) != (cur.Corrections == nil) || (rec.Corrections != nil && rec.Corrections.Hash != cur.Corrections.Hash) {
+		parts = append(parts, fmt.Sprintf("WCS and unit corrections were %s, now %s", correctionsText(rec.Corrections), correctionsText(cur.Corrections)))
 	}
 	switch {
 	case len(parts) == 0:

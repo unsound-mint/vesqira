@@ -25,7 +25,7 @@ func TestRunViewsMigrationAddsAnEmptyTable(t *testing.T) {
 	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM runs), (SELECT COUNT(*) FROM run_views)`).Scan(&runs, &views); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 23 || runs != 1 || views != 0 {
+	if version(t, db) != Version || Version < 24 || runs != 1 || views != 0 {
 		t.Fatalf("version %d, %d runs, %d views", version(t, db), runs, views)
 	}
 	ins := `INSERT INTO run_views(name,spec,updated_at) VALUES (?, '{}', 1)`

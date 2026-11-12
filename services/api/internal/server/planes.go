@@ -35,6 +35,7 @@ type cacheKey struct {
 	x, y    int
 	q       string         // canonical region description for spectra
 	unit    string         // a unit the person declared for a file without BUNIT: it changes what every head says, so it is part of the key
+	corr    string         // the hash of the researcher's corrections in force (ADR 0061): a corrected reading is never served for another
 	off     *offlineSource // set only for a request whose file could not be reached; ask then answers from the offline store, never the cache
 }
 
@@ -112,7 +113,8 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 	if info.Size() != d.SizeBytes || info.ModTime().UnixNano() != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}
-	return real, cacheKey{id: d.ID, host: d.HostID, size: info.Size(), mtime: info.ModTime().UnixNano(), unit: declaredUnitOf(d)}, 0, ""
+	s.notePath(0, real, d.ID)
+	return real, cacheKey{id: d.ID, host: d.HostID, size: info.Size(), mtime: info.ModTime().UnixNano(), unit: declaredUnitOf(d), corr: corrHash(d)}, 0, ""
 }
 
 // source resolves a dataset id to an authorized, unchanged file.
@@ -183,10 +185,16 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 	rep, err := svc.Do(r.Context(), req)
 	var re *worker.RequestError
 	switch {
+	case err == nil && sentHash(req) != k.corr:
+		// the corrections changed between reading the dataset (the key) and asking the worker (what was sent): never cache or show
+		// an answer under a key that does not describe it
+		fail(w, 409, "the corrections of this dataset changed while it was being read; read it again")
 	case err == nil:
 		s.Cache.put(k, rep)
 		s.keepOffline(r.Context(), k, rep)
 		return rep, true
+	case errors.Is(err, errCorrectionsIgnored):
+		fail(w, 502, "the scientific worker did not apply the researcher's corrections (it may be an older version); nothing is shown rather than uncorrected values")
 	case errors.As(err, &re):
 		code := 422
 		if re.Code == "bad_request" {

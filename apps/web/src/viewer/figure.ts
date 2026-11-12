@@ -31,6 +31,9 @@ export function captionLines(f: FigureFacts, view: View | null, plane: Plane | n
   else if (f.kind === "plane") out.push(`${opts.colormap}, ${opts.stretch} stretch, ${opts.range === "percentile" ? "1st to 99th percentile" : opts.range === "custom" ? "limits set by the author" : "minimum to maximum"} of finite pixels${f.limitsUnit ? ` in ${f.limitsUnit}` : ""}${opts.range === "custom" && f.limits ? ` (${f.limits[0]} to ${f.limits[1]})` : ""}`);
   if (opts.region) out.push(`Region: ${opts.region.shape} (mean of finite pixels; NaN, BLANK and infinite values excluded)`);
   if (f.unitDeclared && !opts.axial && f.limitsUnit) out.push(`Brightness unit (${f.limitsUnit}) declared by the author; the file has no BUNIT.`);
+  // a correction (ADR 0061) travels with the PNG, which has no provenance beside it
+  if (view?.bunit_status === "corrected" && !opts.axial) out.push(`Brightness unit (${view.bunit}) corrected by the author; the file says ${view.file_bunit ?? "nothing"}.`);
+  if ((view?.wcs_corrected?.length ?? 0) > 0) out.push(`WCS corrected by the author (${view!.wcs_corrected!.join(", ")}); the file's own values differ and the file was not changed.`);
   out.push("No-value pixels (NaN, BLANK) are hatched, never drawn as zero. Header values are declared by the file, not verified.");
   return out;
 }

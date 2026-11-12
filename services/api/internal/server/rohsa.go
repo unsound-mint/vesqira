@@ -307,7 +307,7 @@ func (s *Server) rohsaRunsFor(d catalog.Dataset) ([]rohsaRunView, error) {
 			refusal = "the run does not declare how many Gaussians each pixel has"
 		case v.IsCrop:
 		default:
-			why, err := compat.Grids(d.Header, crop.Header)
+			why, err := compat.Grids(effectiveHeader(d), effectiveHeader(crop))
 			switch {
 			case err != nil:
 				refusal = "the grids could not be compared"

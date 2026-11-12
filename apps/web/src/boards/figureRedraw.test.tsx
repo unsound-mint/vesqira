@@ -59,7 +59,7 @@ describe("draw again", () => {
 
   it("announces a changed declaration with the data unchanged, and draws only after agreement", async () => {
     const said = "declaration changed: unit was K (declared by you), now Jy/beam (declared by you)";
-    check.mockResolvedValue({ figureId: 7, kind: "scene", state: "ask", prompt: "A declaration (unit, angle frame, quantity or catalog columns) has changed since this figure was drawn.", sources: [{ ...source("unchanged", "cube.fits: unchanged (its SHA-256 equals the one recorded when the figure was drawn)."), declaration: "changed", declarationText: said }] });
+    check.mockResolvedValue({ figureId: 7, kind: "scene", state: "ask", prompt: "A declaration (unit, angle frame, quantity, catalog columns, or a WCS or unit correction) has changed since this figure was drawn.", sources: [{ ...source("unchanged", "cube.fits: unchanged (its SHA-256 equals the one recorded when the figure was drawn)."), declaration: "changed", declarationText: said }] });
     redraw.mockResolvedValue(drawn());
     render(<FigureRedraw figure={fig()} />);
     await userEvent.click(screen.getByRole("button", { name: "Draw again" }));

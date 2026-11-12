@@ -119,7 +119,7 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 		if adapterMayDeclare(cur.Interpretation) {
 			var rel *int64
 			if rd, ok := byRole["reliability"]; ok && rd.HostID == psi.HostID {
-				if why, err := compat.Grids(psi.Header, rd.Header); err == nil && len(why) == 0 {
+				if why, err := compat.Grids(effectiveHeader(psi), effectiveHeader(rd)); err == nil && len(why) == 0 {
 					rel = &rd.ID
 				}
 			}
