@@ -15,9 +15,9 @@ import (
 	"net/http/httptest"
 )
 
-// What a run import declares for the psi map depends on what its header says (ADR 0014, amendment): PSIFRAME wins over the adapter's
-// convention and is labelled as the file's; an old output without it keeps the labelled convention; a person's declaration is kept and a
-// disagreement with the header is listed, never resolved silently.
+// What a run import declares for the psi map depends on what its header says (ADR 0014, amendment; ADR 0068, slice 2): the VGT.jl profile
+// places PSIFRAME and the declaration is labelled as declared by that profile; an output the profile cannot place gets no declaration, not
+// a convention; a person's declaration is kept and a disagreement with the header is listed, never resolved silently.
 func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
@@ -79,7 +79,7 @@ func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 	// current VGT output: PSIFRAME=GALACTIC on an ICRS grid, run_metadata.toml with project name "VGT" and without the retired keys
 	cur := psiOf("vgt_run_current")
 	in := cur.Interpretation
-	if in == nil || in.DeclaredBy != catalog.FileHeaderAuthor || in.Tier != catalog.TierDeclared || in.Unit != "rad" ||
+	if in == nil || in.DeclaredBy != "profile:VGT.jl@1" || in.Tier != catalog.TierDeclared || in.MappingVersion != "1" || in.Unit != "rad" ||
 		in.Frame == nil || *in.Frame != "sky" || in.SkyFrame == nil || *in.SkyFrame != "galactic" || in.Quantity == nil || *in.Quantity != "b_field" {
 		t.Fatalf("header declaration: %+v", in)
 	}
@@ -90,11 +90,21 @@ func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 		t.Errorf("header view: %+v", cur.VGT)
 	}
 
-	// an older output keeps the adapter's convention, labelled as before, and nothing is inferred from the WCS
+	// an older output has no card the profile knows: nothing is declared (no pixel frame, no radians, no B-field), nothing from the WCS
 	old := psiOf("vgt_run_demo")
-	if old.Interpretation == nil || old.Interpretation.DeclaredBy != "vgt-run-adapter" || old.Interpretation.SkyFrame != nil ||
-		old.Interpretation.Frame == nil || *old.Interpretation.Frame != "pixel" || old.VGT != nil {
-		t.Fatalf("fallback: %+v vgt=%+v", old.Interpretation, old.VGT)
+	if old.Interpretation != nil || old.VGT != nil {
+		t.Fatalf("an older output must stay unresolved: %+v vgt=%+v", old.Interpretation, old.VGT)
+	}
+	// VGT.jl cards without PSIFRAME: the profile places the unit (BUNIT) but not the frame or the quantity, so the map is unresolved
+	noFrame := exec.Command("python3", "-c", "import sys, pathlib, generate; generate.write_vgt_run(pathlib.Path(sys.argv[1]), current=True, psiframe=None)", filepath.Join(root, "vgt_run_noframe"))
+	noFrame.Dir = filepath.Join(repo, "fixtures")
+	if out, err := noFrame.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	nf := psiOf("vgt_run_noframe")
+	if nf.Interpretation != nil || nf.VGT == nil || nf.VGT.Orientation != nil || nf.VGT.Profile == nil || *nf.VGT.Profile != "profile:VGT.jl@1" ||
+		strings.Join(nf.VGT.Unresolved, ",") != "frame,quantity" {
+		t.Fatalf("no PSIFRAME: %+v vgt=%+v", nf.Interpretation, nf.VGT)
 	}
 
 	// a person's own declaration is kept; the disagreement with the header is shown with the header's words
@@ -124,7 +134,7 @@ func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 	r, b = postJSON(t, ts.URL+"/api/datasets/"+itoa(int(cur.ID))+"/interpretation", map[string]any{"kind": "axial_orientation", "fromFile": true})
 	var d4 catalog.Dataset
 	json.Unmarshal(b, &d4)
-	if r.StatusCode != 200 || d4.Interpretation.DeclaredBy != catalog.FileHeaderAuthor || d4.Interpretation.SkyFrame == nil || len(d4.VGT.Conflicts) != 0 {
+	if r.StatusCode != 200 || d4.Interpretation.DeclaredBy != "profile:VGT.jl@1" || d4.Interpretation.SkyFrame == nil || len(d4.VGT.Conflicts) != 0 {
 		t.Fatalf("adopt: %d %s", r.StatusCode, b)
 	}
 	// a file with no PSIFRAME has nothing to adopt

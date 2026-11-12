@@ -21,3 +21,5 @@ srcopen.py
 hostrun.py
 unit_values.py
 healpix_pol.py
+orientation_profiles.py
+orientation_profiles.json

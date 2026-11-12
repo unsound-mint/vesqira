@@ -39,6 +39,13 @@ func TierOf(by string) (tier, mapping string) {
 	if by == "" || by == "user" || strings.HasPrefix(by, RuleAuthorPrefix) {
 		return TierDeclared, ""
 	}
+	if strings.HasPrefix(by, ProfileAuthorPrefix) {
+		// "profile:<name>@<version>": the file's statement read by that version of the profile's table
+		if i := strings.LastIndex(by, "@"); i >= 0 {
+			return TierDeclared, by[i+1:]
+		}
+		return TierDeclared, "1"
+	}
 	if by == FileHeaderAuthor {
 		// the file states it: "declared" in the sense the header fields use (bunit_status); the mapping version says which reading of the cards made it
 		return TierDeclared, adapterMappings[by]

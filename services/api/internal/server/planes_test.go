@@ -644,13 +644,10 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 	_, pb := get(t, ts.URL+"/api/datasets/"+itoa(int(ids["psi"])))
 	var psi catalog.Dataset
 	json.Unmarshal(pb, &psi)
-	if psi.Interpretation == nil || psi.Interpretation.DeclaredBy != "vgt-run-adapter" || psi.Interpretation.Unit != "rad" ||
-		psi.Interpretation.ReliabilityID == nil || *psi.Interpretation.ReliabilityID != ids["reliability"] {
-		t.Fatalf("adapter interpretation: %+v", psi.Interpretation)
-	}
-	// the pipeline's convention is proposed (psi = 1/2 atan2(U,Q) + 90 deg, pixel frame), not inferred from the files
-	if f, q := psi.Interpretation.Frame, psi.Interpretation.Quantity; f == nil || *f != "pixel" || q == nil || *q != "b_field" {
-		t.Fatalf("adapter frame and quantity: %v %v", f, q)
+	// this older output's header carries no card an orientation profile knows: no convention is assumed for it (ADR 0068, slice 2), so the
+	// import declares nothing and the map stays unresolved until the researcher declares it
+	if psi.Interpretation != nil {
+		t.Fatalf("an older output must stay unresolved: %+v", psi.Interpretation)
 	}
 	// importing again refreshes the same run
 	if r, _ := postJSON(t, ts.URL+"/api/runs/import", map[string]any{"path": filepath.Join(dir, "run_metadata.toml")}); r.StatusCode != 201 {

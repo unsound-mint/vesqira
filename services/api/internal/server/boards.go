@@ -1131,6 +1131,8 @@ func reviewerAuthor(by string) string {
 		return "the author of this board"
 	case strings.HasPrefix(by, discover.RulePrefix):
 		return "an import rule of the author's project, not the file"
+	case catalog.IsFileHeaderAuthor(by):
+		return "the file's own header, read by its orientation profile (" + by + "): declared by the file, not verified"
 	case by == "vgt-run-adapter":
 		return "the run import adapter (" + by + "), not the file"
 	}
