@@ -160,6 +160,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/families": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Families of derived datasets that can be compared (ADR 0069): results of one source, made by the same operation, whose options are equal but one, read from the derived records */
+        get: operations["owner_s_familyCandidates_get_api_analysis_families"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analysis/family": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compare a family of maps on one grid with a chosen reference and register the comparison maps and the spread map: scalar maps by difference and a stated spread, axial orientation maps by the axial difference in [0, 90] degrees, AM and a circular spread, never a plain difference (ADR 0069) */
+        post: operations["owner_s_familyAgreement_post_api_analysis_family"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis/healpix-sample": {
         parameters: {
             query?: never;
@@ -11440,6 +11474,105 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        FamilyRequest: {
+            /** @description The maps to compare: all scalar maps or all declared axial orientation maps, on this computer, sharing one grid */
+            datasetIds: number[];
+            /**
+             * Format: int64
+             * @description The map the others are compared with; the first one when left out
+             */
+            referenceId?: number;
+            /**
+             * @description Per-pixel spread of scalar maps: standard deviation (ddof 1) or median absolute deviation about the median; std when left out. Axial maps use the circular spread
+             * @enum {string}
+             */
+            spread?: "std" | "mad";
+            /** @description The plane of every member that is a cube; omit for single-plane maps */
+            channel?: number;
+        };
+        FamilyMemberStats: {
+            index: number;
+            label: string;
+            reference: boolean;
+            pixels_compared?: number;
+            pixels_without_data?: number;
+            /** @description Scalar maps: mean of member minus reference */
+            mean?: number | null;
+            median?: number | null;
+            rms?: number | null;
+            min?: number | null;
+            max?: number | null;
+            /** @description Axial maps: mean axial difference from the reference, in [0, 90] degrees */
+            mean_abs_deg?: number | null;
+            rms_deg?: number | null;
+            /** @description Fraction of compared pixels within 10 degrees */
+            within_10_deg?: number | null;
+            /** @description Axial maps: alignment measure <cos 2 delta> with the reference, -1 to 1 */
+            am?: number | null;
+        };
+        FamilySummary: {
+            axial: boolean;
+            kind?: string;
+            labels: string[];
+            /** @description Index of the reference in labels */
+            reference: number;
+            members: components["schemas"]["FamilyMemberStats"][];
+            /** @description Indexes of the members that have a comparison map (every one but the reference) */
+            comparison_maps: number[];
+            /** @description std, mad or circular */
+            spread: string;
+            /** @description pixels, median and max of the spread map */
+            spread_stats?: {
+                [key: string]: unknown;
+            };
+            /** @description Unit of the comparison and spread maps */
+            unit: string;
+            shape: number[];
+            /** @description Axial maps: AM between every pair of members */
+            pairwise_am?: (number | null)[][];
+            /** @description Scalar maps: rms difference between every pair of members */
+            pairwise_rms?: (number | null)[][];
+            /** @description Axial maps: pixels where the orientations cancel and the spread is undefined */
+            orientations_cancel_pixels?: number;
+            warnings: string[];
+            policy: string;
+            unit_source?: string;
+        };
+        FamilyMap: {
+            /** @enum {string} */
+            role: "spread" | "difference";
+            /** @description Index in datasetIds of the member a difference map belongs to; -1 for the spread map */
+            member: number;
+            dataset: components["schemas"]["Dataset"];
+        };
+        FamilyResult: {
+            summary: components["schemas"]["FamilySummary"];
+            maps: components["schemas"]["FamilyMap"][];
+            datasetIds: number[];
+            /** Format: int64 */
+            referenceId: number;
+        };
+        FamilyCandidate: {
+            /** @enum {string} */
+            op: "smooth_spectral" | "convolve";
+            /**
+             * Format: int64
+             * @description The dataset every member was made from
+             */
+            sourceId: number;
+            /** @description The one option that differs between the members, as the analysis request named it (for example width) */
+            varying: string;
+            /** @description The options every member shares */
+            fixed: {
+                [key: string]: string;
+            };
+            members: {
+                /** Format: int64 */
+                datasetId: number;
+                /** @description The value of the varying option for this member */
+                value: string;
+            }[];
+        };
     };
     responses: never;
     parameters: never;
@@ -11740,6 +11873,88 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_familyCandidates_get_api_analysis_families: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description candidate families, possibly none */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        families: components["schemas"]["FamilyCandidate"][];
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_familyAgreement_post_api_analysis_family: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FamilyRequest"];
+            };
+        };
+        responses: {
+            /** @description computed: one comparison map per member but the reference, and the spread map, each a registered derived dataset */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyResult"];
+                };
+            };
+            /** @description the maps are not known to share a grid (reasons listed; nothing is resampled), a map lives on another host, or an orientation declaration is stale */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description fewer than 2 or more than 12 maps, mixed kinds, orientations stated in different frames, different brightness units, or the worker refused */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

@@ -205,6 +205,32 @@ paths:
       x-listener: owner
       x-vesqira-permission: analysis.run
       responses: {'200': {description: ok}}
+  /api/analysis/families:
+    get:
+      operationId: owner_s_familyCandidates_get_api_analysis_families
+      x-listener: owner
+      x-vesqira-permission: dataset.read
+      summary: "Families of derived datasets that can be compared (ADR 0069): results of one source, made by the same operation, whose options are equal but one, read from the derived records"
+      responses:
+        "200":
+          description: "candidate families, possibly none"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "families"
+                properties:
+                  families:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/FamilyCandidate"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/analysis/family:
     post:
       operationId: owner_s_familyAgreement_post_api_analysis_family
@@ -22071,3 +22097,43 @@ components:
         referenceId:
           type: "integer"
           format: "int64"
+    FamilyCandidate:
+      type: "object"
+      required:
+        - "op"
+        - "sourceId"
+        - "varying"
+        - "fixed"
+        - "members"
+      properties:
+        op:
+          type: "string"
+          enum:
+            - "smooth_spectral"
+            - "convolve"
+        sourceId:
+          type: "integer"
+          format: "int64"
+          description: "The dataset every member was made from"
+        varying:
+          type: "string"
+          description: "The one option that differs between the members, as the analysis request named it (for example width)"
+        fixed:
+          type: "object"
+          additionalProperties:
+            type: "string"
+          description: "The options every member shares"
+        members:
+          type: "array"
+          items:
+            type: "object"
+            required:
+              - "datasetId"
+              - "value"
+            properties:
+              datasetId:
+                type: "integer"
+                format: "int64"
+              value:
+                type: "string"
+                description: "The value of the varying option for this member"

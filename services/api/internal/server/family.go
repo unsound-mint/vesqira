@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -184,4 +185,95 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 201, map[string]any{"summary": res.Summary, "maps": out, "datasetIds": in.DatasetIDs, "referenceId": ref.ID})
+}
+
+// A family candidate is a set of derived datasets made from one source by one operation with every option equal but one. It is
+// recognised from the derived records (op, source and options as they were run), so nothing here guesses from file names.
+type familyCandidate struct {
+	Op       string             `json:"op"`
+	SourceID int64              `json:"sourceId"`
+	Varying  string             `json:"varying"` // the one option that differs
+	Fixed    map[string]string  `json:"fixed"`
+	Members  []familyCandMember `json:"members"`
+}
+
+type familyCandMember struct {
+	DatasetID int64  `json:"datasetId"`
+	Value     string `json:"value"`
+}
+
+// familyOps are the derived operations whose results form families: spectral smoothings of one cube, convolutions of one map.
+var familyOps = []string{"smooth_spectral", "convolve"}
+
+// familyCandidates groups the derived records of this workspace into families: for each option, the results of one source that agree on
+// every other option and give at least two values of it.
+func (s *Server) familyCandidates(w http.ResponseWriter, r *http.Request) {
+	out := []familyCandidate{}
+	if s.Derived != nil {
+		for _, op := range familyOps {
+			recs, err := s.Derived.ByOp(wsOf(r), op)
+			if err != nil {
+				log.Printf("derived: %v", err)
+				fail(w, 500, "internal error")
+				return
+			}
+			out = append(out, groupFamilies(op, recs)...)
+		}
+	}
+	writeJSON(w, 200, map[string]any{"families": out})
+}
+
+func groupFamilies(op string, recs []derived.Record) []familyCandidate {
+	type rec struct {
+		id   int64
+		src  int64
+		opts map[string]string
+	}
+	var rs []rec
+	keys := map[string]bool{}
+	for _, r := range recs {
+		var p struct {
+			Options map[string]string `json:"options"`
+		}
+		if len(r.Sources) != 1 || json.Unmarshal(r.Params, &p) != nil || len(p.Options) == 0 {
+			continue
+		}
+		rs = append(rs, rec{r.DatasetID, r.Sources[0], p.Options})
+		for k := range p.Options {
+			keys[k] = true
+		}
+	}
+	var out []familyCandidate
+	for _, k := range slices.Sorted(maps.Keys(keys)) {
+		groups := map[string]*familyCandidate{}
+		var order []string
+		for _, r := range rs {
+			rest := map[string]string{}
+			for kk, v := range r.opts {
+				if kk != k {
+					rest[kk] = v
+				}
+			}
+			b, _ := json.Marshal(rest) // map keys are sorted: equal options give equal text
+			id := fmt.Sprintf("%d|%s", r.src, b)
+			g := groups[id]
+			if g == nil {
+				g = &familyCandidate{Op: op, SourceID: r.src, Varying: k, Fixed: rest}
+				groups[id] = g
+				order = append(order, id)
+			}
+			g.Members = append(g.Members, familyCandMember{r.id, r.opts[k]})
+		}
+		for _, id := range order {
+			g := groups[id]
+			vals := map[string]bool{}
+			for _, m := range g.Members {
+				vals[m.Value] = true
+			}
+			if len(vals) >= 2 {
+				out = append(out, *g)
+			}
+		}
+	}
+	return out
 }

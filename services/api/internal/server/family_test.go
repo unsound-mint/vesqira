@@ -117,6 +117,30 @@ func TestSpectralSmoothingAndTheFamilyAgreement(t *testing.T) {
 		t.Errorf("smoothing an orientation map: %d %s", code, b)
 	}
 
+	// the smoothings that differ in one option are recognised as a family from their records; a third with two options changed is not one
+	s3, _ := smooth(map[string]string{"kernel": "boxcar", "width": "3"})
+	_, cb := get(t, ts.URL+"/api/analysis/families")
+	var cands struct {
+		Families []familyCandidate `json:"families"`
+	}
+	json.Unmarshal(cb, &cands)
+	found := 0
+	for _, f := range cands.Families {
+		ids := map[int64]bool{}
+		for _, m := range f.Members {
+			ids[m.DatasetID] = true
+		}
+		if f.Op == "smooth_spectral" && f.Varying == "width" && f.SourceID == cube.ID && f.Fixed["kernel"] == "boxcar" && len(f.Members) == 2 && ids[s1.ID] && ids[s3.ID] && !ids[s2.ID] {
+			found++
+		}
+		if f.Varying == "kernel" && ids[s2.ID] {
+			t.Errorf("a gaussian with another width and a declared native response is not a one-option family with the boxcars: %+v", f)
+		}
+	}
+	if found != 1 {
+		t.Errorf("the boxcar width family was not recognised exactly once: %s", cb)
+	}
+
 	// a family of cubes that differ in one smoothing parameter, at one channel, on one grid
 	code, fb := family(map[string]any{"datasetIds": []int64{cube.ID, s1.ID, s2.ID}, "referenceId": cube.ID, "channel": 40, "spread": "mad"})
 	if code != 201 {
