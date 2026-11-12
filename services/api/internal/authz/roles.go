@@ -43,6 +43,7 @@ var matrix = map[Permission]Role{
 	BoardWrite: RoleResearcher, LifecycleArchive: RoleResearcher, ReviewPublish: RoleResearcher, ReportWrite: RoleResearcher,
 	ProjectWrite: RoleResearcher, HistoryWrite: RoleResearcher, FilesRead: RoleResearcher,
 	PushUpload: RoleResearcher, PushedArchive: RoleResearcher, PushedRead: RoleViewer,
+	RelayServe: RoleResearcher, RunRequestDecline: RoleResearcher, RunRequestRead: RoleViewer, RunRequestFile: RoleViewer,
 
 	LifecycleDelete: RoleMaintainer, PublishManage: RoleMaintainer, AuditRead: RoleMaintainer, MemberInvite: RoleMaintainer,
 

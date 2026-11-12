@@ -33,6 +33,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
+	"github.com/unsound-mint/vesqira/services/api/internal/relay"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
@@ -98,6 +99,13 @@ type Server struct {
 	GroupKeyFile string
 	GroupHTTP    *http.Client
 	outboxState
+
+	// Relayed run requests (ADR 0066 section 3). On the group server Relay keeps the inboxes and requests (nil disables the
+	// routes); on a local instance Relayed is the key holder's inbox, label-to-host map and mirror of the requests addressed to
+	// them, served by the local-only routes and the pull loop (RunRelay).
+	Relay   *relay.Store
+	Relayed *relay.Local
+	relayState
 	pushGuard pushGuard // decode slots and refused-upload counts of the push routes (push_group.go)
 
 	syncState
@@ -271,6 +279,7 @@ func (s *Server) Handler() http.Handler {
 			s.route(mux, "GET /api/masks/{id}/plane", authz.DatasetRead, s.maskPlane)
 		}
 		s.route(mux, "POST /api/analysis/relative-orientation", authz.AnalysisRun, s.relativeOrientation)
+		s.route(mux, "GET /api/analysis/relative-orientation/presets", authz.AnalysisRun, s.relativeOrientationPresets)
 		s.route(mux, "POST /api/analysis/healpix-sample", authz.AnalysisRun, s.healpixSample)
 		if s.Runs != nil {
 			s.route(mux, "POST /api/datasets/{id}/rohsa/sigmav", authz.AnalysisRun, s.rohsaSigmav)
@@ -441,6 +450,12 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.Outbox != nil {
 		s.outboxRoutes(mux) // local only (authz.LocalOnly): never mounted on the group server
+	}
+	if s.Relay != nil {
+		s.relayRoutes(mux) // group server only (groupServerOnly in route.go)
+	}
+	if s.Relayed != nil && s.Outbox != nil {
+		s.relayedRoutes(mux) // local only (authz.LocalOnly)
 	}
 	if s.WebDist != "" {
 		s.route(mux, "GET /", authz.Anonymous, staticApp(s.WebDist))

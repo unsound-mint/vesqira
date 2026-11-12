@@ -5085,8 +5085,13 @@
   "RelativeOrientationParams": {
    "type": "object",
    "additionalProperties": false,
-   "description": "Each is optional; the default is stated in the result's parameters (ADR 0047).",
+   "description": "Each is optional; a value not given is the chosen preset's, and the result's parameters state every value used (ADR 0047, ADR 0068).",
    "properties": {
+    "preset": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+     "description": "The name of a preset of defaults (GET /api/analysis/relative-orientation/presets); default `standard`. A parameter set here replaces the preset's value and is listed in the result under `preset.overridden`. An unknown name is refused (422) and the known ones are named"
+    },
     "radiusArcmin": {
      "type": "number",
      "minimum": 0.001,
@@ -5140,7 +5145,7 @@
      "type": "number",
      "minimum": 0,
      "maximum": 1000000,
-     "description": "The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason"
+     "description": "The filter's k (the preset's value, 3 in the standard preset: P/σP ≥ 3 is the usual detection threshold for a polarization angle); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason"
     },
     "strataBins": {
      "type": "integer",
@@ -5442,6 +5447,13 @@
     },
     "bootstrap_note": {
      "type": "string"
+    },
+    "bootstrap_resamples": {
+     "type": "integer",
+     "description": "Map vs catalog: the number of resamples behind bootstrap_am_16_84 (the preset's boot_samples)"
+    },
+    "preset": {
+     "$ref": "#/components/schemas/RelativeOrientationPresetUsed"
     },
     "prs": {
      "type": "object",
@@ -5799,6 +5811,121 @@
       "policy": {
        "type": "string"
       }
+     }
+    }
+   }
+  },
+  "RelativeOrientationPresetUsed": {
+   "type": "object",
+   "required": [
+    "name",
+    "version",
+    "values",
+    "overridden"
+   ],
+   "description": "The preset a result used: its name and version, every value it supplied (including ones the comparison does not take as a parameter, such as the bootstrap count and the weight floor) and the explicit parameters that replaced one of them. Results made before presets existed have none.",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "version": {
+     "type": "integer"
+    },
+    "values": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "number"
+     },
+     "description": "Preset value key to value (radius_arcmin, min_pixels, snr_min, sigma_floor_deg, boot_samples, n_shifts_catalog, n_shifts_maps, min_shift_deg, keep_fraction, seed, bins, strata_bins)"
+    },
+    "overridden": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "object",
+      "required": [
+       "preset",
+       "used"
+      ],
+      "properties": {
+       "preset": {
+        "type": "number"
+       },
+       "used": {
+        "type": "number"
+       }
+      }
+     },
+     "description": "Parameter name to the preset's value and the value used, for each explicit parameter that differs from the preset"
+    }
+   }
+  },
+  "RelativeOrientationPresetValue": {
+   "type": "object",
+   "required": [
+    "value",
+    "reason"
+   ],
+   "properties": {
+    "value": {
+     "type": "number"
+    },
+    "reason": {
+     "type": "string",
+     "description": "One plain sentence on why the value is the default"
+    }
+   }
+  },
+  "RelativeOrientationPreset": {
+   "type": "object",
+   "required": [
+    "name",
+    "version",
+    "title",
+    "description",
+    "values"
+   ],
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "version": {
+     "type": "integer"
+    },
+    "title": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "values": {
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "#/components/schemas/RelativeOrientationPresetValue"
+     },
+     "description": "Keys as in RelativeOrientationPresetUsed.values"
+    }
+   }
+  },
+  "RelativeOrientationPresets": {
+   "type": "object",
+   "required": [
+    "schema",
+    "default",
+    "presets"
+   ],
+   "description": "The analysis presets shipped with the worker (relorient_presets.json), served as the file is.",
+   "properties": {
+    "schema": {
+     "type": "integer"
+    },
+    "default": {
+     "type": "string",
+     "description": "The preset used when a request names none"
+    },
+    "presets": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelativeOrientationPreset"
      }
     }
    }
@@ -6447,7 +6574,7 @@
     },
     "t_doppler_k": {
      "type": "number",
-     "description": "121.1 K (km/s)^-2 x sigma^2: an upper limit on the kinetic temperature",
+     "description": "121.2 K (km/s)^-2 x sigma^2 (m_H sigma^2 / k_B for atomic hydrogen): an upper limit on the kinetic temperature",
      "nullable": true
     }
    },
@@ -15257,7 +15384,7 @@
        "relay"
       ]
      },
-     "description": "write includes read; push and relay (ADR 0066) allow nothing until their routes exist"
+     "description": "write includes read; push sends frozen work and relay takes run requests for a linked computer (ADR 0066), both bound to the current workspace"
     },
     "days": {
      "type": "integer",
@@ -17121,6 +17248,1299 @@
     "hash": {
      "type": "string",
      "description": "the hash the preflight answered"
+    }
+   }
+  },
+  "RelayBound": {
+   "type": "object",
+   "required": [
+    "key"
+   ],
+   "description": "The typed bound of one whitelisted setting: an inclusive range or a list of allowed values.",
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "min": {
+     "type": "number"
+    },
+    "max": {
+     "type": "number"
+    },
+    "choices": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "RelayLimits": {
+   "type": "object",
+   "required": [
+    "maxCpus",
+    "maxMemGiB",
+    "maxTimeMinutes"
+   ],
+   "description": "Caps on what a request may ask for; zero means it may not ask and the base's value is used.",
+   "properties": {
+    "maxCpus": {
+     "type": "integer"
+    },
+    "maxMemGiB": {
+     "type": "integer"
+    },
+    "maxTimeMinutes": {
+     "type": "integer"
+    }
+   }
+  },
+  "RelayTemplateBounds": {
+   "type": "object",
+   "required": [
+    "template",
+    "keys",
+    "limits"
+   ],
+   "properties": {
+    "template": {
+     "type": "string",
+     "enum": [
+      "vgt",
+      "rohsa"
+     ]
+    },
+    "keys": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayBound"
+     }
+    },
+    "limits": {
+     "$ref": "#/components/schemas/RelayLimits"
+    }
+   }
+  },
+  "RelayLabel": {
+   "type": "object",
+   "required": [
+    "label",
+    "templates"
+   ],
+   "description": "A cluster label the key holder typed (at most 40 letters, digits, spaces and -); only their computer maps it to a host.",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "templates": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayTemplateBounds"
+     }
+    }
+   }
+  },
+  "RelayInbox": {
+   "type": "object",
+   "required": [
+    "paused",
+    "labels"
+   ],
+   "properties": {
+    "paused": {
+     "type": "boolean"
+    },
+    "labels": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayLabel"
+     }
+    }
+   }
+  },
+  "RelayResources": {
+   "type": "object",
+   "description": "Zero or absent keeps the base's value.",
+   "properties": {
+    "cpus": {
+     "type": "integer"
+    },
+    "memGiB": {
+     "type": "integer"
+    },
+    "timeMinutes": {
+     "type": "integer"
+    }
+   }
+  },
+  "RelayGridKey": {
+   "type": "object",
+   "required": [
+    "key",
+    "values"
+   ],
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "values": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "RelayAsk": {
+   "type": "object",
+   "required": [
+    "label",
+    "template",
+    "params",
+    "resources",
+    "grid",
+    "note"
+   ],
+   "description": "What a requester asks for: typed values of whitelisted settings, never a path, script, host or dataset id.",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "template": {
+     "type": "string",
+     "enum": [
+      "vgt",
+      "rohsa"
+     ]
+    },
+    "params": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "resources": {
+     "$ref": "#/components/schemas/RelayResources"
+    },
+    "grid": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayGridKey"
+     }
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayBase": {
+   "type": "object",
+   "required": [
+    "origin",
+    "hash",
+    "title"
+   ],
+   "properties": {
+    "origin": {
+     "type": "string"
+    },
+    "hash": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    },
+    "instance": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayFollowUp": {
+   "type": "object",
+   "required": [
+    "at",
+    "by",
+    "text"
+   ],
+   "properties": {
+    "at": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "by": {
+     "type": "string"
+    },
+    "text": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayRequest": {
+   "type": "object",
+   "required": [
+    "id",
+    "change",
+    "state",
+    "requester",
+    "ask",
+    "createdAt",
+    "expiresAt",
+    "notes"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "change": {
+     "type": "integer"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "requested",
+      "waiting_review",
+      "approved",
+      "submitted",
+      "running",
+      "finished",
+      "failed",
+      "unknown",
+      "declined",
+      "withdrawn",
+      "expired"
+     ]
+    },
+    "requester": {
+     "type": "string"
+    },
+    "ask": {
+     "$ref": "#/components/schemas/RelayAsk"
+    },
+    "base": {
+     "$ref": "#/components/schemas/RelayBase"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "expiresAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "notes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayFollowUp"
+     }
+    }
+   }
+  },
+  "RelayPage": {
+   "type": "object",
+   "required": [
+    "workspace",
+    "cursor",
+    "requests"
+   ],
+   "description": "One pull: the requests addressed to the token's account that changed after the cursor, in order, and the next cursor.",
+   "properties": {
+    "workspace": {
+     "type": "string"
+    },
+    "cursor": {
+     "type": "integer"
+    },
+    "requests": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayRequest"
+     }
+    }
+   }
+  },
+  "RelayPublishInbox": {
+   "type": "object",
+   "required": [
+    "instance",
+    "inbox"
+   ],
+   "properties": {
+    "instance": {
+     "type": "string"
+    },
+    "inbox": {
+     "$ref": "#/components/schemas/RelayInbox"
+    }
+   }
+  },
+  "RelayInstance": {
+   "type": "object",
+   "required": [
+    "instance"
+   ],
+   "properties": {
+    "instance": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayClaim": {
+   "type": "object",
+   "required": [
+    "instance",
+    "params",
+    "resources",
+    "label",
+    "baseChosen",
+    "editedLines",
+    "autoPush"
+   ],
+   "description": "The key holder's approval, sent before anything is submitted: the hash of the script read (or the sweep hash and the kept combinations) and the final values.",
+   "properties": {
+    "instance": {
+     "type": "string"
+    },
+    "scriptHash": {
+     "type": "string"
+    },
+    "sweepHash": {
+     "type": "string"
+    },
+    "kept": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string"
+      }
+     }
+    },
+    "concurrency": {
+     "type": "integer"
+    },
+    "params": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "resources": {
+     "$ref": "#/components/schemas/RelayResources"
+    },
+    "label": {
+     "type": "string"
+    },
+    "baseChosen": {
+     "type": "boolean"
+    },
+    "editedLines": {
+     "type": "integer"
+    },
+    "autoPush": {
+     "type": "boolean"
+    }
+   }
+  },
+  "RelayReport": {
+   "type": "object",
+   "required": [
+    "instance",
+    "seq",
+    "state"
+   ],
+   "description": "A status transition with a per-request sequence number; only enumerated words cross.",
+   "properties": {
+    "instance": {
+     "type": "string"
+    },
+    "seq": {
+     "type": "integer"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "requested",
+      "waiting_review",
+      "approved",
+      "submitted",
+      "running",
+      "finished",
+      "failed",
+      "unknown",
+      "declined",
+      "withdrawn",
+      "expired"
+     ]
+    },
+    "code": {
+     "type": "string",
+     "enum": [
+      "",
+      "not_confirmed",
+      "submission_failed",
+      "cancelled",
+      "timeout",
+      "gone"
+     ]
+    },
+    "exit": {
+     "type": "string"
+    },
+    "counts": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "integer"
+     }
+    },
+    "runHash": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayDecline": {
+   "type": "object",
+   "required": [
+    "note"
+   ],
+   "properties": {
+    "instance": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayState": {
+   "type": "object",
+   "required": [
+    "state"
+   ],
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "requested",
+      "waiting_review",
+      "approved",
+      "submitted",
+      "running",
+      "finished",
+      "failed",
+      "unknown",
+      "declined",
+      "withdrawn",
+      "expired"
+     ]
+    }
+   }
+  },
+  "RelayApplied": {
+   "type": "object",
+   "required": [
+    "state",
+    "applied"
+   ],
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "requested",
+      "waiting_review",
+      "approved",
+      "submitted",
+      "running",
+      "finished",
+      "failed",
+      "unknown",
+      "declined",
+      "withdrawn",
+      "expired"
+     ]
+    },
+    "applied": {
+     "type": "boolean"
+    }
+   }
+  },
+  "RunApproval": {
+   "type": "object",
+   "required": [
+    "params",
+    "resources",
+    "label",
+    "baseChosen",
+    "editedLines",
+    "autoPush",
+    "at"
+   ],
+   "properties": {
+    "scriptHash": {
+     "type": "string"
+    },
+    "sweepHash": {
+     "type": "string"
+    },
+    "kept": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string"
+      }
+     }
+    },
+    "concurrency": {
+     "type": "integer"
+    },
+    "params": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "resources": {
+     "$ref": "#/components/schemas/RelayResources"
+    },
+    "label": {
+     "type": "string"
+    },
+    "baseChosen": {
+     "type": "boolean"
+    },
+    "editedLines": {
+     "type": "integer"
+    },
+    "autoPush": {
+     "type": "boolean"
+    },
+    "at": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "RelayClaimed": {
+   "type": "object",
+   "required": [
+    "state"
+   ],
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "requested",
+      "waiting_review",
+      "approved",
+      "submitted",
+      "running",
+      "finished",
+      "failed",
+      "unknown",
+      "declined",
+      "withdrawn",
+      "expired"
+     ]
+    },
+    "approval": {
+     "$ref": "#/components/schemas/RunApproval"
+    }
+   }
+  },
+  "RunInbox": {
+   "type": "object",
+   "required": [
+    "account",
+    "name",
+    "inbox",
+    "updatedAt"
+   ],
+   "properties": {
+    "account": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "inbox": {
+     "$ref": "#/components/schemas/RelayInbox"
+    },
+    "updatedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "polledAt": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "RunInboxList": {
+   "type": "object",
+   "required": [
+    "inboxes"
+   ],
+   "properties": {
+    "inboxes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RunInbox"
+     }
+    }
+   }
+  },
+  "RunRequest": {
+   "type": "object",
+   "required": [
+    "id",
+    "requester",
+    "addressee",
+    "ask",
+    "state",
+    "createdAt",
+    "expiresAt",
+    "updatedAt",
+    "code",
+    "exit",
+    "runHash",
+    "declineNote",
+    "closedNote",
+    "requesterName",
+    "addresseeName",
+    "baseTitle"
+   ],
+   "description": "A relayed run request as members read it: the record with names; never a script, folder or Slurm id.",
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "requester": {
+     "type": "string"
+    },
+    "addressee": {
+     "type": "string"
+    },
+    "ask": {
+     "$ref": "#/components/schemas/RelayAsk"
+    },
+    "baseItemId": {
+     "type": "integer"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "requested",
+      "waiting_review",
+      "approved",
+      "submitted",
+      "running",
+      "finished",
+      "failed",
+      "unknown",
+      "declined",
+      "withdrawn",
+      "expired"
+     ]
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "expiresAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "updatedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "approval": {
+     "$ref": "#/components/schemas/RunApproval"
+    },
+    "code": {
+     "type": "string"
+    },
+    "exit": {
+     "type": "string"
+    },
+    "counts": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "integer"
+     }
+    },
+    "runHash": {
+     "type": "string"
+    },
+    "submittedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "runningAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "endedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "reportedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "declineNote": {
+     "type": "string"
+    },
+    "closedNote": {
+     "type": "string"
+    },
+    "requesterName": {
+     "type": "string"
+    },
+    "addresseeName": {
+     "type": "string"
+    },
+    "baseTitle": {
+     "type": "string"
+    },
+    "checkedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "runItemId": {
+     "type": "integer"
+    }
+   }
+  },
+  "RunRequestList": {
+   "type": "object",
+   "required": [
+    "requests"
+   ],
+   "properties": {
+    "requests": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RunRequest"
+     }
+    }
+   }
+  },
+  "RunRequestEvent": {
+   "type": "object",
+   "required": [
+    "at",
+    "actor",
+    "via",
+    "event",
+    "detail",
+    "name"
+   ],
+   "properties": {
+    "at": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "actor": {
+     "type": "string"
+    },
+    "via": {
+     "type": "string"
+    },
+    "event": {
+     "type": "string"
+    },
+    "detail": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    }
+   }
+  },
+  "RunRequestDetail": {
+   "type": "object",
+   "required": [
+    "request",
+    "events"
+   ],
+   "properties": {
+    "request": {
+     "$ref": "#/components/schemas/RunRequest"
+    },
+    "events": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RunRequestEvent"
+     }
+    }
+   }
+  },
+  "RunRequestFile": {
+   "type": "object",
+   "required": [
+    "addressee",
+    "ask"
+   ],
+   "properties": {
+    "addressee": {
+     "type": "string"
+    },
+    "ask": {
+     "$ref": "#/components/schemas/RelayAsk"
+    },
+    "baseItemId": {
+     "type": "integer"
+    },
+    "expiresInDays": {
+     "type": "integer"
+    }
+   }
+  },
+  "RunRequestNote": {
+   "type": "object",
+   "required": [
+    "text"
+   ],
+   "properties": {
+    "text": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayedDraftValues": {
+   "type": "object",
+   "required": [
+    "params",
+    "resources",
+    "label"
+   ],
+   "properties": {
+    "params": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "resources": {
+     "$ref": "#/components/schemas/RelayResources"
+    },
+    "label": {
+     "type": "string"
+    }
+   }
+  },
+  "Relayed": {
+   "type": "object",
+   "required": [
+    "id",
+    "serverId",
+    "request",
+    "serverState",
+    "localState",
+    "refusal",
+    "baseChosen",
+    "draft",
+    "scriptHash",
+    "autoPush",
+    "runHash",
+    "seq",
+    "reported",
+    "receivedAt",
+    "updatedAt",
+    "origin"
+   ],
+   "description": "A request addressed to this computer's account, as this computer holds it.",
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "serverId": {
+     "type": "integer"
+    },
+    "request": {
+     "$ref": "#/components/schemas/RelayRequest"
+    },
+    "serverState": {
+     "type": "string",
+     "enum": [
+      "requested",
+      "waiting_review",
+      "approved",
+      "submitted",
+      "running",
+      "finished",
+      "failed",
+      "unknown",
+      "declined",
+      "withdrawn",
+      "expired"
+     ]
+    },
+    "localState": {
+     "type": "string",
+     "enum": [
+      "received",
+      "refused",
+      "draft",
+      "approved",
+      "declined",
+      "detached",
+      "closed"
+     ]
+    },
+    "refusal": {
+     "type": "string"
+    },
+    "jobId": {
+     "type": "integer"
+    },
+    "sweepId": {
+     "type": "integer"
+    },
+    "baseRunId": {
+     "type": "integer"
+    },
+    "baseChosen": {
+     "type": "boolean"
+    },
+    "draft": {
+     "$ref": "#/components/schemas/RelayedDraftValues"
+    },
+    "scriptHash": {
+     "type": "string"
+    },
+    "autoPush": {
+     "type": "boolean"
+    },
+    "runHash": {
+     "type": "string"
+    },
+    "seq": {
+     "type": "integer"
+    },
+    "reported": {
+     "type": "string"
+    },
+    "receivedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "updatedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "origin": {
+     "type": "string"
+    },
+    "jobName": {
+     "type": "string"
+    },
+    "jobState": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayLocalState": {
+   "type": "object",
+   "required": [
+    "origin",
+    "configured",
+    "inbox",
+    "hosts",
+    "published",
+    "cursor",
+    "failures",
+    "message"
+   ],
+   "properties": {
+    "origin": {
+     "type": "string"
+    },
+    "configured": {
+     "type": "boolean"
+    },
+    "inbox": {
+     "$ref": "#/components/schemas/RelayInbox"
+    },
+    "hosts": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "integer"
+     }
+    },
+    "published": {
+     "type": "boolean"
+    },
+    "cursor": {
+     "type": "integer"
+    },
+    "polledAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "answeredAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "failures": {
+     "type": "integer"
+    },
+    "message": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayHost": {
+   "type": "object",
+   "required": [
+    "id",
+    "name"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "name": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayLocal": {
+   "type": "object",
+   "required": [
+    "linked",
+    "hosts",
+    "requests"
+   ],
+   "properties": {
+    "linked": {
+     "type": "boolean"
+    },
+    "workspace": {
+     "type": "string"
+    },
+    "state": {
+     "$ref": "#/components/schemas/RelayLocalState"
+    },
+    "hosts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayHost"
+     }
+    },
+    "requests": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/Relayed"
+     }
+    }
+   }
+  },
+  "RelayLocalInbox": {
+   "type": "object",
+   "required": [
+    "inbox",
+    "hosts"
+   ],
+   "properties": {
+    "inbox": {
+     "$ref": "#/components/schemas/RelayInbox"
+    },
+    "hosts": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "integer"
+     }
+    }
+   }
+  },
+  "RelayedJob": {
+   "type": "object",
+   "required": [
+    "id",
+    "name",
+    "state",
+    "script",
+    "scriptHash",
+    "editedLines"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "name": {
+     "type": "string"
+    },
+    "state": {
+     "type": "string"
+    },
+    "script": {
+     "type": "string"
+    },
+    "scriptHash": {
+     "type": "string"
+    },
+    "editedLines": {
+     "type": "integer"
+    }
+   }
+  },
+  "RelayedSweepDraft": {
+   "type": "object",
+   "required": [
+    "jobId",
+    "name",
+    "values",
+    "scriptHash",
+    "script"
+   ],
+   "properties": {
+    "jobId": {
+     "type": "integer"
+    },
+    "name": {
+     "type": "string"
+    },
+    "values": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "scriptHash": {
+     "type": "string"
+    },
+    "script": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayedSweep": {
+   "type": "object",
+   "required": [
+    "id",
+    "drafts",
+    "sweepHash",
+    "view",
+    "maxConcurrency"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "drafts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayedSweepDraft"
+     }
+    },
+    "sweepHash": {
+     "type": "string"
+    },
+    "view": {
+     "type": "object"
+    },
+    "maxConcurrency": {
+     "type": "integer"
+    }
+   }
+  },
+  "RelayedDetail": {
+   "type": "object",
+   "required": [
+    "request",
+    "outsideBounds"
+   ],
+   "properties": {
+    "request": {
+     "$ref": "#/components/schemas/Relayed"
+    },
+    "outsideBounds": {
+     "type": "string",
+     "description": "empty, or why the request is outside the inbox as it is now (a bound lowered after it arrived); a warning, not a refusal"
+    },
+    "job": {
+     "$ref": "#/components/schemas/RelayedJob"
+    },
+    "sweep": {
+     "$ref": "#/components/schemas/RelayedSweep"
+    },
+    "code": {
+     "type": "string",
+     "description": "with a draft: which code it runs, the base run's commit its script insists on, or why it insists on none (ADR 0066 section 3, ADR 0054)"
+    }
+   }
+  },
+  "RelayedDraftRequest": {
+   "type": "object",
+   "properties": {
+    "baseRunId": {
+     "type": "integer"
+    },
+    "changes": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    },
+    "resources": {
+     "$ref": "#/components/schemas/RelayResources"
+    }
+   }
+  },
+  "RelayedApproveRequest": {
+   "type": "object",
+   "properties": {
+    "scriptHash": {
+     "type": "string"
+    },
+    "sweepHash": {
+     "type": "string"
+    },
+    "drop": {
+     "type": "array",
+     "items": {
+      "type": "integer"
+     }
+    },
+    "concurrency": {
+     "type": "integer"
+    },
+    "stopOnFailure": {
+     "type": "boolean"
+    },
+    "autoPush": {
+     "type": "boolean"
+    }
+   }
+  },
+  "RelayedApproved": {
+   "type": "object",
+   "required": [
+    "request",
+    "submitted"
+   ],
+   "properties": {
+    "request": {
+     "$ref": "#/components/schemas/Relayed"
+    },
+    "submitted": {
+     "type": "boolean"
+    },
+    "message": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayedDeclineRequest": {
+   "type": "object",
+   "required": [
+    "note"
+   ],
+   "properties": {
+    "note": {
+     "type": "string"
     }
    }
   },
@@ -20038,6 +21458,41 @@
     },
     "422": {
      "description": "a missing declaration (named), or the worker refused (for example no source could be compared)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/analysis/relative-orientation/presets": {
+   "summary": "The relative-orientation presets (named sets of defaults, each value with its reason) and which one is the default",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelativeOrientationPresets"
+       }
+      }
+     }
+    },
+    "500": {
+     "description": "the presets file is missing or malformed",
      "content": {
       "application/json": {
        "schema": {
@@ -26621,6 +28076,602 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Accepted"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "PUT /api/relay/inbox": {
+   "summary": "Publish the token account's inbox in its workspace: labels, templates, typed bounds, paused (relay token only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayPublishInbox"
+      }
+     }
+    }
+   },
+   "responses": {
+    "204": {
+     "description": "ok"
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/relay/requests": {
+   "summary": "Pull the requests addressed to the token's account that changed after ?after= (at most 100; relay token only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayPage"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relay/requests/{id}/review": {
+   "summary": "Mark a request waiting for review once its draft is rendered (addressee; relay token only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayInstance"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relay/requests/{id}/approve": {
+   "summary": "Claim a request bound to the script hash read (or the sweep hash): one winner, only while waiting for review and not expired; idempotent for the same hash and instance (relay token only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayClaim"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayClaimed"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relay/requests/{id}/status": {
+   "summary": "Report a status transition with a sequence number; applied monotonically, an end state is final (claiming instance; relay token only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayReport"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayApplied"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/run-requests/{id}/decline": {
+   "summary": "Decline a request with a note (addressee only; relay token or session)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayDecline"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/run-inboxes": {
+   "summary": "The inboxes published in the workspace, with when each computer last checked (session only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunInboxList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/run-requests": {
+   "summary": "The workspace's relayed run requests with their status (session only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunRequestList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/run-requests/{id}": {
+   "summary": "One relayed run request with its record (session only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunRequestDetail"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/run-requests": {
+   "summary": "File a run request to a key holder, validated against their inbox and rate-limited (session only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RunRequestFile"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunRequest"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/run-requests/{id}/withdraw": {
+   "summary": "Withdraw a request before approval (own as Viewer or Researcher, any as Maintainer or Owner; session only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/run-requests/{id}/note": {
+   "summary": "Add a follow-up note to a request, for example asking to cancel (own; any as Maintainer or Owner; session only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RunRequestNote"
+      }
+     }
+    }
+   },
+   "responses": {
+    "204": {
+     "description": "ok"
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/relay/local": {
+   "summary": "This computer's run-request inbox, its pull state and the requests addressed to its account (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayLocal"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "PUT /api/relay/local/inbox": {
+   "summary": "Set the inbox and the host each label stands for; published at the next pull (local only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayLocalInbox"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayLocal"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relay/local/poll": {
+   "summary": "Pull now (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayLocal"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/relayed/{id}": {
+   "summary": "One request with the exact script (or the sweep's drafts) to review (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayedDetail"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relayed/{id}/draft": {
+   "summary": "Render the draft from a chosen base run with the key holder's changes (local only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayedDraftRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Relayed"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relayed/{id}/approve": {
+   "summary": "Approve the script read: claim on the group server first, then submit; nothing is submitted without the claim (local only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayedApproveRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayedApproved"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relayed/{id}/decline": {
+   "summary": "Decline the request with a note, on the group server (local only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayedDeclineRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Relayed"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relayed/{id}/detach": {
+   "summary": "Keep the draft as your own job, no longer tied to the request (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Relayed"
        }
       }
      }

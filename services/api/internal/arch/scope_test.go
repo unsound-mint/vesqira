@@ -35,7 +35,9 @@ var scopedTables = set("datasets", "dataset_locations", "figures", "reports", "r
 	"boards", "snapshots", "saved_regions", "masks", "subsets", "exploration_steps", "notifications", "audit", "member_comments",
 	"invitations", "workspace_roots",
 	// slice 4: what linked instances pushed (ADR 0066)
-	"pushed_items", "pushed_assets")
+	"pushed_items", "pushed_assets",
+	// slice 5: relayed run requests and the key holders' inboxes (ADR 0066 section 3)
+	"relay_inboxes", "run_requests")
 
 // localOnlyTables carry workspace_id (local rows: workspace 1) but belong to features the group server does not mount (hosts,
 // jobs, sweeps, transfers, offline copies: no ssh credential on the server, ADR 0050 owner answer 3; the publish server: no
@@ -45,7 +47,9 @@ var scopedTables = set("datasets", "dataset_locations", "figures", "reports", "r
 var localOnlyTables = set("hosts", "jobs", "sweeps", "sweep_jobs", "transfers", "offline_entries", "offline_settings",
 	"publish_comments", "reply_drafts", "report_publications", "publish_settings",
 	// the local side of the link to a group server (ADR 0066): its routes are local.only, so never mounted there
-	"group_link", "push_queue", "push_lineage")
+	"group_link", "push_queue", "push_lineage",
+	// the key holder's side of relayed run requests (ADR 0066 section 3): its inbox, label-to-host map and request mirror
+	"relay_local", "relayed_requests")
 
 // childTables hold no workspace_id: each row hangs off one row of a scoped table, named by these columns, and is reached only
 // through it.
@@ -59,6 +63,7 @@ var childTables = map[string][]string{
 	"import_rules": {"project_id"}, "import_lists": {"project_id"}, "import_applied": {"project_id"},
 	"archived_entries": {"entity_id"}, "notification_reads": {"notification_id"},
 	"pushed_item_assets": {"item_id"}, "pushed_references": {"item_id"}, "pushed_history": {"item_id"},
+	"run_request_events": {"request_id"},
 }
 
 // globalTables are server-wide: accounts and their credentials, the workspaces themselves, memberships (read by account to
@@ -126,7 +131,7 @@ func TestEveryUserDataTableIsScoped(t *testing.T) {
 	for name, create := range tables {
 		hasWS := strings.Contains(create, "workspace_id INTEGER")
 		switch {
-		case scopedTables[name], localOnlyTables[name] && name != "sweep_jobs" && name != "offline_settings" && name != "publish_settings" && name != "report_publications" && name != "group_link":
+		case scopedTables[name], localOnlyTables[name] && name != "sweep_jobs" && name != "offline_settings" && name != "publish_settings" && name != "report_publications" && name != "group_link" && name != "relay_local":
 			if !hasWS {
 				t.Errorf("%s is classified scoped but has no workspace_id column", name)
 			}

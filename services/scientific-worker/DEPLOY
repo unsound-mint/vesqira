@@ -12,6 +12,7 @@ overlay_geometry.py
 rohsa.py
 gaussreview.py
 relorient.py
+relorient_presets.json
 cube_slices.py
 fingerprint.py
 masks.py

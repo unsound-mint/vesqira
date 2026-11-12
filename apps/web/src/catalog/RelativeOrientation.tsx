@@ -4,8 +4,8 @@ import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { newRequestId } from "../api/http";
 import { ApiError, isCatalog, isImage } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
-import { getDerived, relativeOrientationTableUrl, runRelativeOrientation } from "../api/analysis";
-import type { RelOrientParams, RelOrientSummary } from "../api/analysis";
+import { getDerived, getRelativeOrientationPresets, relativeOrientationTableUrl, runRelativeOrientation } from "../api/analysis";
+import type { RelOrientParams, RelOrientPreset, RelOrientPresets, RelOrientSummary } from "../api/analysis";
 import type { Controls } from "../api/runs";
 import { ControlsView } from "../runs/ControlsView";
 import { EM } from "./format";
@@ -20,8 +20,17 @@ import s from "./RelativeOrientation.module.css";
 /* Relative orientation (ADR 0047). Results are agreement statistics between two tracers: worded neutrally, never as a
    validation or a success of either side (AGENTS.md invariant 9). */
 
-const DEFAULTS = {
-  snrMin: "3", radiusArcmin: "10", minPixels: "5", nShiftsCatalog: "3000", nShiftsMaps: "1000", minShiftDeg: "1", keepFraction: "0.9", seed: "20261020", bins: "9" };
+/** Each form field and the preset value that fills it. The numbers live in the worker's presets file (relorient_presets.json), served by
+    the API, so the form and the computation cannot disagree about what a preset holds. */
+const PRESET_KEY = {
+  snrMin: "snr_min", radiusArcmin: "radius_arcmin", minPixels: "min_pixels", nShiftsCatalog: "n_shifts_catalog", nShiftsMaps: "n_shifts_maps",
+  minShiftDeg: "min_shift_deg", keepFraction: "keep_fraction", seed: "seed", bins: "bins" } as const;
+type Field = keyof typeof PRESET_KEY;
+/** What a preset holds for a field, as the text the field shows; "" for a preset without it. */
+export const presetField = (p: RelOrientPreset | null, k: Field | "strata_bins"): string => {
+  const x = p?.values[k === "strata_bins" ? k : PRESET_KEY[k]];
+  return x ? String(x.value) : "";
+};
 
 const norm = (c: string) => c.toLowerCase().replace(/\s+/g, "");
 const SNR_PAIRS = [["P(%)", "sP(%)"], ["Pcor", "sPcor"]];
@@ -56,10 +65,10 @@ export function notReady(d: Dataset): string | null {
 }
 
 /** Why a bootstrap interval has no width: every resample gave one value, so it says nothing about uncertainty. Null when it has width. */
-export function bootstrapNote(range: readonly number[], used: number): string | null {
+export function bootstrapNote(range: readonly number[], used: number, resamples?: number | null): string | null {
   const [lo, hi] = range;
   if (lo === undefined || hi === undefined || !(hi - lo < 5e-4)) return null;
-  return `No spread: all 2000 resamples of the ${used} used source${used === 1 ? "" : "s"} gave the same value, which happens when every source has the same |Δψ| or very few are used. It is not a sign of certainty.`;
+  return `No spread: all ${resamples ? `${resamples} ` : ""}resamples of the ${used} used source${used === 1 ? "" : "s"} gave the same value, which happens when every source has the same |Δψ| or very few are used. It is not a sign of certainty.`;
 }
 
 const fmt = (v: number | null | undefined, digits = 3) => (v === null || v === undefined || !Number.isFinite(v) ? EM : v.toFixed(digits));
@@ -68,6 +77,16 @@ const fmt = (v: number | null | undefined, digits = 3) => (v === null || v === u
 export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dataset: Dataset; datasets: Dataset[]; onCreated: (d: Dataset) => void }) {
   const [other, setOther] = useState("");
   const [v, setV] = useState<Record<string, string>>({});
+  // the presets come from the API; a field shows what the chosen preset holds until the person types another value
+  const [presets, setPresets] = useState<RelOrientPresets | null>(null);
+  const [presetsErr, setPresetsErr] = useState(false);
+  const [presetName, setPresetName] = useState<string | null>(null);
+  useEffect(() => {
+    const ctl = new AbortController();
+    getRelativeOrientationPresets(ctl.signal).then((p) => (Array.isArray(p?.presets) && p.presets.length ? setPresets(p) : setPresetsErr(true)), () => { if (!ctl.signal.aborted) setPresetsErr(true); });
+    return () => ctl.abort();
+  }, []);
+  const active = presets ? (presets.presets.find((p) => p.name === (presetName ?? presets.default)) ?? presets.presets[0] ?? null) : null;
   const [busy, setBusy] = useState(false);
   const [rid, setRid] = useState<string | null>(null);
   const queued = useQueueReason(busy, rid);
@@ -88,17 +107,19 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   // optional: repeat the comparison inside bins of a third, scalar map (two maps only)
   const [third, setThird] = useState("");
   const [binMode, setBinMode] = useState<"count" | "edges">("count");
-  const [nBins, setNBins] = useState("5");
+  const [nBinsText, setNBinsText] = useState<string | null>(null);
+  const nBins = nBinsText ?? presetField(active, "strata_bins");
+  const setNBins = (t: string) => setNBinsText(t);
   const [edgesText, setEdgesText] = useState("");
   const thirdCandidates = datasets.filter((d) => isImage(d) && !d.archived && d.hostId === 0 && d.id !== dataset.id && d.id !== chosen?.id && d.interpretation?.kind !== "axial_orientation");
   const thirdDs = mapMode ? (thirdCandidates.find((d) => String(d.id) === third) ?? null) : null;
   const edgesParsed = thirdDs && binMode === "edges" ? parseEdges(edgesText) : null;
   const nBinsOk = Number.isInteger(Number(nBins)) && Number(nBins) >= 1 && Number(nBins) <= 50 && nBins.trim() !== "";
   const strataBad = thirdDs !== null && (binMode === "edges" ? edgesParsed !== null && "error" in edgesParsed : !nBinsOk);
-  const val = (k: keyof typeof DEFAULTS) => v[k] ?? DEFAULTS[k];
+  const val = (k: Field | "snrP" | "snrSigma") => v[k] ?? (k === "snrP" || k === "snrSigma" ? "" : presetField(active, k));
   const set = (k: string) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
   // every field must be a number: an empty or unreadable one is never sent as a silent default
-  const fields: (keyof typeof DEFAULTS)[] = [...(catalogMode ? (["radiusArcmin", "minPixels", "nShiftsCatalog"] as const) : (["nShiftsMaps"] as const)), "minShiftDeg", "keepFraction", "seed", "bins"];
+  const fields: Field[] = [...(catalogMode ? (["radiusArcmin", "minPixels", "nShiftsCatalog"] as const) : (["nShiftsMaps"] as const)), "minShiftDeg", "keepFraction", "seed", "bins"];
   const catalogDs = fromCatalog ? dataset : chosen;
   const valueCols = catalogMode && catalogDs && isCatalog(catalogDs) ? (catalogDs.catalogDeclaration?.values ?? []) : [];
   const proposal = proposeSnrColumns(valueCols);
@@ -111,13 +132,13 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   if (why) return <p className={s.note}>To compare this {fromCatalog ? "catalog" : "map"} with another orientation tracer, declare it first: {why}.</p>;
 
   async function go() {
-    if (!chosen) return;
+    if (!chosen || !active) return;
     setBusy(true);
     const id = newRequestId();
     setRid(id);
     setErr(null);
-    const n = (k: keyof typeof DEFAULTS) => Number(val(k));
-    const params: RelOrientParams = { nShifts: n(catalogMode ? "nShiftsCatalog" : "nShiftsMaps"), minShiftDeg: n("minShiftDeg"), keepFraction: n("keepFraction"), seed: n("seed"), bins: n("bins") };
+    const n = (k: Field) => Number(val(k));
+    const params: RelOrientParams = { preset: active?.name, nShifts: n(catalogMode ? "nShiftsCatalog" : "nShiftsMaps"), minShiftDeg: n("minShiftDeg"), keepFraction: n("keepFraction"), seed: n("seed"), bins: n("bins") };
     if (catalogMode) Object.assign(params, { radiusArcmin: n("radiusArcmin"), minPixels: n("minPixels") });
     if (snrOn) Object.assign(params, { snrColumn: snrP, snrSigmaColumn: snrSigma, snrMin: n("snrMin") });
     if (thirdDs) Object.assign(params, binMode === "edges" && edgesParsed && "edges" in edgesParsed ? { strataEdges: edgesParsed.edges } : { strataBins: Number(nBins) });
@@ -155,6 +176,10 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
                 : "The two maps must share a grid (align one first if not). The chance level moves the second map across the first by whole pixels, with wrap. Pixels are correlated, so the projected Rayleigh statistic is shown without a p-value."}
             </p>
           </Basis>
+          {presets && active ? (
+            <PresetChooser presets={presets} active={active} catalogMode={catalogMode}
+              onChoose={(name) => { setPresetName(name); setNBinsText(null); setV({ ...(v.snrP !== undefined ? { snrP: v.snrP } : {}), ...(v.snrSigma !== undefined ? { snrSigma: v.snrSigma } : {}) }); }} />
+          ) : presetsErr ? <p role="alert" className={s.err}>The presets of default values could not be loaded, so no comparison can be started from here. Reload the page, or check that the app is running.</p> : <p className={s.note}>Loading the presets…</p>}
           <div className={s.grid}>
             {catalogMode ? <Input label="Disk radius (arcmin)" value={val("radiusArcmin")} onChange={set("radiusArcmin")} inputMode="decimal" /> : null}
             <Input label="Shifts in the null" value={val(catalogMode ? "nShiftsCatalog" : "nShiftsMaps")} onChange={set(catalogMode ? "nShiftsCatalog" : "nShiftsMaps")} inputMode="numeric" />
@@ -219,12 +244,12 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
                 <Button onClick={() => setV({ ...v, snrP: proposal.p, snrSigma: proposal.sigma })}>Use this proposal</Button>
               </p>
             ) : null}
-            {snrOn ? <p className={s.note}>Rows with P/σP below {val("snrMin")} are left out and listed in the table with that reason; rows with P or σP missing are left out with their own reason. The default is the threshold your comparison script uses (3); the filter is recorded with the result.</p> : null}
+            {snrOn ? <p className={s.note}>Rows with P/σP below {val("snrMin")} are left out and listed in the table with that reason; rows with P or σP missing are left out with their own reason. The threshold comes from the {active?.title ?? "chosen"} preset; the filter is recorded with the result.</p> : null}
             <p className={s.note}>The seed is recorded with the result: the same inputs and seed give the same numbers.</p>
           </More>
           {snrHalf ? <p className={s.err}>The P/σP filter needs both columns: choose P and σP, or set both to Off.</p> : null}
           {unreadable.length ? <p className={s.err}>Every parameter needs a number; {unreadable.length === 1 ? "one is" : `${unreadable.length} are`} empty or not a number.</p> : null}
-          <Button variant="primary" disabled={busy || unreadable.length > 0 || snrHalf || strataBad || (thirdDs !== null && binMode === "edges" && edgesText.trim() === "")} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
+          <Button variant="primary" disabled={busy || !active || unreadable.length > 0 || snrHalf || strataBad || (thirdDs !== null && binMode === "edges" && edgesText.trim() === "")} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
           {busy ? <Button onClick={() => abort.current?.abort()}>Cancel</Button> : null}
           <QueueNote reason={queued} />
           <p className={s.note}>A null of thousands of shifts can take minutes on a large map.</p>
@@ -237,6 +262,25 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** The preset to start from, with its description and the reason for every value it holds (one sentence each). Choosing one refills the
+    fields below; a value typed afterwards replaces the preset's and is recorded with the result as replaced. */
+function PresetChooser({ presets, active, catalogMode, onChoose }: { presets: RelOrientPresets; active: RelOrientPreset; catalogMode: boolean; onChoose: (name: string) => void }) {
+  const applies = (k: string) => catalogMode ? !k.endsWith("_maps") : !["radius_arcmin", "min_pixels", "snr_min", "sigma_floor_deg", "boot_samples", "n_shifts_catalog"].includes(k);
+  return (
+    <>
+      <Select label="Preset of default values" value={active.name} onChange={(e) => onChoose(e.target.value)}>
+        {presets.presets.map((p) => <option key={p.name} value={p.name}>{p.title}{p.name === presets.default ? " (default)" : ""}</option>)}
+      </Select>
+      <p className={s.note}>{active.description}</p>
+      <More summary="Why these values">
+        <dl className={s.facts}>
+          {Object.entries(active.values).filter(([k]) => applies(k)).map(([k, x]) => (<Fragment key={k}><dt className="mono">{k}</dt><dd><span className="mono">{x.value}</span>: {x.reason}</dd></Fragment>))}
+        </dl>
+      </More>
+    </>
   );
 }
 
@@ -278,7 +322,7 @@ export function RelOrientView({ s: r, names, tableUrl, controls, resultId = null
         <dd className="mono">{n.skipped ? EM : `${fmt(n.p_one_sided, 4)} from ${n.kept ?? 0} kept of ${n.attempted ?? 0} shifts`}</dd>
         <dt>Median |Δψ|</dt>
         <dd className="mono">{fmt(r.median_abs_dpsi_deg, 1)}°</dd>
-        {cat && r.bootstrap_am_16_84 ? (<><dt>Bootstrap 16–84%</dt><dd><span className="mono">{fmt(r.bootstrap_am_16_84[0])} to {fmt(r.bootstrap_am_16_84[1])}</span>{bootstrapNote(r.bootstrap_am_16_84, c.used) ? <span className={s.sub}>{bootstrapNote(r.bootstrap_am_16_84, c.used)}</span> : null}</dd></>) : null}
+        {cat && r.bootstrap_am_16_84 ? (<><dt>Bootstrap 16–84%</dt><dd><span className="mono">{fmt(r.bootstrap_am_16_84[0])} to {fmt(r.bootstrap_am_16_84[1])}</span>{bootstrapNote(r.bootstrap_am_16_84, c.used, r.bootstrap_resamples) ? <span className={s.sub}>{bootstrapNote(r.bootstrap_am_16_84, c.used, r.bootstrap_resamples)}</span> : null}</dd></>) : null}
         {!cat && r.prs ? (<><dt>Projected Rayleigh V</dt><dd className="mono">{fmt(r.prs.V, 1)}{r.prs.V_weighted !== null && r.prs.V_weighted !== undefined ? ` (weighted ${fmt(r.prs.V_weighted, 1)})` : ""}, n = {r.prs.n?.toLocaleString("en-US")}</dd></>) : null}
         {!cat && r.independent_samples ? (<><dt>Independent beams (approx.)</dt><dd className="mono">{r.independent_samples.value !== null && r.independent_samples.value !== undefined ? fmt(r.independent_samples.value, 0) : `not offered: ${r.independent_samples.reason}`}</dd></>) : null}
         <dt>{cat ? "Sources used" : "Pixels used"}</dt>
@@ -302,6 +346,7 @@ export function RelOrientView({ s: r, names, tableUrl, controls, resultId = null
           {Object.entries(r.definitions ?? {}).map(([k, d]) => (<Fragment key={k}><dt>{k.replace(/_/g, " ")}</dt><dd>{d}</dd></Fragment>))}
           <dt>Parameters</dt>
           <dd className="mono">{Object.entries(p).map(([k, x]) => `${k}=${x}`).join(" ")}</dd>
+          {r.preset ? (<><dt>Preset</dt><dd><span className="mono">{r.preset.name} v{r.preset.version}</span>{Object.keys(r.preset.overridden).length ? `; replaced by the person: ${Object.entries(r.preset.overridden).map(([k, o]) => `${k} ${o.preset} to ${o.used}`).join(", ")}` : "; no value replaced"}</dd></>) : null}
           {r.snr_filter ? (<><dt>P/σP filter</dt><dd>{String(r.snr_filter.rule)}; columns {String(r.snr_filter.p_column)} and {String(r.snr_filter.sigma_column)}; {String(r.snr_filter.excluded_below)} rows below, {String(r.snr_filter.excluded_missing)} with P or σP missing.</dd></>) : null}
           <dt>Conversion</dt>
           <dd>{r.conversion}</dd>
@@ -309,7 +354,7 @@ export function RelOrientView({ s: r, names, tableUrl, controls, resultId = null
           <dt>Weighting</dt>
           <dd>{typeof r.weighting === "string" ? r.weighting : Object.values(r.weighting ?? {}).join(" ")}</dd>
           <dt>Null</dt>
-          <dd>{n.method}{n.scored_on ? `, scored on ${n.scored_on}` : ""}{n.wrapped_below_min_shift ? `; ${n.wrapped_below_min_shift} kept shifts are shorter than the minimum once wrapped (the script's rule tests the unwrapped offset)` : ""}</dd>
+          <dd>{n.method}{n.scored_on ? `, scored on ${n.scored_on}` : ""}{n.wrapped_below_min_shift ? `; ${n.wrapped_below_min_shift} kept shifts are shorter than the minimum once wrapped (the length test is on the unwrapped offset)` : ""}</dd>
         </dl>
         <p className={s.note}>{r.policy}</p>
       </details>

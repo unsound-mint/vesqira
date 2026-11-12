@@ -682,6 +682,9 @@ func Open(db *sql.DB) (*Store, error) {
 	if err == nil {
 		err = schema.Scope(db, "jobs")
 	}
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "request_ref", "TEXT NOT NULL DEFAULT ''")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -791,10 +794,10 @@ func (s *Store) SetScript(id int64, script string) error {
 	return nil
 }
 
-// BeginSubmit moves a draft to "submitting" before sbatch runs. Only one caller can win, so a double click or a retry
-// cannot start a second submission of the same record.
-func (s *Store) BeginSubmit(id int64) (bool, error) {
-	res, err := s.db.Exec(`UPDATE jobs SET state=?, detail='submitting: waiting for sbatch to answer' WHERE id=? AND state=?`, StateSubmitting, id, StateDraft)
+// BeginSubmit moves a draft to "submitting" before sbatch runs. Only one caller can win, so a double click or a retry cannot start
+// a second submission; and only for scriptHash, so an edit landing between reading the job and this update loses.
+func (s *Store) BeginSubmit(id int64, scriptHash string) (bool, error) {
+	res, err := s.db.Exec(`UPDATE jobs SET state=?, detail='submitting: waiting for sbatch to answer' WHERE id=? AND state=? AND script_hash=?`, StateSubmitting, id, StateDraft, scriptHash)
 	if err != nil {
 		return false, err
 	}

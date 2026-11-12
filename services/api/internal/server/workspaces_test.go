@@ -31,6 +31,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
+	"github.com/unsound-mint/vesqira/services/api/internal/relay"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
@@ -81,6 +82,10 @@ func scopedGroup(t *testing.T) (*group, map[string]authz.Permission) {
 	s.Pushed, err = pushed.Open(db, filepath.Join(dir, "pushed")) // what linked instances push (ADR 0066)
 	must(err)
 	s.Outbox, err = outbox.Open(db, filepath.Join(dir, "outbox")) // local only, so its routes are declared and not mounted
+	must(err)
+	s.Relay, err = relay.Open(db) // relayed run requests (ADR 0066 section 3)
+	must(err)
+	s.Relayed, err = relay.OpenLocal(db) // the key holder's side: local only, declared and not mounted
 	must(err)
 	v := reflect.ValueOf(s).Elem() // the stores of features the group server does not mount, so their routes are declared too
 	for i := 0; i < v.NumField(); i++ {
@@ -174,8 +179,12 @@ func markedFixtures(t *testing.T, g *group, a workspace.ID, by, leak string) map
 	ins(`INSERT INTO pushed_assets(workspace_id,sha,mime,size,created_by,created_at) VALUES(?,?,'image/png',1,?,1)`, a, pushedSHA, by)
 	ins(`INSERT INTO pushed_item_assets(item_id,sha) VALUES(?,?)`, pushedItem, pushedSHA)
 	ins(`INSERT INTO pushed_references(item_id,n,role,name,size_bytes) VALUES(?,0,'source',?,1)`, pushedItem, leak)
+	runRequest := ins(`INSERT INTO run_requests(workspace_id,created_by,addressee,label,template,params,resources,grid,note,state,change,created_at,expires_at,updated_at)
+		VALUES(?,?,?,'L','vgt','{}','{}','[]',?,'requested',1,1,9999999999,1)`, a, by, by, leak)
+	ins(`INSERT INTO run_request_events(request_id,at,actor,via,event,detail) VALUES(?,1,?,'session','note',?)`, runRequest, by, leak)
 	id := func(n int64) string { return strconv.FormatInt(n, 10) }
 	return map[string]string{
+		"relay/id": id(runRequest), "run-requests/id": id(runRequest),
 		"datasets/id": id(ds), "figures/id": id(fig), "boards/id": id(board), "snapshots/id": id(snap), "comments/id": id(comment),
 		"reports/id": id(rep), "runs/id": id(run), "run-views/id": id(view), "regions/id": id(region), "masks/id": id(mask),
 		"subsets/sid": id(sub), "history/id": id(step), "projects/id": id(proj), "attachments/sha": "sha" + strings.ToLower(leak),
@@ -558,6 +567,8 @@ var bodyIDRoutes = map[string]struct{ path, body string }{
 	// a location on a host: hosts are not on the group server, so any host id is refused
 	"POST /api/datasets/{id}/locations": {"/api/datasets/{own:datasets/id}/locations", `{"hostId":1,"path":"/a/x.fits"}`},
 	"POST /api/reports/{id}/move":       {"/api/reports/{own:reports/id}/move", `{"parent":{reports/id}}`},
+	// a run request whose base is A's pushed run: the base is looked up in B and not found
+	"POST /api/run-requests": {"/api/run-requests", `{"addressee":"x","ask":{"label":"L","template":"vgt","params":{},"resources":{},"grid":[],"note":""},"baseItemId":{pushed/id}}`},
 }
 
 // The body and query-string half of guard 3: an Owner of workspace B names workspace A's objects in the body or the query of a

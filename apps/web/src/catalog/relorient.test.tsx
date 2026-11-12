@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { CatalogDataset, CatalogDeclaration, Dataset, Header, ImageDataset, Interpretation } from "../api/catalog";
 import type { RelOrientSummary } from "../api/analysis";
 import { notReady, RelativeOrientationPanel, RelativeOrientationResult, RelOrientView } from "./RelativeOrientation";
+import { PRESETS } from "./presetsFixture";
 
 const interp = (over: Partial<Interpretation> = {}): Interpretation =>
   ({ kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: "pixel", quantity: "b_field", declaredBy: "user", declaredAt: "", stale: false, ...over }) as Interpretation;
@@ -18,6 +19,7 @@ const cat = (id: number, name: string, d: CatalogDeclaration | null = decl()): C
 function mockFetch(routes: Record<string, (init?: RequestInit) => { status?: number; body: unknown }>) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/analysis/relative-orientation/presets") return new Response(JSON.stringify(PRESETS), { status: 200, headers: { "Content-Type": "application/json" } });
     calls.push({ url, init });
     const key = Object.keys(routes).find((k) => url.startsWith(k));
     const r = key ? routes[key]!(init) : { status: 404, body: { error: "not found" } };
@@ -62,6 +64,7 @@ describe("relative orientation", () => {
     const opts = Array.from((screen.getByLabelText("Compare orientation with") as HTMLSelectElement).options).map((o) => o.text);
     expect(opts).toEqual(["Choose a catalog or map…", "stars.csv (catalog)", "planck.fits"]);
     await userEvent.selectOptions(screen.getByLabelText("Compare orientation with"), "2");
+    await screen.findByLabelText("Preset of default values");
     expect(screen.getByLabelText("Disk radius (arcmin)")).toHaveValue("10");
     expect(screen.getByLabelText("Shifts in the null")).toHaveValue("3000");
     await userEvent.clear(screen.getByLabelText("Disk radius (arcmin)"));
@@ -70,11 +73,46 @@ describe("relative orientation", () => {
     await userEvent.type(screen.getByLabelText("Disk radius (arcmin)"), "6.7");
     await userEvent.click(screen.getByRole("button", { name: "Compute the alignment measure" }));
     await waitFor(() => expect(created).toHaveLength(1));
-    expect(JSON.parse(String(calls[0]!.init!.body))).toEqual({ datasetId: 1, otherId: 2, params: { nShifts: 3000, minShiftDeg: 1, keepFraction: 0.9, seed: 20261020, bins: 9, radiusArcmin: 6.7, minPixels: 5 } });
+    expect(JSON.parse(String(calls[0]!.init!.body))).toEqual({ datasetId: 1, otherId: 2, params: { preset: "standard", nShifts: 3000, minShiftDeg: 1, keepFraction: 0.9, seed: 20261020, bins: 9, radiusArcmin: 6.7, minPixels: 5 } });
     // two maps: no radius, the maps' own default number of shifts
     await userEvent.selectOptions(screen.getByLabelText("Compare orientation with"), "4");
     expect(screen.queryByLabelText("Disk radius (arcmin)")).toBeNull();
     expect(screen.getByLabelText("Shifts in the null")).toHaveValue("1000");
+  });
+
+  it("fills its fields from the chosen preset, shows the reason for each value, and sends the preset name with any value the person typed over it", async () => {
+    const calls = mockFetch({ "/api/analysis/relative-orientation": () => ({ status: 201, body: { dataset: cat(9, "r.csv"), summary: catalogSummary } }) });
+    const psi = map(1, "psi.fits");
+    const stars = cat(2, "stars.csv", decl({ values: ["P", "sP"] }));
+    render(<RelativeOrientationPanel dataset={psi} datasets={[psi, stars]} onCreated={() => {}} />);
+    await userEvent.selectOptions(screen.getByLabelText("Compare orientation with"), "2");
+    const chooser = await screen.findByLabelText("Preset of default values");
+    expect(Array.from((chooser as HTMLSelectElement).options).map((o) => o.text)).toEqual(["Standard (default)", "Tight disk"]);
+    expect(screen.getByText("The defaults used when no preset is named.")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Why these values"));
+    expect(screen.getByText(/reason for radius_arcmin/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Seed"), "7");                              // a typed value is the person's, not the preset's
+    await userEvent.selectOptions(chooser, "tight");
+    expect(screen.getByLabelText("Disk radius (arcmin)")).toHaveValue("4");
+    expect(screen.getByLabelText("Histogram bins (equal width)")).toHaveValue("6");
+    expect(screen.getByLabelText("Seed")).toHaveValue("20261020");                         // choosing a preset refills every field
+    await userEvent.selectOptions(screen.getByLabelText("Filter rows: column P"), "P");
+    await userEvent.selectOptions(screen.getByLabelText("Filter rows: column σP"), "sP");
+    expect(screen.getByLabelText("Keep rows with P/σP ≥")).toHaveValue("5");
+    await userEvent.clear(screen.getByLabelText("Disk radius (arcmin)"));
+    await userEvent.type(screen.getByLabelText("Disk radius (arcmin)"), "3");
+    await userEvent.click(screen.getByRole("button", { name: "Compute the alignment measure" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(JSON.parse(String(calls[0]!.init!.body)).params).toMatchObject({ preset: "tight", radiusArcmin: 3, bins: 6, snrMin: 5, snrColumn: "P", snrSigmaColumn: "sP" });
+  });
+
+  it("starts nothing when the presets cannot be loaded, instead of guessing the defaults", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "down" }), { status: 500, headers: { "Content-Type": "application/json" } })));
+    const psi = map(1, "psi.fits");
+    render(<RelativeOrientationPanel dataset={psi} datasets={[psi, cat(2, "stars.csv")]} onCreated={() => {}} />);
+    await userEvent.selectOptions(screen.getByLabelText("Compare orientation with"), "2");
+    expect(await screen.findByRole("alert")).toHaveTextContent(/presets of default values could not be loaded/);
+    expect(screen.getByRole("button", { name: "Compute the alignment measure" })).toBeDisabled();
   });
 
   it("offers the P/σP filter off by default, proposes the column pair, and sends it only when chosen", async () => {

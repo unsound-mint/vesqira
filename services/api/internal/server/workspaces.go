@@ -41,6 +41,7 @@ var scopeKinds = map[string]bool{
 	"datasets/id": true, "figures/id": true, "boards/id": true, "reports/id": true, "runs/id": true, "run-views/id": true,
 	"regions/id": true, "masks/id": true, "subsets/sid": true, "history/id": true, "projects/id": true, "attachments/sha": true,
 	"discussion/id": true, "invitations/id": true, "snapshots/id": true, "comments/id": true, "pushed/id": true,
+	"relay/id": true, "run-requests/id": true,
 }
 
 // scopeLookup is the query that finds the object a path parameter names among the workspaces the account is a member of: rows of
@@ -91,6 +92,12 @@ func scopeLookup(kind, value, accountID string, selected workspace.ID) (string, 
 			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
 	case "pushed/id": // created_by is the account that pushed it: archiving below Maintainer is the pusher's own
 		q = `SELECT t.workspace_id, t.created_by, m.role FROM pushed_items t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "relay/id": // a relayed run request, reached by the key holder's computer; the store then answers only the addressee's
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM run_requests t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "run-requests/id": // created_by is the requester: withdrawing and noting below Maintainer are the requester's own
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM run_requests t
 			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
 	case "attachments/sha":
 		q = `SELECT t.workspace_id, t.created_by, m.role FROM attachments t
@@ -400,6 +407,10 @@ func (s *Server) setMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordMember(r, "role changed", id, old+" -> "+in.Role)
+	if !authz.Role(in.Role).AtLeast(authz.RoleResearcher) {
+		// below Researcher the member takes no run requests: close their inbox and open requests as leaving would
+		s.closeRelayFor(a.Workspace, id)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -419,6 +430,7 @@ func (s *Server) removeMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordMember(r, "member removed", id, "was "+old)
+	s.closeRelayFor(a.Workspace, id)
 	w.WriteHeader(http.StatusNoContent)
 }
 

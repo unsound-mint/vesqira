@@ -210,6 +210,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/relative-orientation/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The relative-orientation presets (named sets of defaults, each value with its reason) and which one is the default */
+        get: operations["owner_s_relativeOrientationPresets_get_api_analysis_relative_orientation_presets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/attachments": {
         parameters: {
             query?: never;
@@ -3472,6 +3489,243 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/relay/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Publish the token account's inbox in its workspace: labels, templates, typed bounds, paused (relay token only) */
+        put: operations["owner_s_relayPutInbox_put_api_relay_inbox"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/local": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This computer's run-request inbox, its pull state and the requests addressed to its account (local only) */
+        get: operations["owner_s_relayLocalState_get_api_relay_local"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/local/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the inbox and the host each label stands for; published at the next pull (local only) */
+        put: operations["owner_s_relayLocalInbox_put_api_relay_local_inbox"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/local/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pull now (local only) */
+        post: operations["owner_s_relayLocalPoll_post_api_relay_local_poll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pull the requests addressed to the token's account that changed after ?after= (at most 100; relay token only) */
+        get: operations["owner_s_relayPage_get_api_relay_requests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim a request bound to the script hash read (or the sweep hash): one winner, only while waiting for review and not expired; idempotent for the same hash and instance (relay token only) */
+        post: operations["owner_s_relayApprove_post_api_relay_requests_id_approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/requests/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a request waiting for review once its draft is rendered (addressee; relay token only) */
+        post: operations["owner_s_relayReview_post_api_relay_requests_id_review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/requests/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report a status transition with a sequence number; applied monotonically, an end state is final (claiming instance; relay token only) */
+        post: operations["owner_s_relayStatus_post_api_relay_requests_id_status"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relayed/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One request with the exact script (or the sweep's drafts) to review (local only) */
+        get: operations["owner_s_getRelayed_get_api_relayed_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relayed/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve the script read: claim on the group server first, then submit; nothing is submitted without the claim (local only) */
+        post: operations["owner_s_approveRelayed_post_api_relayed_id_approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relayed/{id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline the request with a note, on the group server (local only) */
+        post: operations["owner_s_declineRelayed_post_api_relayed_id_decline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relayed/{id}/detach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Keep the draft as your own job, no longer tied to the request (local only) */
+        post: operations["owner_s_detachRelayed_post_api_relayed_id_detach"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relayed/{id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Render the draft from a chosen base run with the key holder's changes (local only) */
+        post: operations["owner_s_draftRelayed_post_api_relayed_id_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reply-drafts/{id}/discard": {
         parameters: {
             query?: never;
@@ -3856,6 +4110,117 @@ export interface paths {
         get: operations["owner_func_w_get_api_roots"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-inboxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The inboxes published in the workspace, with when each computer last checked (session only) */
+        get: operations["owner_s_listRunInboxes_get_api_run_inboxes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspace's relayed run requests with their status (session only) */
+        get: operations["owner_s_listRunRequests_get_api_run_requests"];
+        put?: never;
+        /** File a run request to a key holder, validated against their inbox and rate-limited (session only) */
+        post: operations["owner_s_fileRunRequest_post_api_run_requests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One relayed run request with its record (session only) */
+        get: operations["owner_s_getRunRequest_get_api_run_requests_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-requests/{id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a request with a note (addressee only; relay token or session) */
+        post: operations["owner_s_declineRunRequest_post_api_run_requests_id_decline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-requests/{id}/note": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a follow-up note to a request, for example asking to cancel (own; any as Maintainer or Owner; session only) */
+        post: operations["owner_s_noteRunRequest_post_api_run_requests_id_note"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-requests/{id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a request before approval (own as Viewer or Researcher, any as Maintainer or Owner; session only) */
+        post: operations["owner_s_withdrawRunRequest_post_api_run_requests_id_withdraw"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6837,8 +7202,10 @@ export interface components {
             /** Format: date-time */
             measuredAt: string;
         };
-        /** @description Each is optional; the default is stated in the result's parameters (ADR 0047). */
+        /** @description Each is optional; a value not given is the chosen preset's, and the result's parameters state every value used (ADR 0047, ADR 0068). */
         RelativeOrientationParams: {
+            /** @description The name of a preset of defaults (GET /api/analysis/relative-orientation/presets); default `standard`. A parameter set here replaces the preset's value and is listed in the result under `preset.overridden`. An unknown name is refused (422) and the known ones are named */
+            preset?: string;
             /** @description Map vs catalog only: disk radius on the sky (default 10) */
             radiusArcmin?: number;
             /** @description Map vs catalog only: fewest usable pixels in a disk (default 5) */
@@ -6860,7 +7227,7 @@ export interface components {
             snrColumn?: string;
             /** @description Map vs catalog only: the declared value column holding σP */
             snrSigmaColumn?: string;
-            /** @description The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason */
+            /** @description The filter's k (the preset's value, 3 in the standard preset: P/σP ≥ 3 is the usual detection threshold for a polarization angle); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason */
             snrMin?: number;
             /** @description With stratifyId: the number of equal-count bins of the third map (default 5); not with strataEdges. Tied values are never split, so a heavy tie gives fewer bins */
             strataBins?: number;
@@ -6959,6 +7326,9 @@ export interface components {
             median_abs_dpsi_deg?: number;
             bootstrap_am_16_84?: number[] | null;
             bootstrap_note?: string;
+            /** @description Map vs catalog: the number of resamples behind bootstrap_am_16_84 (the preset's boot_samples) */
+            bootstrap_resamples?: number;
+            preset?: components["schemas"]["RelativeOrientationPresetUsed"];
             prs?: {
                 V?: number | null;
                 V_weighted?: number | null;
@@ -7067,6 +7437,44 @@ export interface components {
                 };
                 policy: string;
             };
+        };
+        /** @description The preset a result used: its name and version, every value it supplied (including ones the comparison does not take as a parameter, such as the bootstrap count and the weight floor) and the explicit parameters that replaced one of them. Results made before presets existed have none. */
+        RelativeOrientationPresetUsed: {
+            name: string;
+            version: number;
+            /** @description Preset value key to value (radius_arcmin, min_pixels, snr_min, sigma_floor_deg, boot_samples, n_shifts_catalog, n_shifts_maps, min_shift_deg, keep_fraction, seed, bins, strata_bins) */
+            values: {
+                [key: string]: number;
+            };
+            /** @description Parameter name to the preset's value and the value used, for each explicit parameter that differs from the preset */
+            overridden: {
+                [key: string]: {
+                    preset: number;
+                    used: number;
+                };
+            };
+        };
+        RelativeOrientationPresetValue: {
+            value: number;
+            /** @description One plain sentence on why the value is the default */
+            reason: string;
+        };
+        RelativeOrientationPreset: {
+            name: string;
+            version: number;
+            title: string;
+            description: string;
+            /** @description Keys as in RelativeOrientationPresetUsed.values */
+            values: {
+                [key: string]: components["schemas"]["RelativeOrientationPresetValue"];
+            };
+        };
+        /** @description The analysis presets shipped with the worker (relorient_presets.json), served as the file is. */
+        RelativeOrientationPresets: {
+            schema: number;
+            /** @description The preset used when a request names none */
+            default: string;
+            presets: components["schemas"]["RelativeOrientationPreset"][];
         };
         RelativeOrientationResult: {
             dataset: components["schemas"]["Dataset"];
@@ -7280,7 +7688,7 @@ export interface components {
             sigma: number | null;
             /** @description 2 sqrt(2 ln 2) sigma, km/s */
             fwhm: number | null;
-            /** @description 121.1 K (km/s)^-2 x sigma^2: an upper limit on the kinetic temperature */
+            /** @description 121.2 K (km/s)^-2 x sigma^2 (m_H sigma^2 / k_B for atomic hydrogen): an upper limit on the kinetic temperature */
             t_doppler_k: number | null;
         };
         /** @description The JSON header of a rohsa components frame. */
@@ -9957,7 +10365,7 @@ export interface components {
         };
         CreateTokenRequest: {
             name: string;
-            /** @description write includes read; push and relay (ADR 0066) allow nothing until their routes exist */
+            /** @description write includes read; push sends frozen work and relay takes run requests for a linked computer (ADR 0066), both bound to the current workspace */
             scopes: ("read" | "write" | "push" | "relay")[];
             /** @description 0 or absent: 30 days */
             days?: number;
@@ -10508,6 +10916,363 @@ export interface components {
             id: number;
             /** @description the hash the preflight answered */
             hash: string;
+        };
+        /** @description The typed bound of one whitelisted setting: an inclusive range or a list of allowed values. */
+        RelayBound: {
+            key: string;
+            min?: number;
+            max?: number;
+            choices?: string[];
+        };
+        /** @description Caps on what a request may ask for; zero means it may not ask and the base's value is used. */
+        RelayLimits: {
+            maxCpus: number;
+            maxMemGiB: number;
+            maxTimeMinutes: number;
+        };
+        RelayTemplateBounds: {
+            /** @enum {string} */
+            template: "vgt" | "rohsa";
+            keys: components["schemas"]["RelayBound"][];
+            limits: components["schemas"]["RelayLimits"];
+        };
+        /** @description A cluster label the key holder typed (at most 40 letters, digits, spaces and -); only their computer maps it to a host. */
+        RelayLabel: {
+            label: string;
+            templates: components["schemas"]["RelayTemplateBounds"][];
+        };
+        RelayInbox: {
+            paused: boolean;
+            labels: components["schemas"]["RelayLabel"][];
+        };
+        /** @description Zero or absent keeps the base's value. */
+        RelayResources: {
+            cpus?: number;
+            memGiB?: number;
+            timeMinutes?: number;
+        };
+        RelayGridKey: {
+            key: string;
+            values: string[];
+        };
+        /** @description What a requester asks for: typed values of whitelisted settings, never a path, script, host or dataset id. */
+        RelayAsk: {
+            label: string;
+            /** @enum {string} */
+            template: "vgt" | "rohsa";
+            params: {
+                [key: string]: string;
+            };
+            resources: components["schemas"]["RelayResources"];
+            grid: components["schemas"]["RelayGridKey"][];
+            note: string;
+        };
+        RelayBase: {
+            origin: string;
+            hash: string;
+            title: string;
+            instance?: string;
+        };
+        RelayFollowUp: {
+            /** Format: date-time */
+            at: string;
+            by: string;
+            text: string;
+        };
+        RelayRequest: {
+            id: number;
+            change: number;
+            /** @enum {string} */
+            state: "requested" | "waiting_review" | "approved" | "submitted" | "running" | "finished" | "failed" | "unknown" | "declined" | "withdrawn" | "expired";
+            requester: string;
+            ask: components["schemas"]["RelayAsk"];
+            base?: components["schemas"]["RelayBase"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            notes: components["schemas"]["RelayFollowUp"][];
+        };
+        /** @description One pull: the requests addressed to the token's account that changed after the cursor, in order, and the next cursor. */
+        RelayPage: {
+            workspace: string;
+            cursor: number;
+            requests: components["schemas"]["RelayRequest"][];
+        };
+        RelayPublishInbox: {
+            instance: string;
+            inbox: components["schemas"]["RelayInbox"];
+        };
+        RelayInstance: {
+            instance: string;
+        };
+        /** @description The key holder's approval, sent before anything is submitted: the hash of the script read (or the sweep hash and the kept combinations) and the final values. */
+        RelayClaim: {
+            instance: string;
+            scriptHash?: string;
+            sweepHash?: string;
+            kept?: {
+                [key: string]: string;
+            }[];
+            concurrency?: number;
+            params: {
+                [key: string]: string;
+            };
+            resources: components["schemas"]["RelayResources"];
+            label: string;
+            baseChosen: boolean;
+            editedLines: number;
+            autoPush: boolean;
+        };
+        /** @description A status transition with a per-request sequence number; only enumerated words cross. */
+        RelayReport: {
+            instance: string;
+            seq: number;
+            /** @enum {string} */
+            state: "requested" | "waiting_review" | "approved" | "submitted" | "running" | "finished" | "failed" | "unknown" | "declined" | "withdrawn" | "expired";
+            /** @enum {string} */
+            code?: "" | "not_confirmed" | "submission_failed" | "cancelled" | "timeout" | "gone";
+            exit?: string;
+            counts?: {
+                [key: string]: number;
+            };
+            runHash?: string;
+        };
+        RelayDecline: {
+            instance?: string;
+            note: string;
+        };
+        RelayState: {
+            /** @enum {string} */
+            state: "requested" | "waiting_review" | "approved" | "submitted" | "running" | "finished" | "failed" | "unknown" | "declined" | "withdrawn" | "expired";
+        };
+        RelayApplied: {
+            /** @enum {string} */
+            state: "requested" | "waiting_review" | "approved" | "submitted" | "running" | "finished" | "failed" | "unknown" | "declined" | "withdrawn" | "expired";
+            applied: boolean;
+        };
+        RunApproval: {
+            scriptHash?: string;
+            sweepHash?: string;
+            kept?: {
+                [key: string]: string;
+            }[];
+            concurrency?: number;
+            params: {
+                [key: string]: string;
+            };
+            resources: components["schemas"]["RelayResources"];
+            label: string;
+            baseChosen: boolean;
+            editedLines: number;
+            autoPush: boolean;
+            /** Format: date-time */
+            at: string;
+        };
+        RelayClaimed: {
+            /** @enum {string} */
+            state: "requested" | "waiting_review" | "approved" | "submitted" | "running" | "finished" | "failed" | "unknown" | "declined" | "withdrawn" | "expired";
+            approval?: components["schemas"]["RunApproval"];
+        };
+        RunInbox: {
+            account: string;
+            name: string;
+            inbox: components["schemas"]["RelayInbox"];
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            polledAt?: string;
+        };
+        RunInboxList: {
+            inboxes: components["schemas"]["RunInbox"][];
+        };
+        /** @description A relayed run request as members read it: the record with names; never a script, folder or Slurm id. */
+        RunRequest: {
+            id: number;
+            requester: string;
+            addressee: string;
+            ask: components["schemas"]["RelayAsk"];
+            baseItemId?: number;
+            /** @enum {string} */
+            state: "requested" | "waiting_review" | "approved" | "submitted" | "running" | "finished" | "failed" | "unknown" | "declined" | "withdrawn" | "expired";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            approval?: components["schemas"]["RunApproval"];
+            code: string;
+            exit: string;
+            counts?: {
+                [key: string]: number;
+            };
+            runHash: string;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** Format: date-time */
+            runningAt?: string;
+            /** Format: date-time */
+            endedAt?: string;
+            /** Format: date-time */
+            reportedAt?: string;
+            declineNote: string;
+            closedNote: string;
+            requesterName: string;
+            addresseeName: string;
+            baseTitle: string;
+            /** Format: date-time */
+            checkedAt?: string;
+            runItemId?: number;
+        };
+        RunRequestList: {
+            requests: components["schemas"]["RunRequest"][];
+        };
+        RunRequestEvent: {
+            /** Format: date-time */
+            at: string;
+            actor: string;
+            via: string;
+            event: string;
+            detail: string;
+            name: string;
+        };
+        RunRequestDetail: {
+            request: components["schemas"]["RunRequest"];
+            events: components["schemas"]["RunRequestEvent"][];
+        };
+        RunRequestFile: {
+            addressee: string;
+            ask: components["schemas"]["RelayAsk"];
+            baseItemId?: number;
+            expiresInDays?: number;
+        };
+        RunRequestNote: {
+            text: string;
+        };
+        RelayedDraftValues: {
+            params: {
+                [key: string]: string;
+            };
+            resources: components["schemas"]["RelayResources"];
+            label: string;
+        };
+        /** @description A request addressed to this computer's account, as this computer holds it. */
+        Relayed: {
+            id: number;
+            serverId: number;
+            request: components["schemas"]["RelayRequest"];
+            /** @enum {string} */
+            serverState: "requested" | "waiting_review" | "approved" | "submitted" | "running" | "finished" | "failed" | "unknown" | "declined" | "withdrawn" | "expired";
+            /** @enum {string} */
+            localState: "received" | "refused" | "draft" | "approved" | "declined" | "detached" | "closed";
+            refusal: string;
+            jobId?: number;
+            sweepId?: number;
+            baseRunId?: number;
+            baseChosen: boolean;
+            draft: components["schemas"]["RelayedDraftValues"];
+            scriptHash: string;
+            autoPush: boolean;
+            runHash: string;
+            seq: number;
+            reported: string;
+            /** Format: date-time */
+            receivedAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            origin: string;
+            jobName?: string;
+            jobState?: string;
+        };
+        RelayLocalState: {
+            origin: string;
+            configured: boolean;
+            inbox: components["schemas"]["RelayInbox"];
+            hosts: {
+                [key: string]: number;
+            };
+            published: boolean;
+            cursor: number;
+            /** Format: date-time */
+            polledAt?: string;
+            /** Format: date-time */
+            answeredAt?: string;
+            failures: number;
+            message: string;
+        };
+        RelayHost: {
+            id: number;
+            name: string;
+        };
+        RelayLocal: {
+            linked: boolean;
+            workspace?: string;
+            state?: components["schemas"]["RelayLocalState"];
+            hosts: components["schemas"]["RelayHost"][];
+            requests: components["schemas"]["Relayed"][];
+        };
+        RelayLocalInbox: {
+            inbox: components["schemas"]["RelayInbox"];
+            hosts: {
+                [key: string]: number;
+            };
+        };
+        RelayedJob: {
+            id: number;
+            name: string;
+            state: string;
+            script: string;
+            scriptHash: string;
+            editedLines: number;
+        };
+        RelayedSweepDraft: {
+            jobId: number;
+            name: string;
+            values: {
+                [key: string]: string;
+            };
+            scriptHash: string;
+            script: string;
+        };
+        RelayedSweep: {
+            id: number;
+            drafts: components["schemas"]["RelayedSweepDraft"][];
+            sweepHash: string;
+            view: Record<string, never>;
+            maxConcurrency: number;
+        };
+        RelayedDetail: {
+            request: components["schemas"]["Relayed"];
+            /** @description empty, or why the request is outside the inbox as it is now (a bound lowered after it arrived); a warning, not a refusal */
+            outsideBounds: string;
+            job?: components["schemas"]["RelayedJob"];
+            sweep?: components["schemas"]["RelayedSweep"];
+            /** @description with a draft: which code it runs, the base run's commit its script insists on, or why it insists on none (ADR 0066 section 3, ADR 0054) */
+            code?: string;
+        };
+        RelayedDraftRequest: {
+            baseRunId?: number;
+            changes?: {
+                [key: string]: string;
+            };
+            resources?: components["schemas"]["RelayResources"];
+        };
+        RelayedApproveRequest: {
+            scriptHash?: string;
+            sweepHash?: string;
+            drop?: number[];
+            concurrency?: number;
+            stopOnFailure?: boolean;
+            autoPush?: boolean;
+        };
+        RelayedApproved: {
+            request: components["schemas"]["Relayed"];
+            submitted: boolean;
+            message?: string;
+        };
+        RelayedDeclineRequest: {
+            note: string;
         };
         /** @description Linear bins in the diagram's own unit: km/s when the crop's spectral axis is a resolved velocity axis, channels otherwise */
         RohsaBins: {
@@ -11098,6 +11863,44 @@ export interface operations {
             };
             /** @description a missing declaration (named), or the worker refused (for example no source could be compared) */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relativeOrientationPresets_get_api_analysis_relative_orientation_presets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelativeOrientationPresets"];
+                };
+            };
+            /** @description the presets file is missing or malformed */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -17379,6 +18182,429 @@ export interface operations {
             };
         };
     };
+    owner_s_relayPutInbox_put_api_relay_inbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayPublishInbox"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relayLocalState_get_api_relay_local: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayLocal"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relayLocalInbox_put_api_relay_local_inbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayLocalInbox"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayLocal"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relayLocalPoll_post_api_relay_local_poll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayLocal"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relayPage_get_api_relay_requests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayPage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relayApprove_post_api_relay_requests_id_approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayClaim"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayClaimed"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relayReview_post_api_relay_requests_id_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayInstance"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relayStatus_post_api_relay_requests_id_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayReport"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayApplied"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_getRelayed_get_api_relayed_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayedDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_approveRelayed_post_api_relayed_id_approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayedApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayedApproved"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_declineRelayed_post_api_relayed_id_decline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayedDeclineRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relayed"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_detachRelayed_post_api_relayed_id_detach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relayed"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_draftRelayed_post_api_relayed_id_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayedDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relayed"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_discardReplyDraft_post_api_reply_drafts_id_discard: {
         parameters: {
             query?: never;
@@ -17909,6 +19135,227 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_listRunInboxes_get_api_run_inboxes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunInboxList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listRunRequests_get_api_run_requests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRequestList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_fileRunRequest_post_api_run_requests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunRequestFile"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRequest"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_getRunRequest_get_api_run_requests_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRequestDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_declineRunRequest_post_api_run_requests_id_decline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayDecline"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_noteRunRequest_post_api_run_requests_id_note: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunRequestNote"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_withdrawRunRequest_post_api_run_requests_id_withdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

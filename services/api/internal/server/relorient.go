@@ -29,6 +29,9 @@ import (
 
 // relOrientParams are the parameters a person may set; nil means the stated default (relorient.check_params).
 type relOrientParams struct {
+	// Preset names a set of defaults (relorient_presets.json in the worker's folder); nil means the default preset. A value set
+	// below replaces the preset's own. The worker refuses an unknown name and lists the known ones.
+	Preset       *string  `json:"preset"`
 	RadiusArcmin *float64 `json:"radiusArcmin"`
 	MinPixels    *int     `json:"minPixels"`
 	NShifts      *int     `json:"nShifts"`
@@ -60,6 +63,12 @@ type relOrientReq struct {
 // worker turns the parameters into the worker's names, refusing values outside the ranges the worker accepts (it checks again).
 func (p relOrientParams) worker(catalogMode, stratified bool) (map[string]any, string) {
 	out := map[string]any{}
+	if p.Preset != nil {
+		if !presetName.MatchString(*p.Preset) {
+			return nil, "preset must be a preset name such as standard"
+		}
+		out["preset"] = *p.Preset
+	}
 	num := func(name string, v *float64, lo, hi float64) string {
 		if v == nil {
 			return ""
@@ -386,6 +395,9 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 	}
 	// The parameters as the worker used them (defaults filled in, seed included) are in the summary; params keep what was asked.
 	recParams := map[string]any{"options": params, "mode": map[bool]string{true: "map_catalog", false: "map_map"}[catalogMode]}
+	if pr := presetOfSummary(res.Summary); pr != nil {
+		recParams["preset"] = pr // the preset and every value it supplied, so a result can be read without the file it came from
+	}
 	if k := relorientConstruction(catalogMode, res.Summary, time.Now()); k != nil { // Vesqira ran the null, so it records how it was built
 		recParams["controls"] = runs.Controls{Construction: k}
 	}
@@ -406,6 +418,35 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Audit.RecordCtx(r.Context(), "relative orientation", "dataset", nd.ID, d.Name+" with "+other.Name)
 	writeJSON(w, 201, map[string]any{"dataset": nd, "summary": res.Summary})
+}
+
+var presetName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+// presetOfSummary is the "preset" object the worker put in a relative-orientation summary (name, version, the values it supplied
+// and the explicit parameters that replaced one), or nil when the summary has none.
+func presetOfSummary(summary json.RawMessage) json.RawMessage {
+	var sum struct {
+		Preset json.RawMessage `json:"preset"`
+	}
+	if json.Unmarshal(summary, &sum) != nil || len(sum.Preset) == 0 || string(sum.Preset) == "null" {
+		return nil
+	}
+	return sum.Preset
+}
+
+// relativeOrientationPresets is GET /api/analysis/relative-orientation/presets: the presets the worker ships, with the reason for
+// every value, so the form can list them and fill its fields. The file is the worker's own (relorient_presets.json), served as it
+// is, so the form and the computation cannot disagree about what a preset holds.
+func (s *Server) relativeOrientationPresets(w http.ResponseWriter, r *http.Request) {
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(s.Analysis.Script), "relorient_presets.json"))
+	var doc json.RawMessage
+	if err != nil || json.Unmarshal(b, &doc) != nil {
+		fail(w, 500, "the analysis presets file is missing or malformed")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(b)
 }
 
 var tableFileName = regexp.MustCompile(`^relorient-[0-9]+-[0-9]+-[0-9a-f]{8}(-table)?\.csv$`)
