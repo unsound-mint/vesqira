@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/base32"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -736,6 +737,61 @@ func TestGroupProxyCannotTurnFailuresIntoAGlobalLockout(t *testing.T) {
 		t.Fatalf("another client was stopped too: %d", w.Code)
 	}
 	_ = secret
+}
+
+// A parallel burst of guesses is limited like a sequence: an attempt is reserved before the password or the code is checked,
+// so at most the free attempts of the backoff reach the verifier, however many requests arrive at once.
+func TestGroupParallelGuessesAreLimitedLikeSequentialOnes(t *testing.T) {
+	g := newGroup(t)
+	_, secret := g.setupAdmin("ada")
+	burst := func(n int, send func(i int) int) map[int]int {
+		var mu sync.Mutex
+		codes := map[int]int{}
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				<-start
+				c := send(i)
+				mu.Lock()
+				codes[c]++
+				mu.Unlock()
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		return codes
+	}
+	before := g.acc.Verifications()
+	codes := burst(100, func(i int) int {
+		return g.do(req{method: "POST", path: "/api/auth/sign-in", body: `{"username":"ada","password":"guess ` + itoa(i) + ` of many"}`}).Code
+	})
+	if n := g.acc.Verifications() - before; n > 5 {
+		t.Fatalf("100 parallel wrong passwords: %d reached argon2 (answers %v)", n, codes)
+	}
+	if codes[200] != 0 {
+		t.Fatalf("a wrong password signed in: %v", codes)
+	}
+	// TOTP: a pending session guessing codes in parallel
+	g.clock.add(time.Hour)
+	g.s.MultiUser.Limiter = &accounts.Limiter{Now: g.clock.now}
+	g.h = g.s.Handler()
+	w := g.do(req{method: "POST", path: "/api/auth/sign-in", body: `{"username":"ada","password":"` + adminPass + `"}`})
+	pending := sessionFrom(t, w)
+	right := accounts.CodeAt(secret, g.clock.now())
+	beforeTOTP := g.acc.TOTPChecks()
+	codes = burst(100, func(i int) int {
+		code := fmt.Sprintf("%06d", i)
+		if code == right {
+			code = "999999"
+		}
+		return g.do(req{method: "POST", path: "/api/auth/second-factor", body: `{"code":"` + code + `"}`, cookie: pending}).Code
+	})
+	if n := g.acc.TOTPChecks() - beforeTOTP; n > 5 {
+		t.Fatalf("100 parallel TOTP guesses: %d were checked (answers %v)", n, codes)
+	}
 }
 
 // Signing out everywhere ends the sessions and keeps the tokens, and says so.

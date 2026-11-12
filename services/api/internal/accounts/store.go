@@ -56,6 +56,8 @@ var (
 	ErrNoEnrolment    = errors.New("no second-factor enrolment is waiting")
 	ErrAlreadyEnroled = errors.New("the second factor is already enrolled")
 	ErrBadScopes      = errors.New("choose at least one known scope")
+	// ErrBusy: every argon2 slot is taken and the short queue behind them is full; the caller answers 503.
+	ErrBusy = errors.New("password hashing is busy")
 )
 
 type Account struct {
@@ -108,9 +110,13 @@ type Store struct {
 	KnownScopes []string
 
 	hashSlots chan struct{} // at most this many argon2 computations at once (64 MiB each)
-	dummyOnce sync.Once
-	dummy     string
-	verifies  atomic.Int64 // password verifications run, real or dummy (tests check an unknown name is verified too)
+	hashQueue atomic.Int32  // computations running or waiting for a slot
+	// MaxHashQueue bounds hashQueue (default 16): beyond it a request is refused with ErrBusy rather than queued.
+	MaxHashQueue int32
+	dummyOnce    sync.Once
+	dummy        string
+	verifies     atomic.Int64 // password verifications run, real or dummy (tests check an unknown name is verified too)
+	totps        atomic.Int64 // TOTP codes checked against an enrolled secret
 }
 
 // Open creates the tables when they are missing (a fresh catalog; schema 30 adds them to an upgraded one).
@@ -129,6 +135,9 @@ func (s *Store) SetKey(k []byte) { s.key = k }
 
 // Verifications is the number of password verifications run so far.
 func (s *Store) Verifications() int64 { return s.verifies.Load() }
+
+// TOTPChecks is the number of codes checked against an enrolled secret so far.
+func (s *Store) TOTPChecks() int64 { return s.totps.Load() }
 
 func (s *Store) now() time.Time { return s.Now() }
 
@@ -231,17 +240,37 @@ func (s *Store) CreateAdminFromSetup(secret, name, username, password string) (A
 
 // ---- passwords ----
 
-func (s *Store) hash(pw string) (string, error) {
+// slot takes an argon2 slot, waiting only while the queue is short; release gives it back.
+func (s *Store) slot() (release func(), err error) {
+	max := s.MaxHashQueue
+	if max <= 0 {
+		max = 16
+	}
+	if s.hashQueue.Add(1) > max {
+		s.hashQueue.Add(-1)
+		return nil, ErrBusy
+	}
 	s.hashSlots <- struct{}{}
-	defer func() { <-s.hashSlots }()
+	return func() { <-s.hashSlots; s.hashQueue.Add(-1) }, nil
+}
+
+func (s *Store) hash(pw string) (string, error) {
+	release, err := s.slot()
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	return hashPassword(pw, s.Params)
 }
 
-func (s *Store) verify(pw, stored string) bool {
-	s.hashSlots <- struct{}{}
-	defer func() { <-s.hashSlots }()
+func (s *Store) verify(pw, stored string) (bool, error) {
+	release, err := s.slot()
+	if err != nil {
+		return false, err
+	}
+	defer release()
 	s.verifies.Add(1)
-	return verifyPassword(pw, stored)
+	return verifyPassword(pw, stored), nil
 }
 
 // dummyHash is a hash of a random password with the current settings, verified for a name no account has, so an unknown
@@ -270,13 +299,18 @@ func (s *Store) CheckPassword(username, password string) (Account, bool, error) 
 		FROM identities i JOIN accounts a ON a.id=i.account_id JOIN password_credentials p ON p.account_id=a.id
 		WHERE i.issuer=? AND i.sub=?`, LocalIssuer, NormalizeUsername(username)).Scan(&a.ID, &a.Name, &a.Username, &a.Admin, new(int64), &disabled, &stored)
 	if errors.Is(err, sql.ErrNoRows) {
-		s.verify(password, s.dummyHash())
+		if _, err := s.verify(password, s.dummyHash()); err != nil {
+			return Account{}, false, err
+		}
 		return Account{}, false, nil
 	}
 	if err != nil {
 		return Account{}, false, err
 	}
-	ok := s.verify(password, stored)
+	ok, err := s.verify(password, stored)
+	if err != nil {
+		return Account{}, false, err
+	}
 	if !ok || disabled.Valid {
 		return Account{}, false, nil
 	}
@@ -436,6 +470,7 @@ func (s *Store) VerifyTOTP(accountID, code string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	s.totps.Add(1)
 	step := matchStep(secret, code, s.now())
 	if step == 0 || step <= last {
 		return false, nil

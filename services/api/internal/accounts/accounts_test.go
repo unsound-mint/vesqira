@@ -521,56 +521,150 @@ func TestTokensRevokedOrExpiredAreRefused(t *testing.T) {
 	}
 }
 
+// fail runs one attempt to a failure.
+func fail(t *testing.T, l *Limiter, name, client string) {
+	t.Helper()
+	a, ok, _ := l.Begin(name, client)
+	if !ok {
+		t.Fatalf("attempt for %q from %q refused", name, client)
+	}
+	a.Fail()
+}
+
+func allowed(l *Limiter, name, client string) (bool, time.Duration) {
+	a, ok, wait := l.Begin(name, client)
+	if ok {
+		a.Done()
+	}
+	return ok, wait
+}
+
 func TestLimiterBacksOffWithoutSayingWhetherTheNameExists(t *testing.T) {
 	c := &clock{t: time.Unix(1_800_000_000, 0)}
 	l := &Limiter{Now: c.now}
 	for i := 0; i < 5; i++ {
-		if ok, _ := l.Allow("ada", "1.1.1.1"); !ok {
-			t.Fatalf("refused attempt %d", i)
-		}
-		l.Fail("ada", "1.1.1.1")
+		fail(t, l, "ada", "1.1.1.1")
 	}
-	ok, wait := l.Allow("ada", "2.2.2.2")
+	ok, wait := allowed(l, "ada", "2.2.2.2")
 	if ok || wait != 30*time.Second {
 		t.Fatalf("after five failures: %v %v (the name, not the address, is slowed)", ok, wait)
 	}
 	c.add(30 * time.Second)
-	if ok, _ := l.Allow("ada", "2.2.2.2"); !ok {
-		t.Fatal("still refused after the wait")
-	}
-	l.Fail("ada", "2.2.2.2")
-	if _, wait := l.Allow("ada", "2.2.2.2"); wait != time.Minute {
+	fail(t, l, "ada", "2.2.2.2")
+	if _, wait := allowed(l, "ada", "2.2.2.2"); wait != time.Minute {
 		t.Fatalf("the wait did not double: %v", wait)
 	}
-	if ok, _ := l.Allow("bob", "3.3.3.3"); !ok {
+	if ok, _ := allowed(l, "bob", "3.3.3.3"); !ok {
 		t.Fatal("another name was slowed")
 	}
-	l.Succeed("ada")
-	if ok, _ := l.Allow("ada", "4.4.4.4"); !ok {
+	c.add(time.Minute)
+	a, _, _ := l.Begin("ada", "4.4.4.4")
+	a.Succeed()
+	if ok, _ := allowed(l, "ada", "4.4.4.4"); !ok {
 		t.Fatal("a success did not clear the name")
 	}
-	// per address: thirty failures for thirty different names stop that address
 	for i := 0; i < 30; i++ {
-		l.Fail(strings.Repeat("n", i+1), "9.9.9.9")
+		fail(t, l, strings.Repeat("n", i+1), "9.9.9.9")
 	}
-	if ok, _ := l.Allow("fresh", "9.9.9.9"); ok {
+	if ok, _ := allowed(l, "fresh", "9.9.9.9"); ok {
 		t.Fatal("a spraying address was not stopped")
 	}
 	c.add(15 * time.Minute)
-	if ok, _ := l.Allow("fresh", "9.9.9.9"); !ok {
+	if ok, _ := allowed(l, "fresh", "9.9.9.9"); !ok {
 		t.Fatal("the address stayed stopped past the window")
 	}
 	// no address (a proxy the server cannot see past): never a per-address stop, the per-name backoff still
 	for i := 0; i < 60; i++ {
-		l.Fail(strings.Repeat("m", i+1), "")
+		fail(t, l, strings.Repeat("m", i+1), "")
 	}
-	if ok, _ := l.Allow("other", ""); !ok {
+	if ok, _ := allowed(l, "other", ""); !ok {
 		t.Fatal("failures without an address stopped everyone")
 	}
 	for i := 0; i < 5; i++ {
-		l.Fail("carol", "")
+		fail(t, l, "carol", "")
 	}
-	if ok, _ := l.Allow("carol", ""); ok {
+	if ok, _ := allowed(l, "carol", ""); ok {
 		t.Fatal("the per-name backoff is off without an address")
+	}
+}
+
+// An attempt is reserved before it is checked: while one is in flight, a second for the same name or address is refused,
+// so a parallel burst reaches the verifier no more often than a sequence would.
+func TestLimiterReservesAttemptsAgainstParallelBursts(t *testing.T) {
+	l := &Limiter{}
+	var mu sync.Mutex
+	inside, maxInside, reached := 0, 0, 0
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			a, ok, _ := l.Begin("ada", "") // same name, from behind a proxy
+			if !ok {
+				return
+			}
+			mu.Lock()
+			inside++
+			reached++
+			maxInside = max(maxInside, inside)
+			mu.Unlock()
+			time.Sleep(time.Millisecond) // the argon2 work
+			mu.Lock()
+			inside--
+			mu.Unlock()
+			a.Fail()
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if maxInside != 1 || reached > 5 {
+		t.Fatalf("%d attempts at once, %d in all reached the check", maxInside, reached)
+	}
+	// one address spraying different names: one at a time too
+	b, ok, _ := l.Begin("x", "5.5.5.5")
+	if !ok {
+		t.Fatal("refused")
+	}
+	if ok, wait := allowed(l, "y", "5.5.5.5"); ok || wait != inflightWait {
+		t.Fatal("a second attempt from the same address ran beside the first")
+	}
+	b.Done()
+	b.Fail() // ending twice changes nothing
+	if ok, _ := allowed(l, "x", "5.5.5.5"); !ok {
+		t.Fatal("a finished attempt still holds its name")
+	}
+}
+
+// A full argon2 queue refuses with ErrBusy rather than queueing every request.
+func TestPasswordHashingRefusesWhenTheQueueIsFull(t *testing.T) {
+	s, _ := newStore(t)
+	s.Params = Argon2Params{MemoryKiB: 16 * 1024, Time: 2, Threads: 1} // the stored hash states this cost, so each check takes a while
+	admin(t, s, "ada")
+	s.MaxHashQueue = 4
+	var mu sync.Mutex
+	busy, checked := 0, 0
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _, err := s.CheckPassword("ada", "not the passphrase")
+			mu.Lock()
+			if errors.Is(err, ErrBusy) {
+				busy++
+			} else if err == nil {
+				checked++
+			}
+			mu.Unlock()
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if busy == 0 || busy+checked != 100 {
+		t.Fatalf("busy %d, checked %d", busy, checked)
 	}
 }

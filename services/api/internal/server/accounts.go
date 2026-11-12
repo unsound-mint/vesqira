@@ -126,15 +126,20 @@ func (s *Server) authSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := s.clientAddr(r)
-	if ok, wait := s.MultiUser.Limiter.Allow("setup:"+client, s.limitAddr(r)); !ok {
+	att, ok, wait := s.MultiUser.Limiter.Begin("setup:"+client, s.limitAddr(r))
+	if !ok {
 		tooMany(w, wait)
 		return
 	}
+	defer att.Done() // Fail or Succeed below end the attempt first; Done covers every other way out
 	a, err := s.MultiUser.Accounts.CreateAdminFromSetup(in.Token, in.Name, in.Username, in.Password)
 	var weak accounts.ErrWeakPassword
 	switch {
+	case errors.Is(err, accounts.ErrBusy):
+		busy(w)
+		return
 	case errors.Is(err, accounts.ErrSetupInvalid):
-		s.MultiUser.Limiter.Fail("setup:"+client, s.limitAddr(r))
+		att.Fail()
 		s.accountAudit(anonymous, "setup link refused", "from "+client)
 		fail(w, 400, err.Error())
 		return
@@ -151,6 +156,12 @@ func (s *Server) authSetup(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		writeJSON(w, 201, s.stateFor(a.ID, stage, false))
 	}
+}
+
+// busy answers when every password-hashing slot and its short queue are taken: refused, not queued without limit.
+func busy(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "1")
+	fail(w, http.StatusServiceUnavailable, "the server is busy checking other sign-ins; try again in a moment")
 }
 
 func tooMany(w http.ResponseWriter, wait time.Duration) {
@@ -182,19 +193,25 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request) {
 	}
 	st, lim := s.MultiUser.Accounts, s.MultiUser.Limiter
 	key, client := limitKey(in.Username), s.clientAddr(r)
-	if ok, wait := lim.Allow(key, s.limitAddr(r)); !ok {
+	att, ok, wait := lim.Begin(key, s.limitAddr(r))
+	if !ok {
 		s.accountAudit(anonymous, "sign-in refused: too many attempts", "from "+client)
 		tooMany(w, wait)
 		return
 	}
+	defer att.Done() // Fail or Succeed below end the attempt first; Done covers every other way out
 	a, ok, err := st.CheckPassword(in.Username, in.Password)
+	if errors.Is(err, accounts.ErrBusy) {
+		busy(w)
+		return
+	}
 	if err != nil {
 		log.Printf("sign-in: %v", err)
 		fail(w, 500, "internal error")
 		return
 	}
 	if !ok {
-		lim.Fail(key, s.limitAddr(r))
+		att.Fail()
 		s.warnNoClientHeader(r)
 		if known, err := st.ByUsername(in.Username); err == nil {
 			s.accountAudit(sessionActor(known.ID), "sign-in failed", "wrong password, from "+client)
@@ -233,10 +250,12 @@ func (s *Server) secondFactor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key, client := limitKey(a.Username), s.clientAddr(r)
-	if ok, wait := lim.Allow(key, s.limitAddr(r)); !ok {
+	att, ok, wait := lim.Begin(key, s.limitAddr(r))
+	if !ok {
 		tooMany(w, wait)
 		return
 	}
+	defer att.Done() // Fail or Succeed below end the attempt first; Done covers every other way out
 	how, good := "", false
 	switch {
 	case in.RecoveryCode != "":
@@ -252,13 +271,13 @@ func (s *Server) secondFactor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !good {
-		lim.Fail(key, s.limitAddr(r))
+		att.Fail()
 		s.warnNoClientHeader(r)
 		s.accountAudit(sessionActor(a.ID), "sign-in failed", "wrong or already used "+how+", from "+client)
 		fail(w, http.StatusUnauthorized, "wrong or already used code")
 		return
 	}
-	lim.Succeed(key)
+	att.Succeed()
 	id, err := st.Promote(se, client, r.UserAgent(), false)
 	if err != nil {
 		failCode(w, http.StatusUnauthorized, "signin_required", "this sign-in has ended; start again", nil)
@@ -307,10 +326,12 @@ func (s *Server) confirmEnrolment(w http.ResponseWriter, r *http.Request, a acco
 	}
 	st, lim := s.MultiUser.Accounts, s.MultiUser.Limiter
 	key, client := limitKey(a.Username), s.clientAddr(r)
-	if ok, wait := lim.Allow(key, s.limitAddr(r)); !ok {
+	att, ok, wait := lim.Begin(key, s.limitAddr(r))
+	if !ok {
 		tooMany(w, wait)
 		return nil, false
 	}
+	defer att.Done() // Fail or Succeed below end the attempt first; Done covers every other way out
 	confirm := st.ConfirmEnrolment
 	if first {
 		confirm = st.ConfirmFirstEnrolment
@@ -325,12 +346,12 @@ func (s *Server) confirmEnrolment(w http.ResponseWriter, r *http.Request, a acco
 		fail(w, 500, "internal error")
 		return nil, false
 	case !ok:
-		lim.Fail(key, s.limitAddr(r))
+		att.Fail()
 		s.warnNoClientHeader(r)
 		fail(w, http.StatusUnauthorized, "wrong code: check the app shows this account and the phone's clock is right")
 		return nil, false
 	}
-	lim.Succeed(key)
+	att.Succeed()
 	s.accountAudit(sessionActor(a.ID), "second factor enrolled", "TOTP; 10 new recovery codes, from "+client)
 	return codes, true
 }
@@ -431,10 +452,12 @@ func (s *Server) confirmSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key, client := limitKey(a.Username), s.clientAddr(r)
-	if ok, wait := lim.Allow(key, s.limitAddr(r)); !ok {
+	att, ok, wait := lim.Begin(key, s.limitAddr(r))
+	if !ok {
 		tooMany(w, wait)
 		return
 	}
+	defer att.Done() // Fail or Succeed below end the attempt first; Done covers every other way out
 	_, good, err := st.CheckPassword(a.Username, in.Password)
 	if err == nil && good {
 		if in.RecoveryCode != "" {
@@ -443,19 +466,23 @@ func (s *Server) confirmSignIn(w http.ResponseWriter, r *http.Request) {
 			good, err = st.VerifyTOTP(a.ID, strings.TrimSpace(in.Code))
 		}
 	}
+	if errors.Is(err, accounts.ErrBusy) {
+		busy(w)
+		return
+	}
 	if err != nil {
 		log.Printf("confirm: %v", err)
 		fail(w, 500, "internal error")
 		return
 	}
 	if !good {
-		lim.Fail(key, s.limitAddr(r))
+		att.Fail()
 		s.warnNoClientHeader(r)
 		s.accountAudit(sessionActor(a.ID), "sign-in confirmation failed", "from "+client)
 		fail(w, http.StatusUnauthorized, "wrong password or code")
 		return
 	}
-	lim.Succeed(key)
+	att.Succeed()
 	id, err := st.Promote(se, client, r.UserAgent(), true)
 	if err != nil {
 		failCode(w, http.StatusUnauthorized, "signin_required", "this session has ended; sign in again", nil)
