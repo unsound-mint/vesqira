@@ -464,6 +464,14 @@ func TestACorrectionForgetsTheDatasetsOfflineCopies(t *testing.T) {
 	if !e.off.Has(d.ID) {
 		t.Fatal("the copy was not kept")
 	}
+	// the preview names the copy before anything is dropped (ADR 0059: nothing is evicted silently)
+	code, b := e.call("POST", fmt.Sprintf("/api/datasets/%d/corrections/preview", d.ID), map[string]any{"action": "set", "wcs": map[string]any{"CRVAL2": 2.05}, "reason": "pointing correction"})
+	if code != 200 || !strings.Contains(string(b), `"offline"`) || !strings.Contains(string(b), "forgotten when you save") {
+		t.Fatalf("the preview does not name the offline copy: %d %s", code, b)
+	}
+	if !e.off.Has(d.ID) {
+		t.Fatal("a preview dropped the offline copy")
+	}
 	if code, b := e.save(d.ID, map[string]any{"action": "set", "wcs": map[string]any{"CRVAL2": 2.05}, "reason": "pointing correction"}); code != 201 {
 		t.Fatalf("save: %d %s", code, b)
 	}

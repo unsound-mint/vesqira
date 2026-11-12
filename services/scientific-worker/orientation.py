@@ -116,7 +116,24 @@ def compass_of(c) -> dict:
     """compass() at the centre of a Cube's map, or `{"available": False, "reason": ...}` when it has no usable celestial WCS."""
     try:
         w = celestial_wcs(c)
-        return compass(w, (c.shape[c.x] - 1) / 2.0, (c.shape[c.y] - 1) / 2.0)
+        out = compass(w, (c.shape[c.x] - 1) / 2.0, (c.shape[c.y] - 1) / 2.0)
+        # the arrows rest on the celestial WCS the Cube built, with the researcher's corrections applied (ADR 0061): say which
+        sky = {str(i + 1) for i in (getattr(c, "lng", None), getattr(c, "lat", None)) if i is not None}
+
+        def celestial(k: str) -> bool:
+            if k in ("RADESYS", "EQUINOX"):
+                return True
+            for p in ("CRVAL", "CRPIX", "CDELT", "CTYPE", "CUNIT"):
+                if k.startswith(p):
+                    return k[len(p):] in sky
+            for p in ("CD", "PC"):  # CDi_j / PCi_j: a term that mixes in a sky axis turns the arrows
+                if k.startswith(p) and "_" in k:
+                    return bool(set(k[len(p):].split("_")) & sky)
+            return False
+        corrected = sorted(k for k in getattr(c, "corrected", ()) if celestial(k))
+        if out.get("available") and corrected:
+            out["corrected"] = corrected
+        return out
     except Undeclared as e:
         return {"available": False, "reason": str(e)}
 

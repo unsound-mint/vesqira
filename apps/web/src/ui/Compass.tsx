@@ -14,7 +14,10 @@ export function usableCompass(c: CompassFacts | null | undefined): Available | n
 /** What to say next to a figure: where the arrows come from, or why there are none. */
 export function compassNote(c: CompassFacts | null | undefined): string {
   const u = usableCompass(c);
-  if (u) return `N and E: increasing latitude and longitude${u.frame ? ` (${u.frame})` : ""} at the map centre, from the file's WCS.`;
+  if (u) {
+    const fixed = u.corrected && u.corrected.length > 0 ? ` with your corrections (${u.corrected.join(", ")}): corrected` : "";
+    return `N and E: increasing latitude and longitude${u.frame ? ` (${u.frame})` : ""} at the map centre, from the file's WCS${fixed}.`;
+  }
   if (c && !c.available && c.reason) return `No north/east arrows: ${c.reason}.`;
   return "No north/east arrows: this result does not record where north and east point in the map.";
 }
