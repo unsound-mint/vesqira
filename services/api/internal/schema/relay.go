@@ -74,7 +74,7 @@ CREATE INDEX IF NOT EXISTS run_request_events_request ON run_request_events(requ
 // labels with their templates and bounds, and, only here, the host each label stands for (a label never names a host on the
 // server); the pull cursor and the poll's backoff, for the linked server's origin (another origin starts again from zero).
 // relayed_requests mirrors each request the server answered, as strictly decoded, with what this computer made of it: refused by
-// its own validation, drafted (the job or sweep), approved, declined or detached; the status sequence it last reported. The job
+// its own validation, drafted (the job or sweep, and the values, resources and label it was rendered with), approved, declined or detached; the status sequence it last reported. The job
 // a request became also carries the request's reference in jobs.request_ref.
 const RelayedTables = `CREATE TABLE IF NOT EXISTS relay_local(
 	id INTEGER PRIMARY KEY CHECK(id = 1),
@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS relayed_requests(
 	sweep_id INTEGER,
 	base_run_id INTEGER,
 	base_chosen INTEGER NOT NULL DEFAULT 0,
+	draft TEXT NOT NULL DEFAULT '{}',
 	script_hash TEXT NOT NULL DEFAULT '',
 	auto_push INTEGER NOT NULL DEFAULT 1,
 	run_hash TEXT NOT NULL DEFAULT '',

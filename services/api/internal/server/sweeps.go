@@ -40,6 +40,11 @@ type sweepIn struct {
 	BaseRunID *int64         `json:"baseRunId"`
 	Params    []sweepParamIn `json:"params"`
 	Note      string         `json:"note"`
+	// Set by a relayed run request only, never decoded from a body (ADR 0066 section 3): values every draft takes on top of the
+	// base's settings, and resources that replace the base's (zero keeps the base's).
+	fixed     map[string]string
+	cpus      int
+	mem, time string
 }
 
 func (in sweepIn) params() []sweeps.Param {
@@ -163,18 +168,31 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 				set[k] = v
 			}
 		}
+		for k, v := range in.fixed {
+			set[k] = v
+		}
 		for k, v := range c {
 			set[k] = v
 		}
 		name := sweeps.JobName(in.Name, p.params, c, i)
 		var b builtJob
 		var aerr *apiErr
+		cpus, mem, tm := req.CPUs, req.Mem, req.Time
+		if in.cpus > 0 {
+			cpus = in.cpus
+		}
+		if in.mem != "" {
+			mem = in.mem
+		}
+		if in.time != "" {
+			tm = in.time
+		}
 		if rohsa {
 			b, aerr = s.buildROHSA(ctx, p.host, name, rohsaInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
-				CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
+				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
 		} else {
 			b, aerr = s.buildVGT(ctx, p.host, name, vgtInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
-				CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
+				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
 		}
 		if aerr != nil {
 			return p, &apiErr{aerr.Code, name + ": " + aerr.Msg}
@@ -595,6 +613,11 @@ func (s *Server) submitSweep(w http.ResponseWriter, r *http.Request) {
 	if in.SweepHash != sweepHash(pj) {
 		s.sweepMu.Unlock()
 		fail(w, 409, "the scripts changed since you reviewed them; review the sweep again")
+		return
+	}
+	if s.relayedDraft(pj[0].ID) {
+		s.sweepMu.Unlock()
+		fail(w, 409, "this sweep was rendered for a run request: approve it from Run requests, which claims it on the group server first")
 		return
 	}
 	hashes := map[int64]string{}

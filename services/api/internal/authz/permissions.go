@@ -81,6 +81,18 @@ const (
 	PushedRead Permission = "pushed.read"
 	// PushedArchive is R (own; any as Maintainer or Owner), a browser session only: hide a pushed item.
 	PushedArchive Permission = "pushed.archive"
+
+	// Slice 5 (ADR 0066 section 3): relayed run requests.
+	// RelayServe is R, through a workspace-bound token with the relay scope only, never a session: publish the account's inbox,
+	// pull the requests addressed to it, mark one waiting for review, claim it bound to a script hash, report its status. Every
+	// route acts only on requests addressed to the token's own account; it reads no other workspace content.
+	RelayServe Permission = "relay.serve"
+	// RunRequestDecline is R, the addressee only, through a relay token or a browser session (ADR 0066: "relay or S").
+	RunRequestDecline Permission = "run_request.decline"
+	// RunRequestRead is V, a browser session only: the inboxes of the workspace and its requests with their records; never a script.
+	RunRequestRead Permission = "run_request.read"
+	// RunRequestFile is V, a browser session only: file a request, and withdraw it or add a note (own; any as Maintainer or Owner).
+	RunRequestFile Permission = "run_request.file"
 )
 
 // All is every permission a route may declare. A test fails for a route that names anything else.
@@ -95,6 +107,7 @@ func All() []Permission {
 		ClusterRead, ClusterUse, ClusterAdmin, AccountSelf, AccountCredentials, AccountAdmin, LocalOnly,
 		CommentWrite, MemberRead, MemberInvite, MemberManage, WorkspaceAdmin,
 		PushUpload, PushedRead, PushedArchive,
+		RelayServe, RunRequestDecline, RunRequestRead, RunRequestFile,
 	}
 }
 

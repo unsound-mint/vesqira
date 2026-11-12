@@ -49,6 +49,7 @@ func (l *Local) now() int64 { return l.Now().Unix() }
 // LocalState is this computer's inbox and pull state for the linked server.
 type LocalState struct {
 	Origin     string           `json:"origin"`
+	Configured bool             `json:"configured"` // the key holder has set up an inbox on this computer
 	Inbox      Inbox            `json:"inbox"`
 	Hosts      map[string]int64 `json:"hosts"` // label -> host id, this computer only
 	Published  bool             `json:"published"`
@@ -74,6 +75,7 @@ func (l *Local) State(origin string) (LocalState, error) {
 	if err != nil {
 		return st, err
 	}
+	st.Configured = true
 	_ = json.Unmarshal([]byte(inbox), &st.Inbox)
 	_ = json.Unmarshal([]byte(hosts), &st.Hosts)
 	if st.Inbox.Labels == nil {
@@ -121,41 +123,43 @@ func (l *Local) Failed(origin, msg string) error {
 
 // Mirrored is one request as this computer holds it.
 type Mirrored struct {
-	ID          int64     `json:"id"`
-	ServerID    int64     `json:"serverId"`
-	Request     Request   `json:"request"`
-	ServerState string    `json:"serverState"`
-	LocalState  string    `json:"localState"`
-	Refusal     string    `json:"refusal"`
-	JobID       *int64    `json:"jobId,omitempty"`
-	SweepID     *int64    `json:"sweepId,omitempty"`
-	BaseRunID   *int64    `json:"baseRunId,omitempty"`
-	BaseChosen  bool      `json:"baseChosen"`
-	ScriptHash  string    `json:"scriptHash"`
-	AutoPush    bool      `json:"autoPush"`
-	RunHash     string    `json:"runHash"`
-	Seq         int64     `json:"seq"`
-	Reported    string    `json:"reported"`
-	ReceivedAt  time.Time `json:"receivedAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID          int64       `json:"id"`
+	ServerID    int64       `json:"serverId"`
+	Request     Request     `json:"request"`
+	ServerState string      `json:"serverState"`
+	LocalState  string      `json:"localState"`
+	Refusal     string      `json:"refusal"`
+	JobID       *int64      `json:"jobId,omitempty"`
+	SweepID     *int64      `json:"sweepId,omitempty"`
+	BaseRunID   *int64      `json:"baseRunId,omitempty"`
+	BaseChosen  bool        `json:"baseChosen"`
+	Draft       DraftValues `json:"draft"`
+	ScriptHash  string      `json:"scriptHash"`
+	AutoPush    bool        `json:"autoPush"`
+	RunHash     string      `json:"runHash"`
+	Seq         int64       `json:"seq"`
+	Reported    string      `json:"reported"`
+	ReceivedAt  time.Time   `json:"receivedAt"`
+	UpdatedAt   time.Time   `json:"updatedAt"`
 	origin      string
 	workspaceID workspace.ID
 }
 
-const mirrorCols = `id, workspace_id, origin, server_id, request, server_state, local_state, refusal, job_id, sweep_id, base_run_id, base_chosen,
+const mirrorCols = `id, workspace_id, origin, server_id, request, server_state, local_state, refusal, job_id, sweep_id, base_run_id, base_chosen, draft,
 	script_hash, auto_push, run_hash, seq, reported, received_at, updated_at`
 
 func scanMirror(row interface{ Scan(...any) error }) (Mirrored, error) {
 	var m Mirrored
-	var raw string
+	var raw, draft string
 	var job, sweep, base sql.NullInt64
 	var rec, upd int64
-	err := row.Scan(&m.ID, &m.workspaceID, &m.origin, &m.ServerID, &raw, &m.ServerState, &m.LocalState, &m.Refusal, &job, &sweep, &base, &m.BaseChosen,
+	err := row.Scan(&m.ID, &m.workspaceID, &m.origin, &m.ServerID, &raw, &m.ServerState, &m.LocalState, &m.Refusal, &job, &sweep, &base, &m.BaseChosen, &draft,
 		&m.ScriptHash, &m.AutoPush, &m.RunHash, &m.Seq, &m.Reported, &rec, &upd)
 	if err != nil {
 		return m, err
 	}
 	_ = json.Unmarshal([]byte(raw), &m.Request)
+	_ = json.Unmarshal([]byte(draft), &m.Draft)
 	for _, p := range []struct {
 		v   sql.NullInt64
 		dst **int64
@@ -288,10 +292,19 @@ func (l *Local) SetServerState(id int64, state string) error {
 	return err
 }
 
-// SetDraft records the job or sweep a request was rendered into, and the base it started from.
-func (l *Local) SetDraft(id int64, jobID, sweepID *int64, baseRunID int64, chosen bool) error {
-	res, err := l.db.Exec(`UPDATE relayed_requests SET local_state=?, job_id=?, sweep_id=?, base_run_id=?, base_chosen=?, updated_at=? WHERE id=? AND local_state IN (?,?)`,
-		LocalDraft, jobID, sweepID, baseRunID, chosen, l.now(), id, LocalReceived, LocalDraft)
+// DraftValues are what a draft was rendered with: the request's values with the key holder's changes, the resources and the label.
+// They are what the claim sends as the final parameters.
+type DraftValues struct {
+	Params    map[string]string `json:"params"`
+	Resources Resources         `json:"resources"`
+	Label     string            `json:"label"`
+}
+
+// SetDraft records the job or sweep a request was rendered into, the base it started from and the values it was rendered with.
+func (l *Local) SetDraft(id int64, jobID, sweepID *int64, baseRunID int64, chosen bool, d DraftValues) error {
+	b, _ := json.Marshal(d)
+	res, err := l.db.Exec(`UPDATE relayed_requests SET local_state=?, job_id=?, sweep_id=?, base_run_id=?, base_chosen=?, draft=?, updated_at=? WHERE id=? AND local_state IN (?,?)`,
+		LocalDraft, jobID, sweepID, baseRunID, chosen, string(b), l.now(), id, LocalReceived, LocalDraft)
 	if err != nil {
 		return err
 	}

@@ -366,6 +366,10 @@ func (s *Server) submitJob(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
+	if s.relayedDraft(j.ID) {
+		fail(w, 409, "this draft was rendered for a run request: approve it from Run requests, which claims it on the group server first, or keep it as your own job there")
+		return
+	}
 	out, aerr := s.submitDraft(r.Context(), j, h, in.ScriptHash, in.AutoImport)
 	if aerr != nil {
 		s.failAPI(w, aerr)

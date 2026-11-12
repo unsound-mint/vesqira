@@ -32,6 +32,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
+	"github.com/unsound-mint/vesqira/services/api/internal/relay"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -246,6 +247,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// relayed run requests (ADR 0066 section 3): the server keeps inboxes and requests; a key holder's instance its inbox and mirror
+	relayStore, err := relay.Open(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
+	relayedStore, err := relay.OpenLocal(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
 	remote := hosts.NewManager(*sshBin, files)
 	defer remote.Close()
 	var servers []*http.Server
@@ -275,9 +285,9 @@ func main() {
 	srv := &server.Server{MultiUser: group, Roots: rs, Store: store, Worker: planes, Planes: planes, Load: load, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, Masks: maskStore, Offline: offlineStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Subsets: subsetStore, History: historyStore, Discussion: discussion.Open(store.DB()), Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, VPNEnabled: *enableVPN, VPNLogDir: filepath.Join(dir, "vpn"), Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *multiUser {
-		srv.Pushed = pushedStore
+		srv.Pushed, srv.Relay = pushedStore, relayStore
 	} else {
-		srv.Outbox, srv.GroupKeyFile = outboxStore, filepath.Join(dir, "group.key")
+		srv.Outbox, srv.GroupKeyFile, srv.Relayed = outboxStore, filepath.Join(dir, "group.key"), relayedStore
 	}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
@@ -334,6 +344,7 @@ func main() {
 	}
 	if !*multiUser { // send the push queue to the linked group server, if any, without ever blocking a request (ADR 0066)
 		go srv.RunOutbox(stop)
+		go srv.RunRelay(stop) // pull the run requests addressed to this computer's account, if it takes any
 	}
 	transfersStopped := make(chan struct{}) // the transfer queue (ADR 0051); on shutdown rsync gets SIGTERM and keeps its partial files
 	go func() {
