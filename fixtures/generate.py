@@ -633,6 +633,58 @@ voxel_rmse = 0.05
     return region_dir / f"{R_LABEL}.dat"
 
 
+PLANCK_PSI_GAL_DEG = 30.0      # the dust polarization angle of the uniform HEALPix fixture, east of Galactic north (IAU)
+PLANCK_P = 2.0e-4              # its polarized intensity, K_CMB
+PLANCK_QQ, PLANCK_UU, PLANCK_QU = 4.0e-10, 9.0e-10, 1.0e-10   # its covariances (K_CMB^2), stated in the file's convention
+
+
+def healpix_pol_map(nside: int = 16, ordering: str = "RING", polcconv: str | None = "COSMO", coordsys: str | None = "GALACTIC",
+                    psi_gal=PLANCK_PSI_GAL_DEG, p=PLANCK_P, qq=PLANCK_QQ, uu=PLANCK_UU, qu=PLANCK_QU, missing=(), qu_cov: bool = True) -> fits.HDUList:
+    """A Planck HFI SkyMap-like HEALPix map: an empty primary HDU, then a binary table of I, Q, U and the covariances, one row per
+    pixel. `psi_gal` is the dust polarization angle (IAU, east of Galactic north at each pixel) as a number or a function of
+    (l, b) in degrees; `p`, `qq`, `uu` and `qu` are numbers or functions of (l, b). Q and U are written in `polcconv`'s sign
+    (COSMO: U = -U_IAU and QU = -QU_IAU). Pixels in `missing` hold the HEALPix bad-data value. Nothing here is real data."""
+    from astropy.coordinates import Galactic
+    from astropy_healpix import HEALPix
+    hp = HEALPix(nside=nside, order=ordering.lower(), frame=Galactic())
+    lon, lat = hp.healpix_to_lonlat(np.arange(hp.npix))
+    l, b = lon.deg, lat.deg
+
+    def val(v):
+        return np.broadcast_to(np.asarray(v(l, b) if callable(v) else v, dtype=float), l.shape).copy()
+    psi, pv = val(psi_gal), val(p)
+    q_iau, u_iau = pv * np.cos(np.radians(2 * psi)), pv * np.sin(np.radians(2 * psi))
+    sign = -1.0 if polcconv == "COSMO" else 1.0
+    cols = {"I_STOKES": np.full(hp.npix, 1e-3), "Q_STOKES": q_iau, "U_STOKES": sign * u_iau, "QQ_COV": val(qq), "UU_COV": val(uu)}
+    if qu_cov:
+        cols["QU_COV"] = val(qu)
+    for k in cols:
+        cols[k][list(missing)] = -1.6375e30
+    units = {"I_STOKES": "K_CMB", "Q_STOKES": "K_CMB", "U_STOKES": "K_CMB", "QQ_COV": "K_CMB^2", "UU_COV": "K_CMB^2", "QU_COV": "K_CMB^2"}
+    t = fits.BinTableHDU.from_columns([fits.Column(name=k, format="E", unit=units[k], array=v.astype(np.float32)) for k, v in cols.items()],
+                                      name="FREQ-MAP")
+    h = t.header
+    h["PIXTYPE"], h["ORDERING"], h["NSIDE"], h["INDXSCHM"] = "HEALPIX", ordering, nside, "IMPLICIT"
+    h["FIRSTPIX"], h["LASTPIX"], h["BAD_DATA"] = 0, hp.npix - 1, -1.6375e30
+    if coordsys is not None:
+        h["COORDSYS"] = coordsys
+    if polcconv is not None:
+        h["POLCCONV"] = polcconv
+    h["COMMENT"] = "Synthetic HEALPix polarization fixture, not a measurement."
+    return fits.HDUList([fits.PrimaryHDU(), t])
+
+
+def vgt_psi_planck_field() -> fits.HDUList:
+    """A VGT psi product on the 4x4 ICRS grid whose B-field angle is the uniform Planck fixture's field: dust polarization + 90
+    degrees east of Galactic north, stated as PSIFRAME = GALACTIC (radians). A relative orientation against the Planck field is
+    aligned (AM near 1) only if both sides carry the angle through the sky correctly."""
+    a = np.full((4, 4), math.radians((PLANCK_PSI_GAL_DEG + 90.0) % 180.0))
+    h = _map_header(a.shape)
+    for k, v, c in vgt_product_cards("psi", "GALACTIC"):
+        h[k] = (v, c)
+    return fits.HDUList([fits.PrimaryHDU(a, header=h)])
+
+
 def write_all(directory: Path) -> dict[str, Path]:
     directory.mkdir(parents=True, exist_ok=True)
     out = {}
@@ -664,6 +716,11 @@ def write_all(directory: Path) -> dict[str, Path]:
         "vgt_psi_galactic_on_galactic_grid.fits": vgt_psi_with_cards("rad", vgt_product_cards("psi", "GALACTIC"), vgt_psi_galactic_grid()),
         "vgt_psi_beam_unit_unstated.fits": vgt_psi_with_cards("rad", vgt_product_cards("psi", "GALACTIC", None)),
         "vgt_tangential_deg.fits": vgt_tangential_deg(),
+        # HEALPix polarization maps (ADR 0067): a uniform Galactic field in the COSMO convention, and two that cannot be used
+        "planck_353_cosmo.fits": healpix_pol_map(),
+        "planck_353_no_polcconv.fits": healpix_pol_map(polcconv=None),
+        "planck_353_no_coordsys.fits": healpix_pol_map(coordsys=None),
+        "vgt_psi_planck_field.fits": vgt_psi_planck_field(),
     }.items():
         path = directory / name
         hdul.writeto(path, overwrite=True)

@@ -41,8 +41,12 @@ def read_header(src) -> fits.Header:
     if isinstance(src, str):
         with source_file(src) as (_, f):
             return read_header(f)
-    f = src
-    f.seek(0)
+    return read_header_at(src, 0)[0]
+
+
+def read_header_at(f, offset: int) -> tuple[fits.Header, int]:
+    """(header, offset just past it) of the header that starts at byte `offset` of the open file `f`, bounded like the primary's."""
+    f.seek(offset)
     raw = b""
     for _ in range(MAX_HEADER_BLOCKS):
         block = f.read(BLOCK)
@@ -50,7 +54,7 @@ def read_header(src) -> fits.Header:
             raise ValueError("file ends inside the header")
         raw += block
         if any(block[i : i + 80].rstrip() == b"END" for i in range(0, BLOCK, 80)):
-            return fits.Header.fromstring(raw.decode("ascii", "replace"))
+            return fits.Header.fromstring(raw.decode("ascii", "replace")), offset + len(raw)
     raise ValueError("header exceeds the size limit")
 
 
@@ -180,8 +184,19 @@ def axes_shape(h: fits.Header) -> list[int]:
 
 
 def describe(path: str) -> dict:
-    h = read_header(path)
-    shape = axes_shape(h)
+    with source_file(path) as (_, f):
+        h, end = read_header_at(f, 0)
+        shape = axes_shape(h)
+        if not shape and h.get("EXTEND") is True:
+            # A HEALPix map (Planck HFI SkyMap) is a binary table after an empty primary HDU: a dataset of its own kind, never an image
+            # (ADR 0067). healpix_pol refuses, with a sentence, a HEALPix table that does not state what Vesqira needs to use it.
+            import healpix_pol
+            try:
+                ext, _ = read_header_at(f, end)
+            except ValueError:
+                ext = None
+            if ext is not None and healpix_pol.is_healpix(ext):
+                return healpix_pol.describe_header(ext)
     naxis = len(shape)
     axes = []
     for i in range(1, naxis + 1):   # native FITS order: axis 1 is the fastest-varying

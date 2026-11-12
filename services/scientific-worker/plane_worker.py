@@ -1016,13 +1016,21 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         # Local registration: the head is exactly what `fits_header.py <path>` prints (no op/size fields), and a refusal
         # carries the same short sanitised message, so the catalog row and the error text do not depend on the transport.
         from fits_header import describe
+        from healpix_pol import HealpixRefused
         try:
             return describe(real), b""
+        except HealpixRefused as e:
+            # a HEALPix map that does not state its convention or coordinate system (ADR 0067): the sentence is the answer, whole
+            raise Refused("refused", clean(str(e), 300))
         except (OSError, ValueError, KeyError, TypeError) as e:
             raise Refused("unreadable", clean(str(e), 120))
     if op == "header":
         from fits_header import describe
-        return {**describe(real), "nbytes": 0, "op": op, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+        from healpix_pol import HealpixRefused
+        try:
+            return {**describe(real), "nbytes": 0, "op": op, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
+        except HealpixRefused as e:
+            raise Refused("refused", clean(str(e), 300))
     raise Refused("bad_request", "bad request")
 
 

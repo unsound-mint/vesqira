@@ -945,7 +945,22 @@ def op_mask(args) -> dict:
     return mk.op_mask(args)
 
 
-OPS = {"mask": op_mask, "relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "subset": op_subset, "slab": op_slab, "align": op_align}
+def op_healpix_sample(args) -> dict:
+    """A HEALPix polarization map sampled onto a dataset's celestial grid as Q and U, then turned into an angle (ADR 0067)."""
+    import healpix_pol as hpp
+    try:
+        params = json.loads(args.params) if args.params else {}
+        if not isinstance(params, dict):
+            raise ValueError
+    except ValueError:
+        fail("the parameters are not a JSON object")
+    try:
+        return hpp.op_sample(args, params)
+    except hpp.HealpixRefused as e:
+        fail(str(e))
+
+
+OPS = {"healpix_sample": op_healpix_sample, "mask": op_mask, "relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "subset": op_subset, "slab": op_slab, "align": op_align}
 
 
 def log_failure(op: str, what: str) -> None:
@@ -1000,6 +1015,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--missing-out")          # where the result's own no-value mask goes (computed again from its values, never carried)
     ap.add_argument("--ref-masks")            # the same for the reference of relorient_maps
     ap.add_argument("--table-out")            # relorient_maps: where the per-pixel CSV goes
+    ap.add_argument("--p-out")                # healpix_sample: where the companion P map goes
+    ap.add_argument("--sigma-out")            # healpix_sample: where the companion sigma_P map goes
     ap.add_argument("--window")               # subset: the window as a JSON object (subset.py)
     ap.add_argument("--note")                 # subset: one line of provenance for the file's HISTORY
     ap.add_argument("--corrections")          # the researcher's corrections, a JSON object {resolved path: {hash, bunit, wcs}} (ADR 0061)
@@ -1013,7 +1030,7 @@ def main(argv: list[str]) -> int:
                 fail("the corrections sent with this analysis are malformed")
         if args.op != "stats" and not args.out:
             fail("--out is required")
-        if args.op in ("align", "axial_diff", "scalar_diff", "relorient_maps") and not args.reference:
+        if args.op in ("align", "axial_diff", "scalar_diff", "relorient_maps", "healpix_sample") and not args.reference:
             fail("--reference is required")
         result = OPS[args.op](args)
         if corr.CURRENT.by_path:
@@ -1031,6 +1048,9 @@ def main(argv: list[str]) -> int:
         if args.op == "align":
             import reproject
             result["software"]["reproject"] = reproject.__version__
+        if args.op == "healpix_sample":
+            import astropy_healpix
+            result["software"]["astropy_healpix"] = astropy_healpix.__version__
         print(json.dumps(result, allow_nan=False))
         return 0
     except Refused as e:
