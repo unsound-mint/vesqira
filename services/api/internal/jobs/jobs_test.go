@@ -63,6 +63,32 @@ func TestSettingsCannotInjectShell(t *testing.T) {
 	}
 }
 
+func TestConfigKeysFollowPublicVGT(t *testing.T) {
+	out, err := SetConfigValues(baseConfig, map[string]string{"angle_frame": "galactic", "output_bin": "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`angle_frame = "galactic"`, "output_bin = 2"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	for _, bad := range []map[string]string{{"noise_mode": "separable_shrinkage"}, {"angle_frame": "fk5"}, {"output_bin": "0"}, {"output_bin": "01"}, {"output_bin": "-1"}, {"output_bin": "2.5"}} {
+		if _, err := SetConfigValues(baseConfig, bad); err == nil {
+			t.Errorf("%v accepted", bad)
+		}
+	}
+}
+
+// A run recorded before the template dropped separable_shrinkage still lists the value it declared.
+func TestRecordedConfigWithRetiredNoiseModeStillReads(t *testing.T) {
+	old := "[noise]\nnoise_mode = \"separable_shrinkage\"\n\n[vgt]\nker = 4\n"
+	got := EffectiveVGTSettings(VGTRequest{BaseConfigText: old, Set: map[string]string{"ker": "8"}})
+	if got["noise.noise_mode"] != "separable_shrinkage" || got["vgt.ker"] != "8" {
+		t.Errorf("settings = %v", got)
+	}
+}
+
 func TestConfigEditingIsTypedAndWhitelisted(t *testing.T) {
 	out, err := SetConfigValues(baseConfig, map[string]string{"ker": "8", "noise_mode": "channel", "output_dir": "/shared/home/u/runs/a", "noise_sigma_multiplier": "3.0"})
 	if err != nil {

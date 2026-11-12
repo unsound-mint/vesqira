@@ -20,7 +20,7 @@ import s from "./JobsView.module.css";
 
 export const TONE: Record<JobState, "neutral" | "ok" | "warn" | "err" | "accent"> = { draft: "neutral", submitting: "warn", submitted: "accent", running: "accent", completed: "ok", failed: "err", cancelled: "warn" };
 const ACTIVE: JobState[] = ["submitted", "running"];
-export const SETTINGS: { key: string; label: string; kind: "text" | "noise_mode" }[] = [
+export const SETTINGS: { key: string; label: string; kind: "text" | "noise_mode" | "angle_frame" }[] = [
   { key: "input_file", label: "Input cube on the host", kind: "text" },
   { key: "ker", label: "ker (smoothing, pixels)", kind: "text" },
   { key: "dn", label: "dn (window, pixels)", kind: "text" },
@@ -28,8 +28,15 @@ export const SETTINGS: { key: string; label: string; kind: "text" | "noise_mode"
   { key: "noise", label: "noise (1 sigma)", kind: "text" },
   { key: "noise_mode", label: "noise mode", kind: "noise_mode" },
   { key: "noise_sigma_multiplier", label: "noise sigma multiplier", kind: "text" },
+  { key: "angle_frame", label: "angle frame (PSIFRAME of the outputs)", kind: "angle_frame" },
+  { key: "output_bin", label: "output binning (pixels, 1 or more)", kind: "text" },
 ];
-export const NOISE_MODES = ["scalar", "channel", "spatial", "separable", "separable_shrinkage", "auto"];
+export const ANGLE_FRAMES = ["pixel", "galactic", "icrs"];
+/** The options of an enum setting, or null for a text field. */
+export function enumOptions(kind: string): string[] | null {
+  return kind === "noise_mode" ? NOISE_MODES : kind === "angle_frame" ? ANGLE_FRAMES : null;
+}
+export const NOISE_MODES = ["scalar", "channel", "spatial", "separable", "auto"];
 
 export function jobFor(jobs: Job[], runId: number): Job | null {
   return jobs.find((j) => j.runId === runId) ?? null;
@@ -184,7 +191,8 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
         {hosts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
       </Select>
       <Input label="Job name" value={name} onChange={(e) => setName(e.target.value)} />
-      <PathField label="VGT folder on the host" kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} placeholder="/shared/home/you/vgt" />
+      <PathField label={kind === "rohsa" ? "ROHSA-LMC folder on the host" : "VGT folder on the host"} kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} placeholder={kind === "rohsa" ? "/shared/home/you/ROHSA-LMC" : "/shared/home/you/vgt"} />
+      {kind === "rohsa" ? <p className={s.note}>The checkout of github.com/ISM-NU/ROHSA-LMC, which holds rohsa/cli/preprocess.jl.</p> : null}
       <div className={s.inline}>
         <PathField label={kind === "rohsa" ? "ROHSA config on the host" : "Base config on the host"} kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} placeholder={kind === "rohsa" ? "/shared/home/you/vgt/configs/rohsa/run.toml" : "/shared/home/you/vgt/configs/run.toml"} />
         <Button type="button" disabled={busy || !configPath || !hostId} onClick={load}>Load settings</Button>
@@ -193,10 +201,10 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
         <fieldset className={s.fields}>
           <legend>Settings (from the config; change what this run needs)</legend>
           {SETTINGS.map((st) =>
-            st.kind === "noise_mode" ? (
+            enumOptions(st.kind) ? (
               <Select key={st.key} label={st.label} value={vals[st.key] ?? ""} onChange={(e) => setVals({ ...vals, [st.key]: e.target.value })}>
                 <option value="">(keep)</option>
-                {NOISE_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                {enumOptions(st.kind)!.map((m) => <option key={m} value={m}>{m}</option>)}
               </Select>
             ) : (
               <Input key={st.key} label={st.label} value={vals[st.key] ?? ""} onChange={(e) => setVals({ ...vals, [st.key]: e.target.value })} spellCheck={false} />

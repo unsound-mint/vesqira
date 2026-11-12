@@ -116,7 +116,7 @@ describe("run a ROHSA run again with…", () => {
     const prepare = screen.getByRole("button", { name: "Prepare the job" });
     expect(prepare).toBeDisabled();
     await userEvent.selectOptions(screen.getByLabelText("Host"), "Cluster");
-    await userEvent.type(screen.getByLabelText("VGT folder on the host"), "/shared/vgt");
+    await userEvent.type(screen.getByLabelText("ROHSA-LMC folder on the host"), "/shared/vgt");
     await userEvent.type(screen.getByLabelText("ROHSA config on the host"), "/data/configs/rohsa/b.toml");
     // the crop of the chosen config sizes the request (2048, from the file), the run's own N (3) is the Gaussian count
     await waitFor(() => expect(screen.getByRole("region", { name: "Suggested size from your sizing table" })).toHaveTextContent("crop_size 2048 and n_gauss 3 your table suggests 32 CPUs, 100G"));
