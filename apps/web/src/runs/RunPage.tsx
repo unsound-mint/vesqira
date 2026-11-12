@@ -18,6 +18,7 @@ import { ControlsEditor } from "./ControlsEditor";
 import { ParentComparison } from "./ParentComparison";
 import { RerunOnCube, SameConfigRuns, SameConfiguration } from "./RerunOnCube";
 import s from "./RunPage.module.css";
+import { PushButton } from "../push/PushButton";
 
 /** A run as a page of blocks: its result, the numbers it declared, how it was set up, your assessment, and its log. */
 export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer, onRunAgain, onDraftedOnCube, onEntryChanged }: {
@@ -81,6 +82,7 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
           ) : null}
           {run.dirty ? <Pill tone="warn">code has uncommitted changes</Pill> : null}
           {(run.kind === "vgt" || run.kind === "rohsa") && onRunAgain ? <Button type="button" onClick={() => onRunAgain(run.id)}>Run again with…</Button> : null}
+          <PushButton kind="run" id={run.id} />
         </header>
 
         {onEntryChanged ? (

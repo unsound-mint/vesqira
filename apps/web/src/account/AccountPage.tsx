@@ -15,8 +15,6 @@ const day = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : "never
 const SCOPES: { scope: Scope; label: string }[] = [
   { scope: "read", label: "read: everything a signed-in reader sees" },
   { scope: "write", label: "write: read, and the same changes you can make (never delete, publish or manage accounts)" },
-  { scope: "push", label: "push: send figures and runs from a linked computer (not yet available)" },
-  { scope: "relay", label: "relay: answer run requests from a linked computer (not yet available)" },
 ];
 
 /** The signed-in account: sign out, confirm a recent sign-in, personal access tokens, recovery codes, the second factor, and
@@ -43,6 +41,7 @@ export function AccountPage() {
       </div>
       <p className={s.note}>Signing out everywhere ends every browser session of this account. Access tokens stay valid; revoke them under Tokens.</p>
       {state.recent ? null : <Confirm minutes={state.recentMinutes} onDone={setState} />}
+      <LinkComputer recent={state.recent} />
       <Tokens recent={state.recent} />
       <SecondFactor recent={state.recent} left={state.recoveryCodesLeft} onChanged={() => void refresh()} />
       {a.admin ? <Accounts recent={state.recent} self={a.id} /> : null}
@@ -73,6 +72,37 @@ function Confirm({ minutes, onDone }: { minutes: number; onDone: (s: AuthState) 
           <Button type="submit" variant="primary" disabled={busy}>Confirm</Button>
         </div>
       </form>
+    </section>
+  );
+}
+
+/** "Link a computer" (ADR 0066 section 1): a token with the push scope only, bound to the workspace this page acts in, shown once.
+ * The researcher pastes it, with this server's address, into Group server on their own computer. */
+function LinkComputer({ recent }: { recent: boolean }) {
+  const [shown, setShown] = useState("");
+  const [error, setError] = useState("");
+  const make = () => {
+    setError("");
+    createToken({ name: "Linked computer", scopes: ["push"], days: 90 }).then((r) => setShown(r.token), (e) => setError(message(e)));
+  };
+  return (
+    <section className={s.card}>
+      <h2 className={s.h2}>Link a computer</h2>
+      <p className={s.note}>Lets Vesqira on your own computer push frozen figures, run lines, board snapshots and report revisions to this workspace. The token can do nothing else: it cannot read the workspace or act in another. It lasts 90 days; revoke it under Tokens.</p>
+      {shown ? (
+        <div className={s.form}>
+          <p className={s.note}>On your computer open Group server and paste this address and token. The token is shown only now.</p>
+          <p className={s.secret} aria-label="Server address">{location.origin}</p>
+          <p className={s.secret} aria-label="Link token">{shown}</p>
+          <div className={s.row}><Button onClick={() => setShown("")}>Done</Button></div>
+        </div>
+      ) : (
+        <div className={s.row}>
+          <Button variant="primary" disabled={!recent} onClick={make}>Link a computer</Button>
+          {recent ? null : <span className={s.note}>Confirm it is you first.</span>}
+        </div>
+      )}
+      {error ? <p className={s.error} role="alert">{error}</p> : null}
     </section>
   );
 }
