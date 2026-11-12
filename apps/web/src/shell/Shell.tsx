@@ -16,6 +16,9 @@ import { CorrectionsPanel } from "../catalog/CorrectionsPanel";
 import { MasksPanel } from "../catalog/MasksPanel";
 import { fileStatesItsUnit } from "../catalog/unit";
 import { Explorer } from "../catalog/Explorer";
+import { SubsetPage } from "../catalog/SubsetPage";
+import { SubsetsSection } from "../catalog/SubsetsSection";
+import { useSubsets } from "../catalog/useSubsets";
 import { AnalysisPanel, DerivedPanel } from "../catalog/AnalysisPanel";
 import { RelativeOrientationPanel, RelativeOrientationResult } from "../catalog/RelativeOrientation";
 import { NatureControl } from "../catalog/NatureControl";
@@ -88,6 +91,9 @@ const CATALOG_PROBLEM = "This catalog has changed on disk, is missing or is outs
 export function Shell() {
   const { layout: L, set, toggle } = useLayout();
   const cat = useCatalog();
+  const subs = useSubsets();
+  const [subsetId, setSubsetId] = useState<number | null>(null); // a virtual subset is open in the main area instead of a dataset (ADR 0063)
+  useEffect(() => { void subs.refresh(); }, [cat.allDatasets]); // eslint-disable-line react-hooks/exhaustive-deps -- a changed file makes its subsets stale
   const hostOffer = useSyncExternalStore(subscribeHostOffer, getHostOffer); // a file-manager mount of an unregistered host (ADR 0031)
   const rendererNote = useSyncExternalStore(subscribeRendererNote, getRendererNote); // set only when drawing fell back to the CPU
   const { refreshDatasets, refreshRuns } = cat;
@@ -341,7 +347,14 @@ export function Shell() {
     q.addEventListener("change", onChange);
     return () => q.removeEventListener("change", onChange);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const openSubset = (id: number) => {
+    setSubsetId(id);
+    cat.select(null);
+    if (mode !== "viewer" && mode !== "rerun") setMode("viewer");
+    if (typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches) set("sideOpen", false);
+  };
   const selectDataset = (id: number) => {
+    setSubsetId(null);
     cat.select(id);
     // choosing a dataset is asking to see it; a draft being edited (rerun) is not thrown away by a click in the explorer
     if (mode !== "viewer" && mode !== "rerun") setMode("viewer");
@@ -375,7 +388,7 @@ export function Shell() {
         <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
       </Section>
       <Section title="Datasets" meta={String(cat.datasets.length + cat.catalogCount)}>
-        <Explorer hosts={cat.hosts} datasets={cat.allDatasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={selectDataset} onRegister={cat.register} offer={cat.offer} onAddLocation={cat.addAsLocation} onDismissOffer={cat.dismissOffer} />
+        <Explorer hosts={cat.hosts} datasets={cat.allDatasets} selectedId={cat.selectedId} problems={cat.problems} loading={cat.loading} error={cat.error} onSelect={selectDataset} subsets={subs.subsets} selectedSubsetId={subsetId} onSelectSubset={openSubset} onRegister={cat.register} offer={cat.offer} onAddLocation={cat.addAsLocation} onDismissOffer={cat.dismissOffer} />
       </Section>
     </>
   );
@@ -473,6 +486,8 @@ export function Shell() {
           <ReportsView onOpenRun={openRun} />
         ) : mode === "boards" ? (
           <BoardsView onCompare={compareInViewer} newer={cat.newer.figures} />
+        ) : subsetId !== null ? (
+          <SubsetPage key={subsetId} id={subsetId} onChanged={() => void subs.refresh()} onOpenDataset={(id) => { void cat.refreshDatasets(); selectDataset(id); }} onClose={() => { setSubsetId(null); void subs.refresh(); }} />
         ) : cat.selectedCatalog ? (
           <CatalogView dataset={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} />
         ) : cat.selectedImage ? (
@@ -625,6 +640,11 @@ export function Shell() {
           {actDs ? (
             <Section title="Used in" defaultOpen={false}>
               <UsedIn dataset={actDs} onOpenBoards={() => setMode("boards")} />
+            </Section>
+          ) : null}
+          {actDs && !isCatalog(actDs) ? (
+            <Section title="Virtual subsets" defaultOpen={false} meta={subs.subsets.some((x) => x.sourceId === actDs.id) ? String(subs.subsets.filter((x) => x.sourceId === actDs.id).length) : undefined}>
+              <SubsetsSection key={actDs.id} dataset={actDs} subsets={subs.subsets} onOpen={openSubset} onCreated={(x) => { void subs.refresh(); openSubset(x.id); }} />
             </Section>
           ) : null}
           {actDs ? (

@@ -1,0 +1,117 @@
+.page {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-3);
+  width: min(100%, 46rem);
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-4);
+  overflow-y: auto;
+  max-height: 100%;
+  color: var(--canvas-text, var(--text));
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--w-strong);
+  overflow-wrap: anywhere;
+}
+
+.h3 {
+  margin: var(--sp-2) 0 var(--sp-1);
+  font-size: var(--text-sm);
+  font-weight: var(--w-strong);
+}
+
+.note {
+  margin: 0;
+  color: var(--canvas-text-2, var(--text-2));
+  font-size: var(--text-sm);
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}
+
+.alert {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--warn, var(--border));
+  border-radius: var(--radius-1, 4px);
+  font-size: var(--text-sm);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.facts dt {
+  color: var(--canvas-text-2, var(--text-2));
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.probe {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.readout {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.history {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding-left: var(--sp-4);
+  font-size: var(--text-sm);
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent, inherit);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (width <= 600px) {
+  .probe {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .probe button {
+    grid-column: 1 / -1;
+  }
+}

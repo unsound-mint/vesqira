@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { Database, Table } from "lucide-react";
+import { Database, Layers, Table } from "lucide-react";
 import { isCatalog } from "../api/catalog";
 import type { Dataset, Problem } from "../api/catalog";
 import { Button, FilterBox, PathField, TreeRow, useRoving } from "../ui";
@@ -9,6 +9,7 @@ import { matchDataset } from "./filter";
 import { datasetVocabulary } from "./vocabulary";
 import { previewFile } from "../api/catalog";
 import type { Preview } from "../api/catalog";
+import type { SubsetView } from "../api/subsets";
 import { SameContentOffer } from "./SameContentOffer";
 import type { Offer } from "./SameContentOffer";
 import s from "./Explorer.module.css";
@@ -25,6 +26,10 @@ type Props = {
   loading: boolean;
   error: string | null;
   onSelect: (id: number) => void;
+  /** Virtual subsets (ADR 0063) are listed under their source, marked as virtual: a window, never a file. */
+  subsets?: SubsetView[];
+  selectedSubsetId?: number | null;
+  onSelectSubset?: (id: number) => void;
   onRegister: (path: string, opts?: { asNew?: boolean }) => Promise<string | null>;
   /** A registered dataset already holds the content of the file just submitted (ADR 0053): the choice, not an error. */
   offer?: Offer | null;
@@ -34,8 +39,9 @@ type Props = {
 
 type Host = { id: number; name: string };
 const NO_HOSTS: Host[] = [];
+const NO_SUBSETS: SubsetView[] = [];
 
-export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}, loading, error, onSelect, onRegister, offer = null, onAddLocation, onDismissOffer }: Props) {
+export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}, loading, error, onSelect, subsets = NO_SUBSETS, selectedSubsetId = null, onSelectSubset, onRegister, offer = null, onAddLocation, onDismissOffer }: Props) {
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -51,7 +57,8 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
   const shown = showSources ? matching : matching.filter((d) => !isSource(d));
   const vocabulary = useMemo(() => datasetVocabulary(datasets, hosts), [datasets, hosts]);
   const active = datasets.filter((d) => !d.archived).length;
-  const roving = useRoving(shown.map((d) => String(d.id)), selectedId === null ? null : String(selectedId));
+  const subsetsOf = (id: number) => subsets.filter((x) => x.sourceId === id);
+  const roving = useRoving(shown.flatMap((d) => [String(d.id), ...subsetsOf(d.id).map((x) => `s${x.id}`)]), selectedSubsetId !== null ? `s${selectedSubsetId}` : selectedId === null ? null : String(selectedId));
 
   async function doPreview() {
     try {
@@ -112,7 +119,12 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
       <div role="list" aria-label="Datasets" {...roving.listProps}>
         {shown.map((d) => (
           <div role="listitem" key={d.id}>
-            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
+            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId && selectedSubsetId === null} onSelect={() => onSelect(d.id)} trailing={`${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
+            {subsetsOf(d.id).map((x) => (
+              <TreeRow key={`s${x.id}`} icon={Layers} level={1} rowProps={roving.itemProps(`s${x.id}`)} selected={x.id === selectedSubsetId} onSelect={() => onSelectSubset?.(x.id)}
+                title="A virtual subset: a saved window onto the file above, not a file"
+                trailing={`virtual subset${x.stale ? " · stale: its file changed" : ""}`}>{x.name}</TreeRow>
+            ))}
           </div>
         ))}
       </div>
