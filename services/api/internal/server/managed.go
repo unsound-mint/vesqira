@@ -95,7 +95,26 @@ func (s *Server) copyDataset(w http.ResponseWriter, r *http.Request) {
 		fail(w, 413, "the file is too large to copy")
 		return
 	}
-	tmp, err := os.CreateTemp(s.ManagedDir, ".copy-*")
+	ws := wsOf(r)
+	if msg := s.quotaRefusal(ws, st.Size()); msg != "" {
+		fail(w, http.StatusInsufficientStorage, msg)
+		return
+	}
+	leave, err := s.batchSlot(r.Context())
+	if full, ok := err.(errBatchFull); ok {
+		fail(w, 429, full.Error())
+		return
+	} else if err != nil {
+		fail(w, 499, "request cancelled")
+		return
+	}
+	defer leave()
+	dir := s.managedDirOf(ws)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		fail(w, 500, "internal error")
+		return
+	}
+	tmp, err := os.CreateTemp(dir, ".copy-*")
 	if err != nil {
 		fail(w, 500, "internal error")
 		return
@@ -113,7 +132,7 @@ func (s *Server) copyDataset(w http.ResponseWriter, r *http.Request) {
 	sum := hex.EncodeToString(h.Sum(nil))
 	var b [4]byte
 	_, _ = rand.Read(b[:])
-	dst := filepath.Join(s.ManagedDir, fmt.Sprintf("%s-%s.fits", sum[:12], hex.EncodeToString(b[:])))
+	dst := filepath.Join(dir, fmt.Sprintf("%s-%s.fits", sum[:12], hex.EncodeToString(b[:])))
 	if err := os.Rename(tmp.Name(), dst); err != nil {
 		fail(w, 500, "internal error")
 		return

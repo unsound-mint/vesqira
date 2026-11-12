@@ -267,6 +267,15 @@ func (s *Server) runAnalysisProgram(r *http.Request, args []string) (analysisOut
 
 // runAnalysisProgramCtx is runAnalysisProgram for a caller with a context and no request (an import rule applying a mask).
 func (s *Server) runAnalysisProgramCtx(ws workspace.ID, parent context.Context, args []string) (analysisOutcome, int, string) {
+	// group server: one running batch item per account, ten waiting (batchlane.go); then the server-wide heavy class
+	leave, err := s.batchSlot(parent)
+	if err != nil {
+		if full, ok := err.(errBatchFull); ok {
+			return analysisOutcome{}, 429, full.Error()
+		}
+		return analysisOutcome{}, 499, "request cancelled"
+	}
+	defer leave()
 	if s.Load != nil { // heavy class: wait for a slot, visible to the person who asked (workload.go)
 		label := "analysis"
 		if len(args) > 2 {

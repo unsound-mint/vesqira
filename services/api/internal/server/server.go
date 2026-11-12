@@ -150,6 +150,7 @@ type Server struct {
 	hashing     hashRegistry
 	hashes      sync.WaitGroup // full hashes in flight
 
+	batch    batchLane     // the group server's per-account batch lane (batchlane.go)
 	support  supportStore  // support bundle previews waiting to be saved (support.go)
 	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
