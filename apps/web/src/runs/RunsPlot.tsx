@@ -14,7 +14,8 @@ const L = 68;
 const R = 20;
 const PH = 190;
 const PANEL = 24 + PH + 48;
-const COLOURS = ["var(--accent)", "var(--warn)", "var(--ok)", "var(--text)", "var(--text-2)", "var(--text-3)"];
+// Five colours against six shapes, so a (colour, shape) pair repeats only after thirty categories.
+const COLOURS = ["var(--accent)", "var(--warn)", "var(--ok)", "var(--text)", "var(--text-2)"];
 const FONT = "var(--font-ui)";
 const NUM = "var(--font-data)";
 const MARK = 5;
@@ -185,6 +186,7 @@ export const RunsPlot = forwardRef<SVGSVGElement, PlotProps>(function RunsPlot({
           <g key={panel.id} data-panel={panel.id}>
             <text x={L} y={g.top - 8} fontSize={12.5} fontWeight={600} fontFamily={FONT} fill="var(--text)">{yTitle(panel)}</text>
             {!panel.primary ? <text x={L + 8 + (yTitle(panel).length * 7.4)} y={g.top - 8} fontSize={12} fontFamily={FONT} fill="var(--warn)">not directly comparable: {panel.apart}</text> : null}
+            {panel.primary && panel.definition === "" ? <text x={L + 8 + (yTitle(panel).length * 7.4)} y={g.top - 8} fontSize={12} fontFamily={FONT} fill="var(--warn)">definition not stated: not shown as comparable</text> : null}
             {g.ticksY.map((v) => (
               <g key={v}>
                 <line x1={L} x2={W - R} y1={g.py(v)} y2={g.py(v)} stroke="var(--line)" strokeWidth={1} />

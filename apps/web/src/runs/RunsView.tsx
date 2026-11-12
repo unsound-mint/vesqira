@@ -22,6 +22,12 @@ import s from "./RunsView.module.css";
 const STEP = 300;
 const num = (x: number) => String(Number(x.toPrecision(6)));
 
+/** The drawing's own size in user units, from its viewBox attribute. */
+function viewBoxOf(el: SVGSVGElement): { width: number; height: number } {
+  const [, , width = 720, height = 400] = (el.getAttribute("viewBox") ?? "").split(/\s+/).map(Number);
+  return { width, height };
+}
+
 /** The label of a column: a fixed one, a parameter, or a result with its unit when every run records it in the same one. */
 function columnLabel(id: ColumnId, runs: Run[]): string {
   if (id.startsWith("p:")) return id.slice(2);
@@ -141,6 +147,8 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
     if (!el) return null;
     const css = getComputedStyle(document.documentElement);
     let raw = new XMLSerializer().serializeToString(el).replace(/ tabindex="0"/, "").replace(/ data-testid="[^"]*"/g, "");
+    const box = viewBoxOf(el);
+    raw = raw.replace('width="100%"', `width="${box.width}" height="${box.height}"`); // a file has a size of its own; "100%" is the page's
     if (!/^<svg[^>]*\sxmlns="/.test(raw)) raw = raw.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
     // the serializer writes the SVG namespace itself; the exported file needs it to open outside the page
     return svgWithProvenance(resolveVars(raw, (n) => css.getPropertyValue(n).trim()), provenance());
@@ -154,8 +162,8 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
     const el = svgRef.current;
     if (!t || !el) return;
     try {
-      const box = el.viewBox.baseVal;
-      const img = new Image();
+      const box = viewBoxOf(el);
+      const img = new Image(box.width, box.height);
       img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(t)}`;
       await img.decode();
       const scale = 2;

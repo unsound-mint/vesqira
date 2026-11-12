@@ -413,7 +413,7 @@ export function Shell() {
         <IconButton icon={FolderPlus} label="Open project…" size="lg" pressed={mode === "open"} onClick={() => setMode(mode === "open" ? "viewer" : "open")} />
         <IconButton icon={FolderOpen} label="Explorer" size="lg" pressed={L.sideOpen} onClick={() => toggle("sideOpen")} />
         <IconButton icon={LayoutGrid} label="Boards" size="lg" pressed={mode === "boards"} onClick={() => setMode(mode === "boards" ? "viewer" : "boards")} />
-        <IconButton icon={Table2} label="Runs table" size="lg" pressed={mode === "runs"} onClick={() => setMode(mode === "runs" ? "viewer" : "runs")} />
+        <IconButton icon={Table2} label="Results table" size="lg" pressed={mode === "runs"} onClick={() => setMode(mode === "runs" ? "viewer" : "runs")} />
         <IconButton icon={Server} label="Jobs" size="lg" pressed={mode === "jobs"} onClick={() => setMode(mode === "jobs" ? "viewer" : "jobs")} />
         <IconButton icon={FileText} label="Reports" size="lg" pressed={mode === "reports"} onClick={() => setMode(mode === "reports" ? "viewer" : "reports")} />
         {terminal ? <IconButton icon={TerminalIcon} label="Terminal" size="lg" pressed={terminalOpen} onClick={() => setTerminalOpen(true)} /> : null}

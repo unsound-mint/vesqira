@@ -1,0 +1,60 @@
+# ADR 0062: Cross-run table and plot: one query model, honest missing values, saved views
+
+- Status: proposed; implemented, awaiting owner review. No design review and no owner approval of the new screen.
+- Date: 2026-11-12
+- Builds the Stage 4 item "cross-run filtering and plotting" (Q19 to Q21, Q128 to Q131) on the typed run metrics of the ADR 0014 amendment, the sweep grid of ADR 0048 and the comparison inspector.
+
+## Context
+
+A researcher who runs VGT and ROHSA as many Slurm runs with varied parameters (block size, gradient method, smoothing, lambdas) finds runs by remembering the sequence, then compares them by metrics: alignment measure against stars and Planck, residuals. Until now the runs were a list in the explorer with a text filter that tested results (`am>0.3`), a per-sweep grid, and a two-run comparison. There was no table of every run with any parameter or result as a column, and no plot of a result across runs that did not belong to one sweep.
+
+## Decision
+
+**One query model.** `catalog/runQuery.ts` parses a query into conditions and judges each one against a run as `yes`, `no`, `missing` or `unit`. The filter box, the sidebar list, the table, the plot, the CSV header and a saved view all read the same words; `matchRun` in `filter.ts` is a thin wrapper, so every existing query means what it did. Words added: ranges (`block_size:16..64`, either end open, inclusive), dates as UTC days (`generated>=2026-08-01`, `imported:2026-08-01..2026-08-31`), `status:` and `host:` (from the job that made the run), a unit on a result comparison (`am>0.3rad`: only a run that recorded `am` in `rad` is compared; one that recorded `deg` is not converted and is reported as "another unit"), and `key:value` for equality. A word that asks about something a run did not record is `missing`, never a match: absence is not a value. The filter box completes the new keys (`status`, `host`, `generated`, `imported`) from what occurs, shows a range hint on numeric keys, and writes `key:lo..hi` chips as typed.
+
+**Missing runs stay visible.** The evaluator returns the runs apart: matches, runs the query cannot judge because they did not record something it asks about (`notRecorded`), and runs recorded in another unit (`unitDiffers`). The page says how many were left out and why, and "Show them, last" lists the first group after the matches, each marked "no am>0.3". In the table a missing parameter or result reads "not recorded", is italic and sorts last in either direction, in the order the runs came. A recorded zero is a value.
+
+**The table.** A page in the main area (rail button "Results table", also from the explorer's Runs section; the label avoids the word "runs" so existing locators for the explorer's Runs section stay unambiguous), not a second list: status, host, generated and imported time, QC and kind are optional columns, and any parameter or result can be exposed. A column for something the query asks about is always shown, so the reason for the order is visible. Default order is newest import first, the order of the explorer's list, so chronological browsing stays familiar. Status and host come from the job (`run.jobId`, or the job whose `runId` is the run); an imported run records neither and shows "not recorded", never "completed". Numbers sort as numbers (128 after 16), a result recorded in several units sorts by unit first, and the header says "units differ". Rows render 300 at a time ("Show more"); the selected run is always reachable.
+
+**The plot.** A result (y) against a parameter or another result (x) over the runs in the table, optionally coloured by a parameter, in the existing approach (hand-drawn SVG with `niceTicks`, as in the sweep plot and `SpectrumPlot`); no chart library. Rules:
+
+- A panel per (unit, definition) of the result. Results in different units, or defined differently or not at all, are not drawn on one axis: the largest panel comes first and the others are labelled "not directly comparable: recorded in deg, not rad". This is the same comparability rule as the comparison inspector (ADR 0014). **No conversion is applied.** ADR 0040 converts a pixel readout of one dataset with that file's own beam, frame and spectral axis, through the worker; it has no dataset-free unit-to-unit path that applies to a run's declared numbers, and a conversion table in the browser would be invented science. When a validated path exists, a converted point can join the primary panel with a note.
+- A series has exactly one kind of error bar. A series splits when kinds differ, and each kind has its own line style (solid caps, dotted, dashed, dash-dot) named in the legend (`± standard error`, `± 68% interval half-width`). An uncertainty whose kind is not stated, or is `other`, is not drawn as a bar; the figure says how many points withheld one. A result used as x has no bars, and the figure says so.
+- Colour never carries a category alone: each category has its own marker shape (six, cycling against five colours), the legend lists value, shape and colour, and tokens come from `design/tokens.css`.
+- Metrics that were inferred rather than stated are hollow, the others filled, with a legend line. Today every stored metric is `declared` (ADR 0014: Vesqira neither computes nor verifies metrics), so every marker is filled and the legend says "filled: every result is stated by its run"; the hollow path is tested with a status the importers do not yet produce. Extending `RunMetric.status` is a semantics change that needs its own decision.
+- A panel whose results state no definition says so under its title, even when it is the main panel: results with no stated definition are not shown as comparable (the comparison inspector's rule).
+- A run that cannot be placed (the result or x not recorded, or x in another unit) is listed under the plot with the reason; nothing disappears silently.
+- There is no "best" label and no ranking. A ranking needs an objective the researcher states (Q128), which is not built.
+- Selecting a point selects its row and the reverse; the selected run opens with one click ("Open run", or the name in the table). The plot takes one tab stop: left/right arrows move through the points in x order, Enter opens, Escape clears. The table's per-row select button and name button give the same selection and opening without the plot. The selection, query, columns, sort and plot survive opening a run and Back.
+
+**Saved views.** A name for the query, the exposed columns, the sort and the plot's axes: working state in the catalog (schema 23, table `run_views`, name unique without regard to case, at most 100, JSON spec of at most a few hundred keys). Words and keys only, never a run id or value, so a view keeps working as runs come and go. Routes `GET /api/run-views`, `POST /api/run-views` (saves or replaces by name), `POST /api/run-views/{id}/delete`, owner listener only. The browser's local storage was rejected: the catalog is what the researcher backs up and moves, and a view should follow it.
+
+**Export.** CSV of the table as shown: a comment header with the query, the counts (and how many listed runs did not record something the query asks about) and the time; one row per run; a result has `_unit`, `_uncertainty`, `_uncertainty_kind`, `_n` and `_status` beside its value. An empty cell means not recorded; text that a spreadsheet would read as a formula gets a leading quote. SVG and PNG of the plot: self-contained (the page's tokens are replaced by their values), the query and the count are written on the figure, and the full run ids are in machine-readable provenance (`<metadata id="vesqira-provenance">` in the SVG, an `iTXt` chunk in the PNG). **Saving the plot as a board figure is deferred:** a figure is bound to one dataset and a `FigureView` or `Scene` that redraws it (ADR 0042); a plot across runs has neither, and forcing it into a dataset would claim a provenance it does not have. It needs its own figure kind, with the query and the run ids as its provenance and a redraw that reads the runs again.
+
+## Alternatives
+
+- Fork a second matcher for the table: two meanings of one word, which is what a researcher would notice first.
+- Server-side filtering with a lean listing: the whole catalog list is already sent and matched in the browser. At 2,000 runs with four parameters and three results it is 4.4 MB and answers in about 75 ms (`TestRunListingWithParametersAndMetricsAtScale`, which fails above 3 KB a run or 5 s); about half of it is the constant reproducibility text of each run. A lean projection (or dropping that text from the listing) is the first thing to do when it grows, and not yet.
+- A chart library (Plotly, Vega-Lite, Recharts): a large dependency for one scatter with bars, and exports that do not carry our provenance. The drawing is about 250 lines and shares its ticks and markers' conventions with the sweep plot.
+- Hide runs that the query cannot judge, silently: they would vanish exactly when they matter most.
+
+## Consequences
+
+- One schema version (23 on this branch; renumber at merge), one table, three routes, a new page. The reviewer surface is untouched: no route and no import path from the reviewer package.
+- The sweep plot (ADR 0048) still has its own drawing code; the two share conventions but not code. Unifying them is a follow-up when a third plot needs it.
+- Five colours and six marker shapes: a category's pair of colour and shape repeats only after thirty, but colour alone repeats after five, so past five categories the shape and the legend carry the difference; past about twelve the legend wraps and the plot stops being a good tool.
+
+## Validation
+
+- Query model unit tests: ranges (open ends, inverted, unreadable), dates, status and host, units (exponents, units that start with "e", quoted units, a different unit, no unit), missing values, archived.
+- Table unit tests: numeric sort, missing last in both directions, units sorted apart, ties, status and host from the job.
+- Plot unit tests: panels by unit and definition, bar kinds, withheld bars, categories, inferred markers, excluded runs with reasons, an x that is a result.
+- Export unit tests: CSV header, escaping, formula guard, empty cells, recorded zero; SVG provenance; PNG chunk placement and CRC-bearing structure.
+- Component tests: sort and filter in the page, the not-comparable panel, kinds in the legend, filled and hollow, selection both ways, keyboard, CSV and SVG contents, saved views.
+- Go: saved views (replace by name, case, cap, validation), the migration from schema 22, the routes against the OpenAPI document, and the 2,000-run listing.
+- End to end (`e2e/tests/zzzzzzzz-runs-table.spec.ts`): six runs written to disk and imported, the table, keyboard sort, the plot, selection, Back, a saved view across a reload, the three exports with their provenance, axe on the table and the plot.
+- Not verified: a design review of the screen (`docs/design/quality-gates.md`), real VGT and ROHSA runs, behaviour with thousands of runs in a browser (the data size is measured, the rendering is not), screen-reader use of the plot beyond the table that mirrors it.
+
+## Rollback/Migration
+
+Schema 23 only adds `run_views`; nothing is rewritten and no existing row changes. To roll back, remove the routes and the page; an older program refuses a catalog of a newer schema (the Guard), so roll back by restoring the pre-upgrade catalog backup, or by leaving the table in place (older code never reads it). Saved views are words; dropping the table loses only them. If another branch took 23 first, renumber this migration (its snapshot `testdata/schema_v23.sql` is recorded with `UPDATE_SCHEMA_SNAPSHOT=1 go test . -run Snapshot` from `services/api`).

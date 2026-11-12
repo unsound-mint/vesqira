@@ -171,6 +171,14 @@ describe("cross-run plot", () => {
     expect(svg.querySelector('[data-selected="true"]')).toBeNull();
   });
 
+  it("says on the main panel too when the results state no definition, so they are not read as comparable", async () => {
+    const u = userEvent.setup();
+    const bare = [run(1, { block_size: "8" }, { metrics: [metric("am", 0.2)] }), run(2, { block_size: "16" }, { metrics: [metric("am", 0.3)] })];
+    render(<Page runs={bare} />);
+    await plotted(u, "");
+    expect(within(screen.getByTestId("runs-plot") as unknown as HTMLElement).getByText(/definition not stated: not shown as comparable/)).toBeTruthy();
+  });
+
   it("never calls a run best or ranks the runs", async () => {
     const u = userEvent.setup();
     render(<Page />);
@@ -208,6 +216,7 @@ describe("exports", () => {
     await u.click(screen.getByRole("button", { name: "Export plot (SVG)" }));
     const svg = await text(blobs[0]!);
     expect(svg).not.toContain("var(--"); // the page's tokens are resolved: the file stands alone
+    expect(svg).toMatch(/<svg[^>]* width="720" height="\d+"/); // a size of its own, not the page's 100%
     const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
     const prov = JSON.parse(doc.querySelector("metadata#vesqira-provenance")!.textContent!);
     expect(prov).toMatchObject({ tool: "Vesqira cross-run plot", query: "block_size:16..64", runIds: [2, 3], y: "am", x: "param:block_size" });
