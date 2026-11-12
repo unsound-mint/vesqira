@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -601,9 +602,16 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if j.Template == "analysis" {
-		d, code, msg := s.registerAnalysisJob(ctx, j, hostRef{h})
+		d, note, code, msg := s.registerAnalysisJob(ctx, j, hostRef{h})
 		if code != 0 {
 			fail(w, code, msg)
+			return
+		}
+		if note != "" {
+			writeJSON(w, 201, struct {
+				catalog.Dataset
+				MasksNote string `json:"masksNote"`
+			}{d, note})
 			return
 		}
 		writeJSON(w, 201, d)
