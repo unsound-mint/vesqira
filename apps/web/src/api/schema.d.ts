@@ -160,6 +160,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/healpix-sample": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sample a HEALPix polarization map (Planck) onto a dataset's celestial grid as Q and U, with the COSMO to IAU flip and the turn from Galactic north to the grid's north, and register the dust polarization angle or the field orientation with its P and sigma_P maps (ADR 0067) */
+        post: operations["owner_s_healpixSample_post_api_analysis_healpix_sample"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis/job": {
         parameters: {
             query?: never;
@@ -4978,8 +4995,8 @@ export interface components {
             modifiedAt: string;
             /** Format: date-time */
             addedAt: string;
-            /** @description FitsHeader when kind is fits, CatalogHeader when kind is catalog */
-            header: components["schemas"]["FitsHeader"] | components["schemas"]["CatalogHeader"];
+            /** @description FitsHeader when kind is fits, CatalogHeader when kind is catalog, HealpixHeader when kind is healpix */
+            header: components["schemas"]["FitsHeader"] | components["schemas"]["CatalogHeader"] | components["schemas"]["HealpixHeader"];
             /**
              * Format: int64
              * @description 0 for a file on this computer, otherwise the remote host that holds it
@@ -4994,10 +5011,10 @@ export interface components {
             /** @description Present when the person declared a unit for a file without BUNIT. The header's own bunit and bunit_status stay as the file gave them. */
             unitDeclaration: components["schemas"]["UnitDeclaration"] | null;
             /**
-             * @description An image or cube (fits) or a table of sources (catalog, ADR 0044)
+             * @description An image or cube (fits), a table of sources (catalog, ADR 0044) or a HEALPix map of Stokes values (healpix, ADR 0067)
              * @enum {string}
              */
-            kind: "fits" | "catalog";
+            kind: "fits" | "catalog" | "healpix";
             /** @description What the person declared about a catalog's columns; null for anything else */
             catalogDeclaration: components["schemas"]["CatalogDeclaration"] | null;
             /** @description The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053). */
@@ -9708,6 +9725,125 @@ export interface components {
             permissions: string[];
             workspaces: components["schemas"]["Membership"][];
         };
+        /** @description What the worker read from a HEALPix map's table header when it was registered (ADR 0067). A map that does not state POLCCONV and COORDSYS is refused at registration, so both are always present. The pixels stay in the file. */
+        HealpixHeader: {
+            /** @enum {string} */
+            kind: "healpix";
+            ok?: boolean;
+            nside: number;
+            /** Format: int64 */
+            npix: number;
+            /** @enum {string} */
+            ordering: "RING" | "NESTED";
+            /** @description COORDSYS as the file writes it (G, GALACTIC, C, E, ...) */
+            coordsys: string;
+            /**
+             * @description The system COORDSYS names; only galactic maps are sampled in this version
+             * @enum {string}
+             */
+            frame: "galactic" | "celestial" | "ecliptic";
+            /**
+             * @description The polarization convention: COSMO maps have U of the opposite sign to IAU
+             * @enum {string}
+             */
+            polcconv: "COSMO" | "IAU";
+            columns: {
+                name: string;
+                unit: string | null;
+            }[];
+            /** @description TUNIT of Q_STOKES as written (for example K_CMB); never converted */
+            stokes_unit: string | null;
+            covariance_unit: string | null;
+            /** @description False: the Q-U covariance is taken as 0 when sigma_P is computed, and the result says so */
+            has_qu_cov: boolean;
+            has_i: boolean;
+            bad_data: number | null;
+            pixel_resolution_arcmin: number;
+            extname?: string | null;
+            telescope?: string | null;
+            frequency?: string | null;
+            provenance_note: string;
+        };
+        HealpixSampleRequest: {
+            /**
+             * Format: int64
+             * @description A HEALPix map (kind healpix) on this computer
+             */
+            datasetId: number;
+            /**
+             * Format: int64
+             * @description The dataset on this computer whose celestial grid receives the map
+             */
+            targetId: number;
+            /**
+             * @description dust_polarization: psi = 1/2 atan2(U, Q); b_field: psi + 90 degrees
+             * @enum {string}
+             */
+            product: "dust_polarization" | "b_field";
+            /**
+             * @description How Q and U are sampled; nearest when left out
+             * @enum {string}
+             */
+            method?: "nearest" | "bilinear" | "gaussian";
+            /** @description The Gaussian's FWHM on the sphere, for method gaussian only; at least the map's pixel size, at most 600 */
+            fwhmArcmin?: number | null;
+            /** @description Blank the angle where P/sigma_P is below this; P and sigma_P are kept everywhere */
+            snrMin?: number | null;
+        };
+        /** @description What the worker did: the parameters, how the result was derived (convention, frame rotation, sampling, smoothing, noise), the counts, the P/sigma_P filter and a policy sentence for a reviewer */
+        HealpixSampleSummary: {
+            /** @enum {string} */
+            product: "dust_polarization" | "b_field";
+            /** @enum {string} */
+            quantity: "dust_polarization" | "b_field";
+            /** @enum {string} */
+            angle_unit: "deg";
+            /** @enum {string} */
+            angle_frame: "sky";
+            angle_frame_note?: string;
+            healpix: {
+                [key: string]: unknown;
+            };
+            parameters: {
+                [key: string]: unknown;
+            };
+            derivation: {
+                convention: {
+                    [key: string]: unknown;
+                };
+                frame_rotation: {
+                    [key: string]: unknown;
+                };
+                sampling: string;
+                smoothing: {
+                    [key: string]: unknown;
+                } | null;
+                noise: string;
+            } & {
+                [key: string]: unknown;
+            };
+            counts: {
+                [key: string]: number;
+            };
+            snr_filter: {
+                [key: string]: unknown;
+            } | null;
+            p_unit?: string | null;
+            p_median?: number | null;
+            snr_median?: number | null;
+            policy: string;
+        } & {
+            [key: string]: unknown;
+        };
+        HealpixSampleResult: {
+            /** @description The angle map, declared by the operation (axial, degrees, sky frame of the grid, the product as quantity) */
+            dataset: components["schemas"]["Dataset"];
+            /** @description The companion P map; null if it could not be registered */
+            p: components["schemas"]["Dataset"] | null;
+            /** @description The companion sigma_P map; null if it could not be registered */
+            sigmaP: components["schemas"]["Dataset"] | null;
+            summary: components["schemas"]["HealpixSampleSummary"];
+        };
     };
     responses: never;
     parameters: never;
@@ -10008,6 +10144,66 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_healpixSample_post_api_analysis_healpix_sample: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealpixSampleRequest"];
+            };
+        };
+        responses: {
+            /** @description sampled and registered: the angle map, declared by the operation, and its P and sigma_P companions */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealpixSampleResult"];
+                };
+            };
+            /** @description a parameter outside its range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the dataset is not a HEALPix map, the target has no pixel grid, or a file lives on a host */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description a map that is not Galactic, or the worker refused (for example a kernel smaller than a pixel) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

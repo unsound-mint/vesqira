@@ -254,6 +254,7 @@ func (s *Server) Handler() http.Handler {
 			s.route(mux, "GET /api/masks/{id}/plane", authz.DatasetRead, s.maskPlane)
 		}
 		s.route(mux, "POST /api/analysis/relative-orientation", authz.AnalysisRun, s.relativeOrientation)
+		s.route(mux, "POST /api/analysis/healpix-sample", authz.AnalysisRun, s.healpixSample)
 		s.route(mux, "GET /api/datasets/{id}/relative-orientation.csv", authz.DatasetRead, s.relativeOrientationTable)
 		if s.HostDB != nil && s.Remote != nil && s.Jobs != nil {
 			s.route(mux, "POST /api/analysis/job", authz.JobSubmit, s.analysisJob)

@@ -205,6 +205,49 @@ paths:
       x-listener: owner
       x-vesqira-permission: analysis.run
       responses: {'200': {description: ok}}
+  /api/analysis/healpix-sample:
+    post:
+      operationId: owner_s_healpixSample_post_api_analysis_healpix_sample
+      x-listener: owner
+      x-vesqira-permission: analysis.run
+      summary: "Sample a HEALPix polarization map (Planck) onto a dataset's celestial grid as Q and U, with the COSMO to IAU flip and the turn from Galactic north to the grid's north, and register the dust polarization angle or the field orientation with its P and sigma_P maps (ADR 0067)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/HealpixSampleRequest"
+      responses:
+        "201":
+          description: "sampled and registered: the angle map, declared by the operation, and its P and sigma_P companions"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/HealpixSampleResult"
+        "400":
+          description: "a parameter outside its range"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "the dataset is not a HEALPix map, the target has no pixel grid, or a file lives on a host"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "a map that is not Galactic, or the worker refused (for example a kernel smaller than a pixel)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/analysis/job:
     post:
       operationId: owner_s_analysisJob_post_api_analysis_job
@@ -7180,7 +7223,8 @@ components:
           oneOf:
             - $ref: "#/components/schemas/FitsHeader"
             - $ref: "#/components/schemas/CatalogHeader"
-          description: "FitsHeader when kind is fits, CatalogHeader when kind is catalog"
+            - $ref: "#/components/schemas/HealpixHeader"
+          description: "FitsHeader when kind is fits, CatalogHeader when kind is catalog, HealpixHeader when kind is healpix"
         hostId:
           type: "integer"
           format: "int64"
@@ -7207,7 +7251,8 @@ components:
           enum:
             - "fits"
             - "catalog"
-          description: "An image or cube (fits) or a table of sources (catalog, ADR 0044)"
+            - "healpix"
+          description: "An image or cube (fits), a table of sources (catalog, ADR 0044) or a HEALPix map of Stokes values (healpix, ADR 0067)"
         catalogDeclaration:
           allOf:
             - $ref: "#/components/schemas/CatalogDeclaration"
@@ -18188,3 +18233,242 @@ components:
           items:
             $ref: "#/components/schemas/Membership"
       description: "Where the request acts and what the caller may do there. Group server only."
+    HealpixHeader:
+      type: "object"
+      description: "What the worker read from a HEALPix map's table header when it was registered (ADR 0067). A map that does not state POLCCONV and COORDSYS is refused at registration, so both are always present. The pixels stay in the file."
+      required:
+        - "kind"
+        - "nside"
+        - "npix"
+        - "ordering"
+        - "coordsys"
+        - "frame"
+        - "polcconv"
+        - "columns"
+        - "stokes_unit"
+        - "covariance_unit"
+        - "has_qu_cov"
+        - "has_i"
+        - "bad_data"
+        - "pixel_resolution_arcmin"
+        - "provenance_note"
+      properties:
+        kind:
+          type: "string"
+          enum:
+            - "healpix"
+        ok:
+          type: "boolean"
+        nside:
+          type: "integer"
+        npix:
+          type: "integer"
+          format: "int64"
+        ordering:
+          type: "string"
+          enum:
+            - "RING"
+            - "NESTED"
+        coordsys:
+          type: "string"
+          description: "COORDSYS as the file writes it (G, GALACTIC, C, E, ...)"
+        frame:
+          type: "string"
+          enum:
+            - "galactic"
+            - "celestial"
+            - "ecliptic"
+          description: "The system COORDSYS names; only galactic maps are sampled in this version"
+        polcconv:
+          type: "string"
+          enum:
+            - "COSMO"
+            - "IAU"
+          description: "The polarization convention: COSMO maps have U of the opposite sign to IAU"
+        columns:
+          type: "array"
+          items:
+            type: "object"
+            required:
+              - "name"
+              - "unit"
+            properties:
+              name:
+                type: "string"
+              unit:
+                type: "string"
+                nullable: true
+        stokes_unit:
+          type: "string"
+          nullable: true
+          description: "TUNIT of Q_STOKES as written (for example K_CMB); never converted"
+        covariance_unit:
+          type: "string"
+          nullable: true
+        has_qu_cov:
+          type: "boolean"
+          description: "False: the Q-U covariance is taken as 0 when sigma_P is computed, and the result says so"
+        has_i:
+          type: "boolean"
+        bad_data:
+          type: "number"
+          nullable: true
+        pixel_resolution_arcmin:
+          type: "number"
+        extname:
+          type: "string"
+          nullable: true
+        telescope:
+          type: "string"
+          nullable: true
+        frequency:
+          type: "string"
+          nullable: true
+        provenance_note:
+          type: "string"
+    HealpixSampleRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "datasetId"
+        - "targetId"
+        - "product"
+      properties:
+        datasetId:
+          type: "integer"
+          format: "int64"
+          description: "A HEALPix map (kind healpix) on this computer"
+        targetId:
+          type: "integer"
+          format: "int64"
+          description: "The dataset on this computer whose celestial grid receives the map"
+        product:
+          type: "string"
+          enum:
+            - "dust_polarization"
+            - "b_field"
+          description: "dust_polarization: psi = 1/2 atan2(U, Q); b_field: psi + 90 degrees"
+        method:
+          type: "string"
+          enum:
+            - "nearest"
+            - "bilinear"
+            - "gaussian"
+          description: "How Q and U are sampled; nearest when left out"
+        fwhmArcmin:
+          type: "number"
+          nullable: true
+          description: "The Gaussian's FWHM on the sphere, for method gaussian only; at least the map's pixel size, at most 600"
+        snrMin:
+          type: "number"
+          nullable: true
+          description: "Blank the angle where P/sigma_P is below this; P and sigma_P are kept everywhere"
+    HealpixSampleSummary:
+      type: "object"
+      description: "What the worker did: the parameters, how the result was derived (convention, frame rotation, sampling, smoothing, noise), the counts, the P/sigma_P filter and a policy sentence for a reviewer"
+      required:
+        - "product"
+        - "quantity"
+        - "angle_unit"
+        - "angle_frame"
+        - "healpix"
+        - "parameters"
+        - "derivation"
+        - "counts"
+        - "snr_filter"
+        - "policy"
+      additionalProperties: true
+      properties:
+        product:
+          type: "string"
+          enum:
+            - "dust_polarization"
+            - "b_field"
+        quantity:
+          type: "string"
+          enum:
+            - "dust_polarization"
+            - "b_field"
+        angle_unit:
+          type: "string"
+          enum:
+            - "deg"
+        angle_frame:
+          type: "string"
+          enum:
+            - "sky"
+        angle_frame_note:
+          type: "string"
+        healpix:
+          type: "object"
+          additionalProperties: true
+        parameters:
+          type: "object"
+          additionalProperties: true
+        derivation:
+          type: "object"
+          additionalProperties: true
+          required:
+            - "convention"
+            - "frame_rotation"
+            - "sampling"
+            - "smoothing"
+            - "noise"
+          properties:
+            convention:
+              type: "object"
+              additionalProperties: true
+            frame_rotation:
+              type: "object"
+              additionalProperties: true
+            sampling:
+              type: "string"
+            smoothing:
+              type: "object"
+              nullable: true
+              additionalProperties: true
+            noise:
+              type: "string"
+        counts:
+          type: "object"
+          additionalProperties:
+            type: "integer"
+        snr_filter:
+          type: "object"
+          nullable: true
+          additionalProperties: true
+        p_unit:
+          type: "string"
+          nullable: true
+        p_median:
+          type: "number"
+          nullable: true
+        snr_median:
+          type: "number"
+          nullable: true
+        policy:
+          type: "string"
+    HealpixSampleResult:
+      type: "object"
+      required:
+        - "dataset"
+        - "p"
+        - "sigmaP"
+        - "summary"
+      properties:
+        dataset:
+          allOf:
+            - $ref: "#/components/schemas/Dataset"
+          description: "The angle map, declared by the operation (axial, degrees, sky frame of the grid, the product as quantity)"
+        p:
+          allOf:
+            - $ref: "#/components/schemas/Dataset"
+          nullable: true
+          description: "The companion P map; null if it could not be registered"
+        sigmaP:
+          allOf:
+            - $ref: "#/components/schemas/Dataset"
+          nullable: true
+          description: "The companion sigma_P map; null if it could not be registered"
+        summary:
+          $ref: "#/components/schemas/HealpixSampleSummary"
