@@ -11,6 +11,7 @@ var analysisLabels = map[string]string{
 	"relorient_maps": "relative orientation", "relorient_catalog": "relative orientation", "stats": "statistics",
 	"moment": "moment map", "cutout": "cutout", "subset": "virtual subset", "slab": "slab mean", "align": "alignment", "convolve": "convolution",
 	"scalar_diff": "difference map", "axial_diff": "axial difference",
+	"rohsa_sigmav": "sigma-v diagram", "rohsa_cellmask": "sigma-v cell pixels", "rohsa_classmaps": "width class maps",
 }
 
 func analysisLabel(op string) string {
