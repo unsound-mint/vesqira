@@ -51,10 +51,10 @@ A researcher who runs VGT and ROHSA as many Slurm runs with varied parameters (b
 - Plot unit tests: panels by unit and definition, bar kinds, withheld bars, categories, inferred markers, excluded runs with reasons, an x that is a result.
 - Export unit tests: CSV header, escaping, formula guard, empty cells, recorded zero; SVG provenance; PNG chunk placement and CRC-bearing structure.
 - Component tests: sort and filter in the page, the not-comparable panel, kinds in the legend, filled and hollow, selection both ways, keyboard, CSV and SVG contents, saved views.
-- Go: saved views (replace by name, case, cap, validation), the migration from schema 22, the routes against the OpenAPI document, and the 2,000-run listing.
+- Go: saved views (replace by name, case, cap, validation), the migration from schema 23, the routes against the OpenAPI document, and the 2,000-run listing.
 - End to end (`e2e/tests/zzzzzzzz-runs-table.spec.ts`): six runs written to disk and imported, the table, keyboard sort, the plot, selection, Back, a saved view across a reload, the three exports with their provenance, axe on the table and the plot.
 - Not verified: a design review of the screen (`docs/design/quality-gates.md`), real VGT and ROHSA runs, behaviour with thousands of runs in a browser (the data size is measured, the rendering is not), screen-reader use of the plot beyond the table that mirrors it.
 
 ## Rollback/Migration
 
-Schema 23 only adds `run_views`; nothing is rewritten and no existing row changes. To roll back, remove the routes and the page; an older program refuses a catalog of a newer schema (the Guard), so roll back by restoring the pre-upgrade catalog backup, or by leaving the table in place (older code never reads it). Saved views are words; dropping the table loses only them. If another branch took 23 first, renumber this migration (its snapshot `testdata/schema_v23.sql` is recorded with `UPDATE_SCHEMA_SNAPSHOT=1 go test . -run Snapshot` from `services/api`).
+Schema 24 only adds `run_views`; nothing is rewritten and no existing row changes. To roll back, remove the routes and the page; an older program refuses a catalog of a newer schema (the Guard), so roll back by restoring the pre-upgrade catalog backup, or by leaving the table in place (older code never reads it). Saved views are words; dropping the table loses only them. Its snapshot is `testdata/schema_v24.sql`.
