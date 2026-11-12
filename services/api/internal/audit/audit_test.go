@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"testing"
@@ -43,4 +44,17 @@ func TestNilStoreRecordsNothing(t *testing.T) {
 	var s *Store
 	s.Record("x", "host", 0, "")
 	s.RecordAs(LocalOwner, "x", "host", 0, "")
+	s.RecordCtx(context.Background(), "x", "host", 0, "")
+}
+
+// RecordCtx writes the actor the request's context carries, and the default when it carries none.
+func TestRecordCtxTakesTheRequestsActor(t *testing.T) {
+	s := open(t)
+	s.Default = System
+	s.RecordCtx(WithActor(context.Background(), Actor{ID: "acct-1", Via: "session"}), "unit declared", "dataset", 1, "")
+	s.RecordCtx(context.Background(), "full sha256 computed", "dataset", 1, "")
+	es, _ := s.List("", 0, 10)
+	if len(es) != 2 || es[1].Actor != "acct-1" || es[1].Via != "session" || es[0].Actor != "system" {
+		t.Fatalf("%+v", es)
+	}
 }

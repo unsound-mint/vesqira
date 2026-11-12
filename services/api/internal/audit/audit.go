@@ -36,7 +36,9 @@ var System = Actor{ID: "system", Via: "system"}
 type actorKey struct{}
 
 // WithActor returns a context whose entries RecordCtx attributes to a. The server installs the request's actor here.
-func WithActor(ctx context.Context, a Actor) context.Context { return context.WithValue(ctx, actorKey{}, a) }
+func WithActor(ctx context.Context, a Actor) context.Context {
+	return context.WithValue(ctx, actorKey{}, a)
+}
 
 type Store struct {
 	db *sql.DB

@@ -44,6 +44,10 @@ func totpAt(secret []byte, t time.Time, digits int, h func() hash.Hash) string {
 	return hotp(secret, uint64(t.Unix()/totpStep), digits, h)
 }
 
+// CodeAt is the six-digit code an authenticator app shows for secret at t, for tests; sign-in checks
+// codes through Store.VerifyTOTP, never by comparing with this.
+func CodeAt(secret []byte, t time.Time) string { return totpAt(secret, t, totpDigits, sha1.New) }
+
 // matchStep returns the step within the drift window whose code equals code, or 0. Every candidate is compared, in constant
 // time, so how long it takes does not say which one matched.
 func matchStep(secret []byte, code string, now time.Time) int64 {

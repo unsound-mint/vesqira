@@ -38,6 +38,9 @@ type Capabilities struct {
 		Editor         bool `json:"editor"`   // the text editor (--enable-editor, ADR 0029)
 		Terminal       bool `json:"terminal"` // the integrated terminal (--enable-terminal, ADR 0029)
 		VPN            bool `json:"vpn"`      // the VPN companion (--enable-vpn, ADR 0029)
+		// Accounts is true on the group server (--multi-user): people sign in, and the account routes exist. Omitted in local
+		// mode, so the local answer is what it was.
+		Accounts bool `json:"accounts,omitempty"`
 	} `json:"features"`
 	Limits struct {
 		PreviewStepMax   int `json:"previewStepMax"`
@@ -64,6 +67,10 @@ func (s *Server) currentCapabilities() Capabilities {
 	f.Runs, f.Boards, f.Regions, f.Audit = s.Runs != nil, s.Boards != nil, s.Regions != nil, s.Audit != nil
 	f.Editor, f.Terminal = s.EditorEnabled, s.TerminalEnabled
 	f.VPN = s.VPNEnabled && remote
+	if s.multiUser() { // the routes these name are not mounted on the group server (route.go)
+		f.Hosts, f.Jobs, f.Transfers, f.RemoteAnalysis, f.Editor, f.Terminal, f.VPN = false, false, false, false, false, false, false
+		f.Accounts = true
+	}
 	c.Limits.PreviewStepMax, c.Limits.MetricsPerRunMax = 64, 50
 	return c
 }

@@ -972,6 +972,10 @@
       "vpn": {
        "type": "boolean",
        "description": "the VPN companion (--enable-vpn, ADR 0029 step 3): a host may carry a VPN client command that the owner runs from the app"
+      },
+      "accounts": {
+       "type": "boolean",
+       "description": "Present and true on the group server (--multi-user, ADR 0050 slice 2): people sign in and the account routes exist. Absent in local mode."
       }
      },
      "description": "True when this running server was started with what the feature needs"
@@ -14616,6 +14620,351 @@
      "description": "The celestial WCS keywords the researcher corrected (ADR 0061) that the arrows rest on; absent when the file's own WCS is used"
     }
    }
+  },
+  "Account": {
+   "type": "object",
+   "required": [
+    "id",
+    "name",
+    "username",
+    "admin",
+    "createdAt",
+    "disabled",
+    "secondFactor"
+   ],
+   "description": "A group-server account (ADR 0050 section 2). It carries no credential.",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string",
+     "description": "the sub of its local (password) identity"
+    },
+    "admin": {
+     "type": "boolean"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "disabled": {
+     "type": "boolean"
+    },
+    "secondFactor": {
+     "type": "boolean",
+     "description": "a TOTP enrolment is confirmed"
+    }
+   }
+  },
+  "AuthState": {
+   "type": "object",
+   "required": [
+    "stage",
+    "setupNeeded",
+    "account",
+    "recent",
+    "recoveryCodesLeft",
+    "recentMinutes"
+   ],
+   "description": "Where this browser is in signing in. second_factor and enrol are the pending stages after a correct password.",
+   "properties": {
+    "stage": {
+     "type": "string",
+     "enum": [
+      "none",
+      "second_factor",
+      "enrol",
+      "full"
+     ]
+    },
+    "setupNeeded": {
+     "type": "boolean",
+     "description": "no admin exists yet: run `vesqira-api admin bootstrap` on the server"
+    },
+    "account": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/Account"
+      }
+     ],
+     "nullable": true
+    },
+    "recent": {
+     "type": "boolean",
+     "description": "signed in within the recent sign-in window"
+    },
+    "recoveryCodesLeft": {
+     "type": "integer"
+    },
+    "recentMinutes": {
+     "type": "integer"
+    }
+   }
+  },
+  "SetupRequest": {
+   "type": "object",
+   "required": [
+    "token",
+    "name",
+    "username",
+    "password"
+   ],
+   "properties": {
+    "token": {
+     "type": "string",
+     "description": "from the setup link's fragment"
+    },
+    "name": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    }
+   }
+  },
+  "SignInRequest": {
+   "type": "object",
+   "required": [
+    "username",
+    "password"
+   ],
+   "properties": {
+    "username": {
+     "type": "string"
+    },
+    "password": {
+     "type": "string"
+    }
+   }
+  },
+  "SecondFactorRequest": {
+   "type": "object",
+   "description": "A six-digit TOTP code, or one recovery code.",
+   "properties": {
+    "code": {
+     "type": "string"
+    },
+    "recoveryCode": {
+     "type": "string"
+    }
+   }
+  },
+  "ConfirmSignInRequest": {
+   "type": "object",
+   "required": [
+    "password"
+   ],
+   "properties": {
+    "password": {
+     "type": "string"
+    },
+    "code": {
+     "type": "string"
+    },
+    "recoveryCode": {
+     "type": "string"
+    }
+   }
+  },
+  "CodeRequest": {
+   "type": "object",
+   "required": [
+    "code"
+   ],
+   "properties": {
+    "code": {
+     "type": "string"
+    }
+   }
+  },
+  "Enrolment": {
+   "type": "object",
+   "required": [
+    "secret",
+    "uri"
+   ],
+   "description": "A pending TOTP enrolment: the secret in base32 and its otpauth:// URI (SHA1, 6 digits, 30 s).",
+   "properties": {
+    "secret": {
+     "type": "string"
+    },
+    "uri": {
+     "type": "string"
+    }
+   }
+  },
+  "RecoveryCodes": {
+   "type": "object",
+   "required": [
+    "recoveryCodes"
+   ],
+   "description": "Ten single-use recovery codes, shown once; only their hashes are kept.",
+   "properties": {
+    "recoveryCodes": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "EnrolmentConfirmed": {
+   "type": "object",
+   "required": [
+    "recoveryCodes",
+    "state"
+   ],
+   "properties": {
+    "recoveryCodes": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "state": {
+     "$ref": "#/components/schemas/AuthState"
+    }
+   }
+  },
+  "AccessToken": {
+   "type": "object",
+   "required": [
+    "id",
+    "name",
+    "scopes",
+    "createdAt",
+    "expiresAt",
+    "lastUsedAt",
+    "revokedAt"
+   ],
+   "description": "A personal access token, without its value (which is never kept).",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "scopes": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "read",
+       "write",
+       "push",
+       "relay"
+      ]
+     }
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "expiresAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "lastUsedAt": {
+     "type": "string",
+     "format": "date-time",
+     "nullable": true
+    },
+    "revokedAt": {
+     "type": "string",
+     "format": "date-time",
+     "nullable": true
+    }
+   }
+  },
+  "AccessTokenList": {
+   "type": "object",
+   "required": [
+    "tokens",
+    "scopes"
+   ],
+   "properties": {
+    "tokens": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/AccessToken"
+     }
+    },
+    "scopes": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "CreateTokenRequest": {
+   "type": "object",
+   "required": [
+    "name",
+    "scopes"
+   ],
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "scopes": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "read",
+       "write",
+       "push",
+       "relay"
+      ]
+     },
+     "description": "write includes read; push and relay (ADR 0066) allow nothing until their routes exist"
+    },
+    "days": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 365,
+     "description": "0 or absent: 30 days"
+    }
+   }
+  },
+  "CreatedToken": {
+   "type": "object",
+   "required": [
+    "token",
+    "info"
+   ],
+   "properties": {
+    "token": {
+     "type": "string",
+     "description": "the value, shown in this answer only"
+    },
+    "info": {
+     "$ref": "#/components/schemas/AccessToken"
+    }
+   }
+  },
+  "AccountList": {
+   "type": "object",
+   "required": [
+    "accounts"
+   ],
+   "properties": {
+    "accounts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/Account"
+     }
+    }
+   }
   }
  },
  "operations": {
@@ -21739,6 +22088,550 @@
        }
       }
      }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/auth/state": {
+   "summary": "Where this browser is in signing in (group server)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AuthState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/auth/setup": {
+   "summary": "Create the first admin from the one-time setup link; starts TOTP enrolment",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/SetupRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AuthState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/auth/sign-in": {
+   "summary": "Check the password; a pending session owes the second factor. Unknown name and wrong password answer the same 401",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/SignInRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AuthState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/auth/second-factor": {
+   "summary": "Finish signing in with a TOTP or recovery code; the session id changes",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/SecondFactorRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AuthState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/auth/enrolment": {
+   "summary": "Start TOTP enrolment for a pending session with no second factor",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Enrolment"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/auth/enrolment/confirm": {
+   "summary": "Confirm TOTP enrolment with a first code; signs in and returns the recovery codes once",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CodeRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EnrolmentConfirmed"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/auth/sign-out": {
+   "summary": "End this browser's session",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "responses": {
+    "204": {
+     "description": "signed out"
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/auth/sign-out-everywhere": {
+   "summary": "End every session of this account",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "responses": {
+    "204": {
+     "description": "signed out"
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/auth/confirm": {
+   "summary": "Prove the password and second factor again for a recent sign-in",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/ConfirmSignInRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AuthState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/account/second-factor": {
+   "summary": "Start replacing the second factor (recent sign-in)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Enrolment"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/account/second-factor/confirm": {
+   "summary": "Confirm the new second factor; returns new recovery codes once",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CodeRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecoveryCodes"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/account/recovery-codes": {
+   "summary": "Replace the recovery codes (recent sign-in); returned once",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecoveryCodes"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/account/tokens": {
+   "summary": "This account's personal access tokens, without their values",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AccessTokenList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/account/tokens": {
+   "summary": "Create a personal access token (recent sign-in); its value is in this answer only",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CreateTokenRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CreatedToken"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/account/tokens/{id}/revoke": {
+   "summary": "Revoke one of this account's tokens; it stops working at once",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AccessToken"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/accounts": {
+   "summary": "Every account (admin, recent sign-in)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AccountList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/accounts/{id}/reset-second-factor": {
+   "summary": "Remove an account's TOTP and recovery codes and end its sessions (admin, recent sign-in)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "responses": {
+    "204": {
+     "description": "reset"
     },
     "default": {
      "description": "Error",
