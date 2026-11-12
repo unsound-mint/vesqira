@@ -5266,6 +5266,11 @@ components:
           items:
             $ref: "#/components/schemas/DatasetLocation"
           description: "The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053)."
+        maskSourceFor:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MaskSourceRef"
+          description: "Only on the dataset list: the datasets this file is the imported mask file of, when that is its only role (a file also used for a figure, region, analysis, run, or opened in the viewer has none). Derived from the masks' rows; nothing is hidden or unregistered by it (ADR 0058, mask files)."
     DatasetList:
       type: "object"
       required:
@@ -5445,6 +5450,10 @@ components:
           $ref: "#/components/schemas/Flags"
         offline:
           $ref: "#/components/schemas/OfflineMark"
+        compass:
+          allOf:
+            - $ref: "#/components/schemas/Compass"
+          description: "North and east at the map centre; absent from a view kept before it was recorded (an offline copy)"
     PlaneStats:
       type: "object"
       required:
@@ -8761,7 +8770,7 @@ components:
         map:
           type: "object"
           additionalProperties: true
-          description: "The map's declaration as used (unit, frame, quantity, rotation to B, celestial frame, reliability), its size nx, ny and pixel scale"
+          description: "The map's declaration as used (unit, frame, quantity, rotation to B, celestial frame, reliability), its size nx, ny and pixel scale, and the compass (see Compass) at the map centre"
         other:
           type: "object"
           additionalProperties: true
@@ -12524,6 +12533,10 @@ components:
         stale:
           type: "boolean"
           description: "The dataset's size or modification time differs from when the mask was made: it is not applied until it is made again"
+        sourceDataset:
+          allOf:
+            - $ref: "#/components/schemas/MaskSourceRef"
+          description: "The registered file an imported mask was made from, when the row records it (masks made before the id was recorded do not)"
     MaskList:
       type: "object"
       required:
@@ -13967,3 +13980,42 @@ components:
           type: "integer"
         freedBytes:
           type: "integer"
+    MaskSourceRef:
+      type: "object"
+      required:
+        - "id"
+        - "name"
+      description: "A dataset, by id and name"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+    Compass:
+      type: "object"
+      required:
+        - "available"
+      description: "Where north (increasing latitude) and east (increasing longitude) of the file's own celestial frame point in the pixel grid at the centre of the map, from the file's WCS (projection, CD/PC matrix, flips). Directions are counter-clockwise from +x with y up (FITS), in [0, 360). Never assumes north is up. When available is false there is no celestial WCS to read them from and reason says why: nothing is drawn."
+      properties:
+        available:
+          type: "boolean"
+        reason:
+          type: "string"
+          description: "Why there is no compass (only when available is false)"
+        x:
+          type: "number"
+          description: "0-based pixel x of the map centre"
+        "y":
+          type: "number"
+          description: "0-based pixel y of the map centre"
+        north_deg:
+          type: "number"
+        east_deg:
+          type: "number"
+        frame:
+          type: "string"
+          nullable: true
+          description: "The astropy name of the celestial frame, when it can be named"
+        note:
+          type: "string"

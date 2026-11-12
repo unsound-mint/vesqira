@@ -41,7 +41,14 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
   const [formError, setFormError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [q, setQ] = useState("");
-  const shown = datasets.filter((d) => matchDataset(d, q, hosts.find((h) => h.id === d.hostId)?.name));
+  const [showSources, setShowSources] = useState(false);
+  // A file that is only the mask file of another dataset (the server says so from the masks' rows) is listed under that dataset's
+  // Masks section instead; it stays registered and one click brings it back here. The open dataset is never hidden.
+  const isSource = (d: Dataset) => !d.archived && (d.maskSourceFor?.length ?? 0) > 0 && d.id !== selectedId;
+  const matching = datasets.filter((d) => matchDataset(d, q, hosts.find((h) => h.id === d.hostId)?.name));
+  const sourceCount = datasets.filter(isSource).length;
+  const hiddenSources = showSources ? 0 : matching.filter(isSource).length;
+  const shown = showSources ? matching : matching.filter((d) => !isSource(d));
   const vocabulary = useMemo(() => datasetVocabulary(datasets, hosts), [datasets, hosts]);
   const active = datasets.filter((d) => !d.archived).length;
   const roving = useRoving(shown.map((d) => String(d.id)), selectedId === null ? null : String(selectedId));
@@ -92,12 +99,20 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
       {error ? <p role="alert" className={s.err}>{error}</p> : null}
       {loading ? <p className={s.note}>Loading datasets…</p> : null}
       {!loading && !error && datasets.length === 0 ? <p className={s.note}>No datasets yet. Files are referenced where they are; nothing is copied.</p> : null}
-      {datasets.length > 5 || datasets.length > active ? <FilterBox label="Filter datasets" placeholder="Filter datasets" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={active} noun="datasets" /> : null}
+      {datasets.length > 5 || datasets.length > active ? <FilterBox label="Filter datasets" placeholder="Filter datasets" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={showSources ? active : active - sourceCount} noun="datasets" /> : null}
+      {sourceCount > 0 ? (
+        <p className={s.note} data-testid="mask-sources-note">
+          {showSources
+            ? `Showing ${sourceCount} mask ${sourceCount === 1 ? "file" : "files"} too. `
+            : `${hiddenSources} mask ${hiddenSources === 1 ? "file is" : "files are"} hidden${hiddenSources === sourceCount ? "" : ` (${sourceCount} in all)`}: ${sourceCount === 1 ? "its" : "their"} only role is being the mask of another dataset. `}
+          <Button type="button" variant="ghost" size="sm" aria-pressed={showSources} onClick={() => setShowSources(!showSources)}>{showSources ? "Hide them" : "Show"}</Button>
+        </p>
+      ) : null}
       {datasets.length > 0 && shown.length === 0 ? <p className={s.note}>{active === 0 && !q.includes("archived:") ? "All datasets are archived. Filter with archived:yes to see them." : "No dataset matches."}</p> : null}
       <div role="list" aria-label="Datasets" {...roving.listProps}>
         {shown.map((d) => (
           <div role="listitem" key={d.id}>
-            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.hostId ? `${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
+            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId} onSelect={() => onSelect(d.id)} trailing={`${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
           </div>
         ))}
       </div>

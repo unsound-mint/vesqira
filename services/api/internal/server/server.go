@@ -461,7 +461,31 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 			shown = append(shown, d)
 		}
 	}
-	writeJSON(w, 200, map[string]any{"datasets": shown})
+	rows := make([]datasetRow, len(shown))
+	at := map[int64]int{}
+	for i, d := range shown {
+		rows[i] = datasetRow{Dataset: d}
+		at[d.ID] = i
+	}
+	if srcs, err := s.lc().MaskSources(); err != nil {
+		log.Printf("list: mask sources: %v", err) // the list is still right; the explorer just does not group these
+	} else {
+		for _, m := range srcs {
+			if i, ok := at[m.DatasetID]; ok {
+				for _, t := range m.Targets {
+					rows[i].MaskSourceFor = append(rows[i].MaskSourceFor, maskSourceRef{ID: t.ID, Name: t.Label})
+				}
+			}
+		}
+	}
+	writeJSON(w, 200, map[string]any{"datasets": rows})
+}
+
+// datasetRow is a dataset in the list, with the datasets it is only the mask file of (ADR 0055, 0058). The list derives it from the
+// masks' rows on every request: a file that is also used for anything else, or whose masks were forgotten, has none.
+type datasetRow struct {
+	catalog.Dataset
+	MaskSourceFor []maskSourceRef `json:"maskSourceFor,omitempty"`
 }
 
 // availability says, for each registered file on this computer, whether it is still what was registered: available, modified

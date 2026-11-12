@@ -1,0 +1,37 @@
+/* Drawn over a plane or a plot: ink with a halo in the surface colour, so it reads on dark and light, and by shape and letter, not colour alone. */
+.stroke,
+.halo {
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.stroke {
+  stroke: var(--compass-ink, var(--text));
+  stroke-width: 1.5px;
+}
+
+.halo {
+  stroke: var(--compass-halo, var(--bg-2));
+  stroke-width: 4px;
+}
+
+.fill {
+  fill: var(--compass-ink, var(--text));
+}
+
+.haloFill {
+  fill: var(--compass-halo, var(--bg-2));
+  stroke: var(--compass-halo, var(--bg-2));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.letter {
+  fill: var(--compass-ink, var(--text));
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  paint-order: stroke;
+  stroke: var(--compass-halo, var(--bg-2));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}

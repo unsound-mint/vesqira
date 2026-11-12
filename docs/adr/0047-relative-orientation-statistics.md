@@ -115,6 +115,8 @@ Every result carries `label: "agreement statistic"` and a policy saying that it 
   - the CSV link;
   - a disclosure with every definition, the parameters and the method.
 
+**North and east on every angle picture (amendment).** The segments figure is drawn in the map's pixel frame, so an angle east of north means nothing on it without arrows. The worker reads them at the map centre from the file's WCS (`orientation.compass`: the pixel-grid directions of position angle 0 and 90 by `sky_pa_to_pixel`, counter-clockwise from +x with y up, so a rotated, mirrored or flipped WCS turns them; north is never assumed up) and the summary carries them as `map.compass`; the `view` reply carries the same `compass` for the viewer, which draws N and E whenever orientation segments or angle vectors are on screen. Where the file has no celestial WCS (or the result predates this) no arrow is drawn and the legend says why. Not yet done: exported plane figures (PNG and SVG) with orientation overlays carry no compass.
+
 ## Alternatives
 - **Average the map with a fixed pixel disk, as the script does.** Rejected for membership because the requested radius is on the sky. The centre rounding, the box and the edge rule are kept, so on a regular grid the two give the same disk; the reproduction test relies on this.
 - **Compare in the sky frame and keep each source's sky angle in the null.** Holding the sky angle instead of the pixel angle gives a different null wherever north turns across the grid. The script holds the pixel angle, so this does too.
