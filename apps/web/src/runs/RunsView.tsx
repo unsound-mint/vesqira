@@ -4,6 +4,8 @@ import { ChevronDown, ChevronUp, Download } from "lucide-react";
 import type { Run } from "../api/runs";
 import type { Job } from "../api/jobs";
 import { KIND } from "../api/metrics";
+import { addToBoard, listBoards } from "../api/boards";
+import type { Board, Figure } from "../api/boards";
 import { convertRunValues } from "../api/runConvert";
 import { deleteRunView, listRunViews, saveRunView } from "../api/runViews";
 import type { RunView } from "../api/runViews";
@@ -12,10 +14,11 @@ import { runVocabulary } from "../catalog/vocabulary";
 import { evaluateRuns, queriedKeys } from "../catalog/runQuery";
 import { cellOf, columnChoices, contextIndex, FIXED_COLUMNS, NOT_RECORDED, sortRuns } from "../catalog/runTable";
 import type { ColumnId } from "../catalog/runTable";
-import { buildPlot, metricKeys, paramKeys } from "../catalog/runPlot";
+import { buildPlot, conversionFrom, metricKeys, paramKeys } from "../catalog/runPlot";
 import type { ConvertOffer } from "../catalog/runPlot";
 import { download, pngWithText, resolveVars, runsCsv, svgWithProvenance } from "../catalog/runExport";
 import type { PlotProvenance } from "../catalog/runExport";
+import { drawnRunIds, saveRunFigure } from "./crossRunFigure";
 import { RunsPlot } from "./RunsPlot";
 import { effectiveColumns, specOf, stateFrom } from "./runsViewState";
 import type { RunsViewState } from "./runsViewState";
@@ -188,6 +191,42 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
   const csvColumns = state.conversion && !columns.some((c) => c.toLowerCase() === `m:${state.conversion!.y}`.toLowerCase()) ? [...columns, `m:${state.conversion.y}`] : columns;
   const exportCsv = () => download("vesqira-runs.csv", new Blob([runsCsv(rows, csvColumns, ctxOf, { query: state.query, total: active, at: new Date().toISOString(), notRecorded: state.showMissing ? hidden : 0, conversion: model?.conversion ? state.conversion : null })], { type: "text/csv;charset=utf-8" }));
 
+  // ---- saving the plot as a board figure (ADR 0065): drawn from the runs the filter matches, with the conversion that is shown
+  const [figTitle, setFigTitle] = useState("");
+  const [figBusy, setFigBusy] = useState(false);
+  const [figMsg, setFigMsg] = useState<string | null>(null);
+  const [savedFig, setSavedFig] = useState<Figure | null>(null);
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [onBoard, setOnBoard] = useState("");
+  async function saveFigure() {
+    if (plot.y === "" || xKey === "") return;
+    setFigBusy(true);
+    setFigMsg(null);
+    try {
+      const figModel = buildPlot(ev.matched, plot.y, { kind: plot.xKind, key: xKey }, plot.by, state.conversion);
+      if (drawnRunIds(figModel).length === 0) throw new Error("None of the runs the filter matches records both values, so there is nothing to save.");
+      const f = await saveRunFigure(figModel, { query: state.query, y: plot.y, x: xKey, xKind: plot.xKind, by: plot.by }, state.conversion, { title: figTitle.trim() || `${plot.y} against ${xKey}`, caption: "" });
+      setSavedFig(f);
+      setOnBoard("");
+      listBoards().then(setBoards).catch(() => undefined);
+    } catch (e) {
+      setSavedFig(null);
+      setFigMsg(e instanceof Error ? e.message : "The figure could not be saved.");
+    } finally {
+      setFigBusy(false);
+    }
+  }
+  async function putOnBoard(id: string) {
+    setOnBoard(id);
+    if (id === "" || !savedFig) return;
+    try {
+      await addToBoard(Number(id), savedFig.id);
+      setFigMsg(`Added to the board “${boards.find((b) => String(b.id) === id)?.title ?? ""}”.`);
+    } catch (e) {
+      setFigMsg(e instanceof Error ? e.message : "It could not be added to the board.");
+    }
+  }
+
   // ---- unit conversion of a panel that differs only by unit (the worker converts; the browser never does)
   const [converting, setConverting] = useState<string | null>(null);
   const [convertMsg, setConvertMsg] = useState<string | null>(null);
@@ -200,13 +239,7 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
         setConvertMsg(`Not converted: ${res.reason ?? "the worker refused."}`);
         return;
       }
-      const prev = state.conversion && state.conversion.y === plot.y && state.conversion.to === offer.to ? state.conversion : null;
-      const entries = { ...(prev?.entries ?? {}) };
-      offer.values.forEach((v, i) => {
-        const out = res.results![i]!;
-        entries[v.runId] = { definition: offer.definition, unit: offer.unit, value: v.value, uncertainty: v.uncertainty, factor: res.factors?.[offer.unit] ?? NaN, out: { value: out.value, uncertainty: out.uncertainty ?? null } };
-      });
-      onState({ conversion: { y: plot.y, to: offer.to, method: res.method ?? "plain unit conversion", entries } });
+      onState({ conversion: conversionFrom(plot.y, offer, res, state.conversion) });
     } catch (e) {
       setConvertMsg(e instanceof Error ? e.message : "The conversion could not be asked for.");
     } finally {
@@ -330,6 +363,25 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
             </div>
           ) : null}
           {convertMsg ? <p role="alert" className={s.err}>{convertMsg}</p> : null}
+          {model && drawn.size > 0 ? (
+            <div className={s.saveRow} role="group" aria-label="Save the plot as a figure">
+              <Input label="Figure title" value={figTitle} placeholder={`${plot.y} against ${xKey}`} maxLength={200} onChange={(e) => setFigTitle(e.target.value)} />
+              <Button disabled={figBusy} onClick={() => void saveFigure()}>{figBusy ? "Saving…" : "Save as board figure"}</Button>
+              <span className={s.note}>{`Draws the ${ev.matched.length} run${ev.matched.length === 1 ? "" : "s"} the filter matches${state.showMissing && hidden > 0 ? " (the runs listed after them are not drawn)" : ""}; a reviewer sees the picture and the filter words, not the runs.`}</span>
+            </div>
+          ) : null}
+          {savedFig ? (
+            <p role="status" className={s.note}>
+              {`Saved as the figure “${savedFig.title}”. `}
+              {boards.length > 0 ? (
+                <Select label="Add to board" value={onBoard} onChange={(e) => void putOnBoard(e.target.value)}>
+                  <option value="">(choose a board)</option>
+                  {boards.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
+                </Select>
+              ) : "Make a board to put it on."}
+            </p>
+          ) : null}
+          {figMsg ? <p role={savedFig && figMsg.startsWith("Added") ? "status" : "alert"} className={savedFig && figMsg.startsWith("Added") ? s.note : s.err}>{figMsg}</p> : null}
           {!model ? <p className={s.note}>Choose a result and what to draw it against. The plot shows the runs in the table, not a ranking; nothing is called best.</p>
             : drawn.size === 0 ? <p className={s.note}>{`None of the ${rows.length} runs in the table records both ${plot.y} and ${xKey}, so there is nothing to draw.`}</p>
             : <RunsPlot ref={svgRef} model={model} selected={state.selected} onSelect={select} onOpen={onOpenRun} footer={footer} />}

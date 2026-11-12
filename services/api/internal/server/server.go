@@ -263,6 +263,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.Boards != nil {
 		mux.HandleFunc("POST /api/figures", s.createFigure)
+		mux.HandleFunc("POST /api/figures/runs", s.createRunFigure)
 		mux.HandleFunc("GET /api/figures", s.listFigures)
 		mux.HandleFunc("GET /api/figures/{id}/preview", s.figurePreview)
 		mux.HandleFunc("GET /api/figures/{id}/download", s.figureDownload)

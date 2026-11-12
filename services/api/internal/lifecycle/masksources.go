@@ -12,7 +12,7 @@ type MaskSource struct {
 // useQueries each select the ids of datasets a researcher put to a use of their own. A dataset in any of them is not "only a mask
 // source", whatever else it is: it is shown in the explorer. Tables a catalog does not have are skipped, as in datasetImpact.
 var useQueries = []struct{ table, query string }{
-	{"figures", `SELECT dataset_id FROM figures`},                                                      // a figure (and so a board) is made from it
+	{"figures", `SELECT dataset_id FROM figures WHERE dataset_id IS NOT NULL`},                         // a figure (and so a board) is made from it
 	{"saved_regions", `SELECT dataset_id FROM saved_regions`},                                          // regions drawn on it
 	{"exploration_steps", `SELECT dataset_id FROM exploration_steps`},                                  // opened in the viewer
 	{"run_outputs", `SELECT dataset_id FROM run_outputs`},                                              // an output of a run

@@ -221,6 +221,29 @@ func figuresOf(q querier, datasetIDs ...int64) (figs []Item, revs []string, err 
 	return figs, revs, rows.Err()
 }
 
+// crossRunFiguresOf lists the cross-run plots (ADR 0065) whose description names the run, with their revisions. The description is
+// owner-only JSON (`runs[].id`); a run named there is a run the plot was drawn from.
+func crossRunFiguresOf(q querier, runID int64) (figs []Item, revs []string, err error) {
+	if !has(q, "figures") {
+		return nil, nil, nil
+	}
+	rows, err := q.Query(`SELECT DISTINCT f.id,f.title,f.revision FROM figures f, json_each(f.scene,'$.runs') j
+		WHERE f.kind='crossrun' AND json_extract(j.value,'$.id')=? ORDER BY f.id`, runID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var it Item
+		var rev string
+		if err := rows.Scan(&it.ID, &it.Label, &rev); err != nil {
+			return nil, nil, err
+		}
+		figs, revs = append(figs, it), append(revs, rev)
+	}
+	return figs, revs, rows.Err()
+}
+
 func boardsHolding(q querier, figureIDs []int64) ([]Item, error) {
 	if len(figureIDs) == 0 {
 		return nil, nil
@@ -391,9 +414,24 @@ func runImpact(q querier, b *builder, id int64) error {
 	if err != nil {
 		return err
 	}
-	if err := pinnedDependents(q, b, figs, revs, "this run's output maps"); err != nil {
+	// cross-run plots (ADR 0065) draw runs, not datasets: the ones that drew this run say so, since their redraw will not find it
+	xfigs, xrevs, err := crossRunFiguresOf(q, id)
+	if err != nil {
 		return err
 	}
+	what := "this run's output maps"
+	if len(xfigs) > 0 {
+		what = "this run's output maps, or drew this run in a cross-run plot"
+		if len(figs) == 0 {
+			what = "plots that drew this run"
+		}
+	}
+	if err := pinnedDependents(q, b, append(figs, xfigs...), append(revs, xrevs...), what); err != nil {
+		return err
+	}
+	b.add("crossrun_figures", "stays", append([]Item(nil), xfigs...), func(n int) string {
+		return plural(n, "saved cross-run plot draws", "saved cross-run plots draw") + " this run. Each keeps its picture and the values it recorded for the run; Draw again says the run is archived or gone before it draws."
+	})
 	jb, err := items(q, "jobs", `SELECT id,name FROM jobs WHERE run_id=? OR parent_run_id=?`, id, id)
 	if err != nil {
 		return err

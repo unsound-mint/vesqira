@@ -1418,6 +1418,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/figures/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save a cross-run plot as a figure that draws no dataset (owner listener only) */
+        post: operations["owner_s_createRunFigure_post_api_figures_runs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/figures/{id}/archive": {
         parameters: {
             query?: never;
@@ -4615,10 +4632,10 @@ export interface components {
             cy?: number;
             r?: number;
         };
-        /** @description What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. */
+        /** @description What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request. */
         FigureView: {
             /** @enum {string} */
-            kind: "plane" | "spectrum" | "orientation" | "channelgrid";
+            kind: "plane" | "spectrum" | "orientation" | "channelgrid" | "runplot";
             channel?: number;
             spectralValue?: number;
             /** @description At most 16 characters of letters, digits and / * ^ . - space */
@@ -4732,7 +4749,7 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
-        /** @description Reviewer-safe account of where a figure came from. It has no path and no dataset id. */
+        /** @description Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts. */
         FigureProvenance: {
             /** @description The source file by name only; no path and no dataset id. */
             source: {
@@ -4759,13 +4776,17 @@ export interface components {
             tiers?: components["schemas"]["FigureTier"][];
             /** @description Present when the figure was drawn under corrections (ADR 0061) */
             corrections?: components["schemas"]["FigureCorrection"][];
+            runPlot?: components["schemas"]["FigureRunPlot"];
         };
-        /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. */
+        /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind "dataset"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind "crossrun". */
         Figure: {
             /** Format: int64 */
             id: number;
-            /** Format: int64 */
-            datasetId: number;
+            /**
+             * Format: int64
+             * @description Null for a cross-run plot, which is made from runs.
+             */
+            datasetId: number | null;
             title: string;
             caption: string;
             /** Format: date-time */
@@ -4777,10 +4798,12 @@ export interface components {
             provenance: components["schemas"]["FigureProvenance"];
             /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
             archived?: boolean;
-            /** @description The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. */
-            scene?: components["schemas"]["Scene"] & (components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"]);
+            /** @description The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. A cross-run plot holds its cross-run/1 description here (the runs it was drawn from, with their recorded values): owner API only, never in a snapshot or a report. */
+            scene?: components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"] | components["schemas"]["CrossRunDescription"];
             /** @description Absent for figures saved before identities (ADR 0053). */
             identity?: components["schemas"]["FigureIdentity"];
+            /** @enum {string} */
+            kind: "dataset" | "crossrun";
         };
         FigureList: {
             figures: components["schemas"]["Figure"][];
@@ -7685,7 +7708,7 @@ export interface components {
              * @description The description the figure was drawn from; none when it keeps none
              * @enum {string}
              */
-            kind: "scene" | "channel-grid" | "none";
+            kind: "scene" | "channel-grid" | "cross-run" | "none";
             /**
              * @description ready: every file is unchanged, draw. ask: say what changed and ask before drawing. blocked: a file cannot be read. none: this figure cannot be drawn again, it is shown as its PNG.
              * @enum {string}
@@ -8750,6 +8773,85 @@ export interface components {
             }[];
             method?: string;
             note?: string;
+        };
+        /** @description What was converted into the target unit of a cross-run plot: plain unit conversion by the worker, no equivalency. */
+        CrossRunConversion: {
+            to: string;
+            method: string;
+            from: {
+                unit: string;
+                factor: number;
+                count: number;
+            }[];
+        };
+        /** @description Reviewer-safe account of a cross-run plot: the filter words, the axes, how many runs and the conversion. It has no run id, name or value. */
+        FigureRunPlot: {
+            query: string;
+            y: string;
+            x: string;
+            /** @enum {string} */
+            xKind: "param" | "metric";
+            by?: string;
+            runs: number;
+            conversion?: components["schemas"]["CrossRunConversion"];
+        };
+        /** @description cross-run/1: the owner-only description a cross-run plot was drawn from, written by the server from its own reading of the runs (ADR 0065). It names run ids, names and recorded values, so it is never copied into a snapshot, a report or a review. */
+        CrossRunDescription: {
+            /** @enum {string} */
+            schema: "cross-run/1";
+            query: string;
+            y: string;
+            x: string;
+            /** @enum {string} */
+            xKind: "param" | "metric";
+            by: string;
+            conversion?: components["schemas"]["CrossRunConversion"];
+            runs: {
+                /** Format: int64 */
+                id: number;
+                name: string;
+                x: string;
+                /** @description What the run recorded; never replaced by a conversion. */
+                y: {
+                    value: number;
+                    unit: string;
+                    uncertainty?: number | null;
+                    uncertaintyKind: string;
+                    definition: string;
+                };
+                /** @description The number the plot drew, when the run was converted. */
+                converted?: {
+                    value: number;
+                    uncertainty?: number | null;
+                };
+            }[];
+        };
+        /** @description Saves a cross-run plot as a figure (ADR 0065). The server reads the runs itself; the browser says which runs, which axes and which conversion. A conversion is accepted only when the worker, asked again, gives the factor the browser used. */
+        CreateRunFigureRequest: {
+            title: string;
+            caption?: string;
+            /** @description base64 PNG */
+            previewPng: string;
+            query: string;
+            y: string;
+            x: string;
+            /** @enum {string} */
+            xKind: "param" | "metric";
+            by?: string;
+            runIds: number[];
+            conversion?: {
+                to: string;
+                entries: {
+                    /** Format: int64 */
+                    runId: number;
+                    factor: number;
+                }[];
+            } | null;
+            /**
+             * Format: int64
+             * @description The cross-run plot this one redraws
+             */
+            redrawnFrom?: number | null;
         };
     };
     responses: never;
@@ -11324,6 +11426,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateFigureRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Figure"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createRunFigure_post_api_figures_runs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRunFigureRequest"];
             };
         };
         responses: {

@@ -60,6 +60,25 @@ export type Conversion = {
 /** A panel that differs from the main one only by its unit, which the worker may be able to convert. */
 export type ConvertOffer = { unit: string; to: string; definition: string; values: { runId: number; value: number; uncertainty: number | null }[] };
 
+/**
+ * The conversion after the worker answered for one offered panel: the numbers are the worker's, held beside what each run recorded.
+ * It extends `prev` when that is a conversion of the same result into the same unit.
+ */
+export function conversionFrom(
+  y: string,
+  offer: ConvertOffer,
+  res: { factors?: Record<string, number>; results?: { value: number; uncertainty?: number | null }[]; method?: string },
+  prev: Conversion | null,
+): Conversion {
+  const keep = prev && prev.y === y && prev.to === offer.to ? prev : null;
+  const entries = { ...(keep?.entries ?? {}) };
+  offer.values.forEach((v, i) => {
+    const out = res.results![i]!;
+    entries[v.runId] = { definition: offer.definition, unit: offer.unit, value: v.value, uncertainty: v.uncertainty, factor: res.factors?.[offer.unit] ?? NaN, out: { value: out.value, uncertainty: out.uncertainty ?? null } };
+  });
+  return { y, to: offer.to, method: res.method ?? "plain unit conversion", entries };
+}
+
 /** The conversion entry that still describes this run's recorded result, or undefined when there is none or the run changed since. */
 export function convertedOf(conv: Conversion | null | undefined, run: Run): Conversion["entries"][number] | undefined {
   if (!conv) return undefined;

@@ -15,7 +15,7 @@ const prov = (name: string | null, ker: string, extra: Partial<NonNullable<Figur
   statements: [],
   ...(name ? { run: { name, kind: "vgt", role: "psi", gitCommit: "bcbaed4ec980ffff", dirty: true, reproducibleFromCommit: false, generatedAt: "", review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, params: [{ key: "ker", value: ker, source: "config" }, { key: "dn", value: "10", source: "config" }], metrics: [metric({})], ...extra } } : {}),
 });
-const fig = (id: number, title: string, p: Figure["provenance"]): Figure => ({ id, datasetId: id * 10, title, caption: "", createdAt: "", revision: `r${id}`, previewSha: "a".repeat(64), width: 4, height: 3, provenance: p });
+const fig = (id: number, title: string, p: Figure["provenance"]): Figure => ({ id, datasetId: id * 10, kind: "dataset", title, caption: "", createdAt: "", revision: `r${id}`, previewSha: "a".repeat(64), width: 4, height: 3, provenance: p });
 const A = fig(1, "Ker 8", prov("vgt-ker8", "8"));
 const B = fig(2, "Ker 12", prov("vgt-ker12", "12", { metrics: [metric({ value: 0.211, uncertainty: 0.03, n: 3120 })] }));
 

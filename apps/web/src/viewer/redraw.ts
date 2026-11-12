@@ -23,6 +23,7 @@ import type { FigureMaskInput } from "./figureMasks";
 import { figureSvg } from "./figureSvg";
 import { composePlaneFigure } from "./planeFigure";
 import type { PlaneFigureInput } from "./planeFigure";
+import { redrawCrossRun } from "../runs/crossRunFigure";
 import { limits, renderPlane } from "./render";
 import type { RangeMode, Rgb, Stretch } from "./render";
 
@@ -34,10 +35,12 @@ import type { RangeMode, Rgb, Stretch } from "./render";
  * changed (`getRedrawCheck`), and the redrawing becomes a new figure only when the owner saves it.
  */
 export type Redrawn = {
-  kind: "scene" | "channel-grid";
+  kind: "scene" | "channel-grid" | "cross-run";
   blob: Blob;
   /** Notes the owner must read: what is different from the stored description now (a contour sigma that was computed again, a changed preview step). */
   notes: string[];
+  /** A cross-run plot (ADR 0065): the runs or their recorded values differ from when the figure was saved; `notes` says which. */
+  dataChanged?: boolean;
   /** The SVG document, for a scene figure (a grid is panels of raster only); null otherwise. */
   svg: (() => string) | null;
   /** Saves the redrawing as a new figure linked to the original. The original is not touched. */
@@ -242,8 +245,11 @@ export async function redrawGridFigure(f: Figure): Promise<Redrawn> {
   };
 }
 
-export const redrawFigure = (f: Figure, o: { refresh: boolean }): Promise<Redrawn> =>
-  (f.scene as { schema?: string } | undefined)?.schema === "channel-grid/1" ? redrawGridFigure(f) : redrawSceneFigure(f, o);
+export const redrawFigure = (f: Figure, o: { refresh: boolean }): Promise<Redrawn> => {
+  const schema = (f.scene as { schema?: string } | undefined)?.schema;
+  if (schema === "cross-run/1") return redrawCrossRun(f); // runs, not files: no dataset to read
+  return schema === "channel-grid/1" ? redrawGridFigure(f) : redrawSceneFigure(f, o);
+};
 
 /** Whether two pictures hold the same pixels (decoded RGBA, so a different PNG encoding of the same picture counts as the same). */
 export async function samePixels(a: Blob, b: Blob): Promise<boolean> {

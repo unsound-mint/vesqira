@@ -299,3 +299,10 @@
   align-items: center;
   gap: var(--sp-2);
 }
+
+.saveRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--sp-2);
+}

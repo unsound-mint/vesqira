@@ -1103,7 +1103,7 @@
   },
   "FigureView": {
    "type": "object",
-   "description": "What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view.",
+   "description": "What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request.",
    "required": [
     "kind"
    ],
@@ -1114,7 +1114,8 @@
       "plane",
       "spectrum",
       "orientation",
-      "channelgrid"
+      "channelgrid",
+      "runplot"
      ]
     },
     "channel": {
@@ -1495,7 +1496,7 @@
   },
   "FigureProvenance": {
    "type": "object",
-   "description": "Reviewer-safe account of where a figure came from. It has no path and no dataset id.",
+   "description": "Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts.",
    "required": [
     "source",
     "view",
@@ -1575,12 +1576,15 @@
       "$ref": "#/components/schemas/FigureCorrection"
      },
      "description": "Present when the figure was drawn under corrections (ADR 0061)"
+    },
+    "runPlot": {
+     "$ref": "#/components/schemas/FigureRunPlot"
     }
    }
   },
   "Figure": {
    "type": "object",
-   "description": "Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited.",
+   "description": "Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind \"dataset\"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind \"crossrun\".",
    "required": [
     "id",
     "datasetId",
@@ -1591,7 +1595,8 @@
     "previewSha",
     "width",
     "height",
-    "provenance"
+    "provenance",
+    "kind"
    ],
    "properties": {
     "id": {
@@ -1600,7 +1605,9 @@
     },
     "datasetId": {
      "type": "integer",
-     "format": "int64"
+     "format": "int64",
+     "nullable": true,
+     "description": "Null for a cross-run plot, which is made from runs."
     },
     "title": {
      "type": "string"
@@ -1632,18 +1639,16 @@
      "description": "Hidden from the lists by default; still resolves by id (ADR 0041)."
     },
     "scene": {
-     "description": "The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance.",
+     "description": "The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. A cross-run plot holds its cross-run/1 description here (the runs it was drawn from, with their recorded values): owner API only, never in a snapshot or a report.",
      "oneOf": [
       {
        "$ref": "#/components/schemas/Scene"
       },
       {
        "$ref": "#/components/schemas/ChannelGrid"
-      }
-     ],
-     "allOf": [
+      },
       {
-       "$ref": "#/components/schemas/Scene"
+       "$ref": "#/components/schemas/CrossRunDescription"
       }
      ]
     },
@@ -1654,6 +1659,13 @@
       }
      ],
      "description": "Absent for figures saved before identities (ADR 0053)."
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "dataset",
+      "crossrun"
+     ]
     }
    }
   },
@@ -10755,6 +10767,7 @@
      "enum": [
       "scene",
       "channel-grid",
+      "cross-run",
       "none"
      ],
      "description": "The description the figure was drawn from; none when it keeps none"
@@ -14272,6 +14285,285 @@
     },
     "note": {
      "type": "string"
+    }
+   }
+  },
+  "CrossRunConversion": {
+   "type": "object",
+   "required": [
+    "to",
+    "method",
+    "from"
+   ],
+   "description": "What was converted into the target unit of a cross-run plot: plain unit conversion by the worker, no equivalency.",
+   "properties": {
+    "to": {
+     "type": "string"
+    },
+    "method": {
+     "type": "string"
+    },
+    "from": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "unit",
+       "factor",
+       "count"
+      ],
+      "properties": {
+       "unit": {
+        "type": "string"
+       },
+       "factor": {
+        "type": "number"
+       },
+       "count": {
+        "type": "integer"
+       }
+      }
+     }
+    }
+   }
+  },
+  "FigureRunPlot": {
+   "type": "object",
+   "required": [
+    "query",
+    "y",
+    "x",
+    "xKind",
+    "runs"
+   ],
+   "description": "Reviewer-safe account of a cross-run plot: the filter words, the axes, how many runs and the conversion. It has no run id, name or value.",
+   "properties": {
+    "query": {
+     "type": "string"
+    },
+    "y": {
+     "type": "string"
+    },
+    "x": {
+     "type": "string"
+    },
+    "xKind": {
+     "type": "string",
+     "enum": [
+      "param",
+      "metric"
+     ]
+    },
+    "by": {
+     "type": "string"
+    },
+    "runs": {
+     "type": "integer"
+    },
+    "conversion": {
+     "$ref": "#/components/schemas/CrossRunConversion"
+    }
+   }
+  },
+  "CrossRunDescription": {
+   "type": "object",
+   "required": [
+    "schema",
+    "query",
+    "y",
+    "x",
+    "xKind",
+    "by",
+    "runs"
+   ],
+   "description": "cross-run/1: the owner-only description a cross-run plot was drawn from, written by the server from its own reading of the runs (ADR 0065). It names run ids, names and recorded values, so it is never copied into a snapshot, a report or a review.",
+   "properties": {
+    "schema": {
+     "type": "string",
+     "enum": [
+      "cross-run/1"
+     ]
+    },
+    "query": {
+     "type": "string"
+    },
+    "y": {
+     "type": "string"
+    },
+    "x": {
+     "type": "string"
+    },
+    "xKind": {
+     "type": "string",
+     "enum": [
+      "param",
+      "metric"
+     ]
+    },
+    "by": {
+     "type": "string"
+    },
+    "conversion": {
+     "$ref": "#/components/schemas/CrossRunConversion"
+    },
+    "runs": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "id",
+       "name",
+       "y",
+       "x"
+      ],
+      "properties": {
+       "id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "name": {
+        "type": "string"
+       },
+       "x": {
+        "type": "string"
+       },
+       "y": {
+        "type": "object",
+        "required": [
+         "value",
+         "unit",
+         "uncertaintyKind",
+         "definition"
+        ],
+        "description": "What the run recorded; never replaced by a conversion.",
+        "properties": {
+         "value": {
+          "type": "number"
+         },
+         "unit": {
+          "type": "string"
+         },
+         "uncertainty": {
+          "type": "number",
+          "nullable": true
+         },
+         "uncertaintyKind": {
+          "type": "string"
+         },
+         "definition": {
+          "type": "string"
+         }
+        }
+       },
+       "converted": {
+        "type": "object",
+        "required": [
+         "value"
+        ],
+        "description": "The number the plot drew, when the run was converted.",
+        "properties": {
+         "value": {
+          "type": "number"
+         },
+         "uncertainty": {
+          "type": "number",
+          "nullable": true
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "CreateRunFigureRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "title",
+    "previewPng",
+    "query",
+    "y",
+    "x",
+    "xKind",
+    "runIds"
+   ],
+   "description": "Saves a cross-run plot as a figure (ADR 0065). The server reads the runs itself; the browser says which runs, which axes and which conversion. A conversion is accepted only when the worker, asked again, gives the factor the browser used.",
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    },
+    "previewPng": {
+     "type": "string",
+     "description": "base64 PNG"
+    },
+    "query": {
+     "type": "string"
+    },
+    "y": {
+     "type": "string"
+    },
+    "x": {
+     "type": "string"
+    },
+    "xKind": {
+     "type": "string",
+     "enum": [
+      "param",
+      "metric"
+     ]
+    },
+    "by": {
+     "type": "string"
+    },
+    "runIds": {
+     "type": "array",
+     "maxItems": 5000,
+     "items": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    "conversion": {
+     "type": "object",
+     "nullable": true,
+     "required": [
+      "to",
+      "entries"
+     ],
+     "properties": {
+      "to": {
+       "type": "string"
+      },
+      "entries": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "runId",
+         "factor"
+        ],
+        "properties": {
+         "runId": {
+          "type": "integer",
+          "format": "int64"
+         },
+         "factor": {
+          "type": "number"
+         }
+        }
+       }
+      }
+     }
+    },
+    "redrawnFrom": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true,
+     "description": "The cross-run plot this one redraws"
     }
    }
   }
@@ -21359,6 +21651,41 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/ConvertRunValuesResponse"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/figures/runs": {
+   "summary": "Save a cross-run plot as a figure that draws no dataset (owner listener only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CreateRunFigureRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Figure"
        }
       }
      }
