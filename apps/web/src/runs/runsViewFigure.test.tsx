@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Run } from "../api/runs";
 import { metric, run } from "../catalog/runFixtures";
 import { RunsView } from "./RunsView";
+import { resetConvertibility } from "./useConvertibility";
 import { initialRunsView } from "./runsViewState";
 
 const views = vi.hoisted(() => ({ listRunViews: vi.fn(), saveRunView: vi.fn(), deleteRunView: vi.fn() }));
 vi.mock("../api/runViews", () => views);
-const conv = vi.hoisted(() => ({ convertRunValues: vi.fn() }));
+const conv = vi.hoisted(() => ({ convertRunValues: vi.fn(), probeRunConversions: vi.fn() }));
 vi.mock("../api/runConvert", () => conv);
 const boards = vi.hoisted(() => ({ createRunFigure: vi.fn(), listBoards: vi.fn(), addToBoard: vi.fn(), plotPng: vi.fn() }));
 vi.mock("../api/boards", async (orig) => ({ ...(await orig<typeof import("../api/boards")>()), createRunFigure: boards.createRunFigure, listBoards: boards.listBoards, addToBoard: boards.addToBoard }));
@@ -33,6 +34,8 @@ async function plotted(u: ReturnType<typeof userEvent.setup>) {
 }
 
 beforeEach(() => {
+  resetConvertibility();
+  conv.probeRunConversions.mockImplementation(async (pairs: { from: string; to: string }[]) => pairs.map((p) => ({ from: p.from, to: p.to, refused: false, factor: 1 })));
   views.listRunViews.mockResolvedValue({ views: [], max: 100 });
   boards.plotPng.mockResolvedValue(new Blob(["png"]));
   boards.createRunFigure.mockResolvedValue({ id: 5, title: "am against block_size" });
@@ -68,7 +71,7 @@ describe("saving the cross-run plot as a board figure", () => {
     conv.convertRunValues.mockResolvedValue({ refused: false, to: "rad", factors: { deg: Math.PI / 180 }, results: [{ value: Math.PI / 6, uncertainty: null }], method: "plain unit conversion" });
     render(<Page />);
     await plotted(u);
-    await u.click(screen.getByRole("button", { name: "Convert to rad" }));
+    await u.click(await screen.findByRole("button", { name: "Convert to rad" }));
     await u.click(screen.getByRole("button", { name: "Save as board figure" }));
     await screen.findByText(/Saved as the figure/);
     expect(boards.createRunFigure.mock.calls[0]![0].conversion).toEqual({ to: "rad", entries: [{ runId: 3, factor: Math.PI / 180 }] });

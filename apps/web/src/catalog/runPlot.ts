@@ -43,7 +43,15 @@ export type PlotPanel = {
   count: number;
   /** The units whose runs were converted into this panel, in words; empty when none were. */
   convertedFrom: string[];
+  /** Why the worker will not convert this panel into the main one, in words, once it has said so; absent otherwise. */
+  refusal?: string;
 };
+
+/** The model with the worker's refusals (by recorded unit) written on the panels they concern, so the picture says why a panel stays apart. */
+export function withRefusals(model: PlotModel, reasons: Record<string, string>): PlotModel {
+  if (!model.panels.some((p) => !p.primary && reasons[p.unit] !== undefined)) return model;
+  return { ...model, panels: model.panels.map((p) => (!p.primary && reasons[p.unit] !== undefined ? { ...p, refusal: reasons[p.unit] } : p)) };
+}
 
 /**
  * A conversion the researcher asked for (ADR 0062, amendment): runs that recorded `y` in another unit, expressed in `to` by the

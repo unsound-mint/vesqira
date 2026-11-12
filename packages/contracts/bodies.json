@@ -14200,11 +14200,8 @@
   "ConvertRunValuesRequest": {
    "type": "object",
    "additionalProperties": false,
-   "required": [
-    "to",
-    "values"
-   ],
-   "description": "Numbers a run declared, with the unit each was recorded in, to be expressed in one target unit (cross-run plot, ADR 0062). Up to 5000 values. No dataset is involved.",
+   "required": [],
+   "description": "Numbers a run declared, with the unit each was recorded in, to be expressed in one target unit (cross-run plot, ADR 0062). Up to 5000 values; give `to` and `values`. No dataset is involved. Alternatively give only `pairs` for a dry run: which (from, to) pairs would convert, answered without any value (up to 200; `to` and `values` must then be absent).",
    "properties": {
     "to": {
      "type": "string",
@@ -14234,6 +14231,28 @@
        }
       }
      }
+    },
+    "pairs": {
+     "type": "array",
+     "description": "Dry run. One answer per pair, in order; a refusal of one pair does not hide the others.",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "from",
+       "to"
+      ],
+      "properties": {
+       "from": {
+        "type": "string",
+        "description": "The unit a run recorded."
+       },
+       "to": {
+        "type": "string",
+        "description": "The unit to convert it to."
+       }
+      }
+     }
     }
    }
   },
@@ -14242,7 +14261,7 @@
    "required": [
     "refused"
    ],
-   "description": "Plain dimensional conversion by astropy.units with no equivalency (no beam, frame, rest frequency or spectral axis is assumed). When refused is true nothing is converted and reason says why; otherwise results holds one entry per request value, in order.",
+   "description": "Plain dimensional conversion by astropy.units with no equivalency (no beam, frame, rest frequency or spectral axis is assumed). When refused is true nothing is converted and reason says why; otherwise results holds one entry per request value, in order. For a dry run (`pairs` in the request), refused is false and pairs holds the answer for each pair; no numbers are converted.",
    "properties": {
     "refused": {
      "type": "boolean"
@@ -14288,6 +14307,36 @@
     },
     "note": {
      "type": "string"
+    },
+    "pairs": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "from",
+       "to",
+       "refused"
+      ],
+      "properties": {
+       "from": {
+        "type": "string"
+       },
+       "to": {
+        "type": "string"
+       },
+       "refused": {
+        "type": "boolean"
+       },
+       "reason": {
+        "type": "string",
+        "description": "In words, why this pair is not converted; present when refused."
+       },
+       "factor": {
+        "type": "number",
+        "description": "The multiplier from the recorded unit to the target; present when not refused."
+       }
+      }
+     }
     }
    }
   },
@@ -21683,7 +21732,7 @@
    }
   },
   "POST /api/runs/convert-values": {
-   "summary": "Convert declared run numbers between plain-dimension units for the cross-run plot; a conversion needing an equivalency is refused (owner listener only)",
+   "summary": "Convert declared run numbers between plain-dimension units for the cross-run plot, or dry-run which unit pairs would convert; a conversion needing an equivalency is refused (owner listener only)",
    "requestBody": {
     "required": true,
     "content": {

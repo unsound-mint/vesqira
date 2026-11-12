@@ -14,12 +14,13 @@ import { runVocabulary } from "../catalog/vocabulary";
 import { evaluateRuns, queriedKeys } from "../catalog/runQuery";
 import { cellOf, columnChoices, contextIndex, FIXED_COLUMNS, NOT_RECORDED, sortRuns } from "../catalog/runTable";
 import type { ColumnId } from "../catalog/runTable";
-import { buildPlot, conversionFrom, metricKeys, paramKeys } from "../catalog/runPlot";
+import { buildPlot, conversionFrom, metricKeys, paramKeys, withRefusals } from "../catalog/runPlot";
 import type { ConvertOffer } from "../catalog/runPlot";
 import { download, pngWithText, resolveVars, runsCsv, svgWithProvenance } from "../catalog/runExport";
 import type { PlotProvenance } from "../catalog/runExport";
 import { drawnRunIds, saveRunFigure } from "./crossRunFigure";
 import { RunsPlot } from "./RunsPlot";
+import { useConvertibility } from "./useConvertibility";
 import { effectiveColumns, specOf, stateFrom } from "./runsViewState";
 import type { RunsViewState } from "./runsViewState";
 import s from "./RunsView.module.css";
@@ -138,7 +139,11 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
   // ---- plot
   const plot = state.plot;
   const xKey = plot.x;
-  const model = useMemo(() => (plot.y !== "" && xKey !== "" ? buildPlot(rows, plot.y, { kind: plot.xKind, key: xKey }, plot.by, state.conversion) : null), [rows, plot.y, plot.xKind, xKey, plot.by, state.conversion]);
+  const drawnModel = useMemo(() => (plot.y !== "" && xKey !== "" ? buildPlot(rows, plot.y, { kind: plot.xKind, key: xKey }, plot.by, state.conversion) : null), [rows, plot.y, plot.xKind, xKey, plot.by, state.conversion]);
+  // whether each offered conversion will work is asked of the worker in the background; the plot is drawn without waiting for it
+  const convertible = useConvertibility(drawnModel?.offers ?? []);
+  const refusals = Object.fromEntries((drawnModel?.offers ?? []).flatMap((o) => { const c = convertible(o); return c.state === "no" ? [[o.unit, c.reason] as const] : []; }));
+  const model = useMemo(() => (drawnModel ? withRefusals(drawnModel, refusals) : null), [drawnModel, JSON.stringify(refusals)]); // eslint-disable-line react-hooks/exhaustive-deps
   const mKeys = useMemo(() => metricKeys(runs), [runs]);
   const pKeys = useMemo(() => paramKeys(runs), [runs]);
   const drawn = model ? new Set(model.panels.flatMap((p) => p.series.flatMap((x) => x.points.map((q) => q.runId)))) : new Set<number>();
@@ -203,7 +208,7 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
     setFigBusy(true);
     setFigMsg(null);
     try {
-      const figModel = buildPlot(ev.matched, plot.y, { kind: plot.xKind, key: xKey }, plot.by, state.conversion);
+      const figModel = withRefusals(buildPlot(ev.matched, plot.y, { kind: plot.xKind, key: xKey }, plot.by, state.conversion), refusals);
       if (drawnRunIds(figModel).length === 0) throw new Error("None of the runs the filter matches records both values, so there is nothing to save.");
       const f = await saveRunFigure(figModel, { query: state.query, y: plot.y, x: xKey, xKind: plot.xKind, by: plot.by }, state.conversion, { title: figTitle.trim() || `${plot.y} against ${xKey}`, caption: "" });
       setSavedFig(f);
@@ -346,14 +351,22 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
             <Button disabled={!model || drawn.size === 0} onClick={() => void exportPng()}>Export plot (PNG)</Button>
           </div>
           {exportErr ? <p role="alert" className={s.err}>{exportErr}</p> : null}
-          {model && (model.offers.length > 0 || model.conversion) ? (
+          {model && (model.offers.some((o) => convertible(o).state !== "pending") || model.conversion) ? (
             <div className={s.convert} role="group" aria-label="Unit conversion">
-              {model.offers.map((o) => (
-                <p key={o.unit} className={s.note}>
-                  {`${o.values.length} run${o.values.length === 1 ? "" : "s"} recorded ${plot.y} in ${o.unit}, which differs from the main panel only by unit. `}
-                  <Button disabled={converting !== null} onClick={() => void convert(o)}>{`Convert to ${o.to}`}</Button>
-                </p>
-              ))}
+              {model.offers.map((o) => {
+                const c = convertible(o);
+                if (c.state === "pending") return null; // not known yet: no button that might then go away
+                const runs = `${o.values.length} run${o.values.length === 1 ? "" : "s"} recorded ${plot.y} in ${o.unit}`;
+                if (c.state === "yes") {
+                  return (
+                    <p key={o.unit} className={s.note}>
+                      {`${runs}, which differs from the main panel only by unit. `}
+                      <Button disabled={converting !== null} onClick={() => void convert(o)}>{`Convert to ${o.to}`}</Button>
+                    </p>
+                  );
+                }
+                return <p key={o.unit} className={s.note}>{c.state === "no" ? `${runs}, not ${o.to}, and it is not converted: ${c.reason}.` : `${runs}; whether it can be converted to ${o.to} could not be checked.`}</p>;
+              })}
               {model.conversion ? (
                 <p className={s.note}>
                   {`Converted to ${model.conversion.to}: ${model.conversion.from.map((f) => `${f.count} from ${f.unit} (x ${num(f.factor)})`).join(", ")}. Plain unit conversion, no equivalency; what each run recorded is kept in the CSV beside the converted values. `}
