@@ -3114,6 +3114,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/convert-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert declared run numbers between plain-dimension units for the cross-run plot; a conversion needing an equivalency is refused (owner listener only) */
+        post: operations["owner_s_convertRunValues_post_api_runs_convert_values"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/import": {
         parameters: {
             query?: never;
@@ -8703,6 +8720,37 @@ export interface components {
             id: number;
             carry: boolean;
         };
+        /** @description Numbers a run declared, with the unit each was recorded in, to be expressed in one target unit (cross-run plot, ADR 0062). Up to 5000 values. No dataset is involved. */
+        ConvertRunValuesRequest: {
+            /** @description The target unit, as the primary panel records it. */
+            to: string;
+            values: {
+                value: number;
+                /** @description Absent or null when the run states none: not zero. */
+                uncertainty?: number | null;
+                /** @description The unit the run recorded. */
+                from: string;
+            }[];
+        };
+        /** @description Plain dimensional conversion by astropy.units with no equivalency (no beam, frame, rest frequency or spectral axis is assumed). When refused is true nothing is converted and reason says why; otherwise results holds one entry per request value, in order. */
+        ConvertRunValuesResponse: {
+            refused: boolean;
+            reason?: string;
+            /** @description The recorded unit that could not be converted. */
+            from?: string;
+            /** @description The target unit in astropy's spelling. */
+            to?: string;
+            /** @description The multiplier from each recorded unit to the target. */
+            factors?: {
+                [key: string]: number;
+            };
+            results?: {
+                value: number;
+                uncertainty?: number | null;
+            }[];
+            method?: string;
+            note?: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -14224,6 +14272,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_convertRunValues_post_api_runs_convert_values: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertRunValuesRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConvertRunValuesResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

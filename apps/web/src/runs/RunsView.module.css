@@ -287,3 +287,15 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.convert {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.convert p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}

@@ -2,6 +2,8 @@ import type { Run } from "../api/runs";
 import { cellOf, FIXED_COLUMNS, metricOf, paramOf } from "./runTable";
 import type { ColumnId } from "./runTable";
 import type { RunContext } from "./runQuery";
+import { convertedOf } from "./runPlot";
+import type { Conversion } from "./runPlot";
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 
@@ -22,17 +24,23 @@ export type CsvOptions = {
   at: string;
   /** Runs added to the table although a word of the query asks about something they did not record. */
   notRecorded?: number;
+  /** The plot's unit conversion (ADR 0062, amendment): the converted numbers sit beside the recorded ones, which are never replaced. */
+  conversion?: Conversion | null;
 };
 
 const kindLabel = (id: ColumnId) => FIXED_COLUMNS.find((c) => c.id === id)?.label ?? id;
 
-/** The header names a column contributes; a result has its unit, uncertainty and the kind of uncertainty beside the value. */
-export function csvHeader(columns: ColumnId[]): string[] {
+/**
+ * The header names a column contributes; a result has its unit, uncertainty and the kind of uncertainty beside the value. The
+ * result a conversion applies to gets four more after them: the converted value, its unit and uncertainty, and the factor.
+ */
+export function csvHeader(columns: ColumnId[], conversion?: Conversion | null): string[] {
   const names = ["id", "name"];
   for (const c of columns) {
     if (c.startsWith("m:")) {
       const k = c.slice(2);
       names.push(k, `${k}_unit`, `${k}_uncertainty`, `${k}_uncertainty_kind`, `${k}_n`, `${k}_status`);
+      if (conversion && k.toLowerCase() === conversion.y.toLowerCase()) names.push(`${k}_converted`, `${k}_converted_unit`, `${k}_converted_uncertainty`, `${k}_conversion_factor`);
     } else names.push(c.startsWith("p:") ? c.slice(2) : kindLabel(c).toLowerCase());
   }
   return names;
@@ -50,7 +58,9 @@ export function runsCsv(runs: Run[], columns: ColumnId[], ctxOf: (r: Run) => Run
     `# exported: ${o.at}`,
     "# an empty cell means not recorded; a result's uncertainty_kind is empty when the run did not state it",
   ];
-  const rows = [csvHeader(columns).map(field).join(",")];
+  const conv = o.conversion && runs.some((r) => convertedOf(o.conversion, r)) ? o.conversion : null;
+  if (conv) head.push(`# ${conv.y}: runs recorded in another unit were converted to ${conv.to} (${conv.method}). The recorded value and unit stay in their own columns; the converted ones are in ${conv.y}_converted*, empty for a run that was not converted`);
+  const rows = [csvHeader(columns, conv).map(field).join(",")];
   for (const r of runs) {
     const ctx = ctxOf(r);
     const cells = [String(r.id), guard(r.name)];
@@ -59,6 +69,10 @@ export function runsCsv(runs: Run[], columns: ColumnId[], ctxOf: (r: Run) => Run
         const m = metricOf(r, c.slice(2));
         const have = m !== undefined && m.value !== null && Number.isFinite(m.value);
         cells.push(have ? String(m.value) : "", have ? guard(m.unit) : "", have && m.uncertainty !== null ? String(m.uncertainty) : "", have ? m.uncertaintyKind : "", have && m.n !== null ? String(m.n) : "", have ? m.status : "");
+        if (conv && c.slice(2).toLowerCase() === conv.y.toLowerCase()) {
+          const e = convertedOf(conv, r);
+          cells.push(e ? String(e.out.value) : "", e ? guard(conv.to) : "", e && e.out.uncertainty !== null ? String(e.out.uncertainty) : "", e ? String(e.factor) : "");
+        }
       } else if (c.startsWith("p:")) {
         cells.push(guard(paramOf(r, c.slice(2))?.value ?? ""));
       } else {
@@ -79,6 +93,8 @@ export type PlotProvenance = {
   x: string;
   by: string;
   exportedAt: string;
+  /** Present when runs recorded in another unit were converted into the main panel's. */
+  conversion?: { y: string; to: string; method: string; from: { unit: string; factor: number; count: number }[] };
 };
 
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

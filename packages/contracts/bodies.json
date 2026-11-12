@@ -14180,6 +14180,100 @@
      "type": "boolean"
     }
    }
+  },
+  "ConvertRunValuesRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "to",
+    "values"
+   ],
+   "description": "Numbers a run declared, with the unit each was recorded in, to be expressed in one target unit (cross-run plot, ADR 0062). Up to 5000 values. No dataset is involved.",
+   "properties": {
+    "to": {
+     "type": "string",
+     "description": "The target unit, as the primary panel records it."
+    },
+    "values": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "value",
+       "from"
+      ],
+      "properties": {
+       "value": {
+        "type": "number"
+       },
+       "uncertainty": {
+        "type": "number",
+        "nullable": true,
+        "description": "Absent or null when the run states none: not zero."
+       },
+       "from": {
+        "type": "string",
+        "description": "The unit the run recorded."
+       }
+      }
+     }
+    }
+   }
+  },
+  "ConvertRunValuesResponse": {
+   "type": "object",
+   "required": [
+    "refused"
+   ],
+   "description": "Plain dimensional conversion by astropy.units with no equivalency (no beam, frame, rest frequency or spectral axis is assumed). When refused is true nothing is converted and reason says why; otherwise results holds one entry per request value, in order.",
+   "properties": {
+    "refused": {
+     "type": "boolean"
+    },
+    "reason": {
+     "type": "string"
+    },
+    "from": {
+     "type": "string",
+     "description": "The recorded unit that could not be converted."
+    },
+    "to": {
+     "type": "string",
+     "description": "The target unit in astropy's spelling."
+    },
+    "factors": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "number"
+     },
+     "description": "The multiplier from each recorded unit to the target."
+    },
+    "results": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "value"
+      ],
+      "properties": {
+       "value": {
+        "type": "number"
+       },
+       "uncertainty": {
+        "type": "number",
+        "nullable": true
+       }
+      }
+     }
+    },
+    "method": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
   }
  },
  "operations": {
@@ -21230,6 +21324,41 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/RunViewDeleted"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/runs/convert-values": {
+   "summary": "Convert declared run numbers between plain-dimension units for the cross-run plot; a conversion needing an equivalency is refused (owner listener only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/ConvertRunValuesRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ConvertRunValuesResponse"
        }
       }
      }

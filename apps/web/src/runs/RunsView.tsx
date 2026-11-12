@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Download } from "lucide-react";
 import type { Run } from "../api/runs";
 import type { Job } from "../api/jobs";
 import { KIND } from "../api/metrics";
+import { convertRunValues } from "../api/runConvert";
 import { deleteRunView, listRunViews, saveRunView } from "../api/runViews";
 import type { RunView } from "../api/runViews";
 import { Button, Checkbox, FilterBox, Input, ScrollTable, Select } from "../ui";
@@ -12,6 +13,7 @@ import { evaluateRuns, queriedKeys } from "../catalog/runQuery";
 import { cellOf, columnChoices, contextIndex, FIXED_COLUMNS, NOT_RECORDED, sortRuns } from "../catalog/runTable";
 import type { ColumnId } from "../catalog/runTable";
 import { buildPlot, metricKeys, paramKeys } from "../catalog/runPlot";
+import type { ConvertOffer } from "../catalog/runPlot";
 import { download, pngWithText, resolveVars, runsCsv, svgWithProvenance } from "../catalog/runExport";
 import type { PlotProvenance } from "../catalog/runExport";
 import { RunsPlot } from "./RunsPlot";
@@ -133,7 +135,7 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
   // ---- plot
   const plot = state.plot;
   const xKey = plot.x;
-  const model = useMemo(() => (plot.y !== "" && xKey !== "" ? buildPlot(rows, plot.y, { kind: plot.xKind, key: xKey }, plot.by) : null), [rows, plot.y, plot.xKind, xKey, plot.by]);
+  const model = useMemo(() => (plot.y !== "" && xKey !== "" ? buildPlot(rows, plot.y, { kind: plot.xKind, key: xKey }, plot.by, state.conversion) : null), [rows, plot.y, plot.xKind, xKey, plot.by, state.conversion]);
   const mKeys = useMemo(() => metricKeys(runs), [runs]);
   const pKeys = useMemo(() => paramKeys(runs), [runs]);
   const drawn = model ? new Set(model.panels.flatMap((p) => p.series.flatMap((x) => x.points.map((q) => q.runId)))) : new Set<number>();
@@ -141,7 +143,7 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
   const svgRef = useRef<SVGSVGElement>(null);
   const [exportErr, setExportErr] = useState<string | null>(null);
 
-  const provenance = (): PlotProvenance => ({ tool: "Vesqira cross-run plot", query: state.query, runIds: [...drawn].sort((a, b) => a - b), y: plot.y, x: `${plot.xKind}:${xKey}`, by: plot.by, exportedAt: new Date().toISOString() });
+  const provenance = (): PlotProvenance => ({ tool: "Vesqira cross-run plot", query: state.query, runIds: [...drawn].sort((a, b) => a - b), y: plot.y, x: `${plot.xKind}:${xKey}`, by: plot.by, exportedAt: new Date().toISOString(), ...(model?.conversion ? { conversion: { y: plot.y, ...model.conversion } } : {}) });
   const svgText = () => {
     const el = svgRef.current;
     if (!el) return null;
@@ -182,7 +184,35 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
       setExportErr(`The browser could not draw the PNG (${e instanceof Error ? e.message : "no reason given"}); the SVG has the same figure.`);
     }
   }
-  const exportCsv = () => download("vesqira-runs.csv", new Blob([runsCsv(rows, columns, ctxOf, { query: state.query, total: active, at: new Date().toISOString(), notRecorded: state.showMissing ? hidden : 0 })], { type: "text/csv;charset=utf-8" }));
+  // the converted numbers always sit beside the recorded ones: the result's own column is added if the table does not show it
+  const csvColumns = state.conversion && !columns.some((c) => c.toLowerCase() === `m:${state.conversion!.y}`.toLowerCase()) ? [...columns, `m:${state.conversion.y}`] : columns;
+  const exportCsv = () => download("vesqira-runs.csv", new Blob([runsCsv(rows, csvColumns, ctxOf, { query: state.query, total: active, at: new Date().toISOString(), notRecorded: state.showMissing ? hidden : 0, conversion: model?.conversion ? state.conversion : null })], { type: "text/csv;charset=utf-8" }));
+
+  // ---- unit conversion of a panel that differs only by unit (the worker converts; the browser never does)
+  const [converting, setConverting] = useState<string | null>(null);
+  const [convertMsg, setConvertMsg] = useState<string | null>(null);
+  async function convert(offer: ConvertOffer) {
+    setConverting(offer.unit);
+    setConvertMsg(null);
+    try {
+      const res = await convertRunValues(offer.to, offer.values.map((v) => ({ value: v.value, uncertainty: v.uncertainty, from: offer.unit })));
+      if (res.refused || !res.results) {
+        setConvertMsg(`Not converted: ${res.reason ?? "the worker refused."}`);
+        return;
+      }
+      const prev = state.conversion && state.conversion.y === plot.y && state.conversion.to === offer.to ? state.conversion : null;
+      const entries = { ...(prev?.entries ?? {}) };
+      offer.values.forEach((v, i) => {
+        const out = res.results![i]!;
+        entries[v.runId] = { definition: offer.definition, unit: offer.unit, value: v.value, uncertainty: v.uncertainty, factor: res.factors?.[offer.unit] ?? NaN, out: { value: out.value, uncertainty: out.uncertainty ?? null } };
+      });
+      onState({ conversion: { y: plot.y, to: offer.to, method: res.method ?? "plain unit conversion", entries } });
+    } catch (e) {
+      setConvertMsg(e instanceof Error ? e.message : "The conversion could not be asked for.");
+    } finally {
+      setConverting(null);
+    }
+  }
 
   // ---- table helpers
   const toggleSort = (column: ColumnId) => onState({ sort: state.sort.column === column ? { column, dir: state.sort.dir === 1 ? -1 : 1 } : { column, dir: 1 } });
@@ -262,7 +292,7 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
 
         <section className={s.plotBox} aria-label="Results across runs">
           <div className={s.plotTools}>
-            <Select label="Result (y)" value={plot.y} onChange={(e) => onState({ plot: { ...plot, y: e.target.value } })}>
+            <Select label="Result (y)" value={plot.y} onChange={(e) => { setConvertMsg(null); onState({ plot: { ...plot, y: e.target.value }, conversion: null }); }}>
               <option value="">(choose a result)</option>
               {mKeys.map((k) => <option key={k} value={k}>{k}</option>)}
             </Select>
@@ -283,6 +313,23 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
             <Button disabled={!model || drawn.size === 0} onClick={() => void exportPng()}>Export plot (PNG)</Button>
           </div>
           {exportErr ? <p role="alert" className={s.err}>{exportErr}</p> : null}
+          {model && (model.offers.length > 0 || model.conversion) ? (
+            <div className={s.convert} role="group" aria-label="Unit conversion">
+              {model.offers.map((o) => (
+                <p key={o.unit} className={s.note}>
+                  {`${o.values.length} run${o.values.length === 1 ? "" : "s"} recorded ${plot.y} in ${o.unit}, which differs from the main panel only by unit. `}
+                  <Button disabled={converting !== null} onClick={() => void convert(o)}>{`Convert to ${o.to}`}</Button>
+                </p>
+              ))}
+              {model.conversion ? (
+                <p className={s.note}>
+                  {`Converted to ${model.conversion.to}: ${model.conversion.from.map((f) => `${f.count} from ${f.unit} (x ${num(f.factor)})`).join(", ")}. Plain unit conversion, no equivalency; what each run recorded is kept in the CSV beside the converted values. `}
+                  <Button variant="ghost" onClick={() => onState({ conversion: null })}>Undo conversion</Button>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {convertMsg ? <p role="alert" className={s.err}>{convertMsg}</p> : null}
           {!model ? <p className={s.note}>Choose a result and what to draw it against. The plot shows the runs in the table, not a ranking; nothing is called best.</p>
             : drawn.size === 0 ? <p className={s.note}>{`None of the ${rows.length} runs in the table records both ${plot.y} and ${xKey}, so there is nothing to draw.`}</p>
             : <RunsPlot ref={svgRef} model={model} selected={state.selected} onSelect={select} onOpen={onOpenRun} footer={footer} />}

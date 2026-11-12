@@ -2,7 +2,7 @@ import type { Run } from "../api/runs";
 import type { RunViewSpec } from "../api/runViews";
 import { DEFAULT_COLUMNS } from "../catalog/runTable";
 import type { ColumnId } from "../catalog/runTable";
-import type { Axis } from "../catalog/runPlot";
+import type { Axis, Conversion } from "../catalog/runPlot";
 import { queriedKeys } from "../catalog/runQuery";
 
 /** What the runs page remembers while the researcher goes to a run and back: the query, the columns, the sort, the plot and the selection. */
@@ -15,6 +15,8 @@ export type RunsViewState = {
   selected: number | null;
   /** Runs that did not record something the query asks about are listed after the others (they are not matches). */
   showMissing: boolean;
+  /** Units the researcher asked to have converted in the plot. Numbers, so it survives opening a run and Back but is never saved in a view. */
+  conversion: Conversion | null;
 };
 
 /** Newest import first: the order the runs were made in, which is how the owner remembers them. */
@@ -25,6 +27,7 @@ export const initialRunsView: RunsViewState = {
   plot: { y: "", x: "", xKind: "param", by: "" },
   selected: null,
   showMissing: false,
+  conversion: null,
 };
 
 export const specOf = (s: RunsViewState): RunViewSpec => ({
@@ -41,6 +44,7 @@ export const stateFrom = (spec: RunViewSpec, keep: Pick<RunsViewState, "selected
   plot: spec.plot ? { y: spec.plot.y, x: spec.plot.x, xKind: spec.plot.xKind === "metric" ? "metric" : "param", by: spec.plot.by } : initialRunsView.plot,
   selected: keep.selected,
   showMissing: false,
+  conversion: null,
 });
 
 /** The columns shown: the ones the researcher exposed, then one for each parameter or result the query asks about. */
