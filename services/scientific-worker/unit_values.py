@@ -16,6 +16,7 @@ from astropy import units as u
 from convert import parse_unit
 
 MAX_ITEMS = 5000
+MAX_PAIRS = 200
 
 
 class Bad(ValueError):
@@ -46,7 +47,43 @@ def _factor(un, target):
     return f
 
 
+def _judge(frm, target, to_text):
+    """(factor, None) when frm converts to target by plain scaling, else (None, the reason in words). The one place the rule lives:
+    a real conversion and a probe of which pairs would convert both come through here, so a probe cannot promise what a conversion refuses."""
+    un = _plain(frm)
+    if un is None:
+        return None, f"\"{frm}\" is not a unit this program can read, so it is not converted"
+    if not un.is_equivalent(target):    # no equivalencies: the dimensions must agree on their own
+        return None, (f"\"{frm}\" and \"{to_text}\" measure different things; converting "
+                      "between them needs a beam, a frame or a spectral axis that a run's number does not carry")
+    f = _factor(un, target)
+    if f is None:
+        return None, f"\"{frm}\" to \"{to_text}\" is not a plain scaling, so it is not converted"
+    return f, None
+
+
+def probe_pairs(req: dict) -> dict:
+    """Dry run: for each (from, to) pair, the factor or the refusal reason, with no values. A refusal is an answer."""
+    pairs = req.get("pairs")
+    if not isinstance(pairs, list) or not pairs or len(pairs) > MAX_PAIRS:
+        raise Bad(f"pairs must be a list of 1 to {MAX_PAIRS} items")
+    out = []
+    for p in pairs:
+        if not isinstance(p, dict) or not isinstance(p.get("from"), str) or not isinstance(p.get("to"), str):
+            raise Bad("each pair needs a from unit and a to unit")
+        frm, to_text = p["from"], p["to"]
+        target = _plain(to_text)
+        if target is None:
+            f, why = None, f"the target unit \"{to_text}\" is not a unit this program can read"
+        else:
+            f, why = _judge(frm, target, to_text)
+        out.append({"from": frm, "to": to_text, "refused": f is None, **({"reason": why} if f is None else {"factor": f})})
+    return {"refused": False, "pairs": out}
+
+
 def convert_values(req: dict) -> dict:
+    if "pairs" in req:
+        return probe_pairs(req)
     to_text, items = req.get("to"), req.get("values")
     if not isinstance(items, list) or not items or len(items) > MAX_ITEMS:
         raise Bad(f"values must be a list of 1 to {MAX_ITEMS} items")
@@ -66,18 +103,11 @@ def convert_values(req: dict) -> dict:
         if e is not None and e < 0:
             raise Bad("an uncertainty cannot be negative")
         if frm not in factors and frm not in refusals:
-            un = _plain(frm)
-            if un is None:
-                refusals[frm] = f"\"{frm}\" is not a unit this program can read, so it is not converted"
-            elif not un.is_equivalent(target):    # no equivalencies: the dimensions must agree on their own
-                refusals[frm] = (f"\"{frm}\" and \"{to_text}\" measure different things; converting "
-                                 "between them needs a beam, a frame or a spectral axis that a run's number does not carry")
+            f, why = _judge(frm, target, to_text)
+            if f is None:
+                refusals[frm] = why
             else:
-                f = _factor(un, target)
-                if f is None:
-                    refusals[frm] = f"\"{frm}\" to \"{to_text}\" is not a plain scaling, so it is not converted"
-                else:
-                    factors[frm] = f
+                factors[frm] = f
         if frm in refusals:
             return {"refused": True, "reason": refusals[frm], "from": frm}
         f = factors[frm]

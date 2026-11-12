@@ -80,6 +80,35 @@ class UnitValues(unittest.TestCase):
             self.assertFalse(head["ok"], vals)
             self.assertEqual(head["code"], "bad_request")
 
+    def probe(self, *pairs):
+        head, _ = self.c.ask(op="convert_values", pairs=[{"from": f, "to": t} for f, t in pairs])
+        self.assertTrue(head["ok"], head)
+        self.assertNotIn("results", head)
+        return head["pairs"]
+
+    def test_probe_answers_each_pair_alone_and_agrees_with_a_real_conversion(self):
+        pairs = (("deg", "rad"), ("K", "Jy/beam"), ("mK", "K"), ("furlongs", "K"), ("mag", "mag"), ("rad", "notaunit"))
+        got = self.probe(*pairs)
+        self.assertEqual([(g["from"], g["to"]) for g in got], list(pairs))        # one answer per pair, in order; a refusal does not hide the next
+        self.assertEqual([g["refused"] for g in got], [False, True, False, True, True, True])
+        self.assertAlmostEqual(got[0]["factor"], math.pi / 180, places=12)
+        self.assertAlmostEqual(got[2]["factor"], 1e-3, places=12)
+        self.assertIn("measure different things", got[1]["reason"])
+        self.assertIn("not a unit", got[3]["reason"])
+        self.assertIn("target unit", got[5]["reason"])
+        for g in got:                                                             # the probe never promises what a conversion refuses
+            self.assertEqual("factor" in g, "reason" not in g)
+            real = self.conv(g["to"], item(1, g["from"]))
+            self.assertEqual(real["refused"], g["refused"], g)
+            if g["refused"]:
+                self.assertEqual(real["reason"], g["reason"])
+
+    def test_malformed_probe(self):
+        for pairs in ([], [{"from": "deg"}], [{"from": 1, "to": "deg"}], [{"from": "deg", "to": "rad"}] * 201):
+            head, _ = self.c.ask(op="convert_values", pairs=pairs)
+            self.assertFalse(head["ok"], pairs)
+            self.assertEqual(head["code"], "bad_request")
+
 
 if __name__ == "__main__":
     unittest.main()

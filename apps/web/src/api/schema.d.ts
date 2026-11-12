@@ -3417,7 +3417,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Convert declared run numbers between plain-dimension units for the cross-run plot; a conversion needing an equivalency is refused (owner listener only) */
+        /** Convert declared run numbers between plain-dimension units for the cross-run plot, or dry-run which unit pairs would convert; a conversion needing an equivalency is refused (owner listener only) */
         post: operations["owner_s_convertRunValues_post_api_runs_convert_values"];
         delete?: never;
         options?: never;
@@ -9023,19 +9023,26 @@ export interface components {
             id: number;
             carry: boolean;
         };
-        /** @description Numbers a run declared, with the unit each was recorded in, to be expressed in one target unit (cross-run plot, ADR 0062). Up to 5000 values. No dataset is involved. */
+        /** @description Numbers a run declared, with the unit each was recorded in, to be expressed in one target unit (cross-run plot, ADR 0062). Up to 5000 values; give `to` and `values`. No dataset is involved. Alternatively give only `pairs` for a dry run: which (from, to) pairs would convert, answered without any value (up to 200; `to` and `values` must then be absent). */
         ConvertRunValuesRequest: {
             /** @description The target unit, as the primary panel records it. */
-            to: string;
-            values: {
+            to?: string;
+            values?: {
                 value: number;
                 /** @description Absent or null when the run states none: not zero. */
                 uncertainty?: number | null;
                 /** @description The unit the run recorded. */
                 from: string;
             }[];
+            /** @description Dry run. One answer per pair, in order; a refusal of one pair does not hide the others. */
+            pairs?: {
+                /** @description The unit a run recorded. */
+                from: string;
+                /** @description The unit to convert it to. */
+                to: string;
+            }[];
         };
-        /** @description Plain dimensional conversion by astropy.units with no equivalency (no beam, frame, rest frequency or spectral axis is assumed). When refused is true nothing is converted and reason says why; otherwise results holds one entry per request value, in order. */
+        /** @description Plain dimensional conversion by astropy.units with no equivalency (no beam, frame, rest frequency or spectral axis is assumed). When refused is true nothing is converted and reason says why; otherwise results holds one entry per request value, in order. For a dry run (`pairs` in the request), refused is false and pairs holds the answer for each pair; no numbers are converted. */
         ConvertRunValuesResponse: {
             refused: boolean;
             reason?: string;
@@ -9053,6 +9060,15 @@ export interface components {
             }[];
             method?: string;
             note?: string;
+            pairs?: {
+                from: string;
+                to: string;
+                refused: boolean;
+                /** @description In words, why this pair is not converted; present when refused. */
+                reason?: string;
+                /** @description The multiplier from the recorded unit to the target; present when not refused. */
+                factor?: number;
+            }[];
         };
         /** @description What was converted into the target unit of a cross-run plot: plain unit conversion by the worker, no equivalency. */
         CrossRunConversion: {

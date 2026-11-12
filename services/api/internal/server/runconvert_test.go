@@ -80,15 +80,44 @@ func TestRunValueConversionRoute(t *testing.T) {
 		}
 		check(200, "refused "+c.from, b)
 	}
+	// the dry run: one answer per pair, a refusal of one does not hide the next, no number is converted
+	r, b = postJSON(t, url, map[string]any{"pairs": []map[string]any{{"from": "deg", "to": "rad"}, {"from": "K", "to": "Jy/beam"}, {"from": "mK", "to": "K"}}})
+	check(200, "dry run", b)
+	var dry struct {
+		Refused bool
+		Results any
+		Pairs   []struct {
+			From, To, Reason string
+			Refused          bool
+			Factor           *float64
+		}
+	}
+	if r.StatusCode != 200 || json.Unmarshal(b, &dry) != nil || dry.Refused || dry.Results != nil || len(dry.Pairs) != 3 {
+		t.Fatalf("dry run: %d %s", r.StatusCode, b)
+	}
+	if p := dry.Pairs[0]; p.Refused || p.Factor == nil || math.Abs(*p.Factor-math.Pi/180) > 1e-12 {
+		t.Errorf("deg to rad: %+v", p)
+	}
+	if p := dry.Pairs[1]; !p.Refused || p.Reason == "" || p.Factor != nil || p.From != "K" || p.To != "Jy/beam" {
+		t.Errorf("K to Jy/beam must be refused with a reason: %+v", p)
+	}
+	if p := dry.Pairs[2]; p.Refused || p.Factor == nil || math.Abs(*p.Factor-1e-3) > 1e-12 {
+		t.Errorf("mK to K: %+v", p)
+	}
 	for label, body := range map[string]any{
-		"no values":       map[string]any{"to": "deg", "values": []any{}},
-		"no target":       map[string]any{"values": []map[string]any{{"value": 1, "from": "deg"}}},
-		"no from":         map[string]any{"to": "deg", "values": []map[string]any{{"value": 1}}},
-		"no value":        map[string]any{"to": "deg", "values": []map[string]any{{"from": "deg"}}}, // absent is not zero
-		"negative sigma":  map[string]any{"to": "deg", "values": []map[string]any{{"value": 1, "uncertainty": -1, "from": "deg"}}},
-		"unknown field":   map[string]any{"to": "deg", "values": []map[string]any{{"value": 1, "from": "deg"}}, "spectral": "radio"},
-		"unit too long":   map[string]any{"to": "deg", "values": []map[string]any{{"value": 1, "from": string(make([]byte, 100))}}},
-		"a flag as value": map[string]any{"to": "deg", "values": []map[string]any{{"value": "x", "from": "deg"}}},
+		"dry run, no pairs":     map[string]any{"pairs": []any{}},
+		"dry run with values":   map[string]any{"pairs": []map[string]any{{"from": "deg", "to": "rad"}}, "values": []map[string]any{{"value": 1, "from": "deg"}}},
+		"dry run with a target": map[string]any{"pairs": []map[string]any{{"from": "deg", "to": "rad"}}, "to": "deg"},
+		"dry run, half a pair":  map[string]any{"pairs": []map[string]any{{"from": "deg"}}},
+		"dry run, too many":     map[string]any{"pairs": make([]map[string]any, 201)},
+		"no values":             map[string]any{"to": "deg", "values": []any{}},
+		"no target":             map[string]any{"values": []map[string]any{{"value": 1, "from": "deg"}}},
+		"no from":               map[string]any{"to": "deg", "values": []map[string]any{{"value": 1}}},
+		"no value":              map[string]any{"to": "deg", "values": []map[string]any{{"from": "deg"}}}, // absent is not zero
+		"negative sigma":        map[string]any{"to": "deg", "values": []map[string]any{{"value": 1, "uncertainty": -1, "from": "deg"}}},
+		"unknown field":         map[string]any{"to": "deg", "values": []map[string]any{{"value": 1, "from": "deg"}}, "spectral": "radio"},
+		"unit too long":         map[string]any{"to": "deg", "values": []map[string]any{{"value": 1, "from": string(make([]byte, 100))}}},
+		"a flag as value":       map[string]any{"to": "deg", "values": []map[string]any{{"value": "x", "from": "deg"}}},
 	} {
 		if r, b := postJSON(t, url, body); r.StatusCode != http.StatusBadRequest {
 			t.Errorf("%s: %d %s", label, r.StatusCode, b)

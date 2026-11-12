@@ -20,12 +20,26 @@ import (
 const (
 	maxConvertValues = 5000
 	maxConvertUnit   = 40
+	maxConvertPairs  = 200
 )
 
 type convertItem struct {
 	Value       *float64 `json:"value"` // a pointer: a missing value must be refused, not read as 0
 	Uncertainty *float64 `json:"uncertainty"`
 	From        string   `json:"from"`
+}
+
+type convertPair struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type convertPairAnswer struct {
+	From    string   `json:"from"`
+	To      string   `json:"to"`
+	Refused bool     `json:"refused"`
+	Reason  string   `json:"reason,omitempty"`
+	Factor  *float64 `json:"factor,omitempty"`
 }
 
 type convertItemResult struct {
@@ -37,11 +51,24 @@ func (s *Server) convertRunValues(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		To     string        `json:"to"`
 		Values []convertItem `json:"values"`
+		// Pairs is the dry run: which (from, to) pairs would convert, answered without any value. It replaces to and values.
+		Pairs []convertPair `json:"pairs"`
 	}
 	if !body(w, r, 1<<20, &in, true) {
 		return
 	}
-	if in.To == "" || len(in.To) > maxConvertUnit || len(in.Values) == 0 || len(in.Values) > maxConvertValues {
+	if in.Pairs != nil {
+		if in.To != "" || in.Values != nil || len(in.Pairs) == 0 || len(in.Pairs) > maxConvertPairs {
+			fail(w, 400, "a dry run takes between 1 and 200 pairs and no target unit or values")
+			return
+		}
+		for _, p := range in.Pairs {
+			if p.From == "" || p.To == "" || len(p.From) > maxConvertUnit || len(p.To) > maxConvertUnit {
+				fail(w, 400, "each pair needs the unit a run recorded and the unit to convert to")
+				return
+			}
+		}
+	} else if in.To == "" || len(in.To) > maxConvertUnit || len(in.Values) == 0 || len(in.Values) > maxConvertValues {
 		fail(w, 400, "give a target unit and between 1 and 5000 values")
 		return
 	}
@@ -57,7 +84,11 @@ func (s *Server) convertRunValues(w http.ResponseWriter, r *http.Request) {
 		fail(w, 503, "the scientific worker is not configured")
 		return
 	}
-	rep, err := svc.Do(r.Context(), map[string]any{"op": "convert_values", "to": in.To, "values": in.Values})
+	req := map[string]any{"op": "convert_values", "to": in.To, "values": in.Values}
+	if in.Pairs != nil {
+		req = map[string]any{"op": "convert_values", "pairs": in.Pairs}
+	}
+	rep, err := svc.Do(r.Context(), req)
 	var re *worker.RequestError
 	switch {
 	case errors.As(err, &re):
@@ -78,12 +109,17 @@ func (s *Server) convertRunValues(w http.ResponseWriter, r *http.Request) {
 		Factors map[string]float64  `json:"factors"`
 		Results []convertItemResult `json:"results"`
 		Method  string              `json:"method"`
+		Pairs   []convertPairAnswer `json:"pairs"`
 	}
-	if json.Unmarshal(rep.Head, &out) != nil || (!out.Refused && len(out.Results) != len(in.Values)) {
+	if json.Unmarshal(rep.Head, &out) != nil || (in.Pairs == nil && !out.Refused && len(out.Results) != len(in.Values)) || (in.Pairs != nil && len(out.Pairs) != len(in.Pairs)) {
 		fail(w, 502, "the worker answered unexpectedly")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	if in.Pairs != nil {
+		writeJSON(w, 200, map[string]any{"refused": false, "pairs": out.Pairs})
+		return
+	}
 	if out.Refused { // a refusal is an answer, not an error: nothing is converted and the sentence says why
 		writeJSON(w, 200, map[string]any{"refused": true, "reason": out.Reason, "from": out.From})
 		return

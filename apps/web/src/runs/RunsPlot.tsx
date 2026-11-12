@@ -13,7 +13,8 @@ const W = 720;
 const L = 68;
 const R = 20;
 const PH = 190;
-const PANEL = 24 + PH + 48;
+const REASON_COLS = 100; // characters of a refusal reason per line
+const REASON_LINES = 3;
 // Five colours against six shapes, so a (colour, shape) pair repeats only after thirty categories.
 const COLOURS = ["var(--accent)", "var(--warn)", "var(--ok)", "var(--text)", "var(--text-2)"];
 const FONT = "var(--font-ui)";
@@ -47,8 +48,23 @@ const BAR_CAP: Record<BarKind, number> = { "": 0, standard_deviation: 4, standar
 
 type Geometry = { px: (x: number) => number; py: (y: number) => number; ticksY: number[]; ticksX: { v: number; label: string }[]; top: number };
 
+/** A refusal reason in lines that fit the drawing's width, at most REASON_LINES (the last one clipped with an ellipsis). */
+function reasonLines(text: string): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const w of text.split(/\s+/)) {
+    if (line !== "" && line.length + 1 + w.length > REASON_COLS) { lines.push(line); line = w; } else line = line === "" ? w : `${line} ${w}`;
+  }
+  if (line !== "") lines.push(line);
+  return lines.length > REASON_LINES ? [...lines.slice(0, REASON_LINES - 1), `${lines.slice(REASON_LINES - 1).join(" ").slice(0, REASON_COLS - 1)}…`] : lines;
+}
+const reasonCount = (p: PlotPanel) => (p.refusal ? reasonLines(p.refusal).length : 0);
+/** Room above each panel's axis: its title line, plus the lines of a refusal reason when a panel carries one. The same for every panel, so they stay aligned. */
+const headOf = (model: PlotModel) => 24 + Math.max(0, ...model.panels.map((p) => reasonCount(p) * 15));
+const panelOf = (model: PlotModel) => headOf(model) + PH + 48;
+
 function geometry(model: PlotModel, panel: PlotPanel, index: number): Geometry {
-  const top = index * PANEL + 24;
+  const top = index * panelOf(model) + headOf(model);
   const ys: number[] = [];
   // x is the same quantity in every panel, so they share one x range; only y differs by unit
   const xs: number[] = model.panels.flatMap((q) => q.series.flatMap((s) => s.points.map((p) => p.x)));
@@ -128,7 +144,7 @@ export const RunsPlot = forwardRef<SVGSVGElement, PlotProps>(function RunsPlot({
     return items;
   }, [model, hasCategories]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const legendTop = model.panels.length * PANEL + 8;
+  const legendTop = model.panels.length * panelOf(model) + 8;
   const rows = legendRows(legend, legendTop + 12);
   const notes: string[] = [];
   if (model.barsWithheld > 0) notes.push(`${model.barsWithheld} point${model.barsWithheld === 1 ? " has" : "s have"} an uncertainty whose kind is not stated: it is not drawn as a bar.`);
@@ -188,8 +204,9 @@ export const RunsPlot = forwardRef<SVGSVGElement, PlotProps>(function RunsPlot({
         const g = geo[i]!;
         return (
           <g key={panel.id} data-panel={panel.id}>
-            <text x={L} y={g.top - 8} fontSize={12.5} fontWeight={600} fontFamily={FONT} fill="var(--text)">{yTitle(panel)}</text>
-            {!panel.primary ? <text x={L + 8 + (yTitle(panel).length * 7.4)} y={g.top - 8} fontSize={12} fontFamily={FONT} fill="var(--warn)">not directly comparable: {panel.apart}</text> : null}
+            <text x={L} y={g.top - 8 - reasonCount(panel) * 15} fontSize={12.5} fontWeight={600} fontFamily={FONT} fill="var(--text)">{yTitle(panel)}</text>
+            {!panel.primary ? <text x={L + 8 + (yTitle(panel).length * 7.4)} y={g.top - 8 - reasonCount(panel) * 15} fontSize={12} fontFamily={FONT} fill="var(--warn)">not directly comparable: {panel.apart}</text> : null}
+            {!panel.primary && panel.refusal ? reasonLines(panel.refusal).map((ln, k, all) => <text key={k} data-reason x={L} y={g.top - 8 - (all.length - 1 - k) * 15} fontSize={11.5} fontFamily={FONT} fill="var(--text-2)">{ln}</text>) : null}
             {panel.primary && panel.convertedFrom.length > 0 ? <text x={L + 8 + (yTitle(panel).length * 7.4)} y={g.top - 8} fontSize={12} fontFamily={FONT} fill="var(--text-2)">includes runs converted from {panel.convertedFrom.join(", ")}</text> : null}
             {panel.primary && panel.definition === "" ? <text x={L + 8 + (yTitle(panel).length * 7.4)} y={g.top - 8} fontSize={12} fontFamily={FONT} fill="var(--warn)">definition not stated: not shown as comparable</text> : null}
             {g.ticksY.map((v) => (
