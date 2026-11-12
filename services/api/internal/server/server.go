@@ -117,7 +117,7 @@ type Server struct {
 	reach      reachability                                                                      // whether each host last answered (vpn.go)
 	pingHook   func(ctx context.Context, h hosts.Host, req map[string]any) (worker.Reply, error) // test stand-in for the host check
 
-	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
+	Chooser Chooser // opens the desktop file chooser; nil tries the portal, then zenity or kdialog
 
 	records      sync.WaitGroup // background run-record writes in flight (hostwrite.go)
 	recordLocks  sync.Map       // job id -> *sync.Mutex: one record write per job at a time

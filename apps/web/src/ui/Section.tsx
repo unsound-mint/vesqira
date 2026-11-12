@@ -5,8 +5,13 @@ import { Icon } from "./Icon";
 import s from "./Section.module.css";
 
 /** Collapsible inspector section: the progressive-disclosure unit (ADR 0005). */
-export function Section({ title, defaultOpen = true, meta, onToggle, children }: { title: string; defaultOpen?: boolean; meta?: ReactNode; onToggle?: (open: boolean) => void; children: ReactNode }) {
+export function Section({ title, defaultOpen = true, openSignal, meta, onToggle, children }: { title: string; defaultOpen?: boolean; /** Opens the section each time this value changes (not on first render). */ openSignal?: number; meta?: ReactNode; onToggle?: (open: boolean) => void; children: ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [seen, setSeen] = useState(openSignal);
+  if (openSignal !== seen) { // adjusting state while rendering: the documented way to react to a changed prop
+    setSeen(openSignal);
+    setOpen(true);
+  }
   const id = useId();
   return (
     <section className={s.section}>

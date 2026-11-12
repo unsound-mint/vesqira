@@ -1,5 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { offerHost } from "../ui";
 import { HostsPanel } from "./HostsPanel";
 import type { Host } from "../api/hosts";
 
@@ -80,6 +81,39 @@ describe("hosts panel", () => {
     await user.click(add);
     await waitFor(() => expect(changed).toBe(1));
     expect(JSON.parse(String(calls.find((c) => c.init?.method === "POST")!.init!.body))).toEqual({ name: "Second laptop", dest: "laptop2", roots: ["/home/u/cubes"] });
+  });
+
+  it("fills the form from a file-manager mount offered by a path field, and adds nothing until the person confirms", async () => {
+    const calls = mockFetch({
+      "/api/hosts/ssh-config": () => ({ body: { found: true, hosts: [{ alias: "cluster" }] } }),
+      "/api/hosts/browse": () => ({ body: { path: "/home/u", entries: [] } }),
+    });
+    render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
+    await screen.findByRole("combobox", { name: "SSH destination" });
+    act(() => offerHost({ host: "login.hpc.example", user: "me", port: "2222" }));
+    expect(await screen.findByRole("textbox", { name: "SSH destination" })).toHaveValue("me@login.hpc.example");
+    expect(screen.getByLabelText("Host name")).toHaveValue("login.hpc.example");
+    expect(screen.getByRole("status")).toHaveTextContent(/port 2222/);
+    expect(screen.getByRole("button", { name: "Add host" })).toBeDisabled(); // a source folder is still needed
+    expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
+    expect(screen.queryByLabelText(/password|key/i)).toBeNull();
+  });
+
+  it("prefers the ssh config alias that stands for the mounted host", async () => {
+    mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: true, hosts: [{ alias: "cluster", hostName: "Login.HPC.example", user: "me" }] } }) });
+    render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
+    await screen.findByRole("combobox", { name: "SSH destination" });
+    act(() => offerHost({ host: "login.hpc.example", user: "me", port: "2222" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "SSH destination" })).toHaveValue("cluster"));
+    expect(screen.getByLabelText("Host name")).toHaveValue("cluster");
+  });
+
+  it("does not put an address that cannot be an ssh destination in the form", async () => {
+    mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: false, hosts: [] } }) });
+    render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
+    act(() => offerHost({ host: "fe80::1", user: "me" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/cannot be written as an ssh destination/);
+    expect(screen.getByLabelText("SSH destination")).toHaveValue("");
   });
 
   it("checks the connection, browses, and registers a FITS file that stays on the host", async () => {

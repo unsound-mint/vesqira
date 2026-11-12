@@ -31,6 +31,9 @@ type completion struct {
 	Base      string          `json:"base"`
 	Entries   []completeEntry `json:"entries"`
 	Truncated bool            `json:"truncated"`
+	// GVFS: the folder is inside a file-manager mount of a host that is not registered, so the page can offer to add it.
+	// Taken from the mount folder's name only; nothing is read through the mount.
+	GVFS *gvfsInfo `json:"gvfs,omitempty"`
 }
 
 type completeEntry struct {
@@ -99,6 +102,9 @@ func (s *Server) completeLocal(w http.ResponseWriter, r *http.Request) {
 		// A folder that is not there (a half-typed path) or not readable is an empty answer, not an error: the
 		// field keeps working, and the answer does not say which of the two it was.
 		out = completion{Base: dir, Entries: []completeEntry{}}
+	}
+	if _, _, g := s.gvfsHost(out.Base); g != nil {
+		out.GVFS = g
 	}
 	writeJSON(w, 200, out)
 }
