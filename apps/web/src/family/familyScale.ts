@@ -1,7 +1,7 @@
 import type { PlaneStats } from "../api/planes";
 
 /**
- * The display limits shared by maps that are compared (ADR 0069). One scale for every member, from the widest 1st to 99th percentile of
+ * The display limits shared by maps that are compared (ADR 0070). One scale for every member, from the widest 1st to 99th percentile of
  * their finite values, so equal colours mean equal values across panels. null when no member has a finite value.
  */
 export function sharedRange(stats: PlaneStats[]): [number, number] | null {

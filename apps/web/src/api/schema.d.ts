@@ -167,7 +167,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Families of derived datasets that can be compared (ADR 0069): results of one source, made by the same operation, whose options are equal but one, read from the derived records */
+        /** Families of derived datasets that can be compared (ADR 0070): results of one source, made by the same operation, whose options are equal but one, read from the derived records */
         get: operations["owner_s_familyCandidates_get_api_analysis_families"];
         put?: never;
         post?: never;
@@ -186,7 +186,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Compare a family of maps on one grid with a chosen reference and register the comparison maps and the spread map: scalar maps by difference and a stated spread, axial orientation maps by the axial difference in [0, 90] degrees, AM and a circular spread, never a plain difference (ADR 0069) */
+        /** Compare a family of maps on one grid with a chosen reference and register the comparison maps and the spread map: scalar maps by difference and a stated spread, axial orientation maps by the axial difference in [0, 90] degrees, AM and a circular spread, never a plain difference (ADR 0070) */
         post: operations["owner_s_familyAgreement_post_api_analysis_family"];
         delete?: never;
         options?: never;

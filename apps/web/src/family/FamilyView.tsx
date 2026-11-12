@@ -24,7 +24,7 @@ export type FamilyPreset = { nonce: number; ids: number[]; labels?: Record<numbe
 const MAX = 12;
 const num = (v: number | null | undefined, digits = 4) => (v === null || v === undefined ? EM : String(Number(v.toPrecision(digits))));
 
-/** Maps that differ in one parameter, side by side on one scale, with how well they agree (ADR 0069). Nothing is resampled: maps on different grids are refused. */
+/** Maps that differ in one parameter, side by side on one scale, with how well they agree (ADR 0070). Nothing is resampled: maps on different grids are refused. */
 export function FamilyView({ datasets, preset }: { datasets: Dataset[]; preset: FamilyPreset | null }) {
   const images = useMemo(() => datasets.filter(isImage).filter((d) => !d.archived), [datasets]);
   const [ids, setIds] = useState<number[]>([]);

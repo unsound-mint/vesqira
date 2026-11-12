@@ -4,7 +4,7 @@ import type { Dataset } from "./catalog";
 
 type Schemas = components["schemas"];
 
-/** Maps that differ in one parameter, compared with a chosen reference (ADR 0069). */
+/** Maps that differ in one parameter, compared with a chosen reference (ADR 0070). */
 export type FamilyRequest = Schemas["FamilyRequest"];
 export type FamilySummary = Schemas["FamilySummary"];
 export type FamilyMemberStats = Schemas["FamilyMemberStats"];

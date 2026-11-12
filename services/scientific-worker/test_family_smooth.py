@@ -1,4 +1,4 @@
-"""Spectral smoothing and the family agreement (ADR 0069), checked against answers worked out in the tests: a Gaussian line broadened by a
+"""Spectral smoothing and the family agreement (ADR 0070), checked against answers worked out in the tests: a Gaussian line broadened by a
 known kernel (widths add in quadrature, the peak falls by the width ratio), a delta spike giving the kernel back, NaN handling, an
 uncalibrated spectral axis, and the 1 and 179 degree axial case."""
 import json

@@ -68,7 +68,7 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [ ] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps)
 - [ ] 5: run templates as data, pinned to a repository and commit
 
-## Spectral smoothing and the family view (issue 133, ADR 0069, awaiting owner review)
+## Spectral smoothing and the family view (issue 133, ADR 0070, awaiting owner review)
 
 - [x] Spectral smoothing of a cube as a derived operation: boxcar, Gaussian or Hanning, width in channels (in the spectral unit only on a calibrated axis), kernel and minimum valid weight recorded, NaN kept, no in-place change, optional recorded decimation, the effective resolution stated only from a declared native response.
 - [x] Family view: maps that differ in one parameter side by side on a shared scale, each compared with a chosen reference (scalar difference and spread, or axial difference and AM for orientation maps), refused with a sentence when the grids are not shared. A family is recognised from derived records and can be picked by hand.

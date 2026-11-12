@@ -172,7 +172,7 @@ func (s *Server) corrArgs(ws workspace.ID, host int64, args []string) (opt strin
 		switch args[i] {
 		case "--input", "--reference", "--third", "--weights", "--ref-weights":
 			read(strings.TrimPrefix(args[i], "--"), args[i+1])
-		case "--family": // the maps of a family agreement (ADR 0069), a JSON list of {path, ...}
+		case "--family": // the maps of a family agreement (ADR 0070), a JSON list of {path, ...}
 			var fam []struct {
 				Path string `json:"path"`
 			}

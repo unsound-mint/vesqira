@@ -1,4 +1,4 @@
-# ADR 0069: Spectral smoothing and the family view
+# ADR 0070: Spectral smoothing and the family view
 
 - Status: implemented, awaiting owner review
 - Date: 2026-11-13

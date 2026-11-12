@@ -20,7 +20,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 )
 
-// Family agreement (ADR 0069): maps that differ in one parameter, compared with a chosen reference and with each other. The worker
+// Family agreement (ADR 0070): maps that differ in one parameter, compared with a chosen reference and with each other. The worker
 // (analysis.py family_agreement, family.py) computes; this file checks that the maps can be compared at all (one kind, one grid,
 // angles stated the same way), runs it on this computer and registers its maps like any analysis result.
 

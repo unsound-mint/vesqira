@@ -1,4 +1,4 @@
-"""Spectral smoothing of a cube along its spectral axis, as a derived operation (ADR 0069).
+"""Spectral smoothing of a cube along its spectral axis, as a derived operation (ADR 0070).
 
 The arithmetic lives here; analysis.py parses the request, opens the cube, and writes the result with the usual header and
 provenance. Nothing here reads a file.

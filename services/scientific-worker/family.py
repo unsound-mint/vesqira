@@ -1,4 +1,4 @@
-"""Agreement of a family of maps on one grid (ADR 0069): maps that differ in one parameter, compared with a chosen reference.
+"""Agreement of a family of maps on one grid (ADR 0070): maps that differ in one parameter, compared with a chosen reference.
 
 Pure arithmetic on stacks of planes (member, row, column) with NaN for no value; analysis.py opens the files and writes the results.
 

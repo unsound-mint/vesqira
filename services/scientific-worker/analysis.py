@@ -951,7 +951,7 @@ def simple_spectral_grid(h, i: int) -> bool:
 
 
 def op_smooth_spectral(args) -> dict:
-    """Smooth a cube along its spectral axis with a boxcar, Gaussian or Hanning kernel (ADR 0069), as a new file.
+    """Smooth a cube along its spectral axis with a boxcar, Gaussian or Hanning kernel (ADR 0070), as a new file.
 
     The kernel width is stated in channels and, when the spectral axis is calibrated, in its unit; with an uncalibrated axis the
     result says channels only. Missing samples stay missing (normalised convolution over the finite samples, with a minimum valid
@@ -1058,7 +1058,7 @@ def _beam_arcsec(h) -> list | None:
 
 
 def op_family_agreement(args) -> dict:
-    """Agreement of a family of maps on one grid (ADR 0069): each member against a chosen reference, and the spread across the members.
+    """Agreement of a family of maps on one grid (ADR 0070): each member against a chosen reference, and the spread across the members.
 
     --family is a JSON list of {path, label, axial_unit (deg or rad, for orientation maps), declared_unit, channel}. All members are scalar
     maps or all are declared axial orientation maps; the API has checked that they share a grid, and the shape is checked again here.
@@ -1380,7 +1380,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--sigma-out")            # healpix_sample: where the companion sigma_P map goes
     ap.add_argument("--window")               # subset: the window as a JSON object (subset.py)
     ap.add_argument("--note")                 # subset: one line of provenance for the file's HISTORY
-    ap.add_argument("--kernel", choices=["boxcar", "gaussian", "hanning"])   # smooth_spectral (ADR 0069)
+    ap.add_argument("--kernel", choices=["boxcar", "gaussian", "hanning"])   # smooth_spectral (ADR 0070)
     ap.add_argument("--width", type=float)                       # the kernel width in channels (boxcar, Hanning: odd; Gaussian: FWHM)
     ap.add_argument("--min-valid-weight", type=float)            # fraction of the kernel that must fall on finite samples (default 0.5)
     ap.add_argument("--decimate", type=int)                      # keep every k-th channel, only when chosen

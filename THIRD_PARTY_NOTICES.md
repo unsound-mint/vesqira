@@ -432,7 +432,7 @@ The scientific worker (`services/scientific-worker`) imports these packages at r
 
 ### scipy (BSD-3-Clause)
 
-`scipy` (1.18.0). BSD-3-Clause License, Copyright (c) 2001-2002 Enthought, Inc., 2003 SciPy Developers. Used for the spectral smoothing convolution (ADR 0069). Its wheel also carries licence texts for bundled components (`*.dist-info/licenses/`).
+`scipy` (1.18.0). BSD-3-Clause License, Copyright (c) 2001-2002 Enthought, Inc., 2003 SciPy Developers. Used for the spectral smoothing convolution (ADR 0070). Its wheel also carries licence texts for bundled components (`*.dist-info/licenses/`).
 
 ## Tauri (desktop shell, MIT OR Apache-2.0)
 

@@ -18,7 +18,7 @@ import (
 )
 
 // Spectral smoothing is a derived operation with its kernel in the record, a declared orientation map is refused it, and a family of
-// maps is compared only when they share a grid and are all scalar or all axial (ADR 0069).
+// maps is compared only when they share a grid and are all scalar or all axial (ADR 0070).
 func TestSpectralSmoothingAndTheFamilyAgreement(t *testing.T) {
 	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
