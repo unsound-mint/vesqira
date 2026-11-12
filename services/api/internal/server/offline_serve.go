@@ -303,7 +303,7 @@ func ranges(ch []int) string {
 // afterFailure is ask's second chance when a live read of a file on a host failed on the network between the stat and the read:
 // the copy made from exactly the signature just verified answers, if there is one. Anything else keeps its original failure.
 func (s *Server) afterFailure(w http.ResponseWriter, r *http.Request, k cacheKey) (worker.Reply, bool) {
-	if s.Offline == nil || k.host == 0 || k.op == "" || !s.Offline.Has(k.id) {
+	if s.Offline == nil || k.host == 0 || k.op == "" || k.win != "" || !s.Offline.Has(k.id) { // a window is never answered from a copy of the file (ADR 0063)
 		return worker.Reply{}, false
 	}
 	d, err := s.Store.Get(k.id)

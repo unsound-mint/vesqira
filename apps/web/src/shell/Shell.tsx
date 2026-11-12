@@ -549,7 +549,7 @@ export function Shell() {
               </Section>
             </>
           ) : null}
-          {cat.selectedCatalog ? null : !actDs ? <p className={s.empty}>Nothing selected. Choose a dataset in the explorer.</p> : <>
+          {cat.selectedCatalog ? null : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
           {compareDs && cat.selectedImage ? (
             <Section title="Comparison">
               <CompareInspector a={cat.selectedImage} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />

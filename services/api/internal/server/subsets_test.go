@@ -340,8 +340,16 @@ func TestSubsetDefinitionIsCheckedAgainstTheFile(t *testing.T) {
 	if code, _, b := e.create(src.ID, map[string]any{"name": "x", "reason": "a line", "regionId": line.ID}); code != 422 || !strings.Contains(string(b), "no area") {
 		t.Errorf("a line: %d %s", code, b)
 	}
-	if e.audit == nil {
-		t.Fatal("audit")
+	// what a reviewer may see of the file written from it names the region, not its id
+	code, mb := e.call("POST", fmt.Sprintf("/api/subsets/%d/materialise", sub.ID), map[string]any{})
+	var made subDoc
+	json.Unmarshal(mb, &made)
+	if code != 201 {
+		t.Fatalf("materialise: %d %s", code, mb)
+	}
+	_, rb := e.get(fmt.Sprintf("/api/datasets/%d/derived", made.Dataset.ID))
+	if !strings.Contains(string(rb), `"region":{"name":"Peak"}`) || strings.Contains(string(rb), fmt.Sprintf(`"id":%d`, rg.ID)) {
+		t.Errorf("the record of the written file: %s", rb)
 	}
 }
 
@@ -599,6 +607,16 @@ func TestSubsetRefusesWhatItCannotAnswerForTheWindow(t *testing.T) {
 	}
 	if code, _ := e.get(fmt.Sprintf("/api/subsets/%d/plane?channel=0", vs.ID)); code != 200 {
 		t.Errorf("a plane of an orientation subset: %d", code)
+	}
+	// the file written from it is the same kind of map, said by the operation, so it is not averaged either
+	code, mb := e.call("POST", fmt.Sprintf("/api/subsets/%d/materialise", vs.ID), map[string]any{})
+	var made subDoc
+	json.Unmarshal(mb, &made)
+	if code != 201 || made.Dataset.Interpretation == nil || made.Dataset.Interpretation.Kind != "axial_orientation" || made.Dataset.Interpretation.Unit != "deg" || made.Dataset.Interpretation.DeclaredBy == "user" {
+		t.Errorf("a file written from an orientation subset: %d %s", code, mb)
+	}
+	if code, b := e.get(fmt.Sprintf("/api/datasets/%d/spectrum?shape=rect&x0=0&y0=0&x1=1&y1=1", made.Dataset.ID)); code != 409 {
+		t.Errorf("the written orientation file was averaged: %d %s", code, b)
 	}
 	if code, b := e.get("/api/subsets/999/view"); code != 404 {
 		t.Errorf("unknown subset: %d %s", code, b)

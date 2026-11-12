@@ -190,6 +190,15 @@ class Subset(unittest.TestCase):
         rep = c.win_report()
         self.assertEqual((rep["c0"], rep["c1"]), (12, 22))
 
+    def test_a_world_interval_is_resolved_against_the_corrections_in_force(self):
+        window = {"world": {"lo": -20.0, "hi": -10.0, "unit": "km/s"}}
+        plain = pw.Cube(str(self.f["hi_cube.fits"]), None, window).win_report()
+        self.assertEqual((plain["c0"], plain["c1"]), (12, 22))
+        state = {"hash": "abcdef0123456789", "bunit": None, "wcs": {"CRVAL3": -30000.0}}       # every channel centre 2 km/s higher
+        shifted = pw.Cube(str(self.f["hi_cube.fits"]), state, window).win_report()
+        self.assertEqual((shifted["c0"], shifted["c1"]), (10, 20))                                # the same interval, other channels
+        self.assertEqual(shifted["world"]["first_centre"], -20000.0)
+
     def test_a_world_interval_is_refused_when_it_would_need_an_assumption(self):
         cases = [
             ("hi_cube.fits", {"lo": -20, "hi": -5, "unit": "km/s", "frame": "BARY"}, "declares LSRK"),                 # another frame: never converted
