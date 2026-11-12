@@ -12,7 +12,8 @@ import "database/sql"
 // pushed_references are the datasets a figure or a run was made from, as references: name and size, the fingerprints the
 // instance sent in the push-only identity field (never part of the document, never forwarded to a review link or the publish
 // server), and what the server found among its own datasets of the workspace (ADR 0053 tiers: verified, probable, none).
-// The pushed package creates the tables for a fresh install and the migration for an upgraded one, from this text.
+// pushed_items.matched_marker says what the workspace's dataset locations looked like when the item was last matched, so a read
+// matches again only after they changed. The pushed package creates the tables for a fresh install and the migration for an upgraded one, from this text.
 const PushedTables = `CREATE TABLE IF NOT EXISTS pushed_items(
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	workspace_id INTEGER NOT NULL,
@@ -30,6 +31,7 @@ const PushedTables = `CREATE TABLE IF NOT EXISTS pushed_items(
 	superseded_at INTEGER,
 	archived_at INTEGER,
 	archived_by TEXT,
+	matched_marker TEXT NOT NULL DEFAULT '',
 	UNIQUE(workspace_id, hash));
 CREATE INDEX IF NOT EXISTS pushed_items_lineage ON pushed_items(workspace_id, created_by, instance, kind, origin);
 CREATE INDEX IF NOT EXISTS pushed_items_day ON pushed_items(created_by, pushed_at);

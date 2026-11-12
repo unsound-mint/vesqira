@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/identity"
@@ -87,6 +88,8 @@ type Store struct {
 	db  *sql.DB
 	dir string
 	Now func() time.Time
+
+	rematches atomic.Int64 // matches run by Rematch (tests check a read with nothing changed writes nothing)
 }
 
 // Open creates the tables when they are missing (a fresh catalog; schema 32 adds them to an upgraded one). dir holds the pictures,
@@ -627,14 +630,39 @@ type Match struct {
 	DatasetID int64
 }
 
-// Rematch compares the item's references with the workspace's datasets again (a server dataset may have gained or changed a
-// fingerprint since) and returns the references whose tier changed, for the audit log.
+// queryer is a connection or a transaction.
+type queryer interface {
+	QueryRow(string, ...any) *sql.Row
+}
+
+// datasetsMarker says what the workspace's dataset locations look like, cheaply: how many there are, the newest, and the sum of
+// the times their fingerprints were taken (a location added or removed, or a fingerprint computed again, changes it).
+func datasetsMarker(q queryer, ws workspace.ID) string {
+	var n, maxID, sampled, full sql.NullInt64
+	_ = q.QueryRow(`SELECT COUNT(*), MAX(id), SUM(sampled_at), SUM(full_at) FROM dataset_locations WHERE workspace_id=?`, ws).Scan(&n, &maxID, &sampled, &full)
+	return fmt.Sprintf("%d:%d:%d:%d", n.Int64, maxID.Int64, sampled.Int64, full.Int64)
+}
+
+// Rematch compares the item's references with the workspace's datasets again when they changed since the item was last matched
+// (a server dataset may have gained or changed a fingerprint) and returns the references whose tier changed, for the audit log.
+// With nothing changed it is two reads and no write.
 func (s *Store) Rematch(ws workspace.ID, id int64) ([]Match, error) {
+	var have string
+	if err := s.db.QueryRow(`SELECT matched_marker FROM pushed_items WHERE workspace_id=? AND id=?`, ws, id).Scan(&have); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if have == datasetsMarker(s.db, ws) {
+		return nil, nil
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
+	s.rematches.Add(1)
 	ch, err := rematch(tx, ws, id, s.now().Unix())
 	if err != nil {
 		return nil, err
@@ -718,6 +746,9 @@ func rematch(tx *sql.Tx, ws workspace.ID, id int64, now int64) ([]Match, error) 
 			return nil, err
 		}
 		changed = append(changed, Match{N: r.n, Name: r.name, Match: best, DatasetID: bestDS})
+	}
+	if _, err := tx.Exec(`UPDATE pushed_items SET matched_marker=? WHERE workspace_id=? AND id=?`, datasetsMarker(tx, ws), ws, id); err != nil {
+		return nil, err
 	}
 	return changed, nil
 }

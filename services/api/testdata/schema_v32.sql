@@ -233,7 +233,7 @@ CREATE TABLE pushed_history( id INTEGER PRIMARY KEY AUTOINCREMENT, item_id INTEG
 CREATE TABLE pushed_item_assets( item_id INTEGER NOT NULL REFERENCES pushed_items(id) ON DELETE CASCADE, sha TEXT NOT NULL, PRIMARY KEY(item_id, sha));
 
 -- table pushed_items
-CREATE TABLE pushed_items( id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id INTEGER NOT NULL, created_by TEXT NOT NULL, token_id TEXT NOT NULL, instance TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('figure','run','board','report')), origin TEXT NOT NULL, hash TEXT NOT NULL, title TEXT NOT NULL, doc TEXT NOT NULL, bytes INTEGER NOT NULL, pushed_at INTEGER NOT NULL, superseded_by INTEGER, superseded_at INTEGER, archived_at INTEGER, archived_by TEXT, UNIQUE(workspace_id, hash));
+CREATE TABLE pushed_items( id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id INTEGER NOT NULL, created_by TEXT NOT NULL, token_id TEXT NOT NULL, instance TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('figure','run','board','report')), origin TEXT NOT NULL, hash TEXT NOT NULL, title TEXT NOT NULL, doc TEXT NOT NULL, bytes INTEGER NOT NULL, pushed_at INTEGER NOT NULL, superseded_by INTEGER, superseded_at INTEGER, archived_at INTEGER, archived_by TEXT, matched_marker TEXT NOT NULL DEFAULT '', UNIQUE(workspace_id, hash));
 
 -- table pushed_references
 CREATE TABLE pushed_references( item_id INTEGER NOT NULL REFERENCES pushed_items(id) ON DELETE CASCADE, n INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, size_bytes INTEGER NOT NULL, sampled_fp TEXT NOT NULL DEFAULT '', full_sha256 TEXT NOT NULL DEFAULT '', match TEXT NOT NULL DEFAULT 'none' CHECK(match IN ('verified','probable','none')), match_dataset_id INTEGER, matched_at INTEGER, PRIMARY KEY(item_id, n));

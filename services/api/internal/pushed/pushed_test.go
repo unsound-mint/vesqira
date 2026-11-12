@@ -25,7 +25,8 @@ func open(t *testing.T) *Store {
 	// the tables a match reads, as the catalog has them
 	for _, q := range []string{
 		`CREATE TABLE datasets(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, workspace_id INTEGER NOT NULL)`,
-		`CREATE TABLE dataset_locations(id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER, size_bytes INTEGER, sampled_fp TEXT NOT NULL DEFAULT '', full_sha256 TEXT NOT NULL DEFAULT '', workspace_id INTEGER NOT NULL)`,
+		`CREATE TABLE dataset_locations(id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER, size_bytes INTEGER, sampled_fp TEXT NOT NULL DEFAULT '', full_sha256 TEXT NOT NULL DEFAULT '',
+			sampled_at INTEGER NOT NULL DEFAULT 0, full_at INTEGER NOT NULL DEFAULT 0, workspace_id INTEGER NOT NULL)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatal(err)

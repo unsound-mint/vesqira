@@ -957,7 +957,7 @@ func TestPushedReferencesMatchByFingerprintOnly(t *testing.T) {
 	if got := read(); got[2].Match != "none" {
 		t.Errorf("another member's replay changed the evidence: %+v", got[2])
 	}
-	if _, err := db.Exec(`UPDATE dataset_locations SET full_sha256=? WHERE dataset_id=?`, h("fb"), probable); err != nil {
+	if _, err := db.Exec(`UPDATE dataset_locations SET full_sha256=?, full_at=1800000100 WHERE dataset_id=?`, h("fb"), probable); err != nil { // full_at as the fingerprint route records it
 		t.Fatal(err)
 	}
 	if got := read(); got[1].Match != "verified" || got[1].DatasetID != probable {
