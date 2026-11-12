@@ -85,16 +85,41 @@ func TestPutIsIdempotentAndSupersedesOnlyItsOwnLineage(t *testing.T) {
 	if err != nil || r3.Superseded != a.Hash {
 		t.Fatalf("B does not supersede A: %+v %v", r3, err)
 	}
+	// A again: the same row becomes the head again (nothing duplicated), B is superseded by it, and the history keeps the order of
+	// the pushes: A, B, A
 	r4, err := s.Put(ws, ada, a, nil)
-	if err != nil || r4.Stored || r4.SupersededBy != b.Hash {
+	if err != nil || r4.Stored || r4.ID != r1.ID || r4.Superseded != b.Hash || r4.SupersededBy != "" || s.Count(ws, a.Hash) != 1 {
 		t.Fatalf("A again: %+v %v", r4, err)
 	}
-	if heads, _ := s.Heads(ws, "ada", ada.Instance); len(heads) != 1 || heads[0].Hash != b.Hash {
-		t.Fatalf("A was made the head again: %+v", heads)
+	if heads, _ := s.Heads(ws, "ada", ada.Instance); len(heads) != 1 || heads[0].Hash != a.Hash {
+		t.Fatalf("A is not the head again: %+v", heads)
 	}
 	d, err := s.Get(ws, r1.ID)
-	if err != nil || len(d.Lineage) != 2 || d.SupersededBy != r3.ID {
+	if err != nil || d.SupersededBy != 0 || len(d.Lineage) != 3 {
 		t.Fatalf("lineage: %+v %v", d, err)
+	}
+	if got := []string{d.Lineage[0].Hash, d.Lineage[1].Hash, d.Lineage[2].Hash}; got[0] != a.Hash || got[1] != b.Hash || got[2] != a.Hash {
+		t.Fatalf("the history is not A, B, A: %v", got)
+	}
+	if db, _ := s.Get(ws, r3.ID); db.SupersededBy != r1.ID {
+		t.Fatalf("B is not superseded by A: %+v", db.Summary)
+	}
+	// the same A once more changes nothing: it is the head already
+	if r5, _ := s.Put(ws, ada, a, nil); r5.Superseded != "" {
+		t.Fatalf("pushing the head again moved the lineage: %+v", r5)
+	}
+	if d, _ := s.Get(ws, r1.ID); len(d.Lineage) != 3 {
+		t.Fatalf("pushing the head again added history: %d", len(d.Lineage))
+	}
+	// another account replaying A never moves ada's lineage
+	if _, err := s.Put(ws, ada, b, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Put(ws, bob, a, nil); err != nil {
+		t.Fatal(err)
+	}
+	if heads, _ := s.Heads(ws, "ada", ada.Instance); heads[0].Hash != b.Hash {
+		t.Fatalf("another account made A the head of ada's lineage: %+v", heads)
 	}
 	// another workspace holds nothing of it
 	if _, err := s.Get(workspace.ID(2), r1.ID); !errors.Is(err, ErrNotFound) {

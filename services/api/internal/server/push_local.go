@@ -778,17 +778,17 @@ func (s *Server) sendOne(c *groupClient, d outbox.Due) {
 			return
 		}
 	}
-	var serverID int64
-	if missing[d.Hash] {
-		var res struct {
-			ID int64 `json:"id"`
-		}
-		if err := c.do("POST", "/api/push/items", "application/json", d.Body, &res); err != nil {
-			settle(err)
-			return
-		}
-		serverID = res.ID
-	} // else the server already holds this hash: an earlier answer was lost, and nothing is uploaded twice
+	// The item is always sent, even when the server holds its hash: after a lost answer that is an idempotent no-op (the
+	// pictures above are not uploaded again), and for content put back to an earlier version it is what makes that version
+	// current again in its lineage.
+	var res struct {
+		ID int64 `json:"id"`
+	}
+	if err := c.do("POST", "/api/push/items", "application/json", d.Body, &res); err != nil {
+		settle(err)
+		return
+	}
+	serverID := res.ID
 	if err := s.Outbox.MarkSent(d.ID, serverID); err != nil {
 		log.Printf("outbox: %v", err)
 		return

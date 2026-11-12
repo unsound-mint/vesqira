@@ -6,7 +6,8 @@ import "database/sql"
 // 0050 slice 4). A pushed item is an immutable frozen document (a figure, a run line, a board snapshot or a report revision),
 // identified within its workspace by the SHA-256 of its canonical JSON; the same hash pushed again is the same row. (account,
 // instance, kind, origin) is one lineage: a new hash in it becomes the head and the previous head records superseded_by, and is
-// kept. Pictures are assets, stored once per workspace by the hash of their cleaned bytes in a folder beside the catalog, never in
+// kept. Pushing an older version again makes that same row the head again (nothing is duplicated); pushed_history records each
+// time an item became the head, so a lineage reads in the order of its pushes (A, B, A). Pictures are assets, stored once per workspace by the hash of their cleaned bytes in a folder beside the catalog, never in
 // a row; pushed_item_assets says which item shows which, so a picture is served only through an item that shows it.
 // pushed_references are the datasets a figure or a run was made from, as references: name and size, the fingerprints the
 // instance sent in the push-only identity field (never part of the document, never forwarded to a review link or the publish
@@ -32,6 +33,11 @@ const PushedTables = `CREATE TABLE IF NOT EXISTS pushed_items(
 	UNIQUE(workspace_id, hash));
 CREATE INDEX IF NOT EXISTS pushed_items_lineage ON pushed_items(workspace_id, created_by, instance, kind, origin);
 CREATE INDEX IF NOT EXISTS pushed_items_day ON pushed_items(created_by, pushed_at);
+CREATE TABLE IF NOT EXISTS pushed_history(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	item_id INTEGER NOT NULL REFERENCES pushed_items(id) ON DELETE CASCADE,
+	pushed_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS pushed_history_item ON pushed_history(item_id);
 CREATE TABLE IF NOT EXISTS pushed_assets(
 	workspace_id INTEGER NOT NULL,
 	sha TEXT NOT NULL,

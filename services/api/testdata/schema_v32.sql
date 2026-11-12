@@ -58,6 +58,9 @@ CREATE INDEX publish_comments_workspace ON publish_comments(workspace_id);
 -- index push_queue_state
 CREATE INDEX push_queue_state ON push_queue(state, next_at);
 
+-- index pushed_history_item
+CREATE INDEX pushed_history_item ON pushed_history(item_id);
+
 -- index pushed_items_day
 CREATE INDEX pushed_items_day ON pushed_items(created_by, pushed_at);
 
@@ -222,6 +225,9 @@ CREATE TABLE push_queue( id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id INTE
 
 -- table pushed_assets
 CREATE TABLE pushed_assets( workspace_id INTEGER NOT NULL, sha TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(workspace_id, sha));
+
+-- table pushed_history
+CREATE TABLE pushed_history( id INTEGER PRIMARY KEY AUTOINCREMENT, item_id INTEGER NOT NULL REFERENCES pushed_items(id) ON DELETE CASCADE, pushed_at INTEGER NOT NULL);
 
 -- table pushed_item_assets
 CREATE TABLE pushed_item_assets( item_id INTEGER NOT NULL REFERENCES pushed_items(id) ON DELETE CASCADE, sha TEXT NOT NULL, PRIMARY KEY(item_id, sha));

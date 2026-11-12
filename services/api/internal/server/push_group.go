@@ -212,6 +212,9 @@ func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
 			detail += ", superseding " + res.Superseded
 		}
 		s.audit(r.Context(), "push.item", "pushed", res.ID, detail)
+	} else if res.Superseded != "" {
+		s.audit(r.Context(), "push.item", "pushed", res.ID, fmt.Sprintf("%s %q %s made current again via token %s, instance %s, superseding %s",
+			in.Item.Kind, in.Item.Title, res.Hash, a.TokenID, in.Instance[:8], res.Superseded))
 	}
 	for _, m := range res.Matches {
 		s.audit(r.Context(), "push.match", "pushed", res.ID, fmt.Sprintf("reference %d %q is %s", m.N, m.Name, m.Match))

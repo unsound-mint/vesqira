@@ -58,7 +58,7 @@ var childTables = map[string][]string{
 	"subset_versions": {"subset_id"}, "project_entries": {"project_id"}, "project_answers": {"project_id"},
 	"import_rules": {"project_id"}, "import_lists": {"project_id"}, "import_applied": {"project_id"},
 	"archived_entries": {"entity_id"}, "notification_reads": {"notification_id"},
-	"pushed_item_assets": {"item_id"}, "pushed_references": {"item_id"},
+	"pushed_item_assets": {"item_id"}, "pushed_references": {"item_id"}, "pushed_history": {"item_id"},
 }
 
 // globalTables are server-wide: accounts and their credentials, the workspaces themselves, memberships (read by account to

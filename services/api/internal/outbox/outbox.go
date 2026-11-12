@@ -168,13 +168,15 @@ func scanEntry(sc interface{ Scan(...any) error }) (Entry, error) {
 // with the same hash, or the last confirmed push of the same object with the same hash, is answered as it is: nothing is queued
 // twice. A newer freeze of the same object replaces one still waiting (the server would supersede it at once anyway).
 func (s *Store) Enqueue(ws workspace.ID, kind string, localID int64, origin, title, hash string, body []byte, assets map[string][]byte) (Entry, error) {
+	// only the object's newest entry counts: content put back to an earlier version (A, B, then A) is queued again, so the server
+	// makes A current again; the same content as the newest waiting or confirmed entry is that entry
 	var id int64
-	var state string
-	err := s.db.QueryRow(`SELECT id, state FROM push_queue WHERE workspace_id=? AND kind=? AND local_id=? AND hash=? AND state IN ('waiting','sent') ORDER BY id DESC LIMIT 1`, ws, kind, localID, hash).Scan(&id, &state)
-	if err == nil {
+	var state, last string
+	err := s.db.QueryRow(`SELECT id, state, hash FROM push_queue WHERE workspace_id=? AND kind=? AND local_id=? AND state IN ('waiting','sent') ORDER BY id DESC LIMIT 1`, ws, kind, localID).Scan(&id, &state, &last)
+	if err == nil && last == hash {
 		return s.entry(id)
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Entry{}, err
 	}
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {

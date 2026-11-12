@@ -600,8 +600,13 @@ func TestPushQueueRetriesTheSameBytesAfterANetworkFailure(t *testing.T) {
 	before := len(l.wire.exchanges())
 	l.s.OutboxPass(context.Background())
 	after := l.wire.exchanges()[before:]
-	if len(after) != 1 || !strings.HasSuffix(after[0].url, "/api/push/have") || l.queue(t)[0].Status != "pushed" {
+	// the pass asks first, uploads no picture again, and resends the item, which the server answers as already held
+	if len(after) != 2 || !strings.HasSuffix(after[0].url, "/api/push/have") || !strings.HasSuffix(after[1].url, "/api/push/items") ||
+		after[1].status != 200 || l.queue(t)[0].Status != "pushed" {
 		t.Fatalf("after a lost answer the pass sent %d requests", len(after))
+	}
+	if p := ps.Count(workspace.Local, due[0].Hash); p != 1 {
+		t.Fatalf("the board is on the server %d times", p)
 	}
 }
 

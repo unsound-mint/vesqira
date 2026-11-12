@@ -54,7 +54,7 @@ import (
 // user data (existing rows: workspace 1, local-owner), uniqueness per workspace (datasets, dataset_locations, figures, reports,
 // runs, run_views, projects and attachments rebuilt), per-account read state (report_seen, notification_reads) and comments by
 // members (member_comments; ADR 0050 sections 3 and 6, slice 3).
-// Version 32: work pushed to the group server (pushed_items, pushed_assets, pushed_item_assets, pushed_references), the local
+// Version 32: work pushed to the group server (pushed_items, pushed_history, pushed_assets, pushed_item_assets, pushed_references), the local
 // outbox (group_link, push_queue, push_lineage) and the workspace a push token is bound to (access_tokens.workspace_id; ADR 0066,
 // ADR 0050 slice 4).
 const Version = 32

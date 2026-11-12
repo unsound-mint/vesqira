@@ -183,16 +183,16 @@ type Result struct {
 	Stored bool   `json:"stored"` // false: the server already held this hash, and nothing changed but added evidence
 	// Superseded is the hash of the head this item replaced in its lineage, "" when none.
 	Superseded string `json:"superseded,omitempty"`
-	// SupersededBy is set when the hash was already held and a newer push has replaced it since: it stays what it was, and the
-	// lineage's head is not moved back.
+	// SupersededBy is set when someone other than its pusher sends a superseded hash again: it stays what it was.
 	SupersededBy string `json:"supersededBy,omitempty"`
 	// Matches are the references that became verified or probable, for the audit log.
 	Matches []Match `json:"-"`
 }
 
 // Put stores one item in one transaction (ADR 0066: each item is atomic). The caller has validated the envelope and the
-// document, and recomputed it.Hash. The same hash already in the workspace answers the existing row: a retry never duplicates,
-// and a hash that was superseded is not made the head again (A, B, then A answers A as it was). An item whose pictures are not
+// document, and recomputed it.Hash. The same hash already in the workspace answers the existing row: a retry never duplicates.
+// A superseded hash pushed again by its own instance becomes the head again (A, B, then A: A is current, B superseded by it, and
+// the history reads A, B, A); pushed by anyone else it changes nothing. An item whose pictures are not
 // all on the server is refused with MissingError, so nothing appears with holes. A new hash becomes the head of its lineage
 // (account, instance, kind, origin), and the previous head records it as superseded_by.
 func (s *Store) Put(ws workspace.ID, p Pusher, it pushwire.Item, ids []pushwire.Identity) (Result, error) {
@@ -215,12 +215,37 @@ func (s *Store) Put(ws workspace.ID, p Pusher, it pushwire.Item, ids []pushwire.
 	switch err := tx.QueryRow(`SELECT id, superseded_by, created_by, instance FROM pushed_items WHERE workspace_id=? AND hash=?`, ws, it.Hash).Scan(&id, &supBy, &by, &inst); {
 	case err == nil:
 		r := Result{ID: id, Hash: it.Hash}
-		if supBy.Valid {
+		own := by == p.Account && inst == p.Instance
+		switch {
+		case supBy.Valid && own:
+			// an older version pushed again by its own instance (the content was put back): the same row becomes the head again,
+			// the current head is superseded by it, and the history records the push. Nothing is duplicated. The hash includes
+			// the kind and the origin, so the row is of this lineage.
+			var head int64
+			var headHash string
+			if err := tx.QueryRow(`SELECT id, hash FROM pushed_items WHERE workspace_id=? AND created_by=? AND instance=? AND kind=? AND origin=? AND superseded_by IS NULL`,
+				ws, by, inst, it.Kind, it.Origin).Scan(&head, &headHash); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return Result{}, err
+			}
+			if _, err := tx.Exec(`UPDATE pushed_items SET superseded_by=NULL, superseded_at=NULL WHERE workspace_id=? AND id=?`, ws, id); err != nil {
+				return Result{}, err
+			}
+			if head != 0 && head != id {
+				if _, err := tx.Exec(`UPDATE pushed_items SET superseded_by=?, superseded_at=? WHERE workspace_id=? AND id=?`, id, now, ws, head); err != nil {
+					return Result{}, err
+				}
+				r.Superseded = headHash
+			}
+			if _, err := tx.Exec(`INSERT INTO pushed_history(item_id, pushed_at) VALUES(?,?)`, id, now); err != nil {
+				return Result{}, err
+			}
+		case supBy.Valid:
+			// someone else replaying an item they can read never moves a lineage that is not theirs
 			_ = tx.QueryRow(`SELECT hash FROM pushed_items WHERE workspace_id=? AND id=?`, ws, supBy.Int64).Scan(&r.SupersededBy)
 		}
 		// only the instance that pushed an item may add evidence to it: anyone in the workspace can read the item and replay it,
 		// and must not be able to make a reference read "verified" with a full hash of their choosing
-		if by == p.Account && inst == p.Instance {
+		if own {
 			if r.Matches, err = addEvidence(tx, ws, id, ids, now); err != nil {
 				return Result{}, err
 			}
@@ -257,6 +282,9 @@ func (s *Store) Put(ws workspace.ID, p Pusher, it pushwire.Item, ids []pushwire.
 		return Result{}, err
 	}
 	id, _ = res.LastInsertId()
+	if _, err := tx.Exec(`INSERT INTO pushed_history(item_id, pushed_at) VALUES(?,?)`, id, now); err != nil {
+		return Result{}, err
+	}
 	if head != 0 {
 		if _, err := tx.Exec(`UPDATE pushed_items SET superseded_by=?, superseded_at=? WHERE workspace_id=? AND id=? AND superseded_by IS NULL`, id, now, ws, head); err != nil {
 			return Result{}, err
@@ -464,8 +492,12 @@ func (s *Store) Get(ws workspace.ID, id int64) (Detail, error) {
 	if err := json.Unmarshal([]byte(doc), &d.Item); err != nil {
 		return Detail{}, err
 	}
-	rows, err := s.db.Query(`SELECT `+summaryCols+` FROM pushed_items WHERE workspace_id=? AND (created_by, instance, kind, origin) =
-		(SELECT created_by, instance, kind, origin FROM pushed_items WHERE workspace_id=? AND id=?) ORDER BY id`, ws, ws, id)
+	// the lineage in the order of its pushes, one entry per time an item became the head (an item put back appears twice), each
+	// with the time of that push
+	rows, err := s.db.Query(`SELECT i.id, i.kind, i.title, i.hash, i.created_by, h.pushed_at, i.superseded_by, i.superseded_at, i.archived_at
+		FROM pushed_history h JOIN pushed_items i ON i.id=h.item_id
+		WHERE i.workspace_id=? AND (i.created_by, i.instance, i.kind, i.origin) =
+		(SELECT created_by, instance, kind, origin FROM pushed_items WHERE workspace_id=? AND id=?) ORDER BY h.id`, ws, ws, id)
 	if err != nil {
 		return Detail{}, err
 	}
