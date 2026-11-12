@@ -7,7 +7,7 @@ import type { SubsetDetail, SubsetMaterialised, SubsetView } from "../api/subset
 import { Button, Input, Pill } from "../ui";
 import { EM, bytes } from "./format";
 import { SubsetForm } from "./SubsetForm";
-import { describe, fieldsOf } from "./subsets";
+import { describe, fieldsOf, summaryLine } from "./subsets";
 import s from "./SubsetPage.module.css";
 
 const when = (t: string) => new Date(t).toLocaleString();
@@ -19,8 +19,10 @@ const num = (v: number | null | undefined, digits = 6) => (v === null || v === u
  * pixels, and the history. A source that changed makes it stale: nothing is read until it is re-pinned to the current file. Writing it
  * as a file makes an ordinary dataset; asking again for the same version of the same bytes reuses that file.
  */
-export function SubsetPage({ id, onChanged, onOpenDataset, onClose }: {
+export function SubsetPage({ id, embedded = false, onChanged, onOpenDataset, onClose }: {
   id: number;
+  /** In the inspector beside the viewer that reads it: one calm line instead of the title, and no coordinate probe (the viewer has one). */
+  embedded?: boolean;
   onChanged: () => void;
   onOpenDataset: (id: number) => void;
   onClose: () => void;
@@ -107,12 +109,16 @@ export function SubsetPage({ id, onChanged, onOpenDataset, onClose }: {
   };
 
   return (
-    <div className={s.page}>
-      <header className={s.head}>
-        <h2 className={s.title}>{sub.name}</h2>
-        <Pill tone="accent">virtual subset</Pill>
-        {sub.stale ? <Pill tone="warn">stale</Pill> : null}
-      </header>
+    <div className={embedded ? s.embedded : s.page}>
+      {embedded ? (
+        <p className={s.line} data-testid="subset-line">{summaryLine(sub.sourceName, sub.version, sub.definition)}{sub.stale ? " · stale" : ""}</p>
+      ) : (
+        <header className={s.head}>
+          <h2 className={s.title}>{sub.name}</h2>
+          <Pill tone="accent">virtual subset</Pill>
+          {sub.stale ? <Pill tone="warn">stale</Pill> : null}
+        </header>
+      )}
       <p className={s.note}>A window onto <button type="button" className={s.link} onClick={() => onOpenDataset(sub.sourceId)}>{sub.sourceName}</button>. It is not a file: nothing is copied until you write it as one.</p>
 
       {sub.stale ? (
@@ -148,19 +154,19 @@ export function SubsetPage({ id, onChanged, onOpenDataset, onClose }: {
             {win.world ? <><dt>Spectral rule</dt><dd>{win.channel_rule}</dd></> : null}
           </dl>
           {view.spectral && view.spectral.resolved === false ? <p className={s.note}>The spectral axis is not fully declared in the header, so no values are shown for it.</p> : null}
-          <form className={s.probe} onSubmit={read} aria-label="Coordinates of a pixel of the subset">
+          {embedded ? null : <form className={s.probe} onSubmit={read} aria-label="Coordinates of a pixel of the subset">
             <Input label="x" value={probe.x} onChange={(e) => setProbe({ ...probe, x: e.target.value })} inputMode="numeric" />
             <Input label="y" value={probe.y} onChange={(e) => setProbe({ ...probe, y: e.target.value })} inputMode="numeric" />
             <Input label="channel" value={probe.channel} onChange={(e) => setProbe({ ...probe, channel: e.target.value })} inputMode="numeric" />
             <Button type="submit" disabled={busy}>Read coordinates</Button>
-          </form>
-          {coord ? (
+          </form>}
+          {coord && !embedded ? (
             <p className={s.readout} role="status">
               Pixel ({coord.x + 1}, {coord.y + 1}), channel {coord.channel + 1} of the subset: {coord.sky ? `${num(coord.sky.lon)}°, ${num(coord.sky.lat)}° on the sky` : "no sky position (the header has no complete celestial WCS)"}
               {coord.spectral ? `; spectral ${num(coord.spectral.value)} ${view.spectral?.unit ?? ""}` : ""}.
             </p>
           ) : null}
-          <p className={s.note}>The coordinates are the source file's own, read through the window: pixel 1 of the subset is the source pixel {(win.x0 ?? 0) + 1}.</p>
+          <p className={s.note}>The coordinates are the source file's own, read through the window: pixel 1 of the subset is the source pixel {(win.x0 ?? 0) + 1}.{embedded ? " Masks, saved regions, overlays, channel maps and analyses are the file's: write the subset as a file to use them." : ""}</p>
         </section>
       ) : null}
 

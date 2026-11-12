@@ -75,5 +75,13 @@ export function describe(d: SubsetDefinition): string {
   return parts.join("; ");
 }
 
+/** The calm one-line statement of an open subset: what it is, of what, which version, and its window (pixels and channels count from 1). */
+export function summaryLine(sourceName: string, version: number, d: SubsetDefinition): string {
+  const box = d.box ? `box x ${one(d.box.x0)}–${one(d.box.x1)}, y ${one(d.box.y0)}–${one(d.box.y1)}` : "whole image";
+  const step = d.step > 1 ? ` every ${ordinal(d.step)} pixel` : "";
+  const ch = d.channels ? `channels ${one(d.channels.c0)}–${one(d.channels.c1)}` : d.world ? `${d.world.lo} to ${d.world.hi} ${d.world.unit}` : "all channels";
+  return `virtual subset of ${sourceName} · version ${version} · ${box}${step} · ${ch}`;
+}
+
 /** The saved regions a subset may take its box from: a line has no area. */
 export const boxRegions = (rs: SavedRegion[]) => rs.filter((r) => r.shape.shape !== "line");

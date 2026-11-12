@@ -61,7 +61,7 @@ export function RegionPanel({ v }: { v: Viewer }) {
   return (
     <div className={s.wrap}>
       <div role="group" aria-label="Region tool" className={s.tools}>
-        {TOOLS.map((t) => (
+        {TOOLS.filter((t) => !(v.virtual && t.id === "line")).map((t) => ( // a position-velocity cut is the file's
           <button key={t.id} type="button" className={s.tool} aria-pressed={v.tool === t.id} onClick={() => { v.setTool(t.id); if (t.id === "rect" || t.id === "circle") setKind(t.id); }}>
             {t.label}
           </button>
@@ -97,7 +97,7 @@ export function RegionPanel({ v }: { v: Viewer }) {
         </>
       ) : null}
       {info?.masks ? <AppliedMasks masks={info.masks} noValue={info.no_value} excluded={info.excluded_by_mask} testId="spectrum-masks" /> : null}
-      <SavedList v={v} />
+      {v.virtual ? <p className={s.note}>Saved regions belong to the file, so they are not offered on a virtual subset. A region drawn here is for this view only.</p> : <SavedList v={v} />}
       {info ? <p className={s.note}>{info.mask_policy}{info.size ? ` ${info.size.note}.` : ""}</p> : null}
     </div>
   );

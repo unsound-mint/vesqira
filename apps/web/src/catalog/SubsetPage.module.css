@@ -106,6 +106,19 @@
   cursor: pointer;
 }
 
+.embedded {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-3);
+}
+
+.line {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
 @media (width <= 600px) {
   .probe {
     grid-template-columns: repeat(3, minmax(0, 1fr));

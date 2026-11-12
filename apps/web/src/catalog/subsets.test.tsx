@@ -162,6 +162,17 @@ describe("a subset opened", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("beside the viewer says it in one calm line, offers no probe of its own, and says what is not available", async () => {
+    api.getSubset.mockResolvedValue(detail(view()));
+    api.getSubsetView.mockResolvedValue({ width: 9, height: 7, channels: 31, window: win });
+    render(<SubsetPage id={1} embedded onChanged={vi.fn()} onOpenDataset={vi.fn()} onClose={vi.fn()} />);
+    expect(await screen.findByTestId("subset-line")).toHaveTextContent("virtual subset of a.fits · version 1 · box x 4–21, y 3–16 every 2nd pixel · channels 11–41");
+    expect(screen.queryByRole("heading", { name: "Core" })).toBeNull();
+    expect(await screen.findByText("9 by 7 pixels, 31 channels")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Read coordinates" })).toBeNull();
+    expect(screen.getByText(/Masks, saved regions, overlays, channel maps and analyses are the file's/)).toBeInTheDocument();
+  });
+
   it("is not shown as current when its file changed: nothing is read, and re-pinning needs a reason", async () => {
     const user = userEvent.setup();
     const stale = view({ stale: true, staleReason: "The file this subset was defined on has changed since. Re-pin it to the current file to record a new version." });

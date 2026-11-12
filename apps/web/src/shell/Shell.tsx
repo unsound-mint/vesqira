@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { FileText, LifeBuoy, FolderOpen, FolderPlus, LayoutGrid, Server, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
@@ -16,6 +16,7 @@ import { CorrectionsPanel } from "../catalog/CorrectionsPanel";
 import { MasksPanel } from "../catalog/MasksPanel";
 import { fileStatesItsUnit } from "../catalog/unit";
 import { Explorer } from "../catalog/Explorer";
+import { virtualId } from "../api/planes";
 import { SubsetPage } from "../catalog/SubsetPage";
 import { SubsetsSection } from "../catalog/SubsetsSection";
 import { useSubsets } from "../catalog/useSubsets";
@@ -43,7 +44,7 @@ import { writeProjectFile } from "../api/projects";
 import { editorEnabled } from "../api/editor";
 import { terminalEnabled } from "../api/terminal";
 import { getCompat, isCatalog } from "../api/catalog";
-import type { Compat } from "../api/catalog";
+import type { Compat, ImageDataset } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
 import { CompareBar, linkState } from "../viewer/CompareBar";
 import { getRendererNote, subscribeRendererNote } from "../viewer/glRenderer";
@@ -115,9 +116,19 @@ export function Shell() {
   // a job ended or its results were imported: the lists the links point into are refreshed before anyone follows one
   const notes = useNotifications(useCallback(() => { void refreshDatasets(); void refreshRuns(); }, [refreshDatasets, refreshRuns]));
   const hostName = (id: number) => cat.hosts.find((h) => h.id === id)?.name ?? "host";
-  const viewerA = useViewer(cat.selectedImage);
+  // A virtual subset opened from the explorer is read by the same viewer, through /api/subsets/{sid} (the negative of its id is the
+  // viewer's id for it). A stale one is not read at all: the main area says why and offers the re-pin.
+  const openSub = subsetId !== null ? subs.subsets.find((x) => x.id === subsetId) ?? null : null;
+  const virtualDs = useMemo<(ImageDataset & { archived?: boolean }) | null>(() => {
+    if (!openSub || openSub.stale) return null;
+    const src = cat.allDatasets.find((d) => d.id === openSub.sourceId);
+    if (!src || isCatalog(src)) return null;
+    return { ...src, id: virtualId(openSub.id), name: openSub.name, modifiedAt: `${src.modifiedAt}#v${openSub.version}`, locations: [], archived: false } as ImageDataset & { archived?: boolean };
+  }, [openSub, cat.allDatasets]);
+  const shownImage = virtualDs ?? cat.selectedImage;
+  const viewerA = useViewer(shownImage);
   const [compareId, setCompareId] = useState<number | null>(null);
-  const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== cat.selectedImage?.id) ?? null;
+  const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== shownImage?.id) ?? null;
   const viewerB = useViewer(compareDs);
   const [active, setActive] = useState<"a" | "b">("a");
   const [stage, setStage] = useState<"map" | "grid">("map"); // the map pane(s), or a grid of channel maps of the open dataset
@@ -128,20 +139,20 @@ export function Shell() {
   const [sharedLimits, setSharedLimits] = useState<[number, number] | null>(null);
   const useB = active === "b" && compareDs !== null;
   const viewer = useB ? viewerB : viewerA;
-  const actDs = useB ? compareDs : cat.selectedImage;
+  const actDs = useB ? compareDs : shownImage;
   const other = useB ? viewerA : viewerB;
   // The two panes are one link group (ADR 0042, section 4): on the same grid on their own, on different grids once the person
   // links them by WCS, and only while both are in it. Who has left, the name and the facets belong to this pair of datasets.
   const sameGrid = compareDs !== null && linkState(compat, compatLoading).linked;
-  const pairKey = `${cat.selectedImage?.id ?? ""}:${compareDs?.id ?? ""}`;
+  const pairKey = `${shownImage?.id ?? ""}:${compareDs?.id ?? ""}`;
   const [prefsFor, setPrefsFor] = useState<{ key: string; p: LinkPrefs }>(() => ({ key: pairKey, p: defaultPrefs() }));
   const linkPrefs = prefsFor.key === pairKey ? prefsFor.p : defaultPrefs();
   const updatePrefs = (patch: Partial<LinkPrefs>) => setPrefsFor({ key: pairKey, p: { ...linkPrefs, ...patch } });
   const group = compareDs !== null ? linkGroup(linkPrefs, sameGrid, compat?.channelLink.ok === false ? compat.channelLink.reason : null) : null;
   const linked = group !== null;
-  const idA = cat.selectedImage?.id ?? null;
+  const idA = shownImage?.id ?? null;
   const idB = compareDs?.id ?? null;
-  const stamp = `${cat.selectedImage?.modifiedAt ?? ""}|${compareDs?.modifiedAt ?? ""}`;
+  const stamp = `${shownImage?.modifiedAt ?? ""}|${compareDs?.modifiedAt ?? ""}`;
   const imageA = viewerA.view ? { w: viewerA.view.width, h: viewerA.view.height } : null;
   const imageB = viewerB.view ? { w: viewerB.view.width, h: viewerB.view.height } : null;
   const [paneA, setPaneA] = useState<{ w: number; h: number } | null>(null);
@@ -195,7 +206,7 @@ export function Shell() {
   const linkControls: LinkControls = { group, prefs: linkPrefs, onPrefs: updatePrefs, pills: group ? linkPills(group, activeSky, activeChannels) : [], channelLine };
   const readoutOther = (() => {
     if (!group || !other.view) return null;
-    const name = (useB ? cat.selectedImage : compareDs)?.name ?? "";
+    const name = (useB ? shownImage : compareDs)?.name ?? "";
     if (group.basis === "same-grid") return { name, v: other };
     if (!group.facets.cursor) return null;
     const m = viewer.probe ? mapPixel(activeSky.map, viewer.probe) : null;
@@ -249,17 +260,17 @@ export function Shell() {
   useEffect(() => {
     setCompat(null);
     setCompatErr(null);
-    if (!cat.selectedImage || !compareDs) return;
+    if (!shownImage || !compareDs) return;
     let live = true;
     setCompatLoading(true);
-    getCompat(cat.selectedImage.id, compareDs.id)
+    getCompat(shownImage.id, compareDs.id)
       .then((c) => live && setCompat(c))
       .catch((e: unknown) => live && setCompatErr(e instanceof Error ? e.message : "Could not compare the grids."))
       .finally(() => live && setCompatLoading(false));
     return () => {
       live = false;
     };
-  }, [cat.selectedImage?.id, compareDs?.id, cat.selectedImage?.modifiedAt, compareDs?.modifiedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shownImage?.id, compareDs?.id, shownImage?.modifiedAt, compareDs?.modifiedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const collapsedForCompare = useRef(false);
   useEffect(() => {
     if (!compareDs) {
@@ -300,7 +311,7 @@ export function Shell() {
   const [historyOpen, setHistoryOpen] = useState(false); // up to 500 rows are only drawn while the section is open
   const hist = useExplorationHistory({
     projectId: project?.id ?? 0,
-    scene: viewerA.scene,
+    scene: virtualDs ? null : viewerA.scene, // a window is not a dataset the history could continue from
     datasetName: (id) => cat.allDatasets.find((d) => d.id === id)?.name ?? `dataset ${id}`,
     haveDataset: (id) => cat.allDatasets.some((d) => d.id === id),
     restore: (scene, opensOther) => {
@@ -321,7 +332,7 @@ export function Shell() {
       setPendingScene(null);
     }
   }, [pendingScene, viewerA.scene?.base.datasetId, viewerA.view, applyToA]);
-  useUndoKeys(mode === "viewer" && cat.selectedImage !== null, {
+  useUndoKeys(mode === "viewer" && shownImage !== null, {
     undo: () => { if (!viewer.undoName) return false; viewer.undo(); return true; },
     redo: () => { if (!viewer.redoName) return false; viewer.redo(); return true; },
   });
@@ -329,7 +340,7 @@ export function Shell() {
   const pageRun = mode === "run" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
   // The run page is a full page of its own: the map inspector and channel timeline describe the viewer, not the run.
-  const noProjectYet = mode === "viewer" && !project && !cat.selectedImage && !cat.selectedCatalog && subsetId === null; // nothing open at all: the way in is opening a folder
+  const noProjectYet = mode === "viewer" && !project && !shownImage && !cat.selectedCatalog && subsetId === null; // nothing open at all: the way in is opening a folder
   // Every mode but the viewer is a page of its own (Jobs, Boards and Reports included): the map inspector and the channel
   // timeline describe a dataset in the viewer, so beside a page they would be empty sections taking its width.
   const onPage = mode !== "viewer" || noProjectYet;
@@ -486,25 +497,27 @@ export function Shell() {
           <ReportsView onOpenRun={openRun} />
         ) : mode === "boards" ? (
           <BoardsView onCompare={compareInViewer} newer={cat.newer.figures} />
-        ) : subsetId !== null ? (
+        ) : subsetId !== null && !virtualDs ? (
           <SubsetPage key={subsetId} id={subsetId} onChanged={() => void subs.refresh()} onOpenDataset={(id) => { void cat.refreshDatasets(); selectDataset(id); }} onClose={() => { setSubsetId(null); void subs.refresh(); }} />
         ) : cat.selectedCatalog ? (
           <CatalogView dataset={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} />
-        ) : cat.selectedImage ? (
+        ) : shownImage ? (
           <div className={s.stageWrap}>
-            <div className={s.stageTabs} role="tablist" aria-label="Stage view">
-              <button type="button" role="tab" aria-selected={stage === "map"} className={s.stageTab} onClick={() => setStage("map")}>Map</button>
-              <button type="button" role="tab" aria-selected={stage === "grid"} className={s.stageTab} onClick={() => setStage("grid")}>Channel maps</button>
-            </div>
-            {stage === "grid" ? (
-              <ChannelGrid key={cat.selectedImage.id} v={viewerA} dataset={cat.selectedImage} />
+            {virtualDs ? null : (
+              <div className={s.stageTabs} role="tablist" aria-label="Stage view">
+                <button type="button" role="tab" aria-selected={stage === "map"} className={s.stageTab} onClick={() => setStage("map")}>Map</button>
+                <button type="button" role="tab" aria-selected={stage === "grid"} className={s.stageTab} onClick={() => setStage("grid")}>Channel maps</button>
+              </div>
+            )}
+            {stage === "grid" && !virtualDs ? (
+              <ChannelGrid key={shownImage.id} v={viewerA} dataset={shownImage} />
             ) : (
           <div className={s.compare}>
             <div className={s.undoRow}><UndoBar surface="map" undoName={viewer.undoName} redoName={viewer.redoName} onUndo={viewer.undo} onRedo={viewer.redo} /></div>
-            <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={cat.selectedImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} link={linkControls} />
+            {virtualDs ? null : <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={shownImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} link={linkControls} />}
             <div className={compareDs ? s.panes2 : s.panes1}>
-              <section className={s.pane} aria-label={`Map: ${cat.selectedImage.name}`}>
-                {compareDs ? <PaneHeader name={cat.selectedImage.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} note={outsideIn === "a" ? OUTSIDE_NOTE : null} /> : null}
+              <section className={s.pane} aria-label={`Map: ${shownImage.name}`}>
+                {compareDs ? <PaneHeader name={shownImage.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} note={outsideIn === "a" ? OUTSIDE_NOTE : null} /> : null}
                 <div className={s.paneBody}><PlaneViewer v={viewerA} onProbe={(p) => mirror("a", p)} onSize={setPaneA} /></div>
               </section>
               {compareDs ? (
@@ -549,10 +562,20 @@ export function Shell() {
               </Section>
             </>
           ) : null}
-          {cat.selectedCatalog ? null : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
-          {compareDs && cat.selectedImage ? (
+          {cat.selectedCatalog ? null : virtualDs && actDs?.id === virtualDs.id ? (
+            <>
+              <Section title="Virtual subset">
+                <SubsetPage key={virtualDs.id} id={-virtualDs.id} embedded onChanged={() => void subs.refresh()} onOpenDataset={(id) => { void cat.refreshDatasets(); selectDataset(id); }} onClose={() => { setSubsetId(null); void subs.refresh(); }} />
+              </Section>
+              <Section title="Coordinates"><CoordinateReadout v={viewer} /></Section>
+              <Section title="Display"><DisplayControls v={viewer} /></Section>
+              <Section title="Region"><RegionPanel v={viewer} /></Section>
+              <Section title="Spectrum"><SpectrumPlot v={viewer} /></Section>
+            </>
+          ) : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
+          {compareDs && shownImage ? (
             <Section title="Comparison">
-              <CompareInspector a={cat.selectedImage} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
+              <CompareInspector a={shownImage} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
             </Section>
           ) : null}
           {actDs && runFor(cat.runs, actDs.id) ? (
