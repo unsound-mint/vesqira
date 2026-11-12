@@ -761,8 +761,9 @@ func TestPushTokenIsNarrowAndBoundToItsWorkspace(t *testing.T) {
 	if _, err := g.acc.RemoveMember(workspace.Local, rita.ID); err != nil {
 		t.Fatal(err)
 	}
-	if w := g.bearer(rtok, req{method: "POST", path: "/api/push/have", body: have}); w.Code != 403 {
-		t.Errorf("a removed account's token still pushes: %d", w.Code)
+	// removal deletes the tokens bound to the workspace (ADR 0066 section 3, account changes): the bearer is no longer a token
+	if w := g.bearer(rtok, req{method: "POST", path: "/api/push/have", body: have}); w.Code != 401 {
+		t.Errorf("a removed account's token still answers as a token: %d", w.Code)
 	}
 	// a push token from before binding
 	if _, err := g.cat.DB().Exec(`UPDATE access_tokens SET workspace_id=NULL WHERE token_hash=?`, accounts.Hash(token)); err != nil {

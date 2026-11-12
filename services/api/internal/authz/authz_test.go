@@ -117,7 +117,7 @@ func TestOwnershipAndInvitationRules(t *testing.T) {
 }
 
 // Every permission is classified for tokens, and the classes say what the ADR says: read and write only, never an account,
-// admin, delete, outsider-publishing or local-only permission; push and relay allow nothing yet.
+// admin, delete, outsider-publishing or local-only permission; push and relay only their own routes.
 func TestTokenScopesAreExhaustiveAndNarrow(t *testing.T) {
 	for _, p := range All() {
 		if _, ok := classes[p]; !ok {
@@ -144,7 +144,7 @@ func TestTokenScopesAreExhaustiveAndNarrow(t *testing.T) {
 		t.Error("read and write scopes do not split as stated")
 	}
 	// ADR 0066: a push token, bound to its workspace, holds push.upload and nothing else, from Researcher up; a relay token holds
-	// nothing until slice 5; an unbound one (minted before binding) and one used in another workspace hold nothing; a session
+	// relay.serve and run_request.decline and nothing else (it files, reads and withdraws nothing); an unbound one (minted before binding) and one used in another workspace hold nothing; a session
 	// never holds a token-only permission.
 	for _, s := range []Scope{ScopePush, ScopeRelay} {
 		tok := Actor{ID: "a", Via: ViaToken, Admin: true, Workspace: 1, Role: RoleOwner, Scopes: []Scope{s}, TokenWorkspace: 1}
@@ -153,7 +153,7 @@ func TestTokenScopesAreExhaustiveAndNarrow(t *testing.T) {
 		elsewhere := tok
 		elsewhere.Workspace = 2
 		for _, p := range All() {
-			want := s == ScopePush && p == PushUpload
+			want := (s == ScopePush && p == PushUpload) || (s == ScopeRelay && (p == RelayServe || p == RunRequestDecline))
 			if p != Anonymous && tok.Can(p) != want {
 				t.Errorf("a %s token: Can(%s) = %v, want %v", s, p, !want, want)
 			}
@@ -165,8 +165,22 @@ func TestTokenScopesAreExhaustiveAndNarrow(t *testing.T) {
 	if (Actor{ID: "a", Via: ViaToken, Workspace: 1, Role: RoleViewer, Scopes: []Scope{ScopePush}, TokenWorkspace: 1}).Can(PushUpload) {
 		t.Error("a Viewer's push token pushes")
 	}
-	if (Actor{ID: "a", Via: ViaSession, Workspace: 1, Role: RoleOwner, Recent: true}).Can(PushUpload) {
-		t.Error("a session holds a token-only permission")
+	for _, p := range []Permission{PushUpload, RelayServe} {
+		if (Actor{ID: "a", Via: ViaSession, Workspace: 1, Role: RoleOwner, Recent: true}).Can(p) {
+			t.Errorf("a session holds the token-only %s", p)
+		}
+	}
+	if (Actor{ID: "a", Via: ViaToken, Workspace: 1, Role: RoleViewer, Scopes: []Scope{ScopeRelay}, TokenWorkspace: 1}).Can(RelayServe) {
+		t.Error("a Viewer's relay token serves an inbox")
+	}
+	sess := Actor{ID: "a", Via: ViaSession, Workspace: 1, Role: RoleViewer}
+	if !sess.Can(RunRequestFile) || !sess.Can(RunRequestRead) || sess.Can(RunRequestDecline) {
+		t.Error("a Viewer files and follows requests at a browser, and declines none (only an addressee, a Researcher up, holds an inbox)")
+	}
+	for _, p := range []Permission{RunRequestFile, RunRequestRead, RunRequestDecline, RelayServe} {
+		if (Actor{ID: "a", Via: ViaToken, Workspace: 1, Role: RoleOwner, Scopes: []Scope{ScopeWrite}}).Can(p) {
+			t.Errorf("a write token holds %s", p)
+		}
 	}
 	for _, p := range []Permission{PushedRead, PushedArchive} {
 		if (Actor{ID: "a", Via: ViaToken, Workspace: 1, Role: RoleOwner, Scopes: []Scope{ScopeWrite}}).Can(p) {

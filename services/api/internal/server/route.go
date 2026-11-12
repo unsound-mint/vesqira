@@ -88,7 +88,8 @@ var notOnGroupServer = map[authz.Permission]bool{
 
 // groupServerOnly are the permissions whose routes only the group server mounts: a local instance never accepts a push (its
 // local owner holds every permission, so without this the routes would answer there), and has nothing pushed to read.
-var groupServerOnly = map[authz.Permission]bool{authz.PushUpload: true, authz.PushedRead: true, authz.PushedArchive: true}
+var groupServerOnly = map[authz.Permission]bool{authz.PushUpload: true, authz.PushedRead: true, authz.PushedArchive: true,
+	authz.RelayServe: true, authz.RunRequestDecline: true, authz.RunRequestRead: true, authz.RunRequestFile: true}
 
 // groupServerOff are the route prefixes of the publish server's side of the catalog (comments readers left on a published
 // report, reply drafts, readers), which share permissions with routes that stay. Their tables are local-only

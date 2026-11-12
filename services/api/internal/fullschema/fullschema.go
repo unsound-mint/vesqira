@@ -23,6 +23,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
+	"github.com/unsound-mint/vesqira/services/api/internal/relay"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
@@ -57,6 +58,8 @@ func Open(db *sql.DB, dir string) error {
 		{"offline", func() error { _, e := offline.Open(db, filepath.Join(dir, "offline")); return e }},
 		{"pushed", func() error { _, e := pushed.Open(db, filepath.Join(dir, "pushed")); return e }},
 		{"outbox", func() error { _, e := outbox.Open(db, filepath.Join(dir, "outbox")); return e }},
+		{"relay", func() error { _, e := relay.Open(db); return e }},
+		{"relayed", func() error { _, e := relay.OpenLocal(db); return e }},
 	} {
 		if err := s.open(); err != nil {
 			return fmt.Errorf("opening %s: %w", s.name, err)

@@ -105,6 +105,7 @@ type groupError struct {
 	Status  int
 	Msg     string
 	Missing []string
+	State   string // a 409's state, for a relayed request (relay_group.go relayFail)
 }
 
 func (e *groupError) Error() string {
@@ -163,6 +164,7 @@ func (c *groupClient) do(method, path, contentType string, body []byte, out any)
 		var e struct {
 			Error   string   `json:"error"`
 			Missing []string `json:"missing"`
+			State   string   `json:"state"`
 		}
 		msg := strings.TrimSpace(string(b))
 		if json.Unmarshal(b, &e) == nil && e.Error != "" {
@@ -174,7 +176,7 @@ func (c *groupClient) do(method, path, contentType string, body []byte, out any)
 		if resp.StatusCode == 401 {
 			msg = "the server does not accept this computer's token (revoked or expired): link this computer again"
 		}
-		return &groupError{Status: resp.StatusCode, Msg: msg, Missing: e.Missing}
+		return &groupError{Status: resp.StatusCode, Msg: msg, Missing: e.Missing, State: e.State}
 	}
 	if out != nil {
 		if err := json.Unmarshal(b, out); err != nil {
@@ -197,6 +199,15 @@ func (c *groupClient) heads() (string, error) {
 		Workspace string `json:"workspace"`
 	}
 	err := c.do("GET", "/api/push/heads?instance="+url.QueryEscape(c.instance), "", nil, &out)
+	return out.Workspace, err
+}
+
+// relayWorkspace asks the relay pull route, with a cursor past everything, which workspace a relay-only token acts in.
+func (c *groupClient) relayWorkspace() (string, error) {
+	var out struct {
+		Workspace string `json:"workspace"`
+	}
+	err := c.do("GET", "/api/relay/requests?after=9223372036854775807", "", nil, &out)
 	return out.Workspace, err
 }
 
@@ -263,6 +274,10 @@ func (s *Server) linkGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	c := &groupClient{base: origin, token: tok, instance: instance, http: s.httpForGroup()}
 	name, err := c.heads()
+	var ge403 *groupError
+	if errors.As(err, &ge403) && ge403.Status == 403 { // a token for run requests only: its own route says where it acts
+		name, err = c.relayWorkspace()
+	}
 	if err != nil {
 		var ge *groupError
 		if errors.As(err, &ge) && ge.Status == 0 {

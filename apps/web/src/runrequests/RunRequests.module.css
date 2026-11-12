@@ -1,0 +1,51 @@
+/* The run-request pages reuse the account page's card, form and table classes; this adds only what they lack. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+
+.area {
+  display: grid;
+  gap: var(--sp-1);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.area textarea {
+  min-height: 80px;
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.script {
+  margin: 0;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre;
+}
+
+.warn {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  font-size: var(--text-sm);
+}
+
+.plain {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

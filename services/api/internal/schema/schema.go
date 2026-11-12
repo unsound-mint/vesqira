@@ -57,7 +57,9 @@ import (
 // Version 32: work pushed to the group server (pushed_items, pushed_history, pushed_assets, pushed_item_assets, pushed_references), the local
 // outbox (group_link, push_queue, push_lineage) and the workspace a push token is bound to (access_tokens.workspace_id; ADR 0066,
 // ADR 0050 slice 4).
-const Version = 32
+// Version 33: relayed run requests (relay_inboxes, run_requests, run_request_events on the group server; relay_local,
+// relayed_requests and jobs.request_ref on the key holder's computer; ADR 0066 section 3, ADR 0050 slice 5).
+const Version = 33
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -103,6 +105,7 @@ var migrations = []Migration{
 	{To: 30, Name: "accounts and sessions", Up: accountsTables},
 	{To: 31, Name: "workspaces", Up: workspacesMigration, NoForeignKeys: true},
 	{To: 32, Name: "push to the group server", Up: pushTables},
+	{To: 33, Name: "relayed run requests", Up: relayTables},
 }
 
 // AccountsTables are the group server's accounts (ADR 0050 section 2, slice 2). An account carries no credential itself: a way to

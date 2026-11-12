@@ -275,6 +275,11 @@ func (s *Store) RemoveMember(ws workspace.ID, accountID string) (string, error) 
 	if _, err := tx.Exec(`DELETE FROM memberships WHERE workspace_id=? AND account_id=?`, ws, accountID); err != nil {
 		return "", err
 	}
+	// the push and relay tokens bound to this workspace go with the membership (ADR 0066 section 3, account changes); the role
+	// re-read on every request already stops them, this also takes them off the account's list
+	if _, err := tx.Exec(`DELETE FROM access_tokens WHERE account_id=? AND workspace_id=?`, accountID, ws); err != nil {
+		return "", err
+	}
 	return old, tx.Commit()
 }
 

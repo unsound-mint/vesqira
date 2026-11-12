@@ -15,6 +15,8 @@ const AccountPage = lazy(() => import("./AccountPage").then((m) => ({ default: m
 const MembersPage = lazy(() => import("./MembersPage").then((m) => ({ default: m.MembersPage })));
 const GroupPage = lazy(() => import("../push/GroupPage").then((m) => ({ default: m.GroupPage })));
 const PushedPage = lazy(() => import("../push/PushedPage").then((m) => ({ default: m.PushedPage })));
+const InboxPage = lazy(() => import("../runrequests/InboxPage").then((m) => ({ default: m.InboxPage })));
+const RunRequestsPage = lazy(() => import("../runrequests/RunRequestsPage").then((m) => ({ default: m.RunRequestsPage })));
 const InvitePage = lazy(() => import("./InvitePage").then((m) => ({ default: m.InvitePage })));
 
 const STORED = "vesqira.workspace";
@@ -119,6 +121,13 @@ export function AccountGate({ children }: { children: (account: ReactNode) => Re
       </Suspense>
     );
   }
+  if (mode === "local" && hash === "#/inbox") {
+    return (
+      <Suspense fallback={null}>
+        <InboxPage />
+      </Suspense>
+    );
+  }
   // the one addition local mode gets: the way to link this computer to a group server (ADR 0066)
   if (mode === "local") return <>{children(<LinkButton href="#/group" variant="ghost">Group server</LinkButton>)}</>;
   if (mode === "signin") {
@@ -161,6 +170,15 @@ export function AccountGate({ children }: { children: (account: ReactNode) => Re
       </PermissionsContext.Provider>
     );
   }
+  if (hash === "#/run-requests" && ws && can("run_request.read")) {
+    return (
+      <PermissionsContext.Provider value={can}>
+        <Suspense fallback={null}>
+          <RunRequestsPage />
+        </Suspense>
+      </PermissionsContext.Provider>
+    );
+  }
   const choose = (id: number) => {
     store(id);
     location.reload(); // every open view belongs to the workspace it was loaded in
@@ -173,6 +191,7 @@ export function AccountGate({ children }: { children: (account: ReactNode) => Re
         </select>
       ) : null}
       {ws && can("pushed.read") ? <LinkButton href="#/pushed" variant="ghost">Pushed work</LinkButton> : null}
+      {ws && can("run_request.read") ? <LinkButton href="#/run-requests" variant="ghost">Run requests</LinkButton> : null}
       {ws ? <LinkButton href="#/members" variant="ghost" aria-label={`Members of ${ws.name}`}>{ws.workspaces.length > 1 ? "Members" : `${ws.name} · members`}</LinkButton> : null}
       <LinkButton href="#/account" variant="ghost" aria-label={`Account: ${name || "signed in"}`}>{name || "Account"}</LinkButton>
       <Button variant="ghost" onClick={() => void signOut().finally(() => location.reload())}>Sign out</Button>
