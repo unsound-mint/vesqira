@@ -19067,6 +19067,10 @@
     },
     "label": {
      "$ref": "#/components/schemas/AccessLabel"
+    },
+    "how": {
+     "type": "string",
+     "description": "How the label reached the result when not by a recorded dataset edge: a run's input named by the job that made it, or inferred by file name and size. Absent for a direct or derived edge."
     }
    }
   },

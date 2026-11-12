@@ -40,9 +40,10 @@ func rig(t *testing.T) (*Store, *sql.DB) {
 	}
 	db.SetMaxOpenConns(1)
 	for _, q := range []string{
-		`CREATE TABLE datasets(id INTEGER PRIMARY KEY, workspace_id INTEGER NOT NULL DEFAULT 1)`,
+		`CREATE TABLE datasets(id INTEGER PRIMARY KEY, workspace_id INTEGER NOT NULL DEFAULT 1, name TEXT NOT NULL DEFAULT '', size_bytes INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE derived(dataset_id INTEGER PRIMARY KEY, sources TEXT NOT NULL)`,
-		`CREATE TABLE runs(id INTEGER PRIMARY KEY, workspace_id INTEGER NOT NULL DEFAULT 1)`,
+		`CREATE TABLE runs(id INTEGER PRIMARY KEY, workspace_id INTEGER NOT NULL DEFAULT 1, name TEXT NOT NULL DEFAULT '', input_name TEXT NOT NULL DEFAULT '', input_size INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE TABLE jobs(id INTEGER PRIMARY KEY, run_id INTEGER, request TEXT)`,
 		`CREATE TABLE run_outputs(run_id INTEGER, dataset_id INTEGER)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
@@ -103,5 +104,34 @@ func TestInheritanceFollowsDerivedEdgesAndSurvivesCycles(t *testing.T) {
 	var nilView *View
 	if nilView.Dataset(1).Label != None {
 		t.Fatal("a nil view is released")
+	}
+}
+
+// A run's input is found by the job that made it when the job recorded the dataset it was drafted on; that exact edge replaces the
+// name-and-size guess, which would otherwise have matched a different file of the same name.
+func TestRunInputPrefersTheJobsExactDatasetOverNameAndSize(t *testing.T) {
+	s, db := rig(t)
+	ws := workspace.Local
+	db.Exec(`INSERT INTO datasets(id,name,size_bytes) VALUES(1,'lmc.fits',5),(2,'lmc.fits',5),(3,'psi.fits',9)`)
+	db.Exec(`INSERT INTO runs(id,name,input_name,input_size) VALUES(1,'r1','/x/lmc.fits',5)`)
+	db.Exec(`INSERT INTO run_outputs VALUES(1,3)`)
+	s.Set(ws, 1, "lmc.fits", Collaboration, "", "u") // the dataset the guess would find first
+	s.Set(ws, 2, "lmc.fits", Unreleased, "", "u")
+	v, err := s.View(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := v.Dataset(3)
+	if e.Label != Unreleased || len(e.Via) != 2 || e.Via[0].How == "" {
+		t.Fatalf("by name and size both copies count: %+v", e)
+	}
+	db.Exec(`INSERT INTO jobs(run_id,request) VALUES(1,'{"inputRerun":{"input":{"datasetId":1}}}')`)
+	v, _ = s.View(ws)
+	e = v.Dataset(3)
+	if e.Label != Collaboration || len(e.Via) != 1 || e.Via[0].DatasetID != 1 || e.Via[0].How == "" {
+		t.Fatalf("the job's own record names the dataset: %+v", e)
+	}
+	if v.Run(1).Label != Collaboration {
+		t.Fatalf("the run itself carries it: %+v", v.Run(1))
 	}
 }

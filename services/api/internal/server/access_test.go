@@ -10,6 +10,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/access"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
@@ -410,5 +411,103 @@ func TestLocalPushCarriesTheLabelOfItsDatasets(t *testing.T) {
 		if !strings.Contains(raw, `"access":"unreleased"`) {
 			t.Errorf("the pushed %s does not carry the label: %s", kind, raw)
 		}
+	}
+}
+
+// runBoard puts a run that read inputName (size 1) on a new board: the run's psi output is a new dataset, a figure is drawn from
+// it and the board holds the figure. The run records its input by name and size only, as a real one does.
+func (r *accessRig) runBoard(t *testing.T, inputName string) (board, psi int64) {
+	t.Helper()
+	rn, err := runs.Open(r.g.cat.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := r.g.cat.DB()
+	ins := func(q string, args ...any) int64 {
+		t.Helper()
+		res, err := db.Exec(q, args...)
+		if err != nil {
+			t.Fatalf("%v\n%s", err, q)
+		}
+		id, _ := res.LastInsertId()
+		return id
+	}
+	rex := r.g.mustAccount("rex")
+	psi = ins(`INSERT INTO datasets(path,name,size_bytes,modified_at,added_at,header,workspace_id,created_by) VALUES(?,'psi.fits',9,1,1,'{}',1,?)`, fmt.Sprintf("/o/%s/psi.fits", inputName), rex.ID)
+	run, err := rn.Save(workspace.Local, rex.ID, t.TempDir(), runs.Parsed{Run: runs.Run{Name: "vgt-a1", Kind: "vgt", InputName: "/scratch/lab/" + inputName, InputSizeBytes: 1}},
+		[]runs.Output{{Role: "psi", DatasetID: psi, Name: "psi.fits"}})
+	if err != nil || run.ID == 0 {
+		t.Fatal(err)
+	}
+	fig := ins(`INSERT INTO figures(dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,workspace_id,created_by) VALUES(?,'Psi map','',1,?,'abc',1,1,'{}',1,?)`, psi, fmt.Sprintf("rev-psi-%d", psi), rex.ID)
+	board = ins(`INSERT INTO boards(title,created_at,updated_at,workspace_id,created_by) VALUES('Run board',1,1,1,?)`, rex.ID)
+	ins(`INSERT INTO board_items(board_id,position,figure_id,note) VALUES(?,0,?,'')`, board, fig)
+	return board, psi
+}
+
+func (r *accessRig) publishBoard(board int64, confirm bool) *httptest.ResponseRecorder {
+	body := `{"label":"s","hours":24}`
+	if confirm {
+		body = `{"label":"s","hours":24,"confirmAccess":true}`
+	}
+	return r.g.do(req{method: "POST", path: fmt.Sprintf("/api/boards/%d/publish", board), body: body, cookie: r.admin})
+}
+
+func (r *accessRig) effectiveOf(t *testing.T, id int64) access.Effective {
+	t.Helper()
+	ov := decode[struct {
+		Datasets map[string]struct {
+			Effective access.Effective `json:"effective"`
+		} `json:"datasets"`
+	}](t, r.g.do(req{path: "/api/access", cookie: r.view}))
+	return ov.Datasets[fmt.Sprint(id)].Effective
+}
+
+// The map a run made from a labelled cube carries the cube's label, so labelling the cube protects what is published from it. The
+// link is inferred from the run's input name and size, says so, and can only add restriction.
+func TestARunOutputInheritsTheLabelOfItsInputCube(t *testing.T) {
+	r := newAccessRig(t)
+	board, psi := r.runBoard(t, secretCube)
+	if w := r.publishBoard(board, false); w.Code != 201 {
+		t.Fatalf("nothing is labelled yet: %d %s", w.Code, w.Body)
+	}
+	r.setLabel(r.researcher, r.cube, "collaboration")
+	e := r.effectiveOf(t, psi)
+	if e.Label != access.Collaboration || len(e.Via) != 1 || !strings.Contains(e.Via[0].How, "input of run vgt-a1, matched by file name and size") {
+		t.Fatalf("the psi map should inherit and say how: %+v", e)
+	}
+	w := r.publishBoard(board, false)
+	var refusal struct{ Error, Code string }
+	json.Unmarshal(w.Body.Bytes(), &refusal)
+	if w.Code != 409 || refusal.Code != "access_confirmation_required" {
+		t.Fatalf("publishing a map from a labelled cube: %d %s", w.Code, w.Body)
+	}
+	// the admin's block applies to it too
+	if c := r.g.do(req{method: "POST", path: "/api/workspaces/1/blocked-labels", body: `{"labels":["collaboration"]}`, cookie: r.admin}).Code; c != 200 {
+		t.Fatal(c)
+	}
+	if w := r.publishBoard(board, true); w.Code != 403 {
+		t.Fatalf("blocked by policy: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestARunWhoseInputMatchesNothingStaysReleasedAndTwoMatchesTakeTheStricter(t *testing.T) {
+	r := newAccessRig(t)
+	other, _ := r.runBoard(t, "elsewhere.fits")
+	r.setLabel(r.researcher, r.cube, "unreleased")
+	if w := r.publishBoard(other, false); w.Code != 201 {
+		t.Fatalf("a run that read an unlabelled or unknown file is released: %d %s", w.Code, w.Body)
+	}
+	// a second registered copy of the same file name and size in another folder, labelled less strictly: the stricter label wins
+	rex := r.g.mustAccount("rex")
+	res, err := r.g.cat.DB().Exec(`INSERT INTO datasets(path,name,size_bytes,modified_at,added_at,header,workspace_id,created_by) VALUES('/other/dir/'||?,?,1,1,1,'{}',1,?)`, secretCube, secretCube, rex.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dup, _ := res.LastInsertId()
+	r.setLabel(r.researcher, dup, "collaboration")
+	_, psi := r.runBoard(t, secretCube)
+	if e := r.effectiveOf(t, psi); e.Label != access.Unreleased || len(e.Via) != 2 {
+		t.Fatalf("two matching cubes: %+v", e)
 	}
 }

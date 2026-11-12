@@ -57,7 +57,7 @@ export function AccessPanel({ id, onChanged }: { id: number; onChanged?: () => v
     <div className={s.wrap}>
       <p className={s.note}>
         {acc.label === "none" ? "Released: no label." : <AccessBadge label={acc.label} />}
-        {inherited ? <> This dataset also carries <strong>{ACCESS_NAME[acc.effective.label]}</strong> from {(acc.effective.via ?? []).map((v) => v.name).join(", ")}, which it was made from.</> : null}
+        {inherited ? <> This dataset also carries <strong>{ACCESS_NAME[acc.effective.label]}</strong> from {(acc.effective.via ?? []).map((v) => (v.how ? `${v.name} (${v.how})` : v.name)).join("; ")}, which it was made from.</> : null}
       </p>
       {writable ? (
         <>

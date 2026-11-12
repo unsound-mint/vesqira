@@ -137,8 +137,8 @@ func (s *Server) setAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v, err := s.accessView(wsOf(r))
-	if err != nil {
-		fail(w, 500, "internal error")
+	if err != nil || v == nil { // v is nil only when no label store is open; refuse rather than set a label nothing could read
+		fail(w, 503, "access labels are not available on this server")
 		return
 	}
 	if label.Rank() < v.Own(id).Rank() && !mayLower(actorOf(r)) {

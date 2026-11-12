@@ -61,7 +61,7 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 ## Access labels (GitHub issue 135; ADR 0069, implemented)
 
 - [x] A per-dataset label (released, collaboration only, unreleased) with an audited history, inherited by figures, boards and reports from the recorded dependency edges, shown as text and icon, confirmed on publish, stated on the review page, and blockable per workspace by an admin on the group server; pushed work carries its label and the server applies its policy (schema 34).
-- [ ] Runs record their input datasets, so a run's outputs inherit the label of the cube it read (ADR 0069, known gap).
+- [x] A run's outputs inherit the label of the cube it read, inferred from the run's input name and size (the job's exact input dataset when it recorded one); the inference only adds restriction. A run that records its input dataset id would make it exact (ADR 0069).
 
 ## Tool profiles (owner direction, 2026-11-13; ADR 0068, proposed)
 

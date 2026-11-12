@@ -11515,6 +11515,8 @@ export interface components {
             /** @description The dataset's name when its label was set */
             name: string;
             label: components["schemas"]["AccessLabel"];
+            /** @description How the label reached the result when not by a recorded dataset edge: a run's input named by the job that made it, or inferred by file name and size. Absent for a direct or derived edge. */
+            how?: string;
         };
         /** @description The label a dataset, figure or run carries: the most restrictive among its own and those of the datasets it was made from, computed from the recorded dependency edges when asked, never stored. via lists the labelled datasets that bring a label in; it is omitted when the label is none. */
         AccessEffective: {

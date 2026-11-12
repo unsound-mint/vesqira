@@ -195,6 +195,9 @@ type Source struct {
 	DatasetID int64  `json:"datasetId"`
 	Name      string `json:"name"`
 	Label     Label  `json:"label"`
+	// How says how a label reached the result when it did not come from a recorded dataset edge: a run's input found by the
+	// job that made it, or inferred by file name and size. Empty for a direct or derived edge.
+	How string `json:"how,omitempty"`
 }
 
 // Effective is the label a dataset, figure or run carries: the most restrictive among its own and its sources'. Via lists the
@@ -214,6 +217,14 @@ type View struct {
 	own     map[int64]Source  // current label of each labelled dataset
 	derived map[int64][]int64 // derived dataset -> the datasets it was made from
 	runOut  map[int64][]int64 // run -> its output datasets
+	outRun  map[int64][]int64 // output dataset -> the runs that made it
+	runIn   map[int64][]edge  // run -> the labelled datasets it read
+}
+
+// edge is a run's link to a labelled input dataset and how it was found.
+type edge struct {
+	ds  int64
+	how string
 }
 
 // View loads the workspace's labels and, when any exists, the edges it needs to propagate them.
@@ -272,15 +283,128 @@ func (s *Store) View(ws workspace.ID) (*View, error) {
 		}
 		return nil, err
 	}
-	defer orows.Close()
+	v.outRun = map[int64][]int64{}
 	for orows.Next() {
 		var run, ds int64
 		if err := orows.Scan(&run, &ds); err != nil {
+			orows.Close()
 			return nil, err
 		}
 		v.runOut[run] = append(v.runOut[run], ds)
+		v.outRun[ds] = append(v.outRun[ds], run)
 	}
-	return v, orows.Err()
+	err = orows.Err()
+	orows.Close()
+	if err != nil {
+		return nil, err
+	}
+	return v, s.loadRunInputs(ws, v)
+}
+
+// loadRunInputs finds, for each run of the workspace, the labelled datasets it read. A run records its input file only by name
+// and size, so the link is inferred: a registered dataset of the workspace with the same file name and size is taken to be the
+// input. That can only add restriction, never remove it, so a wrong match errs on the safe side. Where the job that made the run
+// recorded the exact dataset it was drafted on (a rerun on another cube), that edge is used instead of the inference.
+func (s *Store) loadRunInputs(ws workspace.ID, v *View) error {
+	v.runIn = map[int64][]edge{}
+	exact := map[int64]int64{}
+	jrows, err := s.db.Query(`SELECT j.run_id, j.request FROM jobs j JOIN runs r ON r.id=j.run_id WHERE j.run_id IS NOT NULL AND r.workspace_id=?`, ws)
+	if err == nil {
+		for jrows.Next() {
+			var run int64
+			var raw sql.NullString
+			if jrows.Scan(&run, &raw) != nil || !raw.Valid {
+				continue
+			}
+			var req struct {
+				InputRerun *struct {
+					Input struct {
+						DatasetID int64 `json:"datasetId"`
+					} `json:"input"`
+				} `json:"inputRerun"`
+			}
+			if json.Unmarshal([]byte(raw.String), &req) == nil && req.InputRerun != nil && req.InputRerun.Input.DatasetID > 0 {
+				exact[run] = req.InputRerun.Input.DatasetID
+			}
+		}
+		err = jrows.Err()
+		jrows.Close()
+	}
+	if err != nil && !strings.Contains(err.Error(), "no such") { // a catalog whose jobs store was never opened has no job records
+		return err
+	}
+	type run struct {
+		id   int64
+		name string
+		in   string
+		size int64
+	}
+	var all []run
+	rrows, err := s.db.Query(`SELECT id, name, input_name, input_size FROM runs WHERE workspace_id=?`, ws)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such") {
+			return nil
+		}
+		return err
+	}
+	for rrows.Next() {
+		var r run
+		if err := rrows.Scan(&r.id, &r.name, &r.in, &r.size); err != nil {
+			rrows.Close()
+			return err
+		}
+		all = append(all, r)
+	}
+	err = rrows.Err()
+	rrows.Close()
+	if err != nil {
+		return err
+	}
+	type file struct {
+		name string
+		size int64
+	}
+	byFile := map[file][]int64{}
+	drows, err := s.db.Query(`SELECT id, name, size_bytes FROM datasets WHERE workspace_id=?`, ws)
+	if err != nil {
+		return err
+	}
+	for drows.Next() {
+		var id int64
+		var f file
+		if err := drows.Scan(&id, &f.name, &f.size); err != nil {
+			drows.Close()
+			return err
+		}
+		if _, ok := v.own[id]; ok || v.reachesLabel(id) { // only datasets that carry a label matter here
+			byFile[f] = append(byFile[f], id)
+		}
+	}
+	err = drows.Err()
+	drows.Close()
+	if err != nil {
+		return err
+	}
+	for _, r := range all {
+		if id, ok := exact[r.id]; ok {
+			v.runIn[r.id] = []edge{{id, fmt.Sprintf("input of run %s, recorded by the job that made it", r.name)}}
+			continue
+		}
+		base := r.in
+		if i := strings.LastIndexAny(base, `/\`); i >= 0 {
+			base = base[i+1:]
+		}
+		for _, id := range byFile[file{base, r.size}] {
+			v.runIn[r.id] = append(v.runIn[r.id], edge{id, fmt.Sprintf("input of run %s, matched by file name and size", r.name)})
+		}
+	}
+	return nil
+}
+
+// reachesLabel reports whether a dataset carries a label through its derived sources (so a derived copy of a labelled cube, read by a
+// run, still counts). Cycle-safe.
+func (v *View) reachesLabel(id int64) bool {
+	return v.Datasets(id).Label.Restricted()
 }
 
 // Datasets is the effective label of a set of datasets: the most restrictive among them and everything they were made from.
@@ -289,23 +413,48 @@ func (v *View) Datasets(ids ...int64) Effective {
 	if v == nil || len(v.own) == 0 {
 		return Effective{Label: None}
 	}
+	return v.effective(ids, nil)
+}
+
+// effective walks the dependencies of some datasets and some runs: derived sources, and for a dataset the runs that made it and
+// the labelled inputs of those runs. A visited set keeps a cycle from looping. A label reached by a plain edge is shown as such
+// even when a run edge reaches it too; otherwise the entry says how the run's input was found.
+func (v *View) effective(ids []int64, runs []int64) Effective {
 	seen := map[int64]bool{}
+	seenRun := map[int64]bool{}
 	via := map[int64]Source{}
-	var walk func(id int64)
-	walk = func(id int64) {
+	var walk func(id int64, how string)
+	var walkRun func(run int64)
+	walkRun = func(run int64) {
+		if seenRun[run] {
+			return
+		}
+		seenRun[run] = true
+		for _, in := range v.runIn[run] {
+			walk(in.ds, in.how)
+		}
+	}
+	walk = func(id int64, how string) {
 		if seen[id] {
 			return
 		}
 		seen[id] = true
 		if src, ok := v.own[id]; ok {
+			src.How = how
 			via[id] = src
 		}
 		for _, from := range v.derived[id] {
-			walk(from)
+			walk(from, how)
+		}
+		for _, run := range v.outRun[id] {
+			walkRun(run)
 		}
 	}
 	for _, id := range ids {
-		walk(id)
+		walk(id, "")
+	}
+	for _, run := range runs {
+		walkRun(run)
 	}
 	e := Effective{Label: None}
 	for _, s := range via {
@@ -341,7 +490,7 @@ func (v *View) Run(id int64) Effective {
 	if v == nil {
 		return Effective{Label: None}
 	}
-	return v.Datasets(v.runOut[id]...)
+	return v.effective(v.runOut[id], []int64{id})
 }
 
 // Labelled lists every dataset that carries a label, its own or an inherited one, for the badges of a catalog list.
@@ -354,6 +503,11 @@ func (v *View) Labelled() map[int64]Effective {
 		out[id] = v.Dataset(id)
 	}
 	for id := range v.derived {
+		if e := v.Dataset(id); e.Label.Restricted() {
+			out[id] = e
+		}
+	}
+	for id := range v.outRun {
 		if e := v.Dataset(id); e.Label.Restricted() {
 			out[id] = e
 		}
@@ -374,10 +528,11 @@ func (v *View) Figure(datasetID *int64, scene, identity json.RawMessage) Effecti
 	}
 	ids = append(ids, DatasetRefs(scene)...)
 	ids = append(ids, DatasetRefs(identity)...)
-	for _, run := range RunRefs(scene) {
+	runs := RunRefs(scene)
+	for _, run := range runs {
 		ids = append(ids, v.runOut[run]...)
 	}
-	return v.Datasets(ids...)
+	return v.effective(ids, runs)
 }
 
 // DatasetRefs collects every dataset id a scene/1, channel-grid or figure-identity document names, by key: "datasetId",
