@@ -1,0 +1,91 @@
+.root {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+}
+
+.lead,
+.note,
+.hash {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.err {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.summary {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.h {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--w-strong);
+}
+
+.changes,
+.notes {
+  margin: 0;
+  padding-left: var(--sp-4);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.notes {
+  color: var(--text);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.facts dt {
+  color: var(--text-2);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.carried summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.settings {
+  display: grid;
+  gap: var(--sp-1);
+  margin: var(--sp-2) 0 0;
+  font-size: var(--text-sm);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr);
+  gap: var(--sp-2);
+}
+
+.row dt,
+.row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  gap: var(--sp-2);
+}

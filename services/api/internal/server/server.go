@@ -227,6 +227,10 @@ func (s *Server) Handler() http.Handler {
 			s.route(mux, "POST /api/jobs/{id}/cancel", authz.JobSubmit, s.cancelJob)
 			s.route(mux, "GET /api/jobs/{id}/log", authz.JobAccess, s.jobLog)
 			s.route(mux, "GET /api/jobs/{id}/rerun-check", authz.JobRead, s.getRerunCheck)
+			if s.Runs != nil && s.Store != nil {
+				s.route(mux, "GET /api/runs/{id}/rerun-on-input", authz.JobRead, s.previewInputRerun)
+				s.route(mux, "POST /api/runs/{id}/rerun-on-input", authz.JobSubmit, s.createInputRerun)
+			}
 			s.route(mux, "POST /api/jobs/{id}/register", authz.JobAccess, s.registerJobOutputs)
 			s.route(mux, "GET /api/jobs/{id}/result", authz.JobAccess, s.jobResult)
 			if s.Sweeps != nil {

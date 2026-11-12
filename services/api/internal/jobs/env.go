@@ -75,11 +75,25 @@ ve_input() {
   if [ -n "$z" ]; then ve_ok input.size_bytes "$z"; else ve_no input.size_bytes "stat gave no size"; fi
   if [ -n "$t" ]; then ve_ok input.mtime_epoch "$t"; else ve_no input.mtime_epoch "stat gave no modification time"; fi
 }
+ve_input_full() {
+  case "$1" in
+    /*) ;;
+    *) ve_no input.full_sha256 "the config names no input file as a plain absolute path"; return ;;
+  esac
+  if [ ! -f "$1" ]; then ve_no input.full_sha256 "the input file is not readable on this node"; return; fi
+  z0=$(stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null); t0=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)
+  h=$(ve_sha < "$1")
+  z1=$(stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null); t1=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)
+  if [ -z "$h" ]; then ve_no input.full_sha256 "no sha256 tool on this node, or the file could not be read"
+  elif [ -z "$z0" ] || [ "$z0" != "$z1" ] || [ "$t0" != "$t1" ]; then ve_no input.full_sha256 "the input file changed while it was being read, or its size and time could not be read"
+  else ve_ok input.full_sha256 "$h"; fi
+}
 ve_collect() {
   if [ -z "$1" ] || [ ! -d "$1" ]; then
     ve_no_all "the code folder is not readable on this node" code.commit code.dirty code.untracked_files code.diff_sha256 julia.manifest_sha256
   else ve_code "$1"; ve_manifest "$1"; fi
   ve_input "$2"
+  if [ "$3" != probe ] && [ "$4" = full ]; then ve_input_full "$2"; fi
   if [ "$3" != probe ]; then ve_machine; fi
 }
 `
@@ -93,6 +107,10 @@ type EnvSpec struct {
 	// ExpectCommit, for a strict rerun, is the commit of the run being repeated: the job stops before the science starts if
 	// the code folder is at another commit or has changed tracked files.
 	ExpectCommit string
+	// HashInput asks the job to read every byte of the input file and record its SHA-256 (input.full_sha256), once, before the
+	// program starts. It costs one pass over the file on the compute node, so it is on only for a run that needs the input's
+	// identity as the job saw it (a configuration run on another cube). Never in probe mode.
+	HashInput bool
 }
 
 func plainPath(p string) string {
@@ -113,7 +131,11 @@ func EnvPreamble(e EnvSpec) string {
 	b.WriteString("ve_copy() { [ -n \"$ve_out\" ] && [ -d \"$ve_out\" ] && [ ! -L \"$ve_out\" ] && [ ! -L \"$ve_out/vesqira-env.json\" ] && [ -f \"$ve_file\" ] && cp -f \"$ve_file\" \"$ve_out/vesqira-env.json\" 2>/dev/null; return 0; }\n")
 	b.WriteString("(\n  set +e +u\n  ve_emit() { printf '%s|%s|%s\\n' \"$1\" \"$2\" \"$3\"; }\n")
 	b.WriteString(envCollector)
-	fmt.Fprintf(&b, "  ve_collect \"%s\" \"%s\" job\n", plainPath(e.RepoDir), plainPath(e.InputFile))
+	hash := ""
+	if e.HashInput {
+		hash = " full"
+	}
+	fmt.Fprintf(&b, "  ve_collect \"%s\" \"%s\" job%s\n", plainPath(e.RepoDir), plainPath(e.InputFile), hash)
 	b.WriteString(") > \"$jobdir/vesqira-env.lines\" 2>/dev/null || true\n")
 	b.WriteString("{\n  printf '{\\n  \"record\": \"vesqira-env\",\\n  \"version\": 1,\\n  \"slurm_job_id\": \"%s\",\\n  \"facts\": {' \"$(printf '%s' \"${SLURM_JOB_ID:-}\" | tr -cd '0-9')\"\n")
 	b.WriteString("  awk -F'|' 'NF>=3 { v=$3; for (i=4;i<=NF;i++) v=v \"|\" $i; printf \"%s\\n    \\\"%s\\\": {\\\"status\\\": \\\"%s\\\", \\\"%s\\\": \\\"%s\\\"}\", (n++ ? \",\" : \"\"), $1, $2, ($2==\"verified\" ? \"value\" : \"reason\"), v }' \"$jobdir/vesqira-env.lines\"\n")

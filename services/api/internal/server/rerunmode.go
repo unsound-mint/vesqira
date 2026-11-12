@@ -179,7 +179,7 @@ func (s *Server) rerunCheck(ctx context.Context, j jobs.Job, h hosts.Host) (reru
 		return out, &apiErr{404, "the run this job repeats does not exist"}
 	}
 	cfg, _ := jobs.EmbeddedConfig(j.Script)
-	input, _ := jobs.ConfigPaths(cfg)
+	input := jobs.InputPathOf(j.Template, cfg)
 	if !jobs.ValidPath(input) { // a relative or unusual path is not interpolated; the facts that need it come back unresolved
 		input = ""
 	}

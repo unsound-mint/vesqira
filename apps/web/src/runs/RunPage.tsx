@@ -16,10 +16,11 @@ import { EntryActions } from "../catalog/EntryActions";
 import type { EntryChange } from "../catalog/EntryActions";
 import { ControlsEditor } from "./ControlsEditor";
 import { ParentComparison } from "./ParentComparison";
+import { RerunOnCube, SameConfiguration } from "./RerunOnCube";
 import s from "./RunPage.module.css";
 
 /** A run as a page of blocks: its result, the numbers it declared, how it was set up, your assessment, and its log. */
-export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer, onRunAgain, onEntryChanged }: {
+export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer, onRunAgain, onDraftedOnCube, onEntryChanged }: {
   run: Run;
   runs: Run[];
   datasets: Dataset[];
@@ -31,6 +32,8 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
   onCompareInViewer?: (a: number, b: number) => void;
   /** Opens the draft form that repeats this run with changes. */
   onRunAgain?: (id: number) => void;
+  /** A draft that runs this run's configuration on another cube was made; opens it on the Jobs screen. */
+  onDraftedOnCube?: (job: Job) => void;
   /** The run was archived, restored or deleted from this page. */
   onEntryChanged?: (change: EntryChange) => void;
 }) {
@@ -56,6 +59,7 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
   const diffMap = new Map(diffs.map((d) => [d.key, d]));
   const own = new Set(run.params.map((p) => p.key));
   const input = run.inputHint ? datasets.find((d) => d.id === run.inputHint!.datasetId) : null;
+  const sameConfig = run.configHash ? runs.filter((r) => r.id !== run.id && r.id !== run.inputRerun?.sourceRunId && r.configHash === run.configHash) : [];
   const unresolved = (run.reproducibility ?? []).filter((f) => f.status === "unresolved").length;
 
   return (
@@ -204,6 +208,18 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
         {run.parentComparison ? (
           <Section title="Compared with the parent run" meta={run.parentComparison.mode ? run.parentComparison.mode.replace("_", " ") : undefined}>
             <ParentComparison cmp={run.parentComparison} parentName={parent?.name ?? "parent run"} />
+          </Section>
+        ) : null}
+
+        {run.inputRerun ? (
+          <Section title="Same configuration, different input" meta={run.inputRerun.sameConfiguration ? "same configuration" : "settings differ"}>
+            <SameConfiguration record={run.inputRerun} sourceName={runs.find((r) => r.id === run.inputRerun!.sourceRunId)?.name ?? null} others={sameConfig} onOpenRun={onOpenRun} />
+          </Section>
+        ) : null}
+
+        {job && onDraftedOnCube && (run.kind === "vgt" || run.kind === "rohsa") ? (
+          <Section title="Run this configuration on another cube" defaultOpen={false}>
+            <RerunOnCube run={run} job={job} datasets={datasets} onDrafted={onDraftedOnCube} />
           </Section>
         ) : null}
 

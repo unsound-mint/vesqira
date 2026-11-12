@@ -5085,6 +5085,88 @@ paths:
       x-listener: owner
       x-vesqira-permission: run.read
       responses: {'200': {description: ok}}
+  /api/runs/{id}/rerun-on-input:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_previewInputRerun_get_api_runs_id_rerun_on_input
+      x-listener: owner
+      x-vesqira-permission: job.read
+      summary: "Preview running a recorded VGT or ROHSA configuration on another cube: what is carried over and what changes, or why it is refused. Stores nothing (jobs are local-mode only)"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+        - name: "datasetId"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+        - name: "name"
+          in: "query"
+          schema:
+            type: "string"
+        - name: "rerunMode"
+          in: "query"
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "the summary"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/RerunOnInputSummary"
+        "404":
+          description: "no such run"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "the run kept no settings, or a setting cannot hold for the chosen cube; the sentence says which"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: owner_s_createInputRerun_post_api_runs_id_rerun_on_input
+      x-listener: owner
+      x-vesqira-permission: job.submit
+      summary: "Draft a job that runs a recorded configuration on another cube: the settings, code folder and resources are kept, only the input is replaced; the draft records the input's identity and the source run (jobs are local-mode only; nothing is submitted)"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/RerunOnInputRequest"
+      responses:
+        "201":
+          description: "the draft and its summary"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/RerunOnInputCreated"
+        "404":
+          description: "no such run"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "refused, with a sentence: no kept settings, a setting that does not fit the cube, a cube on another host, and so on"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/runs/{id}/restore:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -18188,3 +18270,136 @@ components:
           items:
             $ref: "#/components/schemas/Membership"
       description: "Where the request acts and what the caller may do there. Group server only."
+    RerunInputIdentity:
+      type: "object"
+      description: "What the catalog knew about the chosen input cube when the draft was made (ADR 0053). sampledFp is sampled/1, which is not a hash of the whole file; fullSha256 is the SHA-256 of every byte. Either is empty when none was computed; neither is computed for a draft."
+      required:
+        - "datasetId"
+        - "name"
+        - "hostId"
+        - "path"
+        - "sizeBytes"
+        - "modifiedAt"
+        - "sampledFp"
+        - "fullSha256"
+      properties:
+        datasetId:
+          type: "integer"
+        name:
+          type: "string"
+        hostId:
+          type: "integer"
+        path:
+          type: "string"
+        sizeBytes:
+          type: "integer"
+        modifiedAt:
+          type: "integer"
+          description: "seconds since 1970"
+        sampledFp:
+          type: "string"
+        fullSha256:
+          type: "string"
+    RerunOnInputRequest:
+      type: "object"
+      required:
+        - "datasetId"
+      properties:
+        datasetId:
+          type: "integer"
+          description: "the cube to run the recorded configuration on: a registered FITS cube on the host the recorded run's job ran on"
+        name:
+          type: "string"
+          description: "job name; a default is suggested from the run and the cube"
+        rerunMode:
+          type: "string"
+          enum:
+            - "best_effort"
+            - "adapted"
+          description: "best_effort (the default) or adapted; strict is refused because it insists on the same input file"
+    RerunOnInputSummary:
+      type: "object"
+      description: "What a configuration run on another cube carries over from the recorded run and what changes (ADR 0014 amendment). Nothing is guessed, converted or silently adjusted."
+      required:
+        - "sourceRunId"
+        - "sourceRunName"
+        - "sourceJobId"
+        - "template"
+        - "hostId"
+        - "mode"
+        - "name"
+        - "sourceConfigHash"
+        - "configHash"
+        - "input"
+        - "previousInput"
+        - "changed"
+        - "carried"
+        - "sourceEditedLines"
+        - "notes"
+      properties:
+        sourceRunId:
+          type: "integer"
+        sourceRunName:
+          type: "string"
+        sourceJobId:
+          type: "integer"
+        template:
+          type: "string"
+          enum:
+            - "vgt"
+            - "rohsa"
+        hostId:
+          type: "integer"
+        mode:
+          type: "string"
+          enum:
+            - "best_effort"
+            - "adapted"
+        name:
+          type: "string"
+        sourceConfigHash:
+          type: "string"
+          description: "vesqira-config/1: SHA-256 of the whole config with the overrides applied and the input and output paths left out"
+        configHash:
+          type: "string"
+          description: "the draft's own hash; equal to sourceConfigHash by construction"
+        input:
+          $ref: "#/components/schemas/RerunInputIdentity"
+        previousInput:
+          type: "string"
+          description: "the input path in the recorded config; empty when it named none"
+        changed:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/RerunSettingChange"
+        carried:
+          type: "array"
+          items:
+            type: "object"
+            required:
+              - "key"
+              - "value"
+            properties:
+              key:
+                type: "string"
+              value:
+                type: "string"
+        sourceEditedLines:
+          type: "integer"
+          description: "lines of the source job's script edited by hand; the draft is rendered from settings, so they are not carried"
+        notes:
+          type: "array"
+          items:
+            type: "string"
+    RerunOnInputCreated:
+      type: "object"
+      required:
+        - "job"
+        - "summary"
+      properties:
+        job:
+          type: "object"
+          description: "the stored draft job (nothing is submitted)"
+          additionalProperties: true
+        summary:
+          $ref: "#/components/schemas/RerunOnInputSummary"

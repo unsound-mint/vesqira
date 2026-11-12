@@ -120,6 +120,9 @@ type vgtInput struct {
 	Mem, Time, Partition, Account   string
 	// RerunMode and ExpectRev come from "run again with..." (ADR 0054); ExpectRev is set for a strict rerun only.
 	RerunMode, ExpectRev string
+	// InputRerun marks a draft that runs another run's configuration on a new cube; HashInput makes its script hash the input.
+	InputRerun *jobs.InputRerun
+	HashInput  bool
 }
 
 type builtJob struct{ Script, OutputDir, Request string }
@@ -153,14 +156,14 @@ func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgt
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
-	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: name, RepoDir: in.RepoDir, Config: cfg, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev})
+	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: name, RepoDir: in.RepoDir, Config: cfg, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev, HashInput: in.HashInput || in.InputRerun != nil})
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
 	// The base text and the overrides are kept apart so a rerun can change one setting on the same base, without
 	// reading a file that may have changed on the host since.
 	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: baseCfg, Set: in.Set,
-		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev})
+		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev, InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil})
 	if !h.InRoots(out) {
 		return builtJob{}, &apiErr{422, "the output folder must be inside a source root of the host"}
 	}
@@ -174,6 +177,8 @@ type rohsaInput struct {
 	CPUs                            int
 	Mem, Time, Partition, Account   string
 	RerunMode, ExpectRev            string
+	InputRerun                      *jobs.InputRerun
+	HashInput                       bool
 }
 
 // buildROHSA renders a ROHSA job the way buildVGT renders a VGT one: the config text (read from the host unless given), the
@@ -207,12 +212,12 @@ func (s *Server) buildROHSA(ctx context.Context, h hosts.Host, name string, in r
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
-	script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: name, RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, Config: text, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev})
+	script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: name, RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, Config: text, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev, HashInput: in.HashInput || in.InputRerun != nil})
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
 	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: cfg, Set: in.Set,
-		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev})
+		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev, InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil})
 	return builtJob{Script: script, OutputDir: out, Request: string(rq)}, nil
 }
 
