@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A figure saved with masks hatched records which ones, by type, name, tier and fingerprint; the server writes those from its own rows.
@@ -49,7 +50,7 @@ func TestAFigureRecordsTheMasksItHatchedAndRedrawAnnouncesAChangedOne(t *testing
 			t.Errorf("%s: %d %s", name, st, b)
 		}
 	}
-	figs, _ := f.e.srv.Boards.Figures()
+	figs, _ := f.e.srv.Boards.Figures(workspace.Local)
 	if len(figs) != 0 {
 		t.Fatalf("a refused figure saves nothing: %d", len(figs))
 	}

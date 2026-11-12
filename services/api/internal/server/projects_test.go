@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type projEnv struct {
@@ -568,7 +569,7 @@ func TestConfirmingAProposedOrientationMapIsTheUsersDeclaration(t *testing.T) {
 	put(t, root, ".git/HEAD", "ref: refs/heads/main\n")
 	put(t, root, "out/psi.fits", "x")
 	s := e.open(t, root)
-	ds, _ := e.cat.List()
+	ds, _ := e.cat.List(workspace.Local)
 	if len(ds) != 1 {
 		t.Fatalf("%+v", ds)
 	}
@@ -599,11 +600,11 @@ func TestConfirmingAProposedOrientationMapIsTheUsersDeclaration(t *testing.T) {
 		t.Fatalf("an invented unit is refused: %d", code)
 	}
 	e.json(t, "POST", fmt.Sprintf("/api/projects/%d/answers", s.ID), map[string]any{"need": id, "answer": "confirm", "value": "deg"}, 200, nil)
-	got, _ := e.cat.Get(ds[0].ID)
+	got, _ := e.cat.Get(workspace.Local, ds[0].ID)
 	if got.Interpretation == nil || got.Interpretation.DeclaredBy != "user" || got.Interpretation.Unit != "deg" || got.Interpretation.Kind != "axial_orientation" {
 		t.Fatalf("%+v", got.Interpretation)
 	}
-	if props, _ := e.cat.ProposedInterpretations(); len(props) != 0 {
+	if props, _ := e.cat.ProposedInterpretations(workspace.Local); len(props) != 0 {
 		t.Fatalf("%v", props)
 	}
 }
@@ -742,10 +743,10 @@ func TestOpenedProjectRootsSurviveARestart(t *testing.T) {
 	e.open(t, root)
 	// a new server on the same catalog knows the folder is readable without being told again
 	fresh := &Server{Roots: e.srv.Roots, Store: e.cat, Worker: &fakeWorker{}, Projects: e.srv.Projects}
-	if _, err := fresh.roots().Resolve(filepath.Join(root, "a.fits")); err != nil {
+	if _, err := fresh.roots(workspace.Local).Resolve(filepath.Join(root, "a.fits")); err != nil {
 		t.Fatalf("%v", err)
 	}
-	if _, err := fresh.roots().Resolve(filepath.Join(e.base, "afile")); err == nil {
+	if _, err := fresh.roots(workspace.Local).Resolve(filepath.Join(e.base, "afile")); err == nil {
 		t.Fatal("a sibling folder became readable")
 	}
 }

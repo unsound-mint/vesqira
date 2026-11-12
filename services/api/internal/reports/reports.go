@@ -12,6 +12,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 	"image"
 	_ "image/gif" // decoders for attachment validation
 	_ "image/jpeg"
@@ -50,27 +52,30 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 		return nil, err
 	}
 	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS reports(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, title TEXT NOT NULL UNIQUE COLLATE NOCASE,
-			body TEXT NOT NULL, revision INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-			seen_revision INTEGER NOT NULL DEFAULT 0, parent_id INTEGER NOT NULL DEFAULT 0)`, // parent_id: schema 3
+		schema.ReportsTable, // parent_id: schema 3; per-workspace uniqueness and no seen_revision: schema 31
 		`CREATE TABLE IF NOT EXISTS report_history(
 			report_id INTEGER NOT NULL, revision INTEGER NOT NULL, author TEXT NOT NULL, at INTEGER NOT NULL,
 			title TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(report_id, revision))`,
 		`CREATE TABLE IF NOT EXISTS report_links(
 			report_id INTEGER NOT NULL, kind TEXT NOT NULL, target TEXT NOT NULL, PRIMARY KEY(report_id, kind, target))`,
 		`CREATE INDEX IF NOT EXISTS report_links_target ON report_links(kind, target)`,
-		`CREATE TABLE IF NOT EXISTS attachments(sha TEXT PRIMARY KEY, mime TEXT NOT NULL, size INTEGER NOT NULL, created_at INTEGER NOT NULL)`,
+		schema.AttachmentsTable,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			return nil, err
 		}
+	}
+	if _, err := db.Exec(schema.WorkspaceTables); err != nil { // report_seen; the catalog has made it already
+		return nil, err
 	}
 	if err := openPublishing(db); err != nil {
 		return nil, err
 	}
 	return &Store{db: db, dir: dataDir}, nil
 }
+
+// Dir is the folder the store keeps files under (attachments in Dir/attachments), which must never be readable as data.
+func (s *Store) Dir() string { return s.dir }
 
 // Report is the working copy. Revision counts saves; a client that saves names the revision it started from.
 type Report struct {
@@ -79,7 +84,7 @@ type Report struct {
 	Title        string    `json:"title"`
 	Body         string    `json:"body"`
 	Revision     int       `json:"revision"`
-	SeenRevision int       `json:"seenRevision"` // the last revision the owner opened; agent saves after it are "new"
+	SeenRevision int       `json:"seenRevision"` // the last revision the asking account opened; agent saves after it are "new"
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 	LastAuthor   string    `json:"lastAuthor"`
@@ -145,12 +150,13 @@ func newKey() string {
 
 func isUnique(err error) bool { return err != nil && strings.Contains(err.Error(), "UNIQUE") }
 
-func (s *Store) Create(title, body, author string) (Report, error) {
-	return s.CreateUnder(title, body, author, 0)
+func (s *Store) Create(ws workspace.ID, by, title, body, author string) (Report, error) {
+	return s.CreateUnder(ws, by, title, body, author, 0)
 }
 
-// CreateUnder creates a report as a child page of parent (0 for the top level).
-func (s *Store) CreateUnder(title, body, author string, parent int64) (Report, error) {
+// CreateUnder creates a report as a child page of parent (0 for the top level). by is the account that creates it; when the author
+// is the owner it has seen the first revision.
+func (s *Store) CreateUnder(ws workspace.ID, by, title, body, author string, parent int64) (Report, error) {
 	t, err := cleanTitle(title)
 	if err != nil {
 		return Report{}, err
@@ -169,15 +175,11 @@ func (s *Store) CreateUnder(title, body, author string, parent int64) (Report, e
 	defer tx.Rollback()
 	if parent != 0 {
 		var one int
-		if tx.QueryRow(`SELECT 1 FROM reports WHERE id=?`, parent).Scan(&one) != nil {
+		if tx.QueryRow(`SELECT 1 FROM reports WHERE id=? AND workspace_id=?`, parent, ws).Scan(&one) != nil {
 			return Report{}, fmt.Errorf("%w: the parent page does not exist", ErrInvalid)
 		}
 	}
-	seen := 0
-	if author == AuthorOwner {
-		seen = 1
-	}
-	res, err := tx.Exec(`INSERT INTO reports(key,title,body,revision,created_at,updated_at,seen_revision,parent_id) VALUES(?,?,?,1,?,?,?,?)`, newKey(), t, body, now.UnixMilli(), now.UnixMilli(), seen, parent)
+	res, err := tx.Exec(`INSERT INTO reports(key,title,body,revision,created_at,updated_at,parent_id,workspace_id,created_by) VALUES(?,?,?,1,?,?,?,?,?)`, newKey(), t, body, now.UnixMilli(), now.UnixMilli(), parent, ws, by)
 	if isUnique(err) {
 		return Report{}, fmt.Errorf("%w: a report called %q exists already", ErrConflict, t)
 	}
@@ -188,10 +190,15 @@ func (s *Store) CreateUnder(title, body, author string, parent int64) (Report, e
 	if err := saveRevision(tx, id, 1, author, now, t, body); err != nil {
 		return Report{}, err
 	}
+	if author == AuthorOwner {
+		if _, err := tx.Exec(`INSERT INTO report_seen(account_id,report_id,revision) VALUES(?,?,1)`, by, id); err != nil {
+			return Report{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return Report{}, err
 	}
-	return s.Get(id)
+	return s.Get(ws, by, id)
 }
 
 func saveRevision(tx *sql.Tx, id int64, rev int, author string, at time.Time, title, body string) error {
@@ -220,25 +227,28 @@ func scanReport(row interface{ Scan(...any) error }) (Report, error) {
 	return r, err
 }
 
-const reportCols = `r.id,r.key,r.title,r.body,r.revision,r.seen_revision,r.created_at,r.updated_at,
+// reportCols takes the account id as its one argument: the seen revision is the account's own (report_seen), 0 when it has not opened it.
+const reportCols = `r.id,r.key,r.title,r.body,r.revision,COALESCE((SELECT s.revision FROM report_seen s WHERE s.report_id=r.id AND s.account_id=?),0),r.created_at,r.updated_at,
 	(SELECT author FROM report_history h WHERE h.report_id=r.id AND h.revision=r.revision), r.parent_id`
 
-func (s *Store) Get(id int64) (Report, error) {
-	return scanReport(s.db.QueryRow(`SELECT `+reportCols+` FROM reports r WHERE r.id=?`, id))
+// Get reads a report of the workspace, with the revision the account has seen; another workspace's report is ErrNotFound.
+func (s *Store) Get(ws workspace.ID, account string, id int64) (Report, error) {
+	return scanReport(s.db.QueryRow(`SELECT `+reportCols+` FROM reports r WHERE r.id=? AND r.workspace_id=?`, account, id, ws))
 }
 
 // ByTitle finds a report by title, ignoring case, as a [[link]] does.
-func (s *Store) ByTitle(title string) (Report, error) {
-	return scanReport(s.db.QueryRow(`SELECT `+reportCols+` FROM reports r WHERE r.title=?`, strings.Join(strings.Fields(title), " ")))
+func (s *Store) ByTitle(ws workspace.ID, account, title string) (Report, error) {
+	return scanReport(s.db.QueryRow(`SELECT `+reportCols+` FROM reports r WHERE r.workspace_id=? AND r.title=?`, account, ws, strings.Join(strings.Fields(title), " ")))
 }
 
-func (s *Store) List() ([]Summary, error) {
+// List is the workspace's reports; AgentUnseen is relative to what the account has seen.
+func (s *Store) List(ws workspace.ID, account string) ([]Summary, error) {
 	rows, err := s.db.Query(`SELECT r.id,r.key,r.title,r.revision,r.updated_at,r.parent_id,substr(r.body,1,8192),
 		(SELECT author FROM report_history h WHERE h.report_id=r.id AND h.revision=r.revision),
-		EXISTS(SELECT 1 FROM report_history h WHERE h.report_id=r.id AND h.revision>r.seen_revision AND h.author='agent'),
+		EXISTS(SELECT 1 FROM report_history h WHERE h.report_id=r.id AND h.revision>COALESCE((SELECT s.revision FROM report_seen s WHERE s.report_id=r.id AND s.account_id=?),0) AND h.author='agent'),
 		COALESCE((SELECT MAX(number) FROM report_publications p WHERE p.report_id=r.id),0),
 		COALESCE((SELECT working_revision FROM report_publications p WHERE p.report_id=r.id ORDER BY number DESC LIMIT 1),0)
-		FROM reports r ORDER BY r.updated_at DESC`)
+		FROM reports r WHERE r.workspace_id=? ORDER BY r.updated_at DESC`, account, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +277,7 @@ type Update struct {
 	Author string
 }
 
-func (s *Store) Update(id int64, in Update) (Report, error) {
+func (s *Store) Update(ws workspace.ID, account string, id int64, in Update) (Report, error) {
 	if err := checkAuthor(in.Author); err != nil {
 		return Report{}, err
 	}
@@ -276,7 +286,7 @@ func (s *Store) Update(id int64, in Update) (Report, error) {
 		return Report{}, err
 	}
 	defer tx.Rollback()
-	cur, err := scanReport(tx.QueryRow(`SELECT `+reportCols+` FROM reports r WHERE r.id=?`, id))
+	cur, err := scanReport(tx.QueryRow(`SELECT `+reportCols+` FROM reports r WHERE r.id=? AND r.workspace_id=?`, account, id, ws))
 	if err != nil {
 		return Report{}, err
 	}
@@ -299,11 +309,7 @@ func (s *Store) Update(id int64, in Update) (Report, error) {
 		return cur, nil
 	}
 	now, rev := time.Now().UTC(), cur.Revision+1
-	seen := cur.SeenRevision
-	if in.Author == AuthorOwner && seen == cur.Revision { // the owner saving what they were looking at has seen it
-		seen = rev
-	}
-	_, err = tx.Exec(`UPDATE reports SET title=?, body=?, revision=?, updated_at=?, seen_revision=? WHERE id=?`, title, body, rev, now.UnixMilli(), seen, id)
+	_, err = tx.Exec(`UPDATE reports SET title=?, body=?, revision=?, updated_at=? WHERE id=? AND workspace_id=?`, title, body, rev, now.UnixMilli(), id, ws)
 	if isUnique(err) {
 		return Report{}, fmt.Errorf("%w: a report called %q exists already", ErrConflict, title)
 	}
@@ -313,21 +319,26 @@ func (s *Store) Update(id int64, in Update) (Report, error) {
 	if err := saveRevision(tx, id, rev, in.Author, now, title, body); err != nil {
 		return Report{}, err
 	}
+	if in.Author == AuthorOwner && cur.SeenRevision == cur.Revision { // the owner saving what they were looking at has seen it
+		if _, err := tx.Exec(`INSERT INTO report_seen(account_id,report_id,revision) VALUES(?,?,?) ON CONFLICT(account_id,report_id) DO UPDATE SET revision=excluded.revision`, account, id, rev); err != nil {
+			return Report{}, err
+		}
+	}
 	if !strings.EqualFold(title, cur.Title) {
-		if err := relink(tx, cur.Title, title, in.Author, now); err != nil {
+		if err := relink(tx, ws, cur.Title, title, in.Author, now); err != nil {
 			return Report{}, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return Report{}, err
 	}
-	return s.Get(id)
+	return s.Get(ws, account, id)
 }
 
 // relink rewrites [[Old]] and [[Old|label]] in every report that links the renamed one, as a new revision of each, so
 // a rename never leaves links dangling. Each rewrite is recorded in that report's history.
-func relink(tx *sql.Tx, oldTitle, newTitle, author string, now time.Time) error {
-	rows, err := tx.Query(`SELECT r.id, r.title, r.body, r.revision FROM reports r JOIN report_links l ON l.report_id=r.id WHERE l.kind='report' AND l.target=?`, strings.ToLower(oldTitle))
+func relink(tx *sql.Tx, ws workspace.ID, oldTitle, newTitle, author string, now time.Time) error {
+	rows, err := tx.Query(`SELECT r.id, r.title, r.body, r.revision FROM reports r JOIN report_links l ON l.report_id=r.id WHERE r.workspace_id=? AND l.kind='report' AND l.target=?`, ws, strings.ToLower(oldTitle))
 	if err != nil {
 		return err
 	}
@@ -352,7 +363,7 @@ func relink(tx *sql.Tx, oldTitle, newTitle, author string, now time.Time) error 
 		if nb == h.body {
 			continue
 		}
-		if _, err := tx.Exec(`UPDATE reports SET body=?, revision=?, updated_at=? WHERE id=?`, nb, h.rev+1, now.UnixMilli(), h.id); err != nil {
+		if _, err := tx.Exec(`UPDATE reports SET body=?, revision=?, updated_at=? WHERE id=? AND workspace_id=?`, nb, h.rev+1, now.UnixMilli(), h.id, ws); err != nil {
 			return err
 		}
 		if err := saveRevision(tx, h.id, h.rev+1, author, now, h.title, nb); err != nil {
@@ -363,33 +374,34 @@ func relink(tx *sql.Tx, oldTitle, newTitle, author string, now time.Time) error 
 }
 
 // Move puts a report under another page (0 for the top level). A page cannot move under itself or its own children.
-func (s *Store) Move(id, parent int64) error {
+func (s *Store) Move(ws workspace.ID, id, parent int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var one int
-	if tx.QueryRow(`SELECT 1 FROM reports WHERE id=?`, id).Scan(&one) != nil {
+	if tx.QueryRow(`SELECT 1 FROM reports WHERE id=? AND workspace_id=?`, id, ws).Scan(&one) != nil {
 		return ErrNotFound
 	}
 	for p, steps := parent, 0; p != 0; steps++ {
 		if p == id || steps > 10000 {
 			return fmt.Errorf("%w: a page cannot go under itself or a page inside it", ErrInvalid)
 		}
-		if err := tx.QueryRow(`SELECT parent_id FROM reports WHERE id=?`, p).Scan(&p); err != nil {
+		if err := tx.QueryRow(`SELECT parent_id FROM reports WHERE id=? AND workspace_id=?`, p, ws).Scan(&p); err != nil {
 			return fmt.Errorf("%w: the parent page does not exist", ErrInvalid)
 		}
 	}
-	if _, err := tx.Exec(`UPDATE reports SET parent_id=? WHERE id=?`, parent, id); err != nil {
+	if _, err := tx.Exec(`UPDATE reports SET parent_id=? WHERE id=? AND workspace_id=?`, parent, id, ws); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// MarkSeen records that the owner opened the report at a revision, so agent saves up to it are no longer new.
-func (s *Store) MarkSeen(id int64, revision int) error {
-	res, err := s.db.Exec(`UPDATE reports SET seen_revision=MAX(seen_revision, MIN(?, revision)) WHERE id=?`, revision, id)
+// MarkSeen records that the account opened the report at a revision, so agent saves up to it are no longer new to it.
+func (s *Store) MarkSeen(ws workspace.ID, account string, id int64, revision int) error {
+	res, err := s.db.Exec(`INSERT INTO report_seen(account_id,report_id,revision) SELECT ?, id, MIN(?, revision) FROM reports WHERE id=? AND workspace_id=?
+		ON CONFLICT(account_id,report_id) DO UPDATE SET revision=MAX(report_seen.revision, excluded.revision)`, account, revision, id, ws)
 	if err != nil {
 		return err
 	}
@@ -401,9 +413,9 @@ func (s *Store) MarkSeen(id int64, revision int) error {
 
 // Delete removes a report that was never published. A published report has readers who may have commented on it;
 // it is not deleted from here.
-func (s *Store) Delete(id int64) error {
+func (s *Store) Delete(ws workspace.ID, id int64) error {
 	var n int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM report_publications WHERE report_id=?`, id).Scan(&n); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM report_publications WHERE report_id=? AND report_id IN (SELECT id FROM reports WHERE workspace_id=?)`, id, ws).Scan(&n); err != nil {
 		return err
 	}
 	if n > 0 {
@@ -415,8 +427,8 @@ func (s *Store) Delete(id int64) error {
 	}
 	defer tx.Rollback()
 	var parent int64
-	_ = tx.QueryRow(`SELECT parent_id FROM reports WHERE id=?`, id).Scan(&parent)
-	res, err := tx.Exec(`DELETE FROM reports WHERE id=?`, id)
+	_ = tx.QueryRow(`SELECT parent_id FROM reports WHERE id=? AND workspace_id=?`, id, ws).Scan(&parent)
+	res, err := tx.Exec(`DELETE FROM reports WHERE id=? AND workspace_id=?`, id, ws)
 	if err != nil {
 		return err
 	}
@@ -424,10 +436,10 @@ func (s *Store) Delete(id int64) error {
 		return ErrNotFound
 	}
 	// its child pages move up to where it was
-	if _, err := tx.Exec(`UPDATE reports SET parent_id=? WHERE parent_id=?`, parent, id); err != nil {
+	if _, err := tx.Exec(`UPDATE reports SET parent_id=? WHERE parent_id=? AND workspace_id=?`, parent, id, ws); err != nil {
 		return err
 	}
-	for _, q := range []string{`DELETE FROM report_history WHERE report_id=?`, `DELETE FROM report_links WHERE report_id=?`} {
+	for _, q := range []string{`DELETE FROM report_history WHERE report_id=?`, `DELETE FROM report_links WHERE report_id=?`, `DELETE FROM report_seen WHERE report_id=?`} {
 		if _, err := tx.Exec(q, id); err != nil {
 			return err
 		}
@@ -436,8 +448,8 @@ func (s *Store) Delete(id int64) error {
 }
 
 // History lists saves, newest first, without bodies unless withBodies.
-func (s *Store) History(id int64, withBodies bool) ([]HistoryEntry, error) {
-	if _, err := s.Get(id); err != nil {
+func (s *Store) History(ws workspace.ID, id int64, withBodies bool) ([]HistoryEntry, error) {
+	if _, err := s.Get(ws, "", id); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.Query(`SELECT revision, author, at, title, CASE WHEN ? THEN body ELSE '' END FROM report_history WHERE report_id=? ORDER BY revision DESC LIMIT ?`, withBodies, id, historyPerFetch)
@@ -459,10 +471,10 @@ func (s *Store) History(id int64, withBodies bool) ([]HistoryEntry, error) {
 }
 
 // Revision returns one saved revision with its body.
-func (s *Store) Revision(id int64, rev int) (HistoryEntry, error) {
+func (s *Store) Revision(ws workspace.ID, id int64, rev int) (HistoryEntry, error) {
 	var h HistoryEntry
 	var at int64
-	err := s.db.QueryRow(`SELECT revision, author, at, title, body FROM report_history WHERE report_id=? AND revision=?`, id, rev).Scan(&h.Revision, &h.Author, &at, &h.Title, &h.Body)
+	err := s.db.QueryRow(`SELECT revision, author, at, title, body FROM report_history WHERE report_id=? AND revision=? AND report_id IN (SELECT id FROM reports WHERE workspace_id=?)`, id, rev, ws).Scan(&h.Revision, &h.Author, &at, &h.Title, &h.Body)
 	if errors.Is(err, sql.ErrNoRows) {
 		return h, ErrNotFound
 	}
@@ -471,13 +483,13 @@ func (s *Store) Revision(id int64, rev int) (HistoryEntry, error) {
 }
 
 // Backlinks lists the reports that link to this one by title.
-func (s *Store) Backlinks(id int64) ([]Summary, error) {
-	r, err := s.Get(id)
+func (s *Store) Backlinks(ws workspace.ID, id int64) ([]Summary, error) {
+	r, err := s.Get(ws, "", id)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := s.db.Query(`SELECT r.id, r.key, r.title, r.revision, r.updated_at FROM reports r JOIN report_links l ON l.report_id=r.id
-		WHERE l.kind='report' AND l.target=? AND r.id<>? ORDER BY r.title`, strings.ToLower(r.Title), id)
+		WHERE r.workspace_id=? AND l.kind='report' AND l.target=? AND r.id<>? ORDER BY r.title`, ws, strings.ToLower(r.Title), id)
 	if err != nil {
 		return nil, err
 	}
@@ -496,9 +508,9 @@ func (s *Store) Backlinks(id int64) ([]Summary, error) {
 }
 
 // UsingFigure and UsingRun list reports that embed a figure revision or reference a run.
-func (s *Store) Using(kind, target string) ([]Summary, error) {
+func (s *Store) Using(ws workspace.ID, kind, target string) ([]Summary, error) {
 	rows, err := s.db.Query(`SELECT r.id, r.key, r.title, r.revision, r.updated_at FROM reports r JOIN report_links l ON l.report_id=r.id
-		WHERE l.kind=? AND l.target=? ORDER BY r.title`, kind, target)
+		WHERE r.workspace_id=? AND l.kind=? AND l.target=? ORDER BY r.title`, ws, kind, target)
 	if err != nil {
 		return nil, err
 	}
@@ -522,7 +534,7 @@ var shaRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // AddAttachment stores an image a report shows. It must be a PNG, JPEG or GIF that decodes completely, within the
 // same size limits as a figure preview. Identical bytes are stored once.
-func (s *Store) AddAttachment(data []byte) (sha, mime string, err error) {
+func (s *Store) AddAttachment(ws workspace.ID, by string, data []byte) (sha, mime string, err error) {
 	if len(data) == 0 || len(data) > MaxAttachment {
 		return "", "", fmt.Errorf("%w: an attachment is an image of at most %d MiB", ErrInvalid, MaxAttachment>>20)
 	}
@@ -556,16 +568,18 @@ func (s *Store) AddAttachment(data []byte) (sha, mime string, err error) {
 			return "", "", err
 		}
 	}
-	_, err = s.db.Exec(`INSERT OR IGNORE INTO attachments(sha,mime,size,created_at) VALUES(?,?,?,?)`, sha, mime, len(data), time.Now().UnixMilli())
+	_, err = s.db.Exec(`INSERT OR IGNORE INTO attachments(sha,mime,size,created_at,workspace_id,created_by) VALUES(?,?,?,?,?,?)`, sha, mime, len(data), time.Now().UnixMilli(), ws, by)
 	return sha, mime, err
 }
 
-func (s *Store) Attachment(sha string) ([]byte, string, error) {
+// Attachment reads an image the workspace stored; the bytes are kept once per content, but only a workspace that stored them
+// can read them.
+func (s *Store) Attachment(ws workspace.ID, sha string) ([]byte, string, error) {
 	if !shaRe.MatchString(sha) {
 		return nil, "", ErrNotFound
 	}
 	var mime string
-	if err := s.db.QueryRow(`SELECT mime FROM attachments WHERE sha=?`, sha).Scan(&mime); errors.Is(err, sql.ErrNoRows) {
+	if err := s.db.QueryRow(`SELECT mime FROM attachments WHERE workspace_id=? AND sha=?`, ws, sha).Scan(&mime); errors.Is(err, sql.ErrNoRows) {
 		return nil, "", ErrNotFound
 	} else if err != nil {
 		return nil, "", err
@@ -586,10 +600,10 @@ type Edge struct {
 }
 
 // Edges lists every link between reports, figures and runs, for the graph.
-func (s *Store) Edges() ([]Edge, error) {
+func (s *Store) Edges(ws workspace.ID) ([]Edge, error) {
 	rows, err := s.db.Query(`SELECT l.report_id, l.kind, l.target, COALESCE(t.id, 0) FROM report_links l
-		LEFT JOIN reports t ON l.kind='report' AND lower(t.title)=l.target
-		WHERE l.kind IN ('report','figure','run') ORDER BY l.report_id`)
+		LEFT JOIN reports t ON l.kind='report' AND t.workspace_id=?1 AND lower(t.title)=l.target
+		WHERE l.report_id IN (SELECT id FROM reports WHERE workspace_id=?1) AND l.kind IN ('report','figure','run') ORDER BY l.report_id`, ws)
 	if err != nil {
 		return nil, err
 	}

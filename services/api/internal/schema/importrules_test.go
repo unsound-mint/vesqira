@@ -19,14 +19,14 @@ func TestImportRulesMigrationAddsEmptyTables(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
 	var projects, rules, applied int
 	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM projects), (SELECT COUNT(*) FROM import_rules), (SELECT COUNT(*) FROM import_applied)`).Scan(&projects, &rules, &applied); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 18 || projects != 1 || rules != 0 || applied != 0 {
+	if version(t, db) != toyVersion || Version < 18 || projects != 1 || rules != 0 || applied != 0 {
 		t.Fatalf("version %d, %d projects, %d rules, %d applied", version(t, db), projects, rules, applied)
 	}
 	if _, err := db.Exec(`INSERT INTO import_rules(project_id,position,name,rule,saved_at) VALUES (1,0,'a','{}',1)`); err != nil {

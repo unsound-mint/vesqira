@@ -9,6 +9,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // ROHSA runs can be run again with changed settings and swept (ADR 0046, 0048). These tests use the stand-in host of
@@ -133,7 +134,7 @@ func TestROHSAJobRefusesWhatVesqiraOwnsOrCannotEditSafely(t *testing.T) {
 // linkRun makes a run for the job, as an import of its results would, so the run page can offer "run again".
 func (e *watchEnv) linkRun(j jobs.Job) runs.Run {
 	e.t.Helper()
-	run, err := e.runs.Save(j.OutputDir, runs.Parsed{Run: runs.Run{Name: j.Name, Kind: "rohsa"}}, nil)
+	run, err := e.runs.Save(workspace.Local, "local-owner", j.OutputDir, runs.Parsed{Run: runs.Run{Name: j.Name, Kind: "rohsa"}}, nil)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -189,7 +190,7 @@ func TestRerunDraftForAROHSARunWithChangedN(t *testing.T) {
 		t.Errorf("submissions: %d (only the first job was submitted)", e.submissions())
 	}
 	// a run that is neither VGT nor ROHSA still has no rerun
-	other, _ := e.runs.Save("/k/other", runs.Parsed{Run: runs.Run{Name: "x", Kind: "something"}}, nil)
+	other, _ := e.runs.Save(workspace.Local, "local-owner", "/k/other", runs.Parsed{Run: runs.Run{Name: "x", Kind: "something"}}, nil)
 	if r, _ := getBody(t, e.api("/api/runs/"+itoa(int(other.ID))+"/rerun")); r != 422 {
 		t.Errorf("another kind: %d", r)
 	}

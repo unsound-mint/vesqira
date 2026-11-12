@@ -11,6 +11,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // analysisAuthor labels the interpretation of a map an analysis produced: a proposal made by the operation (it keeps what
@@ -136,7 +137,7 @@ func axialStatedDifferently(a, b *catalog.Interpretation) string {
 // reliabilityPath is the path of the reliability map declared for an axial map d, checked: still a scalar map on d's grid and on
 // the same machine. remote is true when the path is read on d's host (its path there), otherwise it is authorised here.
 func (s *Server) reliabilityPath(ctx context.Context, d catalog.Dataset, remote bool) (string, int, string) {
-	rel, code, msg := s.imageDataset(*d.Interpretation.ReliabilityID)
+	rel, code, msg := s.imageDataset(wsCtx(ctx), *d.Interpretation.ReliabilityID)
 	if code != 0 {
 		return "", 409, "the declared reliability dataset: " + msg
 	}
@@ -163,7 +164,7 @@ func (s *Server) reliabilityPath(ctx context.Context, d catalog.Dataset, remote 
 // companion reliability map it is registered as a derived dataset too, and the result is given the input's unit, frame
 // and quantity as an interpretation proposed by the operation, with that map as its reliability. register brings a file in
 // (from this computer or from a host). A failure to register the companion is logged and does not discard the result.
-func (s *Server) finishAxialResult(res analysisOutcome, nd catalog.Dataset, a *axialRun, relPath string, register func(string) (catalog.Dataset, int, string), op string, sources []int64, params json.RawMessage) catalog.Dataset {
+func (s *Server) finishAxialResult(ws workspace.ID, res analysisOutcome, nd catalog.Dataset, a *axialRun, relPath string, register func(string) (catalog.Dataset, int, string), op string, sources []int64, params json.RawMessage) catalog.Dataset {
 	var sum struct {
 		Axial           bool `json:"axial"`
 		ReliabilityFile bool `json:"reliability_file"`
@@ -189,7 +190,7 @@ func (s *Server) finishAxialResult(res analysisOutcome, nd catalog.Dataset, a *a
 		log.Printf("analysis: interpretation of the result: %v", err)
 		return nd
 	}
-	if got, err := s.Store.Get(nd.ID); err == nil {
+	if got, err := s.Store.Get(ws, nd.ID); err == nil {
 		return got
 	}
 	return nd

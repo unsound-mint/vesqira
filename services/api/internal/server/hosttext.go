@@ -13,6 +13,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Text files on a host in the editor (ADR 0029, host files). Same routes as the local editor, selected by hostId. The
@@ -21,7 +22,7 @@ import (
 // folders, text kinds, 2 MiB, and the audit.
 
 // hostTextPolicy is every check that needs no round trip. status 0 is acceptance.
-func (s *Server) hostTextPolicy(h hosts.Host, p string) (int, string) {
+func (s *Server) hostTextPolicy(ws workspace.ID, h hosts.Host, p string) (int, string) {
 	if strings.ContainsAny(p, "'!") {
 		return 400, "file names containing ' or ! cannot be edited on a host"
 	}
@@ -31,7 +32,7 @@ func (s *Server) hostTextPolicy(h hosts.Host, p string) (int, string) {
 	if !path.IsAbs(p) || path.Clean(p) != p || !h.InRoots(p) || holdsCredentials(filepath.FromSlash(p)) {
 		return 404, "that file is not inside a folder Vesqira may read on the host"
 	}
-	if role, ro := s.hostReadOnlyRole(h, p); ro {
+	if role, ro := s.hostReadOnlyRole(ws, h, p); ro {
 		return 403, "that file is " + role + " source data (data/" + role + "), which Vesqira treats as read-only; the editor does not open it"
 	}
 	return checkTextName(p)
@@ -39,7 +40,7 @@ func (s *Server) hostTextPolicy(h hosts.Host, p string) (int, string) {
 
 // hostReadOnlyRole is readOnlyRole for a path on a host: the path below each declared root of the host and below each
 // project folder opened on it (discover.RoleOf, the scanner's own rule).
-func (s *Server) hostReadOnlyRole(h hosts.Host, p string) (string, bool) {
+func (s *Server) hostReadOnlyRole(ws workspace.ID, h hosts.Host, p string) (string, bool) {
 	check := func(base string) (string, bool) {
 		base = strings.TrimRight(base, "/")
 		if !strings.HasPrefix(p, base+"/") {
@@ -54,7 +55,7 @@ func (s *Server) hostReadOnlyRole(h hosts.Host, p string) (string, bool) {
 		}
 	}
 	if s.Projects != nil {
-		if list, err := s.Projects.List(1000); err == nil {
+		if list, err := s.Projects.List(ws, 1000); err == nil {
 			for _, pr := range list {
 				if pr.HostID == h.ID {
 					if role, ro := check(pr.Path); ro {
@@ -122,7 +123,7 @@ func (s *Server) getHostText(w http.ResponseWriter, r *http.Request, rawID strin
 		return
 	}
 	p := r.URL.Query().Get("path")
-	if st, m := s.hostTextPolicy(h, p); st != 0 {
+	if st, m := s.hostTextPolicy(wsOf(r), h, p); st != 0 {
 		fail(w, st, m)
 		return
 	}
@@ -152,7 +153,7 @@ func (s *Server) putHostText(w http.ResponseWriter, r *http.Request, in textSave
 		fail(w, 400, "the sha256 of the opened file is required")
 		return
 	}
-	if st, m := s.hostTextPolicy(h, in.Path); st != 0 {
+	if st, m := s.hostTextPolicy(wsOf(r), h, in.Path); st != 0 {
 		fail(w, st, m)
 		return
 	}

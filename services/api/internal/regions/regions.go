@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 	"math"
 	"strconv"
 	"strings"
@@ -127,6 +129,9 @@ func Open(db *sql.DB) (*Store, error) {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS saved_regions_dataset ON saved_regions(dataset_id)`); err != nil {
 		return nil, err
 	}
+	if err := schema.Scope(db, "saved_regions"); err != nil {
+		return nil, err
+	}
 	return &Store{db}, nil
 }
 
@@ -146,8 +151,8 @@ func scan(row interface{ Scan(...any) error }) (Region, error) {
 
 const cols = `id,dataset_id,name,shape,created_at,updated_at`
 
-func (s *Store) List(datasetID int64) ([]Region, error) {
-	rows, err := s.db.Query(`SELECT `+cols+` FROM saved_regions WHERE dataset_id=? ORDER BY id`, datasetID)
+func (s *Store) List(ws workspace.ID, datasetID int64) ([]Region, error) {
+	rows, err := s.db.Query(`SELECT `+cols+` FROM saved_regions WHERE dataset_id=? AND workspace_id=? ORDER BY id`, datasetID, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -163,15 +168,15 @@ func (s *Store) List(datasetID int64) ([]Region, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) Get(id int64) (Region, error) {
-	r, err := scan(s.db.QueryRow(`SELECT `+cols+` FROM saved_regions WHERE id=?`, id))
+func (s *Store) Get(ws workspace.ID, id int64) (Region, error) {
+	r, err := scan(s.db.QueryRow(`SELECT `+cols+` FROM saved_regions WHERE id=? AND workspace_id=?`, id, ws))
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, ErrNotFound
 	}
 	return r, err
 }
 
-func (s *Store) Create(datasetID int64, name string, sh Shape) (Region, error) {
+func (s *Store) Create(ws workspace.ID, by string, datasetID int64, name string, sh Shape) (Region, error) {
 	name, err := cleanName(name)
 	if err != nil {
 		return Region{}, err
@@ -182,8 +187,8 @@ func (s *Store) Create(datasetID int64, name string, sh Shape) (Region, error) {
 	raw, _ := json.Marshal(sh)
 	now := time.Now().Unix()
 	// count and insert in one statement so concurrent requests cannot pass the limit
-	res, err := s.db.Exec(`INSERT INTO saved_regions(dataset_id,name,shape,created_at,updated_at)
-		SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM saved_regions WHERE dataset_id=?) < ?`, datasetID, name, string(raw), now, now, datasetID, MaxPerDataset)
+	res, err := s.db.Exec(`INSERT INTO saved_regions(dataset_id,name,shape,created_at,updated_at,workspace_id,created_by)
+		SELECT ?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM saved_regions WHERE dataset_id=? AND workspace_id=?) < ?`, datasetID, name, string(raw), now, now, ws, by, datasetID, ws, MaxPerDataset)
 	if err != nil {
 		return Region{}, err
 	}
@@ -191,12 +196,12 @@ func (s *Store) Create(datasetID int64, name string, sh Shape) (Region, error) {
 		return Region{}, fmt.Errorf("%w: at most %d regions per dataset", ErrInvalid, MaxPerDataset)
 	}
 	id, _ := res.LastInsertId()
-	return s.Get(id)
+	return s.Get(ws, id)
 }
 
 // Update changes the name and/or the shape. A nil argument leaves that part as it is.
-func (s *Store) Update(id int64, name *string, sh *Shape) (Region, error) {
-	cur, err := s.Get(id)
+func (s *Store) Update(ws workspace.ID, id int64, name *string, sh *Shape) (Region, error) {
+	cur, err := s.Get(ws, id)
 	if err != nil {
 		return cur, err
 	}
@@ -211,14 +216,14 @@ func (s *Store) Update(id int64, name *string, sh *Shape) (Region, error) {
 		}
 	}
 	raw, _ := json.Marshal(cur.Shape)
-	if _, err := s.db.Exec(`UPDATE saved_regions SET name=?, shape=?, updated_at=? WHERE id=?`, cur.Name, string(raw), time.Now().Unix(), id); err != nil {
+	if _, err := s.db.Exec(`UPDATE saved_regions SET name=?, shape=?, updated_at=? WHERE id=? AND workspace_id=?`, cur.Name, string(raw), time.Now().Unix(), id, ws); err != nil {
 		return Region{}, err
 	}
-	return s.Get(id)
+	return s.Get(ws, id)
 }
 
-func (s *Store) Delete(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM saved_regions WHERE id=?`, id)
+func (s *Store) Delete(ws workspace.ID, id int64) error {
+	res, err := s.db.Exec(`DELETE FROM saved_regions WHERE id=? AND workspace_id=?`, id, ws)
 	if err != nil {
 		return err
 	}

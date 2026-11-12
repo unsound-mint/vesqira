@@ -16,6 +16,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A project on a host: the folder is added to the host's roots, walked by the host's own worker (same skip rules, never
@@ -105,7 +106,7 @@ func TestRemoteProjectIsWalkedByTheHostWorkerWithFakeSSH(t *testing.T) {
 		t.Fatalf("%+v %+v", s.Counts, s.Links)
 	}
 	// the skip rule from the project file held on the host: nothing under old/ was listed or registered
-	ds, _ := cat.List()
+	ds, _ := cat.List(workspace.Local)
 	if len(ds) < s.Counts.ByFormat["FITS"] {
 		t.Fatalf("%d datasets for %d data files", len(ds), s.Counts.ByFormat["FITS"])
 	}
@@ -182,7 +183,7 @@ func TestRemoteProjectIsWalkedByTheHostWorkerWithFakeSSH(t *testing.T) {
 	if ents, _ := os.ReadDir(outside); len(ents) != 1 { // only secret.txt
 		t.Fatalf("something was written through the link: %v", ents)
 	}
-	entries, _ := au.List("project", o.ID, 50)
+	entries, _ := au.List(workspace.Local, "project", o.ID, 50)
 	var wrote, refused int
 	for _, en := range entries {
 		switch en.Action {

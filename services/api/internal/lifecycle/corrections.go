@@ -2,6 +2,8 @@ package lifecycle
 
 import (
 	"strconv"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // CorrectionImpact is what depends on a dataset's coordinates or unit, before a WCS or unit correction is saved or reverted
@@ -15,12 +17,12 @@ type CorrectionImpact struct {
 }
 
 // CorrectionImpact lists the dependents of dataset id for a change of its WCS (wcs) and/or its unit (unit).
-func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, error) {
+func (s *Service) CorrectionImpact(ws workspace.ID, id int64, wcs, unit bool) (CorrectionImpact, error) {
 	im := &Impact{}
 	b := &builder{im: im, ids: map[string][]int64{}}
 	q := s.db
 	out := CorrectionImpact{Groups: []Group{}, Live: []string{}}
-	figs, revs, err := figuresOf(q, id)
+	figs, revs, err := figuresOf(q, ws, id)
 	if err != nil {
 		return out, err
 	}
@@ -29,7 +31,7 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 	})
 	// figures that draw this dataset as an overlay (contours, orientation lines, a beam) on another base
 	pat := `%"datasetId":` + strconv.FormatInt(id, 10) + `,%`
-	ov, err := items(q, "figures", `SELECT id,title FROM figures WHERE dataset_id<>? AND scene LIKE ?`, id, pat)
+	ov, err := items(q, "figures", `SELECT id,title FROM figures WHERE workspace_id=? AND dataset_id<>? AND scene LIKE ?`, ws, id, pat)
 	if err != nil {
 		return out, err
 	}
@@ -37,14 +39,14 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 		return plural(n, "saved figure draws", "saved figures draw") + " this dataset as an overlay. They keep their picture; Draw again says the corrections changed."
 	})
 	allFigs := append(append([]Item{}, figs...), ov...)
-	bs, err := boardsHolding(q, idsOf(allFigs))
+	bs, err := boardsHolding(q, ws, idsOf(allFigs))
 	if err != nil {
 		return out, err
 	}
 	b.add("boards", "pinned", bs, func(n int) string {
 		return plural(n, "board holds", "boards hold") + " those figures. Nothing on them changes."
 	})
-	sn, err := snapshotsPinning(q, revs)
+	sn, err := snapshotsPinning(q, ws, revs)
 	if err != nil {
 		return out, err
 	}
@@ -52,7 +54,7 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 		return plural(n, "published review shows", "published reviews show") + " those figures from a frozen copy. A reviewer keeps seeing what was published."
 	})
 	der, err := items(q, "derived", `SELECT d.dataset_id, COALESCE(ds.name, 'dataset '||d.dataset_id) FROM derived d, json_each(d.sources) j
-		LEFT JOIN datasets ds ON ds.id=d.dataset_id WHERE j.value=? AND d.dataset_id<>? AND d.op NOT LIKE 'relorient%'`, id, id)
+		LEFT JOIN datasets ds ON ds.id=d.dataset_id WHERE j.value=? AND d.dataset_id<>? AND d.op NOT LIKE 'relorient%' AND d.dataset_id IN (SELECT id FROM datasets WHERE workspace_id=?)`, id, id, ws)
 	if err != nil {
 		return out, err
 	}
@@ -60,7 +62,7 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 		return plural(n, "derived result was", "derived results were") + " made from this dataset (moment maps, cutouts, alignments, differences). They keep their values and the header they were written with; their record says which corrections were applied (none, for results made before corrections existed). Make them again to use the new values."
 	})
 	ro, err := items(q, "derived", `SELECT d.dataset_id, COALESCE(ds.name, 'result '||d.dataset_id) FROM derived d, json_each(d.sources) j
-		LEFT JOIN datasets ds ON ds.id=d.dataset_id WHERE j.value=? AND d.op LIKE 'relorient%'`, id)
+		LEFT JOIN datasets ds ON ds.id=d.dataset_id WHERE j.value=? AND d.op LIKE 'relorient%' AND d.dataset_id IN (SELECT id FROM datasets WHERE workspace_id=?)`, id, ws)
 	if err != nil {
 		return out, err
 	}
@@ -68,21 +70,21 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 		return plural(n, "relative-orientation result uses", "relative-orientation results use") + " this dataset. They keep their angles and statistics as computed; run them again to use the new values."
 	})
 	if wcs {
-		cat, err := items(q, "figures", `SELECT id,title FROM figures WHERE dataset_id=? AND scene LIKE '%"kind":"catalog"%'`, id)
+		cat, err := items(q, "figures", `SELECT id,title FROM figures WHERE workspace_id=? AND dataset_id=? AND scene LIKE '%"kind":"catalog"%'`, ws, id)
 		if err != nil {
 			return out, err
 		}
 		b.add("catalog_overlays", "pinned", cat, func(n int) string {
 			return plural(n, "saved figure places", "saved figures place") + " catalog sources on this map by its WCS. The saved picture keeps the old positions; a live view places them with the corrected WCS."
 		})
-		rm, err := items(q, "masks", `SELECT id, type||' mask '||name FROM masks WHERE dataset_id=? AND method='regions'`, id)
+		rm, err := items(q, "masks", `SELECT id, type||' mask '||name FROM masks WHERE workspace_id=? AND dataset_id=? AND method='regions'`, ws, id)
 		if err != nil {
 			return out, err
 		}
 		b.add("region_masks", "pinned", rm, func(n int) string {
 			return plural(n, "mask was", "masks were") + " made from regions. Their pixels do not move (regions are in pixels); the WCS cards copied into each mask file are the old ones."
 		})
-		regs, err := items(q, "saved_regions", `SELECT id,name FROM saved_regions WHERE dataset_id=?`, id)
+		regs, err := items(q, "saved_regions", `SELECT id,name FROM saved_regions WHERE workspace_id=? AND dataset_id=?`, ws, id)
 		if err != nil {
 			return out, err
 		}
@@ -91,7 +93,7 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 		})
 	}
 	if unit {
-		th, err := items(q, "masks", `SELECT id, type||' mask '||name FROM masks WHERE dataset_id=? AND type IN ('low_snr','saturated')`, id)
+		th, err := items(q, "masks", `SELECT id, type||' mask '||name FROM masks WHERE workspace_id=? AND dataset_id=? AND type IN ('low_snr','saturated')`, ws, id)
 		if err != nil {
 			return out, err
 		}
@@ -100,7 +102,7 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 		})
 	}
 	subs, err := items(q, "subsets", `SELECT s.id, v.name FROM subsets s JOIN subset_versions v ON v.subset_id=s.id
-		AND v.version=(SELECT MAX(version) FROM subset_versions WHERE subset_id=s.id) WHERE s.source_id=?`, id)
+		AND v.version=(SELECT MAX(version) FROM subset_versions WHERE subset_id=s.id) WHERE s.workspace_id=? AND s.source_id=?`, ws, id)
 	if err != nil {
 		return out, err
 	}
@@ -116,7 +118,7 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 	b.add("offline", "removed", off, func(int) string {
 		return "Its offline copy (kept for working without the host) is forgotten when you save: it holds readouts made with the corrections in force when it was prepared. Prepare it again afterwards; the file itself is not touched."
 	})
-	steps, err := items(q, "exploration_steps", `SELECT id, label FROM exploration_steps WHERE dataset_id=?`, id)
+	steps, err := items(q, "exploration_steps", `SELECT id, label FROM exploration_steps WHERE workspace_id=? AND dataset_id=?`, ws, id)
 	if err != nil {
 		return out, err
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A map declared as an axial orientation map is never averaged as a scalar: its frame and quantity are validated and
@@ -132,7 +133,7 @@ func TestAxialMapsAreDeclaredWithFrameAndQuantityAndResampledAsAngles(t *testing
 	if in == nil || in.Unit != "deg" || in.DeclaredBy != analysisAuthor || in.Frame == nil || *in.Frame != "pixel" || in.Quantity == nil || *in.Quantity != "gradient" || in.ReliabilityID == nil {
 		t.Fatalf("result interpretation: %+v", in)
 	}
-	relDS, err := cat.Get(*in.ReliabilityID)
+	relDS, err := cat.Get(workspace.Local, *in.ReliabilityID)
 	if err != nil || !strings.HasPrefix(relDS.Path, derivedDir) {
 		t.Fatalf("companion reliability dataset: %v %+v", err, relDS)
 	}

@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/publish"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The owner's side of publishing: which revisions went out, a local copy of the comments pulled from the publish
@@ -34,6 +36,11 @@ func openPublishing(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS publish_settings(k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
+			return err
+		}
+	}
+	for _, t := range []string{"publish_comments", "reply_drafts"} {
+		if err := schema.Scope(db, t); err != nil {
 			return err
 		}
 	}
@@ -114,8 +121,8 @@ func (s *Store) RecordPublication(reportID int64, p Publication) error {
 }
 
 // PublishedKeys lists the keys of reports published at least once, for the space's report list.
-func (s *Store) PublishedKeys(space string) ([]string, error) {
-	rows, err := s.db.Query(`SELECT DISTINCT r.key FROM reports r JOIN report_publications p ON p.report_id=r.id WHERE p.space=? ORDER BY r.title`, space)
+func (s *Store) PublishedKeys(ws workspace.ID, space string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT r.key FROM reports r JOIN report_publications p ON p.report_id=r.id WHERE r.workspace_id=? AND p.space=? ORDER BY r.title`, ws, space)
 	if err != nil {
 		return nil, err
 	}
@@ -189,8 +196,8 @@ func (s *Store) ForgetComments(ids []int64) error {
 // Withdrawn forgets that a report was ever published: its publications, its mirrored comments and the replies
 // drafted to them. The publish server has deleted the same; the draft itself is untouched, and publishing it again
 // starts at revision 1.
-func (s *Store) Withdrawn(reportID int64) error {
-	r, err := s.Get(reportID)
+func (s *Store) Withdrawn(ws workspace.ID, reportID int64) error {
+	r, err := s.Get(ws, "", reportID)
 	if err != nil {
 		return err
 	}

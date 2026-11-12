@@ -21,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func callJSON(t *testing.T, method, url string, in any) (int, []byte) {
@@ -88,7 +89,7 @@ func TestReportPublishReadCommentSyncExposesNoSource(t *testing.T) {
 	_, fout := postJSON(t, owner.URL+"/api/figures", map[string]any{"datasetId": d.ID, "title": "Peak channel", "caption": "H I at 8 km/s", "view": view, "previewPng": testPNG(t)})
 	var fig boards.Figure
 	json.Unmarshal(fout, &fig)
-	run, err := rn.Save(filepath.Join(root, "runs", "run-dir-name-private"), runs.Parsed{Run: runs.Run{Name: "2026-11-08_a1f3c", Kind: "vgt"}}, nil)
+	run, err := rn.Save(workspace.Local, "local-owner", filepath.Join(root, "runs", "run-dir-name-private"), runs.Parsed{Run: runs.Run{Name: "2026-11-08_a1f3c", Kind: "vgt"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

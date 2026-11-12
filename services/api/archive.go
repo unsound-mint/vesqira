@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/backup"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // archiveCommand handles `export` and `restore`, which work on the data directory and need no server. It reports
@@ -37,7 +38,8 @@ func archiveCommand(args []string) bool {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		m, err := backup.Export(filepath.Join(dir, "vesqira.db"), dir, out)
+		// local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
+		m, err := backup.Export(workspace.Local, filepath.Join(dir, "vesqira.db"), dir, out)
 		if cerr := out.Close(); err == nil {
 			err = cerr
 		}

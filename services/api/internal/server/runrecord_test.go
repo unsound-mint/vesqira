@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type recEnv struct {
@@ -145,7 +146,7 @@ func readDoc(t *testing.T, p string) (recDoc, []byte) {
 }
 
 func (e *recEnv) auditCount(action string) int {
-	entries, _ := e.au.List("job", 0, 200)
+	entries, _ := e.au.List(workspace.Local, "job", 0, 200)
 	n := 0
 	for _, en := range entries {
 		if en.Action == action {
@@ -261,7 +262,7 @@ func TestSubmittedJobLeavesARunRecordDiscoveryReads(t *testing.T) {
 		t.Fatalf("a record was written through a link: %v %+v", ents, sub3)
 	}
 	if e.auditCount("run record written") != 2 || e.auditCount("run record not written") != 2 {
-		entries, _ := e.au.List("job", 0, 100)
+		entries, _ := e.au.List(workspace.Local, "job", 0, 100)
 		t.Fatalf("the audit log must say what was written and what was not: %+v", entries)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // registerTransfer registers a downloaded file as a dataset. Only a file whose copy was verified (the same sha256 on both
@@ -49,12 +50,12 @@ func (s *Server) registerTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if t.DatasetID != nil {
-		if d, err := s.Store.Get(*t.DatasetID); err == nil {
+		if d, err := s.Store.Get(wsOf(r), *t.DatasetID); err == nil {
 			writeJSON(w, 200, map[string]any{"dataset": d, "transfer": t})
 			return
 		}
 	}
-	real, err := s.roots().Resolve(t.DestPath)
+	real, err := s.roots(wsOf(r)).Resolve(t.DestPath)
 	if err != nil {
 		fail(w, 403, "the downloaded file is no longer inside the source roots on this computer")
 		return
@@ -65,7 +66,7 @@ func (s *Server) registerTransfer(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "the file on this computer changed since it was verified; copy it again before registering it")
 		return
 	}
-	if !in.AsNew && !s.knownFile(real) {
+	if !in.AsNew && !s.knownFile(wsOf(r), real) {
 		if m := s.sameContentVerified(r.Context(), real, sum); len(m) > 0 {
 			failCode(w, 409, "same_content", "A dataset already holds this content. Add the file as another location of it, or register it as a separate dataset.", map[string]any{"matches": m})
 			return
@@ -76,7 +77,7 @@ func (s *Server) registerTransfer(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	s.finishTransferRegistration(w, t, d, sum, n)
+	s.finishTransferRegistration(wsOf(r), w, t, d, sum, n)
 }
 
 // verifiedAt is when the hashes were compared (the transfer finished then), not when the dataset was registered.
@@ -87,7 +88,7 @@ func verifiedAt(t transfers.Transfer) string {
 	return t.FinishedAt.UTC().Format(time.RFC3339)
 }
 
-func (s *Server) finishTransferRegistration(w http.ResponseWriter, t transfers.Transfer, d catalog.Dataset, sum string, n int64) {
+func (s *Server) finishTransferRegistration(ws workspace.ID, w http.ResponseWriter, t transfers.Transfer, d catalog.Dataset, sum string, n int64) {
 	hostName := ""
 	if h, err := s.HostDB.Get(t.HostID); err == nil {
 		hostName = h.Name
@@ -110,7 +111,7 @@ func (s *Server) finishTransferRegistration(w http.ResponseWriter, t transfers.T
 	if err := s.Transfers.LinkDataset(t.ID, d.ID); err != nil && !errors.Is(err, transfers.ErrNotFound) {
 		log.Printf("transfers: %v", err)
 	}
-	s.Audit.Record("dataset registered from transfer", "dataset", d.ID, "transfer "+strconv.FormatInt(t.ID, 10)+", sha256 "+sum[:12])
+	s.Audit.Record(ws, "dataset registered from transfer", "dataset", d.ID, "transfer "+strconv.FormatInt(t.ID, 10)+", sha256 "+sum[:12])
 	out, _ := s.Transfers.Get(t.ID)
 	writeJSON(w, 201, map[string]any{"dataset": d, "transfer": out})
 }

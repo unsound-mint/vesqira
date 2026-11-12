@@ -23,6 +23,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type termEnv struct {
@@ -470,7 +471,7 @@ func TestTerminalAuditHasNoContent(t *testing.T) {
 	readExit(t, c)
 	var es []audit.Entry
 	for i := 0; i < 100; i++ { // the close entry is written just after the exit message
-		es, _ = e.au.List("terminal", 0, 10)
+		es, _ = e.au.List(workspace.Local, "terminal", 0, 10)
 		if len(es) >= 2 {
 			break
 		}
@@ -535,7 +536,7 @@ func TestTerminalHostSessionUsesTheConfiguredSSH(t *testing.T) {
 	readUntil(t, c, "hello-remote")
 	_ = c.Close()
 	for i := 0; i < 100; i++ {
-		if es, _ := e.au.List("terminal", hostID, 10); len(es) == 2 {
+		if es, _ := e.au.List(workspace.Local, "terminal", hostID, 10); len(es) == 2 {
 			if !strings.Contains(es[1].Detail, "host cluster") {
 				t.Errorf("audit: %+v", es)
 			}

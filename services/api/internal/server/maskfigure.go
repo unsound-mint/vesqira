@@ -7,6 +7,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/scene"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Masks on a saved figure and in a carried result, as the figure's scene and the reviewer's provenance say them (ADR 0055).
@@ -14,7 +15,7 @@ import (
 // sceneMasks holds the masks a figure's scene says it hatched to the catalog: each must be one of d's, fresh, with its file unchanged,
 // and the fingerprint the browser drew must be the row's. The scene then keeps what the catalog says (type, name, tier, fingerprint),
 // not what the client wrote. It returns the masks in scene order.
-func (s *Server) sceneMasks(sc *scene.Scene, d catalog.Dataset) ([]masks.Mask, int, string) {
+func (s *Server) sceneMasks(ws workspace.ID, sc *scene.Scene, d catalog.Dataset) ([]masks.Mask, int, string) {
 	if len(sc.Masks) == 0 {
 		return nil, 0, ""
 	}
@@ -23,7 +24,7 @@ func (s *Server) sceneMasks(sc *scene.Scene, d catalog.Dataset) ([]masks.Mask, i
 	}
 	out := make([]masks.Mask, 0, len(sc.Masks))
 	for i, sm := range sc.Masks {
-		m, code, msg := s.usableMask(sm.ID, d)
+		m, code, msg := s.usableMask(ws, sm.ID, d)
 		if code != 0 {
 			return nil, code, msg
 		}

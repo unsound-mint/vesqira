@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/lifecycle"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func TestDeletingARunUnlinksItsJobsAndOutputsAndDropsItsReview(t *testing.T) {
@@ -31,12 +32,12 @@ func TestDeletingARunUnlinksItsJobsAndOutputsAndDropsItsReview(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO datasets(id,path,name,size_bytes,modified_at,added_at,header) VALUES(7,'/p/psi.fits','psi.fits',1,0,0,'{}')`); err != nil {
 		t.Fatal(err)
 	}
-	run, err := rn.Save("/runs/r1", runs.Parsed{Run: runs.Run{Name: "r1", Kind: "vgt", Params: []runs.Param{}, Diagnostics: map[string]string{}}},
+	run, err := rn.Save(workspace.Local, "local-owner", "/runs/r1", runs.Parsed{Run: runs.Run{Name: "r1", Kind: "vgt", Params: []runs.Param{}, Diagnostics: map[string]string{}}},
 		[]runs.Output{{Role: "psi", DatasetID: 7, Name: "psi.fits"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := rn.SetReview(run.ID, runs.Review{QC: "passed", Interpretation: "supports", Note: "ok"}); err != nil {
+	if err := rn.SetReview(workspace.Local, run.ID, runs.Review{QC: "passed", Interpretation: "supports", Note: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at,run_id) VALUES(1,'j','vgt','','','completed','','','','',0,?)`, run.ID); err != nil {
@@ -44,7 +45,7 @@ func TestDeletingARunUnlinksItsJobsAndOutputsAndDropsItsReview(t *testing.T) {
 	}
 
 	svc := lifecycle.New(db)
-	im, err := svc.Impact(lifecycle.KindRun, run.ID)
+	im, err := svc.Impact(workspace.Local, lifecycle.KindRun, run.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,13 +56,13 @@ func TestDeletingARunUnlinksItsJobsAndOutputsAndDropsItsReview(t *testing.T) {
 	if effects["outputs"] != "stays" || effects["jobs"] != "unlinked" || effects["review"] != "removed" || im.Blocked {
 		t.Fatalf("impact of a run: %+v", effects)
 	}
-	if _, err := svc.Delete(lifecycle.KindRun, run.ID, "stale"); !errors.Is(err, lifecycle.ErrChanged) {
+	if _, err := svc.Delete(workspace.Local, lifecycle.KindRun, run.ID, "stale"); !errors.Is(err, lifecycle.ErrChanged) {
 		t.Fatalf("stale digest: %v", err)
 	}
-	if _, err := svc.Delete(lifecycle.KindRun, run.ID, im.Digest); err != nil {
+	if _, err := svc.Delete(workspace.Local, lifecycle.KindRun, run.ID, im.Digest); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rn.Get(run.ID); !errors.Is(err, runs.ErrNotFound) {
+	if _, err := rn.Get(workspace.Local, run.ID); !errors.Is(err, runs.ErrNotFound) {
 		t.Errorf("run still there: %v", err)
 	}
 	var n int
@@ -87,25 +88,25 @@ func TestArchivedRunStaysInGetAndFlagsItself(t *testing.T) {
 	}
 	defer cat.Close()
 	rn, _ := runs.Open(cat.DB())
-	run, _ := rn.Save("/runs/r1", runs.Parsed{Run: runs.Run{Name: "r1", Kind: "vgt", Params: []runs.Param{}, Diagnostics: map[string]string{}}}, nil)
+	run, _ := rn.Save(workspace.Local, "local-owner", "/runs/r1", runs.Parsed{Run: runs.Run{Name: "r1", Kind: "vgt", Params: []runs.Param{}, Diagnostics: map[string]string{}}}, nil)
 	svc := lifecycle.New(cat.DB())
-	if changed, err := svc.Archive(lifecycle.KindRun, run.ID); err != nil || !changed {
+	if changed, err := svc.Archive(workspace.Local, lifecycle.KindRun, run.ID); err != nil || !changed {
 		t.Fatalf("archive: %v %v", changed, err)
 	}
-	got, err := rn.Get(run.ID)
+	got, err := rn.Get(workspace.Local, run.ID)
 	if err != nil || !got.Archived {
 		t.Fatalf("an archived run resolves and says so: %+v %v", got, err)
 	}
-	if changed, _ := svc.Archive(lifecycle.KindRun, run.ID); changed {
+	if changed, _ := svc.Archive(workspace.Local, lifecycle.KindRun, run.ID); changed {
 		t.Error("archiving twice is not a change")
 	}
-	if _, err := svc.Restore(lifecycle.KindRun, run.ID); err != nil {
+	if _, err := svc.Restore(workspace.Local, lifecycle.KindRun, run.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := rn.Get(run.ID); got.Archived {
+	if got, _ := rn.Get(workspace.Local, run.ID); got.Archived {
 		t.Error("restored run still archived")
 	}
-	if _, err := svc.Archive(lifecycle.KindRun, 999); !errors.Is(err, lifecycle.ErrNotFound) {
+	if _, err := svc.Archive(workspace.Local, lifecycle.KindRun, 999); !errors.Is(err, lifecycle.ErrNotFound) {
 		t.Errorf("archive of nothing: %v", err)
 	}
 }
@@ -129,7 +130,7 @@ func TestDeletingARunOrBoardClearsASweepsLinkAndKeepsTheSweep(t *testing.T) {
 	if _, err := sweeps.Open(db); err != nil {
 		t.Fatal(err)
 	}
-	run, err := rn.Save("/runs/r1", runs.Parsed{Run: runs.Run{Name: "r1", Kind: "vgt", Params: []runs.Param{}, Diagnostics: map[string]string{}}}, nil)
+	run, err := rn.Save(workspace.Local, "local-owner", "/runs/r1", runs.Parsed{Run: runs.Run{Name: "r1", Kind: "vgt", Params: []runs.Param{}, Diagnostics: map[string]string{}}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,11 +148,11 @@ func TestDeletingARunOrBoardClearsASweepsLinkAndKeepsTheSweep(t *testing.T) {
 		id   int64
 		col  string
 	}{{lifecycle.KindRun, run.ID, "base_run_id"}, {lifecycle.KindBoard, 9, "board_id"}} {
-		im, err := svc.Impact(c.kind, c.id)
+		im, err := svc.Impact(workspace.Local, c.kind, c.id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := svc.Delete(c.kind, c.id, im.Digest); err != nil {
+		if _, err := svc.Delete(workspace.Local, c.kind, c.id, im.Digest); err != nil {
 			t.Fatal(err)
 		}
 		var v *int64

@@ -6,6 +6,8 @@ package audit
 import (
 	"context"
 	"database/sql"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 	"strings"
 	"time"
 )
@@ -24,11 +26,15 @@ type Entry struct {
 	Via        string `json:"via"`
 }
 
-// Actor is who an entry is recorded for. The package knows nothing of internal/authz; the server hands it plain strings.
-type Actor struct{ ID, OnBehalfOf, Via string }
+// Actor is who an entry is recorded for, and in which workspace (0: none, the entry belongs to the server). The package knows
+// nothing of internal/authz; the server hands it plain values.
+type Actor struct {
+	ID, OnBehalfOf, Via string
+	Workspace           workspace.ID
+}
 
 // LocalOwner is the actor of every entry in local mode. internal/server tests that it matches authz.LocalOwner.
-var LocalOwner = Actor{ID: "local-owner", Via: "local"}
+var LocalOwner = Actor{ID: "local-owner", Via: "local", Workspace: workspace.Local}
 
 // System is the actor of an entry made by background work with no account to name, on the group server (ADR 0050 section 4).
 var System = Actor{ID: "system", Via: "system"}
@@ -55,18 +61,22 @@ func Open(db *sql.DB) (*Store, error) {
 			return nil, err
 		}
 	}
+	if err := schema.Scope(db, "audit"); err != nil {
+		return nil, err
+	}
 	return &Store{db: db, Default: LocalOwner}, nil
 }
 
-// Record appends one entry for the store's default actor. A nil store records nothing, so callers need no checks.
-func (s *Store) Record(action, kind string, target int64, detail string) {
+// Record appends one entry of workspace ws for the store's default actor. A nil store records nothing, so callers need no checks.
+func (s *Store) Record(ws workspace.ID, action, kind string, target int64, detail string) {
 	if s == nil {
 		return
 	}
-	s.RecordAs(s.Default, action, kind, target, detail)
+	s.RecordAs(ws, s.Default, action, kind, target, detail)
 }
 
-// RecordCtx appends one entry for the actor the context carries (WithActor), or the store's default actor when it carries none.
+// RecordCtx appends one entry for the actor the context carries (WithActor), in that actor's workspace, or for the store's
+// default actor when it carries none.
 func (s *Store) RecordCtx(ctx context.Context, action, kind string, target int64, detail string) {
 	if s == nil {
 		return
@@ -75,11 +85,11 @@ func (s *Store) RecordCtx(ctx context.Context, action, kind string, target int64
 	if !ok {
 		a = s.Default
 	}
-	s.RecordAs(a, action, kind, target, detail)
+	s.RecordAs(a.Workspace, a, action, kind, target, detail)
 }
 
-// RecordAs appends one entry for the given actor.
-func (s *Store) RecordAs(a Actor, action, kind string, target int64, detail string) {
+// RecordAs appends one entry of workspace ws for the given actor.
+func (s *Store) RecordAs(ws workspace.ID, a Actor, action, kind string, target int64, detail string) {
 	if s == nil {
 		return
 	}
@@ -92,18 +102,18 @@ func (s *Store) RecordAs(a Actor, action, kind string, target int64, detail stri
 	if len(detail) > 300 {
 		detail = detail[:300]
 	}
-	_, _ = s.db.Exec(`INSERT INTO audit(at,action,kind,target,detail,actor,on_behalf_of,via) VALUES(?,?,?,?,?,?,?,?)`, time.Now().Unix(), action, kind, target, detail, a.ID, a.OnBehalfOf, a.Via)
+	_, _ = s.db.Exec(`INSERT INTO audit(at,action,kind,target,detail,actor,on_behalf_of,via,workspace_id) VALUES(?,?,?,?,?,?,?,?,?)`, time.Now().Unix(), action, kind, target, detail, a.ID, a.OnBehalfOf, a.Via, ws)
 }
 
-// List returns the newest entries first; kind and target narrow it when set.
-func (s *Store) List(kind string, target int64, limit int) ([]Entry, error) {
+// List returns the workspace's newest entries first; kind and target narrow it when set.
+func (s *Store) List(ws workspace.ID, kind string, target int64, limit int) ([]Entry, error) {
 	if limit < 1 || limit > 500 {
 		limit = 100
 	}
-	q := `SELECT id,at,action,kind,target,detail,actor,on_behalf_of,via FROM audit`
-	var args []any
+	q := `SELECT id,at,action,kind,target,detail,actor,on_behalf_of,via FROM audit WHERE workspace_id=?`
+	args := []any{ws}
 	if kind != "" {
-		q += ` WHERE kind=?`
+		q += ` AND kind=?`
 		args = append(args, kind)
 		if target != 0 {
 			q += ` AND target=?`

@@ -10,6 +10,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/offline"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Offline copies are unmasked replies of a file (ADR 0059). Since masks are applied to files on a host (ADR 0064), a masked region request
@@ -28,7 +29,7 @@ func TestMaskedHostRepliesAreNeverOfflineCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 	mtime := time.Unix(100, 0)
-	d, err := st.Upsert(catalog.Dataset{Path: "/remote/a.fits", Name: "a.fits", SizeBytes: 10, ModifiedAt: mtime, Header: []byte(`{}`), HostID: 3})
+	d, err := st.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: "/remote/a.fits", Name: "a.fits", SizeBytes: 10, ModifiedAt: mtime, Header: []byte(`{}`), HostID: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,7 @@ func TestMaskedHostRepliesAreNeverOfflineCopies(t *testing.T) {
 	}
 	s := &Server{Store: st, Offline: off}
 	ask := func(k cacheKey) bool {
-		_, ok := s.afterFailure(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil), k)
+		_, ok := s.afterFailure(httptest.NewRecorder(), localRequest("GET", "/"), k)
 		return ok
 	}
 	k := cacheKey{id: d.ID, host: 3, size: 10, mtime: mtime.UnixNano(), op: "spectrum", q: q}

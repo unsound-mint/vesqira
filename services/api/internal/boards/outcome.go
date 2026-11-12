@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Outcomes a reviewer can give a version. None of them says a run is scientifically valid: that is a separate
@@ -40,7 +42,7 @@ func (s *Store) fillOutcome(sn *Snapshot) {
 
 // SetOutcome records the reviewer's word on this version. Each call is kept, the latest counts.
 func (s *Store) SetOutcome(token, value, note, author string) (Outcome, error) {
-	id, _, err := s.lookup(token)
+	id, _, _, err := s.lookup(token)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -66,8 +68,8 @@ type Preflight struct {
 	Warnings []string `json:"warnings"`
 }
 
-func (s *Store) Preflight(boardID int64, question string, jobs map[int64]JobSnapshot) (Preflight, error) {
-	b, err := s.Board(boardID)
+func (s *Store) Preflight(ws workspace.ID, boardID int64, question string, jobs map[int64]JobSnapshot) (Preflight, error) {
+	b, err := s.Board(ws, boardID)
 	if err != nil {
 		return Preflight{}, err
 	}

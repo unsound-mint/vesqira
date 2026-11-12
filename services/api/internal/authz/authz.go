@@ -1,14 +1,19 @@
 // Package authz names who is acting and what a route needs (ADR 0050). In local mode there is one actor, the implicit local
-// owner, who holds every permission, so a check never fails and nothing behaves differently. On the group server
-// (--multi-user, slice 2) the actor is an account reached through a session or a personal access token: every account is
-// an admin until the roles of slice 3, and holds every permission except the local-only ones; a token holds only what its
-// scopes allow, and never an account or admin permission.
+// owner, who holds every permission in the one workspace, so a check never fails and nothing behaves differently. On the
+// group server (--multi-user) the actor is an account reached through a session or a personal access token, acting in one
+// workspace with the role its membership gives it there (slice 3, roles.go); the admin flag adds the server-wide account and
+// workspace administration, never a workspace's content. A token holds only what its scopes allow, and never an account or
+// admin permission.
 //
-// It imports nothing from the program, so the reviewer-facing packages (internal/review, internal/publish) keep their own,
+// It imports only the workspace id type, so the reviewer-facing packages (internal/review, internal/publish) keep their own,
 // narrower capability checks and never see it.
 package authz
 
-import "context"
+import (
+	"context"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
+)
 
 // Via says how an actor was authenticated.
 type Via string
@@ -35,19 +40,25 @@ type Actor struct {
 	// Recent is true when the session signed in (password and second factor) within the recent sign-in window, which some
 	// permissions need (NeedsRecentSignIn). The local owner always is.
 	Recent bool
+	// Workspace is the workspace the request acts in, and Role the actor's role there, read from the membership on every
+	// request (a role change or removal takes effect at once). Zero and RoleNone when the account is a member of none: then it
+	// holds no workspace permission, and a store queried with workspace 0 finds nothing.
+	Workspace workspace.ID
+	Role      Role
 }
 
 // LocalOwner is the one principal of local mode: it needs no login and holds every permission in the single implicit
 // workspace.
 func LocalOwner() Actor {
-	return Actor{ID: LocalOwnerID, Name: "Local owner", Via: ViaLocal, Recent: true}
+	return Actor{ID: LocalOwnerID, Name: "Local owner", Via: ViaLocal, Recent: true, Workspace: workspace.Local, Role: RoleOwner}
 }
 
 // IsLocalOwner reports whether the actor is the implicit local owner.
 func (a Actor) IsLocalOwner() bool { return a.ID == LocalOwnerID && a.Via == ViaLocal }
 
-// Can decides whether the actor holds a permission. Default deny: an unknown permission, an actor with no recognised way in,
-// and an account without the admin flag hold nothing.
+// Can decides whether the actor holds a permission. Default deny: an unknown permission, an actor with no recognised way in, a
+// workspace permission without a membership, and an admin permission without the admin flag hold nothing. A token is then
+// limited to its scopes.
 func (a Actor) Can(p Permission) bool {
 	if p == Anonymous {
 		return true
@@ -58,7 +69,14 @@ func (a Actor) Can(p Permission) bool {
 	if a.IsLocalOwner() {
 		return true
 	}
-	if a.ID == "" || a.ID == LocalOwnerID || p == LocalOnly || !a.Admin {
+	if a.ID == "" || a.ID == LocalOwnerID || p == LocalOnly {
+		return false
+	}
+	if adminOnly, ok := accountLevel[p]; ok {
+		if adminOnly && !a.Admin {
+			return false
+		}
+	} else if min := matrix[p]; min == RoleNone || a.Workspace <= 0 || !a.Role.AtLeast(min) {
 		return false
 	}
 	switch a.Via {

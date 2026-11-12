@@ -13,6 +13,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A code folder that is a real git checkout, so the strict check and the probe read real state.
@@ -110,7 +111,7 @@ func (e *watchEnv) finishedRun(j jobs.Job, facts map[string]string) runs.Run {
 	if j.RunID == nil {
 		e.t.Fatalf("the job was not imported: %s", j.Detail)
 	}
-	r, err := e.runs.Get(*j.RunID)
+	r, err := e.runs.Get(workspace.Local, *j.RunID)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -191,7 +192,7 @@ func TestEnvironmentFileOfAnotherJobOrNoFileIsNeverTrusted(t *testing.T) {
 	e.writeRun(j.OutputDir)
 	writeEnvFile(t, j.OutputDir, "99999", codeFacts(code)) // written by some other Slurm job
 	e.end(j.ID, "COMPLETED")
-	run, _ := e.runs.Get(*e.job(j.ID).RunID)
+	run, _ := e.runs.Get(workspace.Local, *e.job(j.ID).RunID)
 	for _, x := range run.Environment {
 		if x.Status != runs.EnvUnresolved || !strings.Contains(x.Reason, "another job") {
 			t.Fatalf("a file from another job was used: %+v", x)
@@ -280,7 +281,7 @@ func TestStrictRerunIsRefusedWhenTheCodeIsNotTheParents(t *testing.T) {
 		t.Fatalf("best effort: %d %s", status, body)
 	}
 	found := false
-	ents, _ := e.srv.Audit.List("job", j3.ID, 50)
+	ents, _ := e.srv.Audit.List(workspace.Local, "job", j3.ID, 50)
 	for _, ent := range ents {
 		if ent.Action == "job submitted" && strings.Contains(ent.Detail, "best_effort rerun, differences:") && strings.Contains(ent.Detail, "the parent run used") {
 			found = true
@@ -298,21 +299,21 @@ func TestStrictDraftNeedsAParentWhoseCodeIsKnownAndSettingsUnchanged(t *testing.
 	strict := func(parent int64) map[string]any { return map[string]any{"parentRunId": parent, "rerunMode": "strict"} }
 
 	// an imported run that records no revision
-	none, _ := e.runs.Save("/data/none", runs.Parsed{Run: runs.Run{Name: "none", Kind: "vgt"}}, nil)
+	none, _ := e.runs.Save(workspace.Local, "local-owner", "/data/none", runs.Parsed{Run: runs.Run{Name: "none", Kind: "vgt"}}, nil)
 	if st, _, raw := e.draftIn("a", code.dir, strict(none.ID)); st != 422 || !strings.Contains(raw, "recorded no code revision") {
 		t.Errorf("no revision: %d %s", st, raw)
 	}
 	// a declared short revision cannot be compared exactly; a declared dirty one does not describe its code
-	short, _ := e.runs.Save("/data/short", runs.Parsed{Run: runs.Run{Name: "short", Kind: "vgt", GitCommit: "abc1234"}}, nil)
+	short, _ := e.runs.Save(workspace.Local, "local-owner", "/data/short", runs.Parsed{Run: runs.Run{Name: "short", Kind: "vgt", GitCommit: "abc1234"}}, nil)
 	if st, _, raw := e.draftIn("b", code.dir, strict(short.ID)); st != 422 || !strings.Contains(raw, "short revision") {
 		t.Errorf("short: %d %s", st, raw)
 	}
-	dirty, _ := e.runs.Save("/data/dirty", runs.Parsed{Run: runs.Run{Name: "dirty", Kind: "vgt", GitCommit: strings.Repeat("a", 40) + "-dirty"}}, nil)
+	dirty, _ := e.runs.Save(workspace.Local, "local-owner", "/data/dirty", runs.Parsed{Run: runs.Run{Name: "dirty", Kind: "vgt", GitCommit: strings.Repeat("a", 40) + "-dirty"}}, nil)
 	if st, _, raw := e.draftIn("c", code.dir, strict(dirty.ID)); st != 422 || !strings.Contains(raw, "uncommitted changes") {
 		t.Errorf("declared dirty: %d %s", st, raw)
 	}
 	// a declared full revision is accepted and the check says it is declared, not observed
-	full, _ := e.runs.Save("/data/full", runs.Parsed{Run: runs.Run{Name: "full", Kind: "vgt", GitCommit: code.head()}}, nil)
+	full, _ := e.runs.Save(workspace.Local, "local-owner", "/data/full", runs.Parsed{Run: runs.Run{Name: "full", Kind: "vgt", GitCommit: code.head()}}, nil)
 	st, j, raw := e.draftIn("d", code.dir, strict(full.ID))
 	if st != 201 {
 		t.Fatalf("declared revision: %d %s", st, raw)

@@ -6,6 +6,8 @@ package notify
 
 import (
 	"database/sql"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 	"strings"
 	"time"
 )
@@ -45,6 +47,12 @@ func Open(db *sql.DB) (*Store, error) {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS notifications(
 		id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
 		job_id INTEGER, run_id INTEGER, read INTEGER NOT NULL DEFAULT 0, dedupe TEXT NOT NULL UNIQUE)`)
+	if err == nil { // read is no longer used: what each account has read is notification_reads (schema 31)
+		err = schema.Scope(db, "notifications")
+	}
+	if err == nil { // the catalog has made them already; a store opened on its own database needs them
+		_, err = db.Exec(schema.WorkspaceTables)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -66,28 +74,33 @@ func clean(s string, max int) string {
 
 // Add records an event once per key: a second Add with the same key changes nothing and reports false. A nil store records
 // nothing, so callers need no checks.
-func (s *Store) Add(key string, n Notification) (bool, error) {
+func (s *Store) Add(ws workspace.ID, by, key string, n Notification) (bool, error) {
 	if s == nil {
 		return false, nil
 	}
-	res, err := s.db.Exec(`INSERT OR IGNORE INTO notifications(at,kind,title,body,job_id,run_id,dedupe) VALUES(?,?,?,?,?,?,?)`,
-		time.Now().Unix(), n.Kind, clean(n.Title, 200), clean(n.Body, 600), n.JobID, n.RunID, key)
+	res, err := s.db.Exec(`INSERT OR IGNORE INTO notifications(at,kind,title,body,job_id,run_id,dedupe,workspace_id,created_by) VALUES(?,?,?,?,?,?,?,?,?)`,
+		time.Now().Unix(), n.Kind, clean(n.Title, 200), clean(n.Body, 600), n.JobID, n.RunID, key, ws, by)
 	if err != nil {
 		return false, err
 	}
 	added, _ := res.RowsAffected()
 	if added == 1 {
-		_, err = s.db.Exec(`DELETE FROM notifications WHERE id <= (SELECT MAX(id) FROM notifications) - ?`, Keep)
+		dropped := `SELECT id FROM notifications WHERE workspace_id=? AND id NOT IN (SELECT id FROM notifications WHERE workspace_id=? ORDER BY id DESC LIMIT ?)`
+		_, err = s.db.Exec(`DELETE FROM notification_reads WHERE notification_id IN (`+dropped+`)`, ws, ws, Keep) // the read marks go with them
+		if err == nil {
+			_, err = s.db.Exec(`DELETE FROM notifications WHERE workspace_id=? AND id NOT IN (SELECT id FROM notifications WHERE workspace_id=? ORDER BY id DESC LIMIT ?)`, ws, ws, Keep)
+		}
 	}
 	return added == 1, err
 }
 
-// List returns the newest events first and how many are unread in all (not only among those returned).
-func (s *Store) List(limit int) ([]Notification, int, error) {
+// List returns the workspace's newest events first, read as the account has read them, and how many are unread in all (not
+// only among those returned).
+func (s *Store) List(ws workspace.ID, account string, limit int) ([]Notification, int, error) {
 	if limit < 1 || limit > Keep {
 		limit = 50
 	}
-	rows, err := s.db.Query(`SELECT id,at,kind,title,body,job_id,run_id,read FROM notifications ORDER BY id DESC LIMIT ?`, limit)
+	rows, err := s.db.Query(`SELECT id,at,kind,title,body,job_id,run_id,EXISTS(SELECT 1 FROM notification_reads r WHERE r.notification_id=notifications.id AND r.account_id=?) FROM notifications WHERE workspace_id=? ORDER BY id DESC LIMIT ?`, account, ws, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -114,18 +127,19 @@ func (s *Store) List(limit int) ([]Notification, int, error) {
 		return nil, 0, err
 	}
 	var unread int
-	err = s.db.QueryRow(`SELECT COUNT(*) FROM notifications WHERE read=0`).Scan(&unread)
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM notifications WHERE workspace_id=? AND NOT EXISTS(SELECT 1 FROM notification_reads r WHERE r.notification_id=notifications.id AND r.account_id=?)`, ws, account).Scan(&unread)
 	return out, unread, err
 }
 
-// MarkRead marks the given events read; with all set it marks every event.
-func (s *Store) MarkRead(ids []int64, all bool) error {
+// MarkRead marks the given events of the workspace read for the account; with all set it marks every event. What one account
+// has read says nothing about another's.
+func (s *Store) MarkRead(ws workspace.ID, account string, ids []int64, all bool) error {
 	if all {
-		_, err := s.db.Exec(`UPDATE notifications SET read=1 WHERE read=0`)
+		_, err := s.db.Exec(`INSERT OR IGNORE INTO notification_reads(account_id,notification_id) SELECT ?,id FROM notifications WHERE workspace_id=?`, account, ws)
 		return err
 	}
 	for _, id := range ids {
-		if _, err := s.db.Exec(`UPDATE notifications SET read=1 WHERE id=?`, id); err != nil {
+		if _, err := s.db.Exec(`INSERT OR IGNORE INTO notification_reads(account_id,notification_id) SELECT ?,id FROM notifications WHERE id=? AND workspace_id=?`, account, id, ws); err != nil {
 			return err
 		}
 	}

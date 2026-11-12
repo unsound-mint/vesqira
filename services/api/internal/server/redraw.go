@@ -14,6 +14,7 @@ import (
 	idty "github.com/unsound-mint/vesqira/services/api/internal/identity"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/scene"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // "Draw again" (ADR 0042, section 5). The browser re-renders a figure's stored description with the viewer's renderer. Before it
@@ -219,7 +220,7 @@ func sceneReliabilityIDs(sc *scene.Scene, lookup func(int64) (catalog.Dataset, b
 // reliabilityMaps are the reliability maps a figure's scene reads that are not already recorded as its source or an overlay's
 // dataset: a map that sets line opacity, length or the threshold decides which lines exist and how they look, so a figure
 // records its identity too (role "reliability").
-func (s *Server) reliabilityMaps(sc *scene.Scene, base catalog.Dataset, others []catalog.Dataset) []catalog.Dataset {
+func (s *Server) reliabilityMaps(ws workspace.ID, sc *scene.Scene, base catalog.Dataset, others []catalog.Dataset) []catalog.Dataset {
 	if sc == nil {
 		return nil
 	}
@@ -232,7 +233,7 @@ func (s *Server) reliabilityMaps(sc *scene.Scene, base catalog.Dataset, others [
 		if _, dup := known[id]; dup {
 			continue
 		}
-		if d, err := s.Store.Get(id); err == nil {
+		if d, err := s.Store.Get(ws, id); err == nil {
 			out = append(out, d)
 		}
 	}
@@ -241,11 +242,11 @@ func (s *Server) reliabilityMaps(sc *scene.Scene, base catalog.Dataset, others [
 
 // onDiskDiffers says what differs between the figure's record of a file on this computer and the file now (size, time and, when
 // both exist, the sampled fingerprint). Files on a host are not looked at.
-func (s *Server) onDiskDiffers(d catalog.Dataset, src *figureDatasetIdentity) []string {
+func (s *Server) onDiskDiffers(ws workspace.ID, d catalog.Dataset, src *figureDatasetIdentity) []string {
 	if d.HostID != 0 {
 		return []string{}
 	}
-	real, err := s.roots().Resolve(d.Path)
+	real, err := s.roots(ws).Resolve(d.Path)
 	if err != nil {
 		return []string{}
 	}
@@ -289,7 +290,7 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 		}
 	}
 	if sc != nil { // a reliability map the scene reads is a file the picture depends on too
-		lookup := func(id int64) (catalog.Dataset, bool) { d, err := s.Store.Get(id); return d, err == nil }
+		lookup := func(id int64) (catalog.Dataset, bool) { d, err := s.Store.Get(wsCtx(ctx), id); return d, err == nil }
 		for _, id := range sceneReliabilityIDs(sc, lookup) {
 			if _, dup := roles[id]; !dup {
 				ids = append(ids, id)
@@ -314,7 +315,7 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 		role := roles[id]
 		src := recorded(id)
 		out := redrawSource{Role: role, DatasetID: id, Differs: []string{}}
-		d, err := s.Store.Get(id)
+		d, err := s.Store.Get(wsCtx(ctx), id)
 		if err != nil {
 			out.Name = "dataset no longer registered"
 			if src != nil {
@@ -342,7 +343,7 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 			}
 		}
 		if status != 0 {
-			out.Status, out.Differs, out.Text = classifyUnreadable(d.Name, status, s.onDiskDiffers(d, src))
+			out.Status, out.Differs, out.Text = classifyUnreadable(d.Name, status, s.onDiskDiffers(wsCtx(ctx), d, src))
 			blocked = true
 			res.Sources = append(res.Sources, out)
 			continue
@@ -381,7 +382,7 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 	}
 	if sc != nil && len(sc.Masks) > 0 {
 		var anyMask bool
-		res.Masks, anyMask = s.checkMasks(sc)
+		res.Masks, anyMask = s.checkMasks(wsCtx(ctx), sc)
 		if anyMask && res.State != "blocked" { // said before redrawing, with any other reason to ask
 			if res.State == "ready" {
 				res.State, res.Prompt = "ask", promptMasks+" Draw it again anyway?"
@@ -394,15 +395,15 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 }
 
 // checkMasks compares the masks a scene hatched with the catalog as it is now.
-func (s *Server) checkMasks(sc *scene.Scene) (out []redrawMask, anyChanged bool) {
-	d, derr := s.Store.Get(sc.Base.DatasetID)
+func (s *Server) checkMasks(ws workspace.ID, sc *scene.Scene) (out []redrawMask, anyChanged bool) {
+	d, derr := s.Store.Get(ws, sc.Base.DatasetID)
 	for _, sm := range sc.Masks {
 		r := redrawMask{Type: sm.Type, Name: sm.Name, Tier: sm.Tier, Status: "unchanged"}
 		label := masks.TypeLabel(sm.Type) + " mask \"" + sm.Name + "\""
 		var m masks.Mask
 		err := masks.ErrNotFound
 		if s.Masks != nil {
-			m, err = s.Masks.Get(sm.ID)
+			m, err = s.Masks.Get(ws, sm.ID)
 		}
 		switch {
 		case errors.Is(err, masks.ErrNotFound):
@@ -412,7 +413,7 @@ func (s *Server) checkMasks(sc *scene.Scene) (out []redrawMask, anyChanged bool)
 		case "sha256:"+m.SHA256 != sm.Fingerprint:
 			r.Status, r.Text = "changed", label+" has another fingerprint than the one drawn; its hatch is left out of the new drawing."
 		default:
-			if _, code, msg := s.usableMask(sm.ID, d); code != 0 {
+			if _, code, msg := s.usableMask(ws, sm.ID, d); code != 0 {
 				r.Status, r.Text = "changed", label+": "+msg+". Its hatch is left out of the new drawing."
 			} else {
 				r.Text = label + " is unchanged (the same fingerprint)."
@@ -430,7 +431,7 @@ func (s *Server) redrawCheck(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	f, err := s.Boards.Figure(id)
+	f, err := s.Boards.Figure(wsOf(r), id)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -440,8 +441,8 @@ func (s *Server) redrawCheck(w http.ResponseWriter, r *http.Request) {
 
 // redrawLink resolves the figure a redraw is made from, and refuses one that cannot be what it says: it must exist, be a figure
 // of the same dataset, and carry the same kind of description (a scene for a scene, a channel grid for a grid).
-func (s *Server) redrawLink(from int64, datasetID int64, grid bool) (boards.Figure, error) {
-	orig, err := s.Boards.Figure(from)
+func (s *Server) redrawLink(ws workspace.ID, from int64, datasetID int64, grid bool) (boards.Figure, error) {
+	orig, err := s.Boards.Figure(ws, from)
 	if errors.Is(err, boards.ErrNotFound) {
 		return orig, errors.New("the figure to draw again does not exist")
 	}

@@ -74,9 +74,28 @@ export type RequestOptions = {
   quiet?: boolean;
 };
 
+let workspaceId: number | null = null;
+
+/**
+ * The group server's current workspace (ADR 0050 slice 3), sent as X-Vesqira-Workspace with every /api request so lists and new
+ * objects belong to it. Null in local mode and on the reviewer listener, which never send it. A route whose path names an object
+ * acts in that object's workspace whatever this says (a picture in an <img> carries no header).
+ */
+export function setWorkspace(id: number | null) {
+  workspaceId = id;
+}
+
+function withWorkspace(url: string, init?: RequestInit): RequestInit | undefined {
+  if (workspaceId === null || !url.startsWith("/api/")) return init;
+  const headers = new Headers(init?.headers);
+  headers.set("X-Vesqira-Workspace", String(workspaceId));
+  return { ...init, headers };
+}
+
 /** The checked Response, for callers that read the body themselves (binary planes). An abort is rethrown as it is. */
 export async function requestRaw(url: string, init?: RequestInit, opts: RequestOptions = {}): Promise<Response> {
   let res: Response;
+  init = withWorkspace(url, init);
   try {
     res = await fetch(url, init);
   } catch (e) {

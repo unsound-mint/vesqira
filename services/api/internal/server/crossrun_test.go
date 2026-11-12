@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 const (
@@ -86,7 +87,7 @@ func newCrossEnv(t *testing.T) *crossEnv {
 	} {
 		p := runs.Parsed{Run: runs.Run{Name: c.name, Kind: "vgt", GeneratedAt: "2026-08-01T10:00:00Z", GitCommit: "abc1234",
 			Params: []runs.Param{{Key: "block_size", Value: c.block, Source: "config"}}, Metrics: c.metrics}}
-		saved, err := rn.Save("/runs/"+c.name, p, nil)
+		saved, err := rn.Save(workspace.Local, "local-owner", "/runs/"+c.name, p, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

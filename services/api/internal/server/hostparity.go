@@ -34,7 +34,7 @@ func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name str
 		}
 		defer release()
 	}
-	corrOpt, corrHashes, corrSnap := s.corrArgs(h.ID, argv)
+	corrOpt, corrHashes, corrSnap := s.corrArgs(wsCtx(ctx), h.ID, argv)
 	if corrOpt != "" {
 		argv = append(argv, corrOpt)
 	}

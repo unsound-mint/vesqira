@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A host that stops answering during an import is not a host with no trace, no crop and no maps: nothing is saved, a good run
@@ -31,7 +33,7 @@ func TestROHSAImportFromAHostThatGoesSilentSavesNothingAndKeepsTheGoodRun(t *tes
 	if _, code, msg := e.srv.importROHSA(context.Background(), newRemoteROHSA(e.srv, e.host, dat)); code != 502 || !strings.Contains(msg, "not reachable") {
 		t.Errorf("a silent host: %d %q", code, msg)
 	}
-	if rs, _ := e.runs.List(); len(rs) != 0 {
+	if rs, _ := e.runs.List(workspace.Local); len(rs) != 0 {
 		t.Errorf("a run built from silence was saved: %+v", rs)
 	}
 	e.importROHSAFromHost(dir, 502) // through the route: the fit cannot even be found
@@ -46,11 +48,11 @@ func TestROHSAImportFromAHostThatGoesSilentSavesNothingAndKeepsTheGoodRun(t *tes
 		t.Errorf("a silent host on re-import: %d", code)
 	}
 	up()
-	after, err := e.runs.Get(good.ID)
+	after, err := e.runs.Get(workspace.Local, good.ID)
 	if err != nil || len(after.Outputs) != len(good.Outputs) || len(after.Metrics) != 2 {
 		t.Errorf("the good run was changed: %+v %v", after, err)
 	}
-	if rr, err := e.runs.ROHSA(good.ID); err != nil || rr.Info.CropDatasetID == nil || len(rr.Info.Notes) != len(good.Rohsa.Notes) {
+	if rr, err := e.runs.ROHSA(workspace.Local, good.ID); err != nil || rr.Info.CropDatasetID == nil || len(rr.Info.Notes) != len(good.Rohsa.Notes) {
 		t.Errorf("the good run's record was changed: %+v %v", rr, err)
 	}
 	// a request that was cancelled (a closed tab) saves nothing and changes nothing
@@ -59,7 +61,7 @@ func TestROHSAImportFromAHostThatGoesSilentSavesNothingAndKeepsTheGoodRun(t *tes
 	if _, code, _ := e.srv.importROHSA(ctx, newRemoteROHSA(e.srv, e.host, dat)); code != 502 {
 		t.Errorf("a cancelled import: %d", code)
 	}
-	if rs, _ := e.runs.List(); len(rs) != 1 {
+	if rs, _ := e.runs.List(workspace.Local); len(rs) != 1 {
 		t.Errorf("%d runs", len(rs))
 	}
 }

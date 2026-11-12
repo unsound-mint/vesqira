@@ -61,7 +61,7 @@ func linkPoints(roots sourceroot.Roots, dir, name string) string {
 
 // fileTree lists one folder inside the readable roots: folders first, then files, by name. It lists names only.
 func (s *Server) fileTree(w http.ResponseWriter, r *http.Request) {
-	dir, err := s.roots().ResolveDir(r.URL.Query().Get("path"))
+	dir, err := s.roots(wsOf(r)).ResolveDir(r.URL.Query().Get("path"))
 	if err != nil || holdsCredentials(dir) {
 		writeJSON(w, 404, map[string]string{"error": "that folder is not inside a folder Vesqira may read"})
 		return
@@ -80,7 +80,7 @@ func (s *Server) fileTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fd := int(f.Fd())
-	roots := s.roots()
+	roots := s.roots(wsOf(r))
 	links := 0
 	out := make([]dirEntry, 0, len(des))
 	for _, d := range des {

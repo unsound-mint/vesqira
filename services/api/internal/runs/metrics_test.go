@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 const withMetrics = sample + `
@@ -91,7 +93,7 @@ func TestMetricsSurviveTheStoreAndTheReviewerSummaryKeepsUnknownUnknown(t *testi
 		t.Fatal(err)
 	}
 	p, _ := ParseVGT([]byte(withMetrics), "run1")
-	run, err := s.Save("/runs/one", p, []Output{{Role: "psi", DatasetID: 7, Name: "psi.fits"}})
+	run, err := s.Save(workspace.Local, "local-owner", "/runs/one", p, []Output{{Role: "psi", DatasetID: 7, Name: "psi.fits"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +104,7 @@ func TestMetricsSurviveTheStoreAndTheReviewerSummaryKeepsUnknownUnknown(t *testi
 	if got["unknown_one"].Value != nil {
 		t.Error("an unknown value came back as a number")
 	}
-	sum, err := s.ForDataset(7)
+	sum, err := s.ForDataset(workspace.Local, 7)
 	if err != nil || sum == nil {
 		t.Fatalf("%v %v", sum, err)
 	}
@@ -110,7 +112,7 @@ func TestMetricsSurviveTheStoreAndTheReviewerSummaryKeepsUnknownUnknown(t *testi
 		t.Errorf("summary metrics: %+v", sum.Metrics)
 	}
 	again, _ := ParseVGT([]byte(sample), "run1") // the same folder imported again without metrics
-	run2, _ := s.Save("/runs/one", again, nil)
+	run2, _ := s.Save(workspace.Local, "local-owner", "/runs/one", again, nil)
 	if len(run2.Metrics) != 0 {
 		t.Errorf("re-import must replace the metrics: %v", run2.Metrics)
 	}

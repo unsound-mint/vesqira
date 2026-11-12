@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func TestResearcherDeclaresControlsAndTheyAreStoredAsDeclared(t *testing.T) {
 	t.Parallel()
 	e := newRecEnv(t)
-	run, err := e.srv.Runs.Save("/data/run-c", runs.Parsed{Run: runs.Run{Name: "run-c", Kind: "vgt"}}, nil)
+	run, err := e.srv.Runs.Save(workspace.Local, "local-owner", "/data/run-c", runs.Parsed{Run: runs.Run{Name: "run-c", Kind: "vgt"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +27,7 @@ func TestResearcherDeclaresControlsAndTheyAreStoredAsDeclared(t *testing.T) {
 		t.Errorf("unknown run: %d", st)
 	}
 	// nothing stated is not "none applied": the run has no controls until someone declares them
-	if got, _ := e.srv.Runs.Get(run.ID); got.Controls != nil {
+	if got, _ := e.srv.Runs.Get(workspace.Local, run.ID); got.Controls != nil {
 		t.Fatalf("a new run has controls: %+v", got.Controls)
 	}
 	// whatever the request says about who stated a block, the stored block is the researcher's declaration
@@ -63,11 +64,11 @@ func TestResearcherDeclaresControlsAndTheyAreStoredAsDeclared(t *testing.T) {
 	if !strings.Contains(string(gb), `"controls":{"smoothing":{"kernel":"gaussian_fwhm","width":3.5,"unit":"arcmin"`) {
 		t.Errorf("the run: %s", gb)
 	}
-	sum, err := e.srv.Runs.SummaryOf(run.ID, "psi")
+	sum, err := e.srv.Runs.SummaryOf(workspace.Local, run.ID, "psi")
 	if err != nil || sum.Controls == nil || sum.Controls.Noise == nil || sum.Controls.Construction.Kind != "shifted_map_null" {
 		t.Fatalf("the reviewer's summary: %+v %v", sum, err)
 	}
-	if ents, _ := e.srv.Audit.List("run", run.ID, 10); len(ents) == 0 || ents[0].Action != "run controls declared" || !strings.Contains(ents[0].Detail, "noise model") {
+	if ents, _ := e.srv.Audit.List(workspace.Local, "run", run.ID, 10); len(ents) == 0 || ents[0].Action != "run controls declared" || !strings.Contains(ents[0].Detail, "noise model") {
 		t.Errorf("audit: %+v", ents)
 	}
 	// a block that is not sent is cleared: the body is the whole statement
@@ -77,7 +78,7 @@ func TestResearcherDeclaresControlsAndTheyAreStoredAsDeclared(t *testing.T) {
 	if st, out, _ := put(map[string]any{}); st != 200 || out.Controls != nil {
 		t.Errorf("clear: %d %+v", st, out.Controls)
 	}
-	if sum, _ := e.srv.Runs.SummaryOf(run.ID, "psi"); sum.Controls != nil {
+	if sum, _ := e.srv.Runs.SummaryOf(workspace.Local, run.ID, "psi"); sum.Controls != nil {
 		t.Error("a run with no stated controls carries none to a reviewer")
 	}
 	if b, _ := json.Marshal(sum2(e, run.ID)); strings.Contains(string(b), "controls") {
@@ -85,12 +86,15 @@ func TestResearcherDeclaresControlsAndTheyAreStoredAsDeclared(t *testing.T) {
 	}
 }
 
-func sum2(e *recEnv, id int64) *runs.Summary { s, _ := e.srv.Runs.SummaryOf(id, "psi"); return s }
+func sum2(e *recEnv, id int64) *runs.Summary {
+	s, _ := e.srv.Runs.SummaryOf(workspace.Local, id, "psi")
+	return s
+}
 
 func TestControlsAreRefusedWhenTheyWouldInventAUnitOrAMeaning(t *testing.T) {
 	t.Parallel()
 	e := newRecEnv(t)
-	run, _ := e.srv.Runs.Save("/data/run-d", runs.Parsed{Run: runs.Run{Name: "run-d", Kind: "vgt"}}, nil)
+	run, _ := e.srv.Runs.Save(workspace.Local, "local-owner", "/data/run-d", runs.Parsed{Run: runs.Run{Name: "run-d", Kind: "vgt"}}, nil)
 	url := e.api("/api/runs/" + itoa(int(run.ID)) + "/controls")
 	bad := map[string]map[string]any{
 		"width without a unit":     {"smoothing": map[string]any{"kernel": "boxcar", "width": 5}},
@@ -116,7 +120,7 @@ func TestControlsAreRefusedWhenTheyWouldInventAUnitOrAMeaning(t *testing.T) {
 			t.Errorf("%s: %d %s, want a refusal", name, st, b)
 		}
 	}
-	if got, _ := e.srv.Runs.Get(run.ID); got.Controls != nil {
+	if got, _ := e.srv.Runs.Get(workspace.Local, run.ID); got.Controls != nil {
 		t.Errorf("a refused statement was stored: %+v", got.Controls)
 	}
 	// a kernel with no stated width is allowed: smoothing was applied and its width is not known (null, never a default)

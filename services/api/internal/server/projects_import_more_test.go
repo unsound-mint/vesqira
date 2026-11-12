@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Deleting every rule sticks even while project.toml still holds them: the file is read back only into a project whose
@@ -90,7 +91,7 @@ func TestImportIgnoreRuleStopsTheScanRegisteringThoseFiles(t *testing.T) {
 	tinyFITS(t, root, "keep/a.fits", 1, "")
 	tinyFITS(t, root, "scratch/b.fits", 2, "")
 	s := e.open(t, root)
-	facts, _ := e.srv.Store.FactsByPath(0)
+	facts, _ := e.srv.Store.FactsByPath(workspace.Local, 0)
 	if _, ok := facts[filepath.Join(root, "keep/a.fits")]; !ok {
 		t.Fatal("the other file is registered as before")
 	}
@@ -109,7 +110,7 @@ func TestImportWalksOnceForConcurrentPreviews(t *testing.T) {
 	root := e.project(t, "owner")
 	ownerProject(t, root)
 	s := e.open(t, root)
-	p, _ := e.srv.Projects.Get(s.ID)
+	p, _ := e.srv.Projects.Get(workspace.Local, s.ID)
 	got := make(chan *importInv, 2)
 	for i := 0; i < 2; i++ {
 		go func() {

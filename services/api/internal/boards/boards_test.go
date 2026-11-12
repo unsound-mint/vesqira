@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func newStore(t *testing.T) (*Store, string) {
@@ -49,7 +50,7 @@ func pngBytes(t *testing.T, w, h int, shade uint8) []byte {
 
 func fig(t *testing.T, s *Store, title string, shade uint8) Figure {
 	t.Helper()
-	f, err := s.CreateFigure(NewFigure{DatasetID: 7, Title: title, Caption: "c", Provenance: json.RawMessage(`{"dataset":"a.fits","channel":3}`)}, pngBytes(t, 8, 6, shade))
+	f, err := s.CreateFigure(workspace.Local, "local-owner", NewFigure{DatasetID: 7, Title: title, Caption: "c", Provenance: json.RawMessage(`{"dataset":"a.fits","channel":3}`)}, pngBytes(t, 8, 6, shade))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,10 +67,10 @@ func TestFigureIsPinnedEvidenceAndTextIsEditable(t *testing.T) {
 	if again.ID != f.ID {
 		t.Fatalf("identical evidence must not create a second figure: %d vs %d", again.ID, f.ID)
 	}
-	if err := s.SetText(f.ID, "Renamed", "new caption"); err != nil {
+	if err := s.SetText(workspace.Local, f.ID, "Renamed", "new caption"); err != nil {
 		t.Fatal(err)
 	}
-	g, _ := s.Figure(f.ID)
+	g, _ := s.Figure(workspace.Local, f.ID)
 	if g.Title != "Renamed" || g.Revision != f.Revision || g.PreviewSHA != f.PreviewSHA {
 		t.Fatalf("editing text must not change the evidence: %+v", g)
 	}
@@ -88,26 +89,26 @@ func TestBadPreviewsAreRefused(t *testing.T) {
 		"too big":   pngBytes(t, MaxPNGSide+1, 2, 1),
 	}
 	for name, b := range cases {
-		if _, err := s.CreateFigure(NewFigure{DatasetID: 1, Title: "t", Provenance: json.RawMessage(`{}`)}, b); !errors.Is(err, ErrInvalid) {
+		if _, err := s.CreateFigure(workspace.Local, "local-owner", NewFigure{DatasetID: 1, Title: "t", Provenance: json.RawMessage(`{}`)}, b); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: err=%v", name, err)
 		}
 	}
-	if _, err := s.CreateFigure(NewFigure{DatasetID: 1, Provenance: json.RawMessage(`{}`)}, good); !errors.Is(err, ErrInvalid) {
+	if _, err := s.CreateFigure(workspace.Local, "local-owner", NewFigure{DatasetID: 1, Provenance: json.RawMessage(`{}`)}, good); !errors.Is(err, ErrInvalid) {
 		t.Errorf("untitled figure accepted: %v", err)
 	}
 }
 
 func TestBoardOrderingNotesAndRemoval(t *testing.T) {
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("Draft")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "Draft")
 	a, c, d := fig(t, s, "A", 1), fig(t, s, "C", 2), fig(t, s, "D", 3)
 	for _, f := range []Figure{a, c, d} {
-		if err := s.AddItem(b.ID, f.ID); err != nil {
+		if err := s.AddItem(workspace.Local, b.ID, f.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
 	titles := func() string {
-		bb, _ := s.Board(b.ID)
+		bb, _ := s.Board(workspace.Local, b.ID)
 		var out []string
 		for _, it := range bb.Items {
 			out = append(out, it.Figure.Title)
@@ -117,30 +118,30 @@ func TestBoardOrderingNotesAndRemoval(t *testing.T) {
 	if titles() != "ACD" {
 		t.Fatal(titles())
 	}
-	s.MoveItem(b.ID, 2, -1, nil)
+	s.MoveItem(workspace.Local, b.ID, 2, -1, nil)
 	if titles() != "ADC" {
 		t.Fatal(titles())
 	}
-	s.SetNote(b.ID, 0, "look here", nil)
-	s.RemoveItem(b.ID, 1, nil)
-	bb, _ := s.Board(b.ID)
+	s.SetNote(workspace.Local, b.ID, 0, "look here", nil)
+	s.RemoveItem(workspace.Local, b.ID, 1, nil)
+	bb, _ := s.Board(workspace.Local, b.ID)
 	if titles() != "AC" || bb.Items[0].Note != "look here" || bb.Items[1].Position != 1 {
 		t.Fatalf("%s %+v", titles(), bb.Items)
 	}
-	if err := s.MoveItem(b.ID, 0, -1, nil); !errors.Is(err, ErrNotFound) {
+	if err := s.MoveItem(workspace.Local, b.ID, 0, -1, nil); !errors.Is(err, ErrNotFound) {
 		t.Errorf("moving past the top: %v", err)
 	}
-	if err := s.AddItem(b.ID, 9999); !errors.Is(err, ErrNotFound) {
+	if err := s.AddItem(workspace.Local, b.ID, 9999); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown figure: %v", err)
 	}
 }
 
 func TestSnapshotIsFrozenAndTokenIsNeverStored(t *testing.T) {
 	s, dir := newStore(t)
-	b, _ := s.CreateBoard("For my supervisor")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "For my supervisor")
 	f := fig(t, s, "Peak", 5)
-	s.AddItem(b.ID, f.ID)
-	sn, tok, err := s.Publish(b.ID, "v1", time.Hour)
+	s.AddItem(workspace.Local, b.ID, f.ID)
+	sn, tok, err := s.Publish(workspace.Local, "local-owner", b.ID, "v1", time.Hour)
 	if err != nil || len(tok) < 40 || sn.Items != 1 {
 		t.Fatalf("%v %v %+v", err, len(tok), sn)
 	}
@@ -164,9 +165,9 @@ func TestSnapshotIsFrozenAndTokenIsNeverStored(t *testing.T) {
 		rows.Close()
 	}
 	// editing the board and the figure afterwards does not change what the reviewer sees
-	s.SetText(f.ID, "Changed after sharing", "x")
-	s.SetNote(b.ID, 0, "late note", nil)
-	s.AddItem(b.ID, fig(t, s, "Late", 77).ID)
+	s.SetText(workspace.Local, f.ID, "Changed after sharing", "x")
+	s.SetNote(workspace.Local, b.ID, 0, "late note", nil)
+	s.AddItem(workspace.Local, b.ID, fig(t, s, "Late", 77).ID)
 	r, err := s.Review(tok)
 	if err != nil || len(r.Snapshot.Items) != 1 || r.Snapshot.Items[0].Title != "Peak" || r.Snapshot.Items[0].Note != "" {
 		t.Fatalf("snapshot must be frozen: %+v %v", r, err)
@@ -206,13 +207,13 @@ func TestWhatAReviewerCanSeeIsAWhitelist(t *testing.T) {
 
 func TestTokensExpireRevokeAndNeverCrossSnapshots(t *testing.T) {
 	s, _ := newStore(t)
-	b1, _ := s.CreateBoard("one")
-	b2, _ := s.CreateBoard("two")
+	b1, _ := s.CreateBoard(workspace.Local, "local-owner", "one")
+	b2, _ := s.CreateBoard(workspace.Local, "local-owner", "two")
 	f1, f2 := fig(t, s, "F1", 1), fig(t, s, "F2", 2)
-	s.AddItem(b1.ID, f1.ID)
-	s.AddItem(b2.ID, f2.ID)
-	sn1, tok1, _ := s.Publish(b1.ID, "", time.Hour)
-	_, tok2, _ := s.Publish(b2.ID, "", time.Hour)
+	s.AddItem(workspace.Local, b1.ID, f1.ID)
+	s.AddItem(workspace.Local, b2.ID, f2.ID)
+	sn1, tok1, _ := s.Publish(workspace.Local, "local-owner", b1.ID, "", time.Hour)
+	_, tok2, _ := s.Publish(workspace.Local, "local-owner", b2.ID, "", time.Hour)
 
 	if _, err := s.ReviewPreview(tok1, f1.PreviewSHA); err != nil {
 		t.Fatal(err)
@@ -231,7 +232,7 @@ func TestTokensExpireRevokeAndNeverCrossSnapshots(t *testing.T) {
 		t.Error("comments leaked across snapshots")
 	}
 	// unknown, malformed, revoked and expired tokens are one indistinguishable error
-	s.Revoke(sn1.ID)
+	s.Revoke(workspace.Local, sn1.ID)
 	_, errRevoked := s.Review(tok1)
 	_, errUnknown := s.Review("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	_, errShort := s.Review("x")
@@ -241,16 +242,16 @@ func TestTokensExpireRevokeAndNeverCrossSnapshots(t *testing.T) {
 	if _, err := s.ReviewPreview(tok1, f1.PreviewSHA); !errors.Is(err, ErrNotFound) {
 		t.Error("a revoked token still reads previews")
 	}
-	_, short, _ := s.Publish(b2.ID, "", time.Millisecond*1500)
+	_, short, _ := s.Publish(workspace.Local, "local-owner", b2.ID, "", time.Millisecond*1500)
 	s.db.Exec(`UPDATE snapshots SET expires_at = ? WHERE token_hash = ?`, time.Now().Add(-time.Minute).Unix(), hashToken(short))
 	if _, err := s.Review(short); !errors.Is(err, ErrNotFound) {
 		t.Error("an expired token still works")
 	}
-	if _, _, err := s.Publish(b2.ID, "", 365*24*time.Hour); !errors.Is(err, ErrInvalid) {
+	if _, _, err := s.Publish(workspace.Local, "local-owner", b2.ID, "", 365*24*time.Hour); !errors.Is(err, ErrInvalid) {
 		t.Error("expiry beyond 90 days accepted")
 	}
-	empty, _ := s.CreateBoard("empty")
-	if _, _, err := s.Publish(empty.ID, "", time.Hour); !errors.Is(err, ErrInvalid) {
+	empty, _ := s.CreateBoard(workspace.Local, "local-owner", "empty")
+	if _, _, err := s.Publish(workspace.Local, "local-owner", empty.ID, "", time.Hour); !errors.Is(err, ErrInvalid) {
 		t.Error("an empty board was published")
 	}
 }
@@ -270,10 +271,10 @@ func TestClipNeverSplitsACharacterAndTheCommentCapHolds(t *testing.T) {
 		t.Errorf("%q", got)
 	}
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("b")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "b")
 	f := fig(t, s, "F", 1)
-	s.AddItem(b.ID, f.ID)
-	_, tok, _ := s.Publish(b.ID, "", time.Hour)
+	s.AddItem(workspace.Local, b.ID, f.ID)
+	_, tok, _ := s.Publish(workspace.Local, "local-owner", b.ID, "", time.Hour)
 	for i := 0; i < MaxCommentsPS; i++ {
 		if _, err := s.AddComment(tok, CommentInput{FigureRevision: f.Revision, Author: "r", Body: "c"}); err != nil {
 			t.Fatalf("comment %d: %v", i, err)
@@ -297,13 +298,13 @@ func TestPreviewIsWrittenAtomically(t *testing.T) {
 
 func TestThreadsAnchorsRepliesAndResolve(t *testing.T) {
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("one")
-	b2, _ := s.CreateBoard("two")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "one")
+	b2, _ := s.CreateBoard(workspace.Local, "local-owner", "two")
 	f, f2 := fig(t, s, "F1", 1), fig(t, s, "F2", 2)
-	s.AddItem(b.ID, f.ID)
-	s.AddItem(b2.ID, f2.ID)
-	sn, tok, _ := s.Publish(b.ID, "", time.Hour)
-	sn2, tok2, _ := s.Publish(b2.ID, "", time.Hour)
+	s.AddItem(workspace.Local, b.ID, f.ID)
+	s.AddItem(workspace.Local, b2.ID, f2.ID)
+	sn, tok, _ := s.Publish(workspace.Local, "local-owner", b.ID, "", time.Hour)
+	sn2, tok2, _ := s.Publish(workspace.Local, "local-owner", b2.ID, "", time.Hour)
 
 	// a comment can be placed on the picture, with the place validated
 	for name, a := range map[string]*Anchor{
@@ -325,7 +326,7 @@ func TestThreadsAnchorsRepliesAndResolve(t *testing.T) {
 	if _, err := s.AddComment(tok, CommentInput{ParentID: root.ID, Author: "Prof", Body: "also the edge", Anchor: &Anchor{Kind: "point", X: .1, Y: .1}}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("a reply with its own anchor: %v", err)
 	}
-	reply, err := s.OwnerReply(sn.ID, CommentInput{ParentID: root.ID, Body: "It is the beam sidelobe."})
+	reply, err := s.OwnerReply(workspace.Local, sn.ID, CommentInput{ParentID: root.ID, Body: "It is the beam sidelobe."})
 	if err != nil || !reply.FromOwner || reply.FigureRevision != f.Revision || reply.Author != "Author" {
 		t.Fatalf("owner reply: %+v %v", reply, err)
 	}
@@ -337,16 +338,16 @@ func TestThreadsAnchorsRepliesAndResolve(t *testing.T) {
 	if _, err := s.AddComment(tok, CommentInput{ParentID: other.ID, Body: "cross"}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("a reply into another snapshot's thread: %v", err)
 	}
-	if _, err := s.OwnerReply(sn.ID, CommentInput{ParentID: other.ID, Body: "cross"}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.OwnerReply(workspace.Local, sn.ID, CommentInput{ParentID: other.ID, Body: "cross"}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("an owner reply into another snapshot's thread: %v", err)
 	}
 	_ = sn2
 
 	// only the author resolves, and only a thread's first comment can be resolved
-	if err := s.SetResolved(reply.ID, true); !errors.Is(err, ErrNotFound) {
+	if err := s.SetResolved(workspace.Local, reply.ID, true); !errors.Is(err, ErrNotFound) {
 		t.Errorf("resolving a reply: %v", err)
 	}
-	if err := s.SetResolved(root.ID, true); err != nil {
+	if err := s.SetResolved(workspace.Local, root.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	cs, _ := s.Comments(sn.ID)
@@ -356,7 +357,7 @@ func TestThreadsAnchorsRepliesAndResolve(t *testing.T) {
 	if rv, _ := s.Review(tok); rv.Comments[0].Anchor == nil || rv.Comments[0].ResolvedAt == nil || !rv.Comments[1].FromOwner {
 		t.Errorf("the reviewer sees the thread, its place and whether it is closed: %+v", rv.Comments)
 	}
-	s.SetResolved(root.ID, false)
+	s.SetResolved(workspace.Local, root.ID, false)
 	if cs, _ := s.Comments(sn.ID); cs[0].ResolvedAt != nil {
 		t.Error("a thread can be reopened")
 	}
@@ -364,20 +365,20 @@ func TestThreadsAnchorsRepliesAndResolve(t *testing.T) {
 
 func TestReviewRequestOutcomeSupersedeAndPreflight(t *testing.T) {
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("one")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "one")
 	f := fig(t, s, "F1", 1)
-	s.AddItem(b.ID, f.ID)
+	s.AddItem(workspace.Local, b.ID, f.ID)
 
 	// the preflight shows what would be exposed and what the author may have forgotten, and publishes nothing
-	pf, err := s.Preflight(b.ID, "", nil)
+	pf, err := s.Preflight(workspace.Local, b.ID, "", nil)
 	if err != nil || len(pf.Frozen.Items) != 1 || len(pf.Warnings) < 1 || !strings.Contains(pf.Warnings[0], "No question") {
 		t.Fatalf("preflight: %+v %v", pf, err)
 	}
-	if sns, _ := s.Snapshots(b.ID); len(sns) != 0 {
+	if sns, _ := s.Snapshots(workspace.Local, b.ID); len(sns) != 0 {
 		t.Fatal("a preflight must not create a snapshot")
 	}
 
-	sn1, tok1, err := s.PublishWith(b.ID, PublishOptions{Label: "v1", Question: "Is the stretch hiding the edge?", TTL: time.Hour})
+	sn1, tok1, err := s.PublishWith(workspace.Local, "local-owner", b.ID, PublishOptions{Label: "v1", Question: "Is the stretch hiding the edge?", TTL: time.Hour})
 	if err != nil || sn1.Question == "" {
 		t.Fatal(err)
 	}
@@ -392,7 +393,7 @@ func TestReviewRequestOutcomeSupersedeAndPreflight(t *testing.T) {
 	}
 	s.SetOutcome(tok1, "changes_requested", "Rescale the colour bar", "Prof")
 	s.SetOutcome(tok1, "reviewed", "Thanks, fine now", "Prof")
-	sns, _ := s.Snapshots(b.ID)
+	sns, _ := s.Snapshots(workspace.Local, b.ID)
 	if sns[0].Outcome != "reviewed" || sns[0].OutcomeNote != "Thanks, fine now" || sns[0].OutcomeAt == nil {
 		t.Errorf("owner list outcome: %+v", sns[0])
 	}
@@ -403,7 +404,7 @@ func TestReviewRequestOutcomeSupersedeAndPreflight(t *testing.T) {
 	}
 
 	// a corrected version supersedes the old one: the old link keeps working and says why it was replaced
-	sn2, tok2, err := s.PublishWith(b.ID, PublishOptions{Label: "v2", TTL: time.Hour, Supersedes: sn1.ID, Reason: "Colour bar rescaled"})
+	sn2, tok2, err := s.PublishWith(workspace.Local, "local-owner", b.ID, PublishOptions{Label: "v2", TTL: time.Hour, Supersedes: sn1.ID, Reason: "Colour bar rescaled"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,15 +415,15 @@ func TestReviewRequestOutcomeSupersedeAndPreflight(t *testing.T) {
 	if cur, _ := s.Review(tok2); cur.Superseded != nil {
 		t.Error("the new version is not superseded")
 	}
-	sns, _ = s.Snapshots(b.ID)
+	sns, _ = s.Snapshots(workspace.Local, b.ID)
 	if sns[1].SupersededBy != sn2.ID {
 		t.Errorf("owner list: %+v", sns)
 	}
 	// only a snapshot of the same board can be superseded
-	b2, _ := s.CreateBoard("two")
+	b2, _ := s.CreateBoard(workspace.Local, "local-owner", "two")
 	f2 := fig(t, s, "F2", 2)
-	s.AddItem(b2.ID, f2.ID)
-	s.PublishWith(b2.ID, PublishOptions{TTL: time.Hour, Supersedes: sn2.ID})
+	s.AddItem(workspace.Local, b2.ID, f2.ID)
+	s.PublishWith(workspace.Local, "local-owner", b2.ID, PublishOptions{TTL: time.Hour, Supersedes: sn2.ID})
 	if cur, _ := s.Review(tok2); cur.Superseded != nil {
 		t.Error("a snapshot of another board was superseded")
 	}
@@ -430,23 +431,23 @@ func TestReviewRequestOutcomeSupersedeAndPreflight(t *testing.T) {
 
 func TestOwnerSeesWhatIsNewSinceTheyLastLooked(t *testing.T) {
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("one")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "one")
 	f := fig(t, s, "F1", 1)
-	s.AddItem(b.ID, f.ID)
-	sn, tok, _ := s.Publish(b.ID, "", time.Hour)
-	if got, _ := s.Snapshots(b.ID); got[0].Comments != 0 || got[0].LastActivity != nil {
+	s.AddItem(workspace.Local, b.ID, f.ID)
+	sn, tok, _ := s.Publish(workspace.Local, "local-owner", b.ID, "", time.Hour)
+	if got, _ := s.Snapshots(workspace.Local, b.ID); got[0].Comments != 0 || got[0].LastActivity != nil {
 		t.Fatalf("nothing has happened yet: %+v", got[0])
 	}
 	root, _ := s.AddComment(tok, CommentInput{FigureRevision: f.Revision, Body: "hm"})
-	s.OwnerReply(sn.ID, CommentInput{ParentID: root.ID, Body: "answer"})
-	got, _ := s.Snapshots(b.ID)
+	s.OwnerReply(workspace.Local, sn.ID, CommentInput{ParentID: root.ID, Body: "answer"})
+	got, _ := s.Snapshots(workspace.Local, b.ID)
 	if got[0].Comments != 1 || got[0].LastActivity == nil {
 		t.Fatalf("the author's own reply is not reviewer activity: %+v", got[0])
 	}
 	// an outcome counts as activity too
 	time.Sleep(1100 * time.Millisecond)
 	s.SetOutcome(tok, "reviewed", "", "P")
-	got2, _ := s.Snapshots(b.ID)
+	got2, _ := s.Snapshots(workspace.Local, b.ID)
 	if !got2[0].LastActivity.After(*got[0].LastActivity) {
 		t.Errorf("an outcome after the last comment is newer activity: %v vs %v", got2[0].LastActivity, got[0].LastActivity)
 	}

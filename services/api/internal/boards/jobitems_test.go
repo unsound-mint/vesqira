@@ -6,51 +6,53 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func TestJobPanelPinsInPlaceAndKeepsItsNote(t *testing.T) {
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("B")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "B")
 	f1 := fig(t, s, "one", 10)
 	f2 := fig(t, s, "two", 20)
-	s.AddItem(b.ID, f1.ID)
-	if err := s.AddJobItem(b.ID, 42); err != nil {
+	s.AddItem(workspace.Local, b.ID, f1.ID)
+	if err := s.AddJobItem(workspace.Local, b.ID, 42); err != nil {
 		t.Fatal(err)
 	}
-	s.AddItem(b.ID, f1.ID)
-	s.SetNote(b.ID, 1, "waiting on this", nil)
-	got, _ := s.Board(b.ID)
+	s.AddItem(workspace.Local, b.ID, f1.ID)
+	s.SetNote(workspace.Local, b.ID, 1, "waiting on this", nil)
+	got, _ := s.Board(workspace.Local, b.ID)
 	if got.Items[1].Kind != KindJob || got.Items[1].Job.ID != 42 || got.Items[1].Figure != nil || got.Items[0].Kind != KindFigure {
 		t.Fatalf("%+v", got.Items)
 	}
 	// moves and removal work for job panels as for figures
-	if err := s.MoveItem(b.ID, 1, -1, nil); err != nil {
+	if err := s.MoveItem(workspace.Local, b.ID, 1, -1, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.MoveItem(b.ID, 0, 1, nil); err != nil {
+	if err := s.MoveItem(workspace.Local, b.ID, 0, 1, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PinItem(b.ID, 0, f2.ID); !errors.Is(err, ErrConflict) {
+	if err := s.PinItem(workspace.Local, b.ID, 0, f2.ID); !errors.Is(err, ErrConflict) {
 		t.Fatalf("a figure panel cannot be pinned over: %v", err)
 	}
-	if err := s.PinItem(b.ID, 1, f2.ID); err != nil {
+	if err := s.PinItem(workspace.Local, b.ID, 1, f2.ID); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.Board(b.ID)
+	got, _ = s.Board(workspace.Local, b.ID)
 	if got.Items[1].Kind != KindFigure || got.Items[1].Figure.ID != f2.ID || got.Items[1].Note != "waiting on this" || got.Items[1].Job != nil {
 		t.Fatalf("%+v", got.Items[1])
 	}
-	if err := s.PinItem(b.ID, 1, f1.ID); !errors.Is(err, ErrConflict) {
+	if err := s.PinItem(workspace.Local, b.ID, 1, f1.ID); !errors.Is(err, ErrConflict) {
 		t.Fatalf("pinning twice must not swap the figure: %v", err)
 	}
-	if err := s.PinItem(b.ID, 9, f1.ID); !errors.Is(err, ErrNotFound) {
+	if err := s.PinItem(workspace.Local, b.ID, 9, f1.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("%v", err)
 	}
-	s.AddJobItem(b.ID, 43)
-	if err := s.PinItem(b.ID, 3, 9999); !errors.Is(err, ErrInvalid) {
+	s.AddJobItem(workspace.Local, b.ID, 43)
+	if err := s.PinItem(workspace.Local, b.ID, 3, 9999); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("an unknown figure is refused: %v", err)
 	}
-	if err := s.RemoveItem(b.ID, 3, nil); err != nil {
+	if err := s.RemoveItem(workspace.Local, b.ID, 3, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -70,13 +72,13 @@ func keys(t *testing.T, raw []byte) []string {
 
 func TestAFrozenJobPanelHasExactlyKindTitleStateAtNote(t *testing.T) {
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("B")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "B")
 	f := fig(t, s, "fig", 10)
-	s.AddItem(b.ID, f.ID)
-	s.AddJobItem(b.ID, 7)
-	s.SetNote(b.ID, 1, "check the ker", nil)
+	s.AddItem(workspace.Local, b.ID, f.ID)
+	s.AddJobItem(workspace.Local, b.ID, 7)
+	s.SetNote(workspace.Local, b.ID, 1, "check the ker", nil)
 	jobs := map[int64]JobSnapshot{7: {Name: "vgt-ker16", State: "running"}}
-	pf, err := s.Preflight(b.ID, "q", jobs)
+	pf, err := s.Preflight(workspace.Local, b.ID, "q", jobs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +89,7 @@ func TestAFrozenJobPanelHasExactlyKindTitleStateAtNote(t *testing.T) {
 	if !found {
 		t.Fatalf("the preflight must list the running panel: %v", pf.Warnings)
 	}
-	_, tok, err := s.PublishWith(b.ID, PublishOptions{Label: "L", TTL: time.Hour, Jobs: jobs})
+	_, tok, err := s.PublishWith(workspace.Local, "local-owner", b.ID, PublishOptions{Label: "L", TTL: time.Hour, Jobs: jobs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +112,7 @@ func TestAFrozenJobPanelHasExactlyKindTitleStateAtNote(t *testing.T) {
 		}
 	}
 	// the snapshot never changes with the job: pin the panel and read it again
-	s.PinItem(b.ID, 1, fig(t, s, "result", 99).ID)
+	s.PinItem(workspace.Local, b.ID, 1, fig(t, s, "result", 99).ID)
 	rv2, _ := s.Review(tok)
 	if rv2.Snapshot.Items[1].Kind != KindJob || rv2.Snapshot.Items[1].State != "running" {
 		t.Fatal("a published snapshot must not follow the board")
@@ -126,9 +128,9 @@ func TestAFrozenJobPanelHasExactlyKindTitleStateAtNote(t *testing.T) {
 
 func TestAFinishedButUnpinnedPanelIsWarnedAboutDifferently(t *testing.T) {
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("B")
-	s.AddJobItem(b.ID, 7)
-	pf, err := s.Preflight(b.ID, "", map[int64]JobSnapshot{7: {Name: "x", State: "completed"}})
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "B")
+	s.AddJobItem(workspace.Local, b.ID, 7)
+	pf, err := s.Preflight(workspace.Local, b.ID, "", map[int64]JobSnapshot{7: {Name: "x", State: "completed"}})
 	if err != nil {
 		t.Fatal(err)
 	}

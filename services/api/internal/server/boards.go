@@ -597,7 +597,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "previewPng must be base64")
 		return
 	}
-	d, code, msg := s.imageDataset(in.DatasetID)
+	d, code, msg := s.imageDataset(wsOf(r), in.DatasetID)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -608,7 +608,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	}
 	var run *runs.Summary
 	if s.Runs != nil {
-		run, _ = s.Runs.ForDataset(d.ID)
+		run, _ = s.Runs.ForDataset(wsOf(r), d.ID)
 	}
 	var sceneJSON json.RawMessage
 	var sceneRead *scene.Scene // the validated scene, when the figure has one
@@ -637,7 +637,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	if hasScene {
 		sc, err := scene.Parse(in.Scene)
 		if err == nil {
-			others, err = checkScene(sc, d, vp, s.Store.Get)
+			others, err = checkScene(sc, d, vp, func(id int64) (catalog.Dataset, error) { return s.Store.Get(wsOf(r), id) })
 		}
 		if err != nil {
 			fail(w, 400, err.Error())
@@ -645,7 +645,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		}
 		var code int
 		var msg string
-		if shownMasks, code, msg = s.sceneMasks(&sc, d); code != 0 {
+		if shownMasks, code, msg = s.sceneMasks(wsOf(r), &sc, d); code != 0 {
 			fail(w, code, msg)
 			return
 		}
@@ -664,7 +664,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	var link *redrawnFrom
 	var linkRev string
 	if in.RedrawnFrom != nil {
-		orig, err := s.redrawLink(*in.RedrawnFrom, d.ID, hasGrid)
+		orig, err := s.redrawLink(wsOf(r), *in.RedrawnFrom, d.ID, hasGrid)
 		if err != nil {
 			fail(w, 400, err.Error())
 			return
@@ -675,11 +675,11 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	for i := range others {
 		others[i] = s.ensureFingerprinted(r.Context(), others[i])
 	}
-	rels := s.reliabilityMaps(sceneRead, d, others)
+	rels := s.reliabilityMaps(wsOf(r), sceneRead, d, others)
 	for i := range rels {
 		rels[i] = s.ensureFingerprinted(r.Context(), rels[i])
 	}
-	prov, err := buildProvenanceShown(d, vp, run, s.derivedSummary(d.ID), others, shownMasks, compassOf(sceneRead))
+	prov, err := buildProvenanceShown(d, vp, run, s.derivedSummary(wsOf(r), d.ID), others, shownMasks, compassOf(sceneRead))
 	if errors.Is(err, errBadView) {
 		fail(w, 400, "the view description does not match the dataset")
 		return
@@ -688,7 +688,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	f, err := s.Boards.CreateFigure(boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: s.buildFigureIdentity(r.Context(), d, others, rels, link), RedrawnFrom: linkRev}, png)
+	f, err := s.Boards.CreateFigure(wsOf(r), actorID(r.Context()), boards.NewFigure{DatasetID: d.ID, Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: s.buildFigureIdentity(r.Context(), d, others, rels, link), RedrawnFrom: linkRev}, png)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -697,7 +697,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listFigures(w http.ResponseWriter, r *http.Request) {
-	fs, err := s.Boards.Figures()
+	fs, err := s.Boards.Figures(wsOf(r))
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -719,7 +719,7 @@ func (s *Server) figurePreview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	f, err := s.Boards.Figure(id)
+	f, err := s.Boards.Figure(wsOf(r), id)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -741,7 +741,7 @@ func (s *Server) figureDownload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	f, err := s.Boards.Figure(id)
+	f, err := s.Boards.Figure(wsOf(r), id)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -779,16 +779,16 @@ func (s *Server) figureText(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 16<<10, &in, true) {
 		return
 	}
-	if err := s.Boards.SetText(id, in.Title, in.Caption); err != nil {
+	if err := s.Boards.SetText(wsOf(r), id, in.Title, in.Caption); err != nil {
 		s.boardErr(w, err)
 		return
 	}
-	f, _ := s.Boards.Figure(id)
+	f, _ := s.Boards.Figure(wsOf(r), id)
 	writeJSON(w, 200, f)
 }
 
 func (s *Server) listBoards(w http.ResponseWriter, r *http.Request) {
-	bs, err := s.Boards.Boards()
+	bs, err := s.Boards.Boards(wsOf(r))
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -810,7 +810,7 @@ func (s *Server) createBoard(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
-	b, err := s.Boards.CreateBoard(in.Title)
+	b, err := s.Boards.CreateBoard(wsOf(r), actorID(r.Context()), in.Title)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -848,15 +848,15 @@ func (s *Server) boardAdd(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "give either figureId or jobId")
 		return
 	case in.JobID != nil:
-		if _, err := s.Boards.Board(id); err != nil { // 404 for a missing board before judging the job
+		if _, err := s.Boards.Board(wsOf(r), id); err != nil { // 404 for a missing board before judging the job
 			s.boardErr(w, err)
 			return
 		}
-		if s.Jobs == nil {
+		if s.localJobs() == nil {
 			fail(w, 422, "the job does not exist")
 			return
 		}
-		if _, err := s.Jobs.Get(*in.JobID); err != nil {
+		if _, err := s.localJobs().Get(*in.JobID); err != nil {
 			if errors.Is(err, jobs.ErrNotFound) {
 				fail(w, 422, "the job does not exist")
 			} else {
@@ -864,12 +864,12 @@ func (s *Server) boardAdd(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		if err := s.Boards.AddJobItem(id, *in.JobID); err != nil {
+		if err := s.Boards.AddJobItem(wsOf(r), id, *in.JobID); err != nil {
 			s.boardErr(w, err)
 			return
 		}
 	default:
-		if err := s.Boards.AddItem(id, *in.FigureID); err != nil {
+		if err := s.Boards.AddItem(wsOf(r), id, *in.FigureID); err != nil {
 			s.boardErr(w, err)
 			return
 		}
@@ -898,7 +898,7 @@ func (s *Server) boardItem(op string) http.HandlerFunc {
 			if r.ContentLength != 0 && !body(w, r, 4<<10, &in, true) {
 				return
 			}
-			err = s.Boards.RemoveItem(id, int(pos), in.Expect)
+			err = s.Boards.RemoveItem(wsOf(r), id, int(pos), in.Expect)
 		case "move":
 			var in struct {
 				Delta  int
@@ -911,7 +911,7 @@ func (s *Server) boardItem(op string) http.HandlerFunc {
 				fail(w, 400, "delta must be -1 or 1")
 				return
 			}
-			err = s.Boards.MoveItem(id, int(pos), in.Delta, in.Expect)
+			err = s.Boards.MoveItem(wsOf(r), id, int(pos), in.Delta, in.Expect)
 		case "note":
 			var in struct {
 				Note   string
@@ -920,7 +920,7 @@ func (s *Server) boardItem(op string) http.HandlerFunc {
 			if !body(w, r, 16<<10, &in, true) {
 				return
 			}
-			err = s.Boards.SetNote(id, int(pos), in.Note, in.Expect)
+			err = s.Boards.SetNote(wsOf(r), id, int(pos), in.Note, in.Expect)
 		}
 		var ce boards.ConflictError
 		if errors.As(err, &ce) {
@@ -957,7 +957,7 @@ func (s *Server) boardLayout(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "layout and expect are required")
 		return
 	}
-	err := s.Boards.SetLayout(id, in.Layout, in.Expect, in.From)
+	err := s.Boards.SetLayout(wsOf(r), id, in.Layout, in.Expect, in.From)
 	var ce boards.ConflictError
 	if errors.As(err, &ce) {
 		cur, _ := s.boardByID(r.Context(), id, false)
@@ -999,12 +999,12 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 	if in.Hours == 0 {
 		in.Hours = 24 * 14
 	}
-	cur, err := s.Boards.Board(id)
+	cur, err := s.Boards.Board(wsOf(r), id)
 	if err != nil {
 		s.boardErr(w, err)
 		return
 	}
-	sn, tok, err := s.Boards.PublishWith(id, boards.PublishOptions{Label: in.Label, Question: in.Question, TTL: time.Duration(in.Hours * float64(time.Hour)), Supersedes: in.Supersedes, Reason: in.Reason, Jobs: s.jobSnapshots(cur)})
+	sn, tok, err := s.Boards.PublishWith(wsOf(r), actorID(r.Context()), id, boards.PublishOptions{Label: in.Label, Question: in.Question, TTL: time.Duration(in.Hours * float64(time.Hour)), Supersedes: in.Supersedes, Reason: in.Reason, Jobs: s.jobSnapshots(cur)})
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -1019,7 +1019,7 @@ func (s *Server) snapshots(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	sn, err := s.Boards.Snapshots(id)
+	sn, err := s.Boards.Snapshots(wsOf(r), id)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -1034,7 +1034,7 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Boards.Revoke(id); err != nil {
+	if err := s.Boards.Revoke(wsOf(r), id); err != nil {
 		s.boardErr(w, err)
 		return
 	}
@@ -1047,7 +1047,7 @@ func (s *Server) snapshotComments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	cs, err := s.Boards.OwnerComments(id)
+	cs, err := s.Boards.OwnerComments(wsOf(r), id)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -1068,7 +1068,7 @@ func (s *Server) ownerReply(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 16<<10, &in, true) {
 		return
 	}
-	c, err := s.Boards.OwnerReply(id, boards.CommentInput{ParentID: in.ParentID, Body: in.Body})
+	c, err := s.Boards.OwnerReply(wsOf(r), id, boards.CommentInput{ParentID: in.ParentID, Body: in.Body})
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -1089,7 +1089,7 @@ func (s *Server) resolveComment(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 1<<10, &in, true) {
 		return
 	}
-	if err := s.Boards.SetResolved(id, in.Resolved); err != nil {
+	if err := s.Boards.SetResolved(wsOf(r), id, in.Resolved); err != nil {
 		s.boardErr(w, err)
 		return
 	}
@@ -1107,12 +1107,12 @@ func (s *Server) preflight(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	cur, err := s.Boards.Board(id)
+	cur, err := s.Boards.Board(wsOf(r), id)
 	if err != nil {
 		s.boardErr(w, err)
 		return
 	}
-	p, err := s.Boards.Preflight(id, r.URL.Query().Get("question"), s.jobSnapshots(cur))
+	p, err := s.Boards.Preflight(wsOf(r), id, r.URL.Query().Get("question"), s.jobSnapshots(cur))
 	if err != nil {
 		s.boardErr(w, err)
 		return

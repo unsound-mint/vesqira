@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func makeDataDir(t *testing.T) (dir, db string) {
@@ -21,7 +23,7 @@ func makeDataDir(t *testing.T) (dir, db string) {
 	}
 	defer c.Close()
 	for _, q := range []string{
-		`CREATE TABLE datasets(id INTEGER PRIMARY KEY, name TEXT, path TEXT, host_id INTEGER, size_bytes INTEGER, modified_at INTEGER)`,
+		`CREATE TABLE datasets(id INTEGER PRIMARY KEY, name TEXT, path TEXT, host_id INTEGER, size_bytes INTEGER, modified_at INTEGER, workspace_id INTEGER NOT NULL DEFAULT 1)`,
 		`INSERT INTO datasets(name,path,host_id,size_bytes,modified_at) VALUES('hi.fits','/data/hi.fits',0,100,5)`,
 		`INSERT INTO datasets(name,path,host_id,size_bytes,modified_at) VALUES('psi.fits','` + filepath.Join(dir, "derived", "psi.fits") + `',0,10,6)`,
 		`PRAGMA user_version = 1`,
@@ -41,7 +43,7 @@ func makeDataDir(t *testing.T) (dir, db string) {
 func TestExportThenRestoreIntoAnEmptyDirectory(t *testing.T) {
 	dir, db := makeDataDir(t)
 	var buf bytes.Buffer
-	m, err := Export(db, dir, &buf)
+	m, err := Export(workspace.Local, db, dir, &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +103,7 @@ func rewrite(t *testing.T, archive []byte, edit func(name string, body []byte) (
 func TestDamagedOrHostileArchivesAreRefusedAndLeaveNothingBehind(t *testing.T) {
 	dir, db := makeDataDir(t)
 	var buf bytes.Buffer
-	if _, err := Export(db, dir, &buf); err != nil {
+	if _, err := Export(workspace.Local, db, dir, &buf); err != nil {
 		t.Fatal(err)
 	}
 	damaged := rewrite(t, buf.Bytes(), func(n string, b []byte) (string, []byte) {

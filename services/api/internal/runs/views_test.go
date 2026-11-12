@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func viewsStore(t *testing.T) *Store {
@@ -26,7 +27,7 @@ func viewsStore(t *testing.T) *Store {
 
 func TestSavedViewsKeepWordsAndReplaceByName(t *testing.T) {
 	st := viewsStore(t)
-	a, err := st.SaveView("  LMC sweep ", ViewSpec{Query: "block_size:16..64 am>0.3", Columns: []string{"status", "p:block_size", "m:am", "p:block_size"}, Sort: &ViewSort{Column: "m:am", Dir: -1}, Plot: &ViewPlot{Y: "am", X: "block_size", XKind: "param", By: "gradient_method"}})
+	a, err := st.SaveView(workspace.Local, "local-owner", "  LMC sweep ", ViewSpec{Query: "block_size:16..64 am>0.3", Columns: []string{"status", "p:block_size", "m:am", "p:block_size"}, Sort: &ViewSort{Column: "m:am", Dir: -1}, Plot: &ViewPlot{Y: "am", X: "block_size", XKind: "param", By: "gradient_method"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,27 +35,27 @@ func TestSavedViewsKeepWordsAndReplaceByName(t *testing.T) {
 		t.Fatalf("name %q columns %v: the name is trimmed and a repeated column dropped", a.Name, a.Spec.Columns)
 	}
 	// the same name in another case is the same view
-	b, err := st.SaveView("lmc SWEEP", ViewSpec{Query: "qc:passed", Columns: []string{}})
+	b, err := st.SaveView(workspace.Local, "local-owner", "lmc SWEEP", ViewSpec{Query: "qc:passed", Columns: []string{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if b.ID != a.ID {
 		t.Fatalf("saving under the same name made a second view (%d, %d)", a.ID, b.ID)
 	}
-	if _, err := st.SaveView("other", ViewSpec{Columns: []string{"status"}}); err != nil {
+	if _, err := st.SaveView(workspace.Local, "local-owner", "other", ViewSpec{Columns: []string{"status"}}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := st.Views()
+	got, err := st.Views(workspace.Local)
 	if err != nil || len(got) != 2 {
 		t.Fatalf("%v %v", got, err)
 	}
 	if got[0].Name != "lmc SWEEP" || got[0].Spec.Query != "qc:passed" || got[0].Spec.Plot != nil || got[0].Spec.Sort != nil {
 		t.Fatalf("the replacement did not replace: %+v", got[0])
 	}
-	if err := st.DeleteView(a.ID); err != nil {
+	if err := st.DeleteView(workspace.Local, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.DeleteView(a.ID); !errors.Is(err, ErrViewNotFound) {
+	if err := st.DeleteView(workspace.Local, a.ID); !errors.Is(err, ErrViewNotFound) {
 		t.Fatalf("deleting twice: %v", err)
 	}
 }
@@ -74,19 +75,19 @@ func TestSavedViewsRefuseWhatTheyCannotKeep(t *testing.T) {
 		"bad sort dir": {"v", ViewSpec{Sort: &ViewSort{Column: "status", Dir: 2}}},
 		"bad x kind":   {"v", ViewSpec{Plot: &ViewPlot{XKind: "file"}}},
 	} {
-		if _, err := st.SaveView(c.name, c.sp); err == nil || !strings.HasPrefix(err.Error(), "invalid: ") {
+		if _, err := st.SaveView(workspace.Local, "local-owner", c.name, c.sp); err == nil || !strings.HasPrefix(err.Error(), "invalid: ") {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
 	for i := 0; i < MaxViews; i++ {
-		if _, err := st.SaveView(fmt.Sprintf("v%d", i), ViewSpec{}); err != nil {
+		if _, err := st.SaveView(workspace.Local, "local-owner", fmt.Sprintf("v%d", i), ViewSpec{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := st.SaveView("one too many", ViewSpec{}); err == nil {
+	if _, err := st.SaveView(workspace.Local, "local-owner", "one too many", ViewSpec{}); err == nil {
 		t.Error("a view past the cap was kept")
 	}
-	if _, err := st.SaveView("v3", ViewSpec{Query: "replaced"}); err != nil {
+	if _, err := st.SaveView(workspace.Local, "local-owner", "v3", ViewSpec{Query: "replaced"}); err != nil {
 		t.Errorf("replacing at the cap must still work: %v", err)
 	}
 }

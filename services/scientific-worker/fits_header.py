@@ -14,6 +14,7 @@ import sys
 from astropy.io import fits
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -P does not add the script dir
+from memcap import limit_memory, over_cap_message
 from srcopen import Refused, source_file
 
 BLOCK = 2880
@@ -218,9 +219,13 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(json.dumps({"ok": False, "error": "usage: fits_header.py <path>"}))
         return 2
+    limit_memory()  # its own process, like plane_worker and analysis: a crafted header must not take the machine down
     try:
         print(json.dumps(describe(argv[1])))
         return 0
+    except MemoryError:
+        print(json.dumps({"ok": False, "error": over_cap_message()}))
+        return 2
     except (OSError, ValueError, KeyError, TypeError, Refused) as e:
         print(json.dumps({"ok": False, "error": clean(str(e), 120)}))
         return 2

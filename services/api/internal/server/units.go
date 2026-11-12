@@ -29,7 +29,7 @@ func (s *Server) declareUnit(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid request body")
 		return
 	}
-	d, code, msg := s.dataset(id)
+	d, code, msg := s.dataset(wsOf(r), id)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -61,7 +61,7 @@ func (s *Server) declareUnit(w http.ResponseWriter, r *http.Request) {
 		}
 		s.Audit.RecordCtx(r.Context(), "unit declared", "dataset", id, d.Name+": "+in.Unit)
 	}
-	d, code, msg = s.dataset(id)
+	d, code, msg = s.dataset(wsOf(r), id)
 	if code != 0 {
 		fail(w, code, msg)
 		return

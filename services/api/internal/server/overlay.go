@@ -53,7 +53,7 @@ func (s *Server) overlayGeometry(w http.ResponseWriter, r *http.Request) {
 	if o.DatasetID != d.ID {
 		var code int
 		var msg string
-		if ov, code, msg = s.dataset(o.DatasetID); code != 0 {
+		if ov, code, msg = s.dataset(wsOf(r), o.DatasetID); code != 0 {
 			fail(w, code, "overlay dataset: "+msg)
 			return
 		}
@@ -159,7 +159,7 @@ func (s *Server) overlayGeometry(w http.ResponseWriter, r *http.Request) {
 // reliabilityFor authorizes the reliability map declared with an orientation map, held to the same rules as the
 // orientation statistics: same machine, not itself declared as angles, on the map's grid, unchanged since registered.
 func (s *Server) reliabilityFor(r *http.Request, d catalog.Dataset, relID int64) (string, cacheKey, int, string) {
-	rel, code, msg := s.dataset(relID)
+	rel, code, msg := s.dataset(wsOf(r), relID)
 	if code != 0 {
 		return "", cacheKey{}, 409, "the declared reliability dataset: " + msg
 	}

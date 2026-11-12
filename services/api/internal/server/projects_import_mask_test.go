@@ -13,6 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The author label of a rule is spelled once in discover and once in catalog (which discover may not import); they must agree, or a
@@ -88,9 +89,9 @@ w('psi_flags.fits', m)                                      # target psi.fits by
 	if r.Outcome != "declared" || len(r.Declared) != 1 || !strings.Contains(r.Declared[0], "mask of data/psi.fits, type saturated, 3 pixels flagged") || !strings.Contains(r.Declared[0], "declared by your rule sat masks") {
 		t.Fatalf("%+v", r)
 	}
-	facts, _ := e.cat.FactsByPath(0)
-	psi, _ := e.cat.Get(facts[filepath.Join(root, "data", "psi.fits")].ID)
-	list, _ := e.srv.Masks.ForDataset(psi.ID)
+	facts, _ := e.cat.FactsByPath(workspace.Local, 0)
+	psi, _ := e.cat.Get(workspace.Local, facts[filepath.Join(root, "data", "psi.fits")].ID)
+	list, _ := e.srv.Masks.ForDataset(workspace.Local, psi.ID)
 	if len(list) != 1 {
 		t.Fatalf("%d masks", len(list))
 	}
@@ -109,8 +110,8 @@ w('psi_flags.fits', m)                                      # target psi.fits by
 	if r := out.by("data/grid_mask.fits"); r.Outcome == "declared" || !strings.Contains(r.Detail, "no mask was made") {
 		t.Fatalf("%+v", r)
 	}
-	grid, _ := e.cat.Get(facts[filepath.Join(root, "data", "other.fits")].ID)
-	if l, _ := e.srv.Masks.ForDataset(grid.ID); len(l) != 0 {
+	grid, _ := e.cat.Get(workspace.Local, facts[filepath.Join(root, "data", "other.fits")].ID)
+	if l, _ := e.srv.Masks.ForDataset(workspace.Local, grid.ID); len(l) != 0 {
 		t.Fatalf("a mask was made on the wrong grid: %+v", l)
 	}
 	// once more, asking for the file by name: one mask, said so
@@ -119,7 +120,7 @@ w('psi_flags.fits', m)                                      # target psi.fits by
 	if r := again.by("data/psi_mask.fits"); r.Outcome == "declared" || !strings.Contains(r.Detail, "already imported") {
 		t.Fatalf("%+v", r)
 	}
-	if l, _ := e.srv.Masks.ForDataset(psi.ID); len(l) != 1 {
+	if l, _ := e.srv.Masks.ForDataset(workspace.Local, psi.ID); len(l) != 1 {
 		t.Fatalf("%d masks after applying twice", len(l))
 	}
 	// the reviewer's account of a figure from this dataset says the mask is declared, through a rule, and never names the rule

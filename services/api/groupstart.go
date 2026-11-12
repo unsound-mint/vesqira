@@ -162,7 +162,20 @@ func adoptionRefusal(held []string, adopt bool) string {
 	if len(held) == 0 || adopt {
 		return ""
 	}
-	return "this catalog already holds local work (" + strings.Join(held, ", ") + ") and every account will see all of it: pass --adopt-existing-catalog to accept that, or start with a new catalog"
+	return "this catalog already holds local work (" + strings.Join(held, ", ") + ") and every member of its main workspace will see all of it: pass --adopt-existing-catalog to accept that, or start with a new catalog"
+}
+
+// localRefusal is the sentence local mode stops with on a group server's catalog: local mode serves exactly one workspace and
+// one owner, so it must not open a catalog that holds several (ADR 0050, Rollback / Migration). "" when it may start.
+func localRefusal(db *sql.DB) (string, error) {
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workspaces`).Scan(&n); err != nil {
+		return "", err
+	}
+	if n > 1 {
+		return fmt.Sprintf("this catalog holds %d workspaces (it belongs to a group server): local mode serves one; start it with --multi-user", n), nil
+	}
+	return "", nil
 }
 
 func sameAddr(a, b string) bool {
@@ -218,7 +231,10 @@ func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHead
 	if w := headerTrustWarning(clientIPHeader, addr, trusted); w != "" {
 		log.Print(w)
 	}
-	return server.NewMultiUser(origin, acc, clientIPHeader, trusted), func() {
+	mu := server.NewMultiUser(origin, acc, clientIPHeader, trusted)
+	mu.DataDir = dataDir
+	mu.ReadDB = ro
+	return mu, func() {
 		stop()
 		ro.Close()
 	}

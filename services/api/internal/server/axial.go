@@ -9,6 +9,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // What an orientation angle is measured against, and what it describes (ADR 0042). Both are declared, never inferred.
@@ -17,8 +18,8 @@ var (
 	axialQuantities = map[string]bool{"b_field": true, "gradient": true, "dust_polarization": true, "starlight_polarization": true, "unspecified": true}
 )
 
-func (s *Server) dataset(id int64) (catalog.Dataset, int, string) {
-	d, err := s.Store.Get(id)
+func (s *Server) dataset(ws workspace.ID, id int64) (catalog.Dataset, int, string) {
+	d, err := s.Store.Get(ws, id)
 	if errors.Is(err, catalog.ErrNotFound) {
 		return d, 404, "dataset not found"
 	}
@@ -30,8 +31,8 @@ func (s *Server) dataset(id int64) (catalog.Dataset, int, string) {
 }
 
 // imageDataset is dataset for operations that need a pixel grid: a point catalog (ADR 0044) is refused with 409.
-func (s *Server) imageDataset(id int64) (catalog.Dataset, int, string) {
-	d, code, msg := s.dataset(id)
+func (s *Server) imageDataset(ws workspace.ID, id int64) (catalog.Dataset, int, string) {
+	d, code, msg := s.dataset(ws, id)
 	if code == 0 && d.Kind == catalog.KindCatalog {
 		return d, 409, "this is a point catalog: it has no pixel grid, so this operation does not apply to it"
 	}
@@ -62,7 +63,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid request body")
 		return
 	}
-	d, code, msg := s.dataset(id)
+	d, code, msg := s.dataset(wsOf(r), id)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -116,7 +117,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 				fail(w, 422, "a map cannot be its own reliability")
 				return
 			}
-			rel, code, msg := s.imageDataset(*in.ReliabilityID)
+			rel, code, msg := s.imageDataset(wsOf(r), *in.ReliabilityID)
 			if code != 0 {
 				fail(w, 422, "reliability dataset: "+msg)
 				return
@@ -140,7 +141,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "kind must be axial_orientation or none")
 		return
 	}
-	d, code, msg = s.dataset(id)
+	d, code, msg = s.dataset(wsOf(r), id)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -167,7 +168,7 @@ func (s *Server) axial(w http.ResponseWriter, r *http.Request) {
 	req := map[string]any{"op": "axial", "path": real, "unit": in.Unit}
 	k.op, k.q = "axial", in.Unit
 	if in.ReliabilityID != nil {
-		rel, code, msg := s.imageDataset(*in.ReliabilityID)
+		rel, code, msg := s.imageDataset(wsOf(r), *in.ReliabilityID)
 		if code != 0 {
 			fail(w, 409, "the declared reliability dataset: "+msg)
 			return
@@ -247,12 +248,12 @@ func (s *Server) compatibility(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "a and b must be dataset ids")
 		return
 	}
-	da, code, msg := s.imageDataset(a)
+	da, code, msg := s.imageDataset(wsOf(r), a)
 	if code != 0 {
 		fail(w, code, msg)
 		return
 	}
-	db, code, msg := s.imageDataset(b)
+	db, code, msg := s.imageDataset(wsOf(r), b)
 	if code != 0 {
 		fail(w, code, msg)
 		return

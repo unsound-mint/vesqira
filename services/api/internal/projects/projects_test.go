@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 
 	_ "modernc.org/sqlite"
 )
@@ -30,30 +31,30 @@ func newStore(t *testing.T) *Store {
 
 func TestTouchListAndRoots(t *testing.T) {
 	s := newStore(t)
-	a, err := s.Touch(0, "/p/a", "a")
+	a, err := s.Touch(workspace.Local, "local-owner", 0, "/p/a", "a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _ := s.Touch(0, "/p/b", "b")
+	b, _ := s.Touch(workspace.Local, "local-owner", 0, "/p/b", "b")
 	time.Sleep(1100 * time.Millisecond) // opened_at has second resolution
-	again, _ := s.Touch(0, "/p/a", "ignored")
+	again, _ := s.Touch(workspace.Local, "local-owner", 0, "/p/a", "ignored")
 	if again.ID != a.ID || again.Name != "a" {
 		t.Fatalf("the same folder is the same project: %+v", again)
 	}
-	list, _ := s.List(10)
+	list, _ := s.List(workspace.Local, 10)
 	if len(list) != 2 || list[0].ID != a.ID || list[1].ID != b.ID {
 		t.Fatalf("recent order: %+v", list)
 	}
-	if r, _ := s.Roots(0); len(r) != 2 {
+	if r, _ := s.Roots(workspace.Local, 0); len(r) != 2 {
 		t.Fatalf("%v", r)
 	}
-	if _, err := s.Touch(3, "/p/a", "remote"); err != nil { // the same path on another host is another project
+	if _, err := s.Touch(workspace.Local, "local-owner", 3, "/p/a", "remote"); err != nil { // the same path on another host is another project
 		t.Fatal(err)
 	}
-	if r, _ := s.Roots(0); len(r) != 2 {
+	if r, _ := s.Roots(workspace.Local, 0); len(r) != 2 {
 		t.Fatalf("a remote project is not a local root: %v", r)
 	}
-	if _, err := s.Get(999); err != ErrNotFound {
+	if _, err := s.Get(workspace.Local, 999); err != ErrNotFound {
 		t.Fatalf("%v", err)
 	}
 }
@@ -70,8 +71,8 @@ func TestScanRowsPageAndReplace(t *testing.T) {
 	}
 	res := discover.Scan(context.Background(), discover.LocalFS{Root: root}, discover.Options{})
 	s := newStore(t)
-	p, _ := s.Touch(0, root, "p")
-	if err := s.SaveScan(p.ID, time.Now(), []byte(`{"ok":true}`), Rows(res)); err != nil {
+	p, _ := s.Touch(workspace.Local, "local-owner", 0, root, "p")
+	if err := s.SaveScan(workspace.Local, p.ID, time.Now(), []byte(`{"ok":true}`), Rows(res)); err != nil {
 		t.Fatal(err)
 	}
 	rows, total, err := s.Children(p.ID, "runs", "runs", 1, 0)
@@ -96,7 +97,7 @@ func TestScanRowsPageAndReplace(t *testing.T) {
 	}
 	// a rescan replaces the entries; the answers stay
 	s.SetAnswer(p.ID, Answer{Need: "n", Answer: "unknown", DeclaredBy: "you", Date: "2026-11-05"})
-	if err := s.SaveScan(p.ID, time.Now(), []byte(`{}`), nil); err != nil {
+	if err := s.SaveScan(workspace.Local, p.ID, time.Now(), []byte(`{}`), nil); err != nil {
 		t.Fatal(err)
 	}
 	if rows, total, _ := s.Children(p.ID, "runs", "", 10, 0); len(rows) != 0 || total != 0 {

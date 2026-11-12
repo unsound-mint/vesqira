@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The editor for text files on this computer (ADR 0029, step 1). It exists only when the server was started with
@@ -101,8 +102,8 @@ func checkTextName(name string) (int, string) {
 // readOnlyRole says whether real sits under a data/raw or data/external folder of any root that holds it: source data
 // the project explorer marks read-only (discover.RoleOf is the scanner's own rule, so the two cannot disagree). The check
 // is made on the path below each root, so a root that itself lives under a folder called data/raw is not locked by it.
-func (s *Server) readOnlyRole(real string) (string, bool) {
-	for _, pl := range s.roots().Under(real) {
+func (s *Server) readOnlyRole(ws workspace.ID, real string) (string, bool) {
+	for _, pl := range s.roots(ws).Under(real) {
 		if role := discover.RoleOf(pl.Rel); discover.RoleIsReadOnly(role) {
 			return role, true
 		}
@@ -111,12 +112,12 @@ func (s *Server) readOnlyRole(real string) (string, bool) {
 }
 
 // openText authorizes p and reads the file. status 0 is success; any other status comes with the message to show.
-func (s *Server) openText(p string) (real string, fi os.FileInfo, data []byte, status int, msg string) {
-	real, err := s.roots().Resolve(p)
+func (s *Server) openText(ws workspace.ID, p string) (real string, fi os.FileInfo, data []byte, status int, msg string) {
+	real, err := s.roots(ws).Resolve(p)
 	if err != nil || holdsCredentials(real) {
 		return "", nil, nil, 404, "that file is not inside a folder Vesqira may read"
 	}
-	if role, ro := s.readOnlyRole(real); ro {
+	if role, ro := s.readOnlyRole(ws, real); ro {
 		return "", nil, nil, 403, "that file is " + role + " source data (data/" + role + "), which Vesqira treats as read-only; the editor does not open it"
 	}
 	if st, m := checkTextName(real); st != 0 {
@@ -160,7 +161,7 @@ func (s *Server) getText(w http.ResponseWriter, r *http.Request) {
 		s.getHostText(w, r, id)
 		return
 	}
-	real, fi, data, status, msg := s.openText(r.URL.Query().Get("path"))
+	real, fi, data, status, msg := s.openText(wsOf(r), r.URL.Query().Get("path"))
 	if status != 0 {
 		fail(w, status, msg)
 		return
@@ -214,7 +215,7 @@ func (s *Server) putText(w http.ResponseWriter, r *http.Request) {
 	// process. Another program writing the file in that window is the researcher's own race; the rename never tears.
 	s.editMu.Lock()
 	defer s.editMu.Unlock()
-	real, fi, cur, status, msg := s.openText(in.Path) // never creates a file: it must exist, inside the roots
+	real, fi, cur, status, msg := s.openText(wsOf(r), in.Path) // never creates a file: it must exist, inside the roots
 	if status != 0 {
 		fail(w, status, msg)
 		return
@@ -224,7 +225,7 @@ func (s *Server) putText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Confined to the root that holds the file: a folder swapped for a link after the check above cannot redirect the write.
-	pls := s.roots().Under(real)
+	pls := s.roots(wsOf(r)).Under(real)
 	if len(pls) == 0 {
 		fail(w, 404, "that file is not inside a folder Vesqira may read")
 		return

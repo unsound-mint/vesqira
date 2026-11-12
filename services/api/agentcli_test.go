@@ -15,6 +15,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/server"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The agent drafts and the owner publishes (ADR 0036). This holds structurally: the MCP server offers no tool that
@@ -86,7 +87,7 @@ func TestTheAgentCanDraftButNeverPublishSendOrResolve(t *testing.T) {
 	if rep.LastAuthor != reports.AuthorAgent {
 		t.Fatalf("author %q", rep.LastAuthor)
 	}
-	_, _ = rp.Update(rep.ID, reports.Update{Body: ptr("owner text"), Base: rep.Revision, Author: reports.AuthorOwner})
+	_, _ = rp.Update(workspace.Local, "local-owner", rep.ID, reports.Update{Body: ptr("owner text"), Base: rep.Revision, Author: reports.AuthorOwner})
 	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "update_report", Arguments: map[string]any{"id": rep.ID, "base": rep.Revision, "body": "agent text"}})
 	if err != nil {
 		t.Fatal(err)

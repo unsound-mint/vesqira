@@ -23,11 +23,11 @@ func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfe
 	if s.Store == nil || t.Direction != hosts.Download || t.Kind != transfers.KindFile || v.Status != transfers.Verified || v.SourceSHA256 == "" || v.SourceSHA256 != v.DestSHA256 {
 		return
 	}
-	dsID, found, err := s.Store.LocationOwner(t.HostID, t.SourcePath)
+	dsID, found, err := s.Store.LocationOwner(wsCtx(ctx), t.HostID, t.SourcePath)
 	if err != nil || !found {
 		return
 	}
-	locs, err := s.Store.Locations(dsID)
+	locs, err := s.Store.Locations(wsCtx(ctx), dsID)
 	if err != nil {
 		return
 	}
@@ -49,7 +49,7 @@ func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfe
 			return
 		}
 		by := fmt.Sprintf("full sha256 computed by transfer %d", t.ID)
-		if err := s.Store.SetFingerprint(src.ID, "full", v.SourceSHA256, by, src.SizeBytes, src.ModifiedAt.UnixNano()); err != nil {
+		if err := s.Store.SetFingerprint(wsCtx(ctx), src.ID, "full", v.SourceSHA256, by, src.SizeBytes, src.ModifiedAt.UnixNano()); err != nil {
 			return
 		}
 		s.Audit.RecordCtx(ctx, "source full sha256 recorded", "dataset", dsID, fmt.Sprintf("transfer %d, sha256 %s", t.ID, v.SourceSHA256[:12]))
@@ -57,7 +57,7 @@ func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfe
 		s.Audit.RecordCtx(ctx, "downloaded copy not linked", "dataset", dsID, fmt.Sprintf("transfer %d: the dataset's recorded full SHA-256 differs from the one compared", t.ID))
 		return
 	}
-	real, err := s.roots().Resolve(t.DestPath)
+	real, err := s.roots(wsCtx(ctx)).Resolve(t.DestPath)
 	if err != nil {
 		return
 	}
@@ -67,7 +67,7 @@ func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfe
 	}
 	loc := catalog.Location{Path: real, Kind: catalog.LocDownloaded, Link: catalog.LinkVerified, SizeBytes: info.Size(), ModifiedAt: info.ModTime(),
 		Full: &catalog.Stamp{Value: v.DestSHA256, At: time.Now(), By: fmt.Sprintf("transfer %d, %s on both ends", t.ID, v.Method)}}
-	added, err := s.Store.AddLocation(dsID, loc)
+	added, err := s.Store.AddLocation(wsCtx(ctx), dsID, loc)
 	if errors.Is(err, catalog.ErrLocationExists) {
 		return
 	}
@@ -75,7 +75,7 @@ func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfe
 		log.Printf("transfers: link location: %v", err)
 		return
 	}
-	s.storeMeasure(added, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, added) })
+	s.storeMeasure(wsCtx(ctx), added, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, added) })
 	s.Audit.RecordCtx(ctx, "downloaded copy linked", "dataset", dsID, fmt.Sprintf("transfer %d, sha256 %s", t.ID, v.DestSHA256[:12]))
 }
 
@@ -91,7 +91,7 @@ func (s *Server) sameContentVerified(ctx context.Context, real, sum string) []ca
 	if v, code, _ := s.measureSampled(ctx, probe); code == 0 {
 		ev.Sampled = v.value
 	}
-	got, err := s.Store.FindSame(ev, 0)
+	got, err := s.Store.FindSame(wsCtx(ctx), ev, 0)
 	if err != nil {
 		log.Printf("identity: %v", err)
 		return nil

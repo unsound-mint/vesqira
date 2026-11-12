@@ -20,6 +20,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // runSource abstracts where a run folder lives: this machine (inside a source root) or a remote host.
@@ -48,7 +49,7 @@ func (l localRun) Meta(context.Context) ([]byte, string, int, string) {
 	return data, filepath.Base(l.dir), 0, ""
 }
 func (l localRun) Register(ctx context.Context, name string) (catalog.Dataset, bool, int, string) {
-	real, err := l.s.roots().Resolve(filepath.Join(l.dir, name)) // outputs must sit next to the metadata, inside the roots
+	real, err := l.s.roots(wsCtx(ctx)).Resolve(filepath.Join(l.dir, name)) // outputs must sit next to the metadata, inside the roots
 	if err != nil {
 		return catalog.Dataset{}, false, 0, "" // a missing output is skipped, not invented
 	}
@@ -109,13 +110,13 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 	if len(outs) == 0 {
 		return runs.Run{}, 422, "none of the run's output files were found next to its run_metadata.toml"
 	}
-	run, err := s.Runs.Save(src.Key(), parsed, outs)
+	run, err := s.Runs.Save(wsCtx(ctx), actorID(ctx), src.Key(), parsed, outs)
 	if err != nil {
 		log.Printf("runs: %v", err)
 		return runs.Run{}, 500, "internal error"
 	}
 	if psi, ok := byRole["psi"]; ok {
-		cur, _ := s.Store.Get(psi.ID)
+		cur, _ := s.Store.Get(wsCtx(ctx), psi.ID)
 		if adapterMayDeclare(cur.Interpretation) {
 			var rel *int64
 			if rd, ok := byRole["reliability"]; ok && rd.HostID == psi.HostID {
@@ -144,7 +145,7 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		s.importROHSAFromHost(w, r, in.HostID, in.Path)
 		return
 	}
-	if dat, found, code, msg := s.rohsaTarget(in.Path); found {
+	if dat, found, code, msg := s.rohsaTarget(wsOf(r), in.Path); found {
 		if code != 0 {
 			fail(w, code, msg)
 			return
@@ -154,14 +155,14 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 			fail(w, code, msg)
 			return
 		}
-		writeJSON(w, 201, s.runView(run))
+		writeJSON(w, 201, s.runView(wsOf(r), run))
 		return
 	}
 	meta := in.Path
 	if filepath.Base(meta) != "run_metadata.toml" {
 		meta = filepath.Join(meta, "run_metadata.toml")
 	}
-	realMeta, err := s.roots().Resolve(meta) // same containment rules as any file: inside a source root, regular file
+	realMeta, err := s.roots(wsOf(r)).Resolve(meta) // same containment rules as any file: inside a source root, regular file
 	if err != nil {
 		fail(w, 403, err.Error())
 		return
@@ -171,7 +172,7 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	writeJSON(w, 201, s.runView(run))
+	writeJSON(w, 201, s.runView(wsOf(r), run))
 }
 
 // runJSON adds the inferred link from a run to a registered copy of its input cube (name and size only).
@@ -196,11 +197,11 @@ type runJSON struct {
 
 // hintSource is what the runs list reads the registered files' names and sizes through (the catalog; a test counts calls).
 type hintSource interface {
-	HintIndex() (map[catalog.HintKey]int64, error)
+	HintIndex(ws workspace.ID) (map[catalog.HintKey]int64, error)
 }
 
 // hintsFor reads the name and size index once, and only when some run has an input to look for.
-func (s *Server) hintsFor(rs []runs.Run) map[catalog.HintKey]int64 {
+func (s *Server) hintsFor(ws workspace.ID, rs []runs.Run) map[catalog.HintKey]int64 {
 	want := false
 	for _, r := range rs {
 		want = want || (r.InputName != "" && r.InputSizeBytes > 0)
@@ -212,7 +213,7 @@ func (s *Server) hintsFor(rs []runs.Run) map[catalog.HintKey]int64 {
 	if s.Hints != nil {
 		src = s.Hints
 	}
-	idx, err := src.HintIndex()
+	idx, err := src.HintIndex(ws)
 	if err != nil {
 		log.Printf("runs: input hints: %v", err) // the hint is optional: the runs are still listed
 		return nil
@@ -221,24 +222,24 @@ func (s *Server) hintsFor(rs []runs.Run) map[catalog.HintKey]int64 {
 }
 
 // runView describes one run. Lists use runViewWith and read the job links once for all runs.
-func (s *Server) runView(r runs.Run) runJSON {
+func (s *Server) runView(ws workspace.ID, r runs.Run) runJSON {
 	var lin map[int64]jobs.Lineage
 	mode := ""
-	if s.Jobs != nil {
-		if j, err := s.Jobs.ForRun(r.ID); err == nil {
+	if s.localJobs() != nil {
+		if j, err := s.localJobs().ForRun(r.ID); err == nil {
 			lin = map[int64]jobs.Lineage{r.ID: {JobID: j.ID, ParentRunID: j.ParentRunID}}
 			mode = j.RerunMode()
 		}
 	}
-	out := s.runViewWith(r, lin, s.hintsFor([]runs.Run{r}))
+	out := s.runViewWith(ws, r, lin, s.hintsFor(ws, []runs.Run{r}))
 	if mode != "" {
 		out.RerunMode = &mode
 	}
-	out.ParentComparison = s.compareWithParent(r, out.ParentRunID, mode)
+	out.ParentComparison = s.compareWithParent(ws, r, out.ParentRunID, mode)
 	return out
 }
 
-func (s *Server) runViewWith(r runs.Run, lin map[int64]jobs.Lineage, hints map[catalog.HintKey]int64) runJSON {
+func (s *Server) runViewWith(ws workspace.ID, r runs.Run, lin map[int64]jobs.Lineage, hints map[catalog.HintKey]int64) runJSON {
 	out := runJSON{Run: r}
 	if l, ok := lin[r.ID]; ok {
 		id := l.JobID
@@ -254,7 +255,7 @@ func (s *Server) runViewWith(r runs.Run, lin map[int64]jobs.Lineage, hints map[c
 	}
 	out.Reproducibility = runs.Reproducibility(r, out.InputHint != nil)
 	if r.Kind == "rohsa" {
-		if rr, err := s.Runs.ROHSA(r.ID); err == nil {
+		if rr, err := s.Runs.ROHSA(ws, r.ID); err == nil {
 			out.Rohsa = &rr.Info
 		}
 	}
@@ -262,28 +263,28 @@ func (s *Server) runViewWith(r runs.Run, lin map[int64]jobs.Lineage, hints map[c
 }
 
 func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
-	rs, err := s.Runs.List()
+	rs, err := s.Runs.List(wsOf(r))
 	if err != nil {
 		log.Printf("runs: %v", err)
 		fail(w, 500, "internal error")
 		return
 	}
 	var lin map[int64]jobs.Lineage
-	if s.Jobs != nil {
-		if lin, err = s.Jobs.Lineages(); err != nil {
+	if s.localJobs() != nil {
+		if lin, err = s.localJobs().Lineages(); err != nil {
 			log.Printf("runs: %v", err)
 			fail(w, 500, "internal error")
 			return
 		}
 	}
-	hints := s.hintsFor(rs) // one read of the catalog for every run, not one per run
+	hints := s.hintsFor(wsOf(r), rs) // one read of the catalog for every run, not one per run
 	out := make([]runJSON, 0, len(rs))
 	mode := archivedMode(r)
 	for _, x := range rs {
 		if !keepArchived(mode, x.Archived) {
 			continue
 		}
-		out = append(out, s.runViewWith(x, lin, hints))
+		out = append(out, s.runViewWith(wsOf(r), x, lin, hints))
 	}
 	writeJSON(w, 200, map[string]any{"runs": out})
 }
@@ -294,7 +295,7 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad id")
 		return
 	}
-	run, err := s.Runs.Get(id)
+	run, err := s.Runs.Get(wsOf(r), id)
 	if errors.Is(err, runs.ErrNotFound) {
 		fail(w, 404, "run not found")
 		return
@@ -303,7 +304,7 @@ func (s *Server) getRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	writeJSON(w, 200, s.runView(run))
+	writeJSON(w, 200, s.runView(wsOf(r), run))
 }
 
 // rerunVGT is the settings a new draft starts from. Every field is null when it is not known: an imported run does not
@@ -370,7 +371,7 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad id")
 		return
 	}
-	run, err := s.Runs.Get(id)
+	run, err := s.Runs.Get(wsOf(r), id)
 	if errors.Is(err, runs.ErrNotFound) {
 		fail(w, 404, "run not found")
 		return
@@ -394,8 +395,8 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 	}
 	var job jobs.Job
 	err = jobs.ErrNotFound // without a job store no job made the run
-	if s.Jobs != nil {
-		if job, err = s.Jobs.ForRun(id); err != nil && !errors.Is(err, jobs.ErrNotFound) {
+	if s.localJobs() != nil {
+		if job, err = s.localJobs().ForRun(id); err != nil && !errors.Is(err, jobs.ErrNotFound) {
 			log.Printf("runs: %v", err)
 			fail(w, 500, "internal error")
 			return

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func newStore(t *testing.T) *Store {
@@ -26,39 +28,39 @@ func newStore(t *testing.T) *Store {
 
 func TestCreateEditDuplicateAndDelete(t *testing.T) {
 	s := newStore(t)
-	r, err := s.Create(1, "  Core\n", Shape{Shape: "rect", X0: 2, Y0: 3, X1: 9, Y1: 7})
+	r, err := s.Create(workspace.Local, "local-owner", 1, "  Core\n", Shape{Shape: "rect", X0: 2, Y0: 3, X1: 9, Y1: 7})
 	if err != nil || r.Name != "Core" || r.Shape.X1 != 9 {
 		t.Fatalf("%+v %v", r, err)
 	}
-	c, err := s.Create(1, "Peak", Shape{Shape: "circle", CX: 10, CY: 11, R: 4})
+	c, err := s.Create(workspace.Local, "local-owner", 1, "Peak", Shape{Shape: "circle", CX: 10, CY: 11, R: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// edit the name only, then the shape only: the other part stays
 	n := "Core (wide)"
-	r2, err := s.Update(r.ID, &n, nil)
+	r2, err := s.Update(workspace.Local, r.ID, &n, nil)
 	if err != nil || r2.Name != n || r2.Shape.X0 != 2 {
 		t.Fatalf("rename: %+v %v", r2, err)
 	}
-	r3, err := s.Update(r.ID, nil, &Shape{Shape: "rect", X0: 0, Y0: 0, X1: 20, Y1: 20})
+	r3, err := s.Update(workspace.Local, r.ID, nil, &Shape{Shape: "rect", X0: 0, Y0: 0, X1: 20, Y1: 20})
 	if err != nil || r3.Name != n || r3.Shape.X1 != 20 {
 		t.Fatalf("reshape: %+v %v", r3, err)
 	}
 	// a region belongs to its dataset; another dataset's list is unaffected
-	s.Create(2, "Other", Shape{Shape: "circle", CX: 1, CY: 1, R: 1})
-	if l, _ := s.List(1); len(l) != 2 {
+	s.Create(workspace.Local, "local-owner", 2, "Other", Shape{Shape: "circle", CX: 1, CY: 1, R: 1})
+	if l, _ := s.List(workspace.Local, 1); len(l) != 2 {
 		t.Errorf("list: %+v", l)
 	}
-	if err := s.Delete(c.ID); err != nil {
+	if err := s.Delete(workspace.Local, c.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Delete(c.ID); !errors.Is(err, ErrNotFound) {
+	if err := s.Delete(workspace.Local, c.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("deleting twice: %v", err)
 	}
-	if _, err := s.Get(c.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Get(workspace.Local, c.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("a deleted region is gone: %v", err)
 	}
-	if l, _ := s.List(1); len(l) != 1 {
+	if l, _ := s.List(workspace.Local, 1); len(l) != 1 {
 		t.Errorf("after delete: %+v", l)
 	}
 }
@@ -73,21 +75,21 @@ func TestShapesAndNamesAreValidated(t *testing.T) {
 		"unknown":    {Shape: "polygon"},
 		"empty":      {},
 	} {
-		if _, err := s.Create(1, "x", sh); !errors.Is(err, ErrInvalid) {
+		if _, err := s.Create(workspace.Local, "local-owner", 1, "x", sh); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if _, err := s.Create(1, "  \n ", Shape{Shape: "circle", CX: 1, CY: 1, R: 1}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Create(workspace.Local, "local-owner", 1, "  \n ", Shape{Shape: "circle", CX: 1, CY: 1, R: 1}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("an empty name: %v", err)
 	}
-	long, _ := s.Create(1, strings.Repeat("é", 200), Shape{Shape: "circle", CX: 1, CY: 1, R: 1})
+	long, _ := s.Create(workspace.Local, "local-owner", 1, strings.Repeat("é", 200), Shape{Shape: "circle", CX: 1, CY: 1, R: 1})
 	if len([]rune(long.Name)) != 80 {
 		t.Errorf("name length %d", len([]rune(long.Name)))
 	}
 	for i := 0; i < MaxPerDataset; i++ {
-		s.Create(9, "n", Shape{Shape: "circle", CX: 1, CY: 1, R: 1})
+		s.Create(workspace.Local, "local-owner", 9, "n", Shape{Shape: "circle", CX: 1, CY: 1, R: 1})
 	}
-	if _, err := s.Create(9, "one more", Shape{Shape: "circle", CX: 1, CY: 1, R: 1}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Create(workspace.Local, "local-owner", 9, "one more", Shape{Shape: "circle", CX: 1, CY: 1, R: 1}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("the limit: %v", err)
 	}
 }
@@ -111,11 +113,11 @@ func TestDS9OutputUsesOneBasedPixelCentresAndKeepsNamesSafe(t *testing.T) {
 
 func TestALineRoundTripsAndIsHeldToItsBounds(t *testing.T) {
 	s := newStore(t)
-	r, err := s.Create(1, "Cut", Shape{Shape: "line", Points: [][]int{{2, 3}, {20, 9}, {30, 9}}, Width: 3, WidthUnit: "pixel"})
+	r, err := s.Create(workspace.Local, "local-owner", 1, "Cut", Shape{Shape: "line", Points: [][]int{{2, 3}, {20, 9}, {30, 9}}, Width: 3, WidthUnit: "pixel"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.Get(r.ID)
+	got, err := s.Get(workspace.Local, r.ID)
 	if err != nil || got.Shape.Shape != "line" || len(got.Shape.Points) != 3 || got.Shape.Points[1][0] != 20 || got.Shape.Width != 3 || got.Shape.WidthUnit != "pixel" {
 		t.Fatalf("%+v %v", got, err)
 	}
@@ -123,7 +125,7 @@ func TestALineRoundTripsAndIsHeldToItsBounds(t *testing.T) {
 	if got.Shape.X1 != 0 || got.Shape.R != 0 {
 		t.Errorf("%+v", got.Shape)
 	}
-	arc, err := s.Update(r.ID, nil, &Shape{Shape: "line", Points: [][]int{{1, 1}, {9, 9}}, Width: 12.5, WidthUnit: "arcsec"})
+	arc, err := s.Update(workspace.Local, r.ID, nil, &Shape{Shape: "line", Points: [][]int{{1, 1}, {9, 9}}, Width: 12.5, WidthUnit: "arcsec"})
 	if err != nil || arc.Shape.WidthUnit != "arcsec" || arc.Shape.Width != 12.5 {
 		t.Fatalf("%+v %v", arc, err)
 	}
@@ -138,7 +140,7 @@ func TestALineRoundTripsAndIsHeldToItsBounds(t *testing.T) {
 		"three coords": {Shape: "line", Points: [][]int{{1, 1, 1}, {5, 5}}, Width: 1, WidthUnit: "pixel"},
 		"too many":     {Shape: "line", Points: make([][]int, MaxLinePoints+1), Width: 1, WidthUnit: "pixel"},
 	} {
-		if _, err := s.Create(1, "bad", sh); !errors.Is(err, ErrInvalid) {
+		if _, err := s.Create(workspace.Local, "local-owner", 1, "bad", sh); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}

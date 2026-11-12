@@ -24,7 +24,7 @@ func (s *Server) runViewsErr(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) listRunViews(w http.ResponseWriter, r *http.Request) {
-	vs, err := s.Runs.Views()
+	vs, err := s.Runs.Views(wsOf(r))
 	if err != nil {
 		s.runViewsErr(w, err)
 		return
@@ -40,7 +40,7 @@ func (s *Server) saveRunView(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 64<<10, &in, true) {
 		return
 	}
-	v, err := s.Runs.SaveView(in.Name, in.Spec)
+	v, err := s.Runs.SaveView(wsOf(r), actorID(r.Context()), in.Name, in.Spec)
 	if err != nil {
 		s.runViewsErr(w, err)
 		return
@@ -53,7 +53,7 @@ func (s *Server) deleteRunView(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Runs.DeleteView(id); err != nil {
+	if err := s.Runs.DeleteView(wsOf(r), id); err != nil {
 		s.runViewsErr(w, err)
 		return
 	}

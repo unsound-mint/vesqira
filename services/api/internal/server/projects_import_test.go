@@ -24,6 +24,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // tinyFITS writes a valid 4x4 float32 primary HDU whose data are seeded by seed (equal seeds are equal bytes). With bunit the
@@ -161,7 +162,7 @@ var psiRule = map[string]any{"name": "psi maps", "kind": "glob", "pattern": "vda
 var kmsRule = map[string]any{"name": "kms", "kind": "glob", "pattern": "*_kms.fits", "role": "dataset", "unit": "km/s"}
 
 func datasetCount(t *testing.T, e *projEnv) int {
-	ds, err := e.cat.List()
+	ds, err := e.cat.List(workspace.Local)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,10 +385,10 @@ func TestImportApplyRegistersAndDeclaresWithProvenance(t *testing.T) {
 		t.Fatalf("a file no rule selects: %d", code)
 	}
 	// one file already carries a declaration made by the researcher
-	mine, _ := e.srv.Store.FactsByPath(0)
+	mine, _ := e.srv.Store.FactsByPath(workspace.Local, 0)
 	own := filepath.Join(root, "vda/n4/vgt psi maps/psi_1.fits")
 	if fa, ok := mine[own]; ok {
-		d, _ := e.srv.Store.Get(fa.ID)
+		d, _ := e.srv.Store.Get(workspace.Local, fa.ID)
 		frame, q := "sky", "gradient"
 		if err := e.srv.Store.SetInterpretation(d, catalog.Interpretation{Kind: "axial_orientation", Unit: "deg", Frame: &frame, Quantity: &q}); err != nil {
 			t.Fatal(err)
@@ -406,7 +407,7 @@ func TestImportApplyRegistersAndDeclaresWithProvenance(t *testing.T) {
 	if r.Outcome != "declared" || r.DatasetID == nil || len(r.Declared) != 3 || !strings.Contains(r.Declared[0], "declared by your rule psi maps") {
 		t.Fatalf("%+v", r)
 	}
-	d, _ := e.srv.Store.Get(*r.DatasetID)
+	d, _ := e.srv.Store.Get(workspace.Local, *r.DatasetID)
 	if d.Interpretation != nil && (d.Interpretation.Tier != catalog.TierDeclared || d.Interpretation.MappingVersion != "") {
 		t.Fatalf("a rule's declaration is declared, authored by the rule: %+v", d.Interpretation)
 	}
@@ -415,18 +416,18 @@ func TestImportApplyRegistersAndDeclaresWithProvenance(t *testing.T) {
 	}
 	// the researcher's own declaration is kept
 	r = out.by("vda/n4/vgt psi maps/psi_1.fits")
-	d, _ = e.srv.Store.Get(*r.DatasetID)
+	d, _ = e.srv.Store.Get(workspace.Local, *r.DatasetID)
 	if r.Outcome != "skipped" || !strings.Contains(r.Detail, "kept your own orientation declaration") || d.Interpretation.DeclaredBy != "user" || d.Interpretation.Unit != "deg" {
 		t.Fatalf("%+v %+v", r, d.Interpretation)
 	}
 	// a unit by rule, labelled; a file that states its own BUNIT keeps it
 	r = out.by("validation_output/rohsa/n4/maps/mu_kms.fits")
-	d, _ = e.srv.Store.Get(*r.DatasetID)
+	d, _ = e.srv.Store.Get(workspace.Local, *r.DatasetID)
 	if r.Outcome != "declared" || d.UnitDeclaration == nil || d.UnitDeclaration.Unit != "km/s" || d.UnitDeclaration.DeclaredBy != "rule:kms" {
 		t.Fatalf("%+v %+v", r, d.UnitDeclaration)
 	}
 	r = out.by("extra/own_unit_kms.fits")
-	d, _ = e.srv.Store.Get(*r.DatasetID)
+	d, _ = e.srv.Store.Get(workspace.Local, *r.DatasetID)
 	if r.Outcome != "skipped" || !strings.Contains(r.Detail, "BUNIT") || d.UnitDeclaration != nil {
 		t.Fatalf("%+v %+v", r, d.UnitDeclaration)
 	}
@@ -461,7 +462,7 @@ func TestImportApplyRegistersAndDeclaresWithProvenance(t *testing.T) {
 		t.Fatalf("%+v", p.Selected)
 	}
 	// an audit entry records it
-	entries, _ := e.srv.Audit.List("project", s.ID, 20)
+	entries, _ := e.srv.Audit.List(workspace.Local, "project", s.ID, 20)
 	seen := false
 	for _, en := range entries {
 		seen = seen || en.Action == "import rules applied"
@@ -500,7 +501,7 @@ func TestImportApplyOffersDuplicatesInsteadOfRegisteringThem(t *testing.T) {
 	if r = out.by("b/copy_kms.fits"); r.Outcome != "registered" || r.DatasetID == nil || datasetCount(t, e) != n+1 {
 		t.Fatalf("%+v", out)
 	}
-	d, _ := e.srv.Store.Get(*r.DatasetID)
+	d, _ := e.srv.Store.Get(workspace.Local, *r.DatasetID)
 	if d.UnitDeclaration == nil || d.UnitDeclaration.DeclaredBy != "rule:kms" {
 		t.Fatalf("%+v", d.UnitDeclaration)
 	}
@@ -652,13 +653,13 @@ func TestImportRescanCountsNewMatchesAndNeverRegistersThem(t *testing.T) {
 	if datasetCount(t, e) != n+1 { // the scan registers the new FITS file by its own (built-in) rule; the stars table stays unregistered
 		t.Fatalf("%d datasets, want %d", datasetCount(t, e), n+1)
 	}
-	facts, _ := e.srv.Store.FactsByPath(0)
+	facts, _ := e.srv.Store.FactsByPath(workspace.Local, 0)
 	if _, ok := facts[filepath.Join(root, "stars/s2.dat")]; ok {
 		t.Fatal("the text table was registered by a scan")
 	}
 	// no unit was declared by any scan for the FITS files the rule selects
 	for _, fa := range facts {
-		if d, _ := e.srv.Store.Get(fa.ID); d.UnitDeclaration != nil || d.Interpretation != nil {
+		if d, _ := e.srv.Store.Get(workspace.Local, fa.ID); d.UnitDeclaration != nil || d.Interpretation != nil {
 			t.Fatalf("a scan applied a declaration: %+v", d)
 		}
 	}
@@ -707,7 +708,7 @@ func TestImportApplyDeclaresACatalogByRule(t *testing.T) {
 	if r.Outcome != "registered" || r.DatasetID == nil || len(r.Declared) != 1 {
 		t.Fatalf("%+v", out)
 	}
-	d, _ := e.srv.Store.Get(*r.DatasetID)
+	d, _ := e.srv.Store.Get(workspace.Local, *r.DatasetID)
 	if d.Kind != "catalog" || d.CatalogDeclaration == nil || d.CatalogDeclaration.DeclaredBy != "rule:starlight" || d.CatalogDeclaration.Frame != "fk5" ||
 		d.CatalogDeclaration.Angle == nil || d.CatalogDeclaration.Angle.Column != "PA(deg)" || d.CatalogDeclaration.Angle.Frame != "sky" {
 		t.Fatalf("%+v", d.CatalogDeclaration)
@@ -717,7 +718,7 @@ func TestImportApplyDeclaresACatalogByRule(t *testing.T) {
 	if r.Outcome != "registered" || !strings.Contains(r.Detail, "not declared, because the file's columns do not fit the rule") {
 		t.Fatalf("%+v", r)
 	}
-	if d, _ = e.srv.Store.Get(*r.DatasetID); d.CatalogDeclaration != nil {
+	if d, _ = e.srv.Store.Get(workspace.Local, *r.DatasetID); d.CatalogDeclaration != nil {
 		t.Fatalf("%+v", d.CatalogDeclaration)
 	}
 }
@@ -804,7 +805,7 @@ func TestImportOnAHostFolderWithTheFakeHostHarness(t *testing.T) {
 	if r.DatasetID == nil || (r.Outcome != "declared" && r.Outcome != "registered") || len(r.Declared) != 3 {
 		t.Fatalf("%+v", out)
 	}
-	d, _ := cat.Get(*r.DatasetID)
+	d, _ := cat.Get(workspace.Local, *r.DatasetID)
 	if d.HostID != h.ID || d.Interpretation == nil || d.Interpretation.DeclaredBy != "rule:psi maps" {
 		t.Fatalf("%+v", d)
 	}

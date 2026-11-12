@@ -4,11 +4,13 @@ import (
 	"errors"
 	"sync"
 	"testing"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func order(t *testing.T, s *Store, id int64) string {
 	t.Helper()
-	b, _ := s.Board(id)
+	b, _ := s.Board(workspace.Local, id)
 	out := ""
 	for _, it := range b.Items {
 		out += it.Figure.Title
@@ -19,20 +21,20 @@ func order(t *testing.T, s *Store, id int64) string {
 // An edit that names what it expects at a position is applied only if that is still there; otherwise nothing changes.
 func TestExpectedItemGuardsPositionEdits(t *testing.T) {
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("B")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "B")
 	a, c, d := fig(t, s, "A", 1), fig(t, s, "C", 2), fig(t, s, "D", 3)
 	for _, f := range []Figure{a, c, d} {
-		s.AddItem(b.ID, f.ID)
+		s.AddItem(workspace.Local, b.ID, f.ID)
 	}
-	s.SetNote(b.ID, 1, "n", nil)
+	s.SetNote(workspace.Local, b.ID, 1, "n", nil)
 	fe := func(f Figure) *Expect { return &Expect{Kind: KindFigure, ID: f.ID} }
 
 	for name, err := range map[string]error{
-		"move":   s.MoveItem(b.ID, 1, 1, fe(a)),
-		"remove": s.RemoveItem(b.ID, 1, fe(d)),
-		"note":   s.SetNote(b.ID, 1, "x", &Expect{Kind: KindFigure, ID: c.ID, Note: ptr("other")}),
-		"kind":   s.RemoveItem(b.ID, 1, &Expect{Kind: KindJob, ID: c.ID}),
-		"gone":   s.RemoveItem(b.ID, 7, fe(c)),
+		"move":   s.MoveItem(workspace.Local, b.ID, 1, 1, fe(a)),
+		"remove": s.RemoveItem(workspace.Local, b.ID, 1, fe(d)),
+		"note":   s.SetNote(workspace.Local, b.ID, 1, "x", &Expect{Kind: KindFigure, ID: c.ID, Note: ptr("other")}),
+		"kind":   s.RemoveItem(workspace.Local, b.ID, 1, &Expect{Kind: KindJob, ID: c.ID}),
+		"gone":   s.RemoveItem(workspace.Local, b.ID, 7, fe(c)),
 	} {
 		if !errors.Is(err, ErrConflict) {
 			t.Errorf("%s: want conflict, got %v", name, err)
@@ -41,20 +43,20 @@ func TestExpectedItemGuardsPositionEdits(t *testing.T) {
 	if order(t, s, b.ID) != "ACD" {
 		t.Fatalf("a refused edit changed the board: %s", order(t, s, b.ID))
 	}
-	if bb, _ := s.Board(b.ID); bb.Items[1].Note != "n" {
+	if bb, _ := s.Board(workspace.Local, b.ID); bb.Items[1].Note != "n" {
 		t.Fatal("a refused note edit changed the note")
 	}
-	if err := s.MoveItem(b.ID, 1, 1, fe(c)); err != nil || order(t, s, b.ID) != "ADC" {
+	if err := s.MoveItem(workspace.Local, b.ID, 1, 1, fe(c)); err != nil || order(t, s, b.ID) != "ADC" {
 		t.Fatalf("matching move: %v %s", err, order(t, s, b.ID))
 	}
-	if err := s.SetNote(b.ID, 2, "y", &Expect{Kind: KindFigure, ID: c.ID, Note: ptr("n")}); err != nil {
+	if err := s.SetNote(workspace.Local, b.ID, 2, "y", &Expect{Kind: KindFigure, ID: c.ID, Note: ptr("n")}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RemoveItem(b.ID, 2, fe(c)); err != nil || order(t, s, b.ID) != "AD" {
+	if err := s.RemoveItem(workspace.Local, b.ID, 2, fe(c)); err != nil || order(t, s, b.ID) != "AD" {
 		t.Fatalf("matching remove: %v %s", err, order(t, s, b.ID))
 	}
 	// without expect an unknown position is still not found, not a conflict
-	if err := s.RemoveItem(b.ID, 9, nil); !errors.Is(err, ErrNotFound) || errors.Is(err, ErrConflict) {
+	if err := s.RemoveItem(workspace.Local, b.ID, 9, nil); !errors.Is(err, ErrNotFound) || errors.Is(err, ErrConflict) {
 		t.Fatalf("%v", err)
 	}
 }
@@ -63,10 +65,10 @@ func TestExpectedItemGuardsPositionEdits(t *testing.T) {
 // other panels are not touched.
 func TestConcurrentGuardedRemovesApplyOnce(t *testing.T) {
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("B")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "B")
 	a, c, d := fig(t, s, "A", 1), fig(t, s, "C", 2), fig(t, s, "D", 3)
 	for _, f := range []Figure{a, c, d} {
-		s.AddItem(b.ID, f.ID)
+		s.AddItem(workspace.Local, b.ID, f.ID)
 	}
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -75,7 +77,7 @@ func TestConcurrentGuardedRemovesApplyOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := s.RemoveItem(b.ID, 0, &Expect{Kind: KindFigure, ID: a.ID})
+			err := s.RemoveItem(workspace.Local, b.ID, 0, &Expect{Kind: KindFigure, ID: a.ID})
 			mu.Lock()
 			defer mu.Unlock()
 			if err == nil {

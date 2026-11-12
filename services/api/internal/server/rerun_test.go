@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // An imported run, or a run from a job recorded before requests were kept, gives the "run again" form nothing it
@@ -38,7 +39,7 @@ func TestRerunPrefillNeverGuessesWhatIsNotKnown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	imported, err := rn.Save("/data/run-a", runs.Parsed{Run: runs.Run{Name: "run a/with spaces", Kind: "vgt",
+	imported, err := rn.Save(workspace.Local, "local-owner", "/data/run-a", runs.Parsed{Run: runs.Run{Name: "run a/with spaces", Kind: "vgt",
 		Params: []runs.Param{{Key: "ker", Value: "4", Source: "config"}}}}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +109,7 @@ func TestRerunPrefillNeverGuessesWhatIsNotKnown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withReq, _ := rn.Save("/data/run-b", runs.Parsed{Run: runs.Run{Name: "run-b", Kind: "vgt"}}, nil)
+	withReq, _ := rn.Save(workspace.Local, "local-owner", "/data/run-b", runs.Parsed{Run: runs.Run{Name: "run-b", Kind: "vgt"}}, nil)
 	js.LinkRun(kept.ID, withReq.ID)
 	p, raw = read(withReq.ID)
 	if p.Source != "job" || p.HostID == nil || p.VGT["repoDir"] != "/shared/vgt" || p.VGT["baseConfigText"] != "[vgt]\nker = 4\n" || p.VGT["cpus"] != float64(4) || p.Changed != nil || len(p.Notes) != 0 {
@@ -148,7 +149,7 @@ func TestRerunPrefillNeverGuessesWhatIsNotKnown(t *testing.T) {
 		t.Errorf("a 500-character note: %d %s, want 201", r.StatusCode, b)
 	}
 	// once its outputs are a run, that run reports its parent and its job
-	out, _ := rn.Save("/data/vesqira_runs/again", runs.Parsed{Run: runs.Run{Name: "again", Kind: "vgt"}}, nil)
+	out, _ := rn.Save(workspace.Local, "local-owner", "/data/vesqira_runs/again", runs.Parsed{Run: runs.Run{Name: "again", Kind: "vgt"}}, nil)
 	js.LinkRun(child.ID, out.ID)
 	_, gb := get(t, api("/api/runs/"+itoa(int(out.ID))))
 	var rv struct {
@@ -160,7 +161,7 @@ func TestRerunPrefillNeverGuessesWhatIsNotKnown(t *testing.T) {
 		t.Errorf("child run lineage: %s", gb)
 	}
 	// without a job, the links are null (imported and unrelated runs)
-	lone, _ := rn.Save("/data/lone", runs.Parsed{Run: runs.Run{Name: "lone", Kind: "vgt"}}, nil)
+	lone, _ := rn.Save(workspace.Local, "local-owner", "/data/lone", runs.Parsed{Run: runs.Run{Name: "lone", Kind: "vgt"}}, nil)
 	_, lb := get(t, api("/api/runs/"+itoa(int(lone.ID))))
 	if !strings.Contains(string(lb), `"jobId":null`) || !strings.Contains(string(lb), `"parentRunId":null`) {
 		t.Errorf("a run without a job must show null links: %s", lb)

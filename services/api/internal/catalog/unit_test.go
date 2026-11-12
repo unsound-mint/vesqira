@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func openForUnits(t *testing.T) *Store {
@@ -21,7 +23,7 @@ func openForUnits(t *testing.T) *Store {
 
 func register(t *testing.T, s *Store, name, header string, size int64) Dataset {
 	t.Helper()
-	d, err := s.Upsert(Dataset{Path: "/data/" + name, Name: name, SizeBytes: size, ModifiedAt: time.Unix(1700000000, 0), Header: json.RawMessage(header)})
+	d, err := s.Upsert(workspace.Local, "local-owner", Dataset{Path: "/data/" + name, Name: name, SizeBytes: size, ModifiedAt: time.Unix(1700000000, 0), Header: json.RawMessage(header)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,25 +43,25 @@ func TestADeclaredUnitIsAnOverlayThatNeverTouchesTheHeaderFacts(t *testing.T) {
 	if err := s.SetUnitDeclaration(d, "Jy/beam", "user"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.Get(d.ID)
+	got, err := s.Get(workspace.Local, d.ID)
 	if err != nil || got.UnitDeclaration == nil || got.UnitDeclaration.Unit != "Jy/beam" || got.UnitDeclaration.DeclaredBy != "user" || got.UnitDeclaration.Stale {
 		t.Fatalf("%+v %v", got.UnitDeclaration, err)
 	}
 	if string(got.Header) != noBunit {
 		t.Fatalf("the header facts the file gave were changed: %s", got.Header)
 	}
-	list, _ := s.List()
+	list, _ := s.List(workspace.Local)
 	if len(list) != 1 || list[0].UnitDeclaration == nil || list[0].UnitDeclaration.Unit != "Jy/beam" {
 		t.Fatalf("list: %+v", list)
 	}
-	if fresh, _ := s.FreshUnits(); fresh[d.ID] != "Jy/beam" {
+	if fresh, _ := s.FreshUnits(workspace.Local); fresh[d.ID] != "Jy/beam" {
 		t.Fatalf("FreshUnits misses it: %v", fresh)
 	}
 	// withdrawing returns to what the file said: nothing
 	if err := s.ClearUnitDeclaration(d.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.Get(d.ID); got.UnitDeclaration != nil {
+	if got, _ := s.Get(workspace.Local, d.ID); got.UnitDeclaration != nil {
 		t.Fatal("still declared after withdrawing")
 	}
 }
@@ -70,7 +72,7 @@ func TestAFileThatStatesItsUnitCannotBeGivenAnother(t *testing.T) {
 	if err := s.SetUnitDeclaration(d, "Jy/beam", "user"); !errors.Is(err, ErrUnitInFile) {
 		t.Fatalf("a declaration over the file's own BUNIT must be refused: %v", err)
 	}
-	if got, _ := s.Get(d.ID); got.UnitDeclaration != nil {
+	if got, _ := s.Get(workspace.Local, d.ID); got.UnitDeclaration != nil {
 		t.Fatal("it was stored anyway")
 	}
 }
@@ -113,7 +115,7 @@ func TestAUnitIsKeptAsTypedAndOnlyPrintableText(t *testing.T) {
 	if err := s.SetUnitDeclaration(d, "mJy/beam", "user"); err != nil { // declaring again replaces it
 		t.Fatal(err)
 	}
-	if got, _ := s.Get(d.ID); got.UnitDeclaration.Unit != "mJy/beam" {
+	if got, _ := s.Get(workspace.Local, d.ID); got.UnitDeclaration.Unit != "mJy/beam" {
 		t.Fatalf("%+v", got.UnitDeclaration)
 	}
 }
@@ -126,18 +128,18 @@ func TestADeclarationMadeAboutDifferentBytesIsStale(t *testing.T) {
 		t.Fatal(err)
 	}
 	register(t, s, "a.fits", noBunit, 250) // the file was rewritten and registered again
-	got, _ := s.Get(d.ID)
+	got, _ := s.Get(workspace.Local, d.ID)
 	if got.UnitDeclaration == nil || !got.UnitDeclaration.Stale {
 		t.Fatalf("%+v", got.UnitDeclaration)
 	}
 	// a stale declaration describes other bytes: it settles nothing, and declaring again makes it current
-	if fresh, _ := s.FreshUnits(); len(fresh) != 0 {
+	if fresh, _ := s.FreshUnits(workspace.Local); len(fresh) != 0 {
 		t.Fatalf("a stale declaration counted as current: %v", fresh)
 	}
 	if err := s.SetUnitDeclaration(got, "Jy/beam", "user"); err != nil {
 		t.Fatal(err)
 	}
-	if fresh, _ := s.FreshUnits(); fresh[d.ID] != "Jy/beam" {
+	if fresh, _ := s.FreshUnits(workspace.Local); fresh[d.ID] != "Jy/beam" {
 		t.Fatalf("%v", fresh)
 	}
 }
@@ -176,7 +178,7 @@ func TestOrientationAndReliabilityMapsCannotBeGivenABrightnessUnit(t *testing.T)
 	if err := s.SetUnitDeclaration(plain, "Jy/beam", "user"); err != nil {
 		t.Fatal(err)
 	}
-	if no, _ := s.NoBrightnessIDs(); !no[psi.ID] || !no[rel.ID] || no[plain.ID] {
+	if no, _ := s.NoBrightnessIDs(workspace.Local); !no[psi.ID] || !no[rel.ID] || no[plain.ID] {
 		t.Fatalf("%v", no)
 	}
 	// a proposal by a run import counts the same: nobody has confirmed it, and it is still not a brightness
@@ -197,7 +199,7 @@ func TestDeclaringForSeveralIsAllOrNoneAndSkipsWhatCannotHaveOne(t *testing.T) {
 	if err != nil || len(applied) != 2 || applied[0].ID != a.ID || applied[1].ID != b.ID {
 		t.Fatalf("a file that states its unit is skipped, not an error: %v %v", applied, err)
 	}
-	if got, _ := s.Get(k.ID); got.UnitDeclaration != nil {
+	if got, _ := s.Get(workspace.Local, k.ID); got.UnitDeclaration != nil {
 		t.Fatal("the file with its own unit was declared")
 	}
 	// an invalid unit applies to none of them
@@ -205,7 +207,7 @@ func TestDeclaringForSeveralIsAllOrNoneAndSkipsWhatCannotHaveOne(t *testing.T) {
 	if _, err := s.SetUnitDeclarations([]Dataset{c}, "K\nkm", "user"); !errors.Is(err, ErrInvalidUnit) {
 		t.Fatalf("%v", err)
 	}
-	if got, _ := s.Get(c.ID); got.UnitDeclaration != nil {
+	if got, _ := s.Get(workspace.Local, c.ID); got.UnitDeclaration != nil {
 		t.Fatal("an invalid unit was stored")
 	}
 }
@@ -219,11 +221,11 @@ func TestAFileThatGainsABunitLosesItsDeclaration(t *testing.T) {
 		t.Fatal(err)
 	}
 	register(t, s, "a.fits", withBunit, 120)
-	if got, _ := s.Get(d.ID); got.UnitDeclaration != nil {
+	if got, _ := s.Get(workspace.Local, d.ID); got.UnitDeclaration != nil {
 		t.Fatalf("a declaration outlived the file stating its own unit: %+v", got.UnitDeclaration)
 	}
 	register(t, s, "a.fits", noBunit, 130) // the BUNIT disappears again
-	if got, _ := s.Get(d.ID); got.UnitDeclaration != nil {
+	if got, _ := s.Get(workspace.Local, d.ID); got.UnitDeclaration != nil {
 		t.Fatal("the old declaration came back")
 	}
 }

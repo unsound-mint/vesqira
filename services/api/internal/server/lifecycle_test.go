@@ -16,6 +16,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type lcEnv struct {
@@ -159,7 +160,7 @@ func (e *lcEnv) del(kind string, id int64, body map[string]any) (int, []byte) {
 }
 
 func (e *lcEnv) auditActions(kind string) []string {
-	es, _ := e.audit.List(kind, 0, 50)
+	es, _ := e.audit.List(workspace.Local, kind, 0, 50)
 	var out []string
 	for _, x := range es {
 		out = append(out, x.Action+": "+x.Detail)

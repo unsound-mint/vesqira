@@ -15,6 +15,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func TestSavedRegionsCreateEditDeleteAndExportAsDS9(t *testing.T) {
@@ -25,7 +26,7 @@ func TestSavedRegionsCreateEditDeleteAndExportAsDS9(t *testing.T) {
 	}
 	defer cat.Close()
 	rg, _ := regions.Open(cat.DB())
-	d, err := cat.Upsert(catalog.Dataset{Path: "/data/hi cube.fits", Name: "hi cube.fits", SizeBytes: 1, ModifiedAt: time.Now(), Header: json.RawMessage(`{"ok":true}`)})
+	d, err := cat.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: "/data/hi cube.fits", Name: "hi cube.fits", SizeBytes: 1, ModifiedAt: time.Now(), Header: json.RawMessage(`{"ok":true}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Rerun modes (ADR 0054). A draft made with "run again with..." says how it relates to the run it repeats:
@@ -40,8 +41,8 @@ type baseline struct {
 	Run      runs.Run
 }
 
-func (s *Server) parentBaseline(id int64) (baseline, error) {
-	r, err := s.Runs.Get(id)
+func (s *Server) parentBaseline(ws workspace.ID, id int64) (baseline, error) {
+	r, err := s.Runs.Get(ws, id)
 	if err != nil {
 		return baseline{}, err
 	}
@@ -91,10 +92,10 @@ func effectiveSettings(template string, req jobs.VGTRequest) map[string]string {
 // settingsChanges compares a draft's settings with those of the job that made the parent run. known is false when the parent
 // has no kept request (an imported run, or a job from before settings were kept): nothing is then said to have changed.
 func (s *Server) settingsChanges(parentID int64, template string, req jobs.VGTRequest) (ch []settingChange, known bool) {
-	if s.Jobs == nil {
+	if s.localJobs() == nil {
 		return nil, false
 	}
-	pj, err := s.Jobs.ForRun(parentID)
+	pj, err := s.localJobs().ForRun(parentID)
 	if err != nil || pj.Template != template {
 		return nil, false
 	}
@@ -173,7 +174,7 @@ func (s *Server) rerunCheck(ctx context.Context, j jobs.Job, h hosts.Host) (reru
 	if mode == rerunAdapted {
 		return out, nil
 	}
-	base, err := s.parentBaseline(*j.ParentRunID)
+	base, err := s.parentBaseline(wsCtx(ctx), *j.ParentRunID)
 	if err != nil {
 		return out, &apiErr{404, "the run this job repeats does not exist"}
 	}
@@ -366,7 +367,7 @@ func (s *Server) gateRerun(ctx context.Context, j jobs.Job, h hosts.Host) (note 
 
 // rerunFor validates the mode of a new draft and, for a strict one, the revision it insists on. It returns the mode to store
 // ("" when the draft repeats nothing).
-func (s *Server) rerunFor(template string, parentID *int64, mode string) (string, string, *apiErr) {
+func (s *Server) rerunFor(ws workspace.ID, template string, parentID *int64, mode string) (string, string, *apiErr) {
 	if parentID == nil {
 		if mode != "" {
 			return "", "", &apiErr{422, "a rerun mode needs the run it repeats"}
@@ -388,7 +389,7 @@ func (s *Server) rerunFor(template string, parentID *int64, mode string) (string
 	if mode != rerunStrict {
 		return mode, "", nil
 	}
-	base, err := s.parentBaseline(*parentID)
+	base, err := s.parentBaseline(ws, *parentID)
 	if err != nil {
 		if errors.Is(err, runs.ErrNotFound) {
 			return "", "", &apiErr{422, "the run this job repeats does not exist"}

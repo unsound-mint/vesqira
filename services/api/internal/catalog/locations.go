@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/identity"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Where a location came from.
@@ -97,8 +98,8 @@ func scanLocation(row interface{ Scan(...any) error }) (int64, Location, error) 
 }
 
 // Locations lists a dataset's locations, the registered file first.
-func (s *Store) Locations(datasetID int64) ([]Location, error) {
-	rows, err := s.db.Query(`SELECT `+locCols+` FROM dataset_locations WHERE dataset_id=? ORDER BY is_primary DESC, id`, datasetID)
+func (s *Store) Locations(ws workspace.ID, datasetID int64) ([]Location, error) {
+	rows, err := s.db.Query(`SELECT `+locCols+` FROM dataset_locations WHERE workspace_id=? AND dataset_id=? ORDER BY is_primary DESC, id`, ws, datasetID)
 	if err != nil {
 		return nil, err
 	}
@@ -115,8 +116,8 @@ func (s *Store) Locations(datasetID int64) ([]Location, error) {
 }
 
 // allLocations is every dataset's locations in one query, for List.
-func (s *Store) allLocations() (map[int64][]Location, error) {
-	rows, err := s.db.Query(`SELECT ` + locCols + ` FROM dataset_locations ORDER BY is_primary DESC, id`)
+func (s *Store) allLocations(ws workspace.ID) (map[int64][]Location, error) {
+	rows, err := s.db.Query(`SELECT `+locCols+` FROM dataset_locations WHERE workspace_id=? ORDER BY is_primary DESC, id`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +134,8 @@ func (s *Store) allLocations() (map[int64][]Location, error) {
 }
 
 // Location returns one location of a dataset.
-func (s *Store) Location(datasetID, locID int64) (Location, error) {
-	_, l, err := scanLocation(s.db.QueryRow(`SELECT `+locCols+` FROM dataset_locations WHERE id=? AND dataset_id=?`, locID, datasetID))
+func (s *Store) Location(ws workspace.ID, datasetID, locID int64) (Location, error) {
+	_, l, err := scanLocation(s.db.QueryRow(`SELECT `+locCols+` FROM dataset_locations WHERE id=? AND dataset_id=? AND workspace_id=?`, locID, datasetID, ws))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Location{}, ErrNoLocation
 	}
@@ -143,10 +144,10 @@ func (s *Store) Location(datasetID, locID int64) (Location, error) {
 
 // upsertPrimary keeps the primary location in step with the dataset row. When the file's size or modification time changed,
 // the fingerprints stored for the old bytes are dropped: a hash must never stay attached to bytes it was not computed from.
-func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
+func (s *Store) upsertPrimary(ws workspace.ID, datasetID int64, d Dataset) error {
 	var oldSize, oldMod, oldDev, oldIno int64 // oldDev is read for completeness; only the inode tells files apart
 	changed := false
-	switch err := s.db.QueryRow(`SELECT size_bytes,modified_at,file_dev,file_ino FROM dataset_locations WHERE host_id=? AND path=?`, d.HostID, d.Path).Scan(&oldSize, &oldMod, &oldDev, &oldIno); {
+	switch err := s.db.QueryRow(`SELECT size_bytes,modified_at,file_dev,file_ino FROM dataset_locations WHERE workspace_id=? AND host_id=? AND path=?`, ws, d.HostID, d.Path).Scan(&oldSize, &oldMod, &oldDev, &oldIno); {
 	case err == nil:
 		// another file under the same name counts as a change even when its size and time happen to be equal
 		changed = oldSize != d.SizeBytes || oldMod != d.ModifiedAt.UnixNano() || (oldIno != 0 && d.FileIno != 0 && oldIno != d.FileIno) // a new device alone is a remount
@@ -156,12 +157,12 @@ func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
 	if changed {
 		// what the other locations were compared with is gone: they were verified or probable against the earlier file, and
 		// are not read from until they are compared with the file as it is now (the server does that once it has its hashes)
-		if _, err := s.db.Exec(`UPDATE dataset_locations SET link=? WHERE dataset_id=? AND is_primary=0 AND link IN (?,?)`, LinkStale, datasetID, LinkVerified, LinkProbable); err != nil {
+		if _, err := s.db.Exec(`UPDATE dataset_locations SET link=? WHERE workspace_id=? AND dataset_id=? AND is_primary=0 AND link IN (?,?)`, LinkStale, ws, datasetID, LinkVerified, LinkProbable); err != nil {
 			return err
 		}
 	}
-	_, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,file_dev,file_ino) VALUES(?,?,?,?,1,?,?,?,?,?,?)
-		ON CONFLICT(host_id,path) DO UPDATE SET
+	_, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,file_dev,file_ino,workspace_id) VALUES(?,?,?,?,1,?,?,?,?,?,?,?)
+		ON CONFLICT(workspace_id,host_id,path) DO UPDATE SET
 			sampled_fp=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN sampled_fp ELSE '' END,
 			sampled_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN sampled_at ELSE 0 END,
 			sampled_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN sampled_by ELSE '' END,
@@ -170,7 +171,7 @@ func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
 			full_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN full_by ELSE '' END,
 			size_bytes=excluded.size_bytes, modified_at=excluded.modified_at,
 			file_dev=CASE WHEN excluded.file_ino=0 THEN file_dev ELSE excluded.file_dev END, file_ino=CASE WHEN excluded.file_ino=0 THEN file_ino ELSE excluded.file_ino END`,
-		datasetID, d.HostID, d.Path, LocRegistered, LinkRegistered, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix(), d.FileDev, d.FileIno)
+		datasetID, d.HostID, d.Path, LocRegistered, LinkRegistered, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix(), d.FileDev, d.FileIno, ws)
 	return err
 }
 
@@ -178,37 +179,37 @@ func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
 // modification time and inode: it fills them in for a location made before schema 27, and records the new device number of a drive
 // mounted again (same inode). It never replaces a recorded inode: a different file is reported to the person, who registers it
 // again on purpose.
-func (s *Store) NoteFileID(hostID int64, path string, dev, ino int64) error {
+func (s *Store) NoteFileID(ws workspace.ID, hostID int64, path string, dev, ino int64) error {
 	if ino == 0 || hostID != 0 {
 		return nil
 	}
-	_, err := s.db.Exec(`UPDATE dataset_locations SET file_dev=?, file_ino=? WHERE host_id=0 AND path=? AND (file_ino=0 OR (file_ino=? AND file_dev<>?))`, dev, ino, path, ino, dev)
+	_, err := s.db.Exec(`UPDATE dataset_locations SET file_dev=?, file_ino=? WHERE workspace_id=? AND host_id=0 AND path=? AND (file_ino=0 OR (file_ino=? AND file_dev<>?))`, dev, ino, ws, path, ino, dev)
 	return err
 }
 
 // SetLink changes why a non-primary location belongs to its dataset (the server re-compares a stale one once the registered
 // file has its fingerprints again).
-func (s *Store) SetLink(locID int64, link string) error {
+func (s *Store) SetLink(ws workspace.ID, locID int64, link string) error {
 	switch link {
 	case LinkVerified, LinkProbable, LinkDeclared, LinkStale:
 	default:
 		return fmt.Errorf("catalog: bad link %q", link)
 	}
-	_, err := s.db.Exec(`UPDATE dataset_locations SET link=? WHERE id=? AND is_primary=0`, link, locID)
+	_, err := s.db.Exec(`UPDATE dataset_locations SET link=? WHERE id=? AND is_primary=0 AND workspace_id=?`, link, locID, ws)
 	return err
 }
 
 // SetFingerprint records a computed value on a location. size and modNS are the file's size and modification time as seen
 // when the value was computed; a location that no longer has them (it was registered again meanwhile) refuses the value.
 // kind is "sampled" or "full"; by says what computed it.
-func (s *Store) SetFingerprint(locID int64, kind, value, by string, size, modNS int64) error {
+func (s *Store) SetFingerprint(ws workspace.ID, locID int64, kind, value, by string, size, modNS int64) error {
 	col := map[string]string{"sampled": "sampled", "full": "full"}[kind]
 	if col == "" || value == "" {
 		return fmt.Errorf("catalog: bad fingerprint kind %q", kind)
 	}
 	valueCol := map[string]string{"sampled": "sampled_fp", "full": "full_sha256"}[kind]
-	res, err := s.db.Exec(fmt.Sprintf(`UPDATE dataset_locations SET %s=?, %s_at=?, %s_by=? WHERE id=? AND size_bytes=? AND modified_at=?`, valueCol, col, col),
-		value, time.Now().Unix(), by, locID, size, modNS)
+	res, err := s.db.Exec(fmt.Sprintf(`UPDATE dataset_locations SET %s=?, %s_at=?, %s_by=? WHERE id=? AND size_bytes=? AND modified_at=? AND workspace_id=?`, valueCol, col, col),
+		value, time.Now().Unix(), by, locID, size, modNS, ws)
 	if err != nil {
 		return err
 	}
@@ -221,7 +222,7 @@ func (s *Store) SetFingerprint(locID int64, kind, value, by string, size, modNS 
 // AddLocation links another file to a dataset. link is what established the identity (LinkVerified, LinkProbable or
 // LinkDeclared); the caller has checked that. A (host, path) that already is a location of any dataset is refused with
 // ErrLocationExists.
-func (s *Store) AddLocation(datasetID int64, l Location) (Location, error) {
+func (s *Store) AddLocation(ws workspace.ID, datasetID int64, l Location) (Location, error) {
 	if l.Kind == "" {
 		l.Kind = LocCopy
 	}
@@ -230,8 +231,8 @@ func (s *Store) AddLocation(datasetID int64, l Location) (Location, error) {
 	default:
 		return Location{}, fmt.Errorf("catalog: a location needs a link, got %q", l.Link)
 	}
-	res, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,file_dev,file_ino) VALUES(?,?,?,?,0,?,?,?,?,?,?)`,
-		datasetID, l.HostID, l.Path, l.Kind, l.Link, l.SizeBytes, l.ModifiedAt.UnixNano(), time.Now().Unix(), l.FileDev, l.FileIno)
+	res, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,file_dev,file_ino,workspace_id) VALUES(?,?,?,?,0,?,?,?,?,?,?,?)`,
+		datasetID, l.HostID, l.Path, l.Kind, l.Link, l.SizeBytes, l.ModifiedAt.UnixNano(), time.Now().Unix(), l.FileDev, l.FileIno, ws)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return Location{}, ErrLocationExists
@@ -241,31 +242,31 @@ func (s *Store) AddLocation(datasetID int64, l Location) (Location, error) {
 	id, _ := res.LastInsertId()
 	for kind, st := range map[string]*Stamp{"sampled": l.Sampled, "full": l.Full} {
 		if st != nil {
-			if err := s.SetFingerprint(id, kind, st.Value, st.By, l.SizeBytes, l.ModifiedAt.UnixNano()); err != nil {
+			if err := s.SetFingerprint(ws, id, kind, st.Value, st.By, l.SizeBytes, l.ModifiedAt.UnixNano()); err != nil {
 				return Location{}, err
 			}
 		}
 	}
-	return s.Location(datasetID, id)
+	return s.Location(ws, datasetID, id)
 }
 
 // RemoveLocation forgets a location (the file is never touched). The registered file of a dataset stays.
-func (s *Store) RemoveLocation(datasetID, locID int64) error {
-	l, err := s.Location(datasetID, locID)
+func (s *Store) RemoveLocation(ws workspace.ID, datasetID, locID int64) error {
+	l, err := s.Location(ws, datasetID, locID)
 	if err != nil {
 		return err
 	}
 	if l.Primary {
 		return ErrPrimary
 	}
-	_, err = s.db.Exec(`DELETE FROM dataset_locations WHERE id=?`, locID)
+	_, err = s.db.Exec(`DELETE FROM dataset_locations WHERE id=? AND workspace_id=?`, locID, ws)
 	return err
 }
 
 // LocationOwner says which dataset a (host, path) belongs to as any of its locations, if any.
-func (s *Store) LocationOwner(hostID int64, path string) (int64, bool, error) {
+func (s *Store) LocationOwner(ws workspace.ID, hostID int64, path string) (int64, bool, error) {
 	var id int64
-	err := s.db.QueryRow(`SELECT dataset_id FROM dataset_locations WHERE host_id=? AND path=?`, hostID, path).Scan(&id)
+	err := s.db.QueryRow(`SELECT dataset_id FROM dataset_locations WHERE workspace_id=? AND host_id=? AND path=?`, ws, hostID, path).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
@@ -283,9 +284,9 @@ type Match struct {
 // FindSame returns the datasets (other than skip) with a location the evidence is verified or probably equal to, verified
 // first. Only locations of the same size are looked at, and only the registered file and verified locations: what a dataset
 // is, as far as its bytes go, is its registered file; a probable, declared or stale location proves nothing about it.
-func (s *Store) FindSame(ev identity.Evidence, skip int64) ([]Match, error) {
+func (s *Store) FindSame(ws workspace.ID, ev identity.Evidence, skip int64) ([]Match, error) {
 	rows, err := s.db.Query(`SELECT l.`+strings.ReplaceAll(locCols, ",", ",l.")+`, d.name FROM dataset_locations l JOIN datasets d ON d.id=l.dataset_id
-		WHERE l.size_bytes=? AND l.dataset_id<>? AND (l.full_sha256<>'' OR l.sampled_fp<>'') AND (l.is_primary=1 OR l.link='verified') ORDER BY l.dataset_id, l.id`, ev.Size, skip)
+		WHERE l.workspace_id=? AND d.workspace_id=l.workspace_id AND l.size_bytes=? AND l.dataset_id<>? AND (l.full_sha256<>'' OR l.sampled_fp<>'') AND (l.is_primary=1 OR l.link='verified') ORDER BY l.dataset_id, l.id`, ws, ev.Size, skip)
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ import (
 
 func (s *Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	ns, unread, err := s.Notes.List(limit)
+	ns, unread, err := s.Notes.List(wsOf(r), actorID(r.Context()), limit)
 	if err != nil {
 		log.Printf("notifications: %v", err)
 		fail(w, 500, "internal error")
@@ -35,12 +35,12 @@ func (s *Server) readNotifications(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "at most 500 notifications at a time")
 		return
 	}
-	if err := s.Notes.MarkRead(in.IDs, in.All); err != nil {
+	if err := s.Notes.MarkRead(wsOf(r), actorID(r.Context()), in.IDs, in.All); err != nil {
 		log.Printf("notifications: %v", err)
 		fail(w, 500, "internal error")
 		return
 	}
-	ns, unread, err := s.Notes.List(0)
+	ns, unread, err := s.Notes.List(wsOf(r), actorID(r.Context()), 0)
 	if err != nil {
 		log.Printf("notifications: %v", err)
 		fail(w, 500, "internal error")

@@ -6,12 +6,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func catalogDataset(t *testing.T, s *Store, cols ...CatalogColumn) Dataset {
 	t.Helper()
 	hdr, _ := json.Marshal(CatalogHeader{Kind: KindCatalog, Format: "tsv", Rows: 3, Columns: cols})
-	d, err := s.Upsert(Dataset{Path: "/data/stars.dat", Name: "stars.dat", SizeBytes: 100, ModifiedAt: time.Unix(1000, 0), Header: hdr})
+	d, err := s.Upsert(workspace.Local, "local-owner", Dataset{Path: "/data/stars.dat", Name: "stars.dat", SizeBytes: 100, ModifiedAt: time.Unix(1000, 0), Header: hdr})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +48,7 @@ func TestACatalogHeaderMakesAKindAndAFitsHeaderDoesNot(t *testing.T) {
 	if d.Kind != KindCatalog {
 		t.Fatalf("kind %q", d.Kind)
 	}
-	f, err := s.Upsert(Dataset{Path: "/data/a.fits", Name: "a.fits", SizeBytes: 1, ModifiedAt: time.Unix(1, 0), Header: json.RawMessage(`{"naxis":2}`)})
+	f, err := s.Upsert(workspace.Local, "local-owner", Dataset{Path: "/data/a.fits", Name: "a.fits", SizeBytes: 1, ModifiedAt: time.Unix(1, 0), Header: json.RawMessage(`{"naxis":2}`)})
 	if err != nil || f.Kind != KindFITS || f.CatalogDeclaration != nil {
 		t.Fatalf("%+v %v", f, err)
 	}
@@ -91,7 +93,7 @@ func TestValidationNamesEveryProblemAndNothingIsAssumed(t *testing.T) {
 	if bad, _ := ValidateCatalogDeclaration(d, c); len(bad) != 0 {
 		t.Errorf("undeclared quantity refused: %v", bad)
 	}
-	fits, _ := s.Upsert(Dataset{Path: "/data/a.fits", Name: "a.fits", SizeBytes: 1, ModifiedAt: time.Unix(1, 0), Header: json.RawMessage(`{"naxis":2}`)})
+	fits, _ := s.Upsert(workspace.Local, "local-owner", Dataset{Path: "/data/a.fits", Name: "a.fits", SizeBytes: 1, ModifiedAt: time.Unix(1, 0), Header: json.RawMessage(`{"naxis":2}`)})
 	if _, err := ValidateCatalogDeclaration(fits, goodDecl()); err != ErrNotACatalog {
 		t.Errorf("a FITS dataset took a catalog declaration: %v", err)
 	}
@@ -103,21 +105,21 @@ func TestADeclarationIsStaleWhenTheFileChangesAndFollowsTheDatasetOutOfExistence
 	if err := s.SetCatalogDeclaration(d, goodDecl(), "user"); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.Get(d.ID)
+	got, _ := s.Get(workspace.Local, d.ID)
 	c := got.CatalogDeclaration
 	if c == nil || c.Stale || c.DeclaredBy != "user" || c.Lon != "RA(J2000)" || c.Angle == nil || *c.Angle.Quantity != "starlight_polarization" || c.DeclaredAt.IsZero() {
 		t.Fatalf("%+v", c)
 	}
 	// the same path registered again after the file changed
 	hdr, _ := json.Marshal(CatalogHeader{Kind: KindCatalog, Format: "tsv", Rows: 4, Columns: starCols})
-	if _, err := s.Upsert(Dataset{Path: "/data/stars.dat", Name: "stars.dat", SizeBytes: 140, ModifiedAt: time.Unix(2000, 0), Header: hdr}); err != nil {
+	if _, err := s.Upsert(workspace.Local, "local-owner", Dataset{Path: "/data/stars.dat", Name: "stars.dat", SizeBytes: 140, ModifiedAt: time.Unix(2000, 0), Header: hdr}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.Get(d.ID)
+	got, _ = s.Get(workspace.Local, d.ID)
 	if got.CatalogDeclaration == nil || !got.CatalogDeclaration.Stale {
 		t.Fatalf("a declaration about other bytes must be stale: %+v", got.CatalogDeclaration)
 	}
-	all, _ := s.List()
+	all, _ := s.List(workspace.Local)
 	if all[0].CatalogDeclaration == nil || !all[0].CatalogDeclaration.Stale {
 		t.Fatalf("the list must say so too: %+v", all[0].CatalogDeclaration)
 	}
@@ -125,13 +127,13 @@ func TestADeclarationIsStaleWhenTheFileChangesAndFollowsTheDatasetOutOfExistence
 	if err := s.SetCatalogDeclaration(got, goodDecl(), "user"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = s.Get(d.ID); got.CatalogDeclaration.Stale {
+	if got, _ = s.Get(workspace.Local, d.ID); got.CatalogDeclaration.Stale {
 		t.Fatal("confirmed declaration is still stale")
 	}
 	if err := s.ClearCatalogDeclaration(d.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = s.Get(d.ID); got.CatalogDeclaration != nil {
+	if got, _ = s.Get(workspace.Local, d.ID); got.CatalogDeclaration != nil {
 		t.Fatal("withdrawn declaration is still there")
 	}
 	if err := s.SetCatalogDeclaration(got, goodDecl(), "user"); err != nil {
@@ -154,7 +156,7 @@ func TestACatalogIsNeverGivenABrightnessUnit(t *testing.T) {
 	if err != nil || len(applied) != 0 {
 		t.Fatalf("applied %v, %v", applied, err)
 	}
-	ids, err := s.NoBrightnessIDs()
+	ids, err := s.NoBrightnessIDs(workspace.Local)
 	if err != nil || !ids[d.ID] {
 		t.Fatalf("%v %v", ids, err)
 	}

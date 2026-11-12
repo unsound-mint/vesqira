@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A mask-role import rule in a project on a host (ADR 0058, ADR 0064): the mask file is registered on the host, the mask is made by the
@@ -103,12 +104,12 @@ w('grid_mask.fits', np.zeros((5, 5), dtype='<i2'))         # not the grid of gri
 	if r.Outcome == "skipped" || r.DatasetID == nil || len(r.Declared) == 0 || !strings.Contains(strings.Join(r.Declared, ";"), "mask of data/psi.fits, type saturated, 3 pixels flagged") {
 		t.Fatalf("the mask rule did not make the mask on the host: %+v", r)
 	}
-	facts, _ := cat.FactsByPath(h.ID)
-	psi, err := cat.Get(facts[filepath.Join(proj, "data", "psi.fits")].ID)
+	facts, _ := cat.FactsByPath(workspace.Local, h.ID)
+	psi, err := cat.Get(workspace.Local, facts[filepath.Join(proj, "data", "psi.fits")].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	list, _ := ms.ForDataset(psi.ID)
+	list, _ := ms.ForDataset(workspace.Local, psi.ID)
 	if len(list) != 1 {
 		t.Fatalf("%d masks", len(list))
 	}
@@ -141,8 +142,8 @@ w('grid_mask.fits', np.zeros((5, 5), dtype='<i2'))         # not the grid of gri
 	if r := out.by("data/grid_mask.fits"); r.Outcome == "declared" || !strings.Contains(r.Detail, "no mask was made") {
 		t.Fatalf("%+v", r)
 	}
-	grid, _ := cat.Get(facts[filepath.Join(proj, "data", "grid.fits")].ID)
-	if l, _ := ms.ForDataset(grid.ID); len(l) != 0 {
+	grid, _ := cat.Get(workspace.Local, facts[filepath.Join(proj, "data", "grid.fits")].ID)
+	if l, _ := ms.ForDataset(workspace.Local, grid.ID); len(l) != 0 {
 		t.Fatalf("a mask was made on the wrong grid: %+v", l)
 	}
 	// once more, asking for the file by name: still one mask, and said so
@@ -151,12 +152,12 @@ w('grid_mask.fits', np.zeros((5, 5), dtype='<i2'))         # not the grid of gri
 	if r := again.by("data/psi_mask.fits"); r.Outcome == "declared" || !strings.Contains(r.Detail, "already imported") {
 		t.Fatalf("%+v", r)
 	}
-	if l, _ := ms.ForDataset(psi.ID); len(l) != 1 {
+	if l, _ := ms.ForDataset(workspace.Local, psi.ID); len(l) != 1 {
 		t.Fatalf("%d masks after applying twice", len(l))
 	}
 	// the host going away is a failure to retry, with no mask recorded
 	os.WriteFile(filepath.Join(remoteHome, "DOWN"), nil, 0o644)
-	if err := ms.Delete(m.ID); err != nil {
+	if err := ms.Delete(workspace.Local, m.ID); err != nil {
 		t.Fatal(err)
 	}
 	var down applyOut
@@ -164,7 +165,7 @@ w('grid_mask.fits', np.zeros((5, 5), dtype='<i2'))         # not the grid of gri
 	if r := down.by("data/psi_mask.fits"); r.Outcome != "failed" {
 		t.Fatalf("host unreachable: %+v", r)
 	}
-	if l, _ := ms.ForDataset(psi.ID); len(l) != 0 {
+	if l, _ := ms.ForDataset(workspace.Local, psi.ID); len(l) != 0 {
 		t.Fatalf("a mask was recorded while the host was unreachable: %+v", l)
 	}
 }

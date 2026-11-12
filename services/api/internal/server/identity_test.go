@@ -25,6 +25,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // idEnv is a server with a stub header reader (any bytes register), runs, boards and a managed directory: enough to exercise
@@ -681,7 +682,7 @@ func TestRemoteFingerprintsAreComputedByTheHostsWorker(t *testing.T) {
 		t.Fatalf("remote full: %d %s", r.StatusCode, b)
 	}
 	srv.waitHashes()
-	got, _ := cat.Get(d.ID)
+	got, _ := cat.Get(workspace.Local, d.ID)
 	if f := got.Locations[0].Full; f == nil || f.Value != fileSHA(t, filepath.Join(remoteRoot, "hi_cube.fits")) || f.By != "worker on Cluster" {
 		t.Fatalf("remote full: %+v", got.Locations[0].Full)
 	}

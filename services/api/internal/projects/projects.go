@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 var ErrNotFound = errors.New("project not found")
@@ -53,9 +54,7 @@ type Store struct{ db *sql.DB }
 
 func Open(db *sql.DB) (*Store, error) {
 	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS projects(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, root TEXT NOT NULL, name TEXT NOT NULL,
-			opened_at INTEGER NOT NULL, last_scan_at INTEGER, summary TEXT NOT NULL DEFAULT '{}', UNIQUE(host_id, root))`,
+		schema.ProjectsTable,
 		`CREATE TABLE IF NOT EXISTS project_entries(
 			project_id INTEGER NOT NULL, grp TEXT NOT NULL, parent TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL,
 			path TEXT NOT NULL, format TEXT NOT NULL DEFAULT '', data TEXT NOT NULL, PRIMARY KEY(project_id, grp, parent, name))`,
@@ -92,17 +91,17 @@ func scan(row interface{ Scan(...any) error }) (Project, error) {
 }
 
 // Touch records that the folder was opened now, creating the project the first time.
-func (s *Store) Touch(hostID int64, root, name string) (Project, error) {
-	_, err := s.db.Exec(`INSERT INTO projects(host_id,root,name,opened_at) VALUES(?,?,?,?)
-		ON CONFLICT(host_id,root) DO UPDATE SET opened_at=excluded.opened_at`, hostID, root, name, time.Now().Unix())
+func (s *Store) Touch(ws workspace.ID, by string, hostID int64, root, name string) (Project, error) {
+	_, err := s.db.Exec(`INSERT INTO projects(host_id,root,name,opened_at,workspace_id,created_by) VALUES(?,?,?,?,?,?)
+		ON CONFLICT(workspace_id,host_id,root) DO UPDATE SET opened_at=excluded.opened_at`, hostID, root, name, time.Now().Unix(), ws, by)
 	if err != nil {
 		return Project{}, err
 	}
-	return scan(s.db.QueryRow(`SELECT `+cols+` FROM projects WHERE host_id=? AND root=?`, hostID, root))
+	return scan(s.db.QueryRow(`SELECT `+cols+` FROM projects WHERE workspace_id=? AND host_id=? AND root=?`, ws, hostID, root))
 }
 
-func (s *Store) Get(id int64) (Project, error) {
-	p, err := scan(s.db.QueryRow(`SELECT `+cols+` FROM projects WHERE id=?`, id))
+func (s *Store) Get(ws workspace.ID, id int64) (Project, error) {
+	p, err := scan(s.db.QueryRow(`SELECT `+cols+` FROM projects WHERE id=? AND workspace_id=?`, id, ws))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -110,8 +109,8 @@ func (s *Store) Get(id int64) (Project, error) {
 }
 
 // List returns the projects, the most recently opened first.
-func (s *Store) List(limit int) ([]Project, error) {
-	rows, err := s.db.Query(`SELECT `+cols+` FROM projects ORDER BY opened_at DESC, id DESC LIMIT ?`, limit)
+func (s *Store) List(ws workspace.ID, limit int) ([]Project, error) {
+	rows, err := s.db.Query(`SELECT `+cols+` FROM projects WHERE workspace_id=? ORDER BY opened_at DESC, id DESC LIMIT ?`, ws, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -128,8 +127,8 @@ func (s *Store) List(limit int) ([]Project, error) {
 }
 
 // Roots are the canonical folders of the projects on this computer: each is a readable root while it is open.
-func (s *Store) Roots(hostID int64) ([]string, error) {
-	rows, err := s.db.Query(`SELECT root FROM projects WHERE host_id=? ORDER BY id`, hostID)
+func (s *Store) Roots(ws workspace.ID, hostID int64) ([]string, error) {
+	rows, err := s.db.Query(`SELECT root FROM projects WHERE workspace_id=? AND host_id=? ORDER BY id`, ws, hostID)
 	if err != nil {
 		return nil, err
 	}
@@ -146,12 +145,19 @@ func (s *Store) Roots(hostID int64) ([]string, error) {
 }
 
 // SaveScan replaces the project's entries and summary with a new scan's, in one transaction.
-func (s *Store) SaveScan(id int64, at time.Time, summary json.RawMessage, rows []Row) error {
+func (s *Store) SaveScan(ws workspace.ID, id int64, at time.Time, summary json.RawMessage, rows []Row) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE projects SET last_scan_at=?, summary=? WHERE id=? AND workspace_id=?`, at.Unix(), string(summary), id, ws)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound // another workspace's project looks like a missing one
+	}
 	if _, err := tx.Exec(`DELETE FROM project_entries WHERE project_id=?`, id); err != nil {
 		return err
 	}
@@ -165,15 +171,12 @@ func (s *Store) SaveScan(id int64, at time.Time, summary json.RawMessage, rows [
 			return err
 		}
 	}
-	if _, err := tx.Exec(`UPDATE projects SET last_scan_at=?, summary=? WHERE id=?`, at.Unix(), string(summary), id); err != nil {
-		return err
-	}
 	return tx.Commit()
 }
 
 // SetSummary replaces the summary alone (a scan that is still registering files, or one that was cancelled).
-func (s *Store) SetSummary(id int64, summary json.RawMessage) error {
-	_, err := s.db.Exec(`UPDATE projects SET summary=? WHERE id=?`, string(summary), id)
+func (s *Store) SetSummary(ws workspace.ID, id int64, summary json.RawMessage) error {
+	_, err := s.db.Exec(`UPDATE projects SET summary=? WHERE id=? AND workspace_id=?`, string(summary), id, ws)
 	return err
 }
 

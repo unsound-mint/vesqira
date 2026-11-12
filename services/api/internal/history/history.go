@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Keep is how many steps a project keeps; the oldest are dropped when a new one arrives.
@@ -50,6 +51,9 @@ func Open(db *sql.DB) (*Store, error) {
 			return nil, err
 		}
 	}
+	if err := schema.Scope(db, "exploration_steps"); err != nil {
+		return nil, err
+	}
 	return &Store{db}, nil
 }
 
@@ -69,7 +73,7 @@ func clean(s string, max int) string {
 
 // Add records a step. parent must be a step of the same project (or nil); an unknown or foreign parent is refused, so a
 // branch can never point into another project's history. The oldest steps beyond Keep are removed in the same transaction.
-func (s *Store) Add(projectID int64, parent *int64, datasetID int64, kind, label string, scene []byte) (Step, error) {
+func (s *Store) Add(ws workspace.ID, by string, projectID int64, parent *int64, datasetID int64, kind, label string, scene []byte) (Step, error) {
 	label = clean(label, 120)
 	switch {
 	case !Kinds[kind]:
@@ -86,7 +90,7 @@ func (s *Store) Add(projectID int64, parent *int64, datasetID int64, kind, label
 	defer tx.Rollback()
 	if parent != nil {
 		var n int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM exploration_steps WHERE id=? AND project_id=?`, *parent, projectID).Scan(&n); err != nil {
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM exploration_steps WHERE id=? AND project_id=? AND workspace_id=?`, *parent, projectID, ws).Scan(&n); err != nil {
 			return Step{}, err
 		}
 		if n == 0 {
@@ -94,14 +98,14 @@ func (s *Store) Add(projectID int64, parent *int64, datasetID int64, kind, label
 		}
 	}
 	now := time.Now()
-	res, err := tx.Exec(`INSERT INTO exploration_steps(project_id,parent_id,dataset_id,kind,label,scene,at) VALUES(?,?,?,?,?,?,?)`,
-		projectID, parent, datasetID, kind, label, string(scene), now.Unix())
+	res, err := tx.Exec(`INSERT INTO exploration_steps(project_id,parent_id,dataset_id,kind,label,scene,at,workspace_id,created_by) VALUES(?,?,?,?,?,?,?,?,?)`,
+		projectID, parent, datasetID, kind, label, string(scene), now.Unix(), ws, by)
 	if err != nil {
 		return Step{}, err
 	}
 	id, _ := res.LastInsertId()
-	if _, err := tx.Exec(`DELETE FROM exploration_steps WHERE project_id=? AND id NOT IN (SELECT id FROM exploration_steps WHERE project_id=? ORDER BY id DESC LIMIT ?)`,
-		projectID, projectID, Keep); err != nil {
+	if _, err := tx.Exec(`DELETE FROM exploration_steps WHERE workspace_id=? AND project_id=? AND id NOT IN (SELECT id FROM exploration_steps WHERE workspace_id=? AND project_id=? ORDER BY id DESC LIMIT ?)`,
+		ws, projectID, ws, projectID, Keep); err != nil {
 		return Step{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -111,8 +115,8 @@ func (s *Store) Add(projectID int64, parent *int64, datasetID int64, kind, label
 }
 
 // List returns a project's steps, oldest first, without their scenes.
-func (s *Store) List(projectID int64) ([]Step, error) {
-	rows, err := s.db.Query(`SELECT id,project_id,parent_id,dataset_id,kind,label,at FROM exploration_steps WHERE project_id=? ORDER BY id`, projectID)
+func (s *Store) List(ws workspace.ID, projectID int64) ([]Step, error) {
+	rows, err := s.db.Query(`SELECT id,project_id,parent_id,dataset_id,kind,label,at FROM exploration_steps WHERE project_id=? AND workspace_id=? ORDER BY id`, projectID, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -136,12 +140,12 @@ func (s *Store) List(projectID int64) ([]Step, error) {
 }
 
 // Get returns one step with its scene.
-func (s *Store) Get(id int64) (Step, error) {
+func (s *Store) Get(ws workspace.ID, id int64) (Step, error) {
 	var st Step
 	var parent sql.NullInt64
 	var at int64
 	var scene string
-	err := s.db.QueryRow(`SELECT id,project_id,parent_id,dataset_id,kind,label,scene,at FROM exploration_steps WHERE id=?`, id).
+	err := s.db.QueryRow(`SELECT id,project_id,parent_id,dataset_id,kind,label,scene,at FROM exploration_steps WHERE id=? AND workspace_id=?`, id, ws).
 		Scan(&st.ID, &st.ProjectID, &parent, &st.DatasetID, &st.Kind, &st.Label, &scene, &at)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Step{}, ErrNotFound
