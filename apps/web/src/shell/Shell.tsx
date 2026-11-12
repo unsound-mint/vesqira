@@ -24,6 +24,7 @@ import { HostsPanel } from "../catalog/HostsPanel";
 import { RunPanel, RunsUsingFile, runFor } from "../catalog/RunPanel";
 import { RunPage } from "../runs/RunPage";
 import { EntryActions } from "../catalog/EntryActions";
+import { DatasetOffline } from "../catalog/OfflineAction";
 import { RerunDraft } from "../runs/RerunDraft";
 import { RunsList } from "../catalog/RunsList";
 import { FirstLook } from "../projects/FirstLook";
@@ -607,6 +608,11 @@ export function Shell() {
           {actDs ? (
             <Section title="Storage" defaultOpen={false}>
               <StorageControl dataset={actDs} onCopied={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} />
+            </Section>
+          ) : null}
+          {actDs ? (
+            <Section title="Offline" defaultOpen={false} meta={actDs.hostId !== 0 ? undefined : "this computer"}>
+              <DatasetOffline key={actDs.id} id={actDs.id} name={actDs.name} hostId={actDs.hostId} />
             </Section>
           ) : null}
           {actDs ? (

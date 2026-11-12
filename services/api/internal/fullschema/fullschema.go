@@ -6,6 +6,7 @@ package fullschema
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -15,6 +16,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
+	"github.com/unsound-mint/vesqira/services/api/internal/offline"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
@@ -44,6 +46,7 @@ func Open(db *sql.DB, dir string) error {
 		{"projects", func() error { _, e := projects.Open(db); return e }},
 		{"history", func() error { _, e := history.Open(db); return e }},
 		{"transfers", func() error { _, e := transfers.Open(db); return e }},
+		{"offline", func() error { _, e := offline.Open(db, filepath.Join(dir, "offline")); return e }},
 	} {
 		if err := s.open(); err != nil {
 			return fmt.Errorf("opening %s: %w", s.name, err)

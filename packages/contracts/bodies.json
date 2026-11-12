@@ -618,6 +618,9 @@
     },
     "flags": {
      "$ref": "#/components/schemas/Flags"
+    },
+    "offline": {
+     "$ref": "#/components/schemas/OfflineMark"
     }
    }
   },
@@ -739,6 +742,9 @@
        "type": "string"
       }
      }
+    },
+    "offline": {
+     "$ref": "#/components/schemas/OfflineMark"
     }
    }
   },
@@ -11977,6 +11983,369 @@
      "maxItems": 2000
     }
    }
+  },
+  "OfflineMark": {
+   "type": "object",
+   "description": "Present on every answer served from the offline store (ADR 0059), as the `offline` field of the JSON head and, serialised, in the X-Vesqira-Offline response header. It says the answer is a copy, when the copy was taken and the file signature it was taken from. A live answer never has it.",
+   "required": [
+    "copy",
+    "takenAt",
+    "signature"
+   ],
+   "properties": {
+    "copy": {
+     "type": "boolean",
+     "enum": [
+      true
+     ]
+    },
+    "takenAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "signature": {
+     "type": "object",
+     "required": [
+      "hostId",
+      "size",
+      "mtimeNs",
+      "identity"
+     ],
+     "properties": {
+      "hostId": {
+       "type": "integer"
+      },
+      "size": {
+       "type": "integer"
+      },
+      "mtimeNs": {
+       "type": "integer"
+      },
+      "identity": {
+       "type": "string",
+       "description": "sha256:… or sampled:… when a content identity was recorded (ADR 0053); empty otherwise"
+      }
+     }
+    }
+   }
+  },
+  "OfflineRequest": {
+   "type": "object",
+   "description": "What to prepare: datasets, or a board (its figures and the datasets they were drawn from), a channel range and how much detail to keep for each plane.",
+   "additionalProperties": false,
+   "properties": {
+    "datasetIds": {
+     "type": "array",
+     "items": {
+      "type": "integer"
+     }
+    },
+    "boardId": {
+     "type": "integer",
+     "nullable": true
+    },
+    "channels": {
+     "type": "object",
+     "nullable": true,
+     "required": [
+      "from",
+      "to"
+     ],
+     "properties": {
+      "from": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "to": {
+       "type": "integer",
+       "minimum": 0
+      }
+     },
+     "description": "Inclusive channel range, clamped to each cube. Absent keeps only the view, the header and the spectra of saved regions."
+    },
+    "detail": {
+     "type": "string",
+     "enum": [
+      "preview",
+      "full"
+     ],
+     "description": "preview keeps the reduced plane the viewer shows first; full also keeps full-resolution planes. An orientation map is only ever kept whole."
+    },
+    "budgetBytes": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "The most this preparation may keep. 0 takes the default (256 MiB, or what the store has room for)."
+    }
+   }
+  },
+  "OfflineItem": {
+   "type": "object",
+   "required": [
+    "kind",
+    "id",
+    "name",
+    "status",
+    "reason",
+    "estimateBytes",
+    "keptBytes"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "dataset",
+      "figure",
+      "job"
+     ]
+    },
+    "id": {
+     "type": "integer"
+    },
+    "name": {
+     "type": "string"
+    },
+    "status": {
+     "type": "string",
+     "enum": [
+      "offline",
+      "partial",
+      "remote"
+     ],
+     "description": "offline: works offline; partial: works partially; remote: needs the remote"
+    },
+    "reason": {
+     "type": "string",
+     "description": "What is kept and what still needs the host, in words"
+    },
+    "estimateBytes": {
+     "type": "integer"
+    },
+    "keptBytes": {
+     "type": "integer"
+    }
+   }
+  },
+  "OfflinePlan": {
+   "type": "object",
+   "required": [
+    "items",
+    "estimateBytes",
+    "budgetBytes",
+    "storeCapBytes",
+    "storeUsedBytes",
+    "fits",
+    "notes"
+   ],
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/OfflineItem"
+     }
+    },
+    "estimateBytes": {
+     "type": "integer"
+    },
+    "budgetBytes": {
+     "type": "integer"
+    },
+    "storeCapBytes": {
+     "type": "integer"
+    },
+    "storeUsedBytes": {
+     "type": "integer"
+    },
+    "fits": {
+     "type": "boolean"
+    },
+    "notes": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "OfflineDataset": {
+   "type": "object",
+   "required": [
+    "id",
+    "name",
+    "hostId",
+    "copies",
+    "bytes",
+    "takenAt",
+    "stale",
+    "coverage"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "name": {
+     "type": "string"
+    },
+    "hostId": {
+     "type": "integer"
+    },
+    "copies": {
+     "type": "integer"
+    },
+    "bytes": {
+     "type": "integer"
+    },
+    "takenAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "stale": {
+     "type": "boolean",
+     "description": "a live look found the file different from the one the copy was made from: kept, never served"
+    },
+    "coverage": {
+     "type": "string"
+    }
+   }
+  },
+  "OfflineOverview": {
+   "type": "object",
+   "required": [
+    "capBytes",
+    "usedBytes",
+    "defaultBudgetBytes",
+    "datasets"
+   ],
+   "properties": {
+    "capBytes": {
+     "type": "integer"
+    },
+    "usedBytes": {
+     "type": "integer"
+    },
+    "defaultBudgetBytes": {
+     "type": "integer"
+    },
+    "datasets": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/OfflineDataset"
+     }
+    }
+   }
+  },
+  "OfflinePrepareState": {
+   "type": "object",
+   "required": [
+    "state",
+    "total",
+    "done",
+    "bytes",
+    "current",
+    "items",
+    "error"
+   ],
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "idle",
+      "running",
+      "done",
+      "cancelled",
+      "failed"
+     ]
+    },
+    "startedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "finishedAt": {
+     "type": "string",
+     "format": "date-time",
+     "nullable": true
+    },
+    "total": {
+     "type": "integer"
+    },
+    "done": {
+     "type": "integer"
+    },
+    "bytes": {
+     "type": "integer"
+    },
+    "current": {
+     "type": "string"
+    },
+    "items": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/OfflineItem"
+     }
+    },
+    "error": {
+     "type": "string"
+    }
+   }
+  },
+  "OfflineSettings": {
+   "type": "object",
+   "required": [
+    "capBytes",
+    "usedBytes"
+   ],
+   "properties": {
+    "capBytes": {
+     "type": "integer"
+    },
+    "usedBytes": {
+     "type": "integer"
+    }
+   }
+  },
+  "OfflineSettingsRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "capBytes"
+   ],
+   "properties": {
+    "capBytes": {
+     "type": "integer",
+     "minimum": 0
+    }
+   }
+  },
+  "OfflineForgetRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "datasetId"
+   ],
+   "properties": {
+    "datasetId": {
+     "type": "integer",
+     "minimum": 1
+    }
+   }
+  },
+  "OfflineForgotten": {
+   "type": "object",
+   "required": [
+    "datasetId",
+    "forgotten",
+    "freedBytes"
+   ],
+   "properties": {
+    "datasetId": {
+     "type": "integer"
+    },
+    "forgotten": {
+     "type": "integer"
+    },
+    "freedBytes": {
+     "type": "integer"
+    }
+   }
   }
  },
  "operations": {
@@ -17828,6 +18197,221 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/BoardConflict"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/offline": {
+   "summary": "What is kept offline, per dataset, and the store's limit and use (owner listener only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OfflineOverview"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/offline/plan": {
+   "summary": "Plan a preparation for offline without copying anything: each item as works offline, works partially or needs the remote, with the reason, and the byte estimate against the budget (owner listener only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/OfflineRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OfflinePlan"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/offline/prepare": {
+   "summary": "Start preparing for offline: copies only the bounded, derived replies the plan listed. One at a time; refused when it does not fit (owner listener only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/OfflineRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "202": {
+     "description": "started",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OfflinePrepareState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/offline/prepare": {
+   "summary": "Progress and result of the latest preparation (owner listener only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OfflinePrepareState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/offline/prepare/cancel": {
+   "summary": "Stop the running preparation; what was kept stays (owner listener only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OfflinePrepareState"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "PUT /api/offline/settings": {
+   "summary": "Set the most the offline store may keep; lowering it deletes nothing (owner listener only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/OfflineSettingsRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OfflineSettings"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/offline/forget": {
+   "summary": "Forget a dataset's offline copy, files included (owner listener only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/OfflineForgetRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OfflineForgotten"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
        }
       }
      }

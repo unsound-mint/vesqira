@@ -16,6 +16,7 @@ import { dashOf, LABEL_PX, lineMarks, nearestMarker, sceneMarks } from "../scene
 import { placeLabels } from "../scene/labelPlacement";
 import type { Box, PlacedLabel } from "../scene/labelPlacement";
 import { SourcePopover } from "./SourceRow";
+import { OfflineBanner } from "./OfflineBanner";
 import { MaskLegend, MaskOverlay, useShownMaskList } from "./MaskOverlay";
 import type { Mark } from "../scene/overlays";
 import { dragCentre, placement } from "../scene/view";
@@ -235,6 +236,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
       aria-keyshortcuts="ArrowLeft ArrowRight PageUp PageDown Home End Escape Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown + - 0"
       onKeyDown={onKeyDown}
     >
+      <OfflineBanner datasetId={v.datasetId} />
       {body}
       {plane && shape.width > 0 ? (
         <div className={s.frame} ref={frameEl} style={{ width: shape.width, height: shape.height, transform: `translate(${shape.offset.x}px, ${shape.offset.y}px)` }}>
@@ -329,7 +331,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
         <p className={s.caption} aria-live="polite" ref={(el) => { chromeEls.current[1] = el; }}>
           {channelLabel(plane.head.channel, plane.head.channels, view?.spectral ?? null, plane.head.spectral_value)}
           {v.loading && v.channel !== plane.head.channel ? ` · loading ${v.channel + 1}…` : ""}
-          {plane.head.preview ? ` · preview, reduced ${plane.head.preview.step}× — full resolution loading` : ""}
+          {plane.head.preview ? (plane.head.offline ? ` · preview, reduced ${plane.head.preview.step}× — from the offline copy` : ` · preview, reduced ${plane.head.preview.step}× — full resolution loading`) : ""}
         </p>
       ) : null}
       {plane ? (

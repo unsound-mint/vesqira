@@ -2113,6 +2113,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/offline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What is kept offline, per dataset, and the store's limit and use (owner listener only) */
+        get: operations["owner_s_offlineOverview_get_api_offline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/offline/forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget a dataset's offline copy, files included (owner listener only) */
+        post: operations["owner_s_offlineForget_post_api_offline_forget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/offline/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Plan a preparation for offline without copying anything: each item as works offline, works partially or needs the remote, with the reason, and the byte estimate against the budget (owner listener only) */
+        post: operations["owner_s_offlinePlanRoute_post_api_offline_plan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/offline/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Progress and result of the latest preparation (owner listener only) */
+        get: operations["owner_s_offlinePrepareStatus_get_api_offline_prepare"];
+        put?: never;
+        /** Start preparing for offline: copies only the bounded, derived replies the plan listed. One at a time; refused when it does not fit (owner listener only) */
+        post: operations["owner_s_offlinePrepareRoute_post_api_offline_prepare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/offline/prepare/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop the running preparation; what was kept stays (owner listener only) */
+        post: operations["owner_s_offlinePrepareCancel_post_api_offline_prepare_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/offline/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the most the offline store may keep; lowering it deletes nothing (owner listener only) */
+        put: operations["owner_s_offlineSettings_put_api_offline_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/preview": {
         parameters: {
             query?: never;
@@ -3997,6 +4100,7 @@ export interface components {
             sky: components["schemas"]["SkyPixel"] | components["schemas"]["SkyCelestial"];
             spectral: components["schemas"]["SpectralFacts"] | null;
             flags: components["schemas"]["Flags"];
+            offline?: components["schemas"]["OfflineMark"];
         };
         PlaneStats: {
             finite_count: number;
@@ -4028,6 +4132,7 @@ export interface components {
                 source_height: number;
                 method: string;
             } | null;
+            offline?: components["schemas"]["OfflineMark"];
         };
         /** @description The physical unit a person declared for a file whose header has no BUNIT. An overlay: the file and its header facts are never changed, and wherever the unit is shown it is labelled as declared by the person. */
         UnitDeclaration: {
@@ -7589,6 +7694,108 @@ export interface components {
             layout: (components["schemas"]["BoardRect"] | null)[];
             expect: components["schemas"]["BoardExpect"][];
             from?: (components["schemas"]["BoardRect"] | null)[];
+        };
+        /** @description Present on every answer served from the offline store (ADR 0059), as the `offline` field of the JSON head and, serialised, in the X-Vesqira-Offline response header. It says the answer is a copy, when the copy was taken and the file signature it was taken from. A live answer never has it. */
+        OfflineMark: {
+            /** @enum {boolean} */
+            copy: true;
+            /** Format: date-time */
+            takenAt: string;
+            signature: {
+                hostId: number;
+                size: number;
+                mtimeNs: number;
+                /** @description sha256:… or sampled:… when a content identity was recorded (ADR 0053); empty otherwise */
+                identity: string;
+            };
+        };
+        /** @description What to prepare: datasets, or a board (its figures and the datasets they were drawn from), a channel range and how much detail to keep for each plane. */
+        OfflineRequest: {
+            datasetIds?: number[];
+            boardId?: number | null;
+            /** @description Inclusive channel range, clamped to each cube. Absent keeps only the view, the header and the spectra of saved regions. */
+            channels?: {
+                from: number;
+                to: number;
+            } | null;
+            /**
+             * @description preview keeps the reduced plane the viewer shows first; full also keeps full-resolution planes. An orientation map is only ever kept whole.
+             * @enum {string}
+             */
+            detail?: "preview" | "full";
+            /** @description The most this preparation may keep. 0 takes the default (256 MiB, or what the store has room for). */
+            budgetBytes?: number;
+        };
+        OfflineItem: {
+            /** @enum {string} */
+            kind: "dataset" | "figure" | "job";
+            id: number;
+            name: string;
+            /**
+             * @description offline: works offline; partial: works partially; remote: needs the remote
+             * @enum {string}
+             */
+            status: "offline" | "partial" | "remote";
+            /** @description What is kept and what still needs the host, in words */
+            reason: string;
+            estimateBytes: number;
+            keptBytes: number;
+        };
+        OfflinePlan: {
+            items: components["schemas"]["OfflineItem"][];
+            estimateBytes: number;
+            budgetBytes: number;
+            storeCapBytes: number;
+            storeUsedBytes: number;
+            fits: boolean;
+            notes: string[];
+        };
+        OfflineDataset: {
+            id: number;
+            name: string;
+            hostId: number;
+            copies: number;
+            bytes: number;
+            /** Format: date-time */
+            takenAt: string;
+            /** @description a live look found the file different from the one the copy was made from: kept, never served */
+            stale: boolean;
+            coverage: string;
+        };
+        OfflineOverview: {
+            capBytes: number;
+            usedBytes: number;
+            defaultBudgetBytes: number;
+            datasets: components["schemas"]["OfflineDataset"][];
+        };
+        OfflinePrepareState: {
+            /** @enum {string} */
+            state: "idle" | "running" | "done" | "cancelled" | "failed";
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            finishedAt?: string | null;
+            total: number;
+            done: number;
+            bytes: number;
+            current: string;
+            items: components["schemas"]["OfflineItem"][];
+            error: string;
+        };
+        OfflineSettings: {
+            capBytes: number;
+            usedBytes: number;
+        };
+        OfflineSettingsRequest: {
+            capBytes: number;
+        };
+        OfflineForgetRequest: {
+            datasetId: number;
+        };
+        OfflineForgotten: {
+            datasetId: number;
+            forgotten: number;
+            freedBytes: number;
         };
     };
     responses: never;
@@ -11446,6 +11653,225 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_offlineOverview_get_api_offline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflineOverview"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_offlineForget_post_api_offline_forget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfflineForgetRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflineForgotten"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_offlinePlanRoute_post_api_offline_plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfflineRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflinePlan"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_offlinePrepareStatus_get_api_offline_prepare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflinePrepareState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_offlinePrepareRoute_post_api_offline_prepare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfflineRequest"];
+            };
+        };
+        responses: {
+            /** @description started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflinePrepareState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_offlinePrepareCancel_post_api_offline_prepare_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflinePrepareState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_offlineSettings_put_api_offline_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfflineSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfflineSettings"];
                 };
             };
             /** @description Error */
