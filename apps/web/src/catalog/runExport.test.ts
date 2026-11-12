@@ -49,6 +49,11 @@ describe("plot export", () => {
   it("replaces the page's colour tokens by their values", () => {
     expect(resolveVars('<g fill="var(--accent)" style="font-family:var(--font-ui)"/>', (n) => ({ "--accent": "#0a6f8f" })[n] ?? "")).toBe('<g fill="#0a6f8f" style="font-family:currentColor"/>');
   });
+  it("escapes a resolved value for an attribute, so a font stack with quotes leaves valid XML", () => {
+    const out = resolveVars('<svg style="font-family: var(--font-ui)"><g fill="var(--accent)"/></svg>', (n) => (n === "--font-ui" ? `"Geist Variable","Geist",sans-serif` : "#0a6f8f"));
+    expect(out).toBe('<svg style="font-family: &quot;Geist Variable&quot;,&quot;Geist&quot;,sans-serif"><g fill="#0a6f8f"/></svg>');
+    expect(new DOMParser().parseFromString(out, "image/svg+xml").querySelector("parsererror")).toBeNull();
+  });
   it("adds a text chunk to a PNG right after its header and keeps the rest", () => {
     const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]);
     const out = pngWithText(png, "vesqira-provenance", '{"query":"am>0.3"}');

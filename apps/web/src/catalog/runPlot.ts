@@ -168,7 +168,7 @@ export function buildPlot(runs: Run[], y: string, x: Axis, by: string): PlotMode
     }
     const why: string[] = [];
     if (i > 0) {
-      if (unit !== mainUnit) why.push(`recorded in ${unitName(unit)}, not ${unitName(mainUnit)}`);
+      if (unit !== mainUnit) why.push(`unit differs: ${unit || "none stated"} here, ${mainUnit || "none stated"} in the main panel`);
       if (definition !== mainDef) why.push(definition === "" ? "no definition stated" : "defined differently");
     }
     return {

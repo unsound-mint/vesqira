@@ -111,7 +111,7 @@ describe("cross-run plot", () => {
     const svg = screen.getByTestId("runs-plot");
     expect(svg.querySelectorAll('[data-testid="plot-point"]')).toHaveLength(4); // lmc_4 records no result
     expect(svg.querySelectorAll("[data-panel]")).toHaveLength(2);
-    expect(within(svg as unknown as HTMLElement).getByText(/not directly comparable: recorded in deg, not no stated unit/)).toBeTruthy();
+    expect(within(svg as unknown as HTMLElement).getByText(/not directly comparable: unit differs: deg here, none stated in the main panel/)).toBeTruthy();
     expect(within(svg as unknown as HTMLElement).getByText("am (deg)")).toBeTruthy();
     await u.click(screen.getByText(/1 of 5 runs in the table are not drawn/));
     expect(screen.getByText("lmc_4: am not recorded")).toBeTruthy();

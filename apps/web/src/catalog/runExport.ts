@@ -83,9 +83,13 @@ export type PlotProvenance = {
 
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** Replaces `var(--token)` with the value the page resolves it to, so an exported figure does not depend on the page's stylesheet. */
+/**
+ * Replaces `var(--token)` with the value the page resolves it to, so an exported figure does not depend on the page's
+ * stylesheet. The tokens sit in attribute values, and a font stack has quotes in it ("Geist Variable"): the value is
+ * escaped for an attribute, or the file is not XML and no image decoder opens it.
+ */
 export function resolveVars(svg: string, value: (name: string) => string): string {
-  return svg.replace(/var\((--[a-z0-9-]+)\)/gi, (_, n: string) => value(n) || "currentColor");
+  return svg.replace(/var\((--[a-z0-9-]+)\)/gi, (_, n: string) => (value(n) ? value(n).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;") : "currentColor"));
 }
 
 /** Adds the provenance as machine-readable metadata inside the SVG, after its opening tag. */

@@ -50,13 +50,9 @@ type Geometry = { px: (x: number) => number; py: (y: number) => number; ticksY: 
 function geometry(model: PlotModel, panel: PlotPanel, index: number): Geometry {
   const top = index * PANEL + 24;
   const ys: number[] = [];
-  const xs: number[] = [];
-  for (const s of panel.series) {
-    for (const p of s.points) {
-      ys.push(p.y - (p.err ?? 0), p.y + (p.err ?? 0));
-      xs.push(p.x);
-    }
-  }
+  // x is the same quantity in every panel, so they share one x range; only y differs by unit
+  const xs: number[] = model.panels.flatMap((q) => q.series.flatMap((s) => s.points.map((p) => p.x)));
+  for (const s of panel.series) for (const p of s.points) ys.push(p.y - (p.err ?? 0), p.y + (p.err ?? 0));
   const ticksY = niceTicks(Math.min(...ys), Math.max(...ys), 4);
   const lo = ticksY[0] ?? 0;
   const hi = ticksY[ticksY.length - 1] ?? 1;

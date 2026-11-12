@@ -122,8 +122,8 @@ test("filter, expose columns, sort, plot, select both ways, save a view, and exp
   await page.getByLabel("Colour and shape by").selectOption("gradient_method");
   const plot = page.getByTestId("runs-plot");
   await expect(plot.locator('[data-testid="plot-point"]')).toHaveCount(5);
-  await expect(plot.getByText(/not directly comparable: recorded in deg/)).toBeVisible();
-  await expect(plot.getByText("± standard error")).toBeVisible();
+  await expect(plot.getByText(/not directly comparable: unit differs: deg here/)).toBeVisible();
+  await expect(plot.getByText("± standard error", { exact: true })).toBeVisible();
   await expect(plot.getByText("central", { exact: true })).toBeVisible();
   await expect(page.getByText(/\d+ of \d+ runs in the table are not drawn/)).toBeVisible(); // sweep_r4 and runs of other specs record no am
   await expectNoAxeViolations(page);
@@ -156,7 +156,7 @@ test("filter, expose columns, sort, plot, select both ways, save a view, and exp
   await page.reload();
   await page.getByRole("button", { name: "Results table" }).click();
   await page.getByLabel("Saved view").selectOption({ label: "mid blocks" });
-  await expect(sweep).toHaveText(["sweep_r4", "sweep_r3", "sweep_r2"]);
+  await expect(sweep).toHaveText(["sweep_r3", "sweep_r2", "sweep_r4"]); // the view's sort too: am, largest first, the run without it last
   await expect(page.getByLabel("Result (y)")).toHaveValue("am");
 
   // exports: the query and the run ids travel with the files
@@ -171,6 +171,8 @@ test("filter, expose columns, sort, plot, select both ways, save a view, and exp
   download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export plot (SVG)" }).click();
   const svg = fs.readFileSync(await (await download).path(), "utf8");
+  // the file is XML (a font stack with quotes once made it invalid), so an image decoder opens it
+  expect(await page.evaluate((t) => new DOMParser().parseFromString(t, "image/svg+xml").querySelector("parsererror") === null, svg)).toBe(true);
   expect(svg).not.toContain("var(--");
   const meta = /<metadata id="vesqira-provenance">([^<]+)<\/metadata>/.exec(svg)![1]!.replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
   expect(JSON.parse(meta)).toMatchObject({ query: "block_size:16..64", y: "am", x: "param:block_size", by: "gradient_method" });

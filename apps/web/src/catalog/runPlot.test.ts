@@ -19,7 +19,7 @@ describe("cross-run plot: what is drawn together", () => {
       "am", { kind: "param", key: "b" }, "",
     );
     expect(m.panels.map((p) => [p.unit, p.count, p.primary])).toEqual([["rad", 2, true], ["deg", 1, false]]);
-    expect(m.panels[1]!.apart).toBe("recorded in deg, not rad");
+    expect(m.panels[1]!.apart).toBe("unit differs: deg here, rad in the main panel");
     expect(m.panels[1]!.series[0]!.points[0]!.y).toBe(30); // as recorded, not 0.52
   });
 

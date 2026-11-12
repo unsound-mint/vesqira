@@ -178,8 +178,8 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
       const bytes = pngWithText(new Uint8Array(await blob.arrayBuffer()), "vesqira-provenance", JSON.stringify(provenance()));
       download("vesqira-runs-plot.png", new Blob([bytes as BlobPart], { type: "image/png" }));
       setExportErr(null);
-    } catch {
-      setExportErr("The browser could not draw the PNG; the SVG has the same figure.");
+    } catch (e) {
+      setExportErr(`The browser could not draw the PNG (${e instanceof Error ? e.message : "no reason given"}); the SVG has the same figure.`);
     }
   }
   const exportCsv = () => download("vesqira-runs.csv", new Blob([runsCsv(rows, columns, ctxOf, { query: state.query, total: active, at: new Date().toISOString(), notRecorded: state.showMissing ? hidden : 0 })], { type: "text/csv;charset=utf-8" }));
@@ -199,7 +199,7 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
         </header>
 
         {runs.length === 0 ? <p className={s.note}>No runs yet. Import a run folder from the Runs section of the explorer.</p> : (
-          <FilterBox label="Filter runs" placeholder="am>0.3  block_size:16..64  status:completed  generated>=2026-08-01" value={state.query} onChange={(q) => onState({ query: q })} vocabulary={vocabulary} shown={ev.matched.length} total={active} noun="runs" />
+          <FilterBox label="Filter runs" placeholder="Filter: am>0.3  block_size:16..64  status:completed" value={state.query} onChange={(q) => onState({ query: q })} vocabulary={vocabulary} shown={ev.matched.length} total={active} noun="runs" />
         )}
 
         {hidden > 0 ? (
