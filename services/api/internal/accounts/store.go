@@ -124,6 +124,13 @@ func Open(db *sql.DB) (*Store, error) {
 	if _, err := db.Exec(schema.AccountsTables); err != nil {
 		return nil, err
 	}
+	// memberships reference accounts and workspaces; the catalog creates them too, this keeps the store whole on its own
+	if _, err := db.Exec(schema.WorkspaceTables); err != nil {
+		return nil, err
+	}
+	if err := schema.SeedLocalWorkspace(db); err != nil {
+		return nil, err
+	}
 	return &Store{db: db, rdb: db, Params: DefaultArgon2, Now: time.Now, hashSlots: make(chan struct{}, 4)}, nil
 }
 
@@ -186,19 +193,11 @@ func (s *Store) HasAdmin() (bool, error) {
 }
 
 // CreateAdminFromSetup spends a setup secret and creates an admin account with a password, in one transaction: the secret is
-// marked used only if it was unused and unexpired, so two uses race to one winner.
+// marked used only if it was unused and unexpired, so two uses race to one winner. The first admin is also the Owner of
+// workspace 1, the server's main workspace (and, on an adopted local catalog, the one holding its work): admin alone is not a
+// workspace role (ADR 0050 section 3), and without a membership the first person could see nothing.
 func (s *Store) CreateAdminFromSetup(secret, name, username, password string) (Account, error) {
-	name, username = strings.TrimSpace(name), NormalizeUsername(username)
-	if name == "" || len([]rune(name)) > 100 {
-		return Account{}, ErrBadName
-	}
-	if !usernameShape.MatchString(username) {
-		return Account{}, ErrBadUsername
-	}
-	if err := CheckNewPassword(password, username); err != nil {
-		return Account{}, err
-	}
-	hash, err := s.hash(password)
+	name, username, hash, err := s.newCredentials(name, username, password)
 	if err != nil {
 		return Account{}, err
 	}
@@ -215,6 +214,35 @@ func (s *Store) CreateAdminFromSetup(secret, name, username, password string) (A
 	if n, _ := res.RowsAffected(); n != 1 {
 		return Account{}, ErrSetupInvalid
 	}
+	a, err := createAccount(tx, name, username, hash, true, now)
+	if err != nil {
+		return Account{}, err
+	}
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO memberships(workspace_id,account_id,role,created_at) VALUES(1,?,'owner',?)`, a.ID, now.Unix()); err != nil {
+		return Account{}, err
+	}
+	return a, tx.Commit()
+}
+
+// newCredentials checks a new account's name, username and password and hashes the password (outside any transaction: argon2
+// is slow and the writer connection is shared).
+func (s *Store) newCredentials(name, username, password string) (string, string, string, error) {
+	name, username = strings.TrimSpace(name), NormalizeUsername(username)
+	if name == "" || len([]rune(name)) > 100 {
+		return "", "", "", ErrBadName
+	}
+	if !usernameShape.MatchString(username) {
+		return "", "", "", ErrBadUsername
+	}
+	if err := CheckNewPassword(password, username); err != nil {
+		return "", "", "", err
+	}
+	hash, err := s.hash(password)
+	return name, username, hash, err
+}
+
+// createAccount writes an account, its local identity and its password hash inside tx.
+func createAccount(tx *sql.Tx, name, username, hash string, admin bool, now time.Time) (Account, error) {
 	var taken int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM identities WHERE issuer=? AND sub=?`, LocalIssuer, username).Scan(&taken); err != nil {
 		return Account{}, err
@@ -222,12 +250,16 @@ func (s *Store) CreateAdminFromSetup(secret, name, username, password string) (A
 	if taken > 0 {
 		return Account{}, ErrUsernameTaken
 	}
-	a := Account{ID: "acct-" + randomHex(8), Name: name, Username: username, Admin: true, Created: time.Unix(now.Unix(), 0).UTC()}
+	a := Account{ID: "acct-" + randomHex(8), Name: name, Username: username, Admin: admin, Created: time.Unix(now.Unix(), 0).UTC()}
+	flag := 0
+	if admin {
+		flag = 1
+	}
 	for _, q := range []struct {
 		sql  string
 		args []any
 	}{
-		{`INSERT INTO accounts(id,name,admin,created_at) VALUES(?,?,1,?)`, []any{a.ID, a.Name, now.Unix()}},
+		{`INSERT INTO accounts(id,name,admin,created_at) VALUES(?,?,?,?)`, []any{a.ID, a.Name, flag, now.Unix()}},
 		{`INSERT INTO identities(issuer,sub,account_id,created_at) VALUES(?,?,?,?)`, []any{LocalIssuer, username, a.ID, now.Unix()}},
 		{`INSERT INTO password_credentials(account_id,hash,changed_at) VALUES(?,?,?)`, []any{a.ID, hash, now.Unix()}},
 	} {
@@ -235,7 +267,7 @@ func (s *Store) CreateAdminFromSetup(secret, name, username, password string) (A
 			return Account{}, err
 		}
 	}
-	return a, tx.Commit()
+	return a, nil
 }
 
 // ---- passwords ----
