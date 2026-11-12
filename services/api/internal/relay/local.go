@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -219,6 +220,23 @@ func (l *Local) query(q string, args ...any) ([]Mirrored, error) {
 	return out, rows.Err()
 }
 
+// Bounds on what one group server can make this computer store: a compromised server can invent request ids at will.
+const (
+	// MaxRefusedKept refused requests keep their content; past it a refused request is stored as its id, state and reason only.
+	MaxRefusedKept = 200
+	// MaxRowsLocal is the most requests of one server this computer stores in any state; past it a pass stops with ErrFull.
+	MaxRowsLocal = 5000
+)
+
+// ErrFull is a server that sent more requests than this computer keeps.
+var ErrFull = fmt.Errorf("%w: this computer already stores %d requests from this group server and takes no more; ask its operator why so many arrived", ErrInvalid, MaxRowsLocal)
+
+func (l *Local) count(origin, cond string, args ...any) int {
+	var n int
+	_ = l.db.QueryRow(`SELECT COUNT(*) FROM relayed_requests WHERE origin=? `+cond, append([]any{origin}, args...)...).Scan(&n)
+	return n
+}
+
 func (l *Local) openCount(origin string) int {
 	var n int
 	_ = l.db.QueryRow(`SELECT COUNT(*) FROM relayed_requests WHERE origin=? AND local_state IN (?,?)`, origin, LocalReceived, LocalDraft).Scan(&n)
@@ -233,6 +251,9 @@ func (l *Local) Upsert(origin string, req Request, refusal string) (Mirrored, bo
 	now := l.now()
 	old, err := scanMirror(l.db.QueryRow(`SELECT `+mirrorCols+` FROM relayed_requests WHERE origin=? AND server_id=?`, origin, req.ID))
 	if errors.Is(err, sql.ErrNoRows) {
+		if l.count(origin, "") >= MaxRowsLocal {
+			return Mirrored{}, false, ErrFull
+		}
 		state := LocalReceived
 		if !IsOpen(req.State) { // already approved, declined, withdrawn or expired (a relink pulls history from cursor 0)
 			state, refusal = LocalClosed, ""
@@ -243,6 +264,10 @@ func (l *Local) Upsert(origin string, req Request, refusal string) (Mirrored, bo
 			state = LocalRefused
 		}
 		b, _ := json.Marshal(req)
+		if state == LocalRefused && l.count(origin, "AND local_state=?", LocalRefused) >= MaxRefusedKept {
+			b, _ = json.Marshal(Request{ID: req.ID, Change: req.Change, State: req.State, Notes: []FollowUp{}})
+			refusal += fmt.Sprintf(" (stored without its content: this computer keeps the content of %d refused requests)", MaxRefusedKept)
+		}
 		res, err := l.db.Exec(`INSERT INTO relayed_requests(workspace_id, origin, server_id, request, server_state, local_state, refusal, received_at, updated_at)
 			VALUES(?,?,?,?,?,?,?,?,?)`, workspace.Local, origin, req.ID, string(b), req.State, state, refusal, now, now)
 		if err != nil {

@@ -90,7 +90,8 @@ func CheckRequest(in Inbox, hosts map[string]int64, r Request) error {
 }
 
 // LabelSafe is the local check on a label the key holder types: besides ValidLabel's letters, digits, spaces and -, it may not
-// contain a host's ssh destination or name, so no host name reaches the server as a label (ADR 0066 section 3).
+// contain a host's ssh destination or name, nor any part of them of 3 or more characters between dots and @ (the user, the login
+// node, the site), so no host name reaches the server as a label (ADR 0066 section 3).
 func LabelSafe(label string, dests []string) error {
 	if !ValidLabel(label) {
 		return refuse("a label is 1 to 40 letters, digits, spaces and -")
@@ -100,6 +101,11 @@ func LabelSafe(label string, dests []string) error {
 		d = strings.ToLower(strings.TrimSpace(d))
 		if d != "" && strings.Contains(l, d) {
 			return refuse("the label %q contains a host's address or name; choose a word that does not name the machine", label)
+		}
+		for _, part := range strings.FieldsFunc(d, func(r rune) bool { return r == '.' || r == '@' }) {
+			if len(part) >= 3 && strings.Contains(l, part) {
+				return refuse("the label %q contains %q from a host's address; choose a word that does not name the machine", label, part)
+			}
 		}
 	}
 	return nil

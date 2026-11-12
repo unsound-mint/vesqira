@@ -67,8 +67,12 @@ type InboxRow struct {
 	PolledAt  *time.Time `json:"polledAt,omitempty"`
 }
 
-// PutInbox records what a key holder's computer publishes (the caller has run CheckInbox).
+// PutInbox records what a key holder's computer publishes, after CheckInbox: the server runs the same check as the computer, so a
+// relay token cannot publish a custom template, a path key or caps above the absolute ones.
 func (s *Store) PutInbox(ws workspace.ID, account string, a Actor, in Inbox) error {
+	if err := CheckInbox(in); err != nil {
+		return err
+	}
 	b, err := json.Marshal(in)
 	if err != nil {
 		return err
@@ -226,11 +230,21 @@ type execer interface {
 	QueryRow(string, ...any) *sql.Row
 }
 
-// nextChange is the cursor value of the next transition in the workspace: one more than its highest. The writer is one connection
-// in one transaction, so two transitions never share a value.
-func nextChange(tx execer, ws workspace.ID) (int64, error) {
+// changeTo is the cursor value of the next transition of a request addressed to addressee in the workspace: one more than the
+// highest of that addressee's requests. The cursor is per addressee, so nobody else's requests (a member filing to themselves, a
+// busy key holder) move it: only transitions of requests addressed to that key holder do, and those are bounded by the filing
+// limits and the few transitions a request has. The writer is one connection in one transaction, so two transitions never share
+// a value.
+func changeTo(tx execer, ws workspace.ID, addressee string) (int64, error) {
 	var c int64
-	err := tx.QueryRow(`SELECT COALESCE(MAX(change), 0) + 1 FROM run_requests WHERE workspace_id=?`, ws).Scan(&c)
+	err := tx.QueryRow(`SELECT COALESCE(MAX(change), 0) + 1 FROM run_requests WHERE workspace_id=? AND addressee=?`, ws, addressee).Scan(&c)
+	return c, err
+}
+
+// nextChange is changeTo for the addressee of request id.
+func nextChange(tx execer, ws workspace.ID, id int64) (int64, error) {
+	var c int64
+	err := tx.QueryRow(`SELECT COALESCE(MAX(r.change), 0) + 1 FROM run_requests r WHERE r.workspace_id=? AND r.addressee=(SELECT addressee FROM run_requests WHERE workspace_id=? AND id=?)`, ws, ws, id).Scan(&c)
 	return c, err
 }
 
@@ -339,7 +353,7 @@ func (s *Store) File(ws workspace.ID, requester, addressee string, ask Ask, base
 	if day >= MaxFiledPerDay {
 		return Row{}, LimitError{fmt.Sprintf("at most %d requests a day; try again tomorrow", MaxFiledPerDay)}
 	}
-	ch, err := nextChange(tx, ws)
+	ch, err := changeTo(tx, ws, addressee)
 	if err != nil {
 		return Row{}, err
 	}
@@ -402,7 +416,7 @@ func (s *Store) expire(ws workspace.ID, id int64) error {
 
 // expireIn expires one open request whose time has passed, inside tx. It reports whether it did.
 func expireIn(s *Store, tx execer, ws workspace.ID, id int64) (bool, error) {
-	ch, err := nextChange(tx, ws)
+	ch, err := nextChange(tx, ws, id)
 	if err != nil {
 		return false, err
 	}
@@ -486,7 +500,7 @@ func (s *Store) Review(ws workspace.ID, id int64, addressee string, a Actor) (Ro
 	if r.State == StateReview {
 		return r, nil
 	}
-	ch, err := nextChange(tx, ws)
+	ch, err := nextChange(tx, ws, id)
 	if err != nil {
 		return Row{}, err
 	}
@@ -546,7 +560,7 @@ func (s *Store) Claim(ws workspace.ID, id int64, addressee string, a Actor, c Cl
 		ap.Params = map[string]string{}
 	}
 	apb, _ := json.Marshal(ap)
-	ch, err := nextChange(tx, ws)
+	ch, err := nextChange(tx, ws, id)
 	if err != nil {
 		return Row{}, false, err
 	}
@@ -605,6 +619,9 @@ func (s *Store) Report(ws workspace.ID, id int64, addressee string, a Actor, rep
 	if rep.Seq <= r.Seq {
 		return r, false, nil
 	}
+	if rep.Seq > MaxReports { // sequence numbers strictly rise, so this caps the reports one request takes
+		return r, false, LimitError{Msg: fmt.Sprintf("a request takes at most %d status reports", MaxReports)}
+	}
 	state := rep.State
 	if rank(state) < rank(r.State) || (rank(r.State) == 4 && state != r.State) {
 		state = r.State // ignored: never lower, never change an end
@@ -644,14 +661,18 @@ func (s *Store) Report(ws workspace.ID, id int64, addressee string, a Actor, rep
 		return r, false, nil
 	}
 	changed := state != r.State || code != r.Code || runHash != r.RunHash || string(cb) != mustJSON(r.Counts)
-	if changed { // a transition the pull must carry, like every other one
-		ch, err := nextChange(tx, ws)
+	// only progress moves the cursor: the state's rank rising (an end state arriving among them) or the run line first set. A code
+	// or the sweep's counts change in place, so a client choosing its own sequence numbers cannot push the cursor along.
+	if rank(state) > rank(r.State) || (r.RunHash == "" && runHash != "") {
+		ch, err := nextChange(tx, ws, id)
 		if err != nil {
 			return Row{}, false, err
 		}
 		if _, err := tx.Exec(`UPDATE run_requests SET change=? WHERE workspace_id=? AND id=?`, ch, ws, id); err != nil {
 			return Row{}, false, err
 		}
+	}
+	if state != r.State || code != r.Code || runHash != r.RunHash { // counts alone write no event
 		detail := state
 		if code != "" {
 			detail += " (" + code + ")"
@@ -707,7 +728,7 @@ func (s *Store) close(ws workspace.ID, id int64, a Actor, state, ev, note string
 		}
 		return Row{}, ErrNotYours
 	}
-	ch, err := nextChange(tx, ws)
+	ch, err := nextChange(tx, ws, id)
 	if err != nil {
 		return Row{}, err
 	}
@@ -765,7 +786,7 @@ func (s *Store) AddNote(ws workspace.ID, id int64, a Actor, any bool, text strin
 	if n >= MaxNotes {
 		return Row{}, LimitError{fmt.Sprintf("a request takes at most %d follow-up notes", MaxNotes)}
 	}
-	ch, err := nextChange(tx, ws)
+	ch, err := nextChange(tx, ws, id)
 	if err != nil {
 		return Row{}, err
 	}
@@ -845,7 +866,7 @@ func (s *Store) CloseAccount(ws workspace.ID, account, sentence string) error {
 	rows.Close()
 	sys := Actor{ID: "system", Via: "membership"}
 	for _, m := range moves {
-		ch, err := nextChange(tx, ws)
+		ch, err := nextChange(tx, ws, m.id)
 		if err != nil {
 			return err
 		}

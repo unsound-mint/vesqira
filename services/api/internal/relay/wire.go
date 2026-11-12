@@ -28,9 +28,10 @@ const (
 	MaxValuesPerKey   = 64
 	MaxExpiryDays     = 30
 	DefaultExpiryDays = 14
-	MaxOpenPerPair    = 10  // open requests per requester per addressee
-	MaxFiledPerDay    = 30  // requests filed per requester per day
-	MaxPage           = 100 // requests in one pull
+	MaxOpenPerPair    = 10   // open requests per requester per addressee
+	MaxFiledPerDay    = 30   // requests filed per requester per day
+	MaxPage           = 100  // requests in one pull
+	MaxReports        = 2000 // status reports one request takes (a 64-job sweep reports a few per job); its sequence numbers stop there
 	MaxCursorJump     = 100000
 	MaxNotes          = 20 // follow-up notes on one request
 	MaxPageBytes      = 2 << 20

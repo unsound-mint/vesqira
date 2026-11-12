@@ -55,8 +55,9 @@ func settable(template, key string) bool {
 // Settable is settable for callers outside the package (the local re-render of a key holder's own changes).
 func Settable(template, key string) bool { return settable(template, key) }
 
-// PlainText checks a note: valid UTF-8, at most MaxNote characters, no control characters other than newline and tab. It is shown
-// as text, never as Markdown or HTML.
+// PlainText checks a note: valid UTF-8, at most MaxNote characters, no control characters other than newline and tab, and no format
+// characters (bidirectional overrides, zero-width marks), which could make the text read other than it is. It is shown as text,
+// never as Markdown or HTML.
 func PlainText(s string, what string) error {
 	if !utf8.ValidString(s) {
 		return refuse("%s is not valid text", what)
@@ -67,6 +68,9 @@ func PlainText(s string, what string) error {
 	for _, r := range s {
 		if unicode.IsControl(r) && r != '\n' && r != '\t' {
 			return refuse("%s holds a control character", what)
+		}
+		if unicode.Is(unicode.Cf, r) {
+			return refuse("%s holds an invisible formatting character", what)
 		}
 	}
 	return nil
