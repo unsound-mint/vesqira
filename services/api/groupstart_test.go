@@ -35,6 +35,9 @@ func TestGroupServerRefusesUnsafeStarts(t *testing.T) {
 			t.Errorf("%s: started", name)
 		}
 	}
+	if o, err := (groupStart{origin: "https://lab.example.edu:443"}).check(); err != nil || o != "https://lab.example.edu" {
+		t.Fatalf("the default port stays out of the origin browsers send: %q %v", o, err)
+	}
 	if o, err := (groupStart{origin: "http://localhost:5173", insecureDev: true}).check(); err != nil || o != "http://localhost:5173" {
 		t.Fatalf("--insecure-dev localhost: %q %v", o, err)
 	}

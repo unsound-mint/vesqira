@@ -23,6 +23,16 @@ The owner API (`--addr`, loopback, no accounts) is the whole app: catalog, hosts
 - **macOS and Windows:** the peer-uid check does not exist there. Any local account can reach the owner API. The server logs a warning at start and refuses to start with `--enable-terminal`, `--enable-editor` or `--enable-vpn` unless `--allow-other-local-users` is given. Use these platforms only on a computer that has one user.
 - **Not gated, by design:** the review listener (`--review-addr`, published previews for reviewers) and the publish server are separate listeners made for other people; they have no owner routes.
 
+## The group server (`--multi-user`, ADR 0050 slice 2)
+
+With `--multi-user --public-origin https://...` the same listener becomes a group server that people sign in to. It is not limited to loopback and has no peer-uid gate; run it behind a TLS reverse proxy that passes `Host` through unchanged, and give `--client-ip-header` when the proxy sets one. What changes:
+
+- **Accounts:** a password (argon2id, m=64 MiB, t=3, p=1) and a TOTP second factor, with single-use recovery codes. The first admin is created from a one-time link printed by `vesqira-api admin bootstrap` on the server; shell access to the service account is the root of trust. Sign-in failures back off per name typed and per client address; a name kept under attack keeps backing off, and behind a proxy without `--client-ip-header` every client shares one address allowance (a restart clears both).
+- **Sessions and tokens:** server-side sessions in a `__Host-` cookie (`Secure`, `HttpOnly`, `SameSite=Lax`), 12 h idle and 7 days absolute; personal access tokens for programs, `read` or `write` only, never account or admin actions. Every write from a browser must carry the server's own `Origin`.
+- **Not on the group server:** hosts, clusters, jobs, sweeps, transfers, the editor, the terminal, the VPN and offline copies (their routes answer 404). The server never holds an ssh key.
+- **Known gap until slice 3:** every account is an admin, and path completion and opening a folder as a project still reach the service account's file system beyond the data roots. Only give accounts to people you would give a shell on that machine.
+- **Not defended:** whoever runs the machine can read the database and the server key (`secrets/server.key`, which seals the TOTP secrets).
+
 ## Optional features that write or run things
 
 Each is off unless the server is started with its flag, and only ever on the loopback owner address, never on `--review-addr` (ADR 0029).

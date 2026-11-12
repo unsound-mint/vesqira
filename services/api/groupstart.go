@@ -45,7 +45,7 @@ func (g groupStart) check() (string, error) {
 	case "http":
 		h := u.Hostname()
 		if !g.insecureDev || (h != "localhost" && h != "127.0.0.1" && h != "::1") {
-			return "", errors.New("--public-origin must be https (put TLS in front, see the deployment notes); --insecure-dev allows http://localhost for development only")
+			return "", errors.New("--public-origin must be https (put a TLS reverse proxy in front that passes Host through unchanged); --insecure-dev allows http://localhost for development only")
 		}
 	default:
 		return "", fmt.Errorf("--public-origin %q is not an http(s) origin", g.origin)
@@ -58,7 +58,12 @@ func (g groupStart) check() (string, error) {
 			return "", fmt.Errorf("the catalog is on a network file system (%s): SQLite locking is not safe there; put it on a local disk", fs)
 		}
 	}
-	return u.Scheme + "://" + strings.ToLower(u.Host), nil
+	host := strings.ToLower(u.Host)
+	// a browser leaves the default port out of Origin and Host, so the origin compared against them must too
+	if p := u.Port(); (u.Scheme == "https" && p == "443") || (u.Scheme == "http" && p == "80") {
+		host = strings.TrimSuffix(host, ":"+p)
+	}
+	return u.Scheme + "://" + host, nil
 }
 
 func sameAddr(a, b string) bool {
