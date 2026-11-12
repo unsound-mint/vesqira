@@ -6,6 +6,7 @@ import type { Run } from "../api/runs";
 import { metricRows, paramDiff } from "../compare/diff";
 import { runAnalysis } from "../api/analysis";
 import { ruleOf } from "../api/declared";
+import { isFileHeader } from "./OrientationPanels";
 import type { Viewer } from "./useViewer";
 import { runFor } from "../catalog/RunPanel";
 import { EM } from "../catalog/format";
@@ -15,7 +16,7 @@ import s from "./CompareInspector.module.css";
 export { metricRows, paramDiff };
 export type { MetricRow, ParamDiff } from "../compare/diff";
 
-const kind = (d: Dataset) => (d.interpretation ? `axial orientation, ${d.interpretation.unit === "deg" ? "degrees" : "radians"} (${d.interpretation.declaredBy === "user" ? "declared by you" : d.interpretation.declaredBy === "vgt-file-header" ? "declared by the file" : ruleOf(d.interpretation.declaredBy) !== null ? `declared by your rule ${ruleOf(d.interpretation.declaredBy)}` : (d.interpretation.declaredBy === "vgt-run-adapter" ? "proposed by the run import" : `proposed by ${d.interpretation.declaredBy}`)}; ${tierText(d.interpretation.tier, d.interpretation.mappingVersion, d.interpretation.declaredBy === "user" ? null : d.interpretation.declaredBy)})` : "scalar");
+const kind = (d: Dataset) => (d.interpretation ? `axial orientation, ${d.interpretation.unit === "deg" ? "degrees" : "radians"} (${d.interpretation.declaredBy === "user" ? "declared by you" : isFileHeader(d.interpretation.declaredBy) ? "declared by the file" : ruleOf(d.interpretation.declaredBy) !== null ? `declared by your rule ${ruleOf(d.interpretation.declaredBy)}` : (d.interpretation.declaredBy === "vgt-run-adapter" ? "proposed by the run import" : `proposed by ${d.interpretation.declaredBy}`)}; ${tierText(d.interpretation.tier, d.interpretation.mappingVersion, d.interpretation.declaredBy === "user" ? null : d.interpretation.declaredBy)})` : "scalar");
 const commit = (r: Run | undefined) => (r ? (r.gitCommit ? r.gitCommit.slice(0, 12) + (r.dirty ? " -dirty (not reproducible)" : "") : "no commit recorded") : "not from an imported run");
 
 /** What differs between two maps, and the explicit next steps (axial difference, alignment). Nothing is merged silently. */

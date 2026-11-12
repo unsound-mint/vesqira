@@ -105,7 +105,7 @@ func (s *Server) computeNeeds(ws workspace.ID, p projects.Project) ([]need, erro
 	if err != nil {
 		return nil, err
 	}
-	notBrightness, err := s.Store.NoBrightnessIDs(ws)
+	notBrightness, err := s.noBrightness(ws)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (s *Server) computeNeeds(ws workspace.ID, p projects.Project) ([]need, erro
 				continue
 			}
 			in, ok := props[fa.ID]
-			if !ok || in.Kind != "axial_orientation" || in.DeclaredBy == catalog.FileHeaderAuthor {
+			if !ok || in.Kind != "axial_orientation" || catalog.IsFileHeaderAuthor(in.DeclaredBy) {
 				continue // the file's own header is not a proposal to confirm: it says what it says, and is shown as declared by the file
 			}
 			id := fa.ID
@@ -561,8 +561,8 @@ func proposalSource(by string) string {
 	if n, ok := discover.RuleName(by); ok {
 		return "your import rule " + n + ": declared by the rule, not by you; confirm it to make it your own declaration"
 	}
-	if by == catalog.FileHeaderAuthor {
-		return "the file's own header (PSIFRAME and PSIANGLE): declared by the file; confirm it to make it your own declaration"
+	if catalog.IsFileHeaderAuthor(by) {
+		return "the file's own header, read by its orientation profile: declared by the file; confirm it to make it your own declaration"
 	}
 	if by == analysisAuthor {
 		return "the analysis that made this map (" + by + "): a proposal, not your declaration"

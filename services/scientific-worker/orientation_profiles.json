@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "about": "Orientation conventions of the tools Vesqira reads, as data (ADR 0068, item 2). A profile maps header cards to the fields of an orientation declaration. Everything it supplies is labelled declared by profile:<name>@<version>, never verified. A field the profile cannot place stays unresolved: nothing is assumed.",
+  "profiles": [
+    {
+      "name": "VGT.jl",
+      "version": "1",
+      "source": "https://github.com/ISM-NU/VGT.jl: src/pipeline/outputs.jl (vgt_product_header), src/science/sky_angles.jl (INB*), src/config.jl (ANGLE_FRAMES); read at af0a7946f4579a67f0135e09c96237a4271db28e",
+      "detect": ["PSIFRAME", "PSIANGLE", "VGTPROD"],
+      "producer_cards": ["PSIFRAME", "PSIANGLE", "INB(MAJ|MIN|PA)", "VGT[A-Z0-9]{1,5}"],
+      "applies": {"card": "VGTPROD", "values": ["PSI"], "note": "only the psi product carries an angle; reliability, support and fit_rbar2 are scalars and are not read as orientation maps"},
+      "statistics": {"value": "axial", "note": "VGT.jl's psi is an axial orientation in radians (README); it writes BUNIT = rad, and no other unit is placed"},
+      "fields": {
+        "frame": {
+          "card": "PSIFRAME",
+          "values": {
+            "PIXEL": {"frame": "pixel", "zero_direction": "+axis 1", "sense": "counter-clockwise"},
+            "GALACTIC": {"frame": "sky", "sky_frame": "galactic", "zero_direction": "north", "sense": "east of north"},
+            "ICRS": {"frame": "sky", "sky_frame": "icrs", "zero_direction": "north", "sense": "east of north"}
+          }
+        },
+        "quantity": {"card": "PSIANGLE", "values": {"BFIELD": "b_field"}},
+        "unit": {"card": "BUNIT", "values": {"RAD": "rad"}}
+      }
+    }
+  ]
+}

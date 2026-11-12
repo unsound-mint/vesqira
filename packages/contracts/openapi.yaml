@@ -8363,7 +8363,7 @@ components:
           $ref: "#/components/schemas/Beam"
     Interpretation:
       type: "object"
-      description: "What was declared about the data: by the researcher, by an adapter or rule, or by the file's own header (VGT.jl's PSIFRAME). Other files declare none of it."
+      description: "What was declared about the data: by the researcher, by an adapter or rule, or by the file's own header read through an orientation profile (declaredBy profile:<name>@<version>; older rows say vgt-file-header). Other files declare none of it."
       required:
         - "kind"
         - "unit"
@@ -8430,7 +8430,7 @@ components:
           enum:
             - "galactic"
             - "icrs"
-          description: "The celestial frame a sky angle is stated in when that is not the grid's own: only a declaration the file's own header made (declaredBy vgt-file-header) has one, computed from the stored header on read. Null means the grid's own frame, which is what a person's sky declaration always means (ADR 0014 amendment)."
+          description: "The celestial frame a sky angle is stated in when that is not the grid's own: only a declaration the file's own header made (declaredBy profile:<name>@<version>, or vgt-file-header on older rows) has one, computed from the stored header on read. Null means the grid's own frame, which is what a person's sky declaration always means (ADR 0014 amendment)."
     Dataset:
       type: "object"
       description: "A registered dataset: a reference to the original file plus header facts. The file itself is never altered."
@@ -19439,11 +19439,13 @@ components:
           type: "string"
     VgtHeader:
       type: "object"
-      description: "The VGT.jl keywords of a product header as the file states them, mapped onto Vesqira's orientation declaration by one reading (mapping version 1). Everything here is declared by the file and none of it is verified."
+      description: "The VGT.jl keywords of a product header as the file states them, and what an orientation profile (ADR 0068, slice 2: the table is orientation_profiles.json in the worker) places of them in Vesqira's orientation declaration. Everything here is declared by the file and none of it is verified. A field the profile cannot place is unresolved, never defaulted."
       required:
         - "product"
         - "psiFrame"
         - "psiAngle"
+        - "profile"
+        - "unresolved"
         - "params"
         - "resolution"
         - "orientation"
@@ -19462,6 +19464,19 @@ components:
           type: "string"
           nullable: true
           description: "PSIANGLE as written."
+        profile:
+          type: "string"
+          nullable: true
+          description: "The orientation profile that read the header, as profile:<name>@<version> (profile:VGT.jl@1); null for a header stored before profiles existed, which has not been read."
+        unresolved:
+          type: "array"
+          items:
+            type: "string"
+            enum:
+              - "frame"
+              - "quantity"
+              - "unit"
+          description: "What the profile could not place. A map with unresolved fields still displays; an analysis that needs one says that it must be declared first, and the declaration (catalog interpretation) is how it is resolved."
         params:
           type: "array"
           description: "The VGT* run parameters and the input beam (INB*), for a file imported without a run_metadata.toml. Values that name a place on a machine are dropped."
@@ -19483,14 +19498,32 @@ components:
         orientation:
           type: "object"
           nullable: true
-          description: "The declaration the header makes; null when PSIFRAME is absent or unknown (nothing is inferred)."
+          description: "The declaration the header makes through the profile; null when the profile cannot place the frame or the unit (nothing is inferred)."
           required:
+            - "profile"
             - "unit"
             - "frame"
+            - "zeroDirection"
+            - "sense"
+            - "cards"
             - "skyFrame"
             - "quantity"
             - "basis"
           properties:
+            profile:
+              type: "string"
+              description: "profile:<name>@<version>: who declared it. Adopting the declaration stores this as its author."
+            zeroDirection:
+              type: "string"
+              description: "Where the angle starts, as the profile documents it for this frame (for example +axis 1, north)."
+            sense:
+              type: "string"
+              description: "Which way the angle grows (for example counter-clockwise, east of north)."
+            cards:
+              type: "object"
+              additionalProperties:
+                type: "string"
+              description: "The cards each field was read from, as CARD=value as written, by field (frame, quantity, unit)."
             unit:
               type: "string"
               enum:
@@ -19518,13 +19551,12 @@ components:
                 type: "string"
                 enum:
                   - "file"
-                  - "convention"
-              description: "Per field: file (the header states it) or convention (only the unit, when BUNIT does not state rad or deg)."
+              description: "Per field the header states and the profile places: file. A field it does not state is absent."
         notes:
           type: "array"
           items:
             type: "string"
-          description: "Why part of the header was not used (an unknown PSIFRAME or PSIANGLE, a BUNIT that is not an angle unit)."
+          description: "Why part of the header was not used (a card whose value the profile does not place, such as an unknown PSIFRAME or PSIANGLE or a BUNIT that is not an angle unit)."
         conflicts:
           type: "array"
           items:

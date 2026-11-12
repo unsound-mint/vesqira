@@ -497,3 +497,37 @@ func (s *Store) ProposedInterpretations(ws workspace.ID) (map[int64]Interpretati
 	}
 	return out, rows.Err()
 }
+
+// PreProfileHeader is a stored header of a VGT.jl product that has no orientation reading (ADR 0068, slice 2): it was stored before
+// profiles existed. SizeBytes and ModifiedAt are what was recorded when the header was read.
+type PreProfileHeader struct {
+	ID         int64
+	Path       string
+	SizeBytes  int64
+	ModifiedAt int64 // Unix nanoseconds
+}
+
+// PreProfileHeaders lists the datasets of a workspace on this computer (host 0) whose header has VGT.jl's cards but no
+// orientation reading.
+func (s *Store) PreProfileHeaders(ws workspace.ID) ([]PreProfileHeader, error) {
+	rows, err := s.db.Query(`SELECT id,path,size_bytes,modified_at FROM datasets WHERE workspace_id=? AND host_id=0 AND header LIKE '%"psiframe"%' AND header NOT LIKE '%"orientation"%'`, ws)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PreProfileHeader
+	for rows.Next() {
+		var h PreProfileHeader
+		if err := rows.Scan(&h.ID, &h.Path, &h.SizeBytes, &h.ModifiedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// ReplaceHeader stores a freshly read header for a dataset whose file is unchanged; nothing else about the dataset moves.
+func (s *Store) ReplaceHeader(ws workspace.ID, id int64, header json.RawMessage) error {
+	_, err := s.db.Exec(`UPDATE datasets SET header=? WHERE id=? AND workspace_id=?`, string(header), id, ws)
+	return err
+}

@@ -61,7 +61,7 @@ export function notReady(d: Dataset): string | null {
   if (!i || i.kind !== "axial_orientation") return "it is not declared as an orientation map";
   if (i.stale) return "the file changed since it was declared";
   const miss = [i.frame ? null : "the angle's frame", !i.quantity || i.quantity === "unspecified" ? "what the angle measures" : null].filter(Boolean);
-  return miss.length ? `${miss.join(" and ")} ${miss.length > 1 ? "are" : "is"} not declared` : null;
+  return miss.length ? `${miss.join(" and ")} ${miss.length > 1 ? "are" : "is"} unresolved: the convention must be declared first (the file does not state ${miss.length > 1 ? "them" : "it"}, and none is assumed)` : null;
 }
 
 /** Why a bootstrap interval has no width: every resample gave one value, so it says nothing about uncertainty. Null when it has width. */

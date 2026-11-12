@@ -10,8 +10,9 @@ import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import s from "./OrientationPanels.module.css";
 
-/** The author label of a declaration read from the file's own header (VGT.jl's PSIFRAME and PSIANGLE). */
-export const FILE_HEADER = "vgt-file-header";
+/** Whether a declaration was read from the file's own header: by an orientation profile ("profile:VGT.jl@1"), or by the VGT.jl reading that came before profiles. */
+export const isFileHeader = (by: string) => by === "vgt-file-header" || by.startsWith("profile:");
+const profileOf = (by: string) => (by.startsWith("profile:") ? by.slice("profile:".length) : "VGT.jl");
 const SKY_NAME: Record<string, string> = { galactic: "Galactic", icrs: "ICRS" };
 
 /** The frame of a declaration in words. A header may state the angle in a frame other than its grid's: then every comparison carries it through the sky. */
@@ -19,7 +20,7 @@ export function skyText(cur: NonNullable<Dataset["interpretation"]>): string {
   if (cur.frame === "sky" && cur.skyFrame) {
     return `Sky: position angle east of north in the ${SKY_NAME[cur.skyFrame] ?? cur.skyFrame} frame, as the file’s header states it; carried through the sky into this grid’s own frame wherever it is compared or drawn over another map. Its own orientation lines are not drawn on itself, because they would use the stored angle as a pixel direction; show this map as an overlay on another map’s view instead.`;
   }
-  return cur.frame ? FRAME_TEXT[cur.frame] : "Frame: not declared.";
+  return cur.frame ? FRAME_TEXT[cur.frame] : "Frame: unresolved (not declared yet).";
 }
 
 /** What each choice means, in the words shown under the selector. Declared by the person; the file says none of it. */
@@ -133,21 +134,21 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
             <option value="pixel">Pixel grid (counter-clockwise from +x)</option>
             <option value="sky">Sky (east of north)</option>
           </Select>
-          <BasisNote text={frame ? FRAME_TEXT[frame] : "The file does not declare which direction the angle is measured from. Left undeclared, the map cannot be aligned onto another grid."} />
+          <BasisNote text={frame ? FRAME_TEXT[frame] : "The frame is unresolved: the file does not say which direction the angle is measured from, and Vesqira does not assume one. The map still displays; it cannot be aligned onto another grid until you declare it."} />
           <Select label="What the angle is" value={quantity} onChange={(e) => setQuantity(e.target.value as "" | AngleQuantity)}>
             <option value="">Not declared</option>
             {(Object.keys(QUANTITY_LABEL) as AngleQuantity[]).map((q) => <option key={q} value={q}>{QUANTITY_LABEL[q]}</option>)}
           </Select>
-          <BasisNote text={quantity ? QUANTITY_TEXT[quantity] : "The file does not declare what the angle describes. Left undeclared, the map is refused for comparison with other datasets; its own statistics still work."} />
+          <BasisNote text={quantity ? QUANTITY_TEXT[quantity] : "What the angle describes is unresolved: the file does not say, and Vesqira does not assume it. The map still displays and its own statistics work; it is refused for comparison with other datasets until you declare it."} />
         </>
       ) : null}
       <Button type="button" variant="primary" disabled={busy || (kind === "axial" && unit === "")} onClick={apply}>{kind === "scalar" ? "Use as scalar" : "Declare axial"}</Button>
       {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
       {cur?.stale ? <p role="alert" className={s.warn}>The file changed since you declared it. Declare it again to confirm the unit still applies.</p> : null}
       <FileDeclaration dataset={dataset} busy={busy} onAdopt={async () => { setBusy(true); setMsg(await declare(dataset.id, { kind: "axial_orientation", fromFile: true })); setBusy(false); }} />
-      <Basis summary={cur ? (cur.declaredBy === FILE_HEADER ? `Declared by the file’s own header as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : ruleOf(cur.declaredBy) !== null ? `Declared by your rule ${ruleOf(cur.declaredBy)} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.` : `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? "the run import" : "the analysis that made this map"} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.`) : "Not declared: shown as an ordinary scalar map."}>
+      <Basis summary={cur ? (isFileHeader(cur.declaredBy) ? `Declared by the file’s own header as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : ruleOf(cur.declaredBy) !== null ? `Declared by your rule ${ruleOf(cur.declaredBy)} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.` : `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? "the run import" : "the analysis that made this map"} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.`) : "Not declared: shown as an ordinary scalar map."}>
         <p>
-          {cur && cur.declaredBy === FILE_HEADER ? "Read from the file’s own header (PSIFRAME, PSIANGLE and BUNIT, as VGT writes them); choose above and apply to replace it with your own declaration. " : cur && ruleOf(cur.declaredBy) !== null ? `Declared by your import rule ${ruleOf(cur.declaredBy)}, not by you and not by the file. Choose above and apply to make it your own. ` : cur && cur.declaredBy !== "user" && cur.declaredBy !== FILE_HEADER ? `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? `the run import (${cur.declaredBy})` : `the analysis that made this map (${cur.declaredBy})`}. Choose above and apply to override. ` : ""}Kept with the catalog; the file is never changed.{cur && cur.declaredBy === FILE_HEADER ? "" : " The file does not declare the unit, the frame or what the angle is."}
+          {cur && isFileHeader(cur.declaredBy) ? `Read from the file’s own header by the orientation profile ${profileOf(cur.declaredBy)}; choose above and apply to replace it with your own declaration. ` : cur && ruleOf(cur.declaredBy) !== null ? `Declared by your import rule ${ruleOf(cur.declaredBy)}, not by you and not by the file. Choose above and apply to make it your own. ` : cur && cur.declaredBy !== "user" && !isFileHeader(cur.declaredBy) ? `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? `the run import (${cur.declaredBy})` : `the analysis that made this map (${cur.declaredBy})`}. Choose above and apply to override. ` : ""}Kept with the catalog; the file is never changed.{cur && isFileHeader(cur.declaredBy) ? "" : " The file does not declare the unit, the frame or what the angle is."}
         </p>
         {cur ? <p>{declarationNote(cur)}</p> : null}
         {cur ? <p>How far this is established: <TierBadge tier={cur.tier} mappingVersion={cur.mappingVersion} rule={cur.declaredBy === "user" ? null : cur.declaredBy} /></p> : null}
@@ -166,7 +167,7 @@ export function FileDeclaration({ dataset, busy, onAdopt }: { dataset: Dataset; 
   if (!h) return null;
   const cur = dataset.interpretation;
   const o = h.orientation;
-  const inForce = cur?.declaredBy === FILE_HEADER;
+  const inForce = cur !== null && cur !== undefined && isFileHeader(cur.declaredBy);
   return (
     <div className={s.wrap}>
       {h.conflicts.length > 0 ? (
@@ -178,11 +179,16 @@ export function FileDeclaration({ dataset, busy, onAdopt }: { dataset: Dataset; 
       {o && !inForce ? (
         <p className={s.note}>
           The file declares its angle as {o.frame === "pixel" ? "measured on the pixel grid" : `a position angle east of north in the ${SKY_NAME[o.skyFrame ?? ""] ?? ""} frame`}
-          {o.quantity ? ", the B-field" : ", without saying what the angle is"}, in {o.unit === "deg" ? "degrees" : "radians"}{o.basis.unit === "convention" ? " (the unit is VGT’s convention: BUNIT does not state it)" : ""}.{" "}
+          {o.quantity ? `, ${QUANTITY_LABEL[o.quantity as AngleQuantity] ?? o.quantity}` : ", without saying what the angle is"}, in {o.unit === "deg" ? "degrees" : "radians"} (read by the profile {o.profile}; declared by the file, not verified).{" "}
           <Button type="button" disabled={busy} onClick={onAdopt}>Use the file’s declaration</Button>
         </p>
       ) : null}
-      {!o && h.psiFrame === null ? <p className={s.note}>This file carries VGT keywords but no PSIFRAME (older VGT output): its angle frame is not stated, and it is not inferred from the WCS.</p> : null}
+      {!o && h.unresolved.length > 0 ? (
+        <p className={s.note}>
+          {h.profile ? `The orientation profile ${h.profile} cannot place the ${h.unresolved.join(", ")} of this file from its header` : "This header was stored before orientation profiles and has not been read"}:
+          {" "}{h.unresolved.length > 1 ? "they are" : "it is"} unresolved. Nothing is inferred from the WCS or the values, and the map still displays. Declare {h.unresolved.length > 1 ? "them" : "it"} above before an analysis that needs {h.unresolved.length > 1 ? "them" : "it"}.
+        </p>
+      ) : null}
       {h.notes.map((n) => <p key={n} className={s.note}>{n}.</p>)}
       {h.params.length > 0 ? (
         <Basis summary={`VGT keywords in the file${h.product ? ` (${h.product})` : ""}: ${h.params.length} declared`}>
@@ -194,17 +200,17 @@ export function FileDeclaration({ dataset, busy, onAdopt }: { dataset: Dataset; 
   );
 }
 
-/** Who says what the angle is, in words: the person, the VGT run import from its pipeline's convention, or an analysis keeping its input's. */
+/** Who says what the angle is, in words: the person, the file's header read by a profile, or an analysis keeping its input's. */
 export function declarationNote(cur: NonNullable<Dataset["interpretation"]>): string {
-  if (cur.declaredBy === FILE_HEADER) {
-    return `${skyText(cur)} ${cur.quantity ? QUANTITY_TEXT[cur.quantity] : "Quantity: not declared (the header does not say what the angle is)."} Declared by the file’s own header; not verified.`;
+  if (isFileHeader(cur.declaredBy)) {
+    return `${skyText(cur)} ${cur.quantity ? QUANTITY_TEXT[cur.quantity] : "Quantity: unresolved (the header does not say what the angle is)."} Declared by the file’s own header; not verified.`;
   }
-  const f = cur.frame ? FRAME_TEXT[cur.frame] : "Frame: not declared.";
-  const q = cur.quantity ? QUANTITY_TEXT[cur.quantity] : "Quantity: not declared.";
+  const f = cur.frame ? FRAME_TEXT[cur.frame] : "Frame: unresolved (not declared yet).";
+  const q = cur.quantity ? QUANTITY_TEXT[cur.quantity] : "Quantity: unresolved (not declared yet).";
   if (cur.declaredBy === "user") return `${f} ${q}`;
   if (ruleOf(cur.declaredBy) !== null) return `${f} ${q} Declared by your import rule ${ruleOf(cur.declaredBy)}; not from the file.`;
   if (cur.declaredBy === "vgt-run-adapter") {
-    return `${f} ${q} Proposed by the VGT run import from the pipeline’s convention (ψ = ½ atan2(U,Q) + 90°); not from the file. Override it if your run differs.`;
+    return `${f} ${q} Proposed by an earlier version of the run import, which assumed the pipeline’s convention (ψ = ½ atan2(U,Q) + 90°) when the header said nothing: an assumption, not a statement by the file or the tool. Declare it yourself to confirm or replace it.`;
   }
   return `${f} ${q} Proposed by ${cur.declaredBy} from the map it was made from.`;
 }

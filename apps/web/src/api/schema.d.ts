@@ -5678,7 +5678,7 @@ export interface components {
             radesys: string | null;
             beam?: components["schemas"]["Beam"];
         };
-        /** @description What was declared about the data: by the researcher, by an adapter or rule, or by the file's own header (VGT.jl's PSIFRAME). Other files declare none of it. */
+        /** @description What was declared about the data: by the researcher, by an adapter or rule, or by the file's own header read through an orientation profile (declaredBy profile:<name>@<version>; older rows say vgt-file-header). Other files declare none of it. */
         Interpretation: {
             /** @enum {string} */
             kind: "axial_orientation";
@@ -5708,7 +5708,7 @@ export interface components {
             /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
             mappingVersion: string;
             /**
-             * @description The celestial frame a sky angle is stated in when that is not the grid's own: only a declaration the file's own header made (declaredBy vgt-file-header) has one, computed from the stored header on read. Null means the grid's own frame, which is what a person's sky declaration always means (ADR 0014 amendment).
+             * @description The celestial frame a sky angle is stated in when that is not the grid's own: only a declaration the file's own header made (declaredBy profile:<name>@<version>, or vgt-file-header on older rows) has one, computed from the stored header on read. Null means the grid's own frame, which is what a person's sky declaration always means (ADR 0014 amendment).
              * @enum {string|null}
              */
             skyFrame?: "galactic" | "icrs" | null;
@@ -10462,7 +10462,7 @@ export interface components {
             tokensKept: number;
             note: string;
         };
-        /** @description The VGT.jl keywords of a product header as the file states them, mapped onto Vesqira's orientation declaration by one reading (mapping version 1). Everything here is declared by the file and none of it is verified. */
+        /** @description The VGT.jl keywords of a product header as the file states them, and what an orientation profile (ADR 0068, slice 2: the table is orientation_profiles.json in the worker) places of them in Vesqira's orientation declaration. Everything here is declared by the file and none of it is verified. A field the profile cannot place is unresolved, never defaulted. */
         VgtHeader: {
             /** @description VGTPROD: the product's role (psi, reliability, fit_rbar2, support). */
             product: string | null;
@@ -10470,6 +10470,10 @@ export interface components {
             psiFrame: string | null;
             /** @description PSIANGLE as written. */
             psiAngle: string | null;
+            /** @description The orientation profile that read the header, as profile:<name>@<version> (profile:VGT.jl@1); null for a header stored before profiles existed, which has not been read. */
+            profile: string | null;
+            /** @description What the profile could not place. A map with unresolved fields still displays; an analysis that needs one says that it must be declared first, and the declaration (catalog interpretation) is how it is resolved. */
+            unresolved: ("frame" | "quantity" | "unit")[];
             /** @description The VGT* run parameters and the input beam (INB*), for a file imported without a run_metadata.toml. Values that name a place on a machine are dropped. */
             params: {
                 key: string;
@@ -10479,8 +10483,18 @@ export interface components {
             resolution: {
                 [key: string]: unknown;
             } | null;
-            /** @description The declaration the header makes; null when PSIFRAME is absent or unknown (nothing is inferred). */
+            /** @description The declaration the header makes through the profile; null when the profile cannot place the frame or the unit (nothing is inferred). */
             orientation: {
+                /** @description profile:<name>@<version>: who declared it. Adopting the declaration stores this as its author. */
+                profile: string;
+                /** @description Where the angle starts, as the profile documents it for this frame (for example +axis 1, north). */
+                zeroDirection: string;
+                /** @description Which way the angle grows (for example counter-clockwise, east of north). */
+                sense: string;
+                /** @description The cards each field was read from, as CARD=value as written, by field (frame, quantity, unit). */
+                cards: {
+                    [key: string]: string;
+                };
                 /** @enum {string} */
                 unit: "rad" | "deg";
                 /** @enum {string} */
@@ -10489,12 +10503,12 @@ export interface components {
                 skyFrame: "galactic" | "icrs" | null;
                 /** @enum {string|null} */
                 quantity: "b_field" | null;
-                /** @description Per field: file (the header states it) or convention (only the unit, when BUNIT does not state rad or deg). */
+                /** @description Per field the header states and the profile places: file. A field it does not state is absent. */
                 basis: {
-                    [key: string]: "file" | "convention";
+                    [key: string]: "file";
                 };
             } | null;
-            /** @description Why part of the header was not used (an unknown PSIFRAME or PSIANGLE, a BUNIT that is not an angle unit). */
+            /** @description Why part of the header was not used (a card whose value the profile does not place, such as an unknown PSIFRAME or PSIANGLE or a BUNIT that is not an angle unit). */
             notes: string[];
             /** @description Where the declaration in force differs from the header, in full sentences. The declaration in force stays in use; nothing is resolved silently. */
             conflicts: string[];

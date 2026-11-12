@@ -108,8 +108,8 @@ describe("declaring an interpretation", () => {
     const calls: unknown[] = [];
     render(<InterpretationPanel v={viewer} dataset={ds(1, "psi.fits")} datasets={[ds(1, "psi.fits")]} declare={async (_id, b) => (calls.push(b), null)} />);
     await userEvent.selectOptions(screen.getByLabelText("Treat this map as"), "axial");
-    expect(screen.getAllByText(/does not declare which direction the angle is measured from/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/does not declare what the angle describes/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/frame is unresolved: the file does not say which direction the angle is measured from/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/What the angle describes is unresolved: the file does not say/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/assumes/)).not.toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText("Angle unit (required)"), "deg");
     await userEvent.selectOptions(screen.getByLabelText("Angle frame"), "sky");
@@ -129,11 +129,11 @@ describe("declaring an interpretation", () => {
     expect(calls).toEqual([{ kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: "sky", quantity: "dust_polarization" }]);
   });
 
-  it("shows the VGT import's proposal as the pipeline's convention, overridable, and starts from it", async () => {
+  it("shows an earlier run import's assumed convention as an assumption, overridable, and starts from it", async () => {
     const proposed: Dataset = { ...ds(1, "psi.fits"), interpretation: { kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "pixel", quantity: "b_field", declaredBy: "vgt-run-adapter", tier: "inferred", mappingVersion: "1", declaredAt: "", stale: false } };
     const calls: unknown[] = [];
     render(<InterpretationPanel v={viewer} dataset={proposed} datasets={[proposed]} declare={async (_id, b) => (calls.push(b), null)} />);
-    expect(screen.getByText(/Proposed by the VGT run import from the pipeline’s convention \(ψ = ½ atan2\(U,Q\) \+ 90°\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Proposed by an earlier version of the run import, which assumed the pipeline’s convention \(ψ = ½ atan2\(U,Q\) \+ 90°\).*an assumption, not a statement by the file/)).toBeInTheDocument();
     expect(screen.getByLabelText("Angle frame")).toHaveValue("pixel");
     expect(screen.getByLabelText("What the angle is")).toHaveValue("b_field");
     await userEvent.selectOptions(screen.getByLabelText("What the angle is"), "gradient");
@@ -144,12 +144,21 @@ describe("declaring an interpretation", () => {
   it("describes a declaration from before the frame and quantity existed as not declared", () => {
     const old: Dataset = { ...ds(1, "psi.fits"), interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: null, quantity: null, declaredBy: "user", tier: "declared", mappingVersion: "", declaredAt: "", stale: false } };
     render(<InterpretationPanel v={viewer} dataset={old} datasets={[old]} declare={async () => null} />);
-    expect(screen.getByText(/Frame: not declared\. Quantity: not declared\./)).toBeInTheDocument();
+    expect(screen.getByText(/Frame: unresolved \(not declared yet\)\. Quantity: unresolved \(not declared yet\)\./)).toBeInTheDocument();
+  });
+
+  it("says plainly that a header its profile cannot place leaves the frame and quantity unresolved, and assumes nothing", () => {
+    const vgtHeader = { product: "psi", psiFrame: null, psiAngle: null, params: [], resolution: null, notes: [], profile: "profile:VGT.jl@1", unresolved: ["frame", "quantity"],
+      orientation: null, conflicts: [] } as unknown as Dataset["vgtHeader"];
+    const d: Dataset = { ...ds(1, "psi.fits"), vgtHeader };
+    render(<InterpretationPanel v={viewer} dataset={d} datasets={[d]} declare={async () => null} />);
+    expect(screen.getByText(/profile:VGT\.jl@1 cannot place the frame, quantity of this file.*unresolved\. Nothing is inferred/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use the file’s declaration" })).not.toBeInTheDocument();
   });
 
   it("shows what the file's own header declares, a disagreement with the person's declaration, and adopts it only on request", async () => {
-    const vgtHeader = { product: "psi", psiFrame: "GALACTIC", psiAngle: "BFIELD", params: [{ key: "VGTDN", value: "10" }], resolution: null, notes: [],
-      orientation: { unit: "rad", frame: "sky", skyFrame: "galactic", quantity: "b_field", basis: { frame: "file", quantity: "file", unit: "file" } },
+    const vgtHeader = { product: "psi", psiFrame: "GALACTIC", psiAngle: "BFIELD", params: [{ key: "VGTDN", value: "10" }], resolution: null, notes: [], profile: "profile:VGT.jl@1", unresolved: [],
+      orientation: { profile: "profile:VGT.jl@1", unit: "rad", frame: "sky", skyFrame: "galactic", zeroDirection: "north", sense: "east of north", cards: { frame: "PSIFRAME=GALACTIC" }, quantity: "b_field", basis: { frame: "file", quantity: "file", unit: "file" } },
       conflicts: ["the header states the angle as a position angle east of north in the Galactic frame (PSIFRAME=GALACTIC), which is not this grid's own frame; the declaration in force says east of north in the grid's own frame"] } as unknown as Dataset["vgtHeader"];
     const mine: Dataset = { ...ds(1, "psi.fits"), vgtHeader, interpretation: { kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "sky", quantity: "b_field", declaredBy: "user", tier: "declared", mappingVersion: "", declaredAt: "", stale: false } };
     const calls: unknown[] = [];

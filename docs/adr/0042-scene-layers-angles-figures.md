@@ -197,3 +197,6 @@ Status: implemented for figures saved from now on: "draw again" for plane, orien
   - The channel-grid redraw has a mocked unit test (recorded scale and its whole sentence, columns, width, linked save, preview step) but no pixel-identity e2e.
   - An SVG export needs the worker (it draws again): an unreachable host or a refused layer is a stated failure, not a partial file.
   - Files on a host are never better than `probable` here, because looking at them waits on the network.
+
+## Note 2026-11-13 (ADR 0068, slice 2)
+The first slice's "the VGT run adapter proposes `pixel` and `b_field`" is removed: a frame or quantity nobody declared stays null ("unresolved") and the analyses above refuse it by name. A header that an orientation profile places (VGT.jl's PSIFRAME and PSIANGLE) still declares them, as `profile:VGT.jl@1`.

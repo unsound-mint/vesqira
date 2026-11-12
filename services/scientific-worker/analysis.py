@@ -35,6 +35,7 @@ import corrections as corr
 from plane_worker import Cube, Refused, authorize, declared_unit as checked_declared_unit, fits_array
 import masks as mk
 import orientation as ori
+import orientation_profiles as oprof
 import subset as sub
 from srcopen import fits_open
 from memcap import limit_memory, over_cap_message
@@ -84,14 +85,12 @@ def chan_range(c: Cube, args) -> tuple[int, int]:
     return c0, c1
 
 
-PRODUCER_CARDS = re.compile(r"PSIFRAME|PSIANGLE|INB(MAJ|MIN|PA)|VGT[A-Z0-9]{1,5}")
-
-
 def drop_producer_cards(h: fits.Header) -> None:
     """Remove the cards a pipeline wrote to describe its own product (VGT's PSIFRAME, PSIANGLE, VGTPROD, the VGT* parameters, INB*) from the
     header of a file Vesqira derives from it. They describe the angles and the resolution of the original; a smoothed or resampled map is
     neither, so keeping them would make the result re-declare itself from a header that is no longer true. The derivation says what it did."""
-    for k in [k for k in h.keys() if PRODUCER_CARDS.fullmatch(k)]:
+    producer = oprof.producer_cards()
+    for k in [k for k in h.keys() if producer.fullmatch(k)]:
         del h[k]
 
 
