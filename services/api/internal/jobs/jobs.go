@@ -779,6 +779,9 @@ func Open(db *sql.DB) (*Store, error) {
 	if err == nil {
 		err = schema.Scope(db, "jobs")
 	}
+	if err == nil {
+		err = schema.AddColumn(db, "jobs", "request_ref", "TEXT NOT NULL DEFAULT ''")
+	}
 	if err != nil {
 		return nil, err
 	}

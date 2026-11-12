@@ -40,14 +40,15 @@ var allowed = map[string][]string{
 	"runs":       {"schema", "workspace"},
 	"discover":   {"runs", "sourceroot"},
 	"projects":   {"discover", "schema", "workspace"},
-	"fullschema": {"accounts", "discussion", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers", "pushed", "outbox"},
+	"fullschema": {"accounts", "discussion", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers", "pushed", "outbox", "relay"},
 	"hosts":      {"worker", "sourceroot", "schema", "workspace"},
 	"review":     {"boards", "workspace"},
-	"server":     {"accounts", "audit", "authz", "workspace", "discussion", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker", "pushwire", "pushed", "outbox"},
+	"server":     {"accounts", "audit", "authz", "workspace", "discussion", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker", "pushwire", "pushed", "outbox", "relay"},
 	// ADR 0066 push: the wire contract imports nothing, so client and server cannot disagree about a hash
 	"pushwire": {},
 	"pushed":   {"identity", "pushwire", "schema", "workspace"},
 	"outbox":   {"schema", "workspace"},
+	"relay":    {"jobs", "schema", "workspace"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a
