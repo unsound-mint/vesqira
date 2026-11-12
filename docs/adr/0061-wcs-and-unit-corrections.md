@@ -1,0 +1,96 @@
+# ADR 0061: WCS and unit corrections as a layer with history
+
+- Status: proposed; implemented, awaiting owner review.
+- Date: 2026-11-12
+- Builds the Stage 5 item "WCS and unit corrections as a layer with history, never an edit of the original" (Q143), after its first part (a unit declared for a file with no BUNIT, ADR 0038). Uses the tiers of ADR 0055, the file identity of ADR 0053, the figure declarations of ADR 0042 §5 and the impact preview pattern of ADR 0041. The interface (a Corrections part of the Dataset section) sits inside an existing surface and has **not** had design review or approval (CLAUDE.md design gate).
+
+## Context
+
+Files state things that are wrong: a map whose BUNIT says K but whose values are Jy/beam, a non-standard unit spelling, a pointing offset fixed later in the observatory log, a rest frequency for another line, a SPECSYS left at TOPOCENT. ADR 0038 refused to override what a file says ("the file always wins") and left correcting it as a larger decision. AGENTS.md rules out editing originals (invariant 8), inventing calibration or frames (1) and claiming more provenance than is established (7). A researcher does know the right value; it must become a layer that says who, when, why and for which bytes, shown beside what the file says, and never silently applied to bytes it was not made for.
+
+## Decision
+
+**A correction is a declaration, never an edit.** Tier `declared` (the researcher), a required reason (3 to 500 characters of plain text) and an optional source (a log, a paper, a DOI; up to 300). The same text rules as a unit (no markup, quotes or backslashes): it reaches provenance and the reviewer's page.
+
+**What can be corrected.**
+- The brightness unit **the file states** (BUNIT). A file with no BUNIT gets a declaration (ADR 0038), not a correction; a correction to the file's own value is refused ("withdraw it instead"). Orientation and reliability maps and point catalogs are refused, as in ADR 0038.
+- WCS keywords: `CRVALi`, `CRPIXi`, `CDELTi`, `CDi_j`, `PCi_j`, `CTYPEi`, `CUNITi`, `RESTFRQ`, `RESTFREQ`, `SPECSYS`, `EQUINOX`, `RADESYS`; at most 24 per state. `NAXIS*` and anything else are refused, and so is an axis number above NAXIS: **a correction never adds or removes an axis.**
+
+**Validation, before anything is accepted** (the worker, `services/scientific-worker/corrections.py`, on every apply, preview and save):
+- the overrides go onto a *copy* of the header the worker read (`Cube.h`); the file's own header stays beside it (`Cube.file_h`);
+- astropy must build the WCS of **every** axis (`WCS(h, naxis=n)` and `wcs.set()`). The viewer's usual fallback to the celestial axes alone does not count as acceptance;
+- every axis keeps its **kind** by its CTYPE (celestial longitude, latitude, spectral, other, none): RA to FREQ, a lon/lat swap, or adding a CTYPE to an axis that had none is refused. RA to GLON (both lon) or VRAD to VOPT (both spectral) are corrections, allowed with a reason;
+- the image keeps its **roles** (which axis is x, y and the channel), compared with the file read without corrections;
+- one linear-transform form: correcting `CDELT`/`PC` on a file that states `CD`, or `CD` on one that states `CDELT`/`PC`, is refused (wcslib would silently use one and ignore the other); `RESTFRQ` and `RESTFREQ` may not end up with two different values;
+- numbers finite (`CDELT` nonzero, rest frequency positive, `EQUINOX` 1800 to 2200), `SPECSYS` and `RADESYS` from the FITS vocabularies, `CTYPE` in FITS form.
+
+**Preview before saving.** `POST /api/datasets/{id}/corrections/preview` returns, without storing anything: each keyword with what the file says, the value in force and the proposed value; the worker's coordinates (astropy) at the image centre and four corners and at the first, middle and last channel, **before and after**; the unit after; or the refusal in words; and the impact list (below). The form shows the sky table with how far each point moves (arcseconds) and the spectral table.
+
+**History: append-only.** `dataset_corrections` (schema 22): one row per record, `set`, `revert`, `confirm`, `import` or `withdraw`, each with the **whole state in force after it** (JSON: per keyword the value, what the file says, the reason, the source and when), what it changed (keyword, file, before, after), the reason and source, the author and tier, the time, and the identity of the file it was made for (registered size, modification time, recorded content identity `sha256:` or `sampled:`, ADR 0053). A SQLite trigger refuses any `UPDATE`; rows go only with their dataset (catalog delete, ADR 0041). The state in force is the latest record's. **Revert** of a record is a new record whose state is the one in force just before that record (each value keeps its original reason); withdrawing everything is a record too. Saving names the latest record the client looked at (`expect`); a different one is a 409, so two windows cannot overwrite each other.
+
+**Stale, never applied silently.** A record made for other bytes (size or modification time differ, or both sides have a content identity of the same kind and they differ) is stale. A stale state is applied **nowhere** (viewer, analyses, figures); the inspector says so and offers only "They still apply…" (a `confirm` record with a reason, made for the file as it is) or "Withdraw all…". The staleness rule is the one of declared units and masks.
+
+**How it is applied.** The API attaches the state in force to every worker request that names a registered file: the plane worker goes through a wrapper (`correctingService`) that adds `corrections: {<resolved path>: {hash, bunit, wcs}}` for the base, an overlay, the other map of a link, a reliability or weights map; the analysis program gets `--corrections` for `--input`, `--reference`, `--weights`, `--ref-weights`. The worker validates the state again, applies it for that request only, and **echoes the hashes it applied** (`corrections_applied`). A reply without the echo is refused (502: "nothing is shown rather than uncorrected values"), so an older worker on a host can never pass uncorrected values off as corrected. The hash (SHA-256 of the values, not the reasons) is part of every cache key, in the API and in the worker; a reply whose echo is not the hash the request was keyed on (the state changed meanwhile) is a 409 and is not cached. Everything the worker derives follows: readouts, sky and spectral facts, conversions (ADR 0040; a corrected rest frequency is named "RESTFRQ (corrected by the researcher)" in the basis), spectra, channel maps, PV, link, overlays, catalog placement, DS9 sky regions, masks made by analysis.
+
+**Said wherever it is shown.** The worker's heads carry `bunit_status: "corrected"` (new, beside `declared`, `user`, `unresolved`), `file_bunit` and `wcs_corrected`. The readout says "Brightness unit (Jy/beam) is your correction: the file says K" and "Coordinates use your correction of CRVAL2; the file says otherwise and is not changed"; unit labels say "(corrected by you)"; the inspector's unit row and tier row say it; filters use the corrected unit. A figure's PNG caption says "Brightness unit (…) corrected by the author; the file says …" and "WCS corrected by the author (…)". A figure's limits may be in the corrected unit and no longer in the file's.
+
+**Provenance a reviewer sees.** `headerDeclaredByFile` stays what the file said. The figure provenance gains `corrections` (keyword, what the file says, the value, tier, reason, source), a tier line ("brightness unit: declared — the file says K; corrected by the researcher: <reason>", "WCS (CRVAL2): declared — corrected by the researcher: <reason>") and a statement per keyword: "… is 2.05, corrected by the researcher (tier: declared): <reason>. The file says 2; the file was not changed." No id, no path, no record id or file identity reaches the reviewer (tested on the review API). Overlay files' corrections are stated the same way.
+
+**Pinned evidence is never changed.** A saved figure keeps its PNG and records, in `figures.identity` (ADR 0042 §5 declarations), the hash, the keywords and an id-free snapshot of the corrections it was drawn under; "Draw again" compares them with the state in force and asks first ("WCS and unit corrections were BUNIT, CRVAL2 (corrected by you), now …"). A derived result's record keeps an id-free snapshot of the corrections its inputs were read with (`params.corrections`); its FITS output carries the corrected cards as its own header, marked `VESQWCSC = 'corrected'` with HISTORY lines naming the keywords, and a corrected unit as `VESQBUNS = 'corrected'` (like ADR 0038's `'user'`).
+
+**Impact list** (in every preview, of a set, revert, confirm, withdrawal or sidecar import): saved figures (as base or as overlay), the boards and published reviews holding them, derived results, relative-orientation results, figures placing catalog sources by this map's WCS, masks made from regions (their pixels do not move; the WCS cards copied into the mask file are the old ones), threshold masks (a threshold stated in the old unit), each marked **pinned** ("keeps the values it was made with"); saved regions (they stay on their pixels; their sky position and an arcsec width are read again) and exploration steps, marked **live**; plus the live sentences (open views, linked views, readouts, spectra, channel maps, PV and overlays use the new values) and what does not take corrections (jobs on a host).
+
+**Sidecar.** `GET /api/datasets/{id}/corrections/sidecar` exports `<name>.corrections.json`:
+
+```json
+{
+  "format": "vesqira-corrections",
+  "version": 1,
+  "about": "…the file itself is not changed…",
+  "file": {"name": "cube.fits", "sizeBytes": 1234, "sha256": "…" , "sampledFingerprint": "…", "sampledAlgorithm": "sampled/1"},
+  "exportedAt": "2026-11-12T10:00:00Z",
+  "corrections": {"unit": {"value": "Jy/beam", "file": "K", "reason": "…", "source": "", "at": "…"},
+                  "wcs": {"CRVAL2": {"value": 2.05, "file": 2, "reason": "…", "source": "…", "at": "…"}}},
+  "history": [{"action": "set", "at": "…", "author": "the researcher", "reason": "…", "source": "…", "changes": [{"what": "CRVAL2", "file": 2, "before": null, "after": 2.05}]}]
+}
+```
+
+No path, no catalog id, no account. Import is a preview (`…/sidecar/preview`: whether it was made for this file, by ADR 0053's rule: equal SHA-256 *verified*, equal size and sampled fingerprint *probable*, otherwise *different* or *unknown*; what it changes; the coordinates before and after; the impact) and then an apply (`POST …/sidecar`) that requires `confirm` and, for a file it was not made for, a sentence of 10 to 500 characters ("apply to this different file"), which becomes part of the record's reason. Every value in it is validated as a new correction would be; what the file says is read from this file, never taken from the sidecar. The import is one `import` record.
+
+**Routes.** `GET /api/datasets/{id}/corrections`, `POST /api/datasets/{id}/corrections` (set, revert, confirm, withdraw), `POST …/corrections/preview`, `GET …/corrections/sidecar`, `POST …/corrections/sidecar/preview`, `POST …/corrections/sidecar`. `GET /api/datasets` and `/{id}` gain `corrections` (state in force, hash, tier, record id, stale). All described in `packages/contracts/bodies.json`; web types generated.
+
+## Where this differs from the request, and why
+
+- **Schema 22, not 23.** The contiguity test requires migrations 2..Version with no gap, so 23 cannot pass on a branch whose main is at 21. This branch uses 22; whichever branch lands second renumbers (the other branch in flight also uses 22).
+- **Analyses run as jobs on a host are refused** for a dataset with corrections in force (409), instead of running on the file's own header: a queued script cannot be handed a validated state as safely, and its result would silently carry the uncorrected WCS or unit. Withdraw them for that run, or analyse a copy on this computer.
+- **A correction never fills a missing card into a new kind of axis** (an axis without CTYPE stays without one); filling a missing CRVAL/CRPIX/CDELT on an axis that has a CTYPE is allowed, with a reason, because the researcher declares it and the tier says so.
+- **Revert means "back to the state before that record"**, not a per-keyword undo: it is unambiguous with later records, and each value keeps the reason it had then.
+- **WCS corrections also apply to grid checks** (`compat.Grids` reads the catalogued header with the corrections applied, `effectiveHeader`), so two maps are compared on the WCS the researcher declared.
+
+## Alternatives
+
+- **Write the corrected cards into the file or a copy.** Rejected: invariant 8; a copy would double storage and break the dataset's identity.
+- **Patch the catalogued header facts.** Rejected for the same reason as in ADR 0038: the header would stop being what the file said, and the file's own value would no longer be visible beside the correction.
+- **One row per keyword with an "active" flag.** Simpler queries, but a revert would be an update. A full state per record makes every past state readable as it was, reverts trivial, and the trigger can refuse updates.
+- **Apply corrections in the browser.** Rejected: the browser never computes WCS (ADR 0042 §4); one input to the worker keeps every head and every derived value consistent.
+- **Trust the worker to apply what it is sent.** Rejected: a stale worker on a host would silently ignore an unknown field. The echoed hash is a mechanical guard.
+
+## Consequences
+
+- Every worker request for a corrected dataset costs one catalog read on a cache miss (to attach the state); cache hits cost nothing more.
+- Derived files made from a corrected dataset carry the corrected cards as their own header, marked with `VESQWCSC`/`VESQBUNS` and HISTORY; the viewer reads such a file's header as the file's (as for ADR 0038's `VESQBUNS = 'user'`); teaching the inspector to say "made from a corrected input" is not done.
+- A noise map (for a low-S/N mask) or an imported mask file that itself has corrections in force is refused (409): its path travels inside the mask's parameters, where corrections are not attached yet. The dataset the mask is made for does get its corrections (its mask file copies the corrected WCS cards and is stamped).
+- Not built: corrections for files whose header the worker cannot read at all, a diff view between two arbitrary records, per-keyword reverts, corrections of distortion keywords (SIP, TPV), LONPOLE/LATPOLE/CROTA, a spectral reference-frame *transform* (SPECSYS is a declaration of what the axis is, not a conversion), and applying corrections in jobs on hosts.
+
+## Validation
+
+- `services/scientific-worker/test_corrections.py` (independent oracle: astropy built in the test from a corrected copy of the header): a CRVAL2 and CDELT1 correction moves known pixels exactly as astropy on the corrected header, and the latitude at the reference pixel by exactly the CRVAL2 change; the cache never serves a corrected reading for the file; a RESTFRQ correction changes radio velocities exactly as the closed-form Doppler formula with the new rest frequency, and the basis says it is corrected; SPECSYS reaches the view; a unit correction says `corrected` with `file_bunit`, and is refused on a file with no BUNIT; refusals of a change of axis kind, of an axis the image does not have, of NAXIS, of a WCS astropy rejects, of CDELT 0, of CD on a CDELT file, of two rest frequencies, each also as a preview refusal; the preview's centre and corners before and after against astropy; a moment map of a corrected cube carries the corrected CRVAL2, `VESQWCSC` and `VESQBUNS = 'corrected'`; both files are byte-identical at the end.
+- `services/api/internal/server/corrections_test.go` (real worker): preview stores nothing and gives the changes with the file's values, coordinates and impact; refusals (no expect, no reason, markup in the reason, axis kind, axis count, NAXIS, astropy, the file's own unit); a save built on an older history is 409; every head (view, plane, coordinate, spectrum) says the corrected unit beside the file's, and the latitude moves by exactly 0.05°; the catalogued header is unchanged; a figure in the file's unit is refused, one in the corrected unit records the corrections; the published review shows the tier and reason and no root path, record id, file identity or dataset id; impact lists the figure and board as pinned; Draw again announces the change; revert is a new record with the right changes and the earlier records stay; the sidecar has no path or id, round-trips as verified on the same file, is "made for a different file" elsewhere, needs confirmation and a sentence there; a changed file makes the state stale, unapplied, and refuses a set until confirmed; withdraw. A second test: RESTFRQ and SPECSYS through the routes, a radio velocity against the formula, and the file byte-identical with the same modification time after save, revert and export. A third validates every new route against the spec.
+- `internal/schema/corrections_test.go`: a schema 21 catalog upgrades with its datasets kept, the table exists, a record cannot be updated, it can be deleted with its dataset. `TestCatalogSchemaSnapshot` with `testdata/schema_v22.sql`. The lifecycle guard test covers the new table in dataset deletion.
+- Web: `apps/web/src/catalog/corrections.test.tsx` (the form, its before/after preview with the arcsecond shift, the impact list, the required reason, a worker refusal blocks saving, the history newest first, revert sends a new record with `expect`, stale corrections offer only confirm or withdraw, the unit label, filter and figure caption).
+- `e2e/tests/zzzzzzz-corrections.spec.ts`: correct CRVAL2 and BUNIT in the real app, see the preview and impact, axe, save with a reason, the readout says it, revert, history.
+- Not verified: corrections on a file read through a host's worker (the protocol and echo are the same; no host in the tests), and the screens at the narrow and compact laptop sizes and in light mode beyond one screenshot.
+
+## Rollback / Migration
+
+Upgrading creates `dataset_corrections` (with its index and trigger) and stamps schema 22 after the usual copy to `<db>.before-schema-22-<time>`. An older build refuses a version 22 catalog; going back means restoring that copy (corrections made since are lost; the files were never changed) or dropping the table and setting `PRAGMA user_version = 21` by hand, after which every view shows the files' own values again. Exported sidecars keep the corrections and their reasons outside the catalog.

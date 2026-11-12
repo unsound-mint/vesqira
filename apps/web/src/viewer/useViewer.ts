@@ -41,8 +41,9 @@ export function useViewer(dataset: Dataset | null) {
   const interp = dataset?.interpretation ?? null;
   const relId = interp?.reliabilityId ?? null;
   const unit = interp?.unit ?? null;
-  // the unit you declared for a file without BUNIT, as the server applies it (a stale declaration is not applied)
-  const unitKey = dataset?.unitDeclaration && !dataset.unitDeclaration.stale ? dataset.unitDeclaration.unit : "";
+  // the unit you declared for a file without BUNIT, as the server applies it (a stale declaration is not applied), and the WCS and
+  // unit corrections in force (ADR 0061, by their hash): either changes what every head says
+  const unitKey = (dataset?.unitDeclaration && !dataset.unitDeclaration.stale ? dataset.unitDeclaration.unit : "") + "|" + (dataset?.corrections && !dataset.corrections.stale ? dataset.corrections.hash : "");
   const seenUnit = useRef<{ id: number | null; key: string }>({ id: datasetId, key: unitKey });
   const canvas = useRef<HTMLCanvasElement>(null);
   const [view, setView] = useState<View | null>(null);
@@ -164,7 +165,7 @@ export function useViewer(dataset: Dataset | null) {
     return () => ac.abort();
   }, [datasetId, retry, fileTime]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Declaring or withdrawing a unit changes what every head says. Read the layout again (the plane and the spectrum follow the
+  // Declaring or withdrawing a unit, or a correction, changes what every head says. Read the layout again (the plane and the spectrum follow the
   // new view) without starting over: the channel and the region stay. A different dataset starts over by itself, above.
   useEffect(() => {
     const prev = seenUnit.current;

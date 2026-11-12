@@ -13,7 +13,7 @@ import (
 // UnitDeclaration is the physical unit a person declared for a file whose header has no BUNIT. It is an overlay: the
 // file and the header facts the worker read are never changed, the declaration says who made it, and it is shown
 // wherever the unit is shown as declared by the person, not by the file. A file that states its own BUNIT cannot be given
-// one: that would be a correction of what the file says, which is a different and larger decision.
+// one: that is a correction of what the file says, kept with its reason and history in corrections.go (ADR 0061).
 type UnitDeclaration struct {
 	Unit       string    `json:"unit"`
 	DeclaredBy string    `json:"declaredBy"` // "user", or the rule that proposed it (the rohsa run adapter)
@@ -31,7 +31,7 @@ type UnitDeclaration struct {
 var ErrNotBrightness = errors.New("this is an orientation map (or the reliability map of one): its values are not a brightness, so no brightness unit can be declared for it")
 
 // ErrUnitInFile is returned when the file's header already states its unit.
-var ErrUnitInFile = errors.New("the file states its own unit (BUNIT); a declared unit only fills a missing one")
+var ErrUnitInFile = errors.New("the file states its own unit (BUNIT); a declared unit only fills a missing one (to replace the file's unit, correct it with a reason under Corrections)")
 
 // MaxUnit is the longest unit text accepted.
 const MaxUnit = 40

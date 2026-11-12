@@ -104,7 +104,7 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 		return out, err
 	}
 	b.add("history", "live", steps, func(n int) string {
-		return plural(n, "step of the exploration history reopens", "steps of the exploration history reopen") + " this dataset; they are read with the corrections in force when reopened."
+		return plural(n, "step of the exploration history reopens", "steps of the exploration history reopen") + " this dataset; each is read with the corrections in force when it is reopened."
 	})
 	out.Groups = im.Groups
 	if out.Groups == nil {
