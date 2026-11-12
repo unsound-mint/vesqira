@@ -49,6 +49,8 @@ type relayState struct {
 	relayMu   sync.Mutex // one pass, approval or decline at a time
 	// RelayNow is the loop's wall clock (tests move it); nil is time.Now.
 	RelayNow func() time.Time
+	// relayAudits caps refusal audit rows: refused filings on the group server, refused pulled requests here
+	relayAudits auditBudget
 }
 
 func (s *Server) relayKicker() chan struct{} {
@@ -134,32 +136,44 @@ func (s *Server) RelayPass(ctx context.Context) {
 		}
 		_ = s.Relayed.Failed(l.Origin, msg)
 	}
+	// a failed publish or pull still lets this computer tell the server about drafts and report on approved jobs below: a page
+	// refused whole must not also stop the status of work already running
+	pull := true
 	if !st.Published {
 		if err := c.do("PUT", "/api/relay/inbox", "application/json", mustJSONBytes(map[string]any{"instance": l.Instance, "inbox": st.Inbox}), nil); err != nil {
 			failed(err)
-			return
+			pull = false
+		} else {
+			_ = s.Relayed.MarkPublished(l.Origin)
 		}
-		_ = s.Relayed.MarkPublished(l.Origin)
 	}
 	cursor := st.Cursor
-	for pages := 0; pages < 20 && ctx.Err() == nil; pages++ {
+	for pages := 0; pull && pages < 20 && ctx.Err() == nil; pages++ {
 		var raw json.RawMessage
 		if err := c.do("GET", "/api/relay/requests?after="+strconv.FormatInt(cursor, 10), "", nil, &raw); err != nil {
 			failed(err)
-			return
+			break
 		}
 		page, err := relay.DecodePage(raw, cursor)
 		if err != nil {
 			failed(fmt.Errorf("the server's answer was refused whole: %s", relay.Sentence(err)))
-			return
+			break
 		}
+		full := false
 		for _, req := range page.Requests {
-			s.receive(ctx, l, st, page.Workspace, req)
+			if err := s.receive(ctx, l, st, page.Workspace, req); errors.Is(err, relay.ErrFull) {
+				failed(errors.New(relay.Sentence(err)))
+				full = true
+				break
+			}
+		}
+		if full {
+			break
 		}
 		cursor = page.Cursor
 		if err := s.Relayed.Answered(l.Origin, cursor); err != nil {
 			log.Printf("relay: %v", err)
-			return
+			break
 		}
 		if len(page.Requests) < relay.MaxPage {
 			break
@@ -173,7 +187,7 @@ func mustJSONBytes(v any) []byte { b, _ := json.Marshal(v); return b }
 
 // receive records one pulled request after this computer's own validation, and renders the draft at once when the base resolves
 // through this computer's own push records; otherwise the key holder chooses the base.
-func (s *Server) receive(ctx context.Context, l outbox.Link, st relay.LocalState, wsName string, req relay.Request) {
+func (s *Server) receive(ctx context.Context, l outbox.Link, st relay.LocalState, wsName string, req relay.Request) error {
 	refusal := ""
 	if err := relay.CheckRequest(st.Inbox, st.Hosts, req); err != nil {
 		refusal = relay.Sentence(err)
@@ -181,9 +195,9 @@ func (s *Server) receive(ctx context.Context, l outbox.Link, st relay.LocalState
 	m, created, err := s.Relayed.Upsert(l.Origin, req, refusal)
 	if err != nil {
 		log.Printf("relay: %v", err)
-		return
+		return err
 	}
-	if created && refusal != "" {
+	if created && refusal != "" && s.relayAudits.take("refused "+l.Origin, time.Now()) {
 		s.audit(localCtx(ctx), "run request refused here", "relayed", m.ID, fmt.Sprintf("request %d from %s: %s", req.ID, req.Requester, refusal))
 	}
 	if created && m.LocalState == relay.LocalReceived {
@@ -194,6 +208,7 @@ func (s *Server) receive(ctx context.Context, l outbox.Link, st relay.LocalState
 			}
 		}
 	}
+	return nil
 }
 
 // ownBase resolves a request's base through this computer's push records: the base must have been pushed by this instance, its
@@ -299,6 +314,7 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 		note = string([]rune(note)[:jobs.MaxNote])
 	}
 	ref := fmt.Sprintf("request %d from %s", m.ServerID, m.Request.Requester)
+	rev, mode := s.relayPin(baseRunID)
 	draft := relay.DraftValues{Params: params, Resources: res, Label: strings.TrimSpace(ask.Label)}
 	ctx = localCtx(ctx)
 	if len(ask.Grid) == 0 {
@@ -323,10 +339,10 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 		var aerr *apiErr
 		if base.Template == "rohsa" {
 			b, aerr = s.buildROHSA(ctx, h, name, rohsaInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: req.BaseConfigText, Set: set,
-				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
+				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev})
 		} else {
 			b, aerr = s.buildVGT(ctx, h, name, vgtInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: req.BaseConfigText, Set: set,
-				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
+				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev})
 		}
 		if aerr != nil {
 			return aerr
@@ -349,7 +365,7 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 		s.audit(ctx, "run request drafted", "relayed", m.ID, fmt.Sprintf("job %d from run %d on %s", created.ID, baseRunID, h.Name))
 		return nil
 	}
-	in := sweepIn{Name: name, BaseRunID: &baseRunID, Note: note, fixed: params, cpus: res.CPUs, mem: mem, time: tm}
+	in := sweepIn{Name: name, BaseRunID: &baseRunID, Note: note, fixed: params, cpus: res.CPUs, mem: mem, time: tm, expectRev: rev, rerunMode: mode}
 	for _, g := range ask.Grid {
 		in.Params = append(in.Params, sweepParamIn{Key: g.Key, Values: g.Values})
 	}
@@ -384,6 +400,39 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 	s.dropOldDraft(m)
 	s.audit(ctx, "run request drafted", "relayed", m.ID, fmt.Sprintf("sweep %d of %d drafts from run %d on %s", sw.ID, len(ids), baseRunID, h.Name))
 	return nil
+}
+
+// relayPin is the code a relayed draft runs (ADR 0054 applied to ADR 0066 section 3): the requester asked about the base run, so
+// the draft insists on the base run's commit as a strict rerun does, and the job stops before the program starts unless the code
+// folder is at it with no changed tracked file. The settings differ from the base by design, so the mode is adapted, which marks
+// them, rather than strict, which refuses them. No commit when the base's code is not described by one (strictRev says why;
+// relayCode shows it to the key holder).
+func (s *Server) relayPin(baseRunID int64) (rev, mode string) {
+	if s.Runs == nil {
+		return "", rerunAdapted
+	}
+	b, err := s.parentBaseline(workspace.Local, baseRunID)
+	if err != nil {
+		return "", rerunAdapted
+	}
+	rev, _, _ = b.strictRev()
+	return rev, rerunAdapted
+}
+
+// relayCode says, for the approval view, which code the draft runs: the commit its script insists on, or why it insists on none.
+func (s *Server) relayCode(m relay.Mirrored, j jobs.Job) string {
+	if req, ok := j.ConfigRequest(); ok && req.ExpectCommit != "" {
+		return "The script insists on commit " + req.ExpectCommit + ", the base run's: the job stops before the program starts unless the code folder on the host is at that commit with no changed tracked file."
+	}
+	why := "the base run is not known here"
+	if m.BaseRunID != nil && s.Runs != nil {
+		if b, err := s.parentBaseline(workspace.Local, *m.BaseRunID); err == nil {
+			if _, _, w := b.strictRev(); w != "" {
+				why = w
+			}
+		}
+	}
+	return "Not pinned to a commit: " + why + ". The job runs the code as it is on the host when it starts."
 }
 
 // stillAcceptable is what this computer requires of a request it accepted, at drafting and approval: its values pass the whitelist
@@ -429,7 +478,10 @@ func (s *Server) tellServer(c *groupClient, l outbox.Link) {
 	if err != nil {
 		return
 	}
-	for _, m := range ms {
+	for i, m := range ms {
+		if i == maxTellsPerPass {
+			break // the rest go in the next pass; a server sending many refusable requests gets as many calls back, slowly
+		}
 		path := fmt.Sprintf("/api/relay/requests/%d/review", m.ServerID)
 		var body any = relay.Review{Instance: l.Instance}
 		if m.LocalState == relay.LocalRefused {
@@ -451,6 +503,8 @@ func (s *Server) tellServer(c *groupClient, l outbox.Link) {
 		}
 	}
 }
+
+const maxTellsPerPass = 50
 
 // conflictState is the state a 409 named; a request the server will not move is treated as closed here.
 func conflictState(ge *groupError) string {
@@ -608,8 +662,8 @@ func reportKey(r relay.Report) string {
 func (s *Server) reportOne(c *groupClient, l outbox.Link, m relay.Mirrored) {
 	rep := s.relayReport(m)
 	key := reportKey(rep)
-	if key == m.Reported {
-		return
+	if key == m.Reported || m.Seq >= relay.MaxReports {
+		return // nothing new, or the server's cap on reports for one request is reached
 	}
 	seq, err := s.Relayed.NextSeq(m.ID)
 	if err != nil {
@@ -780,6 +834,7 @@ func (s *Server) getRelayed(w http.ResponseWriter, r *http.Request) {
 	if m.JobID != nil {
 		if j, err := s.Jobs.Get(*m.JobID); err == nil {
 			out["job"] = map[string]any{"id": j.ID, "name": j.Name, "state": j.State, "script": j.Script, "scriptHash": j.ScriptHash, "editedLines": editedLines(j)}
+			out["code"] = s.relayCode(m, j)
 		}
 	}
 	if m.SweepID != nil {
@@ -800,6 +855,9 @@ func (s *Server) getRelayed(w http.ResponseWriter, r *http.Request) {
 			list := []draft{}
 			for _, j := range pj {
 				list = append(list, draft{j.ID, j.Name, vals[j.ID], j.ScriptHash, j.Script})
+			}
+			if len(pj) > 0 {
+				out["code"] = s.relayCode(m, pj[0])
 			}
 			out["sweep"] = map[string]any{"id": sw.ID, "drafts": list, "sweepHash": sweepHash(pj), "view": s.sweepView(sw), "maxConcurrency": relayMaxConcurrency}
 		}
@@ -1091,6 +1149,14 @@ func (s *Server) declineRelayed(w http.ResponseWriter, r *http.Request) {
 			fail(w, 502, "the group server could not be reached; the request is not declined yet")
 			return
 		}
+		if ge.Status == 404 { // gone from the server (the account left the workspace): nothing to decline, so closed here
+			_ = s.Relayed.SetLocalState(m.ID, relay.LocalClosed)
+			s.dropOldDraft(m)
+			s.audit(r.Context(), "run request closed", "relayed", m.ID, fmt.Sprintf("request %d is no longer on the group server", m.ServerID))
+			m, _ = s.Relayed.Get(m.ID)
+			writeJSON(w, 200, s.relayedView(m))
+			return
+		}
 		if ge.Status == 409 {
 			_ = s.Relayed.SetServerState(m.ID, conflictState(ge))
 		}
@@ -1105,8 +1171,9 @@ func (s *Server) declineRelayed(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.relayedView(m))
 }
 
-// detachRelayed keeps a draft as the key holder's own job, no longer tied to the request: it is not reported, and the request
-// stays open on the server until it is declined, withdrawn or expires.
+// detachRelayed keeps a draft (or a sweep's drafts) as the key holder's own work, no longer tied to the request: it is not reported,
+// and an open request stays open on the server until it is declined, withdrawn or expires. A request that closed (withdrawn,
+// expired, declined elsewhere, gone from the server) can be detached too, so its drafts never stay stuck as unsubmittable.
 func (s *Server) detachRelayed(w http.ResponseWriter, r *http.Request) {
 	m, ok := s.relayedFrom(w, r)
 	if !ok {
@@ -1115,13 +1182,25 @@ func (s *Server) detachRelayed(w http.ResponseWriter, r *http.Request) {
 	s.relayMu.Lock()
 	defer s.relayMu.Unlock()
 	m, _ = s.Relayed.Get(m.ID)
-	if m.LocalState != relay.LocalDraft || m.JobID == nil {
-		fail(w, 409, "only a drafted single request can be kept as your own job")
+	if (m.LocalState != relay.LocalDraft && m.LocalState != relay.LocalClosed) || (m.JobID == nil && m.SweepID == nil) {
+		fail(w, 409, "only a drafted request, or a closed one that left drafts, can be kept as your own work")
 		return
 	}
-	_ = s.Jobs.SetRequestRef(*m.JobID, "")
+	var ids []int64
+	if m.JobID != nil {
+		ids = append(ids, *m.JobID)
+	}
+	if m.SweepID != nil && s.Sweeps != nil {
+		ms, _ := s.Sweeps.Members(*m.SweepID)
+		for _, x := range ms {
+			ids = append(ids, x.JobID)
+		}
+	}
+	for _, id := range ids {
+		_ = s.Jobs.SetRequestRef(id, "")
+	}
 	_ = s.Relayed.SetLocalState(m.ID, relay.LocalDetached)
-	s.audit(r.Context(), "run request detached", "relayed", m.ID, fmt.Sprintf("request %d: job %d kept as your own", m.ServerID, *m.JobID))
+	s.audit(r.Context(), "run request detached", "relayed", m.ID, fmt.Sprintf("request %d: %d draft(s) kept as your own", m.ServerID, len(ids)))
 	m, _ = s.Relayed.Get(m.ID)
 	writeJSON(w, 200, s.relayedView(m))
 }

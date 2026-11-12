@@ -50,7 +50,9 @@ func (s *Server) relayFail(w http.ResponseWriter, r *http.Request, what string, 
 	var conflict relay.ConflictError
 	switch {
 	case errors.Is(err, relay.ErrInvalid):
-		s.audit(r.Context(), "run_request.refused", "run_request", 0, what+": "+relay.Sentence(err)+viaToken(r))
+		if s.relayAudits.take(actorOf(r).ID, time.Now()) {
+			s.audit(r.Context(), "run_request.refused", "run_request", 0, what+": "+relay.Sentence(err)+viaToken(r))
+		}
 		fail(w, 422, relay.Sentence(err))
 	case errors.Is(err, relay.ErrNotFound):
 		fail(w, 404, "not found")
@@ -383,7 +385,8 @@ func (s *Server) fileRunRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if role, err := s.MultiUser.Accounts.Role(in.Addressee, ws); err != nil || role == "" {
+	// the addressee must be able to run work here: a Viewer (or a demoted member, whose inbox was closed) takes no requests
+	if role, err := s.MultiUser.Accounts.Role(in.Addressee, ws); err != nil || !authz.Role(role).AtLeast(authz.RoleResearcher) {
 		fail(w, 422, relay.ErrNoInbox.Error())
 		return
 	}

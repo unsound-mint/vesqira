@@ -118,7 +118,8 @@ type vgtInput struct {
 	Set                             map[string]string
 	CPUs                            int
 	Mem, Time, Partition, Account   string
-	// RerunMode and ExpectRev come from "run again with..." (ADR 0054); ExpectRev is set for a strict rerun only.
+	// RerunMode and ExpectRev come from "run again with..." (ADR 0054); ExpectRev is set for a strict rerun, and for a relayed run
+	// request's draft, which insists on its base run's commit (relayPin).
 	RerunMode, ExpectRev string
 	// InputRerun marks a draft that runs another run's configuration on a new cube; HashInput makes its script hash the input.
 	InputRerun *jobs.InputRerun
@@ -141,6 +142,9 @@ func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgt
 			return builtJob{}, &apiErr{code, "config: " + msg}
 		}
 		cfg = text
+	}
+	if len(h.Roots) == 0 {
+		return builtJob{}, &apiErr{422, "the host has no source folder to write results into"}
 	}
 	var suffix [4]byte
 	_, _ = rand.Read(suffix[:])
@@ -344,6 +348,13 @@ func (s *Server) editJobScript(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 256<<10, &in, true) {
 		return
 	}
+	if s.relayedDraft(id) && s.Sweeps != nil {
+		if _, _, inSweep := s.Sweeps.OfJob(id); inSweep {
+			// ADR 0066 section 3: a relayed sweep is approved once over drafts rendered from the base and never edited by hand
+			fail(w, 409, "the drafts of a requested sweep are not edited by hand; draft the request again with other values, or decline it")
+			return
+		}
+	}
 	if err := s.Jobs.SetScript(id, in.Script); err != nil {
 		s.jobErr(w, err)
 		return
@@ -410,10 +421,10 @@ func (s *Server) submitDraft(ctx context.Context, j jobs.Job, h hosts.Host, scri
 	}
 	// Record the attempt first: from here on the record says "submitting" until Slurm's answer is seen, so a timeout
 	// or a second click cannot submit the same job twice.
-	if won, err := s.Jobs.BeginSubmit(j.ID); err != nil {
+	if won, err := s.Jobs.BeginSubmit(j.ID, j.ScriptHash); err != nil {
 		return j, jobAPIErr(err)
 	} else if !won {
-		return j, &apiErr{409, "this job is already being submitted"}
+		return j, &apiErr{409, "this job is already being submitted, or its script changed since you reviewed it"}
 	}
 	out, err := s.Remote.RunShell(ctx, h, cmd, []byte(j.Script), 45*time.Second)
 	answered := time.Now()

@@ -62,10 +62,17 @@ export function RelayedView({ summary, onChanged, onClose }: { summary: Relayed;
       {error ? <p className={s.error} role="alert">{error}</p> : null}
       {done ? <p className={s.note} role="status">{done}</p> : null}
       {editable ? <DraftForm key={`${q.updatedAt}`} relayed={q} runs={runs} onDrafted={() => { setError(""); setDone(""); void onChanged(); return load(); }} onError={setError} /> : null}
+      {detail?.code && (q.localState === "draft" || q.localState === "approved") ? <p className={s.note}>{detail.code}</p> : null}
       {/* an approved request whose draft was never submitted (refused before Slurm, or this computer stopped) is approved again */}
       {detail?.job && (q.localState === "draft" || (q.localState === "approved" && detail.job.state === "draft")) ? <SingleReview detail={detail} onError={(m) => { setError(m); setDone(""); }} onDone={(m) => { setError(""); setDone(m); void onChanged(); void load(); }} /> : null}
       {detail?.sweep && q.localState === "draft" ? <SweepReview detail={detail} onError={(m) => { setError(m); setDone(""); }} onDone={(m) => { setError(""); setDone(m); void onChanged(); void load(); }} /> : null}
       {editable ? <Actions relayed={q} onError={(m) => { setError(m); setDone(""); }} onDone={(m) => { setError(""); setDone(m); void onChanged(); void load(); }} /> : null}
+      {/* a request that closed while drafted leaves drafts that cannot be submitted under it: keeping them as your own frees them */}
+      {q.localState === "closed" && (q.jobId != null || q.sweepId != null) ? (
+        <div className={s.row}>
+          <Button onClick={() => detachRelayed(q.id).then(() => { setError(""); setDone("Detached: the drafts are now your own."); void onChanged(); void load(); }, (e) => { setError(message(e)); setDone(""); })}>Keep the drafts as my own</Button>
+        </div>
+      ) : null}
     </section>
   );
 }

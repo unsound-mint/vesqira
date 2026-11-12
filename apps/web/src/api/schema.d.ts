@@ -11117,6 +11117,8 @@ export interface components {
             outsideBounds: string;
             job?: components["schemas"]["RelayedJob"];
             sweep?: components["schemas"]["RelayedSweep"];
+            /** @description with a draft: which code it runs, the base run's commit its script insists on, or why it insists on none (ADR 0066 section 3, ADR 0054) */
+            code?: string;
         };
         RelayedDraftRequest: {
             baseRunId?: number;

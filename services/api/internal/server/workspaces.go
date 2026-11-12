@@ -407,6 +407,10 @@ func (s *Server) setMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordMember(r, "role changed", id, old+" -> "+in.Role)
+	if !authz.Role(in.Role).AtLeast(authz.RoleResearcher) {
+		// below Researcher the member takes no run requests: close their inbox and open requests as leaving would
+		s.closeRelayFor(a.Workspace, id)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

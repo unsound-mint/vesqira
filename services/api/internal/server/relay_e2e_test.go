@@ -33,6 +33,8 @@ type forger struct {
 	// forged ids at or above forgedFrom: the answers to review, decline and claim come from the forger too, as they would from a
 	// compromised server, which accepts whatever it is sent
 	forgedFrom int64
+	// gone: the server answers 404 to every POST about this request, as when it no longer has it
+	gone int64
 }
 
 func (f *forger) RoundTrip(q *http.Request) (*http.Response, error) {
@@ -42,6 +44,14 @@ func (f *forger) RoundTrip(q *http.Request) (*http.Response, error) {
 	if page != nil && q.Method == "GET" && q.URL.Path == "/api/relay/requests" && q.URL.Query().Get("after") != fmt.Sprint(int64(1<<63-1)) {
 		if b := page(q.URL.Query().Get("after")); b != nil {
 			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(bytes.NewReader(b)), Request: q}, nil
+		}
+	}
+	if f.gone > 0 && q.Method == "POST" {
+		for _, pat := range []string{"/api/relay/requests/%d/", "/api/run-requests/%d/"} {
+			var id int64
+			if n, _ := fmt.Sscanf(q.URL.Path, pat, &id); n == 1 && id == f.gone {
+				return &http.Response{StatusCode: 404, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":"not found"}`)), Request: q}, nil
+			}
 		}
 	}
 	if f.forgedFrom > 0 && q.Method == "POST" {

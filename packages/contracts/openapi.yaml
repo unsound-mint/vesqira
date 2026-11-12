@@ -21088,6 +21088,9 @@ components:
           $ref: "#/components/schemas/RelayedJob"
         sweep:
           $ref: "#/components/schemas/RelayedSweep"
+        code:
+          type: "string"
+          description: "with a draft: which code it runs, the base run's commit its script insists on, or why it insists on none (ADR 0066 section 3, ADR 0054)"
     RelayedDraftRequest:
       type: "object"
       properties:

@@ -45,6 +45,8 @@ type sweepIn struct {
 	fixed     map[string]string
 	cpus      int
 	mem, time string
+	// expectRev pins every draft to the base run's commit (relayPin); rerunMode goes with it.
+	expectRev, rerunMode string
 }
 
 func (in sweepIn) params() []sweeps.Param {
@@ -189,10 +191,10 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 		}
 		if rohsa {
 			b, aerr = s.buildROHSA(ctx, p.host, name, rohsaInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
-				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
+				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: in.rerunMode, ExpectRev: in.expectRev})
 		} else {
 			b, aerr = s.buildVGT(ctx, p.host, name, vgtInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
-				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
+				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: in.rerunMode, ExpectRev: in.expectRev})
 		}
 		if aerr != nil {
 			return p, &apiErr{aerr.Code, name + ": " + aerr.Msg}
