@@ -852,11 +852,11 @@ func (s *Server) boardAdd(w http.ResponseWriter, r *http.Request) {
 			s.boardErr(w, err)
 			return
 		}
-		if s.Jobs == nil {
+		if s.localJobs() == nil {
 			fail(w, 422, "the job does not exist")
 			return
 		}
-		if _, err := s.Jobs.Get(*in.JobID); err != nil {
+		if _, err := s.localJobs().Get(*in.JobID); err != nil {
 			if errors.Is(err, jobs.ErrNotFound) {
 				fail(w, 422, "the job does not exist")
 			} else {

@@ -246,7 +246,7 @@ func (s *Server) computeNeeds(ws workspace.ID, p projects.Project) ([]need, erro
 // a job ran on it, or (for a project that lives on a host) when the project has job templates; the project file or an
 // answer settles it. A repo folder seen in an earlier job is offered as a suggestion, never applied.
 func (s *Server) hostRepoNeeds(p projects.Project, sum storedSummary) []need {
-	if s.HostDB == nil || s.Jobs == nil {
+	if s.HostDB == nil || s.localJobs() == nil {
 		return nil
 	}
 	type use struct {
@@ -254,7 +254,7 @@ func (s *Server) hostRepoNeeds(p projects.Project, sum storedSummary) []need {
 		job  int64
 	}
 	used := map[int64]use{}
-	if js, err := s.Jobs.List(); err == nil {
+	if js, err := s.localJobs().List(); err == nil {
 		for _, j := range js {
 			u := used[j.HostID]
 			if req, ok := j.VGTRequest(); ok && req.RepoDir != "" && j.ID >= u.job {

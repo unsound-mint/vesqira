@@ -228,8 +228,8 @@ func (s *Server) hintsFor(ws workspace.ID, rs []runs.Run) map[catalog.HintKey]in
 func (s *Server) runView(ws workspace.ID, r runs.Run) runJSON {
 	var lin map[int64]jobs.Lineage
 	mode := ""
-	if s.Jobs != nil {
-		if j, err := s.Jobs.ForRun(r.ID); err == nil {
+	if s.localJobs() != nil {
+		if j, err := s.localJobs().ForRun(r.ID); err == nil {
 			lin = map[int64]jobs.Lineage{r.ID: {JobID: j.ID, ParentRunID: j.ParentRunID}}
 			mode = j.RerunMode()
 		}
@@ -273,8 +273,8 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var lin map[int64]jobs.Lineage
-	if s.Jobs != nil {
-		if lin, err = s.Jobs.Lineages(); err != nil {
+	if s.localJobs() != nil {
+		if lin, err = s.localJobs().Lineages(); err != nil {
 			log.Printf("runs: %v", err)
 			fail(w, 500, "internal error")
 			return
@@ -398,8 +398,8 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 	}
 	var job jobs.Job
 	err = jobs.ErrNotFound // without a job store no job made the run
-	if s.Jobs != nil {
-		if job, err = s.Jobs.ForRun(id); err != nil && !errors.Is(err, jobs.ErrNotFound) {
+	if s.localJobs() != nil {
+		if job, err = s.localJobs().ForRun(id); err != nil && !errors.Is(err, jobs.ErrNotFound) {
 			log.Printf("runs: %v", err)
 			fail(w, 500, "internal error")
 			return

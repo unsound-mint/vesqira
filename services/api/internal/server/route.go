@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 	"net/http"
 	"strings"
@@ -131,4 +132,15 @@ func actorID(ctx context.Context) string {
 		return a.ID
 	}
 	return ""
+}
+
+// localJobs is the job store for code that mounted routes share with local mode (board panels that follow a job, a run's
+// lineage, rerun settings, project needs). Jobs are a local-only feature whose table is not scoped by workspace (internal/arch
+// scope_test.go), and an adopted catalog brings workspace 1's jobs onto the group server, so there it is nil: a job is never
+// looked up from a request in another workspace. internal/arch TestMountedCodeReadsJobsThroughLocalJobs keeps it that way.
+func (s *Server) localJobs() *jobs.Store {
+	if s.multiUser() {
+		return nil
+	}
+	return s.Jobs
 }

@@ -110,8 +110,8 @@ func (s *Server) boardView(ctx context.Context, b boards.Board, live bool) board
 		}
 		id := it.Job.ID
 		info := boards.JobInfo{ID: id, Name: "Run", State: "unknown"} // a job that is gone is shown as such, not hidden
-		if s.Jobs != nil {
-			if j, err := s.Jobs.Get(id); err == nil {
+		if s.localJobs() != nil {
+			if j, err := s.localJobs().Get(id); err == nil {
 				info = boards.JobInfo{ID: id, Name: j.Name, State: j.State, SubmittedAt: j.SubmittedAt, FinishedAt: j.FinishedAt, RunID: j.RunID}
 				if jobIsActive(j.State) {
 					if p := s.logProgress(ctx, j, live); p != nil {
@@ -144,10 +144,10 @@ func (s *Server) boardByID(ctx context.Context, id int64, live bool) (boards.Boa
 func (s *Server) jobSnapshots(b boards.Board) map[int64]boards.JobSnapshot {
 	out := map[int64]boards.JobSnapshot{}
 	for _, it := range b.Items {
-		if it.Kind != boards.KindJob || s.Jobs == nil {
+		if it.Kind != boards.KindJob || s.localJobs() == nil {
 			continue
 		}
-		if j, err := s.Jobs.Get(it.Job.ID); err == nil {
+		if j, err := s.localJobs().Get(it.Job.ID); err == nil {
 			out[it.Job.ID] = boards.JobSnapshot{Name: j.Name, State: j.State}
 		}
 	}

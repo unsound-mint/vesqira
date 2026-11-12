@@ -92,10 +92,10 @@ func effectiveSettings(template string, req jobs.VGTRequest) map[string]string {
 // settingsChanges compares a draft's settings with those of the job that made the parent run. known is false when the parent
 // has no kept request (an imported run, or a job from before settings were kept): nothing is then said to have changed.
 func (s *Server) settingsChanges(parentID int64, template string, req jobs.VGTRequest) (ch []settingChange, known bool) {
-	if s.Jobs == nil {
+	if s.localJobs() == nil {
 		return nil, false
 	}
-	pj, err := s.Jobs.ForRun(parentID)
+	pj, err := s.localJobs().ForRun(parentID)
 	if err != nil || pj.Template != template {
 		return nil, false
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/base32"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -465,5 +466,32 @@ func TestLocalOnlyFeaturesStayUnmounted(t *testing.T) {
 		if !groupServerOff(p) {
 			t.Errorf("%s is mounted on the group server", p)
 		}
+	}
+}
+
+// Jobs are a local-only feature with an unscoped table: an adopted catalog brings workspace 1's jobs onto the group server. A
+// member of another workspace must not be able to make a board panel follow one (which would show its name and state, tell
+// existing ids from missing ones, and freeze it into a review link).
+func TestBoardsCannotFollowJobsOnTheGroupServer(t *testing.T) {
+	g, _ := scopedGroup(t)
+	g.setupAdmin("ada")
+	ada := g.mustAccount("ada")
+	if _, err := g.cat.DB().Exec(`INSERT INTO jobs(host_id,name,template,script,script_hash,state,detail,slurm_id,work_dir,output_dir,created_at) VALUES(1,?,'vgt','','','finished','','','','',1)`, leak); err != nil {
+		t.Fatal(err)
+	}
+	bws, _ := g.acc.CreateWorkspace("B", ada.ID, ada.ID)
+	bo := g.invite(bws.ID, "researcher", "bo")
+	hdr := map[string]string{WorkspaceHeader: bws.ID.String()}
+	w := g.do(req{method: "POST", path: "/api/boards", body: `{"title":"mine"}`, cookie: bo, hdr: hdr})
+	board := decode[struct{ ID int64 }](t, w)
+	add := func(job int) *httptest.ResponseRecorder {
+		return g.do(req{method: "POST", path: fmt.Sprintf("/api/boards/%d/items", board.ID), body: fmt.Sprintf(`{"jobId":%d}`, job), cookie: bo, hdr: hdr})
+	}
+	real, missing := add(1), add(999)
+	if real.Code != missing.Code || real.Code < 400 {
+		t.Errorf("following an adopted job: %d, a missing one: %d; want the same refusal", real.Code, missing.Code)
+	}
+	if v := g.do(req{path: fmt.Sprintf("/api/boards/%d", board.ID), cookie: bo, hdr: hdr}); strings.Contains(v.Body.String(), leak) {
+		t.Errorf("the board shows workspace 1's job: %s", v.Body)
 	}
 }
