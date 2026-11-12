@@ -189,6 +189,10 @@ var suffixBanned = []string{"path", "dir", "host", "folder", "token", "secret", 
 // absPath matches a value that is an absolute or home-relative path (two segments or more), a Windows drive path or a file URL.
 var absPath = regexp.MustCompile(`(^|[\s"'(=])(/[^/\s]+/|~/|[A-Za-z]:\\|file://)`)
 
+// LooksLikePath reports whether a value is an absolute or home-relative path, a drive path or a file URL: the client leaves such a
+// run setting out (a remote input or output folder) rather than have the whole item refused.
+func LooksLikePath(v string) bool { return absPath.MatchString(v) }
+
 // Scan walks a JSON document and refuses a banned key or a value that looks like a path. It is the server's filter and the
 // client's last check before sending; neither replaces the freezing code, which never puts such a field in.
 func Scan(doc json.RawMessage) error {

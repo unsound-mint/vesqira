@@ -497,10 +497,10 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 }
 
 // machineLike reports whether a run setting names a machine, an account or an address: its key says so (partition, account, user,
-// host, node, cluster, queue, login, mail, server), or its value is an e-mail address. A value is not judged by its dots, so a
-// version such as 1.4.2 stays.
+// host, node, cluster, queue, login, mail, server), its value is an e-mail address, or its value is a path (a remote input or
+// output folder, which also names the cluster user). A value is not judged by its dots, so a version such as 1.4.2 stays.
 func machineLike(key, value string) bool {
-	return identifyingKey.MatchString(key) || strings.Contains(value, "@")
+	return identifyingKey.MatchString(key) || strings.Contains(value, "@") || pushwire.LooksLikePath(value)
 }
 
 // dropMachineParams returns the run line without the settings that look like a machine, account or address, and how many it

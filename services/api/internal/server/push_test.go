@@ -29,6 +29,8 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
+	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/outbox"
 	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/pushwire"
@@ -152,8 +154,13 @@ type pushLocal struct {
 }
 
 const (
-	pictureMark  = "LEAKAUTHOR-q7"
-	refusedToken = "vsq_not-a-real-token"
+	pictureMark     = "LEAKAUTHOR-q7"
+	refusedToken    = "vsq_not-a-real-token"
+	hostAliasMark   = "leakalias-hpc"
+	clusterUserMark = "leakclusteruser"
+	jobDirMark      = "LEAKJOBDIR-3c"
+	slurmMark       = "48151623"
+	nodeMark        = "leaknode042"
 )
 
 func newPushLocal(t *testing.T, group *httptest.Server) *pushLocal {
@@ -182,6 +189,14 @@ func newPushLocal(t *testing.T, group *httptest.Server) *pushLocal {
 	if err != nil {
 		t.Fatal(err)
 	}
+	hs, err := hosts.Open(cat.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, err := jobs.Open(cat.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for tbl, seq := range map[string]int{"datasets": 7340000, "figures": 7350000, "boards": 7360000, "runs": 7370000, "reports": 7380000} {
 		if _, err := cat.DB().Exec(`INSERT INTO sqlite_sequence(name, seq) VALUES(?, ?)`, tbl, seq); err != nil {
 			t.Fatal(err)
@@ -190,7 +205,7 @@ func newPushLocal(t *testing.T, group *httptest.Server) *pushLocal {
 	clock := &groupClock{t: time.Unix(1_800_000_000, 0)}
 	ob.Now = clock.now
 	w := &wire{base: group.Client().Transport}
-	s := &Server{Roots: rs, Store: cat, Worker: hdrWorker{}, Boards: bs, Runs: rn, Reports: rp, Outbox: ob, GroupKeyFile: filepath.Join(base, "group.key"),
+	s := &Server{Roots: rs, Store: cat, Worker: hdrWorker{}, Boards: bs, Runs: rn, Reports: rp, Outbox: ob, Jobs: js, GroupKeyFile: filepath.Join(base, "group.key"),
 		GroupHTTP: &http.Client{Transport: w, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	s.OutboxNow = clock.now
 	ts := httptest.NewServer(s.Handler())
@@ -214,18 +229,43 @@ func newPushLocal(t *testing.T, group *httptest.Server) *pushLocal {
 	var fig boards.Figure
 	json.Unmarshal(out, &fig)
 	l.figure = fig.ID
+	// a cluster: an ssh alias and a cluster user name, a job on it with its folder, script and scheduler id, a run that job made
+	// with the host and job fields a run carries, and a remote path among its settings
+	host, err := hs.Create(hosts.Host{Name: hostAliasMark, Dest: clusterUserMark + "@" + hostAliasMark, Python: "python3", Roots: []string{"/scratch/" + clusterUserMark}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := js.CreateDraft(jobs.Job{HostID: host.ID, Name: "vgt-lmc-block32", Template: "vgt", Script: "#!/bin/bash\n#SBATCH --account=" + clusterUserMark + "\ncd /scratch/" + clusterUserMark + "/" + jobDirMark,
+		WorkDir: jobDirMark, OutputDir: "/scratch/" + clusterUserMark + "/out"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := js.MarkSubmitted(job.ID, slurmMark); err != nil {
+		t.Fatal(err)
+	}
 	run, err := rn.Save(workspace.Local, "local-owner", filepath.Join(root, "runs", l.runDir), runs.Parsed{Run: runs.Run{Name: "2026-11-08_a1f3c", Kind: "vgt",
-		Params: []runs.Param{{Key: "block_size", Value: "32", Source: "config"}, {Key: "partition", Value: "LEAKPART", Source: "config"}, {Key: "notify", Value: "someone@LEAKMAIL.example.org", Source: "config"}}}},
+		Params: []runs.Param{{Key: "block_size", Value: "32", Source: "config"}, {Key: "partition", Value: "LEAKPART", Source: "config"},
+			{Key: "notify", Value: "someone@LEAKMAIL.example.org", Source: "config"}, {Key: "input_file", Value: "/scratch/" + clusterUserMark + "/cubes/lmc.fits", Source: "config"}}}},
 		[]runs.Output{{Role: "psi", DatasetID: d.ID, Name: d.Name}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	l.run = run.ID
+	if err := js.LinkRun(job.ID, run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := rn.SetEnvironment(workspace.Local, run.ID, []runs.EnvFact{{Key: "hostname", Label: "Node", Status: "verified", Value: nodeMark + ".cluster.example.edu"},
+		{Key: "slurm_job_id", Label: "Slurm job", Status: "verified", Value: slurmMark}, {Key: "workdir", Label: "Job folder", Status: "verified", Value: "/scratch/" + clusterUserMark + "/" + jobDirMark}}); err != nil {
+		t.Fatal(err)
+	}
 	_, bout := postJSON(t, ts.URL+"/api/boards", map[string]any{"title": "For the group"})
 	var b boards.Board
 	json.Unmarshal(bout, &b)
 	l.board = b.ID
 	postJSON(t, ts.URL+"/api/boards/"+itoa(int(b.ID))+"/items", map[string]any{"figureId": fig.ID})
+	if err := bs.AddJobItem(workspace.Local, b.ID, job.ID); err != nil { // a panel that follows the job
+		t.Fatal(err)
+	}
 	body := "# Block size 32\n\nWe compare [[run:" + itoa(int(run.ID)) + "]].\n\n![[figure:" + fig.Revision + "]]\n\n[[run:" + itoa(int(run.ID)) + "]]"
 	st, rb := callJSON(t, "POST", ts.URL+"/api/reports", map[string]any{"title": "Block size", "body": body, "author": "owner"})
 	if st != 201 {
@@ -307,7 +347,7 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 	}
 
 	runHash, pf := l.preflight(t, "run", l.run)
-	if !strings.Contains(pf, "2 run setting(s)") || !strings.Contains(pf, `"fingerprint":"full"`) {
+	if !strings.Contains(pf, "3 run setting(s)") || !strings.Contains(pf, `"fingerprint":"full"`) {
 		t.Fatalf("preflight of the run: %s", pf)
 	}
 	if st, _ := callJSON(t, "POST", l.ts.URL+"/api/outbox", map[string]any{"kind": "run", "id": l.run}); st != 422 {
@@ -385,8 +425,8 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 		Item pushed.Detail `json:"item"`
 	}
 	json.Unmarshal(g.do(req{path: "/api/pushed/" + itoa(int(runID)), cookie: full}).Body.Bytes(), &det)
-	if det.Item.Item.Omitted != 2 || !strings.Contains(string(det.Item.Item.Doc), "block_size") {
-		t.Fatalf("the pushed run line does not say two settings were left out: %+v", det.Item.Item)
+	if det.Item.Item.Omitted != 3 || !strings.Contains(string(det.Item.Item.Doc), "block_size") {
+		t.Fatalf("the pushed run line does not say three settings (partition, e-mail, remote path) were left out: %+v", det.Item.Item)
 	}
 	w := g.do(req{path: "/api/pushed/" + itoa(int(figID)), cookie: full})
 	json.Unmarshal(w.Body.Bytes(), &det)
@@ -428,7 +468,8 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 	link, _ := l.s.Outbox.Link()
 	hostname, _ := os.Hostname()
 	banned := []string{l.base, l.root, l.folder, l.runDir, "LEAKPART", "LEAKMAIL", pictureMark, hex.EncodeToString(link.Secret), token, accounts.Hash(token), refusedToken,
-		`"datasetId"`, `"path"`, `"scene"`, `"host`, "7340001", "7350001", "7360001", "7370001", "7380001"}
+		`"datasetId"`, `"path"`, `"scene"`, `"host`, "7340001", "7350001", "7360001", "7370001", "7380001",
+		hostAliasMark, clusterUserMark, jobDirMark, slurmMark, nodeMark, "/scratch/", "SBATCH", `"workDir"`, `"slurmId"`, `"environment"`}
 	if hostname != "" {
 		banned = append(banned, hostname)
 	}
@@ -443,7 +484,7 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 	for _, e := range ex {
 		all.Write(e.body)
 	}
-	for _, must := range []string{"Peak channel", "block_size", "cube.fits", "2026-11-08_a1f3c", `"kind":"report"`, `"kind":"board"`} {
+	for _, must := range []string{"Peak channel", "block_size", "cube.fits", "2026-11-08_a1f3c", `"kind":"report"`, `"kind":"board"`, `"kind":"job"`, "vgt-lmc-block32"} {
 		if !strings.Contains(all.String(), must) { // the control: what may cross did cross, so the scan below reads real payloads
 			t.Fatalf("no request carried %q", must)
 		}
