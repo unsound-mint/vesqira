@@ -36,6 +36,33 @@ function Harness(p: { start?: string; hostId?: number | null; kind?: "dir" | "fi
 const box = () => screen.getByRole("combobox", { name: "Folder" }) as HTMLInputElement;
 
 describe("PathField", () => {
+  it("Escape before the answer arrives keeps the list closed: a late answer never opens it over the controls below", async () => {
+    let release: () => void = () => {};
+    answer = () => new Promise<Response>((r) => { release = () => r(list("/data", [e("/data", "runs", true)])); });
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.type(box(), "/data/");
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0)); // the request is on its way
+    await user.keyboard("{Escape}");
+    release();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(box()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+    // typing again asks anew and shows the names
+    answer = () => list("/data", [e("/data", "runs", true)]);
+    await user.type(box(), "r");
+    expect(await screen.findAllByRole("option")).toHaveLength(1);
+  });
+
+  it("Escape before the pause in typing is over cancels the question that was about to be asked", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.type(box(), "/abc");
+    await user.keyboard("{Escape}");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(calls).toEqual([]);
+  });
+
   it("lists the names that match what was typed and takes one by click, with a slash for a folder", async () => {
     answer = () => list("/data", [e("/data", "runs", true), e("/data", "cube.fits")]);
     const user = userEvent.setup();
