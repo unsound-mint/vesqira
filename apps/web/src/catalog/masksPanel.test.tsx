@@ -44,9 +44,11 @@ describe("making a mask", () => {
     expect(row).toHaveTextContent("its file stays on disk");
   });
 
-  it("does not offer masks for a file on another host", () => {
+  it("offers masks for a file on a host, made and kept there (ADR 0064)", () => {
     render(<MasksPanel dataset={{ ...ds, hostId: 2 } as Dataset} datasets={[]} />);
-    expect(screen.getByText(/made on this computer/)).toBeInTheDocument();
+    expect(screen.queryByText(/made on this computer/)).toBeNull();
+    expect(screen.getByTestId("masks-on-host")).toHaveTextContent(/made and kept there/);
+    expect(screen.getByRole("button", { name: "Make the mask" })).toBeInTheDocument();
   });
 });
 

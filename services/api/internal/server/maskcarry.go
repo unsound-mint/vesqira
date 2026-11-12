@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -237,7 +238,7 @@ func (s *Server) recordCarried(p *carryPlan, summary json.RawMessage, src, nd ca
 			"carriedFrom": map[string]any{"mask": c.mask.Name, "dataset": src.Name, "type": c.mask.Type, "tier": c.mask.Tier, "mappingVersion": c.mask.Mapping,
 				"method": c.mask.Method, "fingerprint": "sha256:" + c.mask.SHA256, "rule": orig},
 		})
-		m, err := s.storeMask(nd, masks.Mask{Type: c.mask.Type, Name: c.mask.Name, Path: c.out, Width: got.Width, Height: got.Height, Channels: got.Channels,
+		m, err := s.storeMask(context.Background(), nd, masks.Mask{Type: c.mask.Type, Name: c.mask.Name, Path: c.out, Width: got.Width, Height: got.Height, Channels: got.Channels,
 			Flagged: got.Flagged, Total: got.Total, Tier: c.mask.Tier, Mapping: c.mask.Mapping, Method: masks.MethodCarried, Rule: rule,
 			Meaning: c.mask.Meaning, Author: "user"})
 		if err != nil {
@@ -252,7 +253,7 @@ func (s *Server) recordCarried(p *carryPlan, summary json.RawMessage, src, nd ca
 	}
 	recomputed := []string{}
 	if cs.Missing != nil {
-		m, err := s.storeMask(nd, masks.Mask{Type: masks.Missing, Name: defaultMaskName(masks.Missing, maskReq{}), Path: p.missingOut, Width: cs.Missing.Width,
+		m, err := s.storeMask(context.Background(), nd, masks.Mask{Type: masks.Missing, Name: defaultMaskName(masks.Missing, maskReq{}), Path: p.missingOut, Width: cs.Missing.Width,
 			Height: cs.Missing.Height, Channels: cs.Missing.Channels, Flagged: cs.Missing.Flagged, Total: cs.Missing.Total, Tier: catalog.TierVerified,
 			Method: masks.MethodComputed, Rule: cs.Missing.Rule, Author: analysisAuthor})
 		if err != nil {

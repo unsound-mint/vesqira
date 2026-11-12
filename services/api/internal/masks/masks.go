@@ -76,11 +76,14 @@ func TypeLabel(t string) string {
 // Mask is one stored mask. Rule is the worker's description of how it was made (estimator, threshold, source of sigma, the
 // regions, the file imported): JSON, kept as the worker wrote it.
 type Mask struct {
-	ID        int64           `json:"id"`
-	DatasetID int64           `json:"datasetId"`
-	Type      string          `json:"type"`
-	Name      string          `json:"name"`
-	Path      string          `json:"-"`
+	ID        int64  `json:"id"`
+	DatasetID int64  `json:"datasetId"`
+	Type      string `json:"type"`
+	Name      string `json:"name"`
+	Path      string `json:"-"`
+	// HostID is the machine the mask file lives on: 0 for this computer, else the host whose derived folder holds it (ADR 0064). A mask
+	// of a file on a host is made, kept and applied there; its bytes do not cross to this computer.
+	HostID    int64           `json:"hostId"`
 	Width     int             `json:"width"`
 	Height    int             `json:"height"`
 	Channels  int             `json:"channels"` // 0 for a mask of one plane, which applies to every channel; else one plane per channel
@@ -130,14 +133,14 @@ func Open(db *sql.DB) (*Store, error) {
 	return &Store{db}, nil
 }
 
-const cols = `id,dataset_id,type,name,path,width,height,channels,flagged,total,tier,mapping_version,method,rule,meaning,author,created_at,source_size,source_mtime,source_identity,file_size,file_mtime,sha256`
+const cols = `id,dataset_id,type,name,path,width,height,channels,flagged,total,tier,mapping_version,method,rule,meaning,author,created_at,source_size,source_mtime,source_identity,file_size,file_mtime,sha256,host_id`
 
 func scan(r interface{ Scan(...any) error }) (Mask, error) {
 	var m Mask
 	var rule string
 	var at int64
 	err := r.Scan(&m.ID, &m.DatasetID, &m.Type, &m.Name, &m.Path, &m.Width, &m.Height, &m.Channels, &m.Flagged, &m.Total, &m.Tier, &m.Mapping, &m.Method,
-		&rule, &m.Meaning, &m.Author, &at, &m.SourceSize, &m.SourceMtime, &m.SourceIdentity, &m.FileSize, &m.FileMtime, &m.SHA256)
+		&rule, &m.Meaning, &m.Author, &at, &m.SourceSize, &m.SourceMtime, &m.SourceIdentity, &m.FileSize, &m.FileMtime, &m.SHA256, &m.HostID)
 	m.Rule = json.RawMessage(rule)
 	m.CreatedAt = time.Unix(at, 0).UTC()
 	return m, err
@@ -151,10 +154,10 @@ func (s *Store) Add(m Mask) (Mask, error) {
 	if m.Rule == nil {
 		m.Rule = json.RawMessage(`{}`)
 	}
-	res, err := s.db.Exec(`INSERT INTO masks(dataset_id,type,name,path,width,height,channels,flagged,total,tier,mapping_version,method,rule,meaning,author,created_at,source_size,source_mtime,source_identity,file_size,file_mtime,sha256)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	res, err := s.db.Exec(`INSERT INTO masks(dataset_id,type,name,path,width,height,channels,flagged,total,tier,mapping_version,method,rule,meaning,author,created_at,source_size,source_mtime,source_identity,file_size,file_mtime,sha256,host_id)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		m.DatasetID, m.Type, m.Name, m.Path, m.Width, m.Height, m.Channels, m.Flagged, m.Total, m.Tier, m.Mapping, m.Method, string(m.Rule), m.Meaning, m.Author,
-		time.Now().Unix(), m.SourceSize, m.SourceMtime, m.SourceIdentity, m.FileSize, m.FileMtime, m.SHA256)
+		time.Now().Unix(), m.SourceSize, m.SourceMtime, m.SourceIdentity, m.FileSize, m.FileMtime, m.SHA256, m.HostID)
 	if err != nil {
 		return Mask{}, err
 	}

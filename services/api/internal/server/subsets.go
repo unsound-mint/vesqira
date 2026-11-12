@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
+	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
 )
@@ -543,14 +545,27 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 		failCode(w, 409, "subset_stale", staleSentence, map[string]any{"subsetId": sub.ID, "version": cur.Version})
 		return
 	}
-	if src.HostID != 0 {
-		fail(w, 409, "the source file lives on another host: a subset of it can be viewed here, but writing it as a file needs the file on this computer (use a cutout job on the host, or transfer the file)")
-		return
-	}
 	carry, code, msg := s.planCarry(src, "subset", in.CarryMasks)
 	if code != 0 {
 		fail(w, code, msg)
 		return
+	}
+	if src.HostID != 0 && carry != nil {
+		// written on the host (ADR 0064), where carrying is not built: the masks stay with the source and are recorded as left behind
+		if len(carry.carried) > 0 {
+			fail(w, 409, "carrying masks into a file written on a host is not built yet: write the subset without them (leave them behind), then make the masks again on the new file, on the host")
+			return
+		}
+		if carry.missingOut != "" { // not computed again there either: said as left behind, and the researcher can make it on the result
+			carry.missingOut = ""
+			if all, err := s.Masks.ForDataset(src.ID); err == nil {
+				for _, m := range all {
+					if m.Type == masks.Missing {
+						carry.left = append(carry.left, m)
+					}
+				}
+			}
+		}
 	}
 	s.subsetMu.Lock() // one writer at a time: two identical requests make one file, not two
 	defer s.subsetMu.Unlock()
@@ -575,26 +590,50 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	note := fmt.Sprintf("virtual subset %s version %d of %s, source %s", asciiOnly(cur.Name), cur.Version, asciiOnly(src.Name), orNone(identity))
 	var b [4]byte
 	_, _ = rand.Read(b[:])
-	outPath := filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("subset-%d-v%d-%s.fits", sub.ID, cur.Version, hex.EncodeToString(b[:])))
-	args := []string{"-P", s.Analysis.Script, "subset", "--input", real, "--window=" + string(win), "--note=" + note, "--out", outPath}
-	args = append(args, carry.args()...)
+	fileName := fmt.Sprintf("subset-%d-v%d-%s.fits", sub.ID, cur.Version, hex.EncodeToString(b[:]))
+	opts := []string{"--input", real, "--window=" + string(win), "--note=" + note}
 	declared := map[string]string{}
 	if u := declaredUnitOf(src); u != "" {
-		args = append(args, "--declared-unit="+u)
+		opts = append(opts, "--declared-unit="+u)
 		declared["input"] = u
 	}
-	res, code, msg := s.runAnalysisProgram(r, args)
-	if code != 0 {
-		_ = os.Remove(outPath)
-		carry.cleanup()
-		fail(w, code, msg)
-		return
-	}
-	nd, code, msg := s.registerPath(waiting(r.Context()), outPath)
-	if code != 0 {
-		carry.cleanup()
-		fail(w, code, msg)
-		return
+	var res analysisOutcome
+	var nd catalog.Dataset
+	outPath := ""
+	if src.HostID != 0 {
+		// written on the host, in its derived folder, by the host's copy of the program (ADR 0064): the bytes stay there, and the file is
+		// registered as a dataset on that host like any other file there
+		h, code, msg := s.hostOf(src.HostID)
+		if code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		if res, outPath, code, msg = s.hostRunAnalysis(r.Context(), h, "subset", fileName, opts); code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		if nd, code, msg = s.registerRemoteFile(waiting(r.Context()), h, outPath); code != 0 {
+			fail(w, code, "the file was written on the host ("+path.Base(outPath)+" in its derived folder) but could not be registered: "+msg)
+			return
+		}
+	} else {
+		outPath = filepath.Join(s.Analysis.DerivedDir, fileName)
+		args := append([]string{"-P", s.Analysis.Script, "subset"}, opts...)
+		args = append(args, "--out", outPath)
+		args = append(args, carry.args()...)
+		var code int
+		res, code, msg = s.runAnalysisProgram(r, args)
+		if code != 0 {
+			_ = os.Remove(outPath)
+			carry.cleanup()
+			fail(w, code, msg)
+			return
+		}
+		if nd, code, msg = s.registerPath(waiting(r.Context()), outPath); code != 0 {
+			carry.cleanup()
+			fail(w, code, msg)
+			return
+		}
 	}
 	carried, code, msg := s.recordCarried(carry, res.Summary, src, nd, "")
 	if code != 0 {

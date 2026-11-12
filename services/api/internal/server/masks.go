@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
@@ -23,6 +24,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
 // Typed masks (ADR 0055). A mask is a derived uint8 FITS file next to the other derived outputs, with a row that says what it
@@ -132,10 +134,10 @@ func (s *Server) createMask(w http.ResponseWriter, r *http.Request) {
 // makeMask makes one mask of d from a request and records it, written by `author` ("user" for the researcher's own request, "rule:<name>"
 // for an import rule of theirs: either way the tier is declared, because the mask's type and meaning are the researcher's word). The
 // file the mask is made from is read by the worker; d is never changed. It returns an HTTP-style code and a message on refusal.
+//
+// A file on a host gets its mask on that host (ADR 0064): the host's copy of the program reads the file there and writes the mask in the
+// host's derived folder; only the summary comes back, and the row records the host.
 func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, author string) (maskView, int, string) {
-	if d.HostID != 0 {
-		return maskView{}, 409, "this file lives on another host: a mask is made on this computer, from a file read here (copy the file here first)"
-	}
 	real, _, status, msg := s.authorize(ctx, d)
 	if status != 0 {
 		return maskView{}, status, msg
@@ -191,7 +193,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 				// its path travels inside the mask's parameters, where the analysis program does not apply corrections (ADR 0061)
 				return maskView{}, 409, "noise map: it has WCS or unit corrections in force, which a noise map for a mask does not take yet; withdraw them or use another noise map"
 			}
-			p, shapeOnly, code, msg := s.sameGridLocal(ctx, d, nm)
+			p, shapeOnly, code, msg := s.sameGrid(ctx, d, nm)
 			if code != 0 {
 				return maskView{}, code, "noise map: " + msg
 			}
@@ -246,7 +248,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 		if src.ID == d.ID {
 			return maskView{}, 422, "the mask file is the dataset itself"
 		}
-		p, shapeOnly, code, msg := s.sameGridLocal(ctx, d, src)
+		p, shapeOnly, code, msg := s.sameGrid(ctx, d, src)
 		if code != 0 {
 			return maskView{}, code, "mask file: " + msg
 		}
@@ -260,11 +262,31 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 	pj, _ := json.Marshal(params)
 	var b [4]byte
 	_, _ = rand.Read(b[:])
-	out := filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("mask-%d-%s-%s.fits", d.ID, mtype, hex.EncodeToString(b[:])))
-	res, code, msg := s.runAnalysisProgramCtx(ctx, []string{"-P", s.Analysis.Script, "mask", "--input", real, "--out", out, "--params", string(pj)})
-	if code != 0 {
-		_ = os.Remove(out)
-		return maskView{}, code, msg
+	fileName := fmt.Sprintf("mask-%d-%s-%s.fits", d.ID, mtype, hex.EncodeToString(b[:]))
+	var res analysisOutcome
+	var out string
+	if d.HostID != 0 {
+		h, code, msg := s.hostOf(d.HostID)
+		if code != 0 {
+			return maskView{}, code, msg
+		}
+		// nothing to remove on a refusal: the host keeps no file unless the program succeeded (hostrun.py)
+		if res, out, code, msg = s.hostRunAnalysis(ctx, h, "mask", fileName, []string{"--input", real, "--params", string(pj)}); code != 0 {
+			return maskView{}, code, msg
+		}
+	} else {
+		out = filepath.Join(s.Analysis.DerivedDir, fileName)
+		var code int
+		res, code, msg = s.runAnalysisProgramCtx(ctx, []string{"-P", s.Analysis.Script, "mask", "--input", real, "--out", out, "--params", string(pj)})
+		if code != 0 {
+			_ = os.Remove(out)
+			return maskView{}, code, msg
+		}
+	}
+	drop := func() { // a mask file nobody records: removed here; on a host it stays, inert, in the derived folder (Vesqira deletes nothing there)
+		if d.HostID == 0 {
+			_ = os.Remove(out)
+		}
 	}
 	var sum struct {
 		Flagged  int64           `json:"flagged"`
@@ -276,7 +298,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 		Rule     json.RawMessage `json:"rule"`
 	}
 	if json.Unmarshal(res.Summary, &sum) != nil {
-		_ = os.Remove(out)
+		drop()
 		return maskView{}, 502, "the mask program returned an unreadable summary"
 	}
 	if byShapeOnly || importedFrom != 0 {
@@ -301,11 +323,14 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 	if name == "" {
 		name = defaultMaskName(mtype, in)
 	}
-	m, err := s.storeMask(d, masks.Mask{Type: mtype, Name: name, Path: out, Width: sum.Width, Height: sum.Height, Channels: sum.Channels,
+	m, err := s.storeMask(ctx, d, masks.Mask{HostID: d.HostID, Type: mtype, Name: name, Path: out, Width: sum.Width, Height: sum.Height, Channels: sum.Channels,
 		Flagged: sum.Flagged, Total: sum.Total, Tier: tier, Mapping: mapping, Method: sum.Method, Rule: sum.Rule, Meaning: cleanText(in.Meaning, 300), Author: author})
 	if err != nil {
-		_ = os.Remove(out)
+		drop()
 		log.Printf("masks: %v", err)
+		if d.HostID != 0 {
+			return maskView{}, 502, "the mask was written on the host but its identity could not be read there (is the VPN up?); nothing was recorded, make it again"
+		}
 		return maskView{}, 500, "internal error"
 	}
 	s.audit("mask created", "dataset", d.ID, mtype+" mask, "+strconv.FormatInt(sum.Flagged, 10)+" pixels flagged")
@@ -314,9 +339,21 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 
 // storeMask records a mask file just written for d: it fills in what the mask was made from (d's size, modification time and recorded
 // identity, so it is fresh against d and stale the day d changes) and the mask file's own identity (size, mtime, SHA-256). Every way of
-// making a mask (a request, an import rule, carrying one through an operation) ends here.
-func (s *Server) storeMask(d catalog.Dataset, m masks.Mask) (masks.Mask, error) {
-	digest, size, mtime, err := fileIdentity(m.Path)
+// making a mask (a request, an import rule, carrying one through an operation) ends here. A mask on a host (m.HostID) has its identity read
+// there: the SHA-256 by the host's hashing path, the size and modification time by its worker (ADR 0064).
+func (s *Server) storeMask(ctx context.Context, d catalog.Dataset, m masks.Mask) (masks.Mask, error) {
+	var digest string
+	var size, mtime int64
+	var err error
+	if m.HostID != 0 {
+		h, code, msg := s.hostOf(m.HostID)
+		if code != 0 {
+			return masks.Mask{}, errors.New(msg)
+		}
+		digest, size, mtime, err = s.hostFileIdentity(ctx, h, m.Path)
+	} else {
+		digest, size, mtime, err = fileIdentity(m.Path)
+	}
 	if err != nil {
 		return masks.Mask{}, err
 	}
@@ -356,13 +393,16 @@ func defaultMaskName(mtype string, in maskReq) string {
 	return masks.TypeLabel(mtype) + " mask"
 }
 
-// sameGridLocal returns the path of another dataset, read on this computer, once its pixels are known to line up with d's: the same
-// shape, and no declared axis that differs. A grid whose WCS one of the files does not state cannot be confirmed equal; a mask or a
+// sameGrid returns the path of another dataset, read on the same machine as d (a mask file or a noise map is read by the program that
+// reads d, here or on d's host), once its pixels are known to line up with d's: the same shape, and no declared axis that differs. A grid whose WCS one of the files does not state cannot be confirmed equal; a mask or a
 // noise map is still usable then (the worker checks the shape), and the second result says the match is by pixel shape only so the
 // mask's rule can say it.
-func (s *Server) sameGridLocal(ctx context.Context, d, other catalog.Dataset) (real string, byShapeOnly bool, code int, msg string) {
-	if other.HostID != 0 {
-		return "", false, 409, "that file lives on another host; both files must be on this computer"
+func (s *Server) sameGrid(ctx context.Context, d, other catalog.Dataset) (real string, byShapeOnly bool, code int, msg string) {
+	if other.HostID != d.HostID {
+		if d.HostID == 0 {
+			return "", false, 409, "that file lives on a host and this one on this computer; both must be on the same machine (transfer one of them)"
+		}
+		return "", false, 409, "that file is not on the same host as this one; both must be on the same machine (register a copy on this file's host)"
 	}
 	real, _, status, m := s.authorize(ctx, other)
 	if status != 0 {
@@ -455,6 +495,29 @@ func (s *Server) usableMask(id int64, d catalog.Dataset) (masks.Mask, int, strin
 	if v := s.viewOf(m, d); v.Stale {
 		return m, 409, "the mask \"" + m.Name + "\" was made from other bytes than this file has now (the file changed): make it again"
 	}
+	if m.HostID != d.HostID { // a dataset has one primary location; a mask is read by the program that reads that file
+		return m, 409, "the mask \"" + m.Name + "\" lives on another machine than the file it is applied to: make it again where the file is read"
+	}
+	if m.HostID != 0 {
+		h, code, msg := s.hostOf(m.HostID)
+		if code != 0 {
+			return m, code, msg
+		}
+		// a bounded look of its own: callers without a request (a figure redraw check) use it too
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		size, mtime, err := s.hostStat(ctx, h, m.Path)
+		var re *worker.RequestError
+		switch {
+		case errors.As(err, &re):
+			return m, 409, "the file of the mask \"" + m.Name + "\" changed or is gone on the host: make it again"
+		case err != nil:
+			return m, 502, msgHostUnreachable
+		case size != m.FileSize || mtime != m.FileMtime:
+			return m, 409, "the file of the mask \"" + m.Name + "\" changed or is gone on the host: make it again"
+		}
+		return m, 0, ""
+	}
 	st, err := os.Stat(m.Path)
 	if err != nil || st.Size() != m.FileSize || st.ModTime().UnixNano() != m.FileMtime {
 		return m, 409, "the file of the mask \"" + m.Name + "\" changed or is gone: make it again"
@@ -537,10 +600,6 @@ func (s *Server) regionMasks(w http.ResponseWriter, r *http.Request, d catalog.D
 		fail(w, 503, "masks cannot be applied while the file's host is unreachable; offline copies are unmasked")
 		return nil, "", false
 	}
-	if k.host != 0 {
-		fail(w, 409, "masks are applied to files on this computer; this file is read on another host")
-		return nil, "", false
-	}
 	uses := make([]maskUse, 0, len(raw))
 	for _, t := range raw {
 		idText, policy, found := strings.Cut(t, ":")
@@ -585,6 +644,33 @@ func (s *Server) maskPlane(w http.ResponseWriter, r *http.Request) {
 	m, err := s.Masks.Get(id)
 	if err != nil {
 		s.maskErr(w, err)
+		return
+	}
+	if m.HostID != 0 { // read by the host's worker: one plane of uint8 crosses, never the mask file (ADR 0064)
+		h, code, msg := s.hostOf(m.HostID)
+		if code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		size, mtime, err := s.hostStat(r.Context(), h, m.Path)
+		var re *worker.RequestError
+		switch {
+		case errors.As(err, &re):
+			fail(w, 409, "the mask file changed or is gone on the host: make the mask again")
+			return
+		case err != nil:
+			fail(w, 502, msgHostUnreachable)
+			return
+		case size != m.FileSize || mtime != m.FileMtime:
+			fail(w, 409, "the mask file changed or is gone on the host: make the mask again")
+			return
+		}
+		k := cacheKey{id: -m.ID, host: m.HostID, size: size, mtime: mtime, op: "mask_plane", channel: ch}
+		rep, ok := s.ask(w, r, k, map[string]any{"op": "mask_plane", "path": m.Path, "channel": ch})
+		if !ok {
+			return
+		}
+		writeFrame(w, rep)
 		return
 	}
 	real, err := s.roots().Resolve(m.Path)

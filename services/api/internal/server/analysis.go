@@ -277,7 +277,7 @@ func (s *Server) runAnalysisProgramCtx(parent context.Context, args []string) (a
 		}
 		defer release()
 	}
-	corrOpt, corrHashes, corrSnap := s.corrArgs(args)
+	corrOpt, corrHashes, corrSnap := s.corrArgs(0, args)
 	if corrOpt != "" {
 		args = append(args, corrOpt)
 	}
@@ -356,7 +356,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(in.CarryMasks) > 0 {
-		fail(w, 422, "masks are carried by an analysis run on this computer; a job on a host does not carry them (a mask is made on this computer, from a file read here)")
+		fail(w, 422, "a job on a host does not carry masks into its result yet: run it without carrying them, then make the masks again on the result (its Masks section works on the host)")
 		return
 	}
 	if in.Op == "scalar_diff" {
@@ -367,18 +367,36 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "an axial difference is computed on this computer, from two maps registered here")
 		return
 	}
-	if d.Corrections.InForce() != nil {
-		// a job on the host reads the file's own header: its result would silently carry the uncorrected WCS or unit
-		fail(w, 409, "this dataset has WCS or unit corrections in force, which an analysis run as a job on the host does not apply; withdraw them for this run or analyse a copy on this computer")
-		return
-	}
 	if d.HostID == 0 {
 		fail(w, 409, "this file is on this computer: run the analysis directly")
 		return
 	}
+	// masks are applied in the job as in a run here (ADR 0064): the masks live next to the file on the host, and the script names them by
+	// path, type and policy only; what the result's provenance keeps is the id-free snapshot, as for a run here
+	var maskText string
+	var maskSafe []map[string]any
 	if len(in.Masks) > 0 {
-		fail(w, 409, "masks are applied to files on this computer; an analysis job on a host does not take them yet")
-		return
+		if in.Op != "stats" && in.Op != "moment" {
+			fail(w, 422, "masks are applied by statistics, moment maps and relative orientation; this analysis does not take them")
+			return
+		}
+		specs, safe, _, code, msg := s.maskSpecs(in.Masks, d, false)
+		if code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		var full []map[string]any
+		_ = json.Unmarshal([]byte(specs), &full)
+		strict := make([]map[string]any, 0, len(full))
+		for _, sp := range full {
+			one := map[string]any{"path": sp["path"], "type": sp["type"], "policy": sp["policy"]}
+			if wt, ok := sp["weight"]; ok {
+				one["weight"] = wt
+			}
+			strict = append(strict, one)
+		}
+		b, _ := json.Marshal(strict)
+		maskText, maskSafe = string(b), safe
 	}
 	ax, code, msg := s.axialAnalysis(r.Context(), in.Op, d, true)
 	if code != 0 {
@@ -392,6 +410,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	}
 	sources := []int64{d.ID}
 	refPath := ""
+	var refDS *catalog.Dataset
 	if in.Op == "align" {
 		ref, code, msg := s.imageDataset(in.ReferenceID)
 		if code != 0 {
@@ -403,7 +422,25 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		refPath = ref.Path
+		refDS = &ref
 		sources = append(sources, ref.ID)
+	}
+	// the corrections in force for what the job reads go into its script (ADR 0064), as a run here gets them: the job's program builds the
+	// WCS and unit with them, writes them into its result (VESQWCSC and HISTORY) and echoes their hashes in result.json, which registering
+	// the result requires. The state is the one in force now, at drafting; the result is pinned to it.
+	files := []jobFile{{"input", d.Path, d}}
+	if refDS != nil {
+		files = append(files, jobFile{"reference", refPath, *refDS})
+	}
+	if ax != nil && ax.weights != "" && d.Interpretation != nil && d.Interpretation.ReliabilityID != nil {
+		if wd, err := s.Store.Get(*d.Interpretation.ReliabilityID); err == nil {
+			files = append(files, jobFile{"weights", ax.weights, wd})
+		}
+	}
+	corrText, corrHashes, corrSnap := jobCorrections(files)
+	if strings.ContainsAny(corrText, "'\n\r") {
+		fail(w, 409, "a corrected value of this dataset contains a quote, which a job script cannot carry safely; write a virtual subset of it as a file on the host (the file carries the corrected header) and analyse that file")
+		return
 	}
 	if in.CPUs == 0 {
 		in.CPUs, in.Mem, in.Time = 4, "16G", "02:00:00"
@@ -419,8 +456,14 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	name := fmt.Sprintf("%s-%d", in.Op, d.ID)
 	out := path.Join(h.Roots[0], "vesqira_derived", name+"-"+hex.EncodeToString(b[:]))
 	set := jobs.AnalysisSettings{Name: name, Python: h.Python, ScriptDir: s.Remote.RemoteDir(), Op: in.Op, Input: d.Path, Reference: refPath,
-		OutDir: out, Args: opts, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time}
+		OutDir: out, Args: opts, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Masks: maskText, Corrections: corrText}
 	pm := map[string]any{"op": in.Op, "options": opts, "sources": sources}
+	if len(maskSafe) > 0 {
+		pm["masks"] = maskSafe // id-free and path-free, as a run here records them
+	}
+	if len(corrHashes) > 0 {
+		pm["corrections"], pm["correctionHashes"] = corrSnap, corrHashes
+	}
 	if ax != nil { // the same code path as a run here: the worker gets the declaration and writes the companion reliability map
 		set.AxialUnit, set.AxialFrame, set.Weights = ax.unit, ax.frame, ax.weights
 		pm["axial"] = axialParams{Unit: ax.unit, Frame: ax.interp.Frame, Quantity: ax.interp.Quantity}
@@ -450,17 +493,16 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 		Error    string          `json:"error"`
 		Summary  json.RawMessage `json:"summary"`
 		Software json.RawMessage `json:"software"`
+		Applied  []string        `json:"corrections_applied"`
 	}
 	if json.Unmarshal([]byte(text), &res) != nil || !res.OK {
 		return catalog.Dataset{}, 422, "the analysis did not finish successfully on the host"
 	}
-	var p struct {
-		Op      string            `json:"op"`
-		Options map[string]string `json:"options"`
-		Sources []int64           `json:"sources"`
-		Axial   *axialParams      `json:"axial"`
-	}
+	var p analysisJobParams
 	_ = json.Unmarshal([]byte(j.Params), &p)
+	if !p.applied(res.Applied) {
+		return catalog.Dataset{}, 502, jobIgnoredCorrections
+	}
 	if p.Op == "stats" {
 		return catalog.Dataset{}, 409, "a statistics job has no file to register: read its result"
 	}
@@ -468,7 +510,14 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 	if code != 0 {
 		return catalog.Dataset{}, code, msg
 	}
-	params, _ := json.Marshal(map[string]any{"options": p.Options})
+	pm := map[string]any{"options": p.Options}
+	if len(p.Masks) > 0 {
+		pm["masks"] = p.Masks
+	}
+	if len(p.Corrections) > 0 {
+		pm["corrections"] = p.Corrections // the state in force when the job was drafted, which its program echoed
+	}
+	params, _ := json.Marshal(pm)
 	if err := s.Derived.Save(derived.Record{DatasetID: d.ID, Op: p.Op, Params: params, Sources: p.Sources, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
@@ -533,6 +582,66 @@ func (s *Server) jobResult(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
+	var p analysisJobParams
+	_ = json.Unmarshal([]byte(j.Params), &p)
+	var res struct {
+		Applied []string `json:"corrections_applied"`
+	}
+	_ = json.Unmarshal([]byte(text), &res)
+	if !p.applied(res.Applied) {
+		fail(w, 502, jobIgnoredCorrections)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write([]byte(text))
+}
+
+// analysisJobParams is what an analysis job's draft recorded (jobs.Job.Params).
+type analysisJobParams struct {
+	Op               string            `json:"op"`
+	Options          map[string]string `json:"options"`
+	Sources          []int64           `json:"sources"`
+	Axial            *axialParams      `json:"axial"`
+	Masks            []map[string]any  `json:"masks"`
+	Corrections      []map[string]any  `json:"corrections"`
+	CorrectionHashes []string          `json:"correctionHashes"`
+}
+
+// applied reports whether a job's result echoes every correction state the job was drafted with (ADR 0064).
+func (p analysisJobParams) applied(echo []string) bool {
+	for _, h := range p.CorrectionHashes {
+		if !slices.Contains(echo, h) {
+			return false
+		}
+	}
+	return true
+}
+
+const jobIgnoredCorrections = "the job's program on the host did not apply the researcher's corrections (it may be an older version); its result is not used, run the job again"
+
+// jobFile is one file an analysis job reads, with the dataset it is.
+type jobFile struct {
+	role, path string
+	d          catalog.Dataset
+}
+
+// jobCorrections is the --corrections text of an analysis job (the states in force for the files it reads, keyed by their paths on the
+// host), their hashes, and the id-free record a result keeps. Empty when no file has corrections in force.
+func jobCorrections(files []jobFile) (text string, hashes []string, snapshot []map[string]any) {
+	sent := map[string]any{}
+	for _, f := range files {
+		st := f.d.Corrections.InForce()
+		if st == nil || f.path == "" {
+			continue
+		}
+		pl := corrPayload(*st)
+		sent[f.path] = pl
+		hashes = append(hashes, pl["hash"].(string))
+		snapshot = append(snapshot, map[string]any{"role": f.role, "corrections": safeCorrections(*st), "hash": pl["hash"]})
+	}
+	if len(sent) == 0 {
+		return "", nil, nil
+	}
+	b, _ := json.Marshal(sent)
+	return string(b), hashes, snapshot
 }
