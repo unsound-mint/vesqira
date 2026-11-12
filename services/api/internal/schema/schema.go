@@ -44,7 +44,8 @@ import (
 // Version 24: saved views of the runs table (run_views; ADR 0062).
 // Version 25: virtual subsets, a saved window onto a dataset with an append-only history of versions (subsets, subset_versions; ADR 0063).
 // Version 26: a mask records the machine its file lives on (masks.host_id, 0 for this computer; ADR 0064).
-const Version = 26
+// Version 27: a location records the device and inode of its file, compared when the file is used again (dataset_locations.file_dev, .file_ino; ADR 0050 section 8).
+const Version = 27
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -79,6 +80,24 @@ var migrations = []Migration{
 	{To: 24, Name: "saved run views", Up: savedRunViews},
 	{To: 25, Name: "virtual subsets", Up: subsetsTables},
 	{To: 26, Name: "masks on a host", Up: masksHost},
+	{To: 27, Name: "file identity of a location", Up: locationFileID},
+}
+
+// locationFileID adds the device and inode a location's file had when it was recorded. 0 means not recorded, which is what every
+// existing location is: the first time one is read and still matches its size and modification time, the server records what it
+// sees (the same trust the size and time comparison already gives), and from then on a different file under that name is refused.
+// A catalog without the table (never opened by the catalog package) needs nothing.
+func locationFileID(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='dataset_locations'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, c := range []string{"file_dev", "file_ino"} {
+		if err := AddColumn(tx, "dataset_locations", c, "INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // masksHost records where a mask file lives (ADR 0064): 0 is this computer, which every existing mask is (masks were made only for
@@ -237,6 +256,7 @@ const DatasetLocationsTable = `CREATE TABLE IF NOT EXISTS dataset_locations(
 	added_at INTEGER NOT NULL,
 	sampled_fp TEXT NOT NULL DEFAULT '', sampled_at INTEGER NOT NULL DEFAULT 0, sampled_by TEXT NOT NULL DEFAULT '',
 	full_sha256 TEXT NOT NULL DEFAULT '', full_at INTEGER NOT NULL DEFAULT 0, full_by TEXT NOT NULL DEFAULT '',
+	file_dev INTEGER NOT NULL DEFAULT 0, file_ino INTEGER NOT NULL DEFAULT 0,
 	UNIQUE(host_id, path))`
 
 // datasetIdentity adds dataset_locations and gives every existing dataset its primary location (no fingerprint yet: none was

@@ -38,6 +38,10 @@ type Dataset struct {
 	CatalogDeclaration *CatalogDeclaration `json:"catalogDeclaration"`
 	// Archived entries are hidden from the lists but still resolve by id (ADR 0041).
 	Archived bool `json:"archived"`
+	// FileDev and FileIno are the device and inode the registered file had when it was recorded (0: not recorded, or a file on a
+	// host); Upsert stores them on the primary location and Get fills them from it. Never sent to a client.
+	FileDev int64 `json:"-"`
+	FileIno int64 `json:"-"`
 	// Locations are the files this dataset's bytes are in, the registered one first (ADR 0053). Path and HostID above are
 	// the registered file. A location never changes what the dataset is; it says where else the same bytes may be read.
 	Locations []Location `json:"locations"`
@@ -256,6 +260,11 @@ func (s *Store) Get(id int64) (Dataset, error) {
 	}
 	if err == nil {
 		d.Locations, err = s.Locations(id)
+		for _, l := range d.Locations {
+			if l.Primary {
+				d.FileDev, d.FileIno = l.FileDev, l.FileIno
+			}
+		}
 	}
 	if err == nil {
 		d.Corrections, err = s.corrections(d)

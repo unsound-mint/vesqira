@@ -70,12 +70,18 @@ func (s *Server) localStat(loc catalog.Location) (real string, code int, msg str
 	if info.Size() != loc.SizeBytes || info.ModTime().UnixNano() != loc.ModifiedAt.UnixNano() {
 		return "", 409, "the file changed since it was registered; register it again"
 	}
+	if differentFile(info, loc.FileDev, loc.FileIno) {
+		return "", 409, msgOtherFile
+	}
+	if dev, ino := fileIDOf(info); loc.FileIno == 0 {
+		_ = s.Store.NoteFileID(loc.HostID, loc.Path, dev, ino)
+	}
 	return real, 0, ""
 }
 
 func unchanged(real string, loc catalog.Location) bool {
 	info, err := statFile(real)
-	return err == nil && info.Size() == loc.SizeBytes && info.ModTime().UnixNano() == loc.ModifiedAt.UnixNano()
+	return err == nil && info.Size() == loc.SizeBytes && info.ModTime().UnixNano() == loc.ModifiedAt.UnixNano() && !differentFile(info, loc.FileDev, loc.FileIno)
 }
 
 // measureRemote asks the host's worker for a fingerprint op and checks the file there is still what was recorded.
@@ -380,7 +386,7 @@ func (s *Server) chooseRead(ctx context.Context, d catalog.Dataset, probeRemote 
 	var firstMsg string
 	for _, l := range order {
 		cand := d
-		cand.Path, cand.HostID, cand.SizeBytes, cand.ModifiedAt = l.Path, l.HostID, l.SizeBytes, l.ModifiedAt
+		cand.Path, cand.HostID, cand.SizeBytes, cand.ModifiedAt, cand.FileDev, cand.FileIno = l.Path, l.HostID, l.SizeBytes, l.ModifiedAt, l.FileDev, l.FileIno
 		if l.HostID != 0 && !probeRemote {
 			s.notePath(l.HostID, l.Path, d.ID)
 			return cand, l, l.Path, cacheKey{id: d.ID, host: l.HostID, size: l.SizeBytes, mtime: l.ModifiedAt.UnixNano(), unit: declaredUnitOf(d), corr: corrHash(d)}, 0, ""
@@ -500,6 +506,7 @@ func (s *Server) addLocation(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		nl.Path, nl.SizeBytes, nl.ModifiedAt = real, info.Size(), info.ModTime()
+		nl.FileDev, nl.FileIno = fileIDOf(info)
 		if s.ManagedDir != "" && isUnder(real, s.ManagedDir) {
 			nl.Kind = catalog.LocManaged
 		}
@@ -732,7 +739,7 @@ func (s *Server) readableLocally(ctx context.Context, d catalog.Dataset) bool {
 			continue
 		}
 		cand := d
-		cand.Path, cand.HostID, cand.SizeBytes, cand.ModifiedAt = l.Path, l.HostID, l.SizeBytes, l.ModifiedAt
+		cand.Path, cand.HostID, cand.SizeBytes, cand.ModifiedAt, cand.FileDev, cand.FileIno = l.Path, l.HostID, l.SizeBytes, l.ModifiedAt, l.FileDev, l.FileIno
 		if _, _, status, _ := s.authorize(ctx, cand); status == 0 {
 			return true
 		}

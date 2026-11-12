@@ -75,3 +75,85 @@ func TestTreeDoesNotFollowLinksOutOfRoots(t *testing.T) {
 		t.Fatalf("entries = %+v", out.Entries)
 	}
 }
+
+func linksOf(t *testing.T, s *Server, dir string) map[string]dirEntry {
+	t.Helper()
+	w := treeOf(s, dir)
+	if w.Code != 200 {
+		t.Fatalf("tree: %d %s", w.Code, w.Body)
+	}
+	var out struct{ Entries []dirEntry }
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	m := map[string]dirEntry{}
+	for _, e := range out.Entries {
+		m[e.Name] = e
+	}
+	return m
+}
+
+func TestTreeShowsALinkOutOfTheRootsAsALinkThatPointsOutside(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	root, outside := filepath.Join(base, "root"), filepath.Join(base, "outside")
+	os.MkdirAll(root, 0o755)
+	os.MkdirAll(outside, 0o755)
+	os.WriteFile(filepath.Join(outside, "secret.fits"), []byte("x"), 0o644)
+	os.Symlink(outside, filepath.Join(root, "escape"))
+	os.Symlink(filepath.Join(outside, "secret.fits"), filepath.Join(root, "file-escape.fits"))
+	os.Symlink(filepath.Join(base, "nothing"), filepath.Join(root, "dangling"))
+	rs, _ := sourceroot.New([]string{root})
+	s := &Server{Roots: rs}
+	got := linksOf(t, s, root)
+	for name, want := range map[string]struct{ target, points string }{
+		"escape":           {outside, "outside"},
+		"file-escape.fits": {filepath.Join(outside, "secret.fits"), "outside"},
+		"dangling":         {filepath.Join(base, "nothing"), "broken"},
+	} {
+		e := got[name]
+		if e.Kind != "link" || e.Target != want.target || e.Points != want.points || e.Size != 0 {
+			t.Errorf("%s = %+v, want a link to %s pointing %s", name, e, want.target, want.points)
+		}
+	}
+	if treeOf(s, filepath.Join(root, "escape")).Code != 404 {
+		t.Fatal("a listing must not descend through a link to outside the roots")
+	}
+}
+
+func TestTreeShowsALinkInsideTheRootsAsALinkAndStaysUsable(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	root := filepath.Join(base, "root")
+	os.MkdirAll(filepath.Join(root, "real"), 0o755)
+	os.WriteFile(filepath.Join(root, "real", "cube.fits"), []byte("x"), 0o644)
+	os.Symlink("real", filepath.Join(root, "scratch")) // relative, as a link made by hand usually is
+	rs, _ := sourceroot.New([]string{root})
+	s := &Server{Roots: rs}
+	e := linksOf(t, s, root)["scratch"]
+	if e.Kind != "link" || e.Target != "real" || e.Points != "inside" {
+		t.Fatalf("scratch = %+v", e)
+	}
+	if got := linksOf(t, s, filepath.Join(root, "scratch")); got["cube.fits"].Kind != "file" {
+		t.Fatalf("a link that stays inside the roots is still a way into the folder: %+v", got)
+	}
+}
+
+func TestCompletionMarksALinkAndNamesItsTarget(t *testing.T) {
+	base, _ := filepath.EvalSymlinks(t.TempDir())
+	os.MkdirAll(filepath.Join(base, "real"), 0o755)
+	os.Symlink("real", filepath.Join(base, "alias"))
+	out, err := listNames(base, "", completeQuery{kind: "any"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var link, plain completeEntry
+	for _, e := range out.Entries {
+		if e.Name == "alias" {
+			link = e
+		} else if e.Name == "real" {
+			plain = e
+		}
+	}
+	if !link.Link || link.Target != "real" || !link.Dir || plain.Link || plain.Target != "" {
+		t.Fatalf("link = %+v, plain = %+v", link, plain)
+	}
+}
