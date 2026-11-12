@@ -13,6 +13,7 @@ import (
 // The reviewer's provenance has a line for each (type, name, tier, rule, fingerprint) and never an id or a path. A mask that is not the
 // dataset's, is stale or has another fingerprint is refused. "Draw again" announces a mask that changed or was forgotten first.
 func TestAFigureRecordsTheMasksItHatchedAndRedrawAnnouncesAChangedOne(t *testing.T) {
+	t.Parallel()
 	f := newCarryFixture(t)
 	view := map[string]any{"kind": "plane", "channel": 3, "colormap": "viridis", "stretch": "linear", "range": "percentile"}
 	save := func(masksField any) (int, boards.Figure, string) {

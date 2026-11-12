@@ -17,6 +17,7 @@ import (
 // a cursor across ICRS and Galactic with the cache answering a repeat, a channel link and its refusal when the spectral
 // frames differ, and the request's own refusals.
 func TestLinkEndToEndWithRealWorker(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {

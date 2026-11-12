@@ -18,6 +18,7 @@ import (
 // scene), a changed declaration is not answered from the cache, kinds and datasets must match both ways, and the frame and its
 // header conform to the spec.
 func TestCatalogOverlayEndToEndWithRealWorker(t *testing.T) {
+	t.Parallel()
 	url, root, repo := catalogServer(t)
 	doc := loadSpec(t)
 	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)

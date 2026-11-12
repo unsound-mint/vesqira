@@ -32,14 +32,21 @@ const (
 
 // offlineProbeAfter is how long a host that did not answer is left alone before a request of a dataset with an offline copy starts
 // another look at it. Without a short-circuit every plane request of a scrub would wait out the ssh connect timeout (10 s) before
-// falling back to the copy. A variable so tests need not wait.
-var offlineProbeAfter = 3 * time.Second
+// falling back to the copy. Server.OfflineProbeAfter overrides it (tests set a nanosecond rather than wait).
+const offlineProbeAfter = 3 * time.Second
+
+func (s *Server) probeAfter() time.Duration {
+	if s.OfflineProbeAfter > 0 {
+		return s.OfflineProbeAfter
+	}
+	return offlineProbeAfter
+}
 
 // probeHost asks a host that last failed to answer whether it does now, in the background and one at a time per host, and records
 // the answer in the reachability state, which is what lets requests go live again. A request the browser gave up on never
 // refreshes that state by itself; this does.
 func (s *Server) probeHost(h hosts.Host, path string, lastAt time.Time) {
-	if s.Remote == nil || time.Since(lastAt) < offlineProbeAfter {
+	if s.Remote == nil || time.Since(lastAt) < s.probeAfter() {
 		return
 	}
 	r := &s.offlineRun

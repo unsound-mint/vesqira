@@ -26,6 +26,7 @@ func planeScene(id int64) map[string]any {
 
 // A figure's scene is held to the scene/1 contract and to the figure it describes. A refused scene saves nothing.
 func TestAFigureSceneIsValidatedAgainstTheContractAndTheFigure(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	rs, _ := sourceroot.New([]string{base})
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))

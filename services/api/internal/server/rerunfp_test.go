@@ -28,6 +28,7 @@ func nowFacts(mtime string, fp *runs.EnvFact) []runs.EnvFact {
 // The input is compared by its fingerprint when both sides have one: a touched file with the same sampled bytes does not
 // block a strict rerun, a different fingerprint does even when size and time agree, and without one the size and time decide.
 func TestStrictInputIsComparedByFingerprintWhenBothSidesHaveOne(t *testing.T) {
+	t.Parallel()
 	a, b := strings.Repeat("1", 64), strings.Repeat("2", 64)
 	fa, fb := vf("input.sampled_fp", a), vf("input.sampled_fp", b)
 

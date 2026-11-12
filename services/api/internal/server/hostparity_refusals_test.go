@@ -15,6 +15,7 @@ import (
 // The refusals ADR 0064 keeps, each with what to do instead: a mask that lives on another machine than the file being read (a dataset with
 // a local and a host location reads one of them), and relative orientation of a map on a host.
 func TestHostParityRefusalsSayWhatToDo(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	st, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
 	if err != nil {

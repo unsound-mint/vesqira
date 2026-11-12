@@ -24,6 +24,7 @@ func sceneFor(id int64, channel int) map[string]any {
 }
 
 func TestExplorationHistoryRoutes(t *testing.T) {
+	t.Parallel()
 	cat, err := catalog.Open("file:" + filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)

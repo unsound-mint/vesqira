@@ -79,6 +79,7 @@ func imagesHarness(t *testing.T) (api string, rp *reports.Store, pub *httptest.S
 // A picture reaches the publish server without its metadata, under the hash of what was sent, while the attachment on the
 // owner's computer is unchanged and the owner is told before publishing.
 func TestPublishedPicturesCarryNoMetadata(t *testing.T) {
+	t.Parallel()
 	api, rp, pub, key, _ := imagesHarness(t)
 	must := func(method, url string, in any, want int, what string) []byte {
 		t.Helper()
@@ -153,6 +154,7 @@ func TestPublishedPicturesCarryNoMetadata(t *testing.T) {
 
 // What cannot be cleaned is not published: the owner is told which picture, and publishing is refused.
 func TestAPictureThatCannotBeCleanedBlocksPublishing(t *testing.T) {
+	t.Parallel()
 	api, rp, pub, key, _ := imagesHarness(t)
 	pal := color.Palette{color.Black, color.White}
 	var b bytes.Buffer
@@ -191,6 +193,7 @@ func TestAPictureThatCannotBeCleanedBlocksPublishing(t *testing.T) {
 // Opening a report builds its revision (to compare with the last publication) without publishing, and used to decode every
 // image each time. A picture is cleaned once per sha; the bytes are produced only when the report is published.
 func TestAPictureIsCleanedOnceAndItsBytesAreOnlyLoadedForPublishing(t *testing.T) {
+	t.Parallel()
 	s := &Server{}
 	dirty, _ := jpegWithPrivateExif(t)
 	loads := 0
@@ -218,6 +221,7 @@ func TestAPictureIsCleanedOnceAndItsBytesAreOnlyLoadedForPublishing(t *testing.T
 }
 
 func TestAPictureThatCannotBeReadOrCleanedIsNotCached(t *testing.T) {
+	t.Parallel()
 	s := &Server{}
 	f := &frozen{Assets: map[string][]byte{}}
 	if _, err := s.publishablePicture("gone", func() ([]byte, error) { return nil, reports.ErrNotFound }, false, f); err == nil || errors.Is(err, errCannotClean) {
@@ -236,6 +240,7 @@ func TestAPictureThatCannotBeReadOrCleanedIsNotCached(t *testing.T) {
 
 // A calibrated display's colour profile can carry its name; it is kept because the colours need it, and the owner is told.
 func TestAKeptColourProfileIsSaidInThePreflight(t *testing.T) {
+	t.Parallel()
 	api, rp, pub, key, _ := imagesHarness(t)
 	dirty, _ := jpegWithPrivateExif(t)
 	icc := append([]byte{0xFF, 0xE2, 0, 54}, append([]byte("ICC_PROFILE\x00\x01\x01"), bytes.Repeat([]byte{7}, 38)...)...)

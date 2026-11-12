@@ -18,6 +18,7 @@ import (
 // The author label of a rule is spelled once in discover and once in catalog (which discover may not import); they must agree, or a
 // rule's declaration would stop being recognised as the researcher's.
 func TestRuleAuthorPrefixIsTheSameInDiscoverAndCatalog(t *testing.T) {
+	t.Parallel()
 	if discover.RulePrefix != catalog.RuleAuthorPrefix {
 		t.Fatalf("%q != %q", discover.RulePrefix, catalog.RuleAuthorPrefix)
 	}

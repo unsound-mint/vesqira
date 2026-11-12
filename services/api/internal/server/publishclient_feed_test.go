@@ -28,6 +28,7 @@ func comments(ids ...int64) string {
 }
 
 func TestCommentFeedWithImplausibleNumbersIsRefused(t *testing.T) {
+	t.Parallel()
 	for name, body := range map[string]string{
 		"max int64":            comments(math.MaxInt64),
 		"a jump past the cap":  comments(1, 2, 3+maxFeedStep+1),
@@ -63,6 +64,7 @@ func seq(from, to int64) []int64 {
 }
 
 func TestCommentFeedGapsFromDeletedRowsAndFullPagesAreAccepted(t *testing.T) {
+	t.Parallel()
 	// ids skip rows that were deleted: honest, as long as the gap is far below the cap
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, comments(7, 9, 5000, 5001))
@@ -83,6 +85,7 @@ func TestCommentFeedGapsFromDeletedRowsAndFullPagesAreAccepted(t *testing.T) {
 }
 
 func TestDeletionFeedWithImplausibleNumbersIsRefused(t *testing.T) {
+	t.Parallel()
 	for name, body := range map[string]string{
 		"huge seq":      fmt.Sprintf(`{"deletions":[{"seq":%d,"id":3}]}`, int64(math.MaxInt64)),
 		"seq backward":  `{"deletions":[{"seq":4,"id":3},{"seq":2,"id":4}]}`,
@@ -110,6 +113,7 @@ func TestDeletionFeedWithImplausibleNumbersIsRefused(t *testing.T) {
 // The whole sync: a hostile page changes nothing the owner holds, the failure is what the owner sees in the sync status,
 // and once the server behaves, the comments that were skipped are still pulled (the cursor did not move).
 func TestSyncKeepsTheCursorWhenTheFeedIsImplausible(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
 	if err != nil {

@@ -18,6 +18,7 @@ import (
 // board as it is when they differ; the owner's board and the reviewer's frozen copy both carry the place; and the reviewer's
 // listener has no way to write one.
 func TestBoardLayoutRouteSavesGuardsAndReachesTheReviewerReadOnly(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	rs, _ := sourceroot.New([]string{base})
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))

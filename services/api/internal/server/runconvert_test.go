@@ -20,6 +20,7 @@ import (
 // scaled by the dimensional factor, a conversion that would need an equivalency is a refusal with a sentence (never a number),
 // and malformed requests are 400s. The worker is the oracle's subject here; the factors are closed-form.
 func TestRunValueConversionRoute(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -98,6 +99,7 @@ func TestRunValueConversionRoute(t *testing.T) {
 // The operation is classed as an interactive request: a person waits on the plot, so it queues with planes and readouts and
 // never behind a heavy analysis.
 func TestConvertValuesIsAnInteractiveOperation(t *testing.T) {
+	t.Parallel()
 	if worker.ClassOf("convert_values") != worker.Interactive {
 		t.Error("convert_values must be interactive")
 	}

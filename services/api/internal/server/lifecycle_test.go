@@ -168,6 +168,7 @@ func (e *lcEnv) auditActions(kind string) []string {
 }
 
 func TestImpactListsTheDependentsOfADataset(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	d, _ := e.register("a.fits")
 	other, _ := e.register("b.fits")
@@ -195,6 +196,7 @@ func TestImpactListsTheDependentsOfADataset(t *testing.T) {
 }
 
 func TestDeleteForgetsTheEntryNotTheFileAndKeepsPublishedReviewsWorking(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	d, path := e.register("a.fits")
 	f := e.figure(d.ID, "Peak")
@@ -239,6 +241,7 @@ func TestDeleteForgetsTheEntryNotTheFileAndKeepsPublishedReviewsWorking(t *testi
 }
 
 func TestDeleteIsRefusedWhenTheImpactChangedAfterThePreview(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	d, _ := e.register("a.fits")
 	e.figure(d.ID, "First")
@@ -263,6 +266,7 @@ func TestDeleteIsRefusedWhenTheImpactChangedAfterThePreview(t *testing.T) {
 }
 
 func TestArchiveHidesFromListsButStillResolvesAndRestores(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	d, _ := e.register("a.fits")
 	f := e.figure(d.ID, "Peak")
@@ -317,6 +321,7 @@ func TestArchiveHidesFromListsButStillResolvesAndRestores(t *testing.T) {
 }
 
 func TestFigureOnABoardCannotBeDeletedAndAPublishedReviewKeepsItsPicture(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	d, _ := e.register("a.fits")
 	f := e.figure(d.ID, "Peak")
@@ -353,6 +358,7 @@ func TestFigureOnABoardCannotBeDeletedAndAPublishedReviewKeepsItsPicture(t *test
 }
 
 func TestUnpublishedFigureDeleteRemovesItsPreviewBytes(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	d, _ := e.register("a.fits")
 	f := e.figure(d.ID, "Alone")
@@ -370,6 +376,7 @@ func TestUnpublishedFigureDeleteRemovesItsPreviewBytes(t *testing.T) {
 }
 
 func TestBoardWithAPublishedReviewCanOnlyBeArchived(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	d, _ := e.register("a.fits")
 	f := e.figure(d.ID, "Peak")
@@ -400,6 +407,7 @@ func TestBoardWithAPublishedReviewCanOnlyBeArchived(t *testing.T) {
 }
 
 func TestManagedCopyBytesAreRemovedOnlyOnTheSeparateChoiceAndAudited(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	orig, origPath := e.register("orig.fits")
 	copyOf := func() (catalog.Dataset, string) {
@@ -458,6 +466,7 @@ func TestManagedCopyBytesAreRemovedOnlyOnTheSeparateChoiceAndAudited(t *testing.
 }
 
 func TestDeleteRefusedWhileAnotherDatasetUsesItAsItsReliabilityMap(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	rel, _ := e.register("rel.fits")
 	psi, _ := e.register("psi.fits")
@@ -474,6 +483,7 @@ func TestDeleteRefusedWhileAnotherDatasetUsesItAsItsReliabilityMap(t *testing.T)
 }
 
 func TestOwnerMutationsAreRefusedCrossSite(t *testing.T) {
+	t.Parallel()
 	e := newLifecycleEnv(t)
 	d, _ := e.register("a.fits")
 	req, _ := http.NewRequest("POST", e.owner.URL+"/api/datasets/"+itoa(int(d.ID))+"/archive", strings.NewReader("{}"))

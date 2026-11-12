@@ -21,6 +21,7 @@ import (
 // A project on a host: the folder is added to the host's roots, walked by the host's own worker (same skip rules, never
 // reading the blinding key), its FITS headers registered there, and nothing outside the folder becomes readable.
 func TestRemoteProjectIsWalkedByTheHostWorkerWithFakeSSH(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {

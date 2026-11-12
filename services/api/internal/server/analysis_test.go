@@ -25,6 +25,7 @@ import (
 )
 
 func TestAnalysisLocalAndOnAHostWithDerivedProvenance(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy, reproject").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {

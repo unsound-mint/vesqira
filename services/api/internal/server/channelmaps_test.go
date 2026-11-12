@@ -32,6 +32,7 @@ func frameOf(t *testing.T, b []byte) (head []byte, payload []byte) {
 // Channel grid, slab and position-velocity routes end to end with the real worker on the generated fixtures: the described
 // responses, the declared-axial refusal, the caps, and a repeat served from the cache.
 func TestChannelMapRoutesEndToEndWithRealWorker(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -249,6 +250,7 @@ func TestChannelMapRoutesEndToEndWithRealWorker(t *testing.T) {
 // A channel-grid figure stores its channel-grid/1 description in the figure's description column and is held to the view it
 // is saved with; a saved line beside other regions does not break an ordinary figure's scene.
 func TestAChannelGridFigureIsValidatedAgainstItsViewAndStoredAsTheServerReadIt(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	rs, _ := sourceroot.New([]string{base})
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))

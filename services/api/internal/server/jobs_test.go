@@ -71,6 +71,7 @@ case "$s" in COMPLETED|FAILED|CANCELLED|TIMEOUT) row $id job; if [ -z "$x" ]; th
 }
 
 func TestSlurmJobLifecycleOnAStandInHost(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {

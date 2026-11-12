@@ -18,6 +18,7 @@ func f64(v float64) *float64 { return &v }
 // The runs table is built in the browser from GET /api/runs, so that listing has to stay usable for a researcher with
 // thousands of sweep runs: every run with its parameters and typed results, in one reply, quickly and in bounded size.
 func TestRunListingWithParametersAndMetricsAtScale(t *testing.T) {
+	t.Parallel()
 	cat, err := catalog.Open("file:" + filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -90,6 +91,7 @@ func TestRunListingWithParametersAndMetricsAtScale(t *testing.T) {
 }
 
 func TestSavedRunViewsRoutesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	cat, err := catalog.Open("file:" + filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {

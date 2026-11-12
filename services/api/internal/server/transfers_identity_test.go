@@ -35,6 +35,7 @@ func (e *xferEnv) hostDataset(name string, withFull bool) catalog.Dataset {
 }
 
 func TestAVerifiedDownloadOfARegisteredHostFileBecomesAVerifiedLocation(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	b := e.file(e.remote, "cube.fits", 5000)
 	d := e.hostDataset("cube.fits", true)
@@ -68,6 +69,7 @@ func (e *xferEnv) auditActions(action string) []string {
 }
 
 func TestAVerifiedDownloadRecordsTheSourcesFullHashWhenItStillIsTheRegisteredFile(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	b := e.file(e.remote, "nohash.fits", 3000)
 	d := e.hostDataset("nohash.fits", false) // registered, never hashed in full
@@ -91,6 +93,7 @@ func TestAVerifiedDownloadRecordsTheSourcesFullHashWhenItStillIsTheRegisteredFil
 }
 
 func TestADownloadIsNotLinkedAndNothingIsRecordedWhenTheSourceChangedSinceRegistration(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "nohash.fits", 100)
 	d := e.hostDataset("nohash.fits", false)
@@ -119,6 +122,7 @@ func TestADownloadIsNotLinkedAndNothingIsRecordedWhenTheSourceChangedSinceRegist
 }
 
 func TestRegisteringAVerifiedDownloadWithTheSameBytesAsADatasetOffersALocation(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.srv.Worker = hdrWorker{}
 	b := e.file(e.remote, "twin.fits", 4000)

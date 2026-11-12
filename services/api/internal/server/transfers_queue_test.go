@@ -13,6 +13,7 @@ import (
 )
 
 func TestBackoffDoublesAndIsCapped(t *testing.T) {
+	t.Parallel()
 	want := []time.Duration{20 * time.Second, 40 * time.Second, 80 * time.Second, 160 * time.Second, 320 * time.Second, 600 * time.Second, 600 * time.Second}
 	for i, w := range want {
 		if got := transferBackoff(i + 1); got != w {
@@ -27,6 +28,7 @@ func TestBackoffDoublesAndIsCapped(t *testing.T) {
 // ---- conflicts: nothing is overwritten unless the owner said replace ----
 
 func TestAnExistingDifferentFileWaitsForADecisionAndIsNeverTouched(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "cube.fits", 5000)
 	mine := e.file(e.local, "cube.fits", 7000) // different size and content
@@ -68,6 +70,7 @@ func TestAnExistingDifferentFileWaitsForADecisionAndIsNeverTouched(t *testing.T)
 }
 
 func TestKeepBothUsesANewNameAndKeepsItAcrossRetries(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.remote, "cube.fits", 5000)
 	mine := e.file(e.local, "cube.fits", 7000)
@@ -121,6 +124,7 @@ func TestKeepBothUsesANewNameAndKeepsItAcrossRetries(t *testing.T) {
 }
 
 func TestAnIdenticalFileIsAlreadyThereAndNothingIsTransferred(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "cube.fits", 5000)
 	e.file(e.local, "cube.fits", 5000) // the same bytes (same seed)
@@ -149,6 +153,7 @@ func TestAnIdenticalFileIsAlreadyThereAndNothingIsTransferred(t *testing.T) {
 }
 
 func TestReplaceOverwritesOnlyWhenTheOwnerChoseIt(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.local, "maps.fits", 4000)
 	e.file(e.remote, "maps.fits", 9000)
@@ -183,6 +188,7 @@ func TestReplaceOverwritesOnlyWhenTheOwnerChoseIt(t *testing.T) {
 }
 
 func TestAFileThatAppearsAfterTheCheckIsNeverOverwritten(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "cube.fits", 5<<20)
 	tr := e.download("cube.fits", map[string]any{"bwlimitKBps": 2000})
@@ -215,6 +221,7 @@ func TestAFileThatAppearsAfterTheCheckIsNeverOverwritten(t *testing.T) {
 // Copy again replaces the file this transfer wrote, and only that file: if something else has taken its place since, the
 // transfer asks instead.
 func TestCopyAgainNeverOverwritesAFileThisTransferDidNotWrite(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.remote, "cube.fits", 5000)
 	e.flag("CORRUPT", true, "")
@@ -263,6 +270,7 @@ func TestCopyAgainNeverOverwritesAFileThisTransferDidNotWrite(t *testing.T) {
 // After rsync has finished for a name, a retry (a network error while checking) only checks again: it does not run rsync a
 // second time and so cannot be fooled by, or overwrite, what is there.
 func TestARetryAfterTheCopyOnlyChecksAgain(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.remote, "cube.fits", 5000)
 	tr := e.download("cube.fits", nil)
@@ -288,6 +296,7 @@ func TestARetryAfterTheCopyOnlyChecksAgain(t *testing.T) {
 // Replacing a folder that already holds other files merges; the content check then lists the extras instead of calling the
 // result verified.
 func TestAFolderReplacedIntoAnExistingFolderIsUnverifiedWhenExtraFilesWereThere(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(filepath.Join(e.remote, "run1"), "a.fits", 3000)
 	e.file(filepath.Join(e.local, "run1"), "mine.txt", 10)
@@ -304,6 +313,7 @@ func TestAFolderReplacedIntoAnExistingFolderIsUnverifiedWhenExtraFilesWereThere(
 
 // An unfinished transfer is neither a dataset nor shown in the file tree.
 func TestAnUnfinishedTransferCannotBeRegisteredOrBrowsed(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(filepath.Join(e.local, hosts_PartialDir), "cube.fits", 3000)
 	r, b := postJSON(t, e.api("/api/datasets"), map[string]any{"path": filepath.Join(e.local, hosts_PartialDir, "cube.fits")})
@@ -323,6 +333,7 @@ func TestAnUnfinishedTransferCannotBeRegisteredOrBrowsed(t *testing.T) {
 // ---- verification ----
 
 func TestAMismatchOnTheHostIsUnverifiedWithTheReasonAndCanBeCopiedAgain(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.remote, "cube.fits", 5000)
 	e.flag("CORRUPT", true, "")
@@ -356,6 +367,7 @@ func TestAMismatchOnTheHostIsUnverifiedWithTheReasonAndCanBeCopiedAgain(t *testi
 }
 
 func TestAHostWithoutAHashToolIsUnverifiedNotVerified(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "cube.fits", 5000)
 	e.flag("NOSHA", true, "")
@@ -373,6 +385,7 @@ func TestAHostWithoutAHashToolIsUnverifiedNotVerified(t *testing.T) {
 // ---- retries, drops, restarts ----
 
 func TestAnUnreachableHostIsRetriedWithGrowingWaitsAndThenSucceeds(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.remote, "cube.fits", 5000)
 	e.flag("DOWN", true, "")
@@ -406,6 +419,7 @@ func TestAnUnreachableHostIsRetriedWithGrowingWaitsAndThenSucceeds(t *testing.T)
 }
 
 func TestTheQueueGivesUpAfterManyAttemptsWithoutAnyData(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "cube.fits", 5000)
 	e.flag("DOWN", true, "")
@@ -433,6 +447,7 @@ func TestTheQueueGivesUpAfterManyAttemptsWithoutAnyData(t *testing.T) {
 // The connection drops in the middle of a file: the bytes so far wait in the partial folder, the queue retries, rsync resumes
 // from them, and the result is verified by hash. Both directions.
 func TestAConnectionDropMidFileIsResumedAndVerified(t *testing.T) {
+	t.Parallel()
 	for _, dir := range []string{"download", "upload"} {
 		t.Run(dir, func(t *testing.T) {
 			e := newXferEnv(t)
@@ -481,6 +496,7 @@ const hosts_PartialDir = ".vesqira-partial"
 // Closing the app stops rsync with SIGTERM (the partial file stays) and puts the transfer back in the queue; the next start
 // finishes it from the partial file.
 func TestAClosedAppResumesTheTransferAtTheNextStart(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.remote, "cube.fits", 16<<20)
 	tr := e.download("cube.fits", map[string]any{"bwlimitKBps": 6000})
@@ -544,6 +560,7 @@ func TestAClosedAppResumesTheTransferAtTheNextStart(t *testing.T) {
 // ---- cancelling ----
 
 func TestCancelStopsARunningTransferAndCanDiscardItsPartialFile(t *testing.T) {
+	t.Parallel()
 	for _, discard := range []bool{false, true} {
 		e := newXferEnv(t)
 		e.file(e.remote, "cube.fits", 16<<20)
@@ -589,6 +606,7 @@ func TestCancelStopsARunningTransferAndCanDiscardItsPartialFile(t *testing.T) {
 }
 
 func TestCancelAQueuedAWaitingAndAConflictedTransferAndRemoveFinishedOnes(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "a.fits", 100)
 	e.file(e.remote, "b.fits", 100)

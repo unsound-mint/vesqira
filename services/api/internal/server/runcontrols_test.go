@@ -9,6 +9,7 @@ import (
 )
 
 func TestResearcherDeclaresControlsAndTheyAreStoredAsDeclared(t *testing.T) {
+	t.Parallel()
 	e := newRecEnv(t)
 	run, err := e.srv.Runs.Save("/data/run-c", runs.Parsed{Run: runs.Run{Name: "run-c", Kind: "vgt"}}, nil)
 	if err != nil {
@@ -87,6 +88,7 @@ func TestResearcherDeclaresControlsAndTheyAreStoredAsDeclared(t *testing.T) {
 func sum2(e *recEnv, id int64) *runs.Summary { s, _ := e.srv.Runs.SummaryOf(id, "psi"); return s }
 
 func TestControlsAreRefusedWhenTheyWouldInventAUnitOrAMeaning(t *testing.T) {
+	t.Parallel()
 	e := newRecEnv(t)
 	run, _ := e.srv.Runs.Save("/data/run-d", runs.Parsed{Run: runs.Run{Name: "run-d", Kind: "vgt"}}, nil)
 	url := e.api("/api/runs/" + itoa(int(run.ID)) + "/controls")

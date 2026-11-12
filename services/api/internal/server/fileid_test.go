@@ -79,6 +79,7 @@ func devIno(t *testing.T, file string) (int64, int64) {
 }
 
 func TestARegisteredFileReplacedWithEqualSizeAndTimeIsRefusedWithASentenceAndNotRegisteredAgain(t *testing.T) {
+	t.Parallel()
 	ts, st, fp, root := idServer(t)
 	file := filepath.Join(root, "a.fits")
 	if err := os.WriteFile(file, []byte("xxxx"), 0o644); err != nil {
@@ -121,6 +122,7 @@ func TestARegisteredFileReplacedWithEqualSizeAndTimeIsRefusedWithASentenceAndNot
 }
 
 func TestALocationFromBeforeSchema27IsRecordedOnceItMatchesAndThenRefusesAnotherFile(t *testing.T) {
+	t.Parallel()
 	ts, st, _, root := idServer(t)
 	file := filepath.Join(root, "old.fits")
 	if err := os.WriteFile(file, []byte("xxxx"), 0o644); err != nil {
@@ -144,6 +146,7 @@ func TestALocationFromBeforeSchema27IsRecordedOnceItMatchesAndThenRefusesAnother
 }
 
 func TestAnEditThatChangesSizeOrTimeStillSaysTheFileChanged(t *testing.T) {
+	t.Parallel()
 	ts, _, _, root := idServer(t)
 	file := filepath.Join(root, "a.fits")
 	if err := os.WriteFile(file, []byte("xxxx"), 0o644); err != nil {
@@ -160,6 +163,7 @@ func TestAnEditThatChangesSizeOrTimeStillSaysTheFileChanged(t *testing.T) {
 }
 
 func TestADriveMountedAgainWithAnotherDeviceNumberIsTheSameFile(t *testing.T) {
+	t.Parallel()
 	ts, st, _, root := idServer(t)
 	file := filepath.Join(root, "ext.fits")
 	if err := os.WriteFile(file, []byte("xxxx"), 0o644); err != nil {

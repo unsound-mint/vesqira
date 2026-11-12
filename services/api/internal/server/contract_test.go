@@ -72,6 +72,7 @@ func requestSchema(t *testing.T, doc *openapi3.T, path, method string) *openapi3
 }
 
 func TestResponsesMatchTheSpecForTheViewerRoutes(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {

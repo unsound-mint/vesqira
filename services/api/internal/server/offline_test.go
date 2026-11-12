@@ -86,7 +86,7 @@ func newOfflineEnv(t *testing.T) *offEnv {
 	}
 	rs, _ := sourceroot.New([]string{localRoot})
 	srv := &Server{Roots: rs, Store: cat, Worker: headerWorker(t, "python3", repo), Planes: headerWorker(t, "python3", repo), Cache: NewPlaneCache(8 << 20),
-		Boards: bs, HostDB: hs, Remote: mgr, Regions: rg, Audit: au, Offline: off}
+		Boards: bs, HostDB: hs, Remote: mgr, Regions: rg, Audit: au, Offline: off, OfflineProbeAfter: time.Nanosecond}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	py, _ := exec.LookPath("python3")
@@ -94,9 +94,6 @@ func newOfflineEnv(t *testing.T) *offEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := offlineProbeAfter
-	offlineProbeAfter = 0
-	t.Cleanup(func() { offlineProbeAfter = old })
 	e := &offEnv{ts: ts, srv: srv, cat: cat, mgr: mgr, host: h, home: home, remoteFile: filepath.Join(remoteRoot, "hi_cube.fits"), cube: cube, store: off, dataDir: dataDir, bs: bs}
 	r, b := postJSON(t, ts.URL+"/api/hosts/"+itoa(int(h.ID))+"/register", map[string]any{"path": e.remoteFile})
 	if r.StatusCode != 201 {
@@ -205,6 +202,7 @@ func (e *offEnv) prepare(t *testing.T, in map[string]any) prepState {
 // the same when the host is unreachable, marked as a copy; what was not kept fails with a sentence naming it; and when the host is
 // back the answer is live again.
 func TestPreparedCopyServesWhenTheHostIsUnreachable(t *testing.T) {
+	t.Parallel()
 	e := newOfflineEnv(t)
 	region := map[string]any{"name": "core", "shape": map[string]any{"shape": "circle", "cx": 20, "cy": 9, "r": 4}}
 	if r, b := postJSON(t, e.ts.URL+e.ds("/regions"), region); r.StatusCode != 201 {
@@ -325,6 +323,7 @@ func TestPreparedCopyServesWhenTheHostIsUnreachable(t *testing.T) {
 // never served, and said to be stale. A file that changed with no live look since is the catalog's last-seen file, which is
 // documented in the ADR.
 func TestChangedFileMakesTheCopyStaleAndItIsRefused(t *testing.T) {
+	t.Parallel()
 	e := newOfflineEnv(t)
 	e.prepare(t, map[string]any{"datasetIds": []int64{e.remote.ID}, "channels": map[string]int{"from": 5, "to": 6}, "detail": "full", "budgetBytes": 8 << 20})
 	e.down(t, true)
@@ -355,6 +354,7 @@ func TestChangedFileMakesTheCopyStaleAndItIsRefused(t *testing.T) {
 // The content identity recorded for the location is part of the match: a copy made without one, or with another, is not served as the
 // file once an identity is recorded that it cannot vouch for, and one made with the same identity is served and says so.
 func TestCopyIsServedOnlyForTheSameRecordedIdentity(t *testing.T) {
+	t.Parallel()
 	e := newOfflineEnv(t)
 	d, _ := e.cat.Get(e.remote.ID)
 	loc := d.Locations[0]
@@ -381,6 +381,7 @@ func TestCopyIsServedOnlyForTheSameRecordedIdentity(t *testing.T) {
 
 // The review listener has no route to any offline copy, or to the routes that read through one.
 func TestReviewerCannotReachOfflineCopies(t *testing.T) {
+	t.Parallel()
 	e := newOfflineEnv(t)
 	e.prepare(t, map[string]any{"datasetIds": []int64{e.remote.ID}, "channels": map[string]int{"from": 5, "to": 5}, "detail": "preview", "budgetBytes": 8 << 20})
 	rv := httptest.NewServer((&review.Handler{Store: e.bs}).Handler())
@@ -411,6 +412,7 @@ func TestReviewerCannotReachOfflineCopies(t *testing.T) {
 
 // Deleting a dataset names its offline copy in the impact preview and removes the copy, files included; "forget" does the same alone.
 func TestDeleteImpactNamesTheOfflineCopyAndRemovesIt(t *testing.T) {
+	t.Parallel()
 	e := newOfflineEnv(t)
 	e.prepare(t, map[string]any{"datasetIds": []int64{e.remote.ID}, "channels": map[string]int{"from": 5, "to": 6}, "detail": "preview", "budgetBytes": 8 << 20})
 	dir := filepath.Join(e.dataDir, itoa(int(e.remote.ID)))
@@ -444,6 +446,7 @@ func TestDeleteImpactNamesTheOfflineCopyAndRemovesIt(t *testing.T) {
 }
 
 func TestForgetAndTheStoreLimit(t *testing.T) {
+	t.Parallel()
 	e := newOfflineEnv(t)
 	e.prepare(t, map[string]any{"datasetIds": []int64{e.remote.ID}, "channels": map[string]int{"from": 5, "to": 6}, "detail": "preview", "budgetBytes": 8 << 20})
 	used := e.store.Used()
@@ -476,6 +479,7 @@ func TestForgetAndTheStoreLimit(t *testing.T) {
 // When the host goes away between the stat and the read, ask falls back to the copy made from exactly the signature just verified,
 // and to nothing else.
 func TestHostLostBetweenStatAndReadFallsBackToTheVerifiedCopy(t *testing.T) {
+	t.Parallel()
 	e := newOfflineEnv(t)
 	e.prepare(t, map[string]any{"datasetIds": []int64{e.remote.ID}, "channels": map[string]int{"from": 5, "to": 5}, "detail": "full", "budgetBytes": 8 << 20})
 	k := cacheKey{id: e.remote.ID, host: e.host.ID, size: e.remote.SizeBytes, mtime: e.remote.ModifiedAt.UnixNano(), op: "plane", channel: 5}
@@ -509,6 +513,7 @@ func TestHostLostBetweenStatAndReadFallsBackToTheVerifiedCopy(t *testing.T) {
 }
 
 func TestPreviewStepMatchesTheViewer(t *testing.T) {
+	t.Parallel()
 	// apps/web/src/api/planes.ts previewStep: the same formula, so a stored preview is the one the viewer asks for
 	for _, c := range []struct{ w, h, step int }{{100, 100, 2}, {512, 512, 2}, {1024, 1024, 2}, {2048, 2048, 4}, {4096, 4096, 8}, {100000, 100000, 64}} {
 		if got := previewStepFor(c.w, c.h); got != c.step {
@@ -522,6 +527,7 @@ func TestPreviewStepMatchesTheViewer(t *testing.T) {
 
 // The offline routes answer as the spec says, and so does an offline plane head (its `offline` field).
 func TestOfflineResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	e := newOfflineEnv(t)
 	check := func(path, method string, status int, label string, body []byte) {

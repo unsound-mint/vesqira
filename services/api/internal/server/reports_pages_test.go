@@ -19,6 +19,7 @@ import (
 // owner's copy; a withdrawn report is gone for readers, its comments are gone on both sides, and the draft can then
 // be deleted or published again from revision 1.
 func TestReportPagesQuotesDeletionsAndWithdraw(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
 	if err != nil {

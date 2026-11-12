@@ -19,6 +19,7 @@ import (
 // A map declared as an axial orientation map is never averaged as a scalar: its frame and quantity are validated and
 // stored, align resamples the doubled angle and registers the companion reliability map, and moment and slab are refused.
 func TestAxialMapsAreDeclaredWithFrameAndQuantityAndResampledAsAngles(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy, reproject").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {

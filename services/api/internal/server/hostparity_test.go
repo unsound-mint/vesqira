@@ -214,6 +214,7 @@ func hostMaskFile(t *testing.T, dir string, m masks.Mask) string {
 // region spectrum and histogram with masks, and a statistics job with masks give the numbers the same operations give on a local copy of
 // the same file. Nothing of the mask crosses but its summary and one plane; the refusals that remain say what to do.
 func TestMasksOnAHostMatchTheSameMasksHere(t *testing.T) {
+	t.Parallel()
 	e := newHostParity(t)
 	loc, rem := e.pair("hi_cube.fits")
 	locFlags, remFlags := e.pair("flags.fits")
@@ -449,6 +450,7 @@ func TestMasksOnAHostMatchTheSameMasksHere(t *testing.T) {
 // A virtual subset of a file on a host is read through the host's worker with the same readouts as the same subset of a local copy, and
 // written as a file on the host, in its derived folder, registered as a dataset there with the same pixels and the same derived record.
 func TestSubsetsOnAHostMatchTheSameSubsetHere(t *testing.T) {
+	t.Parallel()
 	e := newHostParity(t)
 	loc, rem := e.pair("hi_cube.fits")
 	// the subset forms refuse double quotes, backslashes and backticks; what is left of shell syntax must still reach the host as text (stdin)
@@ -601,6 +603,7 @@ func TestSubsetsOnAHostMatchTheSameSubsetHere(t *testing.T) {
 // Corrections reach a file on a host: the host's worker applies them and echoes their hash, an older worker that does not is refused, a
 // subset written on the host carries them, and an analysis job is given them and must echo them before its result is registered.
 func TestCorrectionsThroughAHostMatchTheSameCorrectionsHere(t *testing.T) {
+	t.Parallel()
 	e := newHostParity(t)
 	loc, rem := e.pair("hi_cube.fits")
 	set := func(d catalog.Dataset, unit string, crval2 float64) {

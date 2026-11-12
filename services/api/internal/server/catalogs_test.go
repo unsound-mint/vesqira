@@ -55,6 +55,7 @@ func registerCatalogFile(t *testing.T, url, path string) catalog.Dataset {
 }
 
 func TestACatalogIsRegisteredUnderTheSourceRootsAndIsOfKindCatalog(t *testing.T) {
+	t.Parallel()
 	url, root, _ := catalogServer(t)
 	other := t.TempDir()
 	os.WriteFile(filepath.Join(other, "o.csv"), []byte("a,b\n1,2\n"), 0o644)
@@ -91,6 +92,7 @@ func TestACatalogIsRegisteredUnderTheSourceRootsAndIsOfKindCatalog(t *testing.T)
 }
 
 func TestADeclarationIsValidatedStoredAndTheSkyReadFromIt(t *testing.T) {
+	t.Parallel()
 	url, root, _ := catalogServer(t)
 	f := filepath.Join(root, "stars.dat")
 	os.WriteFile(f, []byte(starlight), 0o644)
@@ -240,6 +242,7 @@ func getDataset(t *testing.T, url string, id int64) catalog.Dataset {
 }
 
 func TestUnreadableRowsAreCountedAndReportedWithTheirLineThroughTheAPI(t *testing.T) {
+	t.Parallel()
 	url, root, _ := catalogServer(t)
 	rows := []string{"name\tra\tdec"}
 	for i := 0; i < 14; i++ {
@@ -282,6 +285,7 @@ func TestUnreadableRowsAreCountedAndReportedWithTheirLineThroughTheAPI(t *testin
 }
 
 func TestAPointCatalogIsRefusedWhereAPixelGridIsNeededAndAFitsFileIsRefusedWhereACatalogIsNeeded(t *testing.T) {
+	t.Parallel()
 	url, root, repo := catalogServer(t)
 	f := filepath.Join(root, "stars.dat")
 	os.WriteFile(f, []byte(starlight), 0o644)
@@ -325,6 +329,7 @@ func TestAPointCatalogIsRefusedWhereAPixelGridIsNeededAndAFitsFileIsRefusedWhere
 }
 
 func TestAFitsTableIsRegisteredAsACatalogAndAnImageStaysAnImage(t *testing.T) {
+	t.Parallel()
 	url, root, repo := catalogServer(t)
 	mk := exec.Command("python3", "-I", "-c", "import sys\nfrom astropy.io import fits\nfrom astropy.table import Table\nt=Table({'ra':[10.5,11.5],'dec':[-30.0,-31.0],'pa':[10.0,20.0]})\nt['pa'].unit='deg'\nfits.HDUList([fits.PrimaryHDU(), fits.table_to_hdu(t)]).writeto(sys.argv[1])", filepath.Join(root, "tab.fits"))
 	if out, err := mk.CombinedOutput(); err != nil {
@@ -351,6 +356,7 @@ func TestAFitsTableIsRegisteredAsACatalogAndAnImageStaysAnImage(t *testing.T) {
 }
 
 func TestDeletingACatalogForgetsItsDeclaration(t *testing.T) {
+	t.Parallel()
 	url, root, _ := catalogServer(t)
 	f := filepath.Join(root, "stars.dat")
 	os.WriteFile(f, []byte(starlight), 0o644)

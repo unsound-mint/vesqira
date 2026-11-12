@@ -22,6 +22,7 @@ import (
 // person's and never as the file's; withdrawing it brings back what the file said (nothing); a file that states its own
 // BUNIT cannot be given another; the file's bytes are never touched; and the worker's cache cannot serve a stale unit.
 func TestADeclaredUnitReachesTheViewerHeadsAsTheUsersAndNeverChangesTheFile(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -185,6 +186,7 @@ func (e *echoPlanes) Do(_ context.Context, req map[string]any) (worker.Reply, er
 // describes the file: each state is answered as it is, never from another state's cache entry. (Isolated from the real worker:
 // it looks at what is asked of it, how often, and what the client is told.)
 func TestTheDeclaredUnitIsSentOnlyWhenCurrentAndKeysTheCache(t *testing.T) {
+	t.Parallel()
 	ep := &echoPlanes{}
 	ts, root, _ := newPlaneServer(t, ep)
 	file := filepath.Join(root, "a.fits")

@@ -222,6 +222,7 @@ func sha(b []byte) string { return hosts.SHA256Hex(b) }
 // ---- the ordinary path ----
 
 func TestDownloadArrivesVerifiedAndIsAnnouncedOnce(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.remote, "cube.fits", 3<<20)
 	tr := e.download("cube.fits", nil)
@@ -257,6 +258,7 @@ func TestDownloadArrivesVerifiedAndIsAnnouncedOnce(t *testing.T) {
 }
 
 func TestUploadArrivesVerified(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.local, "maps.fits", 1<<20)
 	tr := e.upload("maps.fits", map[string]any{"bwlimitKBps": 0, "compress": false})
@@ -272,6 +274,7 @@ func TestUploadArrivesVerified(t *testing.T) {
 }
 
 func TestFolderTransfersAreComparedByContentAndSaySo(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(filepath.Join(e.remote, "run1"), "a.fits", 5000)
 	e.file(filepath.Join(e.remote, "run1", "sub dir"), "b it's.fits", 7000)
@@ -299,6 +302,7 @@ func TestFolderTransfersAreComparedByContentAndSaySo(t *testing.T) {
 }
 
 func TestOneTransferPerHostAtATime(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "a.fits", 4<<20)
 	e.file(e.remote, "b.fits", 4<<20)
@@ -325,6 +329,7 @@ func TestOneTransferPerHostAtATime(t *testing.T) {
 // ---- authorisation ----
 
 func TestPathsAreAuthorisedOnBothSides(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "ok.fits", 100)
 	e.file(e.local, "ok.fits", 100)
@@ -377,6 +382,7 @@ func TestPathsAreAuthorisedOnBothSides(t *testing.T) {
 
 // A folder on the host that is inside a root by its name but leaves it through a link is refused by the host's own check.
 func TestAHostLinkOutOfTheRootFailsTheTransferWithTheReason(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	outside := t.TempDir()
 	e.file(outside, "secret.fits", 100)
@@ -411,6 +417,7 @@ func TestAHostLinkOutOfTheRootFailsTheTransferWithTheReason(t *testing.T) {
 }
 
 func TestRsyncMissingIsRefusedWithTheReasonAndNoFallback(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "a.fits", 10)
 	e.mgr.Rsync = filepath.Join(e.base, "no-such-rsync")
@@ -432,6 +439,7 @@ func TestRsyncMissingIsRefusedWithTheReasonAndNoFallback(t *testing.T) {
 }
 
 func TestUploadWarnsWhenTheHostsLastLookSaysItWillNotFit(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.local, "big.fits", 2<<20)
 	avail := int64(1 << 20)

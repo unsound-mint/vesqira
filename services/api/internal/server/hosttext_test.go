@@ -85,6 +85,7 @@ func putText(t *testing.T, p string, b []byte, mode os.FileMode) {
 }
 
 func TestHostEditorOpensAndSavesAndKeepsTheMode(t *testing.T) {
+	t.Parallel()
 	e := newHostEditor(t)
 	p := filepath.Join(e.root, "proj", "configs", "pipeline.toml")
 	putText(t, p, []byte("ker = 8\n"), 0o664)
@@ -111,6 +112,7 @@ func TestHostEditorOpensAndSavesAndKeepsTheMode(t *testing.T) {
 }
 
 func TestHostEditorStaleShaIsA409ShowingTheCurrentFile(t *testing.T) {
+	t.Parallel()
 	e := newHostEditor(t)
 	p := filepath.Join(e.root, "job.sh")
 	putText(t, p, []byte("one\n"), 0o755)
@@ -135,6 +137,7 @@ func TestHostEditorStaleShaIsA409ShowingTheCurrentFile(t *testing.T) {
 }
 
 func TestHostEditorRefusesEscapesDotDotLinksAndOutsideTheRoots(t *testing.T) {
+	t.Parallel()
 	e := newHostEditor(t)
 	putText(t, filepath.Join(e.outside, "secret.toml"), []byte("s = 1\n"), 0o644)
 	putText(t, filepath.Join(e.root, "ok.toml"), []byte("ok\n"), 0o644)
@@ -173,6 +176,7 @@ func TestHostEditorRefusesEscapesDotDotLinksAndOutsideTheRoots(t *testing.T) {
 }
 
 func TestHostEditorRefusesBinaryFitsOversizeAndUnknownKinds(t *testing.T) {
+	t.Parallel()
 	e := newHostEditor(t)
 	w := func(name string, b []byte) string {
 		p := filepath.Join(e.root, name)
@@ -216,6 +220,7 @@ func TestHostEditorRefusesBinaryFitsOversizeAndUnknownKinds(t *testing.T) {
 }
 
 func TestHostEditorRefusesRawAndExternalDataButEditsOtherRoles(t *testing.T) {
+	t.Parallel()
 	e := newHostEditor(t)
 	for _, rel := range []string{"proj/data/raw/notes.txt", "data/external/ref.md", "proj/Data/RAW/x.txt"} {
 		putText(t, filepath.Join(e.root, rel), []byte("x\n"), 0o644)
@@ -236,6 +241,7 @@ func TestHostEditorRefusesRawAndExternalDataButEditsOtherRoles(t *testing.T) {
 }
 
 func TestHostEditorNeverCreatesAFile(t *testing.T) {
+	t.Parallel()
 	e := newHostEditor(t)
 	p := filepath.Join(e.root, "new", "file.toml")
 	if code, b := e.saveH(t, p, "x\n", textVersion{Size: 1, Mtime: "1", Sha256: sha256Hex([]byte("x"))}); code != 404 {
@@ -258,6 +264,7 @@ func TestHostEditorNeverCreatesAFile(t *testing.T) {
 }
 
 func TestHostEditorAuditsPathAndHashesNeverContent(t *testing.T) {
+	t.Parallel()
 	e := newHostEditor(t)
 	p := filepath.Join(e.root, "notes.md")
 	putText(t, p, []byte("before secret-token\n"), 0o644)
@@ -323,6 +330,7 @@ func TestHostEditorHostileFileNames(t *testing.T) {
 
 // A single quote or exclamation mark in a name is refused (fish reads the doubly quoted quote as an escape).
 func TestHostEditorRefusesQuoteAndBangNames(t *testing.T) {
+	t.Parallel()
 	e := newHostEditor(t)
 	for _, n := range []string{"a'(touch PWNED)'.txt", "it's.md", "a!b.md"} {
 		p := filepath.Join(e.root, n)
@@ -338,6 +346,7 @@ func TestHostEditorRefusesQuoteAndBangNames(t *testing.T) {
 }
 
 func TestHostEditorNeedsAKnownHostAndTheRemoteFeature(t *testing.T) {
+	t.Parallel()
 	e := newHostEditor(t)
 	p := filepath.Join(e.root, "a.toml")
 	putText(t, p, []byte("a\n"), 0o644)

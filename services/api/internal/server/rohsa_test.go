@@ -85,6 +85,7 @@ func (e rohsaEnv) importRun(t *testing.T, path string, want int) (rohsaRunJSON, 
 }
 
 func TestROHSAImportDeclaresSettingsLinksProductsAndNeverGuessesUnits(t *testing.T) {
+	t.Parallel()
 	e := newROHSAEnv(t)
 	dir := filepath.Join(e.root, "rohsa_run_demo", "region_a")
 	run, raw := e.importRun(t, dir, 201) // a folder with one fit is enough
@@ -171,6 +172,7 @@ func TestROHSAImportDeclaresSettingsLinksProductsAndNeverGuessesUnits(t *testing
 }
 
 func TestROHSAWithoutItsCropImportsWithANoteAndNoCalibration(t *testing.T) {
+	t.Parallel()
 	e := newROHSAEnv(t)
 	dir := filepath.Join(e.root, "rohsa_run_demo", "region_a")
 	if err := os.Remove(filepath.Join(dir, "region_a.fits")); err != nil {
@@ -196,6 +198,7 @@ func TestROHSAWithoutItsCropImportsWithANoteAndNoCalibration(t *testing.T) {
 }
 
 func TestROHSAComponentsRequireTheSameGridAndAnIndex(t *testing.T) {
+	t.Parallel()
 	e := newROHSAEnv(t)
 	dir := filepath.Join(e.root, "rohsa_run_demo", "region_a")
 	run, _ := e.importRun(t, dir, 201)

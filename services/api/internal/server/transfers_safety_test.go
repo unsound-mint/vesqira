@@ -29,6 +29,7 @@ func (e *xferEnv) secondHost() (hosts.Host, string) {
 // ---- a folder is never "verified" when the copy skipped something ----
 
 func TestAFolderWithASkippedLinkOrPipeIsNeverVerified(t *testing.T) {
+	t.Parallel()
 	for _, dir := range []string{"download", "upload"} {
 		t.Run(dir, func(t *testing.T) {
 			e := newXferEnv(t)
@@ -70,6 +71,7 @@ func TestAFolderWithASkippedLinkOrPipeIsNeverVerified(t *testing.T) {
 }
 
 func TestAFolderWithOnlyInsideLinksIsStillVerified(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	run := filepath.Join(e.remote, "run")
 	e.file(run, "a.fits", 3000)
@@ -84,6 +86,7 @@ func TestAFolderWithOnlyInsideLinksIsStillVerified(t *testing.T) {
 // ---- a name belongs to one live transfer per side and folder ----
 
 func TestTwoTransfersFromDifferentHostsCannotBothWriteTheSameFinalName(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	h2, remote2 := e.secondHost()
 	e.file(e.remote, "big.fits", 6<<20)
@@ -137,6 +140,7 @@ func TestTwoTransfersFromDifferentHostsCannotBothWriteTheSameFinalName(t *testin
 // ---- a replace that was interrupted resumes ----
 
 func TestAnInterruptedReplaceResumesFromThePartialFile(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	want := e.file(e.remote, "big.fits", 6<<20)
 	old := e.file(e.local, "big.fits", 100)
@@ -162,6 +166,7 @@ func TestAnInterruptedReplaceResumesFromThePartialFile(t *testing.T) {
 }
 
 func TestAReplaceWhoseTargetChangedMeanwhileAsksAgainAndTouchesNothing(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(e.remote, "big.fits", 6<<20)
 	e.file(e.local, "big.fits", 100)
@@ -185,6 +190,7 @@ func TestAReplaceWhoseTargetChangedMeanwhileAsksAgainAndTouchesNothing(t *testin
 // ---- replacing a folder never deletes the owner's links ----
 
 func TestReplacingAFolderStopsWhereItWouldDeleteALink(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(filepath.Join(e.remote, "run", "sub"), "a.fits", 3000)
 	e.file(filepath.Join(e.remote, "run"), "top.fits", 2000)
@@ -226,6 +232,7 @@ func TestReplacingAFolderStopsWhereItWouldDeleteALink(t *testing.T) {
 }
 
 func TestReplacingAFolderOnAHostStopsWhereAFileStandsInTheWayOfAFolder(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(filepath.Join(e.local, "run", "sub"), "a.fits", 3000)
 	hostRun := filepath.Join(e.remote, "run")
@@ -244,6 +251,7 @@ func TestReplacingAFolderOnAHostStopsWhereAFileStandsInTheWayOfAFolder(t *testin
 // ---- an upload checks the host's folders for links first ----
 
 func TestAnUploadIsRefusedWhenTheHostFolderHoldsALinkToAFolder(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	e.file(filepath.Join(e.local, "run"), "a.fits", 3000)
 	outside := t.TempDir()

@@ -7,6 +7,7 @@ import (
 
 // The bodies the sweep routes send and take are the ones packages/contracts describes (ADR 0032).
 func TestSweepResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	e := newWatchEnv(t)
 	check := func(method, specPath, url string, in map[string]any, status int) []byte {
@@ -48,6 +49,7 @@ func TestSweepResponsesMatchTheSpec(t *testing.T) {
 
 // A ROHSA sweep's review carries the per-draft sizing and the concurrency note, and approval may omit the concurrency.
 func TestROHSASweepAndSizingResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	e := newWatchEnv(t)
 	base := e.rohsaDraft("rohsa-spec", nil, nil)

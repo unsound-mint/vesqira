@@ -21,6 +21,7 @@ import (
 // result says whose it is in its header, in its summary and in the record that travels with figures and reviews. The file's own
 // BUNIT wins, a withdrawn or stale declaration is not sent, and the declared text is only ever a value of the worker's option.
 func TestAnalysisCarriesADeclaredUnitAsTheAuthorsAndNeverAStaleOne(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy, reproject").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
