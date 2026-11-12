@@ -4831,7 +4831,7 @@ paths:
     post:
       operationId: owner_s_reportSeen_post_api_reports_id_seen
       x-listener: owner
-      x-vesqira-permission: report.write
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
   /api/reports/{id}/withdraw:
     parameters:

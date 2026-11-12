@@ -34,7 +34,7 @@ const (
 	ReviewPublish Permission = "review.publish" // R (own boards): preflight, publish a review link, revoke, reply, resolve
 
 	ReportRead    Permission = "report.read"    // V
-	ReportWrite   Permission = "report.write"   // R: write, move, attachments, comment drafts, mark seen
+	ReportWrite   Permission = "report.write"   // R: write, move, attachments, comment drafts (marking a report seen is report.read: the reader's own state)
 	PublishManage Permission = "publish.manage" // M: the publish server: publish or withdraw a report, readers, settings, sync, send replies
 	ProjectRead   Permission = "project.read"   // V: opened folders, their tree and needs
 	ProjectWrite  Permission = "project.write"  // R: open a folder, scan, answer, write the project file, import rules

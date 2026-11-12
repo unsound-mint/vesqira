@@ -636,3 +636,17 @@ func TestEveryBodyIDRouteIsCrossChecked(t *testing.T) {
 		}
 	}
 }
+
+// What an account has read is its own state, not an edit of the report: a Viewer, and a Researcher on someone else's report,
+// mark a report seen.
+func TestReadersMarkReportsSeen(t *testing.T) {
+	g, _ := scopedGroup(t)
+	g.setupAdmin("ada")
+	ids := fixtures(t, g, workspace.Local, g.mustAccount("ada").ID)
+	for _, role := range []string{"viewer", "researcher"} {
+		who := g.invite(workspace.Local, role, role[:2])
+		if w := g.do(req{method: "POST", path: "/api/reports/" + ids["reports/id"] + "/seen", body: `{"revision":1}`, cookie: who}); w.Code >= 300 {
+			t.Errorf("a %s cannot mark a report seen: %d %s", role, w.Code, w.Body)
+		}
+	}
+}

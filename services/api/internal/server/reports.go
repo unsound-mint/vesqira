@@ -35,7 +35,7 @@ func (s *Server) reportRoutes(mux *http.ServeMux) {
 	s.route(mux, "GET /api/reports/{id}", authz.ReportRead, s.getReport)
 	s.route(mux, "GET /api/reports/{id}/changes", authz.ReportRead, s.reportChanges)
 	s.route(mux, "POST /api/reports/{id}", authz.ReportWrite, s.updateReport)
-	s.route(mux, "POST /api/reports/{id}/seen", authz.ReportWrite, s.reportSeen)
+	s.route(mux, "POST /api/reports/{id}/seen", authz.ReportRead, s.reportSeen) // the reader's own state, not an edit
 	s.route(mux, "POST /api/reports/{id}/delete", authz.LifecycleDelete, s.deleteReport)
 	s.route(mux, "POST /api/reports/{id}/move", authz.ReportWrite, s.moveReport)
 	s.route(mux, "POST /api/reports/{id}/withdraw", authz.PublishManage, s.withdrawReport)
