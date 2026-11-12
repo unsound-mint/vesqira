@@ -187,6 +187,13 @@ func TestHealpixSampleThenRelativeOrientationWithAVGTMap(t *testing.T) {
 		if err != nil || rec.Op != "healpix_sample" || len(rec.Sources) != 2 || rec.Sources[0] != planck.ID || rec.Sources[1] != vgt.ID {
 			t.Fatalf("%s: derived record %+v %v", product, rec, err)
 		}
+		var pr struct {
+			Companions map[string]int64 `json:"companions"`
+		}
+		json.Unmarshal(rec.Params, &pr)
+		if pr.Companions["p"] != out.P.ID || pr.Companions["sigmaP"] != out.SigmaP.ID {
+			t.Errorf("%s: the angle map's record must name its companions: %s", product, rec.Params)
+		}
 		if crec, err := ds.Get(out.SigmaP.ID); err != nil || !strings.Contains(string(crec.Summary), `"companionOf"`) {
 			t.Errorf("%s: sigma_P record %v %v", product, crec, err)
 		}

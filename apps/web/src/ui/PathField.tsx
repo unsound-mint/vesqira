@@ -148,6 +148,9 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
         accept(e);
       }
     } else if (ev.key === "Escape") {
+      // Escape means "no suggestions for this text": an answer still on its way (or the debounce not yet fired) must not open
+      // the list again a moment later, over the controls below the field. Typing again asks anew.
+      cancelPending();
       if (open) {
         ev.preventDefault();
         ev.stopPropagation();

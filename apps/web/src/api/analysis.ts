@@ -38,7 +38,7 @@ export type MaskCarryRecord = {
   recomputed: string[];
 };
 
-export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls; masks?: { type: string; name: string; policy: string; weight?: number; tier: string; mappingVersion?: string }[]; maskCarry?: MaskCarryRecord }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
+export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls; masks?: { type: string; name: string; policy: string; weight?: number; tier: string; mappingVersion?: string }[]; maskCarry?: MaskCarryRecord; /** healpix_sample: the ids of the P and σ_P maps registered with the angle map */ companions?: { p?: number; sigmaP?: number } }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
 
 export const runAnalysis = (r: AnalysisRequest, signal?: AbortSignal, requestId?: string) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r, signal, requestId);
 export const createAnalysisJob = (r: AnalysisRequest) => post<Job>("/api/analysis/job", r);
@@ -51,4 +51,8 @@ export type RelOrientSummary = Schemas["RelativeOrientationSummary"];
 export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams; masks?: MaskUse[]; otherMasks?: MaskUse[] }, signal?: AbortSignal, requestId?: string) =>
   post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal, requestId);
 export const relativeOrientationTableUrl = (id: number) => `/api/datasets/${id}/relative-orientation.csv`;
-export const jobResult = (id: number) => call<{ summary: StatsSummary | Record<string, unknown> }>(`/api/jobs/${id}/result`);
+/** Sample a HEALPix polarization map onto a dataset's celestial grid as Q and U (ADR 0067). The request runs on this computer and stops with its request. */
+export type HealpixSampleRequest = Schemas["HealpixSampleRequest"];
+export type HealpixSampleResult = Omit<Schemas["HealpixSampleResult"], "dataset" | "p" | "sigmaP"> & { dataset: Dataset; p: Dataset | null; sigmaP: Dataset | null };
+export const runHealpixSample = (r: HealpixSampleRequest, signal?: AbortSignal, requestId?: string) => post<HealpixSampleResult>("/api/analysis/healpix-sample", r, signal, requestId);
+export const jobResult =(id: number) => call<{ summary: StatsSummary | Record<string, unknown> }>(`/api/jobs/${id}/result`);
