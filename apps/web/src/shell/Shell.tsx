@@ -432,7 +432,7 @@ export function Shell() {
               <Button onClick={() => setMode("open")}>Open a project…</Button>
             </div>
           )}
-          {project ? <Section key={project.id} title="Everything registered" meta={String(cat.datasets.length + cat.catalogCount)} defaultOpen={false}>{catalog}</Section> : catalog}
+          {project ? <Section key={project.id} title="Everything registered" meta={String(cat.datasets.length + cat.catalogCount)} defaultOpen={false} openSignal={hostOffer?.serial}>{catalog}</Section> : catalog}
         </div>
         <ResizeHandle orientation="vertical" label="Resize explorer" value={L.side} min={LIMITS.side.min} max={LIMITS.side.max} onChange={(v) => set("side", v)} />
       </aside>

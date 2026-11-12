@@ -190,6 +190,16 @@ describe("PathField", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
+  it("a completed path inside a mount of an unregistered host offers it too", async () => {
+    answer = () => json({ base: "/run/user/1/gvfs/sftp:host=h,user=me/data", entries: [], truncated: false, gvfs: { host: "h", user: "me" } });
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.type(box(), "/run/user/1/gvfs/sftp:host=h,user=me/data/");
+    expect(await screen.findByRole("button", { name: "Add this host…" })).toBeInTheDocument();
+    await user.type(box(), "x"); // typing on clears the offer until the next answer
+    expect(screen.queryByRole("button", { name: "Add this host…" })).toBeNull();
+  });
+
   it("says when a path came through the document portal", async () => {
     answer = () => json({ path: "/run/user/1000/doc/ab12/cubes", hostId: null, remotePath: null, gvfs: null, documentPortal: true });
     const user = userEvent.setup();

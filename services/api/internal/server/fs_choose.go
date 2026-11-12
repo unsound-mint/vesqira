@@ -257,19 +257,28 @@ func (s *Server) choose(w http.ResponseWriter, r *http.Request) {
 		// sandboxed app can read what it was handed. It is not the file's real location, and the page says so.
 		DocumentPortal bool `json:"documentPortal,omitempty"`
 	}{Path: p, DocumentPortal: isDocPortalPath(p)}
-	if g, rest, ok := parseGVFS(p); ok {
-		out.GVFS = &g
-		if s.HostDB != nil {
-			if list, err := s.HostDB.List(); err == nil {
-				var alias []hosts.SSHHost
-				if s.SSHConfig != "" {
-					alias, _ = hosts.LoadSSHConfig(s.SSHConfig)
-				}
-				if h, ok := matchHost(list, alias, g); ok {
-					out.HostID, out.RemotePath, out.GVFS = &h.ID, &rest, nil
-				}
+	out.HostID, out.RemotePath, out.GVFS = s.gvfsHost(p)
+	writeJSON(w, 200, out)
+}
+
+// gvfsHost says where a path inside a GVFS ssh mount belongs: the registered host and the path on it, or, when no host
+// matches, the mount's host, user and port so the page can offer to add it. All three are nil for any other path.
+// Only the mount folder's name is read; nothing is read through the mount.
+func (s *Server) gvfsHost(p string) (hostID *int64, remote *string, g *gvfsInfo) {
+	info, rest, ok := parseGVFS(p)
+	if !ok {
+		return nil, nil, nil
+	}
+	if s.HostDB != nil {
+		if list, err := s.HostDB.List(); err == nil {
+			var alias []hosts.SSHHost
+			if s.SSHConfig != "" {
+				alias, _ = hosts.LoadSSHConfig(s.SSHConfig)
+			}
+			if h, ok := matchHost(list, alias, info); ok {
+				return &h.ID, &rest, nil
 			}
 		}
 	}
-	writeJSON(w, 200, out)
+	return nil, nil, &info
 }

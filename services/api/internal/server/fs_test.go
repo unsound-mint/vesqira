@@ -224,6 +224,7 @@ func TestParseGVFS(t *testing.T) {
 		{"/run/user/1000/gvfs/sftp:host=h/dir with %20 and space/f", gvfsInfo{Host: "h"}, "/dir with %20 and space/f", true}, // names below the mount are literal
 		{"/run/user/1000/gvfs/sftp:host=fe80%3A%3A1,user=me/d", gvfsInfo{Host: "fe80::1", User: "me"}, "/d", true},
 		{"/run/user/1000/gvfs/sftp:host=[2001:db8::7],port=22/d", gvfsInfo{Host: "2001:db8::7", Port: "22"}, "/d", true},
+		{"/run/user/1000/gvfs/sftp:host=%5B2001%3Adb8%3A%3A7%5D/d", gvfsInfo{Host: "2001:db8::7"}, "/d", true}, // brackets escaped too
 		{"/run/user/1000/gvfs/sftp:host=h,user=j%C3%BCrgen/d", gvfsInfo{Host: "h", User: "jürgen"}, "/d", true},
 		{"/run/user/1000/gvfs/sftp:host=h,user=/d", gvfsInfo{Host: "h"}, "/d", true}, // an empty user is no user
 		{"/run/user/1000/gvfs/sftp:host=h,user=%zz/d", gvfsInfo{}, "", false},        // bad escape
@@ -287,6 +288,30 @@ func chooseServer(t *testing.T, ch Chooser, hs []hosts.Host) *httptest.Server {
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+// A path completed inside a file-manager mount of an unregistered host carries the mount's name, so the page can offer
+// to add the host; a registered host's mount carries nothing (the page has no use for it there).
+func TestCompletionInsideAGVFSMountOffersTheUnregisteredHost(t *testing.T) {
+	ts := chooseServer(t, nil, []hosts.Host{{Name: "Cluster", Dest: "login.hpc.example"}})
+	get := func(base string) map[string]any {
+		_, raw := getRaw(t, ts.URL+"/api/fs/complete?prefix="+url.QueryEscape(base), nil)
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatal(err, string(raw))
+		}
+		return m
+	}
+	m := get("/run/user/1000/gvfs/sftp:host=other.example,user=me,port=2222/data/")
+	if !reflect.DeepEqual(m["gvfs"], map[string]any{"host": "other.example", "user": "me", "port": "2222"}) {
+		t.Errorf("unregistered mount: %v", m)
+	}
+	if m := get("/run/user/1000/gvfs/sftp:host=login.hpc.example/data/"); m["gvfs"] != nil {
+		t.Errorf("registered host: %v", m)
+	}
+	if m := get("/tmp/"); m["gvfs"] != nil {
+		t.Errorf("ordinary folder: %v", m)
+	}
 }
 
 func TestChooseReturnsThePathAndMapsAGVFSMountToAHost(t *testing.T) {

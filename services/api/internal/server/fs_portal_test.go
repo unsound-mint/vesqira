@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -125,8 +126,10 @@ func TestPortalChooserWithFake(t *testing.T) {
 	if _, ok := f.opts["directory"]; ok {
 		t.Error("file mode must not ask for a directory")
 	}
-	if _, ok := f.opts["filters"]; !ok {
+	if fv, ok := f.opts["filters"]; !ok {
 		t.Error("extensions become a filter")
+	} else if fv.Signature().String() != "a(sa(us))" { // the portal's type; a wrong one makes every call fail
+		t.Errorf("filters signature %s", fv.Signature())
 	}
 	f = &fakePortal{code: 1}
 	if _, err := portalChooserFrom(fakeNew(f, nil), readableHere)(context.Background(), "file", "Open", nil); !errors.Is(err, errCancelled) {
@@ -177,9 +180,14 @@ func TestChooserFallbackOrder(t *testing.T) {
 		t.Errorf("no bus: %v", err)
 	}
 	// a call refused before any dialog falls back; a context that ended does not
-	f := &fakePortal{openErr: errors.New("UnknownMethod")}
+	f := &fakePortal{openErr: fmt.Errorf("%w: UnknownMethod", errPortalUnavailable)}
 	if _, err := portalChooserFrom(fakeNew(f, nil), readableHere)(ctx, "file", "t", nil); !errors.Is(err, errPortalUnavailable) {
 		t.Errorf("refused call: %v", err)
+	}
+	// an error after the dialog was shown (a malformed response) must not fall back to a second dialog
+	f = &fakePortal{openErr: errors.New("malformed portal response")}
+	if _, err := portalChooserFrom(fakeNew(f, nil), readableHere)(ctx, "file", "t", nil); err == nil || errors.Is(err, errPortalUnavailable) {
+		t.Errorf("post-dialog failure: %v", err)
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	cancel()

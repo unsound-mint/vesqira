@@ -99,6 +99,15 @@ describe("hosts panel", () => {
     expect(screen.queryByLabelText(/password|key/i)).toBeNull();
   });
 
+  it("prefers the ssh config alias that stands for the mounted host", async () => {
+    mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: true, hosts: [{ alias: "cluster", hostName: "Login.HPC.example", user: "me" }] } }) });
+    render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);
+    await screen.findByRole("combobox", { name: "SSH destination" });
+    act(() => offerHost({ host: "login.hpc.example", user: "me", port: "2222" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "SSH destination" })).toHaveValue("cluster"));
+    expect(screen.getByLabelText("Host name")).toHaveValue("cluster");
+  });
+
   it("does not put an address that cannot be an ssh destination in the form", async () => {
     mockFetch({ "/api/hosts/ssh-config": () => ({ body: { found: false, hosts: [] } }) });
     render(<HostsPanel hosts={[]} onChange={async () => {}} onRegistered={async () => {}} />);

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -56,7 +57,10 @@ func portalChooserFrom(newPortal func(ctx context.Context) (portalClient, func()
 			if ctx.Err() != nil {
 				return "", ctx.Err()
 			}
-			return "", fmt.Errorf("%w: %v", errPortalUnavailable, err) // the call was refused before any dialog
+			if errors.Is(err, errPortalUnavailable) {
+				slog.Info("portal file chooser not used", "reason", err) // so a marshalling mistake does not hide behind the fallback
+			}
+			return "", err // only an error wrapping errPortalUnavailable (refused before any dialog) lets the next chooser run
 		}
 		path, err := parsePortalResponse(code, results)
 		if err != nil {
@@ -212,21 +216,33 @@ func (d *dbusPortal) Open(ctx context.Context, title string, options map[string]
 	ch := make(chan *dbus.Signal, 8)
 	d.conn.Signal(ch)
 	defer d.conn.RemoveSignal(ch)
+	// Everything up to the call returning is "before any dialog": the next chooser may run. After it, errors are final.
+	if _, folder := options["directory"]; folder {
+		// FileChooser before version 3 ignores `directory` and would open a file dialog for a folder request.
+		v, err := d.conn.Object(portalName, portalPath).GetProperty(portalChooser + ".version")
+		if ver, ok := v.Value().(uint32); err != nil || !ok || ver < 3 {
+			return 0, nil, fmt.Errorf("%w: FileChooser version %v cannot choose folders", errPortalUnavailable, v.Value())
+		}
+	}
 	if err := d.conn.AddMatchSignalContext(ctx, dbus.WithMatchInterface(portalRequest), dbus.WithMatchMember("Response")); err != nil {
-		return 0, nil, err
+		return 0, nil, fmt.Errorf("%w: %v", errPortalUnavailable, err)
 	}
 	var handle dbus.ObjectPath
-	// A parent window needs the shell's window handle ("x11:<xid>" or "wayland:<handle>"); the server does not have one.
+	// A parent window needs the shell's window handle ("x11:<xid>" or "wayland:<handle>"); a browser tab has none, and the
+	// desktop window uses its own native dialog (ADR 0037), so the dialog is opened without a parent.
 	err := d.conn.Object(portalName, portalPath).CallWithContext(ctx, portalChooser+".OpenFile", 0, "", title, options).Store(&handle)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, fmt.Errorf("%w: %v", errPortalUnavailable, err)
 	}
 	for {
 		select {
 		case <-ctx.Done():
 			_ = d.conn.Object(portalName, handle).Call(portalRequest+".Close", dbus.FlagNoReplyExpected)
 			return 0, nil, ctx.Err()
-		case sig := <-ch:
+		case sig, open := <-ch:
+			if !open {
+				return 0, nil, errors.New("the session bus connection closed while the chooser was open")
+			}
 			if sig.Name != portalRequest+".Response" || (sig.Path != handle && sig.Path != expected) || len(sig.Body) != 2 {
 				continue
 			}

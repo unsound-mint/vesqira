@@ -90,6 +90,7 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
       setEntries(r.entries);
       setTruncated(r.truncated);
       setActive(-1);
+      if (r.gvfs && hostId === undefined) setNotice({ text: `That folder is on ${r.gvfs.user ? `${r.gvfs.user}@` : ""}${r.gvfs.host}, which is not added as a host yet.`, add: r.gvfs });
       // a list whose only name is exactly what is typed offers nothing, and would cover the controls below
       setOpen(r.entries.length > 0 && !(r.entries.length === 1 && !r.entries[0]?.dir && r.entries[0]?.path === v));
     } catch {

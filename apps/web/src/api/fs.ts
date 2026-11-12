@@ -1,7 +1,7 @@
 import { ApiError, getJSON, requestRaw } from "./http";
 
 export type PathEntry = { name: string; path: string; dir: boolean };
-export type Completion = { base: string; entries: PathEntry[]; truncated: boolean };
+export type Completion = { base: string; entries: PathEntry[]; truncated: boolean; /** The folder is in a file-manager mount of a host that is not registered (ADR 0031). */ gvfs?: { host: string; user?: string; port?: string } };
 export type PathKind = "dir" | "file" | "any";
 
 /** Names in the folder of `prefix` on this computer, or on a host. Names only; never contents (ADR 0031). */
@@ -11,7 +11,7 @@ export async function completePath(prefix: string, o: { kind?: PathKind; ext?: s
   if (o.ext?.length) q.set("ext", o.ext.join(","));
   const url = o.hostId !== undefined ? `/api/hosts/${o.hostId}/complete` : "/api/fs/complete";
   const body = await getJSON<Completion>(`${url}?${q}`, signal);
-  return { base: body.base, entries: Array.isArray(body.entries) ? body.entries : [], truncated: !!body.truncated };
+  return { base: body.base, entries: Array.isArray(body.entries) ? body.entries : [], truncated: !!body.truncated, ...(body.gvfs ? { gvfs: body.gvfs } : {}) };
 }
 
 export type Chosen = {
