@@ -112,7 +112,7 @@ export function ReviewPage({ token }: { token: string }) {
             <summary>Where this came from and what it does not show</summary>
             {it.provenance.run ? <RunLine run={it.provenance.run} /> : null}
             <ul>
-              <li>File: <span className="mono">{it.provenance.source.name}</span> ({it.provenance.source.identity}).</li>
+              <li>{it.provenance.runPlot ? "Source" : "File"}: <span className="mono">{it.provenance.source.name}</span> ({it.provenance.source.identity}).</li>
               {it.provenance.interpretation ? <li>Interpretation declared by {it.provenance.interpretation.declaredBy}: {it.provenance.interpretation.kind}, unit {it.provenance.interpretation.unit}.</li> : null}
               {(it.provenance.tiers ?? []).map((t) => <li key={t.what} data-tier={t.tier}>{tierLine(t)}</li>)}
               {it.provenance.statements.map((t) => <li key={t}>{t}</li>)}

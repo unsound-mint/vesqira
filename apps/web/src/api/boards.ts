@@ -29,6 +29,11 @@ export type Preflight = Schemas["Preflight"];
 export type FigureRequest = Schemas["CreateFigureRequest"];
 
 export const createFigure = (r: FigureRequest) => post<Figure>("/api/figures", r);
+/** A cross-run plot saved as a figure with no dataset (ADR 0065): the server reads the runs itself and verifies any conversion with the worker. */
+export type RunFigureRequest = Schemas["CreateRunFigureRequest"];
+/** The owner-only description a cross-run plot was drawn from (cross-run/1). */
+export type CrossRunDescription = Schemas["CrossRunDescription"];
+export const createRunFigure = (r: RunFigureRequest) => post<Figure>("/api/figures/runs", r);
 export const listFigures = () => call<{ figures: Figure[] }>("/api/figures").then((r) => r.figures);
 export const figurePreviewUrl = (id: number) => `/api/figures/${id}/preview`;
 /** What "draw again" must tell the owner before it draws (ADR 0042, section 5); reads and changes nothing. */

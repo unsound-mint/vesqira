@@ -113,6 +113,10 @@ export const RunsPlot = forwardRef<SVGSVGElement, PlotProps>(function RunsPlot({
       const label = barText(k);
       items.push({ key: `b${k}`, width: 40 + label.length * 6.6, node: (x, y) => (<><line x1={x} x2={x + 30} y1={y - 4} y2={y - 4} stroke="var(--text)" strokeWidth={1.6} strokeDasharray={BAR_DASH[k]} /><text x={x + 36} y={y} fontSize={11.5} fontFamily={FONT} fill="var(--text)">{label}</text></>) });
     }
+    if (model.conversion) {
+      const from = model.conversion.from.map((f) => f.unit).join(", ");
+      items.push({ key: "conv", width: 70 + from.length * 6.6, node: (x, y) => (<><Marker shape={0} x={x + 6} y={y - 4} colour="var(--text)" hollow={false} /><circle cx={x + 6} cy={y - 4} r={MARK + 3} fill="none" stroke="var(--text)" strokeWidth={1.2} strokeDasharray="2 2" /><text x={x + 20} y={y} fontSize={11.5} fontFamily={FONT} fill="var(--text)">{`dotted ring: converted from ${from}`}</text></>) });
+    }
     if (model.anyDeclared && model.anyInferred) {
       items.push({ key: "decl", width: 190, node: (x, y) => (<><Marker shape={0} x={x + 6} y={y - 4} colour="var(--text)" hollow={false} /><text x={x + 16} y={y} fontSize={11.5} fontFamily={FONT} fill="var(--text)">filled: stated by the run</text></>) });
       items.push({ key: "inf", width: 230, node: (x, y) => (<><Marker shape={0} x={x + 6} y={y - 4} colour="var(--text)" hollow /><text x={x + 16} y={y} fontSize={11.5} fontFamily={FONT} fill="var(--text)">hollow: inferred by a rule</text></>) });
@@ -129,6 +133,9 @@ export const RunsPlot = forwardRef<SVGSVGElement, PlotProps>(function RunsPlot({
   const notes: string[] = [];
   if (model.barsWithheld > 0) notes.push(`${model.barsWithheld} point${model.barsWithheld === 1 ? " has" : "s have"} an uncertainty whose kind is not stated: it is not drawn as a bar.`);
   if (model.xUncertaintyNotDrawn) notes.push(`${model.x.key} has uncertainties of its own: not drawn on the x axis.`);
+  if (model.conversion) {
+    for (const f of model.conversion.from) notes.push(`${f.count} run${f.count === 1 ? "" : "s"} recorded in ${f.unit} converted to ${model.conversion.to} (x ${num(f.factor)}), plain unit conversion with no equivalency; the recorded values are in the table and the CSV.`);
+  }
   const notesTop = legendTop + 12 + rows.height + 4;
   const footerTop = notesTop + notes.length * 16 + 10;
   const H = footerTop + 22;
@@ -158,8 +165,8 @@ export const RunsPlot = forwardRef<SVGSVGElement, PlotProps>(function RunsPlot({
     const c = colourOf(hasCategories ? s.categoryIndex : 0);
     const cap = BAR_CAP[s.barKind];
     return (
-      <g key={`${p.runId}`} data-run={p.runId} data-testid="plot-point" data-selected={on || undefined} data-inferred={p.inferred || undefined} onClick={() => onSelect(p.runId)} onDoubleClick={() => onOpen(p.runId)} style={{ cursor: "pointer" }}>
-        <title>{`${p.name}: ${model.y} = ${num(p.y)}${p.err !== null ? ` ${barText(s.barKind)} ${num(p.err)}` : ""}; ${model.x.key} = ${p.xText}${p.inferred ? " (inferred)" : ""}`}</title>
+      <g key={`${p.runId}`} data-run={p.runId} data-testid="plot-point" data-selected={on || undefined} data-inferred={p.inferred || undefined} data-converted={p.converted ? p.converted.fromUnit : undefined} onClick={() => onSelect(p.runId)} onDoubleClick={() => onOpen(p.runId)} style={{ cursor: "pointer" }}>
+        <title>{`${p.name}: ${model.y} = ${num(p.y)}${p.err !== null ? ` ${barText(s.barKind)} ${num(p.err)}` : ""}; ${model.x.key} = ${p.xText}${p.inferred ? " (inferred)" : ""}${p.converted ? ` (converted; recorded as ${num(p.converted.value)} ${p.converted.fromUnit})` : ""}`}</title>
         <circle cx={x} cy={y} r={11} fill="transparent" />
         {p.err !== null ? (
           <g stroke={c} strokeWidth={1.5} strokeDasharray={BAR_DASH[s.barKind]} opacity={0.9}>
@@ -168,6 +175,7 @@ export const RunsPlot = forwardRef<SVGSVGElement, PlotProps>(function RunsPlot({
           </g>
         ) : null}
         {on ? <circle cx={x} cy={y} r={MARK + 6} fill="none" stroke="var(--text)" strokeWidth={2} /> : null}
+        {p.converted ? <circle cx={x} cy={y} r={MARK + 3} fill="none" stroke={c} strokeWidth={1.2} strokeDasharray="2 2" /> : null}
         <Marker shape={hasCategories ? s.categoryIndex : 0} x={x} y={y} colour={c} hollow={p.inferred} />
       </g>
     );
@@ -182,6 +190,7 @@ export const RunsPlot = forwardRef<SVGSVGElement, PlotProps>(function RunsPlot({
           <g key={panel.id} data-panel={panel.id}>
             <text x={L} y={g.top - 8} fontSize={12.5} fontWeight={600} fontFamily={FONT} fill="var(--text)">{yTitle(panel)}</text>
             {!panel.primary ? <text x={L + 8 + (yTitle(panel).length * 7.4)} y={g.top - 8} fontSize={12} fontFamily={FONT} fill="var(--warn)">not directly comparable: {panel.apart}</text> : null}
+            {panel.primary && panel.convertedFrom.length > 0 ? <text x={L + 8 + (yTitle(panel).length * 7.4)} y={g.top - 8} fontSize={12} fontFamily={FONT} fill="var(--text-2)">includes runs converted from {panel.convertedFrom.join(", ")}</text> : null}
             {panel.primary && panel.definition === "" ? <text x={L + 8 + (yTitle(panel).length * 7.4)} y={g.top - 8} fontSize={12} fontFamily={FONT} fill="var(--warn)">definition not stated: not shown as comparable</text> : null}
             {g.ticksY.map((v) => (
               <g key={v}>

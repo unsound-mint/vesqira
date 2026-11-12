@@ -68,7 +68,7 @@ type redrawMask struct {
 
 type redrawResult struct {
 	FigureID int64          `json:"figureId"`
-	Kind     string         `json:"kind"`  // scene | channel-grid | none
+	Kind     string         `json:"kind"`  // scene | channel-grid | cross-run | none
 	State    string         `json:"state"` // ready | ask | blocked | none
 	Prompt   string         `json:"prompt,omitempty"`
 	Sources  []redrawSource `json:"sources"`
@@ -270,6 +270,11 @@ func (s *Server) onDiskDiffers(d catalog.Dataset, src *figureDatasetIdentity) []
 // checkRedraw builds the comparison for one figure.
 func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult {
 	res := redrawResult{FigureID: f.ID, Sources: []redrawSource{}}
+	if f.Kind == boards.KindCrossRun { // drawn from run records, not files: the page reads the runs again and lists what changed (ADR 0065)
+		res.Kind, res.State = "cross-run", "ready"
+		res.Prompt = "A cross-run plot is drawn again from the runs in the catalog now. The page lists the runs that were added, left out or changed before it saves anything."
+		return res
+	}
 	kind, ids, sc, ok, why := figureSources(f)
 	res.Kind = kind
 	if !ok {
@@ -444,7 +449,7 @@ func (s *Server) redrawLink(from int64, datasetID int64, grid bool) (boards.Figu
 		return orig, err
 	}
 	kind, _, _, _, _ := figureSources(orig)
-	if orig.DatasetID != datasetID || (kind == "channel-grid") != grid || kind == "none" {
+	if orig.DatasetID == nil || *orig.DatasetID != datasetID || (kind == "channel-grid") != grid || kind == "none" {
 		return orig, errors.New("a figure can only be drawn again from a figure of the same dataset and the same kind")
 	}
 	return orig, nil

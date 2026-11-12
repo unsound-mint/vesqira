@@ -45,7 +45,8 @@ import (
 // Version 25: virtual subsets, a saved window onto a dataset with an append-only history of versions (subsets, subset_versions; ADR 0063).
 // Version 26: a mask records the machine its file lives on (masks.host_id, 0 for this computer; ADR 0064).
 // Version 27: a location records the device and inode of its file, compared when the file is used again (dataset_locations.file_dev, .file_ino; ADR 0050 section 8).
-const Version = 27
+// Version 28: a figure may be a cross-run plot with no dataset (figures.dataset_id may be NULL, figures.kind; ADR 0065).
+const Version = 28
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -81,6 +82,63 @@ var migrations = []Migration{
 	{To: 25, Name: "virtual subsets", Up: subsetsTables},
 	{To: 26, Name: "masks on a host", Up: masksHost},
 	{To: 27, Name: "file identity of a location", Up: locationFileID},
+	{To: 28, Name: "cross-run figures", Up: crossRunFigures},
+}
+
+// FiguresTable is the pinned figures (ADR 0041, 0042, 0053, 0065). A figure of a dataset has dataset_id; a cross-run plot (ADR 0065)
+// has none, so the column is nullable and `kind` says which it is, with a CHECK that ties the two together: a figure with a dataset
+// is kind 'dataset' and a figure without one is kind 'crossrun', never anything else. `scene` holds the owner-only description the
+// picture was drawn from (scene/1, channel-grid/1, or cross-run/1). The boards package creates the table for a fresh install and the
+// migration for an upgraded one, from this one text.
+const FiguresTable = `CREATE TABLE IF NOT EXISTS figures(
+	id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER, title TEXT NOT NULL, caption TEXT NOT NULL,
+	created_at INTEGER NOT NULL, revision TEXT NOT NULL UNIQUE, preview_sha TEXT NOT NULL, width INTEGER NOT NULL,
+	height INTEGER NOT NULL, provenance TEXT NOT NULL, scene TEXT NOT NULL DEFAULT '', identity TEXT NOT NULL DEFAULT '',
+	kind TEXT NOT NULL DEFAULT 'dataset' CHECK(kind IN ('dataset','crossrun')),
+	CHECK((kind='dataset') = (dataset_id IS NOT NULL)))`
+
+// crossRunFigures rebuilds figures so dataset_id may be NULL and adds kind (every existing figure is 'dataset'). SQLite cannot relax
+// a NOT NULL in place, so the table is copied: every row keeps its id, revision, picture and text, and the AUTOINCREMENT counter is
+// carried over so an id that was once used is never handed out again. A catalog without the table needs nothing (the boards package
+// creates it from FiguresTable).
+func crossRunFigures(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='figures'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	var seq sql.NullInt64
+	if err := tx.QueryRow(`SELECT seq FROM sqlite_sequence WHERE name='figures'`).Scan(&seq); err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	for _, q := range []string{
+		`DROP TABLE IF EXISTS figures_v28`,
+		strings.Replace(FiguresTable, "IF NOT EXISTS figures(", "figures_v28(", 1),
+		`INSERT INTO figures_v28(id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity)
+			SELECT id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity FROM figures`,
+		`DROP TABLE figures`,
+		`ALTER TABLE figures_v28 RENAME TO figures`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	if !seq.Valid {
+		return nil
+	}
+	// the copy's counter is the largest id it holds; the old one may be higher (the newest figures were deleted)
+	res, err := tx.Exec(`UPDATE sqlite_sequence SET seq=? WHERE name='figures' AND seq<?`, seq.Int64, seq.Int64)
+	if err != nil {
+		return err
+	}
+	if k, _ := res.RowsAffected(); k == 0 {
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_sequence WHERE name='figures'`).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			_, err = tx.Exec(`INSERT INTO sqlite_sequence(name,seq) VALUES('figures',?)`, seq.Int64)
+		}
+	}
+	return err
 }
 
 // locationFileID adds the device and inode a location's file had when it was recorded. 0 means not recorded, which is what every

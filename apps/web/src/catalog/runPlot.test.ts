@@ -13,7 +13,7 @@ describe("cross-run plot: what is drawn together", () => {
     expect(m.excluded).toEqual([]);
   });
 
-  it("puts results in different units on their own panel, labelled not directly comparable, and never converts", () => {
+  it("puts results in different units on their own panel, labelled not directly comparable, and does not convert unless asked", () => {
     const m = buildPlot(
       [run(1, { b: "8" }, { metrics: [am(0.5, { unit: "rad" })] }), run(2, { b: "16" }, { metrics: [am(0.6, { unit: "rad" })] }), run(3, { b: "32" }, { metrics: [am(30, { unit: "deg" })] })],
       "am", { kind: "param", key: "b" }, "",

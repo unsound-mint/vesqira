@@ -50,10 +50,7 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 		return nil, err
 	}
 	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS figures(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, title TEXT NOT NULL, caption TEXT NOT NULL,
-			created_at INTEGER NOT NULL, revision TEXT NOT NULL UNIQUE, preview_sha TEXT NOT NULL, width INTEGER NOT NULL,
-			height INTEGER NOT NULL, provenance TEXT NOT NULL)`,
+		schema.FiguresTable,
 		`CREATE TABLE IF NOT EXISTS boards(
 			id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS board_items(
@@ -85,14 +82,8 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 			return nil, err
 		}
 	}
-	// a figure may record the scene it was drawn from (ADR 0042); older figures have none
-	if err := schema.AddColumn(db, "figures", "scene", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return nil, err
-	}
-	// a figure records the identity of the datasets it was drawn from (ADR 0053); older figures have none
-	if err := schema.AddColumn(db, "figures", "identity", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return nil, err
-	}
+	// A catalog older than schema 27 has figures with dataset_id NOT NULL and no kind: schema.Guard rebuilds it before this runs
+	// (ADR 0065), and scene and identity come with FiguresTable, so there is nothing to add here.
 	// comments grew threads, anchors, owner replies and a resolved mark; older catalogs get the columns
 	for _, c := range [][2]string{{"parent_id", "INTEGER NOT NULL DEFAULT 0"}, {"anchor", "TEXT NOT NULL DEFAULT ''"}, {"from_owner", "INTEGER NOT NULL DEFAULT 0"}, {"resolved_at", "INTEGER NOT NULL DEFAULT 0"}} {
 		if err := schema.AddColumn(db, "comments", c[0], c[1]); err != nil {
@@ -115,8 +106,11 @@ func clip(s string, n int) string {
 // Figure is pinned scientific evidence: the picture and the facts it was made from do not change. Title and caption
 // are working text and may be edited.
 type Figure struct {
-	ID         int64           `json:"id"`
-	DatasetID  int64           `json:"datasetId"`
+	ID int64 `json:"id"`
+	// DatasetID is the dataset the figure was made from; null for a cross-run plot (Kind "crossrun", ADR 0065), which is made
+	// from runs and has no dataset.
+	DatasetID  *int64          `json:"datasetId"`
+	Kind       string          `json:"kind"` // dataset | crossrun
 	Title      string          `json:"title"`
 	Caption    string          `json:"caption"`
 	CreatedAt  time.Time       `json:"createdAt"`
@@ -136,9 +130,16 @@ type Figure struct {
 	Archived bool `json:"archived"`
 }
 
+// Figure kinds.
+const (
+	KindDatasetFigure = "dataset"
+	KindCrossRun      = "crossrun"
+)
+
 // NewFigure carries what the caller knows. Provenance must already be the reviewer-safe document; Scene, when set, is a
-// validated scene/1 document (internal/scene).
+// validated scene/1 document (internal/scene), or the cross-run/1 description of a cross-run plot (then DatasetID is nil).
 type NewFigure struct {
+	// DatasetID is the dataset the figure is made from; 0 means none, which is only valid for a cross-run plot (ADR 0065).
 	DatasetID  int64
 	Title      string
 	Caption    string
@@ -165,6 +166,15 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 	title, caption := clip(in.Title, 200), clip(in.Caption, MaxText)
 	if title == "" {
 		return Figure{}, fmt.Errorf("%w: a figure needs a title", ErrInvalid)
+	}
+	kind := KindDatasetFigure
+	var dataset any = in.DatasetID
+	if in.DatasetID == 0 {
+		dataset = nil
+		kind = KindCrossRun
+		if len(in.Scene) == 0 {
+			return Figure{}, fmt.Errorf("%w: a figure with no dataset needs the description of the runs it was drawn from", ErrInvalid)
+		}
 	}
 	sum := sha256.Sum256(pngBytes)
 	sha := hex.EncodeToString(sum[:])
@@ -199,8 +209,8 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 		}
 	}
 	now := time.Now()
-	res, err := s.db.Exec(`INSERT INTO figures(dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity) VALUES(?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(revision) DO NOTHING`, in.DatasetID, title, caption, now.Unix(), revision, sha, cfg.Width, cfg.Height, string(in.Provenance), string(in.Scene), string(in.Identity))
+	res, err := s.db.Exec(`INSERT INTO figures(dataset_id,kind,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(revision) DO NOTHING`, dataset, kind, title, caption, now.Unix(), revision, sha, cfg.Width, cfg.Height, string(in.Provenance), string(in.Scene), string(in.Identity))
 	if err != nil {
 		return Figure{}, err
 	}
@@ -211,14 +221,18 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 	return s.Figure(id)
 }
 
-var figCols = `id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity,` + schema.ArchivedExpr("figure", "figures.id")
+var figCols = `id,dataset_id,kind,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity,` + schema.ArchivedExpr("figure", "figures.id")
 
 func scanFigure(row interface{ Scan(...any) error }) (Figure, error) {
 	var f Figure
 	var at int64
 	var prov, sc, ident string
-	if err := row.Scan(&f.ID, &f.DatasetID, &f.Title, &f.Caption, &at, &f.Revision, &f.PreviewSHA, &f.Width, &f.Height, &prov, &sc, &ident, &f.Archived); err != nil {
+	var ds sql.NullInt64
+	if err := row.Scan(&f.ID, &ds, &f.Kind, &f.Title, &f.Caption, &at, &f.Revision, &f.PreviewSHA, &f.Width, &f.Height, &prov, &sc, &ident, &f.Archived); err != nil {
 		return Figure{}, err
+	}
+	if ds.Valid {
+		f.DatasetID = &ds.Int64
 	}
 	f.CreatedAt, f.Provenance = time.Unix(at, 0).UTC(), json.RawMessage(prov)
 	if sc != "" {

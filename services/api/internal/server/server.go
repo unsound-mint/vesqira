@@ -250,6 +250,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /api/run-views", s.listRunViews)
 		mux.HandleFunc("POST /api/run-views", s.saveRunView)
 		mux.HandleFunc("POST /api/run-views/{id}/delete", s.deleteRunView)
+		mux.HandleFunc("POST /api/runs/convert-values", s.convertRunValues)
 		mux.HandleFunc("GET /api/runs/{id}", s.getRun)
 		mux.HandleFunc("GET /api/runs/{id}/rerun", s.rerunRun)
 		mux.HandleFunc("POST /api/runs/{id}/review", s.setRunReview)
@@ -262,6 +263,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.Boards != nil {
 		mux.HandleFunc("POST /api/figures", s.createFigure)
+		mux.HandleFunc("POST /api/figures/runs", s.createRunFigure)
 		mux.HandleFunc("GET /api/figures", s.listFigures)
 		mux.HandleFunc("GET /api/figures/{id}/preview", s.figurePreview)
 		mux.HandleFunc("GET /api/figures/{id}/download", s.figureDownload)

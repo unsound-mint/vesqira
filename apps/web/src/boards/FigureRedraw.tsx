@@ -24,6 +24,7 @@ const MESSAGES = {
   sameUnproven: "The picture has the same pixels as the saved one, although the data was not proven unchanged: a change, if there is one, is not in what this picture shows.",
   sameDeclared: "The picture has the same pixels as the saved one, drawn under the declarations in force now. A revision saved from it records those declarations, not the ones the original was drawn under.",
   differs: "The picture drawn now is not the same as the saved one. The saved picture is kept; look at both before you save this as a new revision.",
+  runsChanged: "The runs or what they record are not what they were when this figure was saved (listed below). The saved picture is kept; look at both before you save this as a new revision.",
 };
 
 /**
@@ -40,7 +41,7 @@ export function FigureRedraw({ figure, onSaved, addTo, only }: {
   only?: "svg";
 }) {
   const schema = (figure.scene as { schema?: string } | undefined)?.schema;
-  const drawable = schema === "scene/1" || schema === "channel-grid/1";
+  const drawable = schema === "scene/1" || schema === "channel-grid/1" || schema === "cross-run/1";
   const [busy, setBusy] = useState<null | "checking" | "drawing" | "saving">(null);
   const [check, setCheck] = useState<RedrawCheck | null>(null);
   const [intent, setIntent] = useState<"draw" | "svg">("draw");
@@ -149,7 +150,7 @@ export function FigureRedraw({ figure, onSaved, addTo, only }: {
       {out ? (
         <div className={s.box} role="region" aria-label="The figure drawn again">
           <img className={s.img} src={out.url} alt={`${figure.title}, drawn again`} />
-          <p role="status" className={s.note}>{out.same ? (out.proven ? (out.declared ? MESSAGES.sameDeclared : MESSAGES.same) : MESSAGES.sameUnproven) : MESSAGES.differs}</p>
+          <p role="status" className={s.note}>{out.r.dataChanged ? MESSAGES.runsChanged : out.same ? (out.proven ? (out.declared ? MESSAGES.sameDeclared : MESSAGES.same) : MESSAGES.sameUnproven) : MESSAGES.differs}</p>
           {out.r.notes.length ? <ul className={s.list}>{out.r.notes.map((n) => <li key={n}>{n}</li>)}</ul> : null}
           <p className={s.note}>The original picture is kept. Saving makes a new figure, linked to this one; boards and shared reviews keep the figure they hold.</p>
           <div className={s.row}>

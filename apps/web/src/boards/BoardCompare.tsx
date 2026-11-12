@@ -77,7 +77,7 @@ export function BoardCompare({ a, b, onCompare }: { a: Figure; b: Figure; onComp
         </>
       ) : null}
       <p className={s.note}>As declared by the runs; Vesqira did not compute or check these numbers.</p>
-      {onCompare ? <div><Button type="button" onClick={() => onCompare(a.datasetId, b.datasetId)}>Open both maps side by side</Button></div> : null}
+      {onCompare && a.datasetId !== null && b.datasetId !== null ? <div><Button type="button" onClick={() => onCompare(a.datasetId!, b.datasetId!)}>Open both maps side by side</Button></div> : null}
     </section>
   );
 }

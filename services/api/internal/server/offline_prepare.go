@@ -242,9 +242,9 @@ func (s *Server) planOffline(ctx context.Context, in offlineRequest) (offlinePla
 					item.Status, item.Reason = statusOffline, "The rendered picture is stored by Vesqira, so nothing is copied. Redrawing it from the data works only for the planes kept below."
 				}
 				p.Items = append(p.Items, item)
-				if f.DatasetID != 0 && !seen[f.DatasetID] {
-					ids = append(ids, f.DatasetID)
-					seen[f.DatasetID] = true
+				if f.DatasetID != nil && !seen[*f.DatasetID] {
+					ids = append(ids, *f.DatasetID)
+					seen[*f.DatasetID] = true
 				}
 			case it.Job != nil:
 				p.Items = append(p.Items, offlineItem{Kind: "job", ID: it.Job.ID, Name: it.Job.Name, Status: statusPartial,

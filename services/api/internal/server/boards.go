@@ -191,9 +191,11 @@ type Provenance struct {
 	Corrections []safeCorrection `json:"corrections,omitempty"`
 	Nature      string           `json:"nature,omitempty"` // observed | simulated | constructed_control, as declared by the author
 	Run         *runs.Summary    `json:"run,omitempty"`
-	Derived     *derived.Summary `json:"derived,omitempty"`
-	View        ViewParams       `json:"view"`
-	Statements  []string         `json:"statements"`
+	// RunPlot is set for a cross-run plot (ADR 0065): the query, the axes, how many runs and the conversion, never a run.
+	RunPlot    *safeRunPlot     `json:"runPlot,omitempty"`
+	Derived    *derived.Summary `json:"derived,omitempty"`
+	View       ViewParams       `json:"view"`
+	Statements []string         `json:"statements"`
 }
 
 // checkAgainst validates the view against what the catalog knows about the file: a channel beyond every axis, a

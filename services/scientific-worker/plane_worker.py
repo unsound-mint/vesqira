@@ -1313,6 +1313,12 @@ def _handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
     if op == "wcs_preview":
         return wcs_preview(req)
+    if op == "convert_values":                                   # numbers with units and no dataset (ADR 0062): plain dimensional conversion
+        import unit_values as uv
+        try:
+            return {"ok": True, "op": op, "nbytes": 0, **uv.convert_values(req)}, b""
+        except uv.Bad as e:
+            raise Refused("bad_request", str(e))
     if op in ("rohsa_index", "rohsa_pixel"):
         return rohsa_op(op, req)
     if op == "cards":

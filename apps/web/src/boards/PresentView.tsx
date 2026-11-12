@@ -72,7 +72,7 @@ export function PresentView({ board, onClose }: { board: Board; onClose: () => v
             {notes && it.note ? <p className={s.note}><strong>Note:</strong> {it.note}</p> : null}
             {prov ? (
               <div className={s.prov}>
-                <p className={s.line}>File <span className="mono">{f.provenance.source.name}</span> ({f.provenance.source.identity}).</p>
+                <p className={s.line}>{f.provenance.runPlot ? "Source" : "File"} <span className="mono">{f.provenance.source.name}</span> ({f.provenance.source.identity}).</p>
                 {f.provenance.interpretation ? <p className={s.line}>Interpretation declared by {f.provenance.interpretation.declaredBy}: {f.provenance.interpretation.kind}, unit {f.provenance.interpretation.unit}.</p> : null}
                 {f.provenance.run ? <RunLine run={f.provenance.run} /> : null}
                 {(f.provenance.tiers ?? []).map((t) => <p key={t.what} className={s.line} data-tier={t.tier}>{tierLine(t)}</p>)}
