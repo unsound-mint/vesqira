@@ -62,7 +62,7 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 
 Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC become declared profiles, and other tools plug in the same way.
 - [ ] 0: template drift fixed (VGT.jl config keys, ROHSA-LMC repository label)
-- [ ] 1: analysis presets; results stop citing the owner's script lines
+- [x] 1: analysis presets; results stop citing the owner's script lines
 - [ ] 2: orientation conventions from a header-card profile; "unresolved" instead of an assumed default
 - [ ] 3: run detection and generic output roles
 - [ ] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps)

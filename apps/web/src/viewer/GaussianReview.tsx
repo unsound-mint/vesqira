@@ -4,6 +4,7 @@ import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { newRequestId } from "../api/http";
 import { getCellMask, getSigmav, makeClassMaps } from "../api/rohsa";
 import type { RohsaClassMaps, RohsaReviewRequest, RohsaSigmav } from "../api/rohsa";
+import { CNM_SIGMA_DEFAULT_KMS } from "./rohsa";
 import { getPlane } from "../api/planes";
 import type { Plane } from "../api/planes";
 import { download, pngWithText } from "../catalog/runExport";
@@ -240,7 +241,7 @@ export function GaussianReview({ st, v, cut }: { st: ComponentsState; v: Viewer;
       ) : null}
 
       <h3 className={s.h}>Maps per width class</h3>
-      <Input label="Width edges (km/s)" inputMode="decimal" placeholder={cut === null ? "e.g. 2.03" : String(cut)} value={edgesText} onChange={(e) => setEdgesText(e.target.value)} aria-invalid={edges.error !== null} />
+      <Input label="Width edges (km/s)" inputMode="decimal" placeholder={cut === null ? `e.g. ${CNM_SIGMA_DEFAULT_KMS}` : String(cut)} value={edgesText} onChange={(e) => setEdgesText(e.target.value)} aria-invalid={edges.error !== null} />
       {edges.error ? <p role="alert" className={s.err}>{edges.error}</p> : (
         <p className={s.note}>Classes are half-open: {edges.edges!.length === 1 ? `narrow is σ < ${edges.edges![0]} km/s, the rest is σ ≥ ${edges.edges![0]} km/s` : `edges ${edges.edges!.join(", ")} km/s give ${edges.edges!.length + 1} classes`}. Empty uses the width cut above.</p>
       )}

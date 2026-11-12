@@ -1,6 +1,6 @@
 # ADR 0068: Tool profiles: pipelines as declared data, not built-in cases
 
-- Status: proposed, awaiting owner review; nothing implemented yet beyond the fixes in slice 0
+- Status: proposed, awaiting owner review; implemented so far: slice 0 (template drift) and slice 1 (relative-orientation presets, the CNM cut by its physics)
 - Date: 2026-11-13
 - Related: ADR 0014 and 0018 (VGT products and header cards), 0042 (declared angle frame and quantity), 0046 (ROHSA runs and Gaussian components), 0047 (relative orientation), 0054 (strict rerun pins the commit), 0058 (import rules), 0067 (Planck maps declared without a pipeline)
 
@@ -30,11 +30,18 @@ A profile never runs code on the Vesqira server or the desktop. Rendering a job 
 ### Order of work
 Each slice is shippable alone, and the order follows how much routine friction it removes for a researcher who does not use VGT or ROHSA:
 0. Fix the template drift (VGT.jl config keys, the ROHSA-LMC label). Small; in progress with this ADR.
-1. Analysis presets (item 5). Small to medium.
+1. Analysis presets (item 5). Small to medium. **Implemented** (see below).
 2. Orientation-convention profile (item 2), the "unresolved" fallback, and one copy of the card table (`fits_header.py` and `analysis.py` each have one). Medium.
 3. Detection and output roles (item 1). Large; contract renames get a compatibility period.
 4. Decomposition record (item 3) with a ROHSA profile and a FITS-maps source. Large.
 5. Run templates as data (item 4). Medium to large.
+
+### Slice 1: what was done and what was not
+- Done: relative-orientation presets (`relorient_presets.json`, `standard` and `lmc-star-comparison`, one reason per value), `preset` on the request and in the result and derived record, a route that lists them, a form that fills its fields from the chosen preset, and results that no longer cite script files or line numbers (ADR 0047 amendment).
+- Done: the ROHSA CNM cut is shown as a Doppler temperature bound (T_D below 500 K gives σ below 2.03 km/s) and can be set as T_D or as σ. The starting width stays 2.03 km/s.
+- Constant check: T_D = m_H σ² / k_B worked from m_H = 1.6735e-27 kg and k_B = 1.380649e-23 J/K is 121.2 K per (km/s)²; the code and every shipped result use 121.1 (0.1% lower; the proton mass gives 121.15). Vesqira now uses 121.2 (same as T = 21.86 ΔV²_FWHM). T_D is computed per reply and never stored, so only the displayed T_D moves, by 0.1%. At 500 K the width is 2.0311 km/s, still 2.03 to two decimals, so the default cut, classifications and class maps are unchanged. ROHSA-LMC's own `DOPPLER_TEMPERATURE_FACTOR` (src/rohsa.jl:2) is still 121.1.
+- Not done, by design: presets are not yet a profile file a researcher can add under `.vesqira/profiles/`; the file is shipped with the worker. The ROHSA class-map default edge and the Gaussian review still take the width cut from the components browser. The `vgt_*` role names and the VGT/ROHSA header and run code are untouched (slices 2 to 5).
+- One deviation from the sketch above: the preset file sits flat in the worker folder (`relorient_presets.json`) because `DEPLOY` accepts plain file names only.
 
 ## Alternatives
 - **Keep built-in cases and add more tools the same way.** Every new tool would need a Vesqira release, and each one adds name checks to core code, which AGENTS.md forbids.

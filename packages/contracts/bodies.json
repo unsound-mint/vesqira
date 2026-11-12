@@ -5085,8 +5085,13 @@
   "RelativeOrientationParams": {
    "type": "object",
    "additionalProperties": false,
-   "description": "Each is optional; the default is stated in the result's parameters (ADR 0047).",
+   "description": "Each is optional; a value not given is the chosen preset's, and the result's parameters state every value used (ADR 0047, ADR 0068).",
    "properties": {
+    "preset": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+     "description": "The name of a preset of defaults (GET /api/analysis/relative-orientation/presets); default `standard`. A parameter set here replaces the preset's value and is listed in the result under `preset.overridden`. An unknown name is refused (422) and the known ones are named"
+    },
     "radiusArcmin": {
      "type": "number",
      "minimum": 0.001,
@@ -5140,7 +5145,7 @@
      "type": "number",
      "minimum": 0,
      "maximum": 1000000,
-     "description": "The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason"
+     "description": "The filter's k (the preset's value, 3 in the standard preset: P/σP ≥ 3 is the usual detection threshold for a polarization angle); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason"
     },
     "strataBins": {
      "type": "integer",
@@ -5442,6 +5447,13 @@
     },
     "bootstrap_note": {
      "type": "string"
+    },
+    "bootstrap_resamples": {
+     "type": "integer",
+     "description": "Map vs catalog: the number of resamples behind bootstrap_am_16_84 (the preset's boot_samples)"
+    },
+    "preset": {
+     "$ref": "#/components/schemas/RelativeOrientationPresetUsed"
     },
     "prs": {
      "type": "object",
@@ -5799,6 +5811,121 @@
       "policy": {
        "type": "string"
       }
+     }
+    }
+   }
+  },
+  "RelativeOrientationPresetUsed": {
+   "type": "object",
+   "required": [
+    "name",
+    "version",
+    "values",
+    "overridden"
+   ],
+   "description": "The preset a result used: its name and version, every value it supplied (including ones the comparison does not take as a parameter, such as the bootstrap count and the weight floor) and the explicit parameters that replaced one of them. Results made before presets existed have none.",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "version": {
+     "type": "integer"
+    },
+    "values": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "number"
+     },
+     "description": "Preset value key to value (radius_arcmin, min_pixels, snr_min, sigma_floor_deg, boot_samples, n_shifts_catalog, n_shifts_maps, min_shift_deg, keep_fraction, seed, bins, strata_bins)"
+    },
+    "overridden": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "object",
+      "required": [
+       "preset",
+       "used"
+      ],
+      "properties": {
+       "preset": {
+        "type": "number"
+       },
+       "used": {
+        "type": "number"
+       }
+      }
+     },
+     "description": "Parameter name to the preset's value and the value used, for each explicit parameter that differs from the preset"
+    }
+   }
+  },
+  "RelativeOrientationPresetValue": {
+   "type": "object",
+   "required": [
+    "value",
+    "reason"
+   ],
+   "properties": {
+    "value": {
+     "type": "number"
+    },
+    "reason": {
+     "type": "string",
+     "description": "One plain sentence on why the value is the default"
+    }
+   }
+  },
+  "RelativeOrientationPreset": {
+   "type": "object",
+   "required": [
+    "name",
+    "version",
+    "title",
+    "description",
+    "values"
+   ],
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "version": {
+     "type": "integer"
+    },
+    "title": {
+     "type": "string"
+    },
+    "description": {
+     "type": "string"
+    },
+    "values": {
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "#/components/schemas/RelativeOrientationPresetValue"
+     },
+     "description": "Keys as in RelativeOrientationPresetUsed.values"
+    }
+   }
+  },
+  "RelativeOrientationPresets": {
+   "type": "object",
+   "required": [
+    "schema",
+    "default",
+    "presets"
+   ],
+   "description": "The analysis presets shipped with the worker (relorient_presets.json), served as the file is.",
+   "properties": {
+    "schema": {
+     "type": "integer"
+    },
+    "default": {
+     "type": "string",
+     "description": "The preset used when a request names none"
+    },
+    "presets": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelativeOrientationPreset"
      }
     }
    }
@@ -6447,7 +6574,7 @@
     },
     "t_doppler_k": {
      "type": "number",
-     "description": "121.1 K (km/s)^-2 x sigma^2: an upper limit on the kinetic temperature",
+     "description": "121.2 K (km/s)^-2 x sigma^2 (m_H sigma^2 / k_B for atomic hydrogen): an upper limit on the kinetic temperature",
      "nullable": true
     }
    },
@@ -19997,6 +20124,41 @@
     },
     "422": {
      "description": "a missing declaration (named), or the worker refused (for example no source could be compared)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/analysis/relative-orientation/presets": {
+   "summary": "The relative-orientation presets (named sets of defaults, each value with its reason) and which one is the default",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelativeOrientationPresets"
+       }
+      }
+     }
+    },
+    "500": {
+     "description": "the presets file is missing or malformed",
      "content": {
       "application/json": {
        "schema": {

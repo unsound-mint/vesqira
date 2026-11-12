@@ -5,8 +5,8 @@ import type { Spectrum } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { segments } from "./SpectrumPlot";
-import { PIPELINE_CNM_SIGMA_KMS, SIGN_NOTE, T_DOPPLER_NOTE, classify, parseCut, residual } from "./rohsa";
-import type { Phase } from "./rohsa";
+import { CNM_SIGMA_DEFAULT_KMS, CNM_TD_MAX_K, DOPPLER_K_PER_KMS2, SIGN_NOTE, T_DOPPLER_NOTE, classify, cutSigma, cutText as cutTextOf, residual, tdOfSigma } from "./rohsa";
+import type { CutBasis, Phase } from "./rohsa";
 import { GaussianReview } from "./GaussianReview";
 import { useComponents } from "./useComponents";
 import s from "./GaussianComponents.module.css";
@@ -100,10 +100,11 @@ function Plot({ comps, data, cut, phases, drawData }: { comps: Components; data:
  */
 export function GaussianComponents({ v }: { v: Viewer }) {
   const st = useComponents(v);
-  const [cutText, setCutText] = useState(String(PIPELINE_CNM_SIGMA_KMS));
+  const [cutBasis, setCutBasis] = useState<CutBasis>("sigma");
+  const [cutText, setCutText] = useState(String(CNM_SIGMA_DEFAULT_KMS));
   if (st.runs.length === 0) return null;
   const run = st.run!;
-  const cut = parseCut(cutText);
+  const cut = cutSigma(cutText, cutBasis);       // always the width in km/s: classification and the class maps use it
   const comps = st.comps;
   const velocity = comps?.head.axis.kind === "velocity";
   const phases: (Phase | null)[] = comps ? comps.head.components.map((c) => (velocity && c.valid && c.sigma !== null && cut !== null ? classify(c.sigma, cut) : null)) : [];
@@ -150,16 +151,24 @@ export function GaussianComponents({ v }: { v: Viewer }) {
               <Plot comps={comps} data={st.data} cut={cut} phases={phases} drawData={st.data !== null && unitProblem === null} />
               <Legend showData={st.data !== null && unitProblem === null} />
               {unitProblem ? <p className={s.note}>{unitProblem}</p> : <p className={s.note}>data: this pixel&rsquo;s spectrum · sum: the sum of the components · CNM (dashed) and other (dotted): single components. {SIGN_NOTE}.</p>}
+              <Select label="Set the CNM cut as" value={cutBasis} onChange={(e) => {
+                const next = e.target.value as CutBasis;
+                if (cut !== null) setCutText(cutTextOf(cut, next));
+                setCutBasis(next);
+              }}>
+                <option value="sigma">Width σ (km/s)</option>
+                <option value="td">Doppler temperature T_D (K)</option>
+              </Select>
               <Input
-                label="CNM width cut σ (km/s)"
+                label={cutBasis === "sigma" ? "CNM width cut σ (km/s)" : "CNM Doppler temperature cut T_D (K)"}
                 inputMode="decimal"
                 value={cutText}
                 onChange={(e) => setCutText(e.target.value)}
                 aria-invalid={cut === null}
               />
               {cut === null ? <p className={s.err}>Enter a positive number.</p> : (
-                <Basis summary={`Your cut: a component is CNM when σ < ${cut} km/s, otherwise "others".`}>
-                  <p>The starting value {PIPELINE_CNM_SIGMA_KMS} km/s is the pipeline&rsquo;s scan-script default (T_D &lt; 500 K); change it freely. Two groups only: nothing here separates the others further.</p>
+                <Basis summary={`Your cut: a component is CNM when σ < ${Number(cut.toPrecision(4))} km/s (T_D < ${Number(tdOfSigma(cut).toPrecision(4))} K), otherwise "others".`}>
+                  <p>T_D = {DOPPLER_K_PER_KMS2} K (km/s)⁻² × σ² is the Doppler temperature of a Gaussian of width σ for atomic hydrogen. A common upper bound on the kinetic temperature of cold neutral gas is {CNM_TD_MAX_K} K, which is σ &lt; {CNM_SIGMA_DEFAULT_KMS} km/s: that is the starting value. It is a convention, not a result; change it freely. Two groups only: nothing here separates the others further.</p>
                 </Basis>
               )}
               {!velocity ? <p className={s.note}>{comps.head.axis.note} Widths and the CNM split need a velocity axis, so every component is shown unclassified.</p> : null}

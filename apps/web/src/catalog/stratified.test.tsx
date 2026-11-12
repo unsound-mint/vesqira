@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { Dataset, Header, ImageDataset, Interpretation } from "../api/catalog";
 import type { RelOrientSummary } from "../api/analysis";
 import { RelativeOrientationPanel, RelOrientView } from "./RelativeOrientation";
+import { PRESETS } from "./presetsFixture";
 import { parseEdges, plotRange, strataCsv } from "./StratifiedOrientation";
 
 const interp = (over: Partial<Interpretation> = {}): Interpretation =>
@@ -142,6 +143,7 @@ describe("stratified relative orientation: the request", () => {
   it("offers only scalar maps on this computer, sends stratifyId with the bins, and leaves the request alone when no third map is chosen", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/analysis/relative-orientation/presets") return new Response(JSON.stringify(PRESETS), { status: 200, headers: { "Content-Type": "application/json" } });
       calls.push({ url, init });
       return new Response(JSON.stringify({ dataset: map(9, "relorient-1-2.fits", null), summary: summary() }), { status: 201, headers: { "Content-Type": "application/json" } });
     }));
@@ -151,6 +153,7 @@ describe("stratified relative orientation: the request", () => {
     render(<RelativeOrientationPanel dataset={psi} datasets={ds} onCreated={(d) => created.push(d)} />);
     expect(screen.queryByLabelText("Bin by a third map (optional)")).toBeNull();                // nothing chosen yet
     await userEvent.selectOptions(screen.getByLabelText("Compare orientation with"), "2");
+    await screen.findByLabelText("Preset of default values");
     const opts = Array.from((screen.getByLabelText("Bin by a third map (optional)") as HTMLSelectElement).options).map((o) => o.text);
     expect(opts).toEqual(["None: compare the whole map", "nhi.fits"]);                        // not an orientation map, not on a host, not archived
 
