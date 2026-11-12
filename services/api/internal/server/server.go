@@ -280,6 +280,11 @@ func (s *Server) Handler() http.Handler {
 		}
 		s.route(mux, "POST /api/analysis/relative-orientation", authz.AnalysisRun, s.relativeOrientation)
 		s.route(mux, "POST /api/analysis/healpix-sample", authz.AnalysisRun, s.healpixSample)
+		if s.Runs != nil {
+			s.route(mux, "POST /api/datasets/{id}/rohsa/sigmav", authz.AnalysisRun, s.rohsaSigmav)
+			s.route(mux, "POST /api/datasets/{id}/rohsa/sigmav/cell", authz.AnalysisRun, s.rohsaCellMask)
+			s.route(mux, "POST /api/datasets/{id}/rohsa/class-maps", authz.AnalysisRun, s.rohsaClassMaps)
+		}
 		s.route(mux, "GET /api/datasets/{id}/relative-orientation.csv", authz.DatasetRead, s.relativeOrientationTable)
 		if s.HostDB != nil && s.Remote != nil && s.Jobs != nil {
 			s.route(mux, "POST /api/analysis/job", authz.JobSubmit, s.analysisJob)

@@ -1223,6 +1223,40 @@ def remote_cache_dir(real_dat: str) -> str:
     return planned
 
 
+def rohsa_velocity_axis(c):
+    """(world, dv, axis) of a crop's spectral axis for the ROHSA reads: world(channels) in km/s and dv = |km/s per channel| when the axis is
+    a declared (or corrected) velocity axis with a resolved, uniform grid, else (None, None, an axis record that says why centres and widths
+    stay in channels). The one place this is decided, for the per-pixel browser and for the decomposition review."""
+    from astropy import units as u
+    nc = c.channels
+    facts = c.spectral_facts()
+    world, dv = None, None
+    axis = {"kind": "channel", "name": None, "unit": None, "source_unit": None, "unit_status": None,
+            "note": "the spectral axis is not a resolved velocity axis, so centres and widths stay in channels"}
+    if facts and facts["resolved"] and facts.get("velocity") in ("declared", "corrected"):
+        try:
+            factor = float(u.Unit(facts["unit"]).to(u.km / u.s))
+        except Exception:
+            factor = None
+        if factor is not None:
+            def world(ch, factor=factor):
+                pix = np.zeros((len(ch), len(c.shape)))
+                pix[:, c.chan] = ch
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    return np.asarray(c.wcs.all_pix2world(pix, 0)[:, c.spec], dtype=np.float64) * factor
+            w = world(np.array([0.0, 1.0, nc - 1.0]))
+            dv = abs(float(w[1] - w[0]))
+            span = float(w[2] - w[0])
+            if dv > 0 and abs(span - (nc - 1) * float(w[1] - w[0])) <= 1e-6 * max(abs(span), dv):
+                axis = {"kind": "velocity", "name": facts["name"], "unit": "km/s", "source_unit": facts["unit"],
+                        "unit_status": facts["unit_status"], "note": None}
+            else:
+                world = dv = None
+                axis["note"] = "the spectral axis is not uniformly spaced, so widths in km/s are not defined"
+    return world, dv, axis
+
+
 def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
     """ROHSA decomposition (ADR 0046): index the raw .dat (resumable), then read one pixel's Gaussians as curves.
 
@@ -1257,32 +1291,7 @@ def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
         raise Refused(e.code, e.message)
     except OSError:
         raise Refused("unsupported", "the .dat cannot be read")
-    from astropy import units as u
-    facts = c.spectral_facts()
-    world, dv = None, None
-    axis = {"kind": "channel", "name": None, "unit": None, "source_unit": None, "unit_status": None,
-            "note": "the spectral axis is not a resolved velocity axis, so centres and widths stay in channels"}
-    if facts and facts["resolved"] and facts.get("velocity") in ("declared", "corrected"):
-        try:
-            factor = float(u.Unit(facts["unit"]).to(u.km / u.s))
-        except Exception:
-            factor = None
-        if factor is not None:
-            def world(ch, factor=factor):
-                pix = np.zeros((len(ch), len(c.shape)))
-                pix[:, c.chan] = ch
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    return np.asarray(c.wcs.all_pix2world(pix, 0)[:, c.spec], dtype=np.float64) * factor
-            w = world(np.array([0.0, 1.0, nc - 1.0]))
-            dv = abs(float(w[1] - w[0]))
-            span = float(w[2] - w[0])
-            if dv > 0 and abs(span - (nc - 1) * float(w[1] - w[0])) <= 1e-6 * max(abs(span), dv):
-                axis = {"kind": "velocity", "name": facts["name"], "unit": "km/s", "source_unit": facts["unit"],
-                        "unit_status": facts["unit_status"], "note": None}
-            else:
-                world = dv = None
-                axis["note"] = "the spectral axis is not uniformly spaced, so widths in km/s are not defined"
+    world, dv, axis = rohsa_velocity_axis(c)
     comps, curves, model = rohsa.components_at(amp, mean_raw, sig, nc, world, dv)
     chan = np.arange(nc, dtype=np.float64)
     ax = world(chan) if world is not None else chan

@@ -58,6 +58,16 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 - [x] Pages and presentation (ADR 0036, "Pages, front matter, changes and deletions"): page tree kept from the Notion import, front matter date and summary under the title, reader list newest first, what changed since the revision last read, comments on selected words, withdraw a report, delete a comment.
 - [x] Follow-ups from the security review (ADR 0036, "Hardening"): image metadata stripped when publishing (`internal/imgmeta`, pixel-checked, fuzzed), fixed shape for derived `software`, bounded Markdown scans (one was cubic), comment-cursor guard. Left: a schema for derived `summary`.
 
+## Tool profiles (owner direction, 2026-11-13; ADR 0068, proposed)
+
+Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC become declared profiles, and other tools plug in the same way.
+- [ ] 0: template drift fixed (VGT.jl config keys, ROHSA-LMC repository label)
+- [ ] 1: analysis presets; results stop citing the owner's script lines
+- [ ] 2: orientation conventions from a header-card profile; "unresolved" instead of an assumed default
+- [ ] 3: run detection and generic output roles
+- [ ] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps)
+- [ ] 5: run templates as data, pinned to a repository and commit
+
 ## Stage S — Scene, cross-tracer comparison and the researcher's loop (owner direction, 2026-11-11)
 
 The owner asked for the most convenient app for this kind of work, beyond the interview list. Items come from the owner's own research (VGT and ROHSA on LMC H I and CO, Slurm over a VPN, weekly reports) and from common radio-astronomy practice (contours, vectors, channel maps, PV diagrams, relative-orientation statistics). Design: ADR 0042. New screens do not wait for an approved mock during this push; the owner reviews afterwards.
@@ -77,6 +87,7 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 - [x] Figures as scenes: draw again (data and declaration changes announced first; a redraw is a new linked figure), SVG export from the same marks (ADR 0042 §5).
 - [x] Channel-map grid (shared scale, converted spectral labels, slab means) and position-velocity diagram along a line or polyline (offsets as sky separations; bilinear or nearest sampling, stated) (ADR 0049).
 - [x] Gaussian decomposition browser for ROHSA results: component curves over the spectrum at a pixel (streamed index of the .dat), component and residual maps, CNM versus the rest with the width cut as a declared input (ADR 0046).
+- [~] Review of a whole ROHSA decomposition (issue 131, ADR 0046 note): a sigma-v diagram (width against centroid velocity, weighted by integrated intensity, optically thin column density or component count, user bins, contributor counts, log scale, SVG and PNG with provenance), the pixels behind a clicked cell marked on the maps, and one derived map per width class (the cut or user edges; NaN where nothing valid was fitted, 0 where nothing of the class is) registered with the run, the weight and the edges; a map pixel opens its spectrum with the components. Local fits only; the diagram and the class maps each read the whole `.dat` (minutes for 20 GB, measured only on a synthetic file), a cell click reads only the 2-bytes-per-row index the diagram wrote; the column-density constant is not checked against the pipeline; no design review, no browser check.
 - [x] Job finished: jobs are watched while the app runs (batched squeue/sacct per host, backoff when unreachable), a notification list and an optional desktop notification, and finished VGT outputs imported once as a run (ADR 0043).
 - [x] Host quota and run-directory sizes; job efficiency from sacct (elapsed, MaxRSS against the request, CPU when accounted) offered when running again, applied only on a click; sacct columns a site lacks fall back without affecting state tracking (ADR 0045).
 

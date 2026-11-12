@@ -964,7 +964,115 @@ def op_healpix_sample(args) -> dict:
         fail(str(e))
 
 
-OPS = {"healpix_sample": op_healpix_sample, "mask": op_mask, "relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "subset": op_subset, "slab": op_slab, "align": op_align}
+def review_inputs(args):
+    """The crop, the fit and what the crop says about channels and units, for the decomposition review (ADR 0046): (params, crop, dat, nx, ny, n, scales)."""
+    import gaussreview as gr
+    from plane_worker import rohsa_velocity_axis
+    try:
+        params = json.loads(args.params) if args.params else {}
+        if not isinstance(params, dict):
+            raise ValueError
+    except ValueError:
+        fail("the parameters are not a JSON object")
+    n = params.get("n_gauss")
+    dat = params.get("dat_path")
+    if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= gr.MAX_GAUSSIANS or not isinstance(dat, str) or not os.path.isabs(dat) or "\0" in dat:
+        fail("the decomposition review needs the .dat's path and the number of Gaussians")
+    dat = authorize(dat)
+    c = open_cube(args.input)
+    if c.chan is None or c.channels < 2:
+        fail("the crop has no spectral axis of at least two channels")
+    world, dv, axis = rohsa_velocity_axis(c)
+    w0 = step = None
+    if world is not None:
+        w = world(np.array([0.0, 1.0]))
+        w0, step = float(w[0]), float(w[1] - w[0])
+    bunit, src = unit_of(c, args.declared_unit)
+    sc = gr.Scales(c.channels, w0, step, axis, bunit, src)
+    return params, c, dat, c.shape[c.x], c.shape[c.y], n, sc
+
+
+def review_cache(params: dict) -> str | None:
+    """The caller's cache folder for the diagram's pixel index (the API's cache folder, never beside the data), or None."""
+    d = params.get("cache_dir")
+    if d is None:
+        return None
+    if not isinstance(d, str) or not os.path.isabs(d) or "\0" in d:
+        fail("the cache folder must be an absolute path")
+    return d
+
+
+def review_common(sc, dat, extra: dict) -> dict:
+    import gaussreview as gr
+    out = {"dat": gr.dat_identity(dat), "convention": "centre = the crop's velocity axis at (file mean - 1) channels; sigma in km/s = sigma in channels x |km/s per channel|; "
+           "a component whose sigma is not positive and finite is invalid and left out; an amplitude of 0 is a value"}
+    if sc.bunit and sc.bunit_source in OWNED_UNIT:
+        note_unit(out, sc.bunit_source, sc.bunit, "the crop")
+    elif sc.bunit:
+        out["unit_source"] = sc.bunit_source
+    out.update(extra)
+    return out
+
+
+def op_rohsa_sigmav(args) -> dict:
+    """The sigma-v diagram of a decomposition: widths against centres, weighted, with each cell's contributor count (gaussreview.sigmav)."""
+    import gaussreview as gr
+    params, c, dat, nx, ny, n, sc = review_inputs(args)
+    dv_default, ds_default = gr.default_bins(sc)
+    try:
+        v_edges = gr.linear_edges(params.get("velocity_bins") or dv_default, "centre")
+        s_edges = gr.linear_edges(params.get("sigma_bins") or ds_default, "width")
+        res = gr.sigmav(dat, nx, ny, n, sc, params.get("weight") or "integrated", v_edges, s_edges, cache_dir=review_cache(params))
+    except gr.Refusal as e:
+        fail(str(e))
+    res["width"], res["height"] = nx, ny
+    return {"ok": True, "op": "rohsa_sigmav", "summary": review_common(sc, dat, res)}
+
+
+def op_rohsa_cellmask(args) -> dict:
+    """The pixels that have a component in one cell of the diagram, as a packed mask (gaussreview.cell_mask)."""
+    import gaussreview as gr
+    params, c, dat, nx, ny, n, sc = review_inputs(args)
+    dv_default, ds_default = gr.default_bins(sc)
+    cell = params.get("cell")
+    if not isinstance(cell, dict) or any(isinstance(cell.get(k), bool) or not isinstance(cell.get(k), int) for k in ("s", "v")):
+        fail("name the cell as whole bin numbers s and v")
+    try:
+        v_edges = gr.linear_edges(params.get("velocity_bins") or dv_default, "centre")
+        s_edges = gr.linear_edges(params.get("sigma_bins") or ds_default, "width")
+        res = gr.cell_mask(dat, nx, ny, n, sc, v_edges, s_edges, cell["s"], cell["v"], cache_dir=review_cache(params) or fail("the cache folder for the pixel index is not set"))
+    except gr.Refusal as e:
+        fail(str(e))
+    res["cell"] = {"s": cell["s"], "v": cell["v"]}
+    return {"ok": True, "op": "rohsa_cellmask", "summary": review_common(sc, dat, res)}
+
+
+def op_rohsa_classmaps(args) -> dict:
+    """One map per width class, summed over the decomposition, written as <out stem>-class<i>.fits (gaussreview.class_maps)."""
+    import gaussreview as gr
+    params, c, dat, nx, ny, n, sc = review_inputs(args)
+    try:
+        res = gr.class_maps(dat, nx, ny, n, sc, params.get("weight") or "integrated", gr.class_cuts(params.get("edges")))
+    except gr.Refusal as e:
+        fail(str(e))
+    maps = res.pop("maps")
+    stem = args.out[:-5] if args.out.endswith(".fits") else args.out
+    for cl in res["classes"]:
+        i = cl["index"]
+        h = image_header(c, {"BUNIT": res["weight_unit"], "VESQOP": "rohsa_class"})
+        h["VESQCLS"] = (i, "width class index, 0 = narrowest")
+        h["HISTORY"] = f"Vesqira ROHSA width class: {cl['label']}"
+        h["HISTORY"] = f"weight: {res['weight']}"
+        if res["weight"] != "count" and sc.bunit_source in OWNED_UNIT:
+            h["VESQBUNS"] = sc.bunit_source
+            h["HISTORY"] = unit_history(sc.bunit, sc.bunit_source, "the crop")
+        write_fits(f"{stem}-class{i}.fits", maps[i].astype("<f4"), h)
+    res["policy"] = ("Each pixel holds the summed weight of its valid components in the class. A pixel with no valid component is NaN, never 0; "
+                     "a pixel with valid components and none in the class is 0. Classes are half-open, [lo, hi): a width on an edge is in the class above.")
+    return {"ok": True, "op": "rohsa_classmaps", "summary": review_common(sc, dat, res)}
+
+
+OPS = {"rohsa_sigmav": op_rohsa_sigmav, "rohsa_cellmask": op_rohsa_cellmask, "rohsa_classmaps": op_rohsa_classmaps, "healpix_sample": op_healpix_sample, "mask": op_mask, "relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "subset": op_subset, "slab": op_slab, "align": op_align}
 
 
 def log_failure(op: str, what: str) -> None:
@@ -1034,7 +1142,7 @@ def main(argv: list[str]) -> int:
                 corr.CURRENT.by_path = corr.parse_mapping(json.loads(args.corrections))
             except (corr.Bad, ValueError):
                 fail("the corrections sent with this analysis are malformed")
-        if args.op != "stats" and not args.out:
+        if args.op not in ("stats", "rohsa_sigmav", "rohsa_cellmask") and not args.out:
             fail("--out is required")
         if args.op in ("align", "axial_diff", "scalar_diff", "relorient_maps", "healpix_sample") and not args.reference:
             fail("--reference is required")

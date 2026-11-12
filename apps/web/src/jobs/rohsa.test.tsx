@@ -48,7 +48,7 @@ describe("new ROHSA job", () => {
     await userEvent.click(await screen.findByRole("button", { name: "+ New job" }));
     await userEvent.selectOptions(screen.getByLabelText("Kind"), "rohsa");
     expect(screen.getByText(/The output folder is set for each job/)).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText("VGT folder on the host"), "/shared/vgt");
+    await userEvent.type(screen.getByLabelText("ROHSA-LMC folder on the host"), "/shared/vgt");
     await userEvent.type(screen.getByLabelText("ROHSA config on the host"), "/data/configs/rohsa/a.toml");
     await userEvent.click(screen.getByRole("button", { name: "Load settings" }));
     expect(await screen.findByLabelText(/^n_gauss/)).toHaveValue("16");

@@ -2488,6 +2488,76 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/datasets/{id}/rohsa/class-maps:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_rohsaClassMaps_post_api_datasets_id_rohsa_class_maps
+      x-listener: owner
+      x-vesqira-permission: analysis.run
+      summary: "Sum a ROHSA decomposition per width class (narrow below a cut, or the person's edges) and register one derived map per class, with a record of the run, the cut, the weighting and the fit"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/RohsaReviewRequest"
+      responses:
+        "201":
+          description: "the registered class maps"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/RohsaClassMapsResult"
+        "400":
+          description: "a bin, edge, weight or cell outside its range"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "no such run"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "the analysis refused: an unknown brightness unit or velocity axis for the weight asked, a .dat that is not the regular layout, or a cell outside the diagram"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "too many analyses waiting"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: "the pass over the .dat took longer than its time budget and was stopped"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/datasets/{id}/rohsa/components:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -2580,6 +2650,146 @@ paths:
                 $ref: "#/components/schemas/RohsaIndexState"
         "409":
           description: "the dataset is not on the run's grid (the reasons are listed), or the run has no crop"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/datasets/{id}/rohsa/sigmav:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_rohsaSigmav_post_api_datasets_id_rohsa_sigmav
+      x-listener: owner
+      x-vesqira-permission: analysis.run
+      summary: "The sigma-v diagram of a ROHSA decomposition: component width against centroid velocity, weighted, with each cell's contributor count (ADR 0046); one bounded pass over the .dat as a heavy analysis"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/RohsaReviewRequest"
+      responses:
+        "200":
+          description: "the diagram"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/RohsaSigmav"
+        "400":
+          description: "a bin, edge, weight or cell outside its range"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "no such run"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "the analysis refused: an unknown brightness unit or velocity axis for the weight asked, a .dat that is not the regular layout, or a cell outside the diagram"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "too many analyses waiting"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: "the pass over the .dat took longer than its time budget and was stopped"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/datasets/{id}/rohsa/sigmav/cell:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_rohsaCellMask_post_api_datasets_id_rohsa_sigmav_cell
+      x-listener: owner
+      x-vesqira-permission: analysis.run
+      summary: "The pixels that have a component in one cell of the sigma-v diagram, as a compact packed mask; the same bins as the diagram give the same cells"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/RohsaReviewRequest"
+      responses:
+        "200":
+          description: "the mask"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/RohsaCellMask"
+        "400":
+          description: "a bin, edge, weight or cell outside its range"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "no such run"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "the analysis refused: an unknown brightness unit or velocity axis for the weight asked, a .dat that is not the regular layout, or a cell outside the diagram"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: "too many analyses waiting"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: "the pass over the .dat took longer than its time budget and was stopped"
           content:
             "application/json":
               schema:
@@ -21138,3 +21348,353 @@ components:
       properties:
         note:
           type: "string"
+    RohsaBins:
+      type: "object"
+      required:
+        - "min"
+        - "max"
+        - "n"
+      additionalProperties: false
+      properties:
+        min:
+          type: "number"
+        max:
+          type: "number"
+          description: "above min"
+        "n":
+          type: "integer"
+          minimum: 1
+          maximum: 128
+          description: "equal-width bins; half-open [lo, hi): a value on a bin's upper edge is in the next bin, a value on the last edge is outside"
+      description: "Linear bins in the diagram's own unit: km/s when the crop's spectral axis is a resolved velocity axis, channels otherwise"
+    RohsaReviewRequest:
+      type: "object"
+      required:
+        - "runId"
+      additionalProperties: false
+      properties:
+        runId:
+          type: "integer"
+          format: "int64"
+        weight:
+          type: "string"
+          enum:
+            - "integrated"
+            - "column_thin"
+            - "count"
+          description: "What each component adds to a cell or a map. integrated: amp x sigma x sqrt(2 pi) in the crop's brightness unit times km/s (refused when the unit or the velocity axis is unknown). column_thin: optically thin H I column density in cm^-2 (only for a brightness temperature in K). count: 1 per component. Default integrated"
+        velocityBins:
+          $ref: "#/components/schemas/RohsaBins"
+        sigmaBins:
+          $ref: "#/components/schemas/RohsaBins"
+        cell:
+          type: "object"
+          required:
+            - "s"
+            - "v"
+          properties:
+            s:
+              type: "integer"
+              minimum: 0
+              description: "width bin, counted from the first width bin"
+            v:
+              type: "integer"
+              minimum: 0
+              description: "centre bin, counted from the first centre bin"
+          description: "Only for /sigmav/cell"
+        edges:
+          type: "array"
+          items:
+            type: "number"
+          minItems: 1
+          maxItems: 7
+          description: "Only for /class-maps: the width edges in km/s, positive and strictly increasing; classes are half-open [lo, hi), so a width on an edge is in the class above"
+      description: "A review of a ROHSA decomposition (ADR 0046). Bins omitted: defaults from the crop (the spectral range, widths 0 to 12 km/s)"
+    RohsaSigmavCell:
+      type: "array"
+      minItems: 4
+      maxItems: 4
+      items:
+        type: "number"
+      description: "[width bin, centre bin, contributor count, summed weight]; only cells with a contributor are listed"
+    RohsaSigmav:
+      type: "object"
+      required:
+        - "weight"
+        - "weight_unit"
+        - "weight_how"
+        - "axes"
+        - "v_edges"
+        - "sigma_edges"
+        - "cells"
+        - "components"
+        - "invalid_sigma"
+        - "outside"
+        - "in_diagram"
+        - "weight_total"
+        - "weight_outside"
+        - "observed"
+        - "dat"
+        - "runId"
+        - "width"
+        - "height"
+      properties:
+        runId:
+          type: "integer"
+          format: "int64"
+        cropName:
+          type: "string"
+        weight:
+          type: "string"
+        weight_unit:
+          type: "string"
+          description: "the unit of the weights: K km/s (the crop's own brightness unit times km/s), cm^-2, or components"
+        weight_how:
+          type: "string"
+          description: "how each component's weight is formed, in words, with its assumptions"
+        axes:
+          type: "object"
+          properties:
+            centre:
+              type: "object"
+              properties:
+                unit:
+                  type: "string"
+                  enum:
+                    - "km/s"
+                    - "channels"
+                name:
+                  type: "string"
+                  nullable: true
+            sigma:
+              type: "object"
+              properties:
+                unit:
+                  type: "string"
+                  enum:
+                    - "km/s"
+                    - "channels"
+        velocity_axis:
+          type: "object"
+          additionalProperties: true
+          description: "the spectral axis as the worker resolved it (kind velocity or channel, with the note that says why not a velocity)"
+        brightness_unit:
+          type: "string"
+          nullable: true
+        brightness_unit_source:
+          type: "string"
+        unit_source:
+          type: "string"
+        policy:
+          type: "string"
+        v_edges:
+          type: "array"
+          items:
+            type: "number"
+        sigma_edges:
+          type: "array"
+          items:
+            type: "number"
+        binning:
+          type: "string"
+        cells:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/RohsaSigmavCell"
+        components:
+          type: "integer"
+          description: "every component of the fit"
+        invalid_sigma:
+          type: "integer"
+          description: "components whose sigma is not positive and finite, left out"
+        outside:
+          type: "integer"
+          description: "valid components outside the diagram's limits (never folded into an edge bin)"
+        in_diagram:
+          type: "integer"
+        weight_total:
+          type: "number"
+        weight_outside:
+          type: "number"
+        negative_weight_components:
+          type: "integer"
+        observed:
+          type: "object"
+          properties:
+            sigma:
+              type: "array"
+              items:
+                type: "number"
+                nullable: true
+            centre:
+              type: "array"
+              items:
+                type: "number"
+                nullable: true
+          description: "the range of widths and centres over the valid components, to help set the bins"
+        dat:
+          type: "object"
+          properties:
+            name:
+              type: "string"
+            size_bytes:
+              type: "integer"
+            mtime_ns:
+              type: "integer"
+          description: "the fit by file name, size and time; never its folder"
+        convention:
+          type: "string"
+        width:
+          type: "integer"
+        height:
+          type: "integer"
+        software:
+          type: "object"
+          additionalProperties: true
+        pixel_index:
+          type: "object"
+          nullable: true
+          properties:
+            bytes:
+              type: "integer"
+              description: "size of the per-row cell index kept in the cache folder: 2 bytes per row of the .dat"
+            rows:
+              type: "integer"
+          description: "The index a click on a cell reads instead of the .dat; only the latest binning of a fit is kept, so drawing another diagram of the same fit replaces it. null when no cache folder is set"
+      description: "The sigma-v diagram of a decomposition: the weighted 2D histogram of component width against centroid velocity, with each cell's contributor count"
+    RohsaPixelMask:
+      type: "object"
+      required:
+        - "width"
+        - "height"
+        - "encoding"
+        - "data"
+      properties:
+        width:
+          type: "integer"
+        height:
+          type: "integer"
+        encoding:
+          type: "string"
+          enum:
+            - "packbits-msb-row-major+zlib+base64"
+          description: "width x height booleans in row-major order (row 0 is the fit's first row, the FITS bottom row; x fastest), 8 to a byte most significant bit first, zlib-deflated, then base64"
+        data:
+          type: "string"
+      description: "A compact pixel mask"
+    RohsaCellMask:
+      type: "object"
+      required:
+        - "mask"
+        - "pixels"
+        - "components"
+        - "cell"
+        - "runId"
+      properties:
+        mask:
+          $ref: "#/components/schemas/RohsaPixelMask"
+        pixels:
+          type: "integer"
+          description: "pixels with at least one valid component in the cell"
+        components:
+          type: "integer"
+          description: "components in the cell: equal to the diagram's contributor count for the same bins"
+        cell:
+          type: "object"
+          properties:
+            s:
+              type: "integer"
+            v:
+              type: "integer"
+        runId:
+          type: "integer"
+          format: "int64"
+        dat:
+          type: "object"
+          additionalProperties: true
+        weight_unit:
+          type: "string"
+        software:
+          type: "object"
+          additionalProperties: true
+      description: "The pixels behind one cell of the sigma-v diagram"
+    RohsaWidthClass:
+      type: "object"
+      required:
+        - "index"
+        - "label"
+        - "lo"
+        - "hi"
+        - "components"
+        - "weight_total"
+      properties:
+        index:
+          type: "integer"
+        label:
+          type: "string"
+        lo:
+          type: "number"
+        hi:
+          type: "number"
+          nullable: true
+          description: "null for the widest class"
+        components:
+          type: "integer"
+        weight_total:
+          type: "number"
+    RohsaClassMapsResult:
+      type: "object"
+      required:
+        - "maps"
+        - "classes"
+        - "weight"
+        - "weight_unit"
+        - "policy"
+        - "runId"
+      properties:
+        maps:
+          type: "array"
+          items:
+            type: "object"
+            required:
+              - "dataset"
+              - "class"
+            properties:
+              dataset:
+                $ref: "#/components/schemas/Dataset"
+              class:
+                $ref: "#/components/schemas/RohsaWidthClass"
+          description: "one registered derived map per width class, narrowest first, each on the crop's sky grid"
+        classes:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/RohsaWidthClass"
+        weight:
+          type: "string"
+        weight_unit:
+          type: "string"
+        weight_how:
+          type: "string"
+        invalid_sigma:
+          type: "integer"
+        pixels_without_valid_component:
+          type: "integer"
+          description: "NaN in every class map: nothing was fitted there that can be used"
+        policy:
+          type: "string"
+        unit_source:
+          type: "string"
+        dat:
+          type: "object"
+          additionalProperties: true
+        convention:
+          type: "string"
+        runId:
+          type: "integer"
+          format: "int64"
+        cropName:
+          type: "string"
+        software:
+          type: "object"
+          additionalProperties: true
+      description: "The decomposition summed per width class, registered as derived maps"

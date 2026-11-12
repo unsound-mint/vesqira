@@ -73,6 +73,15 @@ describe("run again with…", () => {
     expect(await screen.findByText(/Could not check whether the config file on the host changed/)).toBeInTheDocument();
   });
 
+  it("still shows a recorded noise mode that a new run can no longer choose", async () => {
+    mockFetch({ ...fromJob, vgt: { ...fromJob.vgt, baseConfigText: '[vgt]\nker = 8\nnoise_mode = "separable_shrinkage"\n', set: {} } });
+    render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);
+    expect(await screen.findByLabelText("noise mode")).toHaveValue("separable_shrinkage");
+    expect(screen.getByRole("option", { name: /separable_shrinkage \(not accepted for a new run\)/ })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^angle frame/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^output binning/)).toBeInTheDocument();
+  });
+
   it("guesses nothing for an imported run: host, folder and config stay empty and required, declared values are labelled", async () => {
     const posts = mockFetch(imported);
     render(<RerunDraft run={run({ id: 2, name: "run-b", jobId: null })} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);

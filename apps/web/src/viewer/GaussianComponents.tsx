@@ -7,6 +7,7 @@ import { EM } from "../catalog/format";
 import { segments } from "./SpectrumPlot";
 import { PIPELINE_CNM_SIGMA_KMS, SIGN_NOTE, T_DOPPLER_NOTE, classify, parseCut, residual } from "./rohsa";
 import type { Phase } from "./rohsa";
+import { GaussianReview } from "./GaussianReview";
 import { useComponents } from "./useComponents";
 import s from "./GaussianComponents.module.css";
 
@@ -115,6 +116,7 @@ export function GaussianComponents({ v }: { v: Viewer }) {
   const amp = comps?.head.bunit ?? "unit unresolved";
 
   return (
+    <>
     <div className={s.wrap} role="group" aria-label="Gaussian components">
       <Switch label="Gaussian components" checked={st.enabled && st.usable} disabled={!st.usable} onChange={(e) => st.setEnabled(e.target.checked)} />
       {st.runs.length > 1 ? (
@@ -199,5 +201,7 @@ export function GaussianComponents({ v }: { v: Viewer }) {
         </>
       ) : null}
     </div>
+    {st.usable ? <GaussianReview st={st} v={v} cut={cut} /> : null}
+    </>
   );
 }
