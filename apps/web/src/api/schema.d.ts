@@ -7340,7 +7340,7 @@ export interface components {
             sigma: number | null;
             /** @description 2 sqrt(2 ln 2) sigma, km/s */
             fwhm: number | null;
-            /** @description 121.1 K (km/s)^-2 x sigma^2 (m_H sigma^2 / k_B for atomic hydrogen; worked out exactly the constant is about 121.2): an upper limit on the kinetic temperature */
+            /** @description 121.2 K (km/s)^-2 x sigma^2 (m_H sigma^2 / k_B for atomic hydrogen): an upper limit on the kinetic temperature */
             t_doppler_k: number | null;
         };
         /** @description The JSON header of a rohsa components frame. */

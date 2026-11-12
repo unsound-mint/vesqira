@@ -132,8 +132,8 @@ class Curves(unittest.TestCase):
 
     def test_doppler_constant_is_hydrogen_thermal_width(self):
         k = (const.m_p + const.m_e) * (1 * u.km / u.s) ** 2 / const.k_B
-        self.assertAlmostEqual(k.to_value(u.K) / rohsa.DOPPLER_K_PER_KMS2, 1.0, delta=2e-3)
-        self.assertAlmostEqual(np.sqrt(500.0 / rohsa.DOPPLER_K_PER_KMS2), 2.032, places=3)   # the scan script's 2.03 km/s cut
+        self.assertAlmostEqual(k.to_value(u.K) / rohsa.DOPPLER_K_PER_KMS2, 1.0, delta=2e-4)
+        self.assertEqual(round(float(np.sqrt(500.0 / rohsa.DOPPLER_K_PER_KMS2)), 2), 2.03)   # a 500 K cut is still 2.03 km/s to two decimals
 
 
 class WorkerOp(unittest.TestCase):
@@ -179,7 +179,7 @@ class WorkerOp(unittest.TestCase):
             self.assertAlmostEqual(c["centre"], g.rohsa_velocity_ms(m0) / 1000.0, places=9)
             self.assertAlmostEqual(c["sigma"], t["sigma"][1, 2, k] * g.R_CDELT / 1000.0, places=9)
             self.assertAlmostEqual(c["fwhm"], 2 * np.sqrt(2 * np.log(2)) * c["sigma"], places=9)
-            self.assertAlmostEqual(c["t_doppler_k"], 121.1 * c["sigma"] ** 2, places=9)
+            self.assertAlmostEqual(c["t_doppler_k"], 121.2 * c["sigma"] ** 2, places=9)
         self.assertEqual(head["axis"]["kind"], "velocity")
         self.assertEqual(head["axis"]["unit"], "km/s")
         self.assertEqual(head["axis"]["unit_status"], "inferred")     # the crop has no CUNIT3: m/s is the FITS default, said so

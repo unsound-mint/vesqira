@@ -14,7 +14,7 @@ const axis = Float64Array.from([-2, -1, 0, 1, 2]);
 const curves = [Float64Array.from([0, 1, 2, 1, 0]), Float64Array.from([1, 1, 1, 1, 1]), Float64Array.from([0, 0, 0, 0, 0])];
 const model = Float64Array.from([1, 2, 3, 2, 1]);
 const comp = (k: number, amp: number, sigma: number | null, valid = true) => ({
-  k, amp, mean_channel_file: 3, mean_channel: 2, sigma_channel: 1, valid, centre: valid ? 0 : null, sigma, fwhm: sigma === null ? null : 2.3548 * sigma, t_doppler_k: sigma === null ? null : 121.1 * sigma * sigma,
+  k, amp, mean_channel_file: 3, mean_channel: 2, sigma_channel: 1, valid, centre: valid ? 0 : null, sigma, fwhm: sigma === null ? null : 2.3548 * sigma, t_doppler_k: sigma === null ? null : 121.2 * sigma * sigma,
 });
 const components: Components = {
   axis, model, curves,
@@ -50,12 +50,12 @@ describe("cut and classification", () => {
   });
 
   it("derives the starting cut from a 500 K Doppler temperature and converts both ways with the worker's constant", () => {
-    expect(DOPPLER_K_PER_KMS2).toBe(121.1);
+    expect(DOPPLER_K_PER_KMS2).toBe(121.2);
     expect(CNM_TD_MAX_K).toBe(500);
-    expect(sigmaOfTd(500)).toBeCloseTo(2.03195, 5);
-    expect(tdOfSigma(2.03)).toBeCloseTo(499.041, 3);
+    expect(sigmaOfTd(500)).toBeCloseTo(2.03111, 5);
+    expect(tdOfSigma(2.03)).toBeCloseTo(499.453, 3);
     expect(cutSigma("2.03", "sigma")).toBe(2.03);
-    expect(cutSigma("500", "td")).toBeCloseTo(2.03195, 5);
+    expect(cutSigma("500", "td")).toBeCloseTo(2.03111, 5);
     expect(cutSigma("0", "td")).toBeNull();
     expect(cutSigma("x", "sigma")).toBeNull();
     expect(cutSigma(cutText(2.03, "td"), "td")).toBeCloseTo(2.03, 6);      // switching the basis back and forth does not drift
@@ -131,7 +131,7 @@ describe("Gaussian components over the spectrum", () => {
     expect(within(rows[0]!).getByText("CNM")).toBeInTheDocument();
     expect(within(rows[1]!).getByText("others")).toBeInTheDocument();
     expect(within(rows[2]!).getByText("others")).toBeInTheDocument();
-    expect(within(rows[0]!).getByText("272.5")).toBeInTheDocument();   // T_D = 121.1 * 1.5^2 = 272.475, shown to 4 figures
+    expect(within(rows[0]!).getByText("272.7")).toBeInTheDocument();   // T_D = 121.2 * 1.5^2 = 272.7, shown to 4 figures
   });
 
   it("re-marks the components when the person changes the cut, and says the starting value is a convention, not a result", async () => {
@@ -140,7 +140,7 @@ describe("Gaussian components over the spectrum", () => {
     await user.click(await screen.findByRole("switch", { name: /Gaussian components/ }));
     await screen.findByRole("region", { name: "Fitted components" });
     expect(screen.getByText(/is a convention, not a result/)).toBeInTheDocument();
-    expect(screen.getByText(/CNM when σ < 2.03 km\/s \(T_D < 499 K\)/)).toBeInTheDocument();
+    expect(screen.getByText(/CNM when σ < 2.03 km\/s \(T_D < 499.5 K\)/)).toBeInTheDocument();
     const cut = screen.getByLabelText("CNM width cut σ (km/s)");
     await user.clear(cut);
     await user.type(cut, "2.5");
@@ -163,14 +163,14 @@ describe("Gaussian components over the spectrum", () => {
     await screen.findByRole("region", { name: "Fitted components" });
     await user.selectOptions(screen.getByLabelText("Set the CNM cut as"), "td");
     const cut = screen.getByLabelText("CNM Doppler temperature cut T_D (K)");
-    expect(cut).toHaveValue("499.041");                       // the starting width 2.03 km/s as a temperature
+    expect(cut).toHaveValue("499.453");                       // the starting width 2.03 km/s as a temperature
     await user.clear(cut);
-    await user.type(cut, "800");                              // sigma < sqrt(800 / 121.1) = 2.57 km/s
-    expect(screen.getByText(/CNM when σ < 2.57 km\/s \(T_D < 800 K\)/)).toBeInTheDocument();
+    await user.type(cut, "800");                              // sigma < sqrt(800 / 121.2) = 2.569 km/s
+    expect(screen.getByText(/CNM when σ < 2.569 km\/s \(T_D < 800 K\)/)).toBeInTheDocument();
     const rows = within(screen.getByRole("region", { name: "Fitted components" })).getAllByRole("row").slice(1);
-    expect(within(rows[1]!).getByText("CNM")).toBeInTheDocument();   // sigma 2.03 < 2.57
+    expect(within(rows[1]!).getByText("CNM")).toBeInTheDocument();   // sigma 2.03 < 2.569
     await user.selectOptions(screen.getByLabelText("Set the CNM cut as"), "sigma");
-    expect(screen.getByLabelText("CNM width cut σ (km/s)")).toHaveValue("2.57024");
+    expect(screen.getByLabelText("CNM width cut σ (km/s)")).toHaveValue("2.56917");
   });
 
   it("does not draw the data or residual when the brightness unit is not confirmed equal, and says so", async () => {
