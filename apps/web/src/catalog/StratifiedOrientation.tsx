@@ -13,13 +13,28 @@ type Bin = Strata["bins"][number];
 
 const FONT = "var(--font-ui)";
 const NUM = "var(--font-data)";
-const W = 480;
-const H = 330;
-const L = 54;
-const R = 14;
-const T = 34;
-const PH = 190;
+// Drawn at the inspector's width (like the histogram beside it), so text is at its stated size on screen and in the export.
+const W = 340;
+const L = 44;
+const R = 12;
+const T = 52; // title, then up to two rows of per-bin counts above the plot
+const PH = 170;
 const PW = W - L - R;
+const LINE = 14;
+
+/** Words of `text` in lines of at most `max` characters (a word longer than that keeps its own line). */
+export function wrapWords(text: string, max: number): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (const w of text.split(/\s+/).filter(Boolean)) {
+    if (cur && cur.length + 1 + w.length > max) {
+      out.push(cur);
+      cur = w;
+    } else cur = cur ? `${cur} ${w}` : w;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
 
 const sig = (v: number, digits = 3) => {
   if (!Number.isFinite(v)) return EM;
@@ -87,7 +102,7 @@ export type StrataProvenance = {
 };
 
 const viewBoxOf = (el: SVGSVGElement) => {
-  const [, , width = W, height = H] = (el.getAttribute("viewBox") ?? "").split(/\s+/).map(Number);
+  const [, , width = W, height = W] = (el.getAttribute("viewBox") ?? "").split(/\s+/).map(Number);
   return { width, height };
 };
 
@@ -154,6 +169,12 @@ export function StratifiedView({ s: r, names, resultId = null }: { s: RelOrientS
   }
   const exportCsv = () => download("vesqira-orientation-by-bins.csv", new Blob([strataCsv(st, names, new Date().toISOString())], { type: "text/csv;charset=utf-8" }));
   const footer = `${names[0] ?? EM} against ${names[1] ?? EM} · by ${third} (${u}) · ${st.binning.mode === "equal_count" ? "equal-count" : "user-set"} bins · agreement statistic`;
+  const legend = wrapWords(`Line: the bin's range, at its AM. Dot: AM at the range centre. Whiskers: bootstrap 16–84% (pixels treated as independent, so optimistic). Grey: ±1σ of AM for uniform angles, for ${beams ? "independent beams" : "pixels"}. Line at 0: no preferred orientation. n: pixels in the bin.`, 54);
+  const foot = wrapWords(footer, 50);
+  const legendY = T + PH + 56;
+  const footY = legendY + legend.length * LINE + 6;
+  const H = footY + foot.length * LINE + 4;
+  const twoRows = bins.length > 4;
 
   return (
     <div className={s.wrap} role="region" aria-label="Alignment by bins of a third map">
@@ -161,9 +182,9 @@ export function StratifiedView({ s: r, names, resultId = null }: { s: RelOrientS
       <p className={s.note}>{st.third_map.unit_note ? `${u}: ${st.third_map.unit_note}. ` : ""}{st.counts.in_bins.toLocaleString("en-US")} of {st.counts.compared.toLocaleString("en-US")} compared pixels are in bins; {st.counts.third_map_missing.toLocaleString("en-US")} have no value in the third map{st.binning.mode === "edges" ? `; ${st.counts.outside_edges.toLocaleString("en-US")} lie outside the edges` : ""}. Pixels missing or masked in either orientation map were already left out of the comparison.</p>
       {(st.binning.notes ?? []).map((n) => <p key={n} className={s.note}>{n}.</p>)}
       <figure className={s.fig}>
-        <svg ref={svgRef} data-testid="strata-plot" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label} style={{ display: "block", maxWidth: W * 1.6, background: "var(--bg-1)", fontFamily: FONT }}>
+        <svg ref={svgRef} data-testid="strata-plot" viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={label} style={{ display: "block", maxWidth: W * 1.5, background: "var(--bg-1)", fontFamily: FONT }}>
           <rect x={0} y={0} width={W} height={H} fill="var(--bg-1)" />
-          <text x={L} y={16} fontSize={12.5} fontWeight={600} fontFamily={FONT} fill="var(--text)">Alignment measure AM = ⟨cos 2Δψ⟩</text>
+          <text x={8} y={16} fontSize={12.5} fontWeight={600} fontFamily={FONT} fill="var(--text)">Alignment measure AM = ⟨cos 2Δψ⟩</text>
           {yTicks.map((v) => (
             <g key={v}>
               <line x1={L} x2={W - R} y1={py(v)} y2={py(v)} stroke={v === 0 ? "var(--text-2)" : "var(--line)"} strokeWidth={v === 0 ? 1.4 : 1} />
@@ -192,22 +213,20 @@ export function StratifiedView({ s: r, names, resultId = null }: { s: RelOrientS
                 </>
               ) : null}
               <circle cx={px(b.centre)} cy={py(b.am)} r={3.6} fill="var(--accent)" stroke="var(--bg-1)" strokeWidth={1} />
-              <text x={px(b.centre)} y={T - 4 - (i % 2) * 11} textAnchor="middle" fontSize={10.5} fontFamily={NUM} fill="var(--text-2)">n={b.n.toLocaleString("en-US")}</text>
+              <text x={px(b.centre)} y={T - 6 - (twoRows ? (i % 2) * 12 : 0)} textAnchor="middle" fontSize={10.5} fontFamily={NUM} fill="var(--text-2)">n={b.n.toLocaleString("en-US")}</text>
             </g>
           ) : (
             <text key={`e${b.index}`} data-bin={b.index} x={px(b.centre)} y={py(0) - 8} textAnchor="middle" fontSize={10.5} fontFamily={NUM} fill="var(--text-2)">empty</text>
           )))}
           <text x={L + PW / 2} y={T + PH + 36} textAnchor="middle" fontSize={12} fontFamily={FONT} fill="var(--text-2)">{third} ({u})</text>
-          <text x={L} y={T + PH + 56} fontSize={11} fontFamily={FONT} fill="var(--text-2)">Line: the bin&apos;s range, at its AM. Dot: AM at the range centre. Whiskers: bootstrap 16–84%</text>
-          <text x={L} y={T + PH + 71} fontSize={11} fontFamily={FONT} fill="var(--text-2)">(pixels treated as independent, so optimistic). Grey: ±1σ of AM for uniform angles,</text>
-          <text x={L} y={T + PH + 86} fontSize={11} fontFamily={FONT} fill="var(--text-2)">for {beams ? "independent beams" : "pixels"}. Line at 0: no preferred orientation. n: pixels in the bin.</text>
-          <text x={L} y={T + PH + 106} fontSize={10.5} fontFamily={NUM} fill="var(--text-3)">{footer.length > 92 ? `${footer.slice(0, 91)}…` : footer}</text>
+          {legend.map((t, k) => <text key={`l${k}`} x={8} y={legendY + k * LINE} fontSize={11} fontFamily={FONT} fill="var(--text-2)">{t}</text>)}
+          {foot.map((t, k) => <text key={`f${k}`} x={8} y={footY + k * LINE} fontSize={10.5} fontFamily={NUM} fill="var(--text-3)">{t}</text>)}
         </svg>
         <figcaption className={s.note}>
           Axial statistics throughout: Δψ is folded into [−90°, 90°) before cos 2Δψ, so 1° and 179° are 2° apart. The whole comparison&apos;s chance level does not apply to a bin; none is drawn.
         </figcaption>
       </figure>
-      <div className={s.tableWrap}>
+      <div className={s.tableWrap} role="region" aria-label="Alignment by bin, scrollable" tabIndex={0}>
         <table className={s.table} aria-label="Alignment by bin">
           <thead>
             <tr>

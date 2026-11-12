@@ -43,7 +43,7 @@ describe("stratified relative orientation: the plot and the table", () => {
     expect(plot.getAttribute("aria-label")).toMatch(/Alignment measure against nhi.fits in 3 bins/);
     expect(plot.querySelectorAll("[data-bin]")).toHaveLength(3);
     expect(plot.querySelectorAll("[data-ref]")).toHaveLength(3);
-    const text = plot.textContent ?? "";
+    const text = Array.from(plot.querySelectorAll("text"), (t) => t.textContent).join(" "); // the legend wraps over several lines
     expect(text).toContain("n=990");
     expect(text).toContain("nhi.fits (cm-2)");
     expect(text).toMatch(/Line at 0: no preferred orientation/);
