@@ -39,7 +39,8 @@ import (
 // Version 20: a project keeps the researcher's import rules and a record of what each was applied to (import_rules, import_applied;
 // ADR 0058).
 // Version 21: a board panel may carry its place on the board's grid (board_items.layout_x, layout_y, layout_w, layout_h; ADR 0060).
-const Version = 21
+// Version 22: a researcher's WCS and unit corrections, an append-only history per dataset (dataset_corrections; ADR 0061).
+const Version = 22
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -69,6 +70,31 @@ var migrations = []Migration{
 	{To: 19, Name: "exploration history", Up: explorationHistory},
 	{To: 20, Name: "import rules", Up: importRules},
 	{To: 21, Name: "board layout grid", Up: boardLayoutGrid},
+	{To: 22, Name: "WCS and unit corrections", Up: correctionsTable},
+}
+
+// CorrectionsTable is the append-only history of a researcher's WCS and unit corrections (ADR 0061): one row per record (a
+// correction set, a revert, a confirmation for a changed file, an import, a withdrawal), each carrying the whole correction
+// state in force after it (`state`, JSON), what it changed (`changes`, JSON), the reason and optional source, who and when,
+// and the identity of the file it was made for (size, modification time, recorded content identity). Rows are never updated
+// (the trigger refuses it); a revert is a new row. They go with their dataset (catalog delete, ADR 0041). The catalog package
+// creates it for a fresh install and the migration for an upgraded one, from this one text.
+const CorrectionsTable = `CREATE TABLE IF NOT EXISTS dataset_corrections(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+	action TEXT NOT NULL, state TEXT NOT NULL, changes TEXT NOT NULL,
+	reason TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', author TEXT NOT NULL, tier TEXT NOT NULL DEFAULT 'declared',
+	created_at INTEGER NOT NULL, size_bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL, source_identity TEXT NOT NULL DEFAULT '',
+	reverts_id INTEGER);
+CREATE INDEX IF NOT EXISTS dataset_corrections_dataset ON dataset_corrections(dataset_id, id);
+CREATE TRIGGER IF NOT EXISTS dataset_corrections_append_only BEFORE UPDATE ON dataset_corrections
+BEGIN SELECT RAISE(ABORT, 'dataset_corrections is append-only: a revert is a new record'); END`
+
+// correctionsTable adds the history. No row to carry over: no correction existed before (a unit declared for a file with no
+// BUNIT stays in dataset_units, ADR 0038).
+func correctionsTable(tx *sql.Tx) error {
+	_, err := tx.Exec(CorrectionsTable)
+	return err
 }
 
 // boardLayoutGrid adds the four nullable columns that place a panel on the grid. NULL is what every existing panel gets: the board

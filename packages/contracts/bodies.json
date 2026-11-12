@@ -365,6 +365,15 @@
       "$ref": "#/components/schemas/DatasetLocation"
      },
      "description": "The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053)."
+    },
+    "corrections": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/Corrections"
+      }
+     ],
+     "nullable": true,
+     "description": "The researcher's WCS and unit corrections in force or stale (ADR 0061); null when nothing is corrected. header stays what the file said."
     }
    }
   },
@@ -567,9 +576,10 @@
      "enum": [
       "declared",
       "user",
+      "corrected",
       "unresolved"
      ],
-     "description": "declared: the file's BUNIT; user: a unit the person declared for a file with none (never the file's); unresolved: neither"
+     "description": "declared: the file's BUNIT; user: a unit the person declared for a file with none (never the file's); unresolved: neither; corrected: a unit the researcher corrected over the file's own BUNIT (ADR 0061; file_bunit says the file's)"
     },
     "fits_axes": {
      "type": "object",
@@ -618,6 +628,25 @@
     },
     "flags": {
      "$ref": "#/components/schemas/Flags"
+    },
+    "file_bunit": {
+     "type": "string",
+     "nullable": true,
+     "description": "Present when corrections are applied: the BUNIT the file states"
+    },
+    "wcs_corrected": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Present when corrections are applied: the WCS keywords the researcher corrected"
+    },
+    "corrections_applied": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "The hashes of the correction states the worker applied"
     }
    }
   },
@@ -1485,6 +1514,13 @@
       "$ref": "#/components/schemas/FigureTier"
      },
      "description": "Absent on a figure saved before tiers existed"
+    },
+    "corrections": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/FigureCorrection"
+     },
+     "description": "Present when the figure was drawn under corrections (ADR 0061)"
     }
    }
   },
@@ -11977,6 +12013,878 @@
      "maxItems": 2000
     }
    }
+  },
+  "CorrectionEntry": {
+   "type": "object",
+   "description": "One corrected value (ADR 0061): what is in force, what the file says, and the researcher's reason.",
+   "required": [
+    "value",
+    "file",
+    "reason",
+    "source",
+    "at"
+   ],
+   "properties": {
+    "value": {
+     "description": "A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS)",
+     "nullable": false,
+     "oneOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "file": {
+     "description": "What the file says; null when it has no such card",
+     "nullable": true,
+     "oneOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "reason": {
+     "type": "string"
+    },
+    "source": {
+     "type": "string",
+     "description": "Optional; empty when not given"
+    },
+    "at": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "CorrectionState": {
+   "type": "object",
+   "description": "Every correction in force: the brightness unit (only for a file that states one) and WCS keywords.",
+   "properties": {
+    "unit": {
+     "$ref": "#/components/schemas/CorrectionEntry"
+    },
+    "wcs": {
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "#/components/schemas/CorrectionEntry"
+     },
+     "description": "By keyword: CRVALi, CRPIXi, CDELTi, CDi_j, PCi_j, CTYPEi, CUNITi, RESTFRQ, RESTFREQ, SPECSYS, EQUINOX, RADESYS"
+    }
+   }
+  },
+  "Corrections": {
+   "type": "object",
+   "description": "The researcher's WCS and unit corrections in force on a dataset, from the latest record of their history (ADR 0061). The file and the header facts are never changed. Stale: made for other bytes than the file has now, so applied nowhere until confirmed.",
+   "required": [
+    "state",
+    "hash",
+    "tier",
+    "recordId",
+    "at",
+    "stale"
+   ],
+   "properties": {
+    "state": {
+     "$ref": "#/components/schemas/CorrectionState"
+    },
+    "hash": {
+     "type": "string",
+     "description": "SHA-256 of the values (not the reasons)"
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ]
+    },
+    "recordId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "at": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "stale": {
+     "type": "boolean"
+    }
+   }
+  },
+  "CorrectionChange": {
+   "type": "object",
+   "description": "What a record changed for one keyword (BUNIT for the unit). null after: not corrected, the file's value applies.",
+   "required": [
+    "what",
+    "file",
+    "before",
+    "after"
+   ],
+   "properties": {
+    "what": {
+     "type": "string"
+    },
+    "file": {
+     "description": "A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS)",
+     "nullable": true,
+     "oneOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "before": {
+     "description": "A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS)",
+     "nullable": true,
+     "oneOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "after": {
+     "description": "A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS)",
+     "nullable": true,
+     "oneOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    }
+   }
+  },
+  "CorrectionRecord": {
+   "type": "object",
+   "description": "One append-only record of the corrections history. A revert is a new record; nothing is edited or deleted.",
+   "required": [
+    "id",
+    "action",
+    "state",
+    "changes",
+    "reason",
+    "source",
+    "author",
+    "tier",
+    "at",
+    "revertsId",
+    "sizeBytes",
+    "modifiedAt",
+    "sourceIdentity",
+    "stale"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "action": {
+     "type": "string",
+     "enum": [
+      "set",
+      "revert",
+      "confirm",
+      "import",
+      "withdraw"
+     ]
+    },
+    "state": {
+     "$ref": "#/components/schemas/CorrectionState"
+    },
+    "changes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/CorrectionChange"
+     }
+    },
+    "reason": {
+     "type": "string"
+    },
+    "source": {
+     "type": "string"
+    },
+    "author": {
+     "type": "string"
+    },
+    "tier": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "declared",
+      "inferred",
+      "unresolved"
+     ]
+    },
+    "at": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "revertsId": {
+     "type": "integer",
+     "format": "int64",
+     "nullable": true
+    },
+    "sizeBytes": {
+     "type": "integer",
+     "format": "int64",
+     "description": "The registered size of the file it was made for"
+    },
+    "modifiedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "sourceIdentity": {
+     "type": "string",
+     "description": "sha256:<hex>, sampled:<fingerprint>, or empty when none was recorded"
+    },
+    "stale": {
+     "type": "boolean",
+     "description": "Made for other bytes than the file has now"
+    }
+   }
+  },
+  "CorrectionList": {
+   "type": "object",
+   "required": [
+    "datasetId",
+    "current",
+    "history",
+    "last",
+    "fileBunit",
+    "unitCorrectable"
+   ],
+   "properties": {
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "current": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/Corrections"
+      }
+     ],
+     "nullable": true
+    },
+    "history": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/CorrectionRecord"
+     }
+    },
+    "last": {
+     "type": "integer",
+     "format": "int64",
+     "description": "The latest record id (0 for none): send it back as expect"
+    },
+    "fileBunit": {
+     "type": "string",
+     "nullable": true,
+     "description": "The BUNIT the file states"
+    },
+    "unitCorrectable": {
+     "type": "boolean",
+     "description": "The file states a BUNIT and is not an orientation or reliability map"
+    }
+   }
+  },
+  "CorrectionInput": {
+   "type": "object",
+   "required": [
+    "action",
+    "reason"
+   ],
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "set",
+      "revert",
+      "confirm",
+      "withdraw"
+     ]
+    },
+    "unit": {
+     "type": "string",
+     "nullable": true,
+     "description": "Absent: unchanged; null: withdraw the unit correction; text: the corrected unit"
+    },
+    "wcs": {
+     "type": "object",
+     "additionalProperties": {
+      "nullable": true,
+      "oneOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "string"
+       }
+      ]
+     },
+     "description": "Keyword: a value, or null to withdraw that keyword's correction"
+    },
+    "reason": {
+     "type": "string",
+     "description": "Required, 3 to 500 characters of plain text"
+    },
+    "source": {
+     "type": "string",
+     "description": "Optional, up to 300 characters"
+    },
+    "reverts": {
+     "type": "integer",
+     "format": "int64",
+     "description": "For revert: the record to undo (the state goes back to what it was before it)"
+    },
+    "expect": {
+     "type": "integer",
+     "format": "int64",
+     "description": "Required to save: the latest record id the client looked at (0 for none); a different one is 409"
+    }
+   }
+  },
+  "CorrectionPoint": {
+   "type": "object",
+   "required": [
+    "name",
+    "x",
+    "y",
+    "lon",
+    "lat"
+   ],
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "x": {
+     "type": "number"
+    },
+    "y": {
+     "type": "number"
+    },
+    "lon": {
+     "type": "number",
+     "nullable": true
+    },
+    "lat": {
+     "type": "number",
+     "nullable": true
+    }
+   }
+  },
+  "CorrectionCoords": {
+   "type": "object",
+   "description": "World coordinates by astropy at the image centre and corners, and of the first, middle and last channel.",
+   "required": [
+    "sky",
+    "points",
+    "spectral"
+   ],
+   "properties": {
+    "sky": {
+     "type": "object"
+    },
+    "points": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/CorrectionPoint"
+     }
+    },
+    "spectral": {
+     "type": "object",
+     "nullable": true,
+     "properties": {
+      "facts": {
+       "type": "object"
+      },
+      "channels": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "channel",
+         "value"
+        ],
+        "properties": {
+         "channel": {
+          "type": "integer"
+         },
+         "value": {
+          "type": "number",
+          "nullable": true
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "CorrectionWorkerPreview": {
+   "type": "object",
+   "description": "The worker's validation of a proposed state, as it would be applied; refused carries astropy's or the axis check's reason.",
+   "required": [
+    "before",
+    "after",
+    "refused",
+    "changes",
+    "note"
+   ],
+   "properties": {
+    "before": {
+     "$ref": "#/components/schemas/CorrectionCoords"
+    },
+    "after": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/CorrectionCoords"
+      }
+     ],
+     "nullable": true
+    },
+    "refused": {
+     "type": "string",
+     "nullable": true
+    },
+    "file_bunit": {
+     "type": "string",
+     "nullable": true
+    },
+    "bunit_after": {
+     "type": "string",
+     "nullable": true
+    },
+    "changes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "keyword",
+       "file",
+       "in_file",
+       "before",
+       "after"
+      ],
+      "properties": {
+       "keyword": {
+        "type": "string"
+       },
+       "file": {
+        "description": "A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS)",
+        "nullable": true,
+        "oneOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "string"
+         }
+        ]
+       },
+       "in_file": {
+        "type": "boolean"
+       },
+       "before": {
+        "description": "A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS)",
+        "nullable": true,
+        "oneOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "string"
+         }
+        ]
+       },
+       "after": {
+        "description": "A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS)",
+        "nullable": true,
+        "oneOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "string"
+         }
+        ]
+       }
+      }
+     }
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "CorrectionImpactGroup": {
+   "type": "object",
+   "required": [
+    "key",
+    "effect",
+    "text",
+    "count",
+    "items"
+   ],
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "effect": {
+     "type": "string",
+     "enum": [
+      "live",
+      "pinned"
+     ],
+     "description": "live: read again with the new values; pinned: keeps the values it was made with"
+    },
+    "text": {
+     "type": "string"
+    },
+    "count": {
+     "type": "integer"
+    },
+    "items": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "id",
+       "label"
+      ],
+      "properties": {
+       "id": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "label": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "CorrectionImpact": {
+   "type": "object",
+   "description": "What depends on the dataset's coordinates or unit. Pinned evidence is never changed.",
+   "required": [
+    "groups",
+    "live",
+    "notes"
+   ],
+   "properties": {
+    "groups": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/CorrectionImpactGroup"
+     }
+    },
+    "live": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "notes": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "CorrectionPreview": {
+   "type": "object",
+   "required": [
+    "action",
+    "changes",
+    "state",
+    "preview",
+    "impact"
+   ],
+   "properties": {
+    "action": {
+     "type": "string"
+    },
+    "changes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/CorrectionChange"
+     }
+    },
+    "state": {
+     "$ref": "#/components/schemas/CorrectionState"
+    },
+    "preview": {
+     "$ref": "#/components/schemas/CorrectionWorkerPreview"
+    },
+    "impact": {
+     "$ref": "#/components/schemas/CorrectionImpact"
+    }
+   }
+  },
+  "CorrectionSaved": {
+   "type": "object",
+   "required": [
+    "record",
+    "dataset"
+   ],
+   "properties": {
+    "record": {
+     "$ref": "#/components/schemas/CorrectionRecord"
+    },
+    "dataset": {
+     "$ref": "#/components/schemas/Dataset"
+    }
+   }
+  },
+  "CorrectionSidecarInput": {
+   "type": "object",
+   "required": [
+    "sidecar"
+   ],
+   "properties": {
+    "sidecar": {
+     "type": "object",
+     "description": "A vesqira-corrections version 1 document, as exported"
+    },
+    "confirm": {
+     "type": "boolean",
+     "description": "Required to apply: the researcher looked at the preview"
+    },
+    "differentFile": {
+     "type": "string",
+     "description": "Required to apply to a file the sidecar was not made for: why it applies, 10 to 500 characters"
+    },
+    "expect": {
+     "type": "integer",
+     "format": "int64"
+    }
+   }
+  },
+  "CorrectionSidecarPreview": {
+   "type": "object",
+   "required": [
+    "match",
+    "matchText",
+    "madeFor",
+    "applies",
+    "changes",
+    "state",
+    "history",
+    "preview",
+    "impact"
+   ],
+   "properties": {
+    "match": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "probable",
+      "different",
+      "unknown"
+     ]
+    },
+    "matchText": {
+     "type": "string"
+    },
+    "madeFor": {
+     "type": "string",
+     "description": "The file name in the sidecar"
+    },
+    "applies": {
+     "type": "boolean",
+     "description": "Made for this file (verified or probable): it can be applied without a sentence"
+    },
+    "changes": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/CorrectionChange"
+     }
+    },
+    "state": {
+     "$ref": "#/components/schemas/CorrectionState"
+    },
+    "history": {
+     "type": "integer"
+    },
+    "preview": {
+     "$ref": "#/components/schemas/CorrectionWorkerPreview"
+    },
+    "impact": {
+     "$ref": "#/components/schemas/CorrectionImpact"
+    }
+   }
+  },
+  "CorrectionSidecar": {
+   "type": "object",
+   "description": "The sidecar file (docs/adr/0061): the corrections of one FITS file with the identity of the file they were made for (no path, no catalog id) and their history.",
+   "required": [
+    "format",
+    "version",
+    "about",
+    "file",
+    "exportedAt",
+    "corrections",
+    "history"
+   ],
+   "properties": {
+    "format": {
+     "type": "string",
+     "enum": [
+      "vesqira-corrections"
+     ]
+    },
+    "version": {
+     "type": "integer",
+     "enum": [
+      1
+     ]
+    },
+    "about": {
+     "type": "string"
+    },
+    "file": {
+     "type": "object",
+     "required": [
+      "name",
+      "sizeBytes",
+      "sha256",
+      "sampledFingerprint"
+     ],
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "sizeBytes": {
+       "type": "integer",
+       "format": "int64"
+      },
+      "sha256": {
+       "type": "string",
+       "nullable": true
+      },
+      "sampledFingerprint": {
+       "type": "string",
+       "nullable": true
+      },
+      "sampledAlgorithm": {
+       "type": "string"
+      }
+     }
+    },
+    "exportedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "corrections": {
+     "$ref": "#/components/schemas/CorrectionState"
+    },
+    "history": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "action",
+       "at",
+       "author",
+       "reason",
+       "source",
+       "changes"
+      ],
+      "properties": {
+       "action": {
+        "type": "string"
+       },
+       "at": {
+        "type": "string",
+        "format": "date-time"
+       },
+       "author": {
+        "type": "string"
+       },
+       "reason": {
+        "type": "string"
+       },
+       "source": {
+        "type": "string"
+       },
+       "changes": {
+        "type": "array",
+        "items": {
+         "$ref": "#/components/schemas/CorrectionChange"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "FigureCorrection": {
+   "type": "object",
+   "description": "A correction the figure was drawn under, as the reviewer sees it: no id, no path.",
+   "required": [
+    "what",
+    "file",
+    "value",
+    "tier",
+    "reason"
+   ],
+   "properties": {
+    "what": {
+     "type": "string"
+    },
+    "file": {
+     "description": "A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS)",
+     "nullable": true,
+     "oneOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "value": {
+     "description": "A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS)",
+     "nullable": false,
+     "oneOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "tier": {
+     "type": "string"
+    },
+    "reason": {
+     "type": "string"
+    },
+    "source": {
+     "type": "string"
+    }
+   }
   }
  },
  "operations": {
@@ -17828,6 +18736,264 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/BoardConflict"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/corrections": {
+   "summary": "The WCS and unit corrections of a dataset: in force, what the file says, and the whole history",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CorrectionList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/corrections": {
+   "summary": "Append a correction record: set, revert, confirm or withdraw",
+   "description": "Validated by the worker as it would be applied (astropy must accept the WCS; axes keep their kind and roles). A revert is a new record. 409 when the history moved on (expect), when the state is stale (only confirm or withdraw), or for a unit correction on a file with no BUNIT. The file is never written.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CorrectionInput"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CorrectionSaved"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/corrections/preview": {
+   "summary": "What a correction would do, before it is saved: keyword by keyword, the coordinates at the centre and corners before and after, and what depends on the dataset",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CorrectionInput"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CorrectionPreview"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/corrections/sidecar": {
+   "summary": "Export the corrections and their history as a versioned JSON sidecar (no path, no id)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CorrectionSidecar"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/corrections/sidecar/preview": {
+   "summary": "Whether a sidecar was made for this file, what it would change and its effect",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CorrectionSidecarInput"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CorrectionSidecarPreview"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/datasets/{id}/corrections/sidecar": {
+   "summary": "Apply a sidecar as one new record, after confirmation",
+   "description": "Only when it was made for this file (verified or probable), or with a sentence saying why it applies to this different one (409 otherwise).",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CorrectionSidecarInput"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CorrectionSaved"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
        }
       }
      }

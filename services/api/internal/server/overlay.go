@@ -169,7 +169,7 @@ func (s *Server) reliabilityFor(r *http.Request, d catalog.Dataset, relID int64)
 	if rel.Interpretation != nil && rel.Interpretation.Kind == "axial_orientation" {
 		return "", cacheKey{}, 409, "the declared reliability dataset is itself declared as angles"
 	}
-	why, err := compat.Grids(d.Header, rel.Header)
+	why, err := compat.Grids(effectiveHeader(d), effectiveHeader(rel))
 	if err != nil {
 		log.Printf("reliability grid: %v", err)
 		return "", cacheKey{}, 500, "internal error"
@@ -185,7 +185,7 @@ func (s *Server) reliabilityFor(r *http.Request, d catalog.Dataset, relID int64)
 }
 
 func identity(k cacheKey) string {
-	return strconv.FormatInt(k.id, 10) + "," + strconv.FormatInt(k.size, 10) + "," + strconv.FormatInt(k.mtime, 10)
+	return strconv.FormatInt(k.id, 10) + "," + strconv.FormatInt(k.size, 10) + "," + strconv.FormatInt(k.mtime, 10) + "," + k.corr
 }
 
 func deref(p *string) string {

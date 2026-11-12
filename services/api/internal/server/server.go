@@ -41,11 +41,12 @@ type HeaderReader interface {
 }
 
 type Server struct {
-	pictures sync.Map         // sha of an attachment or figure preview -> cleanedPicture (reports.go); the zero value is ready
-	Roots    sourceroot.Roots // folders that may be read; grows when the owner opens a folder (use roots())
-	Store    *catalog.Store
-	Worker   HeaderReader
-	Planes   PlaneService // persistent plane worker; nil answers 503
+	pictures  sync.Map         // sha of an attachment or figure preview -> cleanedPicture (reports.go); the zero value is ready
+	corrPaths sync.Map         // corrPathRef (host, resolved path) -> dataset id, for attaching corrections to worker requests (corrections.go)
+	Roots     sourceroot.Roots // folders that may be read; grows when the owner opens a folder (use roots())
+	Store     *catalog.Store
+	Worker    HeaderReader
+	Planes    PlaneService // persistent plane worker; nil answers 503
 	// Load is the workload governor shared with Planes (worker.Persistent.Load): analysis programs take a heavy slot from it, and
 	// GET /api/workload reports it. Nil runs analyses ungoverned and reports nothing.
 	Load       *worker.Load
@@ -349,6 +350,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/datasets/{id}/nature", s.setNature)
 	mux.HandleFunc("POST /api/datasets/{id}/interpretation", s.interpret)
 	mux.HandleFunc("POST /api/datasets/{id}/unit", s.declareUnit)
+	mux.HandleFunc("GET /api/datasets/{id}/corrections", s.listCorrections)
+	mux.HandleFunc("POST /api/datasets/{id}/corrections", s.saveCorrection)
+	mux.HandleFunc("POST /api/datasets/{id}/corrections/preview", s.previewCorrection)
+	mux.HandleFunc("GET /api/datasets/{id}/corrections/sidecar", s.exportSidecar)
+	mux.HandleFunc("POST /api/datasets/{id}/corrections/sidecar", s.importSidecar)
+	mux.HandleFunc("POST /api/datasets/{id}/corrections/sidecar/preview", s.previewSidecar)
 	if s.Reports != nil && s.Boards != nil {
 		s.reportRoutes(mux)
 	}

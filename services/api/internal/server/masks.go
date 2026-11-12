@@ -323,7 +323,7 @@ func (s *Server) sameGridLocal(ctx context.Context, d, other catalog.Dataset) (r
 	if status != 0 {
 		return "", false, status, m
 	}
-	why, err := compat.Grids(d.Header, other.Header)
+	why, err := compat.Grids(effectiveHeader(d), effectiveHeader(other))
 	if err != nil {
 		return "", false, 422, "its header could not be compared"
 	}

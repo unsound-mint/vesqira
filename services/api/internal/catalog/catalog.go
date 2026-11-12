@@ -41,6 +41,9 @@ type Dataset struct {
 	// Locations are the files this dataset's bytes are in, the registered one first (ADR 0053). Path and HostID above are
 	// the registered file. A location never changes what the dataset is; it says where else the same bytes may be read.
 	Locations []Location `json:"locations"`
+	// Corrections are the researcher's WCS and unit corrections in force (or stale), from the latest record of their history
+	// (ADR 0061); nil when nothing is corrected. Header stays what the file said.
+	Corrections *Corrections `json:"corrections"`
 }
 
 // Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).
@@ -151,6 +154,9 @@ func Open(dsn string) (*Store, error) {
 		if err == nil {
 			_, err = db.Exec(schema.DatasetLocationsTable)
 		}
+		if err == nil {
+			_, err = db.Exec(schema.CorrectionsTable)
+		}
 		for _, t := range []string{"dataset_units", "catalog_declarations"} {
 			if err == nil {
 				err = schema.AddTierColumns(db, t)
@@ -250,6 +256,9 @@ func (s *Store) Get(id int64) (Dataset, error) {
 	}
 	if err == nil {
 		d.Locations, err = s.Locations(id)
+	}
+	if err == nil {
+		d.Corrections, err = s.corrections(d)
 	}
 	return d, err
 }
@@ -364,6 +373,9 @@ func (s *Store) List() ([]Dataset, error) {
 			return nil, err
 		}
 		if out[i].UnitDeclaration, err = s.unitDeclaration(out[i].ID, out[i]); err != nil {
+			return nil, err
+		}
+		if out[i].Corrections, err = s.corrections(out[i]); err != nil {
 			return nil, err
 		}
 		if out[i].Kind == KindCatalog {

@@ -35,7 +35,18 @@ func (s *Server) planesFor(datasetID int64) PlaneService {
 }
 
 // planesOn is the worker on one machine: this computer (host 0) or a host.
+// planesOn is the plane worker for a machine, with the researcher's corrections attached to every request and their echo checked
+// (ADR 0061, corrections.go).
 func (s *Server) planesOn(host int64) PlaneService {
+	svc := s.planesOnRaw(host)
+	if svc == nil {
+		return nil
+	}
+	return correctingService{s: s, host: host, inner: svc}
+}
+
+// planesOnRaw is the plane worker without corrections attached: for the preview, which sends the states it compares itself.
+func (s *Server) planesOnRaw(host int64) PlaneService {
 	if host == 0 {
 		if s.Planes == nil {
 			return nil
@@ -80,7 +91,8 @@ func (s *Server) authorizeRemote(ctx context.Context, d catalog.Dataset) (real s
 	if st.Size != d.SizeBytes || st.MtimeNS != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}
-	return d.Path, cacheKey{id: d.ID, host: d.HostID, size: st.Size, mtime: st.MtimeNS, unit: declaredUnitOf(d)}, 0, ""
+	s.notePath(d.HostID, d.Path, d.ID)
+	return d.Path, cacheKey{id: d.ID, host: d.HostID, size: st.Size, mtime: st.MtimeNS, unit: declaredUnitOf(d), corr: corrHash(d)}, 0, ""
 }
 
 func (s *Server) hostFrom(w http.ResponseWriter, r *http.Request) (hosts.Host, bool) {

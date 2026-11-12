@@ -35,6 +35,7 @@ type cacheKey struct {
 	x, y    int
 	q       string // canonical region description for spectra
 	unit    string // a unit the person declared for a file without BUNIT: it changes what every head says, so it is part of the key
+	corr    string // the hash of the researcher's corrections in force (ADR 0061): a corrected reading is never served for another
 }
 
 // PlaneCache is a byte-bounded LRU of worker replies. Misses cost a worker read; hits cost nothing.
@@ -108,7 +109,8 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 	if info.Size() != d.SizeBytes || info.ModTime().UnixNano() != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}
-	return real, cacheKey{id: d.ID, host: d.HostID, size: info.Size(), mtime: info.ModTime().UnixNano(), unit: declaredUnitOf(d)}, 0, ""
+	s.notePath(0, real, d.ID)
+	return real, cacheKey{id: d.ID, host: d.HostID, size: info.Size(), mtime: info.ModTime().UnixNano(), unit: declaredUnitOf(d), corr: corrHash(d)}, 0, ""
 }
 
 // source resolves a dataset id to an authorized, unchanged file.
@@ -166,9 +168,14 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 	rep, err := svc.Do(r.Context(), req)
 	var re *worker.RequestError
 	switch {
+	case err == nil && k.corr != "" && !echoes(rep.Head, []string{k.corr}):
+		// the corrections changed between reading the dataset and asking the worker: never cache or show a mixed answer
+		fail(w, 409, "the corrections of this dataset changed while it was being read; read it again")
 	case err == nil:
 		s.Cache.put(k, rep)
 		return rep, true
+	case errors.Is(err, errCorrectionsIgnored):
+		fail(w, 502, "the scientific worker did not apply the researcher's corrections (it may be an older version); nothing is shown rather than uncorrected values")
 	case errors.As(err, &re):
 		code := 422
 		if re.Code == "bad_request" {

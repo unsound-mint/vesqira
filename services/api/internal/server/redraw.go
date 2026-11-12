@@ -32,7 +32,7 @@ const (
 const (
 	promptChanged  = "Drawing from changed data makes a different figure; the original PNG is kept. Draw it again anyway?"
 	promptProbable = "Some data cannot be proven unchanged. Drawing from different bytes makes a different figure; the original PNG is kept. Draw it again anyway?"
-	promptDeclared = "A declaration (unit, angle frame, quantity or catalog columns) has changed since this figure was drawn. Drawing it again makes a different figure under the new declaration; the original PNG is kept. Draw it again anyway?"
+	promptDeclared = "A declaration (unit, angle frame, quantity, catalog columns, or a WCS or unit correction) has changed since this figure was drawn. Drawing it again makes a different figure under the new declaration; the original PNG is kept. Draw it again anyway?"
 	promptBoth     = "Both the data and a declaration have changed since this figure was drawn. Drawing it again makes a different figure; the original PNG is kept. Draw it again anyway?"
 	promptBlocked  = "This figure cannot be drawn again until every file it was drawn from can be read. The original PNG is kept."
 	promptNone     = "This figure keeps no description of how it was drawn, so it is shown as the PNG that was saved."
