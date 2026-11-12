@@ -437,11 +437,9 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 			files = append(files, jobFile{"weights", ax.weights, wd})
 		}
 	}
+	// every corrected value is a number or validated plain text (catalog.ValidUnit, CheckKeyword), so no quote can occur; RenderAnalysis
+	// refuses one anyway
 	corrText, corrHashes, corrSnap := jobCorrections(files)
-	if strings.ContainsAny(corrText, "'\n\r") {
-		fail(w, 409, "a corrected value of this dataset contains a quote, which a job script cannot carry safely; write a virtual subset of it as a file on the host (the file carries the corrected header) and analyse that file")
-		return
-	}
 	if in.CPUs == 0 {
 		in.CPUs, in.Mem, in.Time = 4, "16G", "02:00:00"
 	}

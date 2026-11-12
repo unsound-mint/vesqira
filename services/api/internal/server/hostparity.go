@@ -40,7 +40,7 @@ func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name str
 	case ctx.Err() != nil:
 		return analysisOutcome{}, "", 499, "request cancelled"
 	case errors.Is(err, hosts.ErrHostRunTimeout):
-		return analysisOutcome{}, "", 504, "this took longer on the host than an interactive request may (" + timeout.String() + "), so it was stopped and nothing was kept; make it from a smaller window of the file (a virtual subset written as a file), or run the work as a job on the host"
+		return analysisOutcome{}, "", 504, "this took longer on the host than an interactive request may (" + timeout.String() + "), so Vesqira stopped waiting and recorded nothing (the program on the host stops before it puts a file in place once nobody is listening); make it from a smaller window of the file (a virtual subset written as a file), or run the work as a job on the host"
 	case errors.Is(err, hosts.ErrInvalid):
 		return analysisOutcome{}, "", 409, err.Error()
 	case errors.Is(err, hosts.ErrHostRunFailed):

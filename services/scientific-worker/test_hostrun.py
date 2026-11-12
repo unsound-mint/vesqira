@@ -61,6 +61,12 @@ class HostRun(unittest.TestCase):
             self.mask_req(extra=("--missing-out", os.path.join(self.root, "x.fits"))),
             self.mask_req(extra=("--out=" + os.path.join(self.root, "x.fits"),)),
             self.mask_req(extra=("--carry-masks", "[]")),
+            self.mask_req(extra=("--missing=" + os.path.join(self.root, "x.fits"),)),   # argparse abbreviations of the write options
+            self.mask_req(extra=("--carry=[]",)),
+            self.mask_req(extra=("--rel", os.path.join(self.root, "x.fits"))),
+            self.mask_req(extra=("--window={}",)),                                     # not an option of a mask
+            self.mask_req(extra=("--params", "--out=" + os.path.join(self.root, "x.fits"))),
+            self.mask_req(extra=("stray",)),
             self.mask_req(name="../mask-1-x.fits"),
             self.mask_req(name="mask-1-x.fits/../../y.fits"),
             self.mask_req(name="subset-1-x.fits"),          # the name must be the op's

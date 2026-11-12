@@ -2174,7 +2174,7 @@ export interface paths {
         };
         /**
          * One plane of a mask, for the viewer's hatch overlay
-         * @description The same frame as a data plane (uint32 header length, JSON header, payload) with a uint8 payload, row 0 = FITS y 1, 1 = flagged. A mask of one plane answers the same for every channel.
+         * @description The same frame as a data plane (uint32 header length, JSON header, payload) with a uint8 payload, row 0 = FITS y 1, 1 = flagged. A mask of one plane answers the same for every channel. A mask on a host is read there by the host's worker; only this plane crosses (ADR 0064).
          */
         get: operations["owner_s_maskPlane_get_api_masks_id_plane"];
         put?: never;

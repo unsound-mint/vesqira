@@ -11,12 +11,14 @@ What may be written is fixed before the request is read:
   not be a symbolic link, and is created (one component, with its parent existing) when missing;
 - the file name is one plain name of a fixed shape, and must not exist yet (an existing file is never replaced);
 - analysis.py writes to a private temporary name in that folder, which is linked to the final name only once the program
-  succeeded (link() fails if the name exists, so two runs never clobber each other) and is removed on every failure. A cut
-  connection leaves either no file or a complete one, never half of one.
-Options that would write anywhere else (--out, --carry-masks, --missing-out, --rel-out, --table-out) are refused. The inputs are read
-through srcopen, which enforces VESQIRA_ROOTS on the resolved path like every other read of the host's worker.
+  succeeded (link() fails if the name exists, so two runs never clobber each other) and is removed on every failure. Just before
+  the link a line is written to the caller: a connection already gone (the caller timed out, the VPN dropped) fails that write and
+  the run stops there with no file. A connection lost in the last instant can leave a complete file nobody recorded, never half of one.
+Only the options each operation reads are accepted, by their exact names (an allow-list: argparse would also take an abbreviation such
+as --miss for --missing-out); --out is added here. The inputs are read through srcopen, which enforces VESQIRA_ROOTS on the resolved
+path like every other read of the host's worker.
 
-The reply is analysis.py's JSON with "file": the resolved path of the file written. Nothing is printed before it.
+The reply is analysis.py's JSON with "file": the resolved path of the file written, on the last line.
 """
 from __future__ import annotations
 
@@ -33,13 +35,30 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -P doe
 
 OPS = ("mask", "subset")
 NAME = re.compile(r"^(mask|subset)-[A-Za-z0-9_-]{1,100}\.fits$")
-WRITES = ("--out", "--carry-masks", "--missing-out", "--rel-out", "--table-out")
+ALLOWED = {"mask": {"--input", "--params", "--corrections", "--declared-unit"},
+           "subset": {"--input", "--window", "--note", "--declared-unit", "--corrections"}}
 MAX_REQUEST = 64 << 10
 
 
 def refuse(msg: str) -> int:
     print(json.dumps({"ok": False, "error": msg}))
     return 2
+
+
+def options_ok(op: str, argv: list[str]) -> bool:
+    """Every token is an allowed option of op by its exact name, as --name=value or --name followed by a value that is not an option."""
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        name, eq, _ = tok.partition("=")
+        if not tok.startswith("--") or name not in ALLOWED[op]:
+            return False
+        if not eq:
+            if i + 1 >= len(argv) or argv[i + 1].startswith("-"):
+                return False
+            i += 1
+        i += 1
+    return True
 
 
 def derived_folder(roots: list[str] | None, raw: str | None) -> str:
@@ -83,7 +102,7 @@ def main() -> int:
         return refuse("bad request")
     if not isinstance(argv, list) or len(argv) > 40 or not all(isinstance(a, str) and len(a) <= 16384 and "\0" not in a for a in argv):
         return refuse("bad request")
-    if any(a.split("=", 1)[0] in WRITES for a in argv):
+    if not options_ok(op, argv):
         return refuse("bad request")
     final = os.path.join(folder, name)
     if os.path.lexists(final):
@@ -102,6 +121,10 @@ def main() -> int:
             res = {}
         if code != 0 or not isinstance(res, dict) or not res.get("ok"):
             print(json.dumps(res if isinstance(res, dict) and res.get("error") else {"ok": False, "error": "the program failed on the host"}))
+            return 2
+        try:
+            print(json.dumps({"stage": "placing"}), flush=True)   # the caller is still there? (raises when the connection is gone)
+        except OSError:
             return 2
         try:
             st = os.lstat(tmp)
