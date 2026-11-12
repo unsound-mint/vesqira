@@ -5,7 +5,7 @@ import { limits } from "../viewer/render";
 import { reliabilityFor } from "./overlays";
 import { needsGeometry } from "./geometry";
 import type { GeometryMap } from "./geometry";
-import type { Scene, SceneDisplay, SceneOverlay } from "./scene";
+import type { Scene, SceneDisplay, SceneMask, SceneOverlay } from "./scene";
 
 /**
  * The scene of a saved figure: the live scene projected onto what the figure's picture shows, so drawing it again gives
@@ -19,9 +19,10 @@ import type { Scene, SceneDisplay, SceneOverlay } from "./scene";
  * - overlays placed by the worker (contours, a beam, the grid, another map's lines) are kept only when their geometry was
  *   drawn: a hidden or refused one is left out, k x sigma levels record the sigma used, and another map's lines record the step the
  *   worker sampled at and whether its declared reliability set their opacity;
- * - the figure shows the whole plane, so the view is the fitted one.
+ * - the figure shows the whole plane, so the view is the fitted one;
+ * - the masks hatched in the picture are the ones it drew (what is shown on screen is a view setting, not part of a pane's scene).
  */
-export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scale: number; bunit: string | null; interp: Dataset["interpretation"]; reliability: Plane | null; geometry?: GeometryMap; datasets?: Dataset[] }): Scene {
+export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scale: number; bunit: string | null; interp: Dataset["interpretation"]; reliability: Plane | null; geometry?: GeometryMap; datasets?: Dataset[]; /** The masks hatched in the picture (ADR 0055), by what they were when it was drawn. */ masks?: SceneMask[] }): Scene {
   const { head } = o.plane;
   const d = live.base.display;
   let display: SceneDisplay;
@@ -73,6 +74,7 @@ export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scal
     },
     overlays,
     view: { zoom: 1 },
+    ...(o.masks?.length ? { masks: o.masks } : {}),
     ...(live.link ? { link: live.link } : {}), // how the pane was linked to the other map(s) when this was drawn (ADR 0042, section 4)
   };
 }

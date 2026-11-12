@@ -5191,6 +5191,8 @@ export interface components {
             view: components["schemas"]["SceneView"];
             link?: components["schemas"]["SceneLink"];
             render?: components["schemas"]["SceneRender"];
+            /** @description The masks hatched over the plane of a saved figure, with the legend that names them. Absent from a live pane (what is shown is a view setting) and from a figure saved before it existed. The owner's way back to the mask for "draw again"; a reviewer sees the provenance tiers, never this scene. */
+            masks?: components["schemas"]["SceneMask"][];
         };
         SceneBase: {
             /** Format: int64 */
@@ -7544,8 +7546,11 @@ export interface components {
             tier: "verified" | "declared" | "inferred" | "unresolved";
             /** @description The version of the rule's mapping, for an inferred interpretation; empty for any other tier */
             mappingVersion: string;
-            /** @enum {string} */
-            method: "computed" | "regions" | "import";
+            /**
+             * @description computed: by the worker from the data and a stated rule. regions: from saved regions. import: from a file the researcher provided. carried: cut, resampled or smoothed with the data it describes by a cutout, slab, subset, align or convolve; its rule says which and from which mask
+             * @enum {string}
+             */
+            method: "computed" | "regions" | "import" | "carried";
             /** @description How the mask was made, as the worker described it: the rule, the estimator, the threshold and where sigma or the threshold came from, the regions, or the file imported */
             rule: {
                 [key: string]: unknown;
@@ -7667,6 +7672,8 @@ export interface components {
             /** @description The question or the reason, for ask, blocked and none */
             prompt?: string;
             sources: components["schemas"]["RedrawSource"][];
+            /** @description The masks the figure hatched, when it hatched any; a changed or forgotten one moves the state to ask */
+            masks?: components["schemas"]["RedrawMask"][];
         };
         /** @description One meaningful state of the viewer (ADR 0057): what was on screen, not its pixels. Mutable working state, pruned oldest first past the cap; not evidence */
         ExplorationStep: {
@@ -8568,6 +8575,8 @@ export interface components {
         };
         SubsetMaterialiseInput: {
             expectVersion?: number;
+            /** @description The masks of the source to carry into the file, cut by the subset's window (a mask not listed is left behind; the no-value mask is computed again from the file, never carried). A request with another choice is another file: a file is reused only for the same choice. */
+            carryMasks?: components["schemas"]["CarryChoice"][];
         };
         /** @description What the window resolved to, in the source file's own 0-based pixels and channels, echoed by the worker in every reply that read through it. A reply without it is refused. */
         SubsetWindow: {
@@ -8654,6 +8663,38 @@ export interface components {
         };
         RunViewDeleted: {
             deleted: boolean;
+        };
+        /** @description A typed mask hatched over the plane of a saved figure (ADR 0055), by what it was when it was drawn. The server fills type, name, tier and fingerprint from its own row and refuses a mask of another dataset, a stale one, or a fingerprint that is not the row's. */
+        SceneMask: {
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            type: "missing" | "invalid" | "low_snr" | "saturated" | "user_excluded" | "other";
+            name: string;
+            /** @enum {string} */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** @description SHA-256 of the mask file */
+            fingerprint: string;
+        };
+        /** @description A mask the figure hatched, compared with the catalog now (ADR 0055). No id and no path. */
+        RedrawMask: {
+            /** @enum {string} */
+            type: "missing" | "invalid" | "low_snr" | "saturated" | "user_excluded" | "other";
+            name: string;
+            /** @enum {string} */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /**
+             * @description changed: another fingerprint, made from other bytes than the dataset has now, or its file changed. forgotten: no longer in the catalog. Either is announced before drawing, and its hatch is left out of the new drawing.
+             * @enum {string}
+             */
+            status: "unchanged" | "changed" | "forgotten";
+            text: string;
+        };
+        /** @description What to do with one mask of the source in the file an operation writes (ADR 0055): carry it (cut or resampled with the data, a new mask of the result with its own rule and fingerprint) or leave it behind (recorded). Nothing is carried unless asked; align and convolve want every mask decided. */
+        CarryChoice: {
+            /** Format: int64 */
+            id: number;
+            carry: boolean;
         };
     };
     responses: never;

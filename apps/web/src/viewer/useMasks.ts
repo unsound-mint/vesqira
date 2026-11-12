@@ -3,7 +3,8 @@ import { listMasks } from "../api/masks";
 import type { Mask } from "../api/masks";
 
 /* The masks of a dataset, and which of them the viewer is showing. What is shown is a view setting of the moment (like the pinned
-   pixel), not part of the dataset or of a saved figure. */
+   pixel), not part of the dataset. A figure saved while masks are shown records them (type, name, tier, fingerprint) and draws their
+   hatch with the legend (ADR 0055). */
 
 const listeners = new Set<() => void>();
 let changed = 0;
@@ -22,6 +23,8 @@ export function setMaskShown(datasetId: number, maskId: number, on: boolean) {
 }
 
 const NONE: number[] = [];
+/** The ids of the masks shown for a dataset right now, for a figure that is saved from this view. */
+export const shownMaskIds = (datasetId: number): number[] => shown[datasetId] ?? NONE;
 export function useShownMasks(datasetId: number | null): number[] {
   return useSyncExternalStore(subscribe, () => (datasetId === null ? NONE : (shown[datasetId] ?? NONE)));
 }

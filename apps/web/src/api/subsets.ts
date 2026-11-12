@@ -18,7 +18,9 @@ export const getSubset = (id: number) => getJSON<SubsetDetail>(`/api/subsets/${i
 export const createSubset = (datasetId: number, input: SubsetInput) => postJSON<SubsetSaved>(`/api/datasets/${datasetId}/subsets`, input);
 export const editSubset = (id: number, input: SubsetInput) => postJSON<SubsetSaved>(`/api/subsets/${id}`, input);
 export const repinSubset = (id: number, reason: string, expectVersion: number) => postJSON<SubsetSaved>(`/api/subsets/${id}/repin`, { reason, expectVersion });
-export const materialiseSubset = (id: number, expectVersion: number) => postJSON<SubsetMaterialised>(`/api/subsets/${id}/materialise`, { expectVersion });
+/** `carryMasks`: the masks of the source to carry into the file, cut by the window; none is carried unless listed with carry: true (ADR 0055). */
+export const materialiseSubset = (id: number, expectVersion: number, carryMasks?: Schemas["CarryChoice"][]) =>
+  postJSON<SubsetMaterialised>(`/api/subsets/${id}/materialise`, { expectVersion, ...(carryMasks && carryMasks.length ? { carryMasks } : {}) });
 export const deleteSubset = (id: number) => postJSON<Schemas["SubsetDeleted"]>(`/api/subsets/${id}/delete`, {});
 /** What the window resolved to and the sky and spectral facts of the subset, read through the window from the source file. */
 export const getSubsetView = (id: number, signal?: AbortSignal) => getJSON<View>(`/api/subsets/${id}/view`, signal);

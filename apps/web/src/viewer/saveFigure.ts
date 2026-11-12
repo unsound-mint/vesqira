@@ -7,7 +7,9 @@ import { MAX_RENDER_PIXELS, MAX_RENDER_SIDE } from "../scene/scene";
 import type { Scene } from "../scene/scene";
 import { nodataColours } from "./nodata";
 import { composePlaneFigure } from "./planeFigure";
+import { fetchFigureMasks, sceneMaskOf } from "./figureMasks";
 import { limits } from "./render";
+import { shownMaskIds } from "./useMasks";
 import type { Viewer } from "./useViewer";
 
 /** The title a figure of what the viewer shows gets when the author gives none. */
@@ -54,14 +56,16 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
     // stored only when it states the display fully; the picture is drawn from it either way.
     if (!v.scene || v.scene.base.datasetId !== dataset.id) throw new Error("The image is not drawn yet.");
     if (overlaysPending(v.scene, v.geometry).length) throw new Error("Some overlays are still being computed. The figure can be saved once they are drawn.");
-    const drawn = figureScene(v.scene, { plane, axial, scale, bunit: view.bunit, interp: v.interp, reliability: v.reliability, geometry: v.geometry, datasets: opts.datasets });
+    // the masks shown over the plane are part of the picture: hatched with their legend, and recorded in the scene by type, name, tier and fingerprint
+    const shownMasks = await fetchFigureMasks(dataset.id, shownMaskIds(dataset.id), plane.head.channel);
+    const drawn = figureScene(v.scene, { plane, axial, scale, bunit: view.bunit, interp: v.interp, reliability: v.reliability, geometry: v.geometry, datasets: opts.datasets, masks: shownMasks.map((m) => sceneMaskOf(m.mask)) });
     // how the base raster was drawn, so "draw again" can reproduce it: the canvas it was drawn on, the theme's no-value colours
     const render = { canvas: { width: src.width, height: src.height }, nodata: nodataColours().map((c) => [...c]), figureWidth: FIGURE_WIDTH };
     // a canvas too large to draw again is not recorded: the figure keeps its scene and is drawn from its PNG only
     const { width: cw, height: ch } = render.canvas;
     const redrawable = cw >= 1 && ch >= 1 && cw <= MAX_RENDER_SIDE && ch <= MAX_RENDER_SIDE && cw * ch <= MAX_RENDER_PIXELS;
     scene = sceneStatable(drawn) ? (redrawable ? { ...drawn, render } : drawn) : null;
-    const made = await composePlaneFigure({ dataset, datasets: opts.datasets, view, plane, drawn, interp: v.interp, reliability: v.reliability, geometry: v.geometry, title: heading, figureWidth: FIGURE_WIDTH, showLines: v.showLines, source: src });
+    const made = await composePlaneFigure({ dataset, datasets: opts.datasets, view, plane, drawn, interp: v.interp, reliability: v.reliability, geometry: v.geometry, title: heading, figureWidth: FIGURE_WIDTH, showLines: v.showLines, masks: shownMasks, source: src });
     blob = made.blob;
     viewParams = made.viewParams;
   }

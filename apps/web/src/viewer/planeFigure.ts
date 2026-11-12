@@ -11,6 +11,8 @@ import { lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
 import { captionLines, composeImageFigure, figureScale } from "./figure";
 import type { ImageFigure } from "./figure";
+import { figureMaskLayers } from "./figureMasks";
+import type { FigureMaskInput } from "./figureMasks";
 import { limits } from "./render";
 import type { RangeMode, Stretch } from "./render";
 
@@ -31,6 +33,8 @@ export type PlaneFigureInput = {
   title: string;
   figureWidth: number;
   showLines: boolean;
+  /** The masks hatched over the plane, with the plane of each (ADR 0055). The same ones the figure's scene records. */
+  masks?: FigureMaskInput[];
 };
 
 /**
@@ -54,14 +58,16 @@ export function planeFigureParts(i: PlaneFigureInput): { figure: ImageFigure; vi
     .map((o) => overlayBasis(o, drawn, i.geometry[o.id], nameOf))
     .filter((t): t is string => t !== null);
   const scale = figureScale(i.figureWidth, plane.head.width);
+  const masks = figureMaskLayers(i.masks ?? [], plane.head.width, plane.head.height, scale);
   const figure: ImageFigure = {
     planeW: plane.head.width,
     planeH: plane.head.height,
     layers: sceneLayers(drawn, { plane, scale, interp: i.interp, reliability: i.reliability, geometry: i.geometry }).map((l) => l.marks),
     legend: axial ? { kind: "cyclic", lut: lut("twilight") } : { kind: "scalar", lut: lut(d.colormap as ColormapId), limits: lim, unit: view.bunit },
     title: i.title,
-    captions: [...captions, ...overlayLines],
+    captions: [...captions, ...overlayLines, ...(masks.length ? ["Hatched areas mark pixels the masks in the legend flag for their stated reason; the values under a hatch are drawn unchanged, and no hatch does not mean a pixel is good."] : [])],
     width: i.figureWidth,
+    ...(masks.length ? { masks } : {}),
   };
   const kind = axial ? ("orientation" as const) : ("plane" as const);
   const viewParams: FigureRequest["view"] = {

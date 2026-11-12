@@ -11,6 +11,8 @@ import { MaskPolicies, badWeight, usesOf } from "./MaskPolicies";
 import type { PolicyChoice } from "./MaskPolicies";
 import { useMasks } from "../viewer/useMasks";
 import { TierBadge } from "../ui/TierBadge";
+import { MaskCarry, carryChoices, carryUndecided } from "./MaskCarry";
+import type { CarryOp, CarryState } from "./MaskCarry";
 import { maskTypeLabel } from "../api/masks";
 import { EM } from "./format";
 import { beamText } from "./resolution";
@@ -39,8 +41,12 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
   const queued = useQueueReason(busy, rid);
   const remote = dataset.hostId !== 0;
   const takesMasks = !remote && (op === "stats" || op === "moment");
-  const { masks } = useMasks(takesMasks ? dataset.id : null);
+  const carryOp: CarryOp | null = !remote && (op === "cutout" || op === "slab" || op === "align" || op === "convolve") ? op : null;
+  const { masks } = useMasks(takesMasks || carryOp ? dataset.id : null);
   const [policy, setPolicy] = useState<PolicyChoice>({});
+  const [carry, setCarry] = useState<CarryState>({});
+  const carryRequired = op === "align" || op === "convolve"; // a resampling or a smoothing wants every mask decided; a cut leaves behind what is not chosen
+  useEffect(() => setCarry({}), [dataset.id, op]);
   const set = (k: string, val: string) => setV({ ...v, [k]: val });
   const info = OPS.find((o) => o.id === op)!;
   const candidates = datasets.filter((d) => d.id !== dataset.id && d.hostId === dataset.hostId);
@@ -65,7 +71,8 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
     setStats(null);
     try {
       const uses = takesMasks ? usesOf(policy) : [];
-      const req = { op, datasetId: dataset.id, referenceId: ref ? Number(ref) : undefined, params: params(), ...(uses.length ? { masks: uses } : {}) };
+      const choices = carryOp && masks ? carryChoices(masks, carry, carryRequired) : [];
+      const req = { op, datasetId: dataset.id, referenceId: ref ? Number(ref) : undefined, params: params(), ...(uses.length ? { masks: uses } : {}), ...(choices.length ? { carryMasks: choices } : {}) };
       if (remote) onJob(await createAnalysisJob(req));
       else {
         const r = await runAnalysis(req, undefined, id);
@@ -132,7 +139,8 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
         </>
       ) : null}
       {takesMasks && masks && masks.length > 0 ? <MaskPolicies masks={masks} choice={policy} onChange={setPolicy} /> : null}
-      <Button variant="primary" disabled={busy || badWeight(policy) || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0))} onClick={go}>
+      {carryOp && masks && masks.length > 0 ? <MaskCarry masks={masks} state={carry} onChange={setCarry} op={carryOp} required={carryRequired} /> : null}
+      <Button variant="primary" disabled={busy || badWeight(policy) || (carryOp !== null && !!masks && carryUndecided(masks, carry, carryRequired)) || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0))} onClick={go}>
         {busy ? "Working…" : remote ? "Create a job on the host" : op === "stats" ? "Compute statistics" : "Create the new file"}
       </Button>
       <QueueNote reason={queued} />
@@ -202,6 +210,16 @@ export function DerivedPanel({ dataset, datasets }: { dataset: Dataset; datasets
           <>
             <dt>Masks applied</dt>
             <dd data-testid="derived-masks">{d.params.masks.map((m, i) => <div key={i}>{maskTypeLabel(m.type as never)} “{m.name}”: {m.policy}{m.weight !== undefined ? ` ×${m.weight}` : ""} <TierBadge tier={m.tier} mappingVersion={m.mappingVersion} /></div>)}</dd>
+          </>
+        ) : null}
+        {d.params.maskCarry ? (
+          <>
+            <dt>Masks of the source</dt>
+            <dd data-testid="derived-mask-carry">
+              {d.params.maskCarry.carried.map((m, i) => <div key={`c${i}`}>{maskTypeLabel(m.type as never)} “{m.name}”: carried by {d.params.maskCarry!.by} <TierBadge tier={m.tier} mappingVersion={m.mappingVersion} /></div>)}
+              {d.params.maskCarry.leftBehind.map((m, i) => <div key={`l${i}`}>{maskTypeLabel(m.type as never)} “{m.name}”: left behind <TierBadge tier={m.tier} mappingVersion={m.mappingVersion} /></div>)}
+              {d.params.maskCarry.recomputed.length > 0 ? <div>No-value mask: computed again from this file’s values, not carried</div> : null}
+            </dd>
           </>
         ) : null}
         <dt>Software</dt>

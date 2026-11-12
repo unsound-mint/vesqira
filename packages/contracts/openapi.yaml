@@ -15673,6 +15673,12 @@ components:
       properties:
         expectVersion:
           type: "integer"
+        carryMasks:
+          type: "array"
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/CarryChoice"
+          description: "The masks of the source to carry into the file, cut by the subset's window (a mask not listed is left behind; the no-value mask is computed again from the file, never carried). A request with another choice is another file: a file is reused only for the same choice."
     SubsetWindow:
       type: "object"
       description: "What the window resolved to, in the source file's own 0-based pixels and channels, echoed by the worker in every reply that read through it. A reply without it is refused."
@@ -15941,3 +15947,16 @@ components:
           description: "changed: another fingerprint, made from other bytes than the dataset has now, or its file changed. forgotten: no longer in the catalog. Either is announced before drawing, and its hatch is left out of the new drawing."
         text:
           type: "string"
+    CarryChoice:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "carry"
+      description: "What to do with one mask of the source in the file an operation writes (ADR 0055): carry it (cut or resampled with the data, a new mask of the result with its own rule and fingerprint) or leave it behind (recorded). Nothing is carried unless asked; align and convolve want every mask decided."
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        carry:
+          type: "boolean"

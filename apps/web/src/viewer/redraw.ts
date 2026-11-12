@@ -4,6 +4,7 @@ import { listDatasets } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
 import { getChannelGrid, getPanel } from "../api/channelmaps";
 import type { ChannelGridSpec } from "../api/channelmaps";
+import { getMaskPlane, listMasks, maskTypeLabel } from "../api/masks";
 import { getOverlayGeometry } from "../api/overlays";
 import { getPlane, getView } from "../api/planes";
 import type { Plane } from "../api/planes";
@@ -17,6 +18,8 @@ import { lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
 import { composeGridFigure, GRID_NODATA, gridCaption, gridFigure, paintPixels, panelLabel, STRETCH_LABEL } from "./channelGrid";
 import { blobToBase64, figureScale } from "./figure";
+import { sceneMaskOf } from "./figureMasks";
+import type { FigureMaskInput } from "./figureMasks";
 import { figureSvg } from "./figureSvg";
 import { composePlaneFigure } from "./planeFigure";
 import type { PlaneFigureInput } from "./planeFigure";
@@ -128,12 +131,13 @@ export async function redrawSceneFigure(f: Figure, o: { refresh: boolean }): Pro
         }
       }),
   );
-  const drawn = figureScene(stored, { plane, axial, scale: s, bunit: view.bunit, interp: base.interpretation, reliability, geometry, datasets });
-  const input: PlaneFigureInput = { dataset: base, datasets, view, plane, drawn, interp: base.interpretation, reliability, geometry, title: f.title, figureWidth: render.figureWidth, showLines: orientationOf(drawn)?.visible ?? true };
+  const { masks, notes: maskNotes } = await drawableMasks(stored, base.id, plane.head.channel);
+  const drawn = figureScene(stored, { plane, axial, scale: s, bunit: view.bunit, interp: base.interpretation, reliability, geometry, datasets, masks: masks.map((m) => sceneMaskOf(m.mask)) });
+  const input: PlaneFigureInput = { dataset: base, datasets, view, plane, drawn, interp: base.interpretation, reliability, geometry, title: f.title, figureWidth: render.figureWidth, showLines: orientationOf(drawn)?.visible ?? true, masks };
   const source = baseRaster(plane, drawn, base.interpretation, render);
   const made = await composePlaneFigure({ ...input, source });
   const scene: Scene = { ...drawn, render };
-  const notes: string[] = [];
+  const notes: string[] = [...maskNotes];
   const was = sigmas(stored), now = sigmas(drawn);
   for (const id of Object.keys(now)) {
     if (was[id] !== undefined && was[id] !== now[id]) {
@@ -151,6 +155,30 @@ export async function redrawSceneFigure(f: Figure, o: { refresh: boolean }): Pro
     svg: () => figureSvg({ ...made.figure, raster: source.toDataURL("image/png"), meta }),
     save: async () => createFigure({ datasetId: base.id, title: f.title, caption: f.caption, view: made.viewParams, previewPng: await blobToBase64(made.blob), scene, redrawnFrom: f.id }),
   };
+}
+
+/**
+ * The masks a stored scene hatched, as they can be drawn now: one that is unchanged (the same fingerprint, still fresh and readable).
+ * A mask that was forgotten or changed is left out and said so, never drawn from another file under the old name; the server announced
+ * it before this (the redraw check).
+ */
+async function drawableMasks(stored: Scene, datasetId: number, channel: number): Promise<{ masks: FigureMaskInput[]; notes: string[] }> {
+  const out: FigureMaskInput[] = [];
+  const notes: string[] = [];
+  if (!stored.masks?.length) return { masks: out, notes };
+  const now = await listMasks(datasetId).catch(() => []);
+  for (const sm of stored.masks) {
+    const label = `${maskTypeLabel(sm.type)} mask “${sm.name}”`;
+    const m = now.find((x) => x.id === sm.id);
+    if (!m) { notes.push(`${label} was forgotten; its hatch is not drawn.`); continue; }
+    if (`sha256:${m.sha256}` !== sm.fingerprint || m.stale) { notes.push(`${label} is not the mask the figure was drawn with (its fingerprint or its data changed); its hatch is not drawn.`); continue; }
+    try {
+      out.push({ mask: m, plane: await getMaskPlane(m.id, channel) });
+    } catch {
+      notes.push(`${label} could not be read; its hatch is not drawn.`);
+    }
+  }
+  return { masks: out, notes };
 }
 
 const POOL = 4;

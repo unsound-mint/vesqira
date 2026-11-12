@@ -5,6 +5,9 @@ import type { Coord, View } from "../api/planes";
 import { deleteSubset, editSubset, getSubset, getSubsetCoord, getSubsetView, materialiseSubset, repinSubset } from "../api/subsets";
 import type { SubsetDetail, SubsetMaterialised, SubsetView } from "../api/subsets";
 import { Button, Input, Pill } from "../ui";
+import { useMasks } from "../viewer/useMasks";
+import { MaskCarry, carryChoices } from "./MaskCarry";
+import type { CarryState } from "./MaskCarry";
 import { EM, bytes } from "./format";
 import { SubsetForm } from "./SubsetForm";
 import { describe, fieldsOf, summaryLine } from "./subsets";
@@ -39,6 +42,8 @@ export function SubsetPage({ id, embedded = false, onChanged, onOpenDataset, onC
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [probe, setProbe] = useState({ x: "1", y: "1", channel: "1" });
   const [coord, setCoord] = useState<Coord | null>(null);
+  const [carry, setCarry] = useState<CarryState>({});
+  const { masks: sourceMasks } = useMasks(detail?.subset.sourceId ?? null);
 
   const load = useCallback(async () => {
     setLoadErr(null);
@@ -63,6 +68,7 @@ export function SubsetPage({ id, embedded = false, onChanged, onOpenDataset, onC
     setCoord(null);
     setEditing(false);
     setConfirmDelete(false);
+    setCarry({});
     void load();
   }, [load]);
 
@@ -91,7 +97,8 @@ export function SubsetPage({ id, embedded = false, onChanged, onOpenDataset, onC
     });
   };
   const write = () => run(async () => {
-    const r = await materialiseSubset(sub.id, sub.version);
+    const chosen = carryChoices(sourceMasks ?? [], carry, false).filter((c) => c.carry); // none is carried unless chosen
+    const r = chosen.length ? await materialiseSubset(sub.id, sub.version, chosen) : await materialiseSubset(sub.id, sub.version);
     setMade(r);
     onChanged();
     await load();
@@ -170,9 +177,10 @@ export function SubsetPage({ id, embedded = false, onChanged, onOpenDataset, onC
         </section>
       ) : null}
 
+      {sourceMasks && sourceMasks.length > 0 ? <MaskCarry masks={sourceMasks} state={carry} onChange={setCarry} op="subset" required={false} /> : null}
       <div className={s.actions}>
         <Button variant="primary" disabled={busy || sub.stale} onClick={() => void write()} title={sub.stale ? "Re-pin the subset first" : undefined}>
-          {sub.materialised ? "Use the file already written" : "Write as a file"}
+          {sub.materialised && !Object.values(carry).includes("carry") ? "Use the file already written" : "Write as a file"}
         </Button>
         <Button disabled={busy} onClick={() => setEditing(!editing)} aria-expanded={editing}>Edit the window</Button>
         {confirmDelete ? (
