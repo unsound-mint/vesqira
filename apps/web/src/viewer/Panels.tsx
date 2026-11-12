@@ -11,6 +11,8 @@ import { useMaskedHistogram } from "./useMaskedHistogram";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { axialText, degrees, limitText, precisionNote, provenanceNote, spectralText, unitLabel, valueText } from "./format";
+import { isFileHeader } from "./OrientationPanels";
+import { ruleOf } from "../api/declared";
 import s from "./Panels.module.css";
 
 /** What the other map holds at the pixel the pointer maps to: the same pixel on one grid, `at` (from the worker's transform) otherwise. */
@@ -212,9 +214,9 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
         <ConvertedRows v={v} />
       </dl>
       <ConversionControls v={v} />
-      {view.bunit_status === "unresolved" || view.bunit_status === "user" || view.bunit_status === "corrected" || (view.wcs_corrected?.length ?? 0) > 0 || v.coordError ? (
+      {(view.bunit_status === "unresolved" && !v.interp) || view.bunit_status === "user" || view.bunit_status === "corrected" || (view.wcs_corrected?.length ?? 0) > 0 || v.coordError ? (
         <p className={s.note}>
-          {view.bunit_status === "unresolved" ? "Brightness unit unresolved: the header has no BUNIT. " : ""}
+          {view.bunit_status === "unresolved" && !v.interp ? "Brightness unit unresolved: the header has no BUNIT. " : ""}
           {view.bunit_status === "user" ? `Brightness unit (${view.bunit}) declared by you: the header has no BUNIT. ` : ""}
           {view.bunit_status === "corrected" ? `Brightness unit (${view.bunit}) is your correction: the file says ${view.file_bunit ?? "nothing"}. ` : ""}
           {(view.wcs_corrected?.length ?? 0) > 0 ? `Coordinates use your correction of ${view.wcs_corrected!.join(", ")}; the file says otherwise and is not changed. ` : ""}
@@ -226,6 +228,15 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
       </Basis>
     </div>
   );
+}
+
+/** The angle convention the legend states: the one declared for the map, never an assumed one (ADR 0068, slice 2). */
+export function angleConvention(interp: Viewer["interp"]): string {
+  if (!interp) return "";
+  const by = isFileHeader(interp.declaredBy) ? "as the file’s header declares it" : interp.declaredBy === "user" ? "as you declared it" : ruleOf(interp.declaredBy) !== null ? `as your import rule ${ruleOf(interp.declaredBy)} declares it` : `as proposed by ${interp.declaredBy}, not by the file`;
+  if (interp.frame === "pixel") return `Angles run from the image +x axis towards +y (counter-clockwise on screen), ${by}.`;
+  if (interp.frame === "sky") return `Angles are position angles east of north in the file’s celestial frame, ${by}.`;
+  return "The frame the angles are measured in is not declared: declare it under Interpretation before reading directions from this map.";
 }
 
 /** Colour mapping, stretch and range, with a legend that always says what "no value" looks like. */
@@ -277,8 +288,7 @@ export function DisplayControls({ v }: { v: Viewer }) {
         </div>
         <Switch label="Orientation lines" checked={v.showLines} onChange={(e) => v.setShowLines(e.target.checked)} />
         <p className={s.note}>
-          Axial orientation: 0° and 180° are the same orientation, so the colours wrap. Angles run from the image +x axis towards +y (counter-clockwise on
-          screen). The file declares no angle convention; Vesqira assumes the VGT pipeline’s. Line opacity follows the reliability map relative to its own 99th percentile.
+          Axial orientation: 0° and 180° are the same orientation, so the colours wrap. {angleConvention(v.interp)} Line opacity follows the reliability map relative to its own 99th percentile.
         </p>
         <div className={s.nodata}>
           <span className={s.swatch} aria-hidden="true" />
