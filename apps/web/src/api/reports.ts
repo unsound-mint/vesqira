@@ -14,7 +14,7 @@ export type GraphNode = { id: string; kind: "report" | "figure" | "run"; label: 
 export type GraphEdge = { from: string; to: string; kind: "link" | "embeds" };
 export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] };
 export type PublishedBlock = { id: string; kind: "text" | "figure" | "run"; text?: string };
-export type Preflight = { revision: { blocks: PublishedBlock[]; title: string; number: number; authors: string }; warnings: string[]; errors: string[]; changes: { block: string; kind: string; status: "new" | "unchanged" | "removed"; text?: string }[]; space: string; readers: string[] | null; workingRevision: number };
+export type Preflight = { revision: { blocks: PublishedBlock[]; title: string; number: number; authors: string }; warnings: string[]; errors: string[]; changes: { block: string; kind: string; status: "new" | "unchanged" | "removed"; text?: string }[]; space: string; readers: string[] | null; workingRevision: number; restricted?: { title: string; label: "collaboration" | "unreleased"; via: { name: string }[] }[]; access?: string };
 export type PublishState = { url: string; keySet: boolean; space: string; spaceTitle: string; ownerName: string; agentName: string; lastSync?: string; lastError?: string };
 export type Reader = { id: number; space: string; name: string; createdAt: string; expiresAt?: string; revoked: boolean };
 
@@ -49,7 +49,7 @@ export const deleteReport = (id: number) => post<{ ok: boolean }>(`/api/reports/
 export const reportChanges = (id: number) => call<Changes>(`/api/reports/${id}/changes`);
 export const reportGraph = () => call<Graph>("/api/reports/graph");
 export const preflightReport = (id: number) => call<Preflight>(`/api/reports/${id}/preflight`);
-export const publishReport = (id: number, revision: number) => post<{ number: number; revisionId: string; space: string }>(`/api/reports/${id}/publish`, { revision });
+export const publishReport = (id: number, revision: number, confirmAccess = false) => post<{ number: number; revisionId: string; space: string }>(`/api/reports/${id}/publish`, { revision, ...(confirmAccess ? { confirmAccess: true } : {}) });
 export const attachmentUrl = (sha: string) => `/api/attachments/${sha}`;
 export const uploadAttachment = (data: string) => post<{ sha: string; mime: string; markdown: string }>("/api/attachments", { data });
 

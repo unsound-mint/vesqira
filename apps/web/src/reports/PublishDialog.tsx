@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import * as api from "../api/reports";
 import type { Preflight, ReportView } from "../api/reports";
-import { Button, Icon } from "../ui";
+import { AccessBadge, Button, Icon } from "../ui";
 import s from "./ReportsView.module.css";
 
 /**
@@ -16,6 +16,7 @@ export function PublishDialog({ report, onClose, onPublished, onSetup }: { repor
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<number | null>(null);
+  const [confirm, setConfirm] = useState(false); // the author's yes to publishing figures from labelled data (ADR 0069)
   useEffect(() => {
     const d = ref.current;
     if (d && !d.open) d.showModal?.();
@@ -34,7 +35,7 @@ export function PublishDialog({ report, onClose, onPublished, onSetup }: { repor
     setBusy(true);
     setErr(null);
     try {
-      const r = await api.publishReport(report.id, pf.workingRevision);
+      const r = await api.publishReport(report.id, pf.workingRevision, confirm);
       setDone(r.number);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Publishing failed.");
@@ -74,12 +75,20 @@ export function PublishDialog({ report, onClose, onPublished, onSetup }: { repor
               {pf.warnings.map((w) => <li key={w}><Icon icon={AlertTriangle} />{w}</li>)}
             </ul>
           ) : null}
+          {(pf.restricted ?? []).length > 0 ? (
+            <div role="group" aria-label="Labelled data">
+              <ul className={s.problems}>
+                {pf.restricted!.map((r) => <li key={r.title}><AccessBadge label={r.label} /> {r.title}, from {r.via.map((v) => v.name).join(", ")}</li>)}
+              </ul>
+              <label><input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> I confirm these figures may be shown to readers. They get pictures only, never the data.</label>
+            </div>
+          ) : null}
           {err ? <p className={s.error} role="alert">{err}</p> : null}
           <div className={s.dialogActions}>
             {notSetUp ? <Button onClick={onSetup}>Set up publishing</Button> : null}
             <span className={s.grow} />
             <button type="button" className={s.ghost} onClick={onClose}>Cancel</button>
-            <Button variant="primary" disabled={busy || pf.errors.length > 0} onClick={() => void go()}>{busy ? "Publishing…" : `Publish revision ${pf.revision.number}`}</Button>
+            <Button variant="primary" disabled={busy || pf.errors.length > 0 || ((pf.restricted ?? []).length > 0 && !confirm)} onClick={() => void go()}>{busy ? "Publishing…" : `Publish revision ${pf.revision.number}`}</Button>
           </div>
         </div>
       )}

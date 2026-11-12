@@ -58,6 +58,11 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 - [x] Pages and presentation (ADR 0036, "Pages, front matter, changes and deletions"): page tree kept from the Notion import, front matter date and summary under the title, reader list newest first, what changed since the revision last read, comments on selected words, withdraw a report, delete a comment.
 - [x] Follow-ups from the security review (ADR 0036, "Hardening"): image metadata stripped when publishing (`internal/imgmeta`, pixel-checked, fuzzed), fixed shape for derived `software`, bounded Markdown scans (one was cubic), comment-cursor guard. Left: a schema for derived `summary`.
 
+## Access labels (GitHub issue 135; ADR 0069, implemented)
+
+- [x] A per-dataset label (released, collaboration only, unreleased) with an audited history, inherited by figures, boards and reports from the recorded dependency edges, shown as text and icon, confirmed on publish, stated on the review page, and blockable per workspace by an admin on the group server; pushed work carries its label and the server applies its policy (schema 34).
+- [ ] Runs record their input datasets, so a run's outputs inherit the label of the cube it read (ADR 0069, known gap).
+
 ## Tool profiles (owner direction, 2026-11-13; ADR 0068, proposed)
 
 Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC become declared profiles, and other tools plug in the same way.
