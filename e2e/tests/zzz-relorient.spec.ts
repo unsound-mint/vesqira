@@ -63,3 +63,45 @@ test("compare a declared orientation map with a starlight catalog and read the a
   await page.emulateMedia({ colorScheme: "light" });
   await result.screenshot({ path: path.resolve(here, "../test-results/relorient-result-1440-light.png") });
 });
+
+// Bins of a third map (ADR 0047 amendment): the same field in degrees against radians, binned by the reliability map on their
+// grid. The two maps agree everywhere, so every bin has AM 1; the test is about the binning, the unit and the outputs.
+test("bin a map-against-map comparison by a third map and read the per-bin table", async ({ page, request }) => {
+  const reg = async (name: string) => (await (await request.post(`${API}/api/datasets`, { data: { path: path.join(data, name) } })).json()) as { id: number };
+  const a = await reg("vgt_psi_deg.fits");
+  const b = await reg("vgt_psi_rad.fits");
+  const rel = await reg("vgt_reliability.fits");
+  for (const [d, unit] of [[a, "deg"], [b, "rad"]] as const) {
+    const r = await request.post(`${API}/api/datasets/${d.id}/interpretation`, { data: { kind: "axial_orientation", unit, frame: "pixel", quantity: "b_field" } });
+    expect(r.ok()).toBe(true);
+  }
+  // the reliability map has no BUNIT: bins are stated in a unit someone declared, never an assumed one
+  const u = await request.post(`${API}/api/datasets/${rel.id}/unit`, { data: { unit: "1" } });
+  expect(u.ok(), await u.text()).toBe(true);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /^vgt_psi_deg\.fits/ }).click();
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  await inspector.getByRole("button", { name: "Compare orientation" }).click();
+  await inspector.getByLabel("Compare orientation with").selectOption({ label: "vgt_psi_rad.fits" });
+  await inspector.getByLabel("Bin by a third map (optional)").selectOption({ label: "vgt_reliability.fits" });
+  await inspector.getByLabel("Number of bins").fill("4");
+  await inspector.getByText("Advanced settings").click();
+  await inspector.getByLabel("Shortest shift (deg)").fill("0.01"); // the fixture map is small
+  await inspector.getByLabel("Shifts in the null").fill("50");
+  await expectNoAxeViolations(page);
+  await inspector.getByRole("button", { name: "Compute the alignment measure" }).click();
+
+  const result = inspector.getByRole("region", { name: "Relative orientation result" });
+  await expect(result.getByText(/vgt_psi_deg\.fits against vgt_psi_rad\.fits/).first()).toBeVisible({ timeout: 60_000 });
+  const table = result.getByRole("table", { name: "Alignment by bin" });
+  await expect(table).toBeVisible();
+  await expect(table.locator("tbody tr")).toHaveCount(4);
+  await expect(inspector.getByText(/validated|success/i)).toHaveCount(0);
+  await expectNoAxeViolations(page);
+  const strata = result.getByRole("region", { name: "Alignment by bins of a third map" });
+  await strata.scrollIntoViewIfNeeded();
+  await strata.screenshot({ path: path.resolve(here, "../test-results/relorient-strata-1440-dark.png") });
+  await page.emulateMedia({ colorScheme: "light" });
+  await strata.screenshot({ path: path.resolve(here, "../test-results/relorient-strata-1440-light.png") });
+});

@@ -220,6 +220,93 @@ func TestRelativeOrientationNeedsDeclarationsAndKeepsAResult(t *testing.T) {
 	if st, b := callJSON(t, "GET", ts.URL+"/api/datasets/"+itoa(int(res.ID))+"/relative-orientation.csv", nil); st != 200 || !strings.HasPrefix(string(b), "x_fits,y_fits") {
 		t.Fatalf("map table: %d %s", st, b)
 	}
+
+	// map against map, binned by a third map (ADR 0047, amendment): a scalar map on the same grid with a unit; the comparison without it is unchanged
+	mk := exec.Command("python3", "-c", `
+import sys, numpy as np
+from astropy.io import fits
+root = sys.argv[1]
+h = fits.open(root + "/vgt_psi_deg.fits")[0].header
+col = (np.arange(16, dtype=float).reshape(4, 4) + 1.0)
+for name, unit in (("column.fits", "cm-2"), ("column_nounit.fits", None)):
+    hh = h.copy()
+    if unit:
+        hh["BUNIT"] = unit
+    fits.PrimaryHDU(col.astype("<f4"), header=hh).writeto(root + "/" + name, overwrite=True)
+other = h.copy()
+other["NAXIS1"] = other["NAXIS2"] = 7
+other["CRPIX1"] = other["CRPIX2"] = 4.0
+other["BUNIT"] = "cm-2"
+fits.PrimaryHDU(np.ones((7, 7), dtype="<f4"), header=other).writeto(root + "/column_other_grid.fits", overwrite=True)
+`, localRoot)
+	if out, err := mk.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	column, noUnit, otherGrid := reg("column.fits"), reg("column_nounit.fits"), reg("column_other_grid.fits")
+	pair := map[string]any{"datasetId": psiDeg.ID, "otherId": psiRad.ID}
+	with := func(extra map[string]any, params map[string]any) map[string]any {
+		b := map[string]any{"datasetId": pair["datasetId"], "otherId": pair["otherId"], "params": params}
+		for k, v := range extra {
+			b[k] = v
+		}
+		return b
+	}
+	for name, c := range map[string]struct {
+		body map[string]any
+		code int
+		want string
+	}{
+		"no unit":         {with(map[string]any{"stratifyId": noUnit.ID}, map[string]any{"nShifts": 0}), 422, "no brightness unit"},
+		"another grid":    {with(map[string]any{"stratifyId": otherGrid.ID}, map[string]any{"nShifts": 0}), 409, "align"},
+		"orientation map": {with(map[string]any{"stratifyId": tang.ID}, map[string]any{"nShifts": 0}), 422, "orientation map"},
+		"one of the two":  {with(map[string]any{"stratifyId": psiRad.ID}, map[string]any{"nShifts": 0}), 422, "another dataset"},
+		"edges and bins":  {with(map[string]any{"stratifyId": column.ID}, map[string]any{"strataBins": 3, "strataEdges": []float64{0, 5}}), 400, "not both"},
+		"edges order":     {with(map[string]any{"stratifyId": column.ID}, map[string]any{"strataEdges": []float64{5, 1}}), 400, "strictly increasing"},
+		"bins range":      {with(map[string]any{"stratifyId": column.ID}, map[string]any{"strataBins": 51}), 400, "strataBins"},
+		"no third map":    {with(nil, map[string]any{"strataBins": 3}), 400, "stratifyId"},
+		"catalog":         {map[string]any{"datasetId": tang.ID, "otherId": stars.ID, "stratifyId": column.ID, "params": small}, 422, "two maps"},
+	} {
+		if st, _, b := run(c.body); st != c.code || !strings.Contains(b, c.want) {
+			t.Errorf("stratified, %s: %d %s, want %d with %q", name, st, b, c.code, c.want)
+		}
+	}
+	st, out, b = run(with(map[string]any{"stratifyId": column.ID}, map[string]any{"nShifts": 0, "strataBins": 3}))
+	if st != 201 {
+		t.Fatalf("stratified: %d %s", st, b)
+	}
+	sum = out["summary"].(map[string]any)
+	strata := sum["stratified"].(map[string]any)
+	bins := strata["bins"].([]any)
+	if len(bins) != 3 || strata["third_map"].(map[string]any)["unit"] != "cm-2" || strata["counts"].(map[string]any)["in_bins"].(float64) != 15 {
+		t.Fatalf("stratified summary: %s", b)
+	}
+	for _, x := range bins {
+		if am := x.(map[string]any)["am"].(float64); math.Abs(am-1) > 1e-9 { // the same angles in degrees and radians agree in every bin
+			t.Errorf("a bin of identical angles has AM %v", am)
+		}
+	}
+	rb, _ = json.Marshal(out["dataset"])
+	json.Unmarshal(rb, &res)
+	if rec, err := ds.Get(res.ID); err != nil || len(rec.Sources) != 3 || rec.Sources[0] != psiDeg.ID || rec.Sources[1] != psiRad.ID || rec.Sources[2] != column.ID || !strings.Contains(string(rec.Params), "stratifiedBy") {
+		t.Fatalf("the third map is a source after the two maps: %+v %v", rec, err)
+	}
+	// the same request without the third map has no `stratified` and the same AM
+	st, out, b = run(with(nil, map[string]any{"nShifts": 0}))
+	if st != 201 || out["summary"].(map[string]any)["stratified"] != nil {
+		t.Fatalf("unchanged comparison: %d %s", st, b)
+	}
+	// user-set edges, with a unit declared by the author for a file that has none
+	if st, b := callJSON(t, "POST", ts.URL+"/api/datasets/"+itoa(int(noUnit.ID))+"/unit", map[string]any{"unit": "1e20 cm-2"}); st != 200 {
+		t.Fatalf("declare the unit: %d %s", st, b)
+	}
+	st, out, b = run(with(map[string]any{"stratifyId": noUnit.ID}, map[string]any{"nShifts": 0, "strataEdges": []float64{0, 8, 20}}))
+	if st != 201 {
+		t.Fatalf("stratified by edges with a declared unit: %d %s", st, b)
+	}
+	strata = out["summary"].(map[string]any)["stratified"].(map[string]any)
+	if u := strata["third_map"].(map[string]any); u["unit"] != "1e20 cm-2" || u["unit_source"] != "user" || strata["counts"].(map[string]any)["outside_edges"].(float64) != 0 {
+		t.Fatalf("a declared unit is labelled as the author's: %s", b)
+	}
 }
 
 func TestRelorientConstructionIsVerifiedOnlyWhenTheNullRan(t *testing.T) {

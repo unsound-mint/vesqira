@@ -151,7 +151,7 @@ func (s *Server) corrArgs(ws workspace.ID, host int64, args []string) (opt strin
 	sent := map[string]any{}
 	for i := 0; i+1 < len(args); i++ {
 		switch args[i] {
-		case "--input", "--reference", "--weights", "--ref-weights":
+		case "--input", "--reference", "--third", "--weights", "--ref-weights":
 		default:
 			continue
 		}

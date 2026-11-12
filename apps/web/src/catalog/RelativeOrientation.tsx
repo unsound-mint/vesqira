@@ -11,6 +11,7 @@ import { ControlsView } from "../runs/ControlsView";
 import { EM } from "./format";
 import { CompassGlyph, compassNote } from "../ui/Compass";
 import type { CompassFacts } from "../ui/Compass";
+import { StratifiedView, parseEdges } from "./StratifiedOrientation";
 import { MaskPolicies, badWeight, usesOf } from "./MaskPolicies";
 import type { PolicyChoice } from "./MaskPolicies";
 import { useMasks } from "../viewer/useMasks";
@@ -84,6 +85,16 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   const [ownPolicy, setOwnPolicy] = useState<PolicyChoice>({});
   const [theirPolicy, setTheirPolicy] = useState<PolicyChoice>({});
   const chosenWhy = chosen ? notReady(chosen) : null;
+  // optional: repeat the comparison inside bins of a third, scalar map (two maps only)
+  const [third, setThird] = useState("");
+  const [binMode, setBinMode] = useState<"count" | "edges">("count");
+  const [nBins, setNBins] = useState("5");
+  const [edgesText, setEdgesText] = useState("");
+  const thirdCandidates = datasets.filter((d) => isImage(d) && !d.archived && d.hostId === 0 && d.id !== dataset.id && d.id !== chosen?.id && d.interpretation?.kind !== "axial_orientation");
+  const thirdDs = mapMode ? (thirdCandidates.find((d) => String(d.id) === third) ?? null) : null;
+  const edgesParsed = thirdDs && binMode === "edges" ? parseEdges(edgesText) : null;
+  const nBinsOk = Number.isInteger(Number(nBins)) && Number(nBins) >= 1 && Number(nBins) <= 50 && nBins.trim() !== "";
+  const strataBad = thirdDs !== null && (binMode === "edges" ? edgesParsed !== null && "error" in edgesParsed : !nBinsOk);
   const val = (k: keyof typeof DEFAULTS) => v[k] ?? DEFAULTS[k];
   const set = (k: string) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
   // every field must be a number: an empty or unreadable one is never sent as a silent default
@@ -109,13 +120,14 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
     const params: RelOrientParams = { nShifts: n(catalogMode ? "nShiftsCatalog" : "nShiftsMaps"), minShiftDeg: n("minShiftDeg"), keepFraction: n("keepFraction"), seed: n("seed"), bins: n("bins") };
     if (catalogMode) Object.assign(params, { radiusArcmin: n("radiusArcmin"), minPixels: n("minPixels") });
     if (snrOn) Object.assign(params, { snrColumn: snrP, snrSigmaColumn: snrSigma, snrMin: n("snrMin") });
+    if (thirdDs) Object.assign(params, binMode === "edges" && edgesParsed && "edges" in edgesParsed ? { strataEdges: edgesParsed.edges } : { strataBins: Number(nBins) });
     const map = fromCatalog ? chosen : dataset;
     const otherDs = fromCatalog ? dataset : chosen;
     const ctl = new AbortController();
     abort.current = ctl;
     try {
       const mu = mapMode ? usesOf(ownPolicy) : [], ou = mapMode ? usesOf(theirPolicy) : [];
-      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params, ...(mu.length ? { masks: mu } : {}), ...(ou.length ? { otherMasks: ou } : {}) }, ctl.signal, id);
+      const r = await runRelativeOrientation({ datasetId: map.id, otherId: otherDs.id, params, ...(mu.length ? { masks: mu } : {}), ...(ou.length ? { otherMasks: ou } : {}), ...(thirdDs ? { stratifyId: thirdDs.id } : {}) }, ctl.signal, id);
       onCreated(r.dataset);
     } catch (e) {
       if (ctl.signal.aborted) setErr({ msg: "Cancelled: the computation was stopped and nothing was kept.", reasons: [] });
@@ -154,6 +166,29 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
               {badWeight(ownPolicy) || badWeight(theirPolicy) ? <p role="alert" className={s.note}>A weight factor is a number from 0 to 1.</p> : null}
             </>
           ) : null}
+          {mapMode ? (
+            <fieldset className={s.filter} aria-label="Optional bins of a third map">
+              <Select label="Bin by a third map (optional)" value={third} onChange={(e) => setThird(e.target.value)}>
+                <option value="">None: compare the whole map</option>
+                {thirdCandidates.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </Select>
+              {thirdDs ? (
+                <>
+                  <p className={s.note}>The comparison is repeated inside bins of this map (a column density, a signal-to-noise map). It must share the grid and have a unit, from its file or declared by you; the result states the unit and the bin edges in it.{thirdDs.unitDeclaration?.unit ? ` Declared unit: ${thirdDs.unitDeclaration.unit}.` : ""}</p>
+                  <div className={s.grid}>
+                    <Select label="Bins" value={binMode} onChange={(e) => setBinMode(e.target.value as "count" | "edges")}>
+                      <option value="count">Equal count</option>
+                      <option value="edges">My edges</option>
+                    </Select>
+                    {binMode === "count" ? <Input label="Number of bins" value={nBins} onChange={(e) => setNBins(e.target.value)} inputMode="numeric" /> : <Input label="Bin edges (third map's unit)" value={edgesText} onChange={(e) => setEdgesText(e.target.value)} placeholder="1e20, 5e20, 1e21" />}
+                  </div>
+                  {binMode === "edges" && edgesParsed && "error" in edgesParsed ? <p className={s.err}>{edgesParsed.error}</p> : null}
+                  {binMode === "edges" && edgesText.trim() === "" ? <p className={s.err}>Give the bin edges, such as 1e20, 5e20, 1e21.</p> : null}
+                  {binMode === "count" && !nBinsOk ? <p className={s.err}>The number of bins is a whole number from 1 to 50.</p> : null}
+                </>
+              ) : null}
+            </fieldset>
+          ) : null}
           <More summary="Advanced settings" open={unreadable.length > 0 || snrOn || snrHalf}>
             <div className={s.grid}>
               {catalogMode ? <Input label="Fewest pixels in a disk" value={val("minPixels")} onChange={set("minPixels")} inputMode="numeric" /> : null}
@@ -189,7 +224,7 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
           </More>
           {snrHalf ? <p className={s.err}>The P/σP filter needs both columns: choose P and σP, or set both to Off.</p> : null}
           {unreadable.length ? <p className={s.err}>Every parameter needs a number; {unreadable.length === 1 ? "one is" : `${unreadable.length} are`} empty or not a number.</p> : null}
-          <Button variant="primary" disabled={busy || unreadable.length > 0 || snrHalf} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
+          <Button variant="primary" disabled={busy || unreadable.length > 0 || snrHalf || strataBad || (thirdDs !== null && binMode === "edges" && edgesText.trim() === "")} onClick={go}>{busy ? "Computing…" : "Compute the alignment measure"}</Button>
           {busy ? <Button onClick={() => abort.current?.abort()}>Cancel</Button> : null}
           <QueueNote reason={queued} />
           <p className={s.note}>A null of thousands of shifts can take minutes on a large map.</p>
@@ -219,12 +254,12 @@ export function RelativeOrientationResult({ dataset, datasets }: { dataset: Data
   const names = rec.sources.map((id) => datasets.find((x) => x.id === id)?.name ?? `dataset ${id}`);
   return (
     <Section title="Relative orientation result" meta={`AM ${fmt(rec.summary.am)}`}>
-      <RelOrientView s={rec.summary} names={names} tableUrl={rec.summary.table?.file ? relativeOrientationTableUrl(dataset.id) : null} controls={rec.controls} />
+      <RelOrientView s={rec.summary} names={names} resultId={dataset.id} tableUrl={rec.summary.table?.file ? relativeOrientationTableUrl(dataset.id) : null} controls={rec.controls} />
     </Section>
   );
 }
 
-export function RelOrientView({ s: r, names, tableUrl, controls }: { s: RelOrientSummary; names: string[]; tableUrl: string | null; controls?: Controls | null }) {
+export function RelOrientView({ s: r, names, tableUrl, controls, resultId = null }: { s: RelOrientSummary; names: string[]; tableUrl: string | null; controls?: Controls | null; resultId?: number | null }) {
   const n = r.null;
   const c = r.counts;
   const p = r.parameters;
@@ -257,6 +292,7 @@ export function RelOrientView({ s: r, names, tableUrl, controls }: { s: RelOrien
       {controls?.construction ? (<><p className={s.kicker}>How the control was built</p><ControlsView controls={controls} only="construction" /></>) : null}
       <DeltaPsiHistogram s={r} />
       {cat && r.segments ? <SegmentsFigure s={r} /> : null}
+      {!cat && r.stratified ? <StratifiedView s={r} names={names} resultId={resultId} /> : null}
       {!cat && r.prs?.note ? <p className={s.note}>{r.prs.note}</p> : null}
       {!cat && r.independent_samples?.caveat ? <p className={s.note}>{r.independent_samples.caveat}</p> : null}
       {tableUrl ? <a className={s.link} href={tableUrl} download>Download the per-{cat ? "source" : "pixel"} table (CSV)</a> : <p className={s.note}>No table: {r.table?.reason ?? "none was written"}.</p>}

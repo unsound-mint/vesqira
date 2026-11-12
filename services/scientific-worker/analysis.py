@@ -1114,6 +1114,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--rel-out")                                 # where an orientation result's companion reliability map goes
     ap.add_argument("--declared-unit")        # the brightness unit its author declared for the input, only for a file without BUNIT
     ap.add_argument("--declared-unit-ref")    # the same for the reference
+    ap.add_argument("--third")                # relorient_maps: a scalar map to bin the comparison by (same grid)
+    ap.add_argument("--declared-unit-third")  # the brightness unit its author declared for the third map, only for a file without BUNIT
     ap.add_argument("--axial-quantity")       # what the declared angle describes (ADR 0042); relative orientation needs it
     ap.add_argument("--ref-axial-unit", choices=["deg", "rad"])  # the reference map's declaration, for relorient_maps
     ap.add_argument("--ref-axial-frame", choices=["pixel", "sky"])

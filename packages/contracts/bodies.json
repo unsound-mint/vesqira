@@ -1853,7 +1853,7 @@
     },
     "label": {
      "type": "string",
-     "description": "For a job of a parameter sweep: N = 12, \u03bb = 10. Owner only; a snapshot never carries it"
+     "description": "For a job of a parameter sweep: N = 12, λ = 10. Owner only; a snapshot never carries it"
     },
     "sweepId": {
      "type": "integer",
@@ -2991,7 +2991,7 @@
     "stretch",
     "range"
    ],
-   "description": "How base values become colours. For mapping axial (a declared orientation map) the angles are drawn with the cyclic twilight map, 0\u00b0 = 180\u00b0, and stretch, range and limits do not apply.",
+   "description": "How base values become colours. For mapping axial (a declared orientation map) the angles are drawn with the cyclic twilight map, 0° = 180°, and stretch, range and limits do not apply.",
    "properties": {
     "mapping": {
      "type": "string",
@@ -5126,21 +5126,36 @@
      "type": "integer",
      "minimum": 2,
      "maximum": 90,
-     "description": "Equal-width bins of |\u0394\u03c8| over [0, 90] degrees (default 9)"
+     "description": "Equal-width bins of |Δψ| over [0, 90] degrees (default 9)"
     },
     "snrColumn": {
      "type": "string",
-     "description": "Map vs catalog only: the declared value column holding P, for the optional filter P/\u03c3P \u2265 snrMin; off unless both columns are named"
+     "description": "Map vs catalog only: the declared value column holding P, for the optional filter P/σP ≥ snrMin; off unless both columns are named"
     },
     "snrSigmaColumn": {
      "type": "string",
-     "description": "Map vs catalog only: the declared value column holding \u03c3P"
+     "description": "Map vs catalog only: the declared value column holding σP"
     },
     "snrMin": {
      "type": "number",
      "minimum": 0,
      "maximum": 1000000,
-     "description": "The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/\u03c3P below it are excluded and counted, rows with P or \u03c3P missing are excluded with their own reason"
+     "description": "The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason"
+    },
+    "strataBins": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 50,
+     "description": "With stratifyId: the number of equal-count bins of the third map (default 5); not with strataEdges. Tied values are never split, so a heavy tie gives fewer bins"
+    },
+    "strataEdges": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 51,
+     "items": {
+      "type": "number"
+     },
+     "description": "With stratifyId: user-set bin edges in the third map's unit, strictly increasing; a bin is [lower, upper) and the last one is closed; pixels outside them are left out and counted"
     }
    }
   },
@@ -5178,6 +5193,11 @@
       "$ref": "#/components/schemas/MaskReference"
      },
      "description": "Masks of the second map"
+    },
+    "stratifyId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "Map against map only: a scalar map on the same grid (a column density, a signal-to-noise map). The comparison is repeated inside bins of it and the result carries `stratified`. It needs a brightness unit (BUNIT or declared) and is refused when it is declared as an orientation map, lives on a host or does not share the grid. The comparison without it is unchanged"
     }
    }
   },
@@ -5551,7 +5571,235 @@
      "type": "object",
      "nullable": true,
      "additionalProperties": true,
-     "description": "The P/\u03c3P filter as applied (columns, k, rule, rows excluded below k and for missing values); null when it was off"
+     "description": "The P/σP filter as applied (columns, k, rule, rows excluded below k and for missing values); null when it was off"
+    },
+    "stratified": {
+     "type": "object",
+     "required": [
+      "binning",
+      "third_map",
+      "counts",
+      "bins",
+      "policy"
+     ],
+     "description": "Map against map with stratifyId: the comparison's statistics inside bins of a third map (ADR 0047, amendment)",
+     "properties": {
+      "binning": {
+       "type": "object",
+       "required": [
+        "mode",
+        "bins",
+        "edges"
+       ],
+       "properties": {
+        "mode": {
+         "type": "string",
+         "enum": [
+          "equal_count",
+          "edges"
+         ]
+        },
+        "asked": {
+         "type": "integer"
+        },
+        "bins": {
+         "type": "integer"
+        },
+        "edges": {
+         "type": "array",
+         "items": {
+          "type": "number"
+         }
+        },
+        "notes": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "rule": {
+         "type": "string"
+        }
+       }
+      },
+      "third_map": {
+       "type": "object",
+       "required": [
+        "unit",
+        "unit_source"
+       ],
+       "properties": {
+        "unit": {
+         "type": "string"
+        },
+        "unit_source": {
+         "type": "string",
+         "enum": [
+          "file",
+          "user",
+          "corrected"
+         ]
+        },
+        "unit_note": {
+         "type": "string"
+        },
+        "pixels_without_value": {
+         "type": "integer"
+        }
+       },
+       "description": "The third map's unit and whose it is: its BUNIT, or declared or corrected by the author"
+      },
+      "counts": {
+       "type": "object",
+       "required": [
+        "compared",
+        "third_map_missing",
+        "outside_edges",
+        "in_bins"
+       ],
+       "properties": {
+        "compared": {
+         "type": "integer",
+         "description": "Pixels the comparison uses"
+        },
+        "third_map_missing": {
+         "type": "integer",
+         "description": "Of those, pixels with no value in the third map"
+        },
+        "outside_edges": {
+         "type": "integer",
+         "description": "Of the rest, pixels outside user-set edges"
+        },
+        "in_bins": {
+         "type": "integer"
+        }
+       }
+      },
+      "bins": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "index",
+         "lo",
+         "hi",
+         "centre",
+         "n"
+        ],
+        "properties": {
+         "index": {
+          "type": "integer"
+         },
+         "lo": {
+          "type": "number",
+          "description": "Lower edge, in the third map's unit"
+         },
+         "hi": {
+          "type": "number",
+          "description": "Upper edge, in the third map's unit (included for the last bin)"
+         },
+         "centre": {
+          "type": "number",
+          "description": "Middle of the edges, in the third map's unit"
+         },
+         "median": {
+          "type": "number",
+          "nullable": true,
+          "description": "Median of the third map over the bin's pixels"
+         },
+         "n": {
+          "type": "integer",
+          "description": "Pixels in the bin"
+         },
+         "am": {
+          "type": "number",
+          "nullable": true,
+          "description": "AM = mean of cos 2Δψ over the bin; null for an empty bin, never 0"
+         },
+         "am_weighted": {
+          "type": "number",
+          "nullable": true
+         },
+         "bootstrap_am_16_84": {
+          "type": "array",
+          "items": {
+           "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "nullable": true,
+          "description": "16th and 84th percentiles of AM over resamples of the bin's pixels (assumes independent pixels, so optimistic)"
+         },
+         "bootstrap_samples": {
+          "type": "integer",
+          "nullable": true,
+          "description": "Resamples used; fewer for a large bin"
+         },
+         "median_abs_dpsi_deg": {
+          "type": "number",
+          "nullable": true
+         },
+         "prs": {
+          "type": "object",
+          "properties": {
+           "V": {
+            "type": "number",
+            "nullable": true
+           },
+           "V_weighted": {
+            "type": "number",
+            "nullable": true
+           }
+          },
+          "description": "Projected Rayleigh statistic of the bin (no p-value: pixels are correlated)"
+         },
+         "independent_beams": {
+          "type": "number",
+          "nullable": true,
+          "description": "Approximate number of independent beams in the bin; null when a map declares no beam"
+         },
+         "independent_beams_reason": {
+          "type": "string",
+          "nullable": true
+         },
+         "uniform_reference": {
+          "type": "object",
+          "nullable": true,
+          "properties": {
+           "am": {
+            "type": "number",
+            "description": "AM expected for independent uniform angles: 0"
+           },
+           "sigma_pixels": {
+            "type": "number",
+            "nullable": true,
+            "description": "1/sqrt(2 n) for n pixels"
+           },
+           "sigma_weighted_pixels": {
+            "type": "number",
+            "nullable": true
+           },
+           "sigma_beams": {
+            "type": "number",
+            "nullable": true,
+            "description": "1/sqrt(2 n) for n independent beams"
+           }
+          },
+          "description": "The statistic's value and spread for uniform angles, for the bin's pixel and beam counts"
+         }
+        }
+       }
+      },
+      "definitions": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "policy": {
+       "type": "string"
+      }
+     }
     }
    }
   },
@@ -6489,7 +6737,7 @@
     },
     "label": {
      "type": "string",
-     "description": "For example N = 12, \u03bb = 10"
+     "description": "For example N = 12, λ = 10"
     },
     "values": {
      "type": "object",
@@ -13061,7 +13309,7 @@
       },
       "identity": {
        "type": "string",
-       "description": "sha256:\u2026 or sampled:\u2026 when a content identity was recorded (ADR 0053); empty otherwise"
+       "description": "sha256:… or sampled:… when a content identity was recorded (ADR 0053); empty otherwise"
       }
      }
     }
@@ -13653,7 +13901,7 @@
       },
       "identity": {
        "type": "string",
-       "description": "sha256:\u2026 or sampled:\u2026, empty when none was recorded"
+       "description": "sha256:… or sampled:…, empty when none was recorded"
       }
      }
     },
@@ -19718,7 +19966,7 @@
    },
    "responses": {
     "201": {
-     "description": "computed and registered (the per-source table for a catalog, the |\u0394\u03c8| map for two maps)",
+     "description": "computed and registered (the per-source table for a catalog, the |Δψ| map for two maps)",
      "content": {
       "application/json": {
        "schema": {
