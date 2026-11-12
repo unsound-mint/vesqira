@@ -234,8 +234,8 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 		return &apiErr{500, "internal error"}
 	}
 	ask := m.Request.Ask
-	if err := relay.CheckRequest(st.Inbox, st.Hosts, m.Request); err != nil {
-		return &apiErr{422, relay.Sentence(err)}
+	if aerr := stillAcceptable(st, m); aerr != nil {
+		return aerr
 	}
 	hostID := st.Hosts[strings.TrimSpace(ask.Label)]
 	h, err := s.HostDB.Get(hostID)
@@ -384,6 +384,27 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 	s.dropOldDraft(m)
 	s.audit(ctx, "run request drafted", "relayed", m.ID, fmt.Sprintf("sweep %d of %d drafts from run %d on %s", sw.ID, len(ids), baseRunID, h.Name))
 	return nil
+}
+
+// stillAcceptable is what this computer requires of a request it accepted, at drafting and approval: its values pass the whitelist
+// and the template validators, and its label still stands for a host here. A bound the key holder lowered since is left to their
+// judgement (ADR 0066 section 3): outsideBounds tells them, it does not refuse.
+func stillAcceptable(st relay.LocalState, m relay.Mirrored) *apiErr {
+	if err := relay.CheckAskWhitelist(m.Request.Ask); err != nil {
+		return &apiErr{422, "this computer refuses the request: " + relay.Sentence(err)}
+	}
+	if _, ok := st.Hosts[strings.TrimSpace(m.Request.Ask.Label)]; !ok {
+		return &apiErr{422, "the label " + m.Request.Ask.Label + " no longer stands for a host on this computer; set it again under Run requests"}
+	}
+	return nil
+}
+
+// outsideBounds says when a request is outside the inbox as it is now (a bound lowered after it arrived), "" when it is inside.
+func outsideBounds(st relay.LocalState, m relay.Mirrored) string {
+	if err := relay.CheckAsk(st.Inbox, m.Request.Ask); err != nil {
+		return "Outside your current inbox: " + relay.Sentence(err) + " It arrived within the bounds of the time; approving it is your judgement."
+	}
+	return ""
 }
 
 // dropOldDraft deletes the drafts of an earlier rendering of the same request (the key holder chose another base or changed a value).
@@ -750,7 +771,12 @@ func (s *Server) getRelayed(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out := map[string]any{"request": s.relayedView(m)}
+	out := map[string]any{"request": s.relayedView(m), "outsideBounds": ""}
+	if l, err := s.Outbox.Link(); err == nil {
+		if st, err := s.Relayed.State(l.Origin); err == nil {
+			out["outsideBounds"] = outsideBounds(st, m)
+		}
+	}
 	if m.JobID != nil {
 		if j, err := s.Jobs.Get(*m.JobID); err == nil {
 			out["job"] = map[string]any{"id": j.ID, "name": j.Name, "state": j.State, "script": j.Script, "scriptHash": j.ScriptHash, "editedLines": editedLines(j)}
@@ -860,7 +886,11 @@ func (s *Server) approveRelayed(w http.ResponseWriter, r *http.Request) {
 	s.relayMu.Lock()
 	defer s.relayMu.Unlock()
 	m, _ = s.Relayed.Get(m.ID)
-	if m.LocalState != relay.LocalDraft {
+	// an approved request whose draft was never handed on (the claim succeeded, then the submission was refused before Slurm, the
+	// sweep's approval was not recorded, or this computer stopped in between) is approved again: the claim is idempotent for the
+	// same hash and instance, and only the hash claimed can be submitted
+	retry := m.LocalState == relay.LocalApproved
+	if m.LocalState != relay.LocalDraft && !retry {
 		fail(w, 409, "only a drafted request can be approved")
 		return
 	}
@@ -874,11 +904,17 @@ func (s *Server) approveRelayed(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	if err := relay.CheckRequest(st.Inbox, st.Hosts, m.Request); err != nil {
-		fail(w, 422, "this computer refuses the request now: "+relay.Sentence(err))
+	if aerr := stillAcceptable(st, m); aerr != nil {
+		s.failAPI(w, aerr)
 		return
 	}
 	autoPush := in.AutoPush == nil || *in.AutoPush
+	if retry {
+		autoPush = m.AutoPush
+	}
+	if m.SweepID != nil {
+		autoPush = false // the runs of a sweep are pushed by hand (deferred: one run line per request crosses today)
+	}
 	claim := relay.Claim{Instance: l.Instance, Params: m.Draft.Params, Resources: m.Draft.Resources, Label: m.Draft.Label, BaseChosen: m.BaseChosen, AutoPush: autoPush}
 	var job jobs.Job
 	var kept []jobs.Job
@@ -893,6 +929,10 @@ func (s *Server) approveRelayed(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		claim.ScriptHash, claim.EditedLines = job.ScriptHash, editedLines(job)
+		if retry && job.ScriptHash != m.ScriptHash {
+			fail(w, 409, "the script changed after the request was claimed with another hash; it cannot be submitted for the request")
+			return
+		}
 	} else if m.SweepID != nil {
 		if sw, err = s.Sweeps.Get(*m.SweepID); err != nil {
 			fail(w, 409, "the sweep is gone; draft the request again")
@@ -923,6 +963,10 @@ func (s *Server) approveRelayed(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		claim.SweepHash = sweepHash(kept)
+		if retry && (claim.SweepHash != m.ScriptHash || sw.State != sweeps.StateDraft) {
+			fail(w, 409, "the sweep was already approved, or its scripts changed after the request was claimed")
+			return
+		}
 		claim.Concurrency = in.Concurrency
 		if claim.Concurrency == 0 {
 			claim.Concurrency = sweeps.DefaultConcurrency

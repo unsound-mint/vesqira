@@ -279,6 +279,23 @@ func CheckAsk(in Inbox, a Ask) error {
 	return PlainText(a.Note, "the note")
 }
 
+// CheckAskWhitelist validates a request against the whitelist and the template validators alone, without an inbox's bounds: what
+// the key holder's computer still requires of a request it accepted when the key holder has since lowered a bound, which ADR 0066
+// leaves to their judgement. Every other rule of CheckAsk holds (keys, values, grid size, resources within the absolute caps).
+func CheckAskWhitelist(a Ask) error {
+	if !ValidLabel(a.Label) {
+		return refuse("a label is 1 to 40 letters, digits, spaces and -")
+	}
+	t := TemplateBounds{Template: a.Template, Limits: Limits{MaxCPUs: MaxCPUs, MaxMemGiB: MaxMemGiB, MaxTimeMinutes: MaxTimeMinutes}}
+	for _, k := range append(sortedKeys(a.Params), gridKeys(a.Grid)...) {
+		if !settable(a.Template, k) {
+			return refuse("%s cannot be set by a request", k)
+		}
+		t.Keys = append(t.Keys, Bound{Key: k})
+	}
+	return CheckAsk(Inbox{Labels: []Label{{Label: a.Label, Templates: []TemplateBounds{t}}}}, a)
+}
+
 // Combos expands a grid in the order of ADR 0048 (the first setting changes slowest). Nil for no grid.
 func Combos(grid []GridKey) []Combo {
 	if len(grid) == 0 {

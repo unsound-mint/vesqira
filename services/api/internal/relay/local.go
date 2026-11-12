@@ -234,10 +234,12 @@ func (l *Local) Upsert(origin string, req Request, refusal string) (Mirrored, bo
 	old, err := scanMirror(l.db.QueryRow(`SELECT `+mirrorCols+` FROM relayed_requests WHERE origin=? AND server_id=?`, origin, req.ID))
 	if errors.Is(err, sql.ErrNoRows) {
 		state := LocalReceived
-		if refusal == "" && l.openCount(origin) >= MaxOpenLocal {
+		if !IsOpen(req.State) { // already approved, declined, withdrawn or expired (a relink pulls history from cursor 0)
+			state, refusal = LocalClosed, ""
+		} else if refusal == "" && l.openCount(origin) >= MaxOpenLocal {
 			refusal = "this computer already holds 100 requests waiting for review"
 		}
-		if refusal != "" {
+		if refusal != "" && state == LocalReceived {
 			state = LocalRefused
 		}
 		b, _ := json.Marshal(req)

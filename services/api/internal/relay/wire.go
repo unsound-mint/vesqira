@@ -34,7 +34,7 @@ const (
 	MaxCursorJump     = 100000
 	MaxNotes          = 20 // follow-up notes on one request
 	MaxPageBytes      = 2 << 20
-	MaxCPUs           = 1024
+	MaxCPUs           = 256 // the templates' own cap (jobs.RenderVGT, jobs.RenderROHSA)
 	MaxMemGiB         = 4096
 	MaxTimeMinutes    = 30 * 24 * 60
 )
