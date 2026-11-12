@@ -4799,7 +4799,7 @@ export interface components {
             /** @description Hidden from the lists by default; still resolves by id (ADR 0041). */
             archived?: boolean;
             /** @description The description the picture was drawn from, told apart by its `schema` (scene/1, ADR 0042; channel-grid/1, ADR 0049); absent for figures saved before. Owner API only: it names dataset ids, so it is never part of the reviewer-safe provenance. A cross-run plot holds its cross-run/1 description here (the runs it was drawn from, with their recorded values): owner API only, never in a snapshot or a report. */
-            scene?: components["schemas"]["Scene"] & (components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"] | components["schemas"]["CrossRunDescription"]);
+            scene?: components["schemas"]["Scene"] | components["schemas"]["ChannelGrid"] | components["schemas"]["CrossRunDescription"];
             /** @description Absent for figures saved before identities (ADR 0053). */
             identity?: components["schemas"]["FigureIdentity"];
             /** @enum {string} */

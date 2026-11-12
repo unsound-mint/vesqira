@@ -1650,11 +1650,6 @@
       {
        "$ref": "#/components/schemas/CrossRunDescription"
       }
-     ],
-     "allOf": [
-      {
-       "$ref": "#/components/schemas/Scene"
-      }
      ]
     },
     "identity": {
