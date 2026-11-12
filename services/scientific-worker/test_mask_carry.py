@@ -235,6 +235,37 @@ class Carry(unittest.TestCase):
         self.assertGreater(int(m.sum()), int(carried_style.sum()), "outside the footprint is also no value; interpolation spreads the holes")
         self.assertTrue((~np.isfinite(data[:, :, NX - 3:])).all())
 
+    def test_an_orientation_map_declared_axial_carries_masks_through_align_and_convolve_too(self):
+        h = cube_header(NX, NY, NC)
+        for k in ("CTYPE3", "CRVAL3", "CRPIX3", "CDELT3", "CUNIT3"):
+            del h[k]
+        h["BMAJ"] = h["BMIN"] = 120.0 / 3600.0
+        h["BPA"] = 0.0
+        theta = np.full((NY, NX), 30.0)
+        theta[2, 2] = 0.0                                      # an angle of zero is a value, not a flag
+        psi = self.d / "psi.fits"
+        fits.PrimaryHDU(theta.astype("<f4"), header=h).writeto(psi)
+        dot = self.d / "mask-psi-dot.fits"
+        code, r = run("mask", "--input", psi, "--out", dot, "--params", json.dumps({"method": "regions", "type": "user_excluded", "regions": [{"shape": "rect", "x0": 10, "y0": 11, "x1": 10, "y1": 11}]}))
+        self.assertEqual(code, 0, r)
+        axial = ["--axial-unit", "deg", "--axial-frame", "sky"]
+        spec = {"path": str(dot), "type": "user_excluded", "out": str(self.d / "carried-psi-cv.fits")}
+        code, r = run("convolve", "--input", psi, "--out", self.d / "psi-cv.fits", "--rel-out", self.d / "psi-cv-rel.fits", "--target-bmaj", 240, "--target-bmin", 240, "--target-bpa", 0,
+                      *axial, "--carry-masks", json.dumps([spec]))
+        self.assertEqual(code, 0, r)
+        got = read(spec["out"])[0].astype(bool)
+        want = np.zeros((NY, NX), dtype=bool)
+        want[5:18, 4:17] = True                                 # (10, 11) grown by the half-width, 6
+        self.assertTrue(np.array_equal(got, want))
+        ref = self.reference("ref-psi", 3)
+        spec = {"path": str(dot), "type": "user_excluded", "out": str(self.d / "carried-psi-al.fits")}
+        code, r = run("align", "--input", psi, "--reference", ref, "--out", self.d / "psi-al.fits", "--rel-out", self.d / "psi-al-rel.fits", *axial, "--carry-masks", json.dumps([spec]))
+        self.assertEqual(code, 0, r)
+        got = read(spec["out"])[0].astype(bool)
+        want = np.zeros((NY, NX), dtype=bool)
+        want[11, 7] = True                                      # source x 10 is output x 7 under a shift of 3
+        self.assertTrue(np.array_equal(got, want))
+
     def test_the_sources_are_untouched_after_every_operation(self):
         # tearDownClass compares the SHA-256 of the cube and of the source masks with what they were before any test ran
         for p, h in zip(self.sources, self.before):
