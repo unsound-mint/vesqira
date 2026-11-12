@@ -49,6 +49,8 @@ type group struct {
 	audit *audit.Store
 	clock *groupClock
 	cat   *catalog.Store
+	// host and origin override groupHost and groupOrigin for a server on a real listener (the push tests)
+	host, origin string
 }
 
 func newGroup(t *testing.T) *group {
@@ -94,11 +96,15 @@ func (g *group) do(r req) *httptest.ResponseRecorder {
 		r.method = "GET"
 	}
 	q := httptest.NewRequest(r.method, r.path, strings.NewReader(r.body))
-	q.Host = groupHost
+	host, origin := groupHost, groupOrigin
+	if g.host != "" {
+		host, origin = g.host, g.origin
+	}
+	q.Host = host
 	q.RemoteAddr = "203.0.113.5:4000"
 	q.Header.Set("Sec-Fetch-Site", "same-origin")
 	if r.method != "GET" && r.method != "HEAD" {
-		q.Header.Set("Origin", groupOrigin)
+		q.Header.Set("Origin", origin)
 		q.Header.Set("Content-Type", "application/json")
 	}
 	if r.cookie != "" {

@@ -24,6 +24,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/imgmeta"
 	"github.com/unsound-mint/vesqira/services/api/internal/outbox"
 	"github.com/unsound-mint/vesqira/services/api/internal/pushwire"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
@@ -350,6 +351,7 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 	it := pushwire.Item{Kind: kind, Origin: pushwire.OriginKey(l.Secret, kind, id), Assets: []string{}, References: []pushwire.Reference{}}
 	ids := []pushwire.Identity{}
 	var doc any
+	dropped := 0 // run settings that look like a machine, account or address, left out
 	switch kind {
 	case pushwire.KindFigure:
 		if s.Boards == nil {
@@ -368,7 +370,6 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 			return f, fmt.Errorf("the picture of %q could not be cleaned of its metadata", fig.Title)
 		}
 		f.Assets[sha] = clean
-		doc = pushedFigure{Title: fig.Title, Caption: fig.Caption, Revision: fig.Revision, Asset: sha, Width: fig.Width, Height: fig.Height, Provenance: fig.Provenance}
 		it.Title = fig.Title
 		var fid figureIdentity
 		if len(fig.Identity) > 0 && json.Unmarshal(fig.Identity, &fid) == nil {
@@ -385,22 +386,9 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 				it.References, ids = append(it.References, ref), append(ids, e)
 			}
 		}
-		var pr struct {
-			Run *struct {
-				Name   string `json:"name"`
-				Params []struct {
-					Key   string `json:"key"`
-					Value string `json:"value"`
-				} `json:"params"`
-			} `json:"run"`
-		}
-		if json.Unmarshal(fig.Provenance, &pr) == nil && pr.Run != nil {
-			for _, p := range pr.Run.Params {
-				if identifyingKey.MatchString(p.Key) || identifyingValue.MatchString(p.Value) {
-					f.Warnings = append(f.Warnings, fmt.Sprintf("Run setting %s = %s looks like a machine, account or address; the workspace will see it.", p.Key, p.Value))
-				}
-			}
-		}
+		prov, n := dropMachineParamsIn(fig.Provenance, false)
+		dropped += n
+		doc = pushedFigure{Title: fig.Title, Caption: fig.Caption, Revision: fig.Revision, Asset: sha, Width: fig.Width, Height: fig.Height, Provenance: prov}
 	case pushwire.KindRun:
 		if s.Runs == nil {
 			return f, errors.New("runs are not available")
@@ -409,10 +397,10 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 		if err != nil {
 			return f, err
 		}
+		var n int
+		sum.Params, n = dropMachineParams(sum.Params)
+		dropped += n
 		doc, it.Title = sum, sum.Name
-		if w := identifyingSettings(sum.Name, sum.Params); w != "" {
-			f.Warnings = append(f.Warnings, w)
-		}
 		if run, err := s.Runs.Get(ws, id); err == nil {
 			for _, o := range run.Outputs {
 				if ref, e, ok := s.referenceOf(ws, "output", o.DatasetID); ok {
@@ -445,6 +433,9 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 				return f, fmt.Errorf("the picture of %q could not be cleaned of its metadata", items[i].Title)
 			}
 			items[i].PreviewSHA, f.Assets[sha] = sha, clean
+			var n int
+			items[i].Provenance, n = dropMachineParamsIn(items[i].Provenance, false)
+			dropped += n
 		}
 		doc, it.Title = pushedBoard{Title: b.Title, Items: items}, b.Title
 	case pushwire.KindReport:
@@ -465,6 +456,16 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 		// a working revision of the report, not a publication: its number is the working revision and its time the last save, so
 		// pushing an unchanged report again is the same hash
 		fr.Revision.Number, fr.Revision.PublishedAt = max(rep.Revision, 1), rep.UpdatedAt.UTC().Truncate(time.Second)
+		for i, b := range fr.Revision.Blocks {
+			var n int
+			switch {
+			case b.Figure != nil:
+				fr.Revision.Blocks[i].Figure.Provenance, n = dropMachineParamsIn(b.Figure.Provenance, false)
+			case len(b.Run) > 0:
+				fr.Revision.Blocks[i].Run, n = dropMachineParamsIn(b.Run, true)
+			}
+			dropped += n
+		}
 		for sha, b := range fr.Assets {
 			f.Assets[sha] = b
 		}
@@ -472,6 +473,9 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 		doc, it.Title = fr.Revision, rep.Title
 	default:
 		return f, fmt.Errorf("push a board, a figure, a run or a report")
+	}
+	if dropped > 0 {
+		f.Warnings = append(f.Warnings, fmt.Sprintf("%d run setting(s) that look like a machine, an account or an address (partition, user, host, an e-mail, a dotted host name) are left out of what is pushed.", dropped))
 	}
 	raw, err := json.Marshal(doc)
 	if err != nil {
@@ -490,6 +494,59 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 		return f, err
 	}
 	return f, nil
+}
+
+// machineLike reports whether a run setting looks like a machine, an account or an address (the preflight's rule for published
+// reports, identifyingSettings): partition, account, user, host, an e-mail, a dotted host name.
+func machineLike(key, value string) bool {
+	return identifyingKey.MatchString(key) || identifyingValue.MatchString(value)
+}
+
+// dropMachineParams returns the run line without the settings that look like a machine, account or address, and how many it
+// left out. A pushed run line never carries partition or account values, cluster usernames or host names (ADR 0066 "what a push
+// never carries"); a published report only warns about them, because there the owner decides per reader.
+func dropMachineParams(params []runs.Param) ([]runs.Param, int) {
+	out := make([]runs.Param, 0, len(params))
+	for _, p := range params {
+		if !machineLike(p.Key, p.Value) {
+			out = append(out, p)
+		}
+	}
+	return out, len(params) - len(out)
+}
+
+// dropMachineParamsIn does the same inside a document that carries a run line under "run" (a figure's provenance) or is one (a
+// report's run block). Only a document that changes is re-encoded.
+func dropMachineParamsIn(raw json.RawMessage, isRun bool) (json.RawMessage, int) {
+	var doc map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &doc) != nil {
+		return raw, 0
+	}
+	target := doc
+	if !isRun {
+		var run map[string]json.RawMessage
+		if doc["run"] == nil || json.Unmarshal(doc["run"], &run) != nil || run == nil {
+			return raw, 0
+		}
+		target = run
+	}
+	var params []runs.Param
+	if target["params"] == nil || json.Unmarshal(target["params"], &params) != nil {
+		return raw, 0
+	}
+	kept, n := dropMachineParams(params)
+	if n == 0 {
+		return raw, 0
+	}
+	target["params"], _ = json.Marshal(kept)
+	if !isRun {
+		doc["run"], _ = json.Marshal(target)
+	}
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return raw, 0
+	}
+	return out, n
 }
 
 // actorIDOrOwner is the account whose read state a report freeze uses; on a local instance, the local owner.
