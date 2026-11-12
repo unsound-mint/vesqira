@@ -38,6 +38,7 @@ type Revision struct {
 	Authors     string    `json:"authors"`           // plain attribution, for example "Drafted by VGT agent, edited by Denis"
 	Summary     string    `json:"summary,omitempty"` // one plain line shown in the reader's list; omitted when empty so older revisions keep their ID
 	Date        string    `json:"date,omitempty"`    // the report's own date, YYYY-MM-DD; omitted when empty
+	Access      string    `json:"access,omitempty"`  // "collaboration" or "unreleased" when a figure comes from labelled data (ADR 0069); omitted when released
 	Blocks      []Block   `json:"blocks"`
 }
 

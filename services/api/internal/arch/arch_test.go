@@ -24,6 +24,7 @@ var allowed = map[string][]string{
 	"lifecycle":  {"workspace"},
 	"backup":     {"workspace"}, // the manifest lists the datasets of one workspace
 	"notify":     {"schema", "workspace"},
+	"access":     {"schema", "workspace"}, // ADR 0069: labels and their propagation; owner-side only, so not in reviewerReach
 	"derived":    {"workspace"},
 	"regions":    {"schema", "workspace"},
 	"subsets":    {"schema", "workspace"},
@@ -40,10 +41,10 @@ var allowed = map[string][]string{
 	"runs":       {"schema", "workspace"},
 	"discover":   {"runs", "sourceroot"},
 	"projects":   {"discover", "schema", "workspace"},
-	"fullschema": {"accounts", "discussion", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers", "pushed", "outbox", "relay"},
+	"fullschema": {"access", "accounts", "discussion", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers", "pushed", "outbox", "relay"},
 	"hosts":      {"worker", "sourceroot", "schema", "workspace"},
 	"review":     {"boards", "workspace"},
-	"server":     {"accounts", "audit", "authz", "workspace", "discussion", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker", "pushwire", "pushed", "outbox", "relay"},
+	"server":     {"access", "accounts", "audit", "authz", "workspace", "discussion", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker", "pushwire", "pushed", "outbox", "relay"},
 	// ADR 0066 push: the wire contract imports nothing, so client and server cannot disagree about a hash
 	"pushwire": {},
 	"pushed":   {"identity", "pushwire", "schema", "workspace"},

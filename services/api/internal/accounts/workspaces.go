@@ -37,6 +37,8 @@ type Workspace struct {
 	Name       string       `json:"name"`
 	Created    time.Time    `json:"createdAt"`
 	QuotaBytes int64        `json:"quotaBytes"` // managed copies and derived outputs it may keep (ADR 0050 section 8)
+	// BlockedLabels are the access labels (ADR 0069) the admin has made block publishing in this workspace, as the label names.
+	BlockedLabels []string `json:"blockedLabels"`
 }
 
 // Membership is an account's role in a workspace.
@@ -98,17 +100,19 @@ func (s *Store) CreateWorkspace(name, owner, by string) (Workspace, error) {
 func (s *Store) Workspace(id workspace.ID) (Workspace, error) {
 	var w Workspace
 	var created int64
-	err := s.rdb.QueryRow(`SELECT id, name, created_at, managed_quota_bytes FROM workspaces WHERE id=?`, id).Scan(&w.ID, &w.Name, &created, &w.QuotaBytes)
+	var blocked string
+	err := s.rdb.QueryRow(`SELECT id, name, created_at, managed_quota_bytes, blocked_labels FROM workspaces WHERE id=?`, id).Scan(&w.ID, &w.Name, &created, &w.QuotaBytes, &blocked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Workspace{}, ErrNotFound
 	}
+	w.BlockedLabels = splitLabels(blocked)
 	w.Created = time.Unix(created, 0).UTC()
 	return w, err
 }
 
 // AllWorkspaces lists every workspace (the admin's view).
 func (s *Store) AllWorkspaces() ([]Workspace, error) {
-	rows, err := s.rdb.Query(`SELECT id, name, created_at, managed_quota_bytes FROM workspaces ORDER BY id`)
+	rows, err := s.rdb.Query(`SELECT id, name, created_at, managed_quota_bytes, blocked_labels FROM workspaces ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -117,13 +121,37 @@ func (s *Store) AllWorkspaces() ([]Workspace, error) {
 	for rows.Next() {
 		var w Workspace
 		var created int64
-		if err := rows.Scan(&w.ID, &w.Name, &created, &w.QuotaBytes); err != nil {
+		var blocked string
+		if err := rows.Scan(&w.ID, &w.Name, &created, &w.QuotaBytes, &blocked); err != nil {
 			return nil, err
 		}
+		w.BlockedLabels = splitLabels(blocked)
 		w.Created = time.Unix(created, 0).UTC()
 		out = append(out, w)
 	}
 	return out, rows.Err()
+}
+
+func splitLabels(s string) []string {
+	out := []string{}
+	for _, f := range strings.Split(s, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// SetBlockedLabels records which access labels (ADR 0069) block publishing in a workspace. The caller has checked the names.
+func (s *Store) SetBlockedLabels(id workspace.ID, labels []string) error {
+	res, err := s.db.Exec(`UPDATE workspaces SET blocked_labels=? WHERE id=?`, strings.Join(labels, ","), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetQuota sets how many bytes of managed copies and derived outputs a workspace may keep.

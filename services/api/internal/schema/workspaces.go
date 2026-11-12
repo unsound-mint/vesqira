@@ -22,7 +22,8 @@ const WorkspaceTables = `CREATE TABLE IF NOT EXISTS workspaces(
 	name TEXT NOT NULL,
 	created_at INTEGER NOT NULL,
 	created_by TEXT NOT NULL DEFAULT 'local-owner',
-	managed_quota_bytes INTEGER NOT NULL DEFAULT 214748364800 CHECK(managed_quota_bytes >= 0));
+	managed_quota_bytes INTEGER NOT NULL DEFAULT 214748364800 CHECK(managed_quota_bytes >= 0),
+	blocked_labels TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS memberships(
 	workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
 	account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

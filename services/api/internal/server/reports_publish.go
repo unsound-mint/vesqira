@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/access"
 	"net/http"
 	"os"
 	"regexp"
@@ -64,7 +65,7 @@ func (s *Server) reportPreflight(w http.ResponseWriter, r *http.Request) {
 			f.Warnings = append(f.Warnings, "Nobody has a reader link to this space yet: make one after publishing.")
 		}
 	}
-	writeJSON(w, 200, map[string]any{"revision": f.Revision, "warnings": f.Warnings, "errors": f.Errors, "changes": f.Changes, "space": f.Space, "readers": f.Readers, "workingRevision": rep.Revision})
+	writeJSON(w, 200, map[string]any{"revision": f.Revision, "warnings": f.Warnings, "errors": f.Errors, "restricted": nonNilPanels(f.Restricted), "access": f.Revision.Access, "changes": f.Changes, "space": f.Space, "readers": f.Readers, "workingRevision": rep.Revision})
 }
 
 // publishReport freezes the report as it is at the revision the owner previewed, uploads its pictures, pushes the
@@ -76,6 +77,8 @@ func (s *Server) publishReport(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Revision int `json:"revision"` // the working revision the owner saw in the preflight
+		// ConfirmAccess is the author's yes to publishing figures drawn from labelled data (ADR 0069).
+		ConfirmAccess bool `json:"confirmAccess"`
 	}
 	if !body(w, r, 1<<10, &in, true) {
 		return
@@ -105,6 +108,15 @@ func (s *Server) publishReport(w http.ResponseWriter, r *http.Request) {
 	if len(f.Errors) > 0 {
 		fail(w, 422, "cannot publish: "+strings.Join(f.Errors, " "))
 		return
+	}
+	if len(f.Restricted) > 0 && !in.ConfirmAccess {
+		ba := boardAccess{Label: access.Label(f.Revision.Access), Restricted: f.Restricted}
+		failCode(w, 409, "access_confirmation_required", fmt.Sprintf("This report shows figures from data labelled %s: %s. Readers get the pictures only, never the data, but the pictures show it. Confirm to publish.", ba.Label.Name(), ba.sentence()),
+			map[string]any{"restricted": f.Restricted, "label": ba.Label})
+		return
+	}
+	if len(f.Restricted) > 0 {
+		s.audit(r.Context(), "report publish confirmed with labelled data", "report", id, f.Revision.Access)
 	}
 	if last, err := s.Reports.LastPublication(rep.ID); err == nil && sameContent(last.Doc, f.Revision) {
 		fail(w, 409, fmt.Sprintf("nothing changed since published revision %d, so readers already have this", last.Number))
@@ -185,7 +197,7 @@ func identifyingSettings(run string, params []runs.Param) string {
 // every block), ignoring its number and time.
 func sameContent(lastDoc json.RawMessage, next publish.Revision) bool {
 	var last publish.Revision
-	if json.Unmarshal(lastDoc, &last) != nil || last.Title != next.Title || last.Authors != next.Authors || len(last.Blocks) != len(next.Blocks) {
+	if json.Unmarshal(lastDoc, &last) != nil || last.Title != next.Title || last.Authors != next.Authors || last.Access != next.Access || len(last.Blocks) != len(next.Blocks) {
 		return false
 	}
 	for i := range last.Blocks {

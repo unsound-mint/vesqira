@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/access"
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/authz"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -67,6 +68,7 @@ type Server struct {
 	Sweeps    *sweeps.Store    // parameter sweeps (ADR 0048); nil disables their routes
 	Transfers *transfers.Store // the transfer queue (ADR 0051); nil disables the routes
 	Derived   *derived.Store
+	Access    *access.Store  // access labels of datasets (ADR 0069); nil means every dataset is released
 	Masks     *masks.Store   // typed masks (ADR 0057); nil disables their routes
 	Offline   *offline.Store // offline copies of bounded replies (ADR 0059); nil disables them
 
@@ -441,6 +443,9 @@ func (s *Server) Handler() http.Handler {
 		s.reportRoutes(mux)
 	}
 	s.discussionRoutes(mux)
+	if s.Access != nil {
+		s.accessRoutes(mux)
+	}
 	if s.multiUser() {
 		s.accountRoutes(mux)
 		s.memberRoutes(mux)
