@@ -199,7 +199,7 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
           <Select label="Kernel" value={v.kernel || "boxcar"} onChange={(e) => set("kernel", e.target.value)}>
             {KERNELS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </Select>
-          <Input label="Width (channels)" value={v.width ?? ""} onChange={(e) => set("width", e.target.value)} inputMode="decimal" hint="a boxcar needs a whole number of channels" />
+          <Input label="Width (channels)" value={v.width ?? ""} onChange={(e) => set("width", e.target.value)} inputMode="decimal" hint="boxcar and Hanning: an odd whole number, 3 or more; Gaussian: its FWHM, 1 or more" />
           <Input label="Smallest share of valid neighbours to keep a value (0 to 1)" value={v.minw ?? "0.5"} onChange={(e) => set("minw", e.target.value)} inputMode="decimal" />
           {v.kernel === "gaussian" ? <Input label="Native spectral resolution, FWHM in channels (optional)" value={v.fwhm ?? ""} onChange={(e) => set("fwhm", e.target.value)} inputMode="decimal" hint="only with it can the new resolution be stated" /> : null}
           <Input label="Keep every n-th channel (optional)" value={v.decimate ?? ""} onChange={(e) => set("decimate", e.target.value)} inputMode="numeric" hint="empty keeps every channel" />

@@ -1,20 +1,26 @@
 .root {
   display: grid;
   gap: var(--sp-4);
+  width: 100%;
+  height: 100%;
   padding: var(--sp-4);
   overflow: auto;
   align-content: start;
   min-width: 0;
+  background: var(--bg-2);
+  color: var(--text);
 }
 
 .h {
   margin: 0;
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
+  font-weight: var(--w-strong);
 }
 
 .h3 {
   margin: 0 0 var(--sp-2);
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
+  font-weight: var(--w-strong);
 }
 
 .note {
