@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { ReactNode } from "react";
 import { FileText, LifeBuoy, FolderOpen, FolderPlus, LayoutGrid, Server, Table2, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
@@ -92,7 +93,8 @@ const SupportDialog = lazy(() => import("./SupportDialog"));
 const CATALOG_PROBLEM = "This catalog has changed on disk, is missing or is outside the source folders since it was registered, so its rows cannot be read until it is registered again.";
 
 /** Workbench frame (ADR 0005). Panels hold honest empty states until datasets exist. */
-export function Shell() {
+/** `account` is the group server's account control for the title bar (ADR 0050 slice 2); local mode passes none. */
+export function Shell({ account }: { account?: ReactNode } = {}) {
   const { layout: L, set, toggle } = useLayout();
   const cat = useCatalog();
   const subs = useSubsets();
@@ -426,6 +428,7 @@ export function Shell() {
         <span className={s.grow} />
         <IconButton icon={LifeBuoy} label="Create a support bundle" onClick={() => setSupportOpen(true)} />
         <NotificationBell items={notes.items} unread={notes.unread} onOpened={notes.markAllRead} onOpenJob={(id) => { setFocusJob(id); setMode("jobs"); }} onOpenRun={openRun} />
+        {account}
         {project && project.scanned && project.needsCount > 0 ? (
           <button type="button" className={s.pillBtn} aria-pressed={mode === "needs"} onClick={() => setMode("needs")}><Pill tone="warn">{`${project.needsCount} to answer`}</Pill></button>
         ) : null}

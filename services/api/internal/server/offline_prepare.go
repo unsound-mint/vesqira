@@ -514,7 +514,7 @@ func (s *Server) runPrepare(ctx context.Context, j *offlineJob, p offlinePlan) {
 		j.Done++
 		j.Bytes += c.bytes
 		j.mu.Unlock()
-		s.Audit.Record("offline copy prepared", "dataset", dp.d.ID, fmt.Sprintf("%d replies, %d bytes", c.copies, c.bytes))
+		s.Audit.RecordCtx(ctx, "offline copy prepared", "dataset", dp.d.ID, fmt.Sprintf("%d replies, %d bytes", c.copies, c.bytes))
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -693,7 +693,7 @@ func (s *Server) offlineSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("offline store limit set", "offline", 0, strconv.FormatInt(in.CapBytes, 10)+" bytes")
+	s.Audit.RecordCtx(r.Context(), "offline store limit set", "offline", 0, strconv.FormatInt(in.CapBytes, 10)+" bytes")
 	writeJSON(w, 200, map[string]any{"capBytes": s.Offline.Cap(), "usedBytes": s.Offline.Used()})
 }
 
@@ -713,6 +713,6 @@ func (s *Server) offlineForget(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("offline copy forgotten", "dataset", in.DatasetID, fmt.Sprintf("%d replies, %d bytes", n, freed))
+	s.Audit.RecordCtx(r.Context(), "offline copy forgotten", "dataset", in.DatasetID, fmt.Sprintf("%d replies, %d bytes", n, freed))
 	writeJSON(w, 200, map[string]any{"datasetId": in.DatasetID, "forgotten": n, "freedBytes": freed})
 }

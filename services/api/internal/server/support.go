@@ -108,7 +108,7 @@ func (s *Server) supportDownload(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "this preview has expired: create the bundle again")
 		return
 	}
-	s.Audit.Record("support.bundle", "support", 0, "")
+	s.Audit.RecordCtx(r.Context(), "support.bundle", "support", 0, "")
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="vesqira-support.zip"`)
 	w.Header().Set("Cache-Control", "no-store")

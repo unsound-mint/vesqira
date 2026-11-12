@@ -124,6 +124,9 @@ type Server struct {
 	reach      reachability                                                                      // whether each host last answered (vpn.go)
 	pingHook   func(ctx context.Context, h hosts.Host, req map[string]any) (worker.Reply, error) // test stand-in for the host check
 
+	// MultiUser, when its PublicOrigin is set, makes this listener the group server (--multi-user, ADR 0050 slice 2; multiuser.go).
+	MultiUser MultiUser
+
 	// onRoute, when set, is told of every declaration s.route receives (tests list the routes with it).
 	onRoute func(pattern string, perm authz.Permission)
 
@@ -399,8 +402,14 @@ func (s *Server) Handler() http.Handler {
 	if s.Reports != nil && s.Boards != nil {
 		s.reportRoutes(mux)
 	}
+	if s.multiUser() {
+		s.accountRoutes(mux)
+	}
 	if s.WebDist != "" {
 		s.route(mux, "GET /", authz.Anonymous, staticApp(s.WebDist))
+	}
+	if s.multiUser() { // the group server: Host and Origin against --public-origin, and an account instead of the local owner
+		return logRequests(s.groupOnly(s.withAccount(mux)))
 	}
 	return logRequests(localOnly(withLocalOwner(mux)))
 }

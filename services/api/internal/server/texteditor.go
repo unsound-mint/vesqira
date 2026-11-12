@@ -166,7 +166,7 @@ func (s *Server) getText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// like a save: hash first, path last (the detail is cut at 300 characters); never the content.
-	s.Audit.Record("file opened for editing", "file", 0, "sha256 "+sha256Hex(data)+" "+real)
+	s.Audit.RecordCtx(r.Context(), "file opened for editing", "file", 0, "sha256 "+sha256Hex(data)+" "+real)
 	writeJSON(w, 200, asTextFile(real, fi, data))
 }
 
@@ -241,6 +241,6 @@ func (s *Server) putText(w http.ResponseWriter, r *http.Request) {
 	}
 	nv := versionOf(nfi, []byte(in.Content))
 	// hashes first and the path last: the audit detail is cut at 300 characters. Never the content.
-	s.Audit.Record("file saved", "file", 0, "sha256 "+in.Base.Sha256+" -> "+nv.Sha256+" "+real)
+	s.Audit.RecordCtx(r.Context(), "file saved", "file", 0, "sha256 "+in.Base.Sha256+" -> "+nv.Sha256+" "+real)
 	writeJSON(w, 200, asTextFile(real, nfi, []byte(in.Content)))
 }

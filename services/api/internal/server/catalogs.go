@@ -94,7 +94,7 @@ func (s *Server) registerCatalogPath(ctx context.Context, real string) (catalog.
 		return catalog.Dataset{}, 500, "internal error"
 	}
 	ds = s.recordIdentity(ctx, ds)
-	s.Audit.Record("catalog registered", "dataset", ds.ID, ds.Name)
+	s.Audit.RecordCtx(ctx, "catalog registered", "dataset", ds.ID, ds.Name)
 	return ds, 0, ""
 }
 
@@ -266,7 +266,7 @@ func (s *Server) putCatalogDeclaration(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("catalog columns declared", "dataset", d.ID, d.Name+": "+in.Frame+" "+in.Format)
+	s.Audit.RecordCtx(r.Context(), "catalog columns declared", "dataset", d.ID, d.Name+": "+in.Frame+" "+in.Format)
 	nd, code, msg := s.dataset(d.ID)
 	if code != 0 {
 		fail(w, code, msg)
@@ -286,7 +286,7 @@ func (s *Server) deleteCatalogDeclaration(w http.ResponseWriter, r *http.Request
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("catalog declaration withdrawn", "dataset", d.ID, d.Name)
+	s.Audit.RecordCtx(r.Context(), "catalog declaration withdrawn", "dataset", d.ID, d.Name)
 	nd, code, msg := s.dataset(d.ID)
 	if code != 0 {
 		fail(w, code, msg)

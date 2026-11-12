@@ -20,6 +20,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace the recovery codes (recent sign-in); returned once */
+        post: operations["owner_s_newRecoveryCodes_post_api_account_recovery_codes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/second-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start replacing the second factor (recent sign-in) */
+        post: operations["owner_s_reenrol_post_api_account_second_factor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/second-factor/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the new second factor; returns new recovery codes once */
+        post: operations["owner_s_reenrolConfirm_post_api_account_second_factor_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This account's personal access tokens, without their values */
+        get: operations["owner_s_listTokens_get_api_account_tokens"];
+        put?: never;
+        /** Create a personal access token (recent sign-in); its value is in this answer only */
+        post: operations["owner_s_createToken_post_api_account_tokens"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/tokens/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke one of this account's tokens; it stops working at once */
+        post: operations["owner_s_revokeToken_post_api_account_tokens_id_revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every account (admin, recent sign-in) */
+        get: operations["owner_s_listAccounts_get_api_accounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{id}/reset-second-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove an account's TOTP and recovery codes, end its sessions and revoke its access tokens (admin, recent sign-in) */
+        post: operations["owner_s_resetSecondFactor_post_api_accounts_id_reset_second_factor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis": {
         parameters: {
             query?: never;
@@ -111,6 +235,159 @@ export interface paths {
             cookie?: never;
         };
         get: operations["owner_s_listAudit_get_api_audit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prove the password and second factor again for a recent sign-in */
+        post: operations["owner_s_confirmSignIn_post_api_auth_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/enrolment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start TOTP enrolment for a pending session with no second factor */
+        post: operations["owner_s_pendingEnrolment_post_api_auth_enrolment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/enrolment/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm TOTP enrolment with a first code; signs in and returns the recovery codes once */
+        post: operations["owner_s_pendingEnrolmentConfirm_post_api_auth_enrolment_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/second-factor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish signing in with a TOTP or recovery code; the session id changes */
+        post: operations["owner_s_secondFactor_post_api_auth_second_factor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create the first admin from the one-time setup link; starts TOTP enrolment */
+        post: operations["owner_s_authSetup_post_api_auth_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check the password; a pending session owes the second factor. Unknown name and wrong password answer the same 401 */
+        post: operations["owner_s_signIn_post_api_auth_sign_in"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sign-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End this browser's session */
+        post: operations["owner_s_signOut_post_api_auth_sign_out"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sign-out-everywhere": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End every session of this account; access tokens stay valid */
+        post: operations["owner_s_signOutEverywhere_post_api_auth_sign_out_everywhere"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Where this browser is in signing in (group server) */
+        get: operations["owner_s_authState_get_api_auth_state"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4597,6 +4874,8 @@ export interface components {
                 terminal: boolean;
                 /** @description the VPN companion (--enable-vpn, ADR 0029 step 3): a host may carry a VPN client command that the owner runs from the app */
                 vpn: boolean;
+                /** @description Present and true on the group server (--multi-user, ADR 0050 slice 2): people sign in and the account routes exist. Absent in local mode. */
+                accounts?: boolean;
             };
             limits: {
                 previewStepMax: number;
@@ -8883,6 +9162,108 @@ export interface components {
             /** @description The celestial WCS keywords the researcher corrected (ADR 0061) that the arrows rest on; absent when the file's own WCS is used */
             corrected?: string[];
         };
+        /** @description A group-server account (ADR 0050 section 2). It carries no credential. */
+        Account: {
+            id: string;
+            name: string;
+            /** @description the sub of its local (password) identity */
+            username: string;
+            admin: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            disabled: boolean;
+            /** @description a TOTP enrolment is confirmed */
+            secondFactor: boolean;
+        };
+        /** @description Where this browser is in signing in. second_factor and enrol are the pending stages after a correct password. */
+        AuthState: {
+            /** @enum {string} */
+            stage: "none" | "second_factor" | "enrol" | "full";
+            /** @description no admin exists yet: run `vesqira-api admin bootstrap` on the server */
+            setupNeeded: boolean;
+            account: components["schemas"]["Account"] | null;
+            /** @description signed in within the recent sign-in window */
+            recent: boolean;
+            recoveryCodesLeft: number;
+            recentMinutes: number;
+        };
+        SetupRequest: {
+            /** @description from the setup link's fragment */
+            token: string;
+            name: string;
+            username: string;
+            password: string;
+        };
+        SignInRequest: {
+            username: string;
+            password: string;
+        };
+        /** @description A six-digit TOTP code, or one recovery code. */
+        SecondFactorRequest: {
+            code?: string;
+            recoveryCode?: string;
+        };
+        ConfirmSignInRequest: {
+            password: string;
+            code?: string;
+            recoveryCode?: string;
+        };
+        CodeRequest: {
+            code: string;
+        };
+        /** @description A pending TOTP enrolment: the secret in base32 and its otpauth:// URI (SHA1, 6 digits, 30 s). */
+        Enrolment: {
+            secret: string;
+            uri: string;
+        };
+        /** @description Ten single-use recovery codes, shown once; only their hashes are kept. */
+        RecoveryCodes: {
+            recoveryCodes: string[];
+        };
+        EnrolmentConfirmed: {
+            recoveryCodes: string[];
+            state: components["schemas"]["AuthState"];
+        };
+        /** @description A personal access token, without its value (which is never kept). */
+        AccessToken: {
+            id: string;
+            name: string;
+            scopes: ("read" | "write" | "push" | "relay")[];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            lastUsedAt: string | null;
+            /** Format: date-time */
+            revokedAt: string | null;
+        };
+        AccessTokenList: {
+            tokens: components["schemas"]["AccessToken"][];
+            scopes: string[];
+        };
+        CreateTokenRequest: {
+            name: string;
+            /** @description write includes read; push and relay (ADR 0066) allow nothing until their routes exist */
+            scopes: ("read" | "write" | "push" | "relay")[];
+            /** @description 0 or absent: 30 days */
+            days?: number;
+        };
+        CreatedToken: {
+            /** @description the value, shown in this answer only */
+            token: string;
+            info: components["schemas"]["AccessToken"];
+        };
+        AccountList: {
+            accounts: components["schemas"]["Account"][];
+        };
+        /** @description Every session of the account ended. Access tokens are not sessions and stay valid. */
+        SignedOutEverywhere: {
+            sessionsEnded: number;
+            /** @description tokens that still work */
+            tokensKept: number;
+            note: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -8907,6 +9288,264 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_newRecoveryCodes_post_api_account_recovery_codes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodes"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_reenrol_post_api_account_second_factor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Enrolment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_reenrolConfirm_post_api_account_second_factor_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodes"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listTokens_get_api_account_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessTokenList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createToken_post_api_account_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedToken"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_revokeToken_post_api_account_tokens_id_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessToken"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listAccounts_get_api_accounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_resetSecondFactor_post_api_accounts_id_reset_second_factor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description reset */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -9059,6 +9698,297 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_confirmSignIn_post_api_auth_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmSignInRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_pendingEnrolment_post_api_auth_enrolment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Enrolment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_pendingEnrolmentConfirm_post_api_auth_enrolment_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrolmentConfirmed"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_secondFactor_post_api_auth_second_factor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecondFactorRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_authSetup_post_api_auth_setup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_signIn_post_api_auth_sign_in: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_signOut_post_api_auth_sign_out: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_signOutEverywhere_post_api_auth_sign_out_everywhere: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description signed out */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedOutEverywhere"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_authState_get_api_auth_state: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

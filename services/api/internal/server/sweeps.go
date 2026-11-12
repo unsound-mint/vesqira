@@ -297,7 +297,7 @@ func (s *Server) createSweep(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("sweep created", "sweep", sw.ID, fmt.Sprintf("%d draft jobs from job %d; nothing submitted", len(ids), p.base.ID))
+	s.Audit.RecordCtx(r.Context(), "sweep created", "sweep", sw.ID, fmt.Sprintf("%d draft jobs from job %d; nothing submitted", len(ids), p.base.ID))
 	writeJSON(w, 201, s.sweepView(sw))
 }
 
@@ -615,7 +615,7 @@ func (s *Server) submitSweep(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "this sweep is already running")
 		return
 	}
-	s.Audit.Record("sweep approved", "sweep", sw.ID, fmt.Sprintf("%d scripts, at most %d at a time, stop on failure %v, hash %s", len(pj), limit, in.StopOnFailure, in.SweepHash[:12]))
+	s.Audit.RecordCtx(r.Context(), "sweep approved", "sweep", sw.ID, fmt.Sprintf("%d scripts, at most %d at a time, stop on failure %v, hash %s", len(pj), limit, in.StopOnFailure, in.SweepHash[:12]))
 	s.kickSweeps()
 	sw, _ = s.Sweeps.Get(sw.ID)
 	writeJSON(w, 200, s.sweepView(sw))
@@ -647,7 +647,7 @@ func (s *Server) cancelSweep(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "this sweep is not running")
 		return
 	}
-	s.Audit.Record("sweep cancelled", "sweep", sw.ID, fmt.Sprintf("cancel running jobs: %v", in.CancelRunning))
+	s.Audit.RecordCtx(r.Context(), "sweep cancelled", "sweep", sw.ID, fmt.Sprintf("cancel running jobs: %v", in.CancelRunning))
 	if in.CancelRunning {
 		ms, _ := s.Sweeps.Members(sw.ID)
 		for _, m := range ms {
@@ -745,7 +745,7 @@ func (s *Server) advanceSweep(ctx context.Context, id int64) {
 		}
 		if sw.StopOnFailure && failed != "" {
 			if _, err := s.Sweeps.Stop(id, "Stopped because "+failed+", as you chose. Jobs not yet submitted stay drafts."); err == nil {
-				s.Audit.Record("sweep stopped", "sweep", id, failed)
+				s.Audit.RecordCtx(ctx, "sweep stopped", "sweep", id, failed)
 			}
 			return
 		}
@@ -763,11 +763,11 @@ func (s *Server) advanceSweep(ctx context.Context, id int64) {
 		_, aerr := s.submitDraft(ctx, nextJob, h, next.ApprovedHash, nil)
 		switch {
 		case aerr == nil:
-			s.Audit.Record("sweep job submitted", "sweep", id, fmt.Sprintf("job %d (%s)", nextJob.ID, sweeps.Label(sw.Params, next.Values)))
+			s.Audit.RecordCtx(ctx, "sweep job submitted", "sweep", id, fmt.Sprintf("job %d (%s)", nextJob.ID, sweeps.Label(sw.Params, next.Values)))
 		case aerr.Code == http.StatusTooManyRequests:
 			return // too many jobs queued from here: try again on the next trigger
 		case aerr.Code == http.StatusBadGateway:
-			s.Audit.Record("sweep job unconfirmed", "sweep", id, fmt.Sprintf("job %d: %s", nextJob.ID, aerr.Msg))
+			s.Audit.RecordCtx(ctx, "sweep job unconfirmed", "sweep", id, fmt.Sprintf("job %d: %s", nextJob.ID, aerr.Msg))
 			// the job is now "submitting" and holds a slot; the loop counts it
 		default:
 			log.Printf("sweeps: job %d not submitted: %s", nextJob.ID, aerr.Msg)
@@ -882,7 +882,7 @@ func (s *Server) boardFromSweep(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.Sweeps.SetBoard(sw.ID, b.ID); err != nil {
 		log.Printf("sweeps: %v", err)
 	}
-	s.Audit.Record("sweep board made", "sweep", sw.ID, fmt.Sprintf("board %d with %d job panels", b.ID, len(ms)))
+	s.Audit.RecordCtx(r.Context(), "sweep board made", "sweep", sw.ID, fmt.Sprintf("board %d with %d job panels", b.ID, len(ms)))
 	nb, _ := s.boardByID(r.Context(), b.ID, false)
 	writeJSON(w, 201, nb)
 }

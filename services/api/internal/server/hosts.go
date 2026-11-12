@@ -179,7 +179,7 @@ func (s *Server) createHost(w http.ResponseWriter, r *http.Request) {
 		s.hostErr(w, err)
 		return
 	}
-	s.Audit.Record("host added", "host", h.ID, h.Name)
+	s.Audit.RecordCtx(r.Context(), "host added", "host", h.ID, h.Name)
 	writeJSON(w, 201, h)
 }
 
@@ -206,7 +206,7 @@ func (s *Server) deleteHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Remote.Forget(h.ID)
-	s.Audit.Record("host removed", "host", h.ID, h.Name)
+	s.Audit.RecordCtx(r.Context(), "host removed", "host", h.ID, h.Name)
 	writeJSON(w, 200, map[string]bool{"deleted": true})
 }
 

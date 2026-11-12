@@ -142,7 +142,7 @@ func (s *Server) registerJobCarry(ctx context.Context, h hosts.Host, j jobs.Job,
 			plan.left = append(plan.left, m)
 		}
 	}
-	carried, code, msg := s.recordCarried(plan, summary, src, nd, cp.Extra)
+	carried, code, msg := s.recordCarried(ctx, plan, summary, src, nd, cp.Extra)
 	if code != 0 {
 		return skip(msg)
 	}

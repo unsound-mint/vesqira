@@ -231,7 +231,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	carried, code, msg := s.recordCarried(carry, res.Summary, d, nd, carryExtra)
+	carried, code, msg := s.recordCarried(r.Context(), carry, res.Summary, d, nd, carryExtra)
 	if code != 0 {
 		fail(w, code, msg)
 		return

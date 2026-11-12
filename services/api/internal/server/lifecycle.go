@@ -150,7 +150,7 @@ func (s *Server) lifecycleArchive(kind string, archive bool) http.HandlerFunc {
 			if archive {
 				action = "archived"
 			}
-			s.Audit.Record(action, kind, id, fmt.Sprintf("%s %q", action, v.Name))
+			s.Audit.RecordCtx(r.Context(), action, kind, id, fmt.Sprintf("%s %q", action, v.Name))
 		}
 		writeJSON(w, 200, map[string]any{"kind": kind, "id": id, "archived": archive, "name": v.Name})
 	}
@@ -231,7 +231,7 @@ func (s *Server) lifecycleDelete(kind string) http.HandlerFunc {
 				log.Printf("delete figure %d: removing preview: %v", id, err)
 			}
 		}
-		s.Audit.Record("deleted", kind, id, detail)
+		s.Audit.RecordCtx(r.Context(), "deleted", kind, id, detail)
 		writeJSON(w, 200, map[string]any{"deleted": true, "kind": kind, "id": id, "ownedBytes": bytesState})
 	}
 }

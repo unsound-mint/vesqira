@@ -47,7 +47,9 @@ import (
 // Version 27: a location records the device and inode of its file, compared when the file is used again (dataset_locations.file_dev, .file_ino; ADR 0050 section 8).
 // Version 28: a figure may be a cross-run plot with no dataset (figures.dataset_id may be NULL, figures.kind; ADR 0065).
 // Version 29: an audit entry records who acted (audit.actor, .on_behalf_of, .via; ADR 0050 section 4, slice 1).
-const Version = 29
+// Version 30: group-server accounts and sessions (accounts, identities, password_credentials, totp_credentials, recovery_codes,
+// sessions, access_tokens, setup_tokens; ADR 0050 section 2, slice 2). Empty in a local catalog.
+const Version = 30
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -85,6 +87,75 @@ var migrations = []Migration{
 	{To: 27, Name: "file identity of a location", Up: locationFileID},
 	{To: 28, Name: "cross-run figures", Up: crossRunFigures},
 	{To: 29, Name: "audit actor", Up: auditActor},
+	{To: 30, Name: "accounts and sessions", Up: accountsTables},
+}
+
+// AccountsTables are the group server's accounts (ADR 0050 section 2, slice 2). An account carries no credential itself: a way to
+// sign in is an identity (issuer, sub), today only issuer 'local' with the username as sub, so OIDC identities (issuer URL, the
+// provider's sub) join the same table without touching an account. The password hash (argon2id, PHC string) hangs off the
+// account; the TOTP secret is sealed under the server key, and `pending` holds an enrolment not yet confirmed by a code;
+// `last_step` is the replay guard (a step is accepted once). Recovery codes, session ids, access tokens and setup links are
+// stored only as SHA-256 hashes of high-entropy values. Times are Unix seconds. The accounts package creates the tables for a
+// fresh install and the migration for an upgraded one, from this one text; a local catalog keeps them empty.
+const AccountsTables = `CREATE TABLE IF NOT EXISTS accounts(
+	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL,
+	admin INTEGER NOT NULL DEFAULT 0 CHECK(admin IN (0,1)),
+	created_at INTEGER NOT NULL,
+	disabled_at INTEGER);
+CREATE TABLE IF NOT EXISTS identities(
+	issuer TEXT NOT NULL,
+	sub TEXT NOT NULL,
+	account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	created_at INTEGER NOT NULL,
+	PRIMARY KEY(issuer, sub));
+CREATE INDEX IF NOT EXISTS identities_account ON identities(account_id);
+CREATE TABLE IF NOT EXISTS password_credentials(
+	account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+	hash TEXT NOT NULL,
+	changed_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS totp_credentials(
+	account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+	secret BLOB,
+	pending BLOB,
+	last_step INTEGER NOT NULL DEFAULT 0,
+	confirmed_at INTEGER);
+CREATE TABLE IF NOT EXISTS recovery_codes(
+	account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	code_hash TEXT NOT NULL,
+	used_at INTEGER,
+	PRIMARY KEY(account_id, code_hash));
+CREATE TABLE IF NOT EXISTS sessions(
+	id_hash TEXT PRIMARY KEY,
+	account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	stage TEXT NOT NULL CHECK(stage IN ('second_factor','enrol','full')),
+	created_at INTEGER NOT NULL,
+	last_seen_at INTEGER NOT NULL,
+	signed_in_at INTEGER NOT NULL,
+	client_addr TEXT NOT NULL,
+	user_agent TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS sessions_account ON sessions(account_id);
+CREATE TABLE IF NOT EXISTS access_tokens(
+	id TEXT PRIMARY KEY,
+	account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	name TEXT NOT NULL,
+	token_hash TEXT NOT NULL UNIQUE,
+	scopes TEXT NOT NULL,
+	created_at INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
+	last_used_at INTEGER,
+	revoked_at INTEGER);
+CREATE INDEX IF NOT EXISTS access_tokens_account ON access_tokens(account_id);
+CREATE TABLE IF NOT EXISTS setup_tokens(
+	token_hash TEXT PRIMARY KEY,
+	created_at INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
+	used_at INTEGER)`
+
+// accountsTables adds the tables. Nothing to carry over: no catalog had accounts before.
+func accountsTables(tx *sql.Tx) error {
+	_, err := tx.Exec(AccountsTables)
+	return err
 }
 
 // FiguresTable is the pinned figures (ADR 0041, 0042, 0053, 0065). A figure of a dataset has dataset_id; a cross-run plot (ADR 0065)

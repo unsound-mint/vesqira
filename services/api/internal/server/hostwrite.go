@@ -75,10 +75,10 @@ func (s *Server) writeHostProjectFile(ctx context.Context, h hosts.Host, p proje
 	data := []byte(strings.TrimRight(withProjectMarker(text), "\n") + "\n")
 	err := s.Remote.WriteFile(ctx, h, hosts.WriteSpec{Root: p.Path, Rel: projectFileDir, Name: "project.toml", Marker: projectMarker, Create: true, Data: data, Expect: expect})
 	if err != nil {
-		s.Audit.Record("project file write on host refused", "project", p.ID, h.Name+": "+err.Error())
+		s.Audit.RecordCtx(ctx, "project file write on host refused", "project", p.ID, h.Name+": "+err.Error())
 		return err
 	}
-	s.Audit.Record("project file written on host", "project", p.ID, h.Name+": "+projectFileHostPath(p))
+	s.Audit.RecordCtx(ctx, "project file written on host", "project", p.ID, h.Name+": "+projectFileHostPath(p))
 	return nil
 }
 
@@ -230,7 +230,7 @@ func (s *Server) recordRun(ctx context.Context, jobID int64, h hosts.Host, ev jo
 		return
 	}
 	note := func(why string, forGood bool) {
-		s.Audit.Record("run record not written", "job", j.ID, h.Name+": "+why)
+		s.Audit.RecordCtx(ctx, "run record not written", "job", j.ID, h.Name+": "+why)
 		_ = s.Jobs.AppendDetail(j.ID, "; run.json not written next to the outputs ("+why+")")
 		if forGood {
 			settle()
@@ -260,7 +260,7 @@ func (s *Server) recordRun(ctx context.Context, jobID int64, h hosts.Host, ev jo
 	switch {
 	case err == nil:
 		settle()
-		s.Audit.Record("run record written", "job", j.ID, h.Name+": "+path.Join(j.OutputDir, jobs.RunRecordName)+" ("+ev.Value+")")
+		s.Audit.RecordCtx(ctx, "run record written", "job", j.ID, h.Name+": "+path.Join(j.OutputDir, jobs.RunRecordName)+" ("+ev.Value+")")
 	case errors.As(err, &wr) && wr.Reason == "absent":
 		if isTerminal(ev.Value) {
 			note("the job never created its output folder", true)

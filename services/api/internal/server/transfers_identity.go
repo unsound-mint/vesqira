@@ -44,7 +44,7 @@ func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfe
 		// The transfer just hashed the whole source. That is the dataset's hash only if the file on the host is still the one
 		// that was registered: same size and modification time (the host reports seconds).
 		if v.Bytes != src.SizeBytes || v.SourceMTime == 0 || v.SourceMTime != src.ModifiedAt.Unix() {
-			s.Audit.Record("downloaded copy not linked", "dataset", dsID, fmt.Sprintf("transfer %d: the source on the host no longer has the size and modification time it was registered with (registered %d bytes, %s; now %d bytes, mtime %d); the registered dataset may be stale",
+			s.Audit.RecordCtx(ctx, "downloaded copy not linked", "dataset", dsID, fmt.Sprintf("transfer %d: the source on the host no longer has the size and modification time it was registered with (registered %d bytes, %s; now %d bytes, mtime %d); the registered dataset may be stale",
 				t.ID, src.SizeBytes, src.ModifiedAt.UTC().Format(time.RFC3339), v.Bytes, v.SourceMTime))
 			return
 		}
@@ -52,9 +52,9 @@ func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfe
 		if err := s.Store.SetFingerprint(src.ID, "full", v.SourceSHA256, by, src.SizeBytes, src.ModifiedAt.UnixNano()); err != nil {
 			return
 		}
-		s.Audit.Record("source full sha256 recorded", "dataset", dsID, fmt.Sprintf("transfer %d, sha256 %s", t.ID, v.SourceSHA256[:12]))
+		s.Audit.RecordCtx(ctx, "source full sha256 recorded", "dataset", dsID, fmt.Sprintf("transfer %d, sha256 %s", t.ID, v.SourceSHA256[:12]))
 	} else if src.Full.Value != v.SourceSHA256 {
-		s.Audit.Record("downloaded copy not linked", "dataset", dsID, fmt.Sprintf("transfer %d: the dataset's recorded full SHA-256 differs from the one compared", t.ID))
+		s.Audit.RecordCtx(ctx, "downloaded copy not linked", "dataset", dsID, fmt.Sprintf("transfer %d: the dataset's recorded full SHA-256 differs from the one compared", t.ID))
 		return
 	}
 	real, err := s.roots().Resolve(t.DestPath)
@@ -76,7 +76,7 @@ func (s *Server) linkDownloadedLocation(ctx context.Context, t transfers.Transfe
 		return
 	}
 	s.storeMeasure(added, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, added) })
-	s.Audit.Record("downloaded copy linked", "dataset", dsID, fmt.Sprintf("transfer %d, sha256 %s", t.ID, v.DestSHA256[:12]))
+	s.Audit.RecordCtx(ctx, "downloaded copy linked", "dataset", dsID, fmt.Sprintf("transfer %d, sha256 %s", t.ID, v.DestSHA256[:12]))
 }
 
 // sameContentVerified is sameContent for a file whose full SHA-256 was just verified: equal full hashes are "verified", equal

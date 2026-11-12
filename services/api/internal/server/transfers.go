@@ -210,7 +210,7 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("transfer queued", "transfer", out.ID, fmt.Sprintf("%s %s: %s -> %s", out.Direction, h.Name, out.SourcePath, out.DestDir))
+	s.Audit.RecordCtx(r.Context(), "transfer queued", "transfer", out.ID, fmt.Sprintf("%s %s: %s -> %s", out.Direction, h.Name, out.SourcePath, out.DestDir))
 	writeJSON(w, 201, map[string]any{"transfer": out})
 }
 
@@ -281,7 +281,7 @@ func (s *Server) cancelTransfer(w http.ResponseWriter, r *http.Request) {
 	if won && in.DiscardPartial {
 		s.discardLocalPartial(t)
 	}
-	s.Audit.Record("transfer cancelled", "transfer", t.ID, t.SourcePath)
+	s.Audit.RecordCtx(r.Context(), "transfer cancelled", "transfer", t.ID, t.SourcePath)
 	out, _ := s.Transfers.Get(t.ID)
 	writeJSON(w, 200, map[string]any{"transfer": out})
 }
@@ -324,7 +324,7 @@ func (s *Server) retryTransfer(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "only a failed or cancelled transfer, or one that could not be verified, can be tried again")
 		return
 	}
-	s.Audit.Record("transfer retried", "transfer", t.ID, t.SourcePath)
+	s.Audit.RecordCtx(r.Context(), "transfer retried", "transfer", t.ID, t.SourcePath)
 	out, _ := s.Transfers.Get(t.ID)
 	writeJSON(w, 200, map[string]any{"transfer": out})
 }
@@ -354,7 +354,7 @@ func (s *Server) resolveTransfer(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "this transfer is not waiting for a decision")
 		return
 	}
-	s.Audit.Record("transfer conflict decided", "transfer", t.ID, in.Policy+": "+t.DestDir+"/"+t.Name)
+	s.Audit.RecordCtx(r.Context(), "transfer conflict decided", "transfer", t.ID, in.Policy+": "+t.DestDir+"/"+t.Name)
 	out, _ := s.Transfers.Get(t.ID)
 	writeJSON(w, 200, map[string]any{"transfer": out})
 }

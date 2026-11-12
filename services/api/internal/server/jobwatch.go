@@ -333,14 +333,14 @@ func (s *Server) autoImport(ctx context.Context, jobID int64, h hosts.Host) {
 		run, code, msg = s.importFrom(ctx, remoteRun{s: s, h: h, dir: j.OutputDir})
 	}
 	if code != 0 {
-		s.Audit.Record("run import failed", "job", j.ID, h.Name+": "+msg)
+		s.Audit.RecordCtx(ctx, "run import failed", "job", j.ID, h.Name+": "+msg)
 		_, _ = s.Notes.Add(fmt.Sprintf("job:%d:import", j.ID), notify.Notification{Kind: notify.KindImportFailed, JobID: &id,
 			Title: fmt.Sprintf("Results of job %s were not imported", j.Name),
 			Body:  msg + ". It was tried once and is not retried; open the job to import them by hand."})
 		return
 	}
 	run = s.linkJobRun(ctx, j, h, run)
-	s.Audit.Record("run imported automatically", "job", j.ID, h.Name+": "+j.OutputDir)
+	s.Audit.RecordCtx(ctx, "run imported automatically", "job", j.ID, h.Name+": "+j.OutputDir)
 	rid := run.ID
 	_, _ = s.Notes.Add(fmt.Sprintf("job:%d:import", j.ID), notify.Notification{Kind: notify.KindImported, JobID: &id, RunID: &rid,
 		Title: fmt.Sprintf("Results of job %s imported as a run", j.Name),

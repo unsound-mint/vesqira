@@ -19,6 +19,7 @@ const mod = "github.com/unsound-mint/vesqira/services/api/internal/"
 var allowed = map[string][]string{
 	"arch": {}, "audit": {}, "authz": {}, "lifecycle": {}, "backup": {}, "notify": {}, "compat": {}, "derived": {}, "regions": {}, "subsets": {"schema"}, "masks": {"schema"}, "sourceroot": {}, "identity": {"sourceroot"}, "worker": {}, "support": {}, "schema": {}, "vgtlog": {}, "scene": {},
 	"notionimport": {}, "publish": {}, "imgmeta": {},
+	"accounts":   {"schema"},
 	"transfers":  {"schema"},
 	"history":    {"schema"},
 	"offline":    {"schema"},
@@ -30,10 +31,10 @@ var allowed = map[string][]string{
 	"runs":       {"schema"},
 	"discover":   {"runs", "sourceroot"},
 	"projects":   {"discover", "schema"},
-	"fullschema": {"audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers"},
+	"fullschema": {"accounts", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers"},
 	"hosts":      {"worker", "sourceroot"},
 	"review":     {"boards"},
-	"server":     {"audit", "authz", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker"},
+	"server":     {"accounts", "audit", "authz", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a

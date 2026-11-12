@@ -16,6 +16,12 @@ import (
 // can have. Handlers are not run; only the declarations are read.
 func fullServer(t *testing.T) (*Server, map[string]authz.Permission) {
 	t.Helper()
+	return fullServerWith(t, nil)
+}
+
+// fullServerWith lets a test change the server (switch it to the group server) before Handler runs.
+func fullServerWith(t *testing.T, prepare func(*Server)) (*Server, map[string]authz.Permission) {
+	t.Helper()
 	s := &Server{EditorEnabled: true, TerminalEnabled: true, VPNEnabled: true, WebDist: t.TempDir(), Analysis: &AnalysisConfig{}}
 	v := reflect.ValueOf(s).Elem()
 	for i := 0; i < v.NumField(); i++ {
@@ -31,6 +37,9 @@ func fullServer(t *testing.T) (*Server, map[string]authz.Permission) {
 		}
 		declared[pattern] = perm
 	}
+	if prepare != nil {
+		prepare(s)
+	}
 	s.Handler()
 	return s, declared
 }
@@ -42,6 +51,11 @@ func TestEveryMountedRouteDeclaresAKnownPermissionAndTheSpecAgrees(t *testing.T)
 	if len(declared) < 200 {
 		t.Fatalf("only %d routes mounted: the fixture is not enabling every optional store", len(declared))
 	}
+	checkDeclarationsAgainstSpec(t, declared)
+}
+
+func checkDeclarationsAgainstSpec(t *testing.T, declared map[string]authz.Permission) {
+	t.Helper()
 	doc := loadSpec(t)
 	for pattern, perm := range declared {
 		if !perm.Known() {

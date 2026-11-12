@@ -565,10 +565,10 @@ func (s *Server) saveCorrection(w http.ResponseWriter, r *http.Request) {
 	if in.Action == catalog.CorrRevert {
 		rec.RevertsID = &in.Reverts
 	}
-	s.appendCorrection(w, d, rec, *in.Expect)
+	s.appendCorrection(r.Context(), w, d, rec, *in.Expect)
 }
 
-func (s *Server) appendCorrection(w http.ResponseWriter, d catalog.Dataset, rec catalog.CorrectionRecord, expect int64) {
+func (s *Server) appendCorrection(ctx context.Context, w http.ResponseWriter, d catalog.Dataset, rec catalog.CorrectionRecord, expect int64) {
 	rec, err := s.Store.AppendCorrection(d, rec, expect)
 	switch {
 	case errors.Is(err, catalog.ErrCorrectionConflict):
@@ -587,14 +587,14 @@ func (s *Server) appendCorrection(w http.ResponseWriter, d catalog.Dataset, rec 
 	if len(keys) > 0 {
 		detail += " " + strings.Join(keys, ", ")
 	}
-	s.audit("correction "+rec.Action, "dataset", d.ID, detail)
+	s.audit(ctx, "correction "+rec.Action, "dataset", d.ID, detail)
 	// Offline copies (ADR 0059) are keyed by the file's signature, not by the corrections in force: a copy taken before this
 	// record would show the old coordinates or unit as current. They are forgotten; preparing again keeps corrected ones.
 	if s.Offline != nil {
 		if n, _, err := s.Offline.Forget(d.ID); err != nil {
 			log.Printf("corrections: forget offline copies of %d: %v", d.ID, err)
 		} else if n > 0 {
-			s.audit("offline copies forgotten", "dataset", d.ID, d.Name+": corrections changed")
+			s.audit(ctx, "offline copies forgotten", "dataset", d.ID, d.Name+": corrections changed")
 		}
 	}
 	nd, code, msg := s.dataset(d.ID)
@@ -887,7 +887,7 @@ func (s *Server) importSidecar(w http.ResponseWriter, r *http.Request) {
 		base = d.Corrections.State
 	}
 	rec := catalog.CorrectionRecord{Action: catalog.CorrImport, State: next, Changes: catalog.Diff(base, next), Reason: reason, Author: "user"}
-	s.appendCorrection(w, d, rec, *in.Expect)
+	s.appendCorrection(r.Context(), w, d, rec, *in.Expect)
 }
 
 // ---- reviewer-safe statements ----
