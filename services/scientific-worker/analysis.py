@@ -33,6 +33,7 @@ from astropy.io import fits
 
 import corrections as corr
 from plane_worker import Cube, Refused, authorize, declared_unit as checked_declared_unit, fits_array
+import masks as mk
 import orientation as ori
 import subset as sub
 from memcap import limit_memory, over_cap_message
@@ -392,6 +393,11 @@ def shifted_header(c: Cube, drop: set[int], shifts: dict[int, float], shape_new:
     return h
 
 
+def carry_masks(args, res: dict, src: Cube, fn, by: str, rule: str | None = None, dims: tuple[int, int, int] | None = None) -> dict:
+    """Write the masks the researcher chose to carry (--carry-masks) and the result's recomputed no-value mask (--missing-out): masks.py."""
+    return mk.carry_after(args, res, src, fn, by, rule, dims)
+
+
 def op_cutout(args) -> dict:
     c = open_cube(args.input)
     nx, ny = c.shape[c.x], c.shape[c.y]
@@ -404,7 +410,9 @@ def op_cutout(args) -> dict:
     for ch, p in planes(c, 0, c.channels - 1, slice(y0, y1 + 1), slice(x0, x1 + 1)):
         out[ch] = p
     h = shifted_header(c, set(), {c.x: x0, c.y: y0}, {c.x: x1 - x0 + 1, c.y: y1 - y0 + 1})
-    return _write_cube(c, out, h, "cutout", {"x": [x0, x1], "y": [y0, y1]}, args)
+    res = _write_cube(c, out, h, "cutout", {"x": [x0, x1], "y": [y0, y1]}, args)
+    return carry_masks(args, res, c, mk.cut_flags(slice(y0, y1 + 1), slice(x0, x1 + 1), None),
+                       f"cutout x {x0}-{x1}, y {y0}-{y1} (0-based pixels of the source, inclusive)")
 
 
 def op_subset(args) -> dict:
@@ -442,7 +450,11 @@ def op_subset(args) -> dict:
     s["channel_rule"] = rep["channel_rule"]                       # in the result's summary, not repeated in every header card
     if rep["step"] > 1:
         s["policy"] += f" Every {rep['step']}th pixel of the source is kept (strided sampling, nothing averaged); the pixel step in the WCS is {rep['step']} times the source's."
-    return res
+    snx, sny, snc = c.src_shape_nx_ny()
+    by = (f"subset window x {rep['x0']}-{rep['x1']}, y {rep['y0']}-{rep['y1']}, every {rep['step']}th pixel"
+          + (f", channels {rep['c0']}-{rep['c1']}" if c.chan is not None else "") + " (0-based pixels and channels of the source, inclusive)")
+    return carry_masks(args, res, c, mk.cut_flags(slice(rep["y0"], rep["y1"] + 1, rep["step"]), slice(rep["x0"], rep["x1"] + 1, rep["step"]),
+                                                    slice(rep["c0"], rep["c1"] + 1) if c.chan is not None else None), by, dims=(snc, sny, snx))
 
 
 def op_slab(args) -> dict:
@@ -451,7 +463,9 @@ def op_slab(args) -> dict:
     c0, c1 = chan_range(c, args)
     out = np.stack([p.astype("<f4") for _, p in planes(c, c0, c1)])
     h = shifted_header(c, set(), {c.chan: c0}, {c.chan: c1 - c0 + 1})
-    return _write_cube(c, out, h, "slab", {"channels": [c0, c1]}, args)
+    res = _write_cube(c, out, h, "slab", {"channels": [c0, c1]}, args)
+    return carry_masks(args, res, c, mk.cut_flags(slice(None), slice(None), slice(c0, c1 + 1)),
+                       f"slab of channels {c0}-{c1} (0-based, inclusive); a mask of one plane applies to every channel and is kept whole")
 
 
 def _write_cube(c: Cube, data: np.ndarray, h: fits.Header, op: str, summary: dict, args) -> dict:
@@ -563,7 +577,8 @@ def align_axial(args, src: Cube, ref: Cube, func, kw: dict, method: str, shape_o
                             if args.axial_frame == "pixel" else " (position angle east of north in the file's celestial frame, rotated into the reference's if it differs).")
                          + " Resolution is NOT matched; pixels outside the input's footprint are NaN, never 0.")
     write_axial(args, out, rel, h, summary, [how])
-    return {"ok": True, "op": "align", "summary": summary}
+    return carry_masks(args, {"ok": True, "op": "align", "summary": summary}, src, mk.reproject_flags(w_src, w_ref, shape_out),
+                       "align: reprojection onto the grid of the reference", mk.ALIGN_RULE)
 
 
 def op_align(args) -> dict:
@@ -608,7 +623,8 @@ def op_align(args) -> dict:
                "policy": "Pixel values are interpolated onto the reference grid, which changes noise correlation and does not match angular resolution; "
                          "pixels outside the input's footprint are NaN, never 0"}
     note_unit(summary, bu_src, bu)
-    return {"ok": True, "op": "align", "summary": summary}
+    return carry_masks(args, {"ok": True, "op": "align", "summary": summary}, src, mk.reproject_flags(w_src, w_ref, shape_out),
+                       "align: reprojection onto the grid of the reference", mk.ALIGN_RULE)
 
 
 def op_axial_diff(args) -> dict:
@@ -733,7 +749,8 @@ def convolve_axial(args, c: Cube, chans, smooth, from_beam, to_beam, n_pix) -> d
                          "Noise becomes correlated over the new beam.")
     write_axial(args, th, rel, nh, summary, [f"Vesqira convolve (axial) {json.dumps({'from_beam_arcsec': list(from_beam), 'to_beam_arcsec': list(to_beam)})}: "
                                              "the doubled angle was smoothed, not the angle"])
-    return {"ok": True, "op": "convolve", "summary": summary}
+    return carry_masks(args, {"ok": True, "op": "convolve", "summary": summary}, c, mk.dilate_flags(n_pix),
+                       f"convolve to the target beam (kernel half-width {n_pix} pixels)", mk.CONVOLVE_RULE.format(n=n_pix))
 
 
 def op_convolve(args) -> dict:
@@ -835,7 +852,8 @@ def op_convolve(args) -> dict:
     if bu_src in OWNED_UNIT:
         out["policy"] += (" Whether the values are per beam was read from that text (a unit containing \"beam\" is rescaled by the beam-area ratio): "
                           f"{'rescaled' if per_beam else 'not rescaled'}.")
-    return {"ok": True, "op": "convolve", "summary": out}
+    return carry_masks(args, {"ok": True, "op": "convolve", "summary": out}, c, mk.dilate_flags(n_pix),
+                       f"convolve to the target beam (kernel half-width {n_pix} pixels)", mk.CONVOLVE_RULE.format(n=n_pix))
 
 
 def op_relorient(args) -> dict:
@@ -904,6 +922,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--declaration")
     ap.add_argument("--params")               # relorient_*: parameters as a JSON object (relorient.check_params)
     ap.add_argument("--masks")                # masks to apply, a JSON list of {path, type, policy[, weight, id, name, tier, rule, fingerprint]} (ADR 0055)
+    ap.add_argument("--carry-masks")          # masks to carry into the result of cutout, slab, subset, align, convolve: JSON list of {path, type, out}
+    ap.add_argument("--missing-out")          # where the result's own no-value mask goes (computed again from its values, never carried)
     ap.add_argument("--ref-masks")            # the same for the reference of relorient_maps
     ap.add_argument("--table-out")            # relorient_maps: where the per-pixel CSV goes
     ap.add_argument("--window")               # subset: the window as a JSON object (subset.py)

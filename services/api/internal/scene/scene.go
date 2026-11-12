@@ -45,6 +45,55 @@ type Scene struct {
 	// Render records how the base raster of a saved figure was drawn, so "draw again" can reproduce it (ADR 0042,
 	// section 5). Absent from a live pane's scene and from figures saved before it existed, which draw again from their PNG only.
 	Render *Render `json:"render,omitempty"`
+	// Masks are the typed masks hatched over the plane of a saved figure (ADR 0055), each by the type, name, tier and fingerprint it had when it
+	// was drawn. The id is the owner's way back to the mask ("draw again" checks it); a reviewer never sees the scene, only the provenance.
+	// Absent from a live pane's scene (what is shown is a view setting) and from figures saved before it existed.
+	Masks []Mask `json:"masks,omitempty"`
+}
+
+// MaxMasks bounds the masks of one figure: the viewer's hatches are one pattern per type and a legend line each.
+const MaxMasks = 8
+
+// Mask is one mask hatched on a figure. The server fills Type, Name, Tier and Fingerprint from its own row when it stores the scene.
+type Mask struct {
+	ID          int64  `json:"id"`
+	Type        string `json:"type"`
+	Name        string `json:"name"`
+	Tier        string `json:"tier"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+var maskTypes = []string{"missing", "invalid", "low_snr", "saturated", "user_excluded", "other"}
+var fingerprintText = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+func parseMasks(raw []json.RawMessage) ([]Mask, error) {
+	if len(raw) == 0 || len(raw) > MaxMasks {
+		return nil, bad("masks: between 1 and %d masks, or none", MaxMasks)
+	}
+	out := make([]Mask, 0, len(raw))
+	seen := map[int64]bool{}
+	for _, r := range raw {
+		var in struct {
+			ID          *int64  `json:"id"`
+			Type        *string `json:"type"`
+			Name        *string `json:"name"`
+			Tier        *string `json:"tier"`
+			Fingerprint *string `json:"fingerprint"`
+		}
+		if err := strict(r, &in); err != nil {
+			return nil, bad("masks: %v", err)
+		}
+		if in.ID == nil || *in.ID < 1 || in.Type == nil || !isOneOf(*in.Type, maskTypes...) || in.Name == nil || *in.Name == "" || utf8.RuneCountInString(*in.Name) > 80 ||
+			in.Tier == nil || !isOneOf(*in.Tier, "verified", "declared", "inferred", "unresolved") || in.Fingerprint == nil || !fingerprintText.MatchString(*in.Fingerprint) {
+			return nil, bad("a mask of a figure needs its id, type, name (at most 80 characters), tier and sha256 fingerprint")
+		}
+		if seen[*in.ID] {
+			return nil, bad("masks: a mask is listed twice")
+		}
+		seen[*in.ID] = true
+		out = append(out, Mask{ID: *in.ID, Type: *in.Type, Name: *in.Name, Tier: *in.Tier, Fingerprint: *in.Fingerprint})
+	}
+	return out, nil
 }
 
 // Link is the link group a pane was in (ADR 0042, section 4): how its panes followed each other when the scene was made.
@@ -358,6 +407,7 @@ func Parse(raw []byte) (Scene, error) {
 		View     *json.RawMessage  `json:"view"`
 		Link     json.RawMessage   `json:"link"`
 		Render   *json.RawMessage  `json:"render"`
+		Masks    []json.RawMessage `json:"masks"`
 	}
 	if err := strict(raw, &in); err != nil {
 		return Scene{}, bad("not a scene object: %v", err)
@@ -389,6 +439,11 @@ func Parse(raw []byte) (Scene, error) {
 	}
 	if in.Render != nil {
 		if s.Render, err = parseRender(*in.Render); err != nil {
+			return Scene{}, err
+		}
+	}
+	if in.Masks != nil {
+		if s.Masks, err = parseMasks(in.Masks); err != nil {
 			return Scene{}, err
 		}
 	}

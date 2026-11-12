@@ -80,7 +80,7 @@ func (s *Server) subsetOf(sub subsets.Subset, src catalog.Dataset, recs []derive
 	v.Pinned.Size, v.Pinned.ModifiedAt, v.Pinned.Identity = sub.Current.SourceSize, sub.Current.SourceModified, sub.Current.SourceIdentity
 	if subsetStale(sub.Current, src) {
 		v.Stale, v.StaleReason = true, staleSentence
-	} else if id, ok := s.materialisedFor(recs, sub.ID, sub.Current.Version, src); ok {
+	} else if id, ok := s.materialisedFor(recs, sub.ID, sub.Current.Version, src, "", true); ok {
 		v.Materialised = &id
 	}
 	return v
@@ -487,16 +487,20 @@ func subsetSummary(rec derived.Record) subsetSummaryOf {
 
 // reuseKey names a materialisation: the subset and version, the source bytes (size, modification time, recorded identity), and what
 // else changes the values or header a file would carry: the corrections in force and the declared unit.
-func reuseKey(subsetID int64, version int, src catalog.Dataset) string {
-	return fmt.Sprintf("subset %d v%d|%d|%d|%s|corr %s|unit %s", subsetID, version, src.SizeBytes, src.ModifiedAt.UnixNano(), catalog.ContentIdentity(src.Locations), corrHash(src), declaredUnitOf(src))
+// carry says which masks the file carries (carryPlan.key, empty when none), so a file written with masks is not what a request for none
+// reuses, and the other way round.
+func reuseKey(subsetID int64, version int, src catalog.Dataset, carry string) string {
+	return fmt.Sprintf("subset %d v%d|%d|%d|%s|corr %s|unit %s", subsetID, version, src.SizeBytes, src.ModifiedAt.UnixNano(), catalog.ContentIdentity(src.Locations), corrHash(src), declaredUnitOf(src)) + carry
 }
 
 // materialisedFor finds the dataset written from this version of the subset for the source as it is, if its file is still the one that
 // was registered. It never makes one.
-func (s *Server) materialisedFor(recs []derived.Record, subsetID int64, version int, src catalog.Dataset) (int64, bool) {
-	want := reuseKey(subsetID, version, src)
+// With anyCarry, a file made with any choice of masks counts (the explorer's "written as a file" mark); without it, only the file made with
+// exactly this carry key (a request to write it).
+func (s *Server) materialisedFor(recs []derived.Record, subsetID int64, version int, src catalog.Dataset, carry string, anyCarry bool) (int64, bool) {
+	want := reuseKey(subsetID, version, src, carry)
 	for _, rec := range recs {
-		if subsetSummary(rec).ReuseKey != want {
+		if got := subsetSummary(rec).ReuseKey; got != want && !(anyCarry && strings.HasPrefix(got, want)) {
 			continue
 		}
 		nd, err := s.Store.Get(rec.DatasetID)
@@ -524,8 +528,10 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Expect int `json:"expectVersion"`
+		// What to do with each mask of the source in the file: carry it (cut by the same window) or leave it behind. Nothing is carried unless asked.
+		CarryMasks []carryChoice `json:"carryMasks"`
 	}
-	if !body(w, r, 1<<10, &in, true) {
+	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
 	cur := sub.Current
@@ -541,9 +547,14 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "the source file lives on another host: a subset of it can be viewed here, but writing it as a file needs the file on this computer (use a cutout job on the host, or transfer the file)")
 		return
 	}
+	carry, code, msg := s.planCarry(src, "subset", in.CarryMasks)
+	if code != 0 {
+		fail(w, code, msg)
+		return
+	}
 	s.subsetMu.Lock() // one writer at a time: two identical requests make one file, not two
 	defer s.subsetMu.Unlock()
-	if id, ok := s.materialisedFor(s.subsetRecords(), sub.ID, cur.Version, src); ok {
+	if id, ok := s.materialisedFor(s.subsetRecords(), sub.ID, cur.Version, src, carry.key(), false); ok {
 		nd, err := s.Store.Get(id)
 		if err == nil {
 			writeJSON(w, 200, map[string]any{"dataset": nd, "reused": true, "subset": s.subsetOf(sub, src, s.subsetRecords())})
@@ -566,6 +577,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	_, _ = rand.Read(b[:])
 	outPath := filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("subset-%d-v%d-%s.fits", sub.ID, cur.Version, hex.EncodeToString(b[:])))
 	args := []string{"-P", s.Analysis.Script, "subset", "--input", real, "--window=" + string(win), "--note=" + note, "--out", outPath}
+	args = append(args, carry.args()...)
 	declared := map[string]string{}
 	if u := declaredUnitOf(src); u != "" {
 		args = append(args, "--declared-unit="+u)
@@ -574,10 +586,17 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	res, code, msg := s.runAnalysisProgram(r, args)
 	if code != 0 {
 		_ = os.Remove(outPath)
+		carry.cleanup()
 		fail(w, code, msg)
 		return
 	}
 	nd, code, msg := s.registerPath(waiting(r.Context()), outPath)
+	if code != 0 {
+		carry.cleanup()
+		fail(w, code, msg)
+		return
+	}
+	carried, code, msg := s.recordCarried(carry, res.Summary, src, nd, "")
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -585,6 +604,9 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	pm := map[string]any{
 		"subset": map[string]any{"name": cur.Name, "version": cur.Version, "reason": cur.Reason, "definition": reviewerDefinition(cur.Def)},
 		"source": map[string]any{"identity": identity, "name": src.Name},
+	}
+	if carried != nil {
+		pm["maskCarry"] = carried // masks carried or left behind, and the recomputed no-value mask: no ids, no paths
 	}
 	if len(declared) > 0 {
 		pm["declaredUnits"] = declared
@@ -596,7 +618,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	summary := map[string]any{}
 	_ = json.Unmarshal(res.Summary, &summary)
 	summary["subset"] = map[string]any{"id": sub.ID, "version": cur.Version}
-	summary["reuseKey"] = reuseKey(sub.ID, cur.Version, src)
+	summary["reuseKey"] = reuseKey(sub.ID, cur.Version, src, carry.key())
 	sraw, _ := json.Marshal(summary)
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: "subset", Params: params, Sources: []int64{src.ID}, Summary: sraw, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
