@@ -3039,6 +3039,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/run-views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The saved views of the runs table (owner listener only) */
+        get: operations["owner_s_listRunViews_get_api_run_views"];
+        put?: never;
+        /** Save a view of the runs table under a name, replacing a view of that name (owner listener only) */
+        post: operations["owner_s_saveRunView_post_api_run_views"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-views/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a saved view; the runs it filtered are untouched (owner listener only) */
+        post: operations["owner_s_deleteRunView_post_api_run_views_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -8165,6 +8202,49 @@ export interface components {
             /** @description The astropy name of the celestial frame, when it can be named */
             frame?: string | null;
             note?: string;
+        };
+        /** @description What a saved view of the runs table remembers: words and keys only, never a run id or a value. */
+        RunViewSpec: {
+            /** @description The filter words, as typed in the filter box */
+            query: string;
+            /** @description Exposed columns: a fixed one (status, host, generated, imported, qc, kind), p:<parameter> or m:<result> */
+            columns: string[];
+            sort: {
+                column: string;
+                /** @enum {integer} */
+                dir: 1 | -1;
+            } | null;
+            plot: {
+                /** @description A result key; empty when none is chosen */
+                y: string;
+                x: string;
+                /** @enum {string} */
+                xKind: "" | "param" | "metric";
+                /** @description A parameter key to colour by; empty for none */
+                by: string;
+            } | null;
+        };
+        RunView: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            spec: components["schemas"]["RunViewSpec"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        RunViewList: {
+            /** @description By name */
+            views: components["schemas"]["RunView"][];
+            /** @description How many views are kept */
+            max: number;
+        };
+        SaveRunViewRequest: {
+            /** @description One line; saving under an existing name (any case) replaces that view */
+            name: string;
+            spec: components["schemas"]["RunViewSpec"];
+        };
+        RunViewDeleted: {
+            deleted: boolean;
         };
     };
     responses: never;
@@ -13541,6 +13621,99 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_listRunViews_get_api_run_views: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunViewList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_saveRunView_post_api_run_views: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveRunViewRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_deleteRunView_post_api_run_views_id_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunViewDeleted"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

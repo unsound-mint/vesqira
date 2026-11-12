@@ -1,7 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FileText, LifeBuoy, FolderOpen, FolderPlus, LayoutGrid, Server, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { FileText, LifeBuoy, FolderOpen, FolderPlus, LayoutGrid, Server, Table2, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
+import { RunsView } from "../runs/RunsView";
+import { initialRunsView } from "../runs/runsViewState";
+import type { RunsViewState } from "../runs/runsViewState";
 import { JobsView, jobFor } from "../jobs/JobsView";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { useNotifications } from "../notifications/useNotifications";
@@ -109,6 +112,7 @@ export function Shell() {
   // a job ended or its results were imported: the lists the links point into are refreshed before anyone follows one
   const notes = useNotifications(useCallback(() => { void refreshDatasets(); void refreshRuns(); }, [refreshDatasets, refreshRuns]));
   const hostName = (id: number) => cat.hosts.find((h) => h.id === id)?.name ?? "host";
+  const runHostName = useCallback((id: number) => cat.hosts.find((h) => h.id === id)?.name, [cat.hosts]);
   const viewerA = useViewer(cat.selectedImage);
   const [compareId, setCompareId] = useState<number | null>(null);
   const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== cat.selectedImage?.id) ?? null;
@@ -269,10 +273,13 @@ export function Shell() {
     if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null), setOutsideIn(null);
   }, [linked, group?.facets.cursor, group?.basis]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
-  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "run" | "rerun" | "open" | "look" | "needs" | "health" | "import">("viewer");
+  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs" | "run" | "rerun" | "open" | "look" | "needs" | "health" | "import">("viewer");
   const [runId, setRunId] = useState<number | null>(null);
-  const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs" | "reports">("viewer");
-  const from = mode === "boards" || mode === "jobs" || mode === "reports" ? mode : "viewer"; // the project pages go back to the viewer
+  const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs">("viewer");
+  // The runs page keeps its query, columns, sort, plot and selection while a run is open, so Back returns to it as it was.
+  const [runsView, setRunsView] = useState<RunsViewState>(initialRunsView);
+  const patchRunsView = useCallback((p: Partial<RunsViewState>) => setRunsView((v) => ({ ...v, ...p })), []);
+  const from = mode === "boards" || mode === "jobs" || mode === "reports" || mode === "runs" ? mode : "viewer"; // the project pages go back to the viewer
   const openRun = (id: number) => {
     if (mode !== "run" && mode !== "rerun") setRunFrom(from);
     setRunId(id);
@@ -369,7 +376,7 @@ export function Shell() {
   const catalog = (
     <>
       <Section title="Runs" meta={String(cat.runs.length)} defaultOpen={cat.runs.length > 0}>
-        <RunsList runs={cat.runs} hosts={cat.hosts} onImport={cat.importRunFolder} onOpen={(r) => openRun(r.id)} />
+        <RunsList runs={cat.runs} hosts={cat.hosts} jobs={cat.jobs} query={runsView.query} onQuery={(q) => patchRunsView({ query: q })} onImport={cat.importRunFolder} onOpen={(r) => openRun(r.id)} onOpenTable={() => setMode("runs")} />
       </Section>
       <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0} openSignal={hostOffer?.serial}>
         <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
@@ -407,6 +414,7 @@ export function Shell() {
         <IconButton icon={FolderPlus} label="Open project…" size="lg" pressed={mode === "open"} onClick={() => setMode(mode === "open" ? "viewer" : "open")} />
         <IconButton icon={FolderOpen} label="Explorer" size="lg" pressed={L.sideOpen} onClick={() => toggle("sideOpen")} />
         <IconButton icon={LayoutGrid} label="Boards" size="lg" pressed={mode === "boards"} onClick={() => setMode(mode === "boards" ? "viewer" : "boards")} />
+        <IconButton icon={Table2} label="Results table" size="lg" pressed={mode === "runs"} onClick={() => setMode(mode === "runs" ? "viewer" : "runs")} />
         <IconButton icon={Server} label="Jobs" size="lg" pressed={mode === "jobs"} onClick={() => setMode(mode === "jobs" ? "viewer" : "jobs")} />
         <IconButton icon={FileText} label="Reports" size="lg" pressed={mode === "reports"} onClick={() => setMode(mode === "reports" ? "viewer" : "reports")} />
         {terminal ? <IconButton icon={TerminalIcon} label="Terminal" size="lg" pressed={terminalOpen} onClick={() => setTerminalOpen(true)} /> : null}
@@ -469,6 +477,8 @@ export function Shell() {
               <p className={s.empty}>It may have been removed. <button type="button" onClick={() => setMode(runFrom)}>Back</button></p>
             </div>
           )
+        ) : mode === "runs" ? (
+          <RunsView runs={cat.runs} jobs={cat.jobs} hostName={runHostName} state={runsView} onState={patchRunsView} onOpenRun={openRun} />
         ) : mode === "reports" ? (
           <ReportsView onOpenRun={openRun} />
         ) : mode === "boards" ? (

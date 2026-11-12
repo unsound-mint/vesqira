@@ -13349,6 +13349,164 @@
      "type": "string"
     }
    }
+  },
+  "RunViewSpec": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "query",
+    "columns",
+    "sort",
+    "plot"
+   ],
+   "description": "What a saved view of the runs table remembers: words and keys only, never a run id or a value.",
+   "properties": {
+    "query": {
+     "type": "string",
+     "maxLength": 2000,
+     "description": "The filter words, as typed in the filter box"
+    },
+    "columns": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "maxLength": 120
+     },
+     "maxItems": 200,
+     "description": "Exposed columns: a fixed one (status, host, generated, imported, qc, kind), p:<parameter> or m:<result>"
+    },
+    "sort": {
+     "type": "object",
+     "nullable": true,
+     "additionalProperties": false,
+     "required": [
+      "column",
+      "dir"
+     ],
+     "properties": {
+      "column": {
+       "type": "string"
+      },
+      "dir": {
+       "type": "integer",
+       "enum": [
+        1,
+        -1
+       ]
+      }
+     }
+    },
+    "plot": {
+     "type": "object",
+     "nullable": true,
+     "additionalProperties": false,
+     "required": [
+      "y",
+      "x",
+      "xKind",
+      "by"
+     ],
+     "properties": {
+      "y": {
+       "type": "string",
+       "description": "A result key; empty when none is chosen"
+      },
+      "x": {
+       "type": "string"
+      },
+      "xKind": {
+       "type": "string",
+       "enum": [
+        "",
+        "param",
+        "metric"
+       ]
+      },
+      "by": {
+       "type": "string",
+       "description": "A parameter key to colour by; empty for none"
+      }
+     }
+    }
+   }
+  },
+  "RunView": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "name",
+    "spec",
+    "updatedAt"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "spec": {
+     "$ref": "#/components/schemas/RunViewSpec"
+    },
+    "updatedAt": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "RunViewList": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "views",
+    "max"
+   ],
+   "properties": {
+    "views": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RunView"
+     },
+     "description": "By name"
+    },
+    "max": {
+     "type": "integer",
+     "description": "How many views are kept"
+    }
+   }
+  },
+  "SaveRunViewRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "name",
+    "spec"
+   ],
+   "properties": {
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 80,
+     "description": "One line; saving under an existing name (any case) replaces that view"
+    },
+    "spec": {
+     "$ref": "#/components/schemas/RunViewSpec"
+    }
+   }
+  },
+  "RunViewDeleted": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "deleted"
+   ],
+   "properties": {
+    "deleted": {
+     "type": "boolean"
+    }
+   }
   }
  },
  "operations": {
@@ -19663,6 +19821,91 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/OfflineForgotten"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/run-views": {
+   "summary": "The saved views of the runs table (owner listener only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunViewList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/run-views": {
+   "summary": "Save a view of the runs table under a name, replacing a view of that name (owner listener only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/SaveRunViewRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunView"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/run-views/{id}/delete": {
+   "summary": "Delete a saved view; the runs it filtered are untouched (owner listener only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunViewDeleted"
        }
       }
      }

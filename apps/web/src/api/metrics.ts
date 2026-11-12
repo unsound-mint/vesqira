@@ -3,7 +3,7 @@ import type { components } from "./schema";
 /** One measured result of a run. A value that was not recorded is null and reads as unknown, never as zero. */
 export type Metric = components["schemas"]["RunMetric"];
 
-const KIND: Record<string, string> = {
+export const KIND: Record<string, string> = {
   standard_deviation: "standard deviation",
   standard_error: "standard error",
   confidence_68: "68% interval half-width",

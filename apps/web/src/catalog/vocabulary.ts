@@ -2,6 +2,8 @@ import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
 import type { Vocabulary, VocabKey } from "../ui/FilterBox";
 import { effectiveUnit } from "./unit";
+import { dayOf } from "./runQuery";
+import type { RunContext } from "./runQuery";
 
 const TOP = 20;
 
@@ -58,7 +60,7 @@ function archivedVocab(items: { archived?: boolean }[]): VocabKey | null {
  * (including "not assessed", the explicit default state, so runs nobody has assessed can be found). A parameter hides a result of the same name,
  * as the matcher tests the parameter first.
  */
-export function runVocabulary(runs: Run[]): Vocabulary {
+export function runVocabulary(runs: Run[], ctxOf?: (r: Run) => RunContext): Vocabulary {
   const settings = new Keyed();
   const results = new Keyed();
   const qc: Tally = new Map();
@@ -72,7 +74,33 @@ export function runVocabulary(runs: Run[]): Vocabulary {
       results.add(m.key, String(m.value));
     }
   }
+  const extra: VocabKey[] = [];
+  if (ctxOf) {
+    // Where a run came from (its job), and when: only what occurs is offered; a run that records none adds nothing
+    const status: Tally = new Map();
+    const host: Tally = new Map();
+    for (const r of runs) {
+      const c = ctxOf(r);
+      if (c.status !== "" && wordy(c.status)) bump(status, c.status);
+      if (c.host !== "" && wordy(c.host)) bump(host, c.host);
+    }
+    if (status.size > 0) extra.push(build("status", "status", status, runs.length, { sep: ":" }));
+    if (host.size > 0) extra.push(build("host", "host", host, runs.length, { sep: ":" }));
+  }
+  for (const [key, pick] of [["generated", (r: Run) => r.generatedAt], ["imported", (r: Run) => r.importedAt]] as const) {
+    const days: Tally = new Map();
+    for (const r of runs) {
+      const d = dayOf(pick(r));
+      if (d) bump(days, d);
+    }
+    if (days.size > 0) {
+      const k = build(key, "date", days, runs.length, { numeric: true });
+      k.values.sort((a, b) => b.value.localeCompare(a.value));
+      extra.push(k);
+    }
+  }
   const keys: VocabKey[] = [
+    ...extra,
     ...settings.entries().map((e) => build(e.key.toLowerCase(), "setting", e.tally, runs.length)),
     ...results.entries().map((e) => build(e.key.toLowerCase(), "result", e.tally, runs.length)),
   ];

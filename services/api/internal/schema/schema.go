@@ -41,7 +41,8 @@ import (
 // Version 21: a board panel may carry its place on the board's grid (board_items.layout_x, layout_y, layout_w, layout_h; ADR 0060).
 // Version 22: offline copies of bounded, derived replies (offline_entries) and the size limit for them (offline_settings; ADR 0059).
 // Version 23: a researcher's WCS and unit corrections, an append-only history per dataset (dataset_corrections; ADR 0061).
-const Version = 23
+// Version 24: saved views of the runs table (run_views; ADR 0062).
+const Version = 24
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -73,6 +74,7 @@ var migrations = []Migration{
 	{To: 21, Name: "board layout grid", Up: boardLayoutGrid},
 	{To: 22, Name: "offline copies", Up: offlineCopies},
 	{To: 23, Name: "WCS and unit corrections", Up: correctionsTable},
+	{To: 24, Name: "saved run views", Up: savedRunViews},
 }
 
 // CorrectionsTable is the append-only history of a researcher's WCS and unit corrections (ADR 0061): one row per record (a
@@ -330,6 +332,17 @@ const OfflineEntriesTable = `CREATE TABLE IF NOT EXISTS offline_entries(
 // OfflineSettingsTable holds the one setting of the offline store: the most it may keep, in bytes (one row, id 1).
 const OfflineSettingsTable = `CREATE TABLE IF NOT EXISTS offline_settings(
 	id INTEGER PRIMARY KEY CHECK (id = 1), cap_bytes INTEGER NOT NULL CHECK (cap_bytes >= 0))`
+
+// RunViewsTable holds the researcher's saved views of the runs table (ADR 0062): a name, and a JSON spec of the filter query, the
+// exposed columns, the sort and the plot's axes. Words and keys only; no run id or value is stored in it.
+const RunViewsTable = `CREATE TABLE IF NOT EXISTS run_views(
+	id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, spec TEXT NOT NULL, updated_at INTEGER NOT NULL)`
+
+// savedRunViews adds the table. Nothing to carry over: no view was kept before.
+func savedRunViews(tx *sql.Tx) error {
+	_, err := tx.Exec(RunViewsTable)
+	return err
+}
 
 // offlineCopies adds the offline tables. Nothing to carry over: nothing was kept offline before.
 func offlineCopies(tx *sql.Tx) error {
