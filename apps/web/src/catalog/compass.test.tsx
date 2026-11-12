@@ -38,6 +38,8 @@ describe("compass geometry", () => {
     expect(compassNote(noWcs)).toBe("No north/east arrows: this file has no complete celestial WCS, so an angle cannot be related to the sky.");
     expect(compassNote(undefined)).toMatch(/does not record where north and east point/);
     expect(compassNote(rotated)).toMatch(/icrs/);
+    expect(compassNote(rotated)).not.toMatch(/corrected/);
+    expect(compassNote({ ...rotated, corrected: ["PC1_2", "PC2_1"] })).toMatch(/with your corrections \(PC1_2, PC2_1\): corrected/); // ADR 0061
   });
 });
 

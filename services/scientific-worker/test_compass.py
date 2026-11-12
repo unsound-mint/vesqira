@@ -5,6 +5,7 @@ transform (plain arrays, no SkyCoord position angles), turned into the pixel vec
 on the tangent plane. A rotated (CROTA2), PC-matrix, mirrored and Galactic WCS must each give its own arrows: north is never
 assumed to be up."""
 import math
+import os
 import sys
 import tempfile
 import unittest
@@ -130,6 +131,25 @@ class ViewReply(unittest.TestCase):
         self.assertFalse(head["compass"]["available"])
         self.assertIn("celestial", head["compass"]["reason"])
         self.assertNotIn("north_deg", head["compass"])
+
+
+    def test_a_corrected_pc_matrix_turns_the_arrows_and_says_so(self):
+        # the file says north is up; the researcher's PC correction rotates the grid 30 degrees (ADR 0061): the arrows follow the
+        # corrected WCS, and the reply names the corrected keywords so the note says "corrected"
+        path = self.dir / "plain.fits"
+        write(path, np.zeros((N, N)), CASES["north up, east left"])
+        a = math.radians(30.0)
+        wcs = {"PC1_1": math.cos(a), "PC1_2": -math.sin(a), "PC2_1": math.sin(a), "PC2_2": math.cos(a)}
+        real = os.path.realpath(path)
+        head, _ = self.c.ask(op="view", path=str(path), corrections={real: {"hash": "a" * 64, "wcs": wcs}})
+        self.assertTrue(head["ok"], head)
+        comp = head["compass"]
+        want_n, want_e = independent_compass(WCS(pc_header(30.0)), CENTRE, CENTRE)
+        self.assertLess(circ(comp["north_deg"], want_n), 0.01)
+        self.assertLess(circ(comp["east_deg"], want_e), 0.01)
+        self.assertEqual(comp["corrected"], ["PC1_1", "PC1_2", "PC2_1", "PC2_2"])
+        plain, _ = self.c.ask(op="view", path=str(path))
+        self.assertNotIn("corrected", plain["compass"])
 
 
 if __name__ == "__main__":

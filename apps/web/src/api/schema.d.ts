@@ -8437,7 +8437,7 @@ export interface components {
             id: number;
             name: string;
         };
-        /** @description Where north (increasing latitude) and east (increasing longitude) of the file's own celestial frame point in the pixel grid at the centre of the map, from the file's WCS (projection, CD/PC matrix, flips). Directions are counter-clockwise from +x with y up (FITS), in [0, 360). Never assumes north is up. When available is false there is no celestial WCS to read them from and reason says why: nothing is drawn. */
+        /** @description Where north (increasing latitude) and east (increasing longitude) of the file's own celestial frame point in the pixel grid at the centre of the map, from the file's WCS with the researcher's corrections applied, if any (projection, CD/PC matrix, flips). Directions are counter-clockwise from +x with y up (FITS), in [0, 360). Never assumes north is up. When available is false there is no celestial WCS to read them from and reason says why: nothing is drawn. */
         Compass: {
             available: boolean;
             /** @description Why there is no compass (only when available is false) */
@@ -8451,6 +8451,8 @@ export interface components {
             /** @description The astropy name of the celestial frame, when it can be named */
             frame?: string | null;
             note?: string;
+            /** @description The celestial WCS keywords the researcher corrected (ADR 0061) that the arrows rest on; absent when the file's own WCS is used */
+            corrected?: string[];
         };
         /** @description A rectangle of the source image in whole 0-based pixels, inclusive (the frame regions use). */
         SubsetBox: {

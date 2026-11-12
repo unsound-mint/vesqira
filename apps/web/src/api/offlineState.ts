@@ -33,6 +33,14 @@ function parseMark(h: string | null): OfflineCopy | null {
   }
 }
 
+const ANY_ROUTE = /^\/api\/datasets\/(\d+)\//;
+
+/** Whether `url` is a request for a dataset the viewer is currently showing from its offline copy (ADR 0059). */
+export function showingOfflineCopy(url: string): boolean {
+  const m = ANY_ROUTE.exec(url);
+  return !!m && (states.get(Number(m[1]))?.copy ?? null) !== null;
+}
+
 /** Called for every response of requestRaw: a copy marker sets the dataset's state, a live answer clears it. */
 export function observeResponse(url: string, res: Response) {
   const m = ROUTE.exec(url);

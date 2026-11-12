@@ -107,6 +107,15 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 	b.add("subsets", "live", subs, func(n int) string {
 		return plural(n, "virtual subset reads", "virtual subsets read") + " this dataset through a window, with the corrections in force each time (a spectral interval in world units is resolved to channels again). Files already written from a subset keep the values and header they were written with."
 	})
+	// Offline copies (ADR 0059) are keyed by the file's signature, not by the corrections: saving forgets them (corrections.go in
+	// server), so the preview says so before anything is dropped.
+	off, err := items(q, "offline_entries", `SELECT MIN(id), COUNT(*)||' kept replies, '||SUM(bytes)||' bytes' FROM offline_entries WHERE dataset_id=? GROUP BY dataset_id`, id)
+	if err != nil {
+		return out, err
+	}
+	b.add("offline", "removed", off, func(int) string {
+		return "Its offline copy (kept for working without the host) is forgotten when you save: it holds readouts made with the corrections in force when it was prepared. Prepare it again afterwards; the file itself is not touched."
+	})
 	steps, err := items(q, "exploration_steps", `SELECT id, label FROM exploration_steps WHERE dataset_id=?`, id)
 	if err != nil {
 		return out, err

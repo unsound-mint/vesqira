@@ -118,6 +118,20 @@ describe("request id", () => {
     expect(seen).toEqual(["sub-id-00502"]);
   });
 
+  it("does not announce the host being unreachable for a dataset shown from its offline copy (the banner says so), only for others", async () => {
+    const seen: string[] = [];
+    const off = onApiError((e) => seen.push(e.requestId));
+    const mark = JSON.stringify({ copy: true, takenAt: "2026-11-12T00:00:00Z", signature: { hostId: 1, size: 1, mtimeNs: 1, identity: "" } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json", "X-Vesqira-Offline": mark } })));
+    await request("/api/datasets/7/view");
+    withId('{"error":"the host is not reachable (is the VPN up?)"}', 502, "application/json", "off-id-0007");
+    await failure(request("/api/datasets/7/conversions"));
+    withId('{"error":"the host is not reachable (is the VPN up?)"}', 502, "application/json", "off-id-0008");
+    await failure(request("/api/datasets/8/conversions"));
+    off();
+    expect(seen).toEqual(["off-id-0008"]);
+  });
+
   it("sends a given id as X-Request-Id, and newRequestId makes an acceptable one", async () => {
     const f = vi.fn(async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", f);
