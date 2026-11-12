@@ -46,7 +46,8 @@ import (
 // Version 26: a mask records the machine its file lives on (masks.host_id, 0 for this computer; ADR 0064).
 // Version 27: a location records the device and inode of its file, compared when the file is used again (dataset_locations.file_dev, .file_ino; ADR 0050 section 8).
 // Version 28: a figure may be a cross-run plot with no dataset (figures.dataset_id may be NULL, figures.kind; ADR 0065).
-const Version = 28
+// Version 29: an audit entry records who acted (audit.actor, .on_behalf_of, .via; ADR 0050 section 4, slice 1).
+const Version = 29
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -83,6 +84,7 @@ var migrations = []Migration{
 	{To: 26, Name: "masks on a host", Up: masksHost},
 	{To: 27, Name: "file identity of a location", Up: locationFileID},
 	{To: 28, Name: "cross-run figures", Up: crossRunFigures},
+	{To: 29, Name: "audit actor", Up: auditActor},
 }
 
 // FiguresTable is the pinned figures (ADR 0041, 0042, 0053, 0065). A figure of a dataset has dataset_id; a cross-run plot (ADR 0065)
@@ -139,6 +141,26 @@ func crossRunFigures(tx *sql.Tx) error {
 		}
 	}
 	return err
+}
+
+// auditActor adds who acted to each audit entry (ADR 0050 section 4). Every entry that exists was made by the one owner of a local
+// program, so the columns default to 'local-owner' and 'local', which is true of them; it is not a guess. A catalog without the table
+// (never opened by the audit package) needs nothing; the audit package creates it with these columns.
+func auditActor(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='audit'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, c := range [][2]string{
+		{"actor", "TEXT NOT NULL DEFAULT 'local-owner'"},
+		{"on_behalf_of", "TEXT NOT NULL DEFAULT ''"},
+		{"via", "TEXT NOT NULL DEFAULT 'local'"},
+	} {
+		if err := AddColumn(tx, "audit", c[0], c[1]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // locationFileID adds the device and inode a location's file had when it was recorded. 0 means not recorded, which is what every
