@@ -82,12 +82,27 @@ describe("HEALPix sampling form", () => {
     expect(got).toHaveLength(0);
   });
 
-  it("links the companions from the result", async () => {
+  it("shows the section and links the companions from the map's own record, with no prior state", async () => {
     const opened: number[] = [];
-    render(<HealpixSampleDone result={result()} onOpen={(d) => opened.push(d.id)} />);
-    await userEvent.click(screen.getByRole("button", { name: "Open P" }));
+    const r = result();
+    mockFetch(200, { datasetId: 9, op: "healpix_sample", params: { companions: { p: 10, sigmaP: 11 } }, sources: [1, 2], summary: r.summary, software: {}, createdAt: "" });
+    render(<HealpixSampleDone dataset={r.dataset} datasets={[r.dataset, r.p!, r.sigmaP!]} onOpen={(d) => opened.push(d.id)} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Open P" }));
     await userEvent.click(screen.getByRole("button", { name: "Open σ_P" }));
     expect(opened).toEqual([10, 11]);
     expect(screen.getByText("Dust polarization turned by 90 degrees.")).toBeInTheDocument();
+  });
+
+  it("says when a map sampled earlier has no recorded companions, and stays out of other maps", async () => {
+    const r = result();
+    mockFetch(200, { datasetId: 9, op: "healpix_sample", params: {}, sources: [1, 2], summary: r.summary, software: {}, createdAt: "" });
+    const { unmount } = render(<HealpixSampleDone dataset={r.dataset} datasets={[r.dataset]} onOpen={() => {}} />);
+    expect(await screen.findByText("P: not recorded for this map.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open P" })).toBeNull();
+    unmount();
+    mockFetch(200, { datasetId: 9, op: "align", params: {}, sources: [], summary: {}, software: {}, createdAt: "" });
+    render(<HealpixSampleDone dataset={r.dataset} datasets={[r.dataset]} onOpen={() => {}} />);
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    expect(screen.queryByRole("region", { name: "Sampled from a HEALPix map" })).toBeNull();
   });
 });

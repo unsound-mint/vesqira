@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Input, Select } from "../ui";
+import { Button, Input, Section, Select } from "../ui";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { newRequestId } from "../api/http";
 import { isImage } from "../api/catalog";
 import type { Dataset, HealpixDataset } from "../api/catalog";
-import { runHealpixSample } from "../api/analysis";
-import type { HealpixSampleRequest, HealpixSampleResult } from "../api/analysis";
+import { getDerived, runHealpixSample } from "../api/analysis";
+import type { Derived, HealpixSampleRequest, HealpixSampleResult } from "../api/analysis";
 import s from "./AnalysisPanel.module.css";
 
 /* Sampling a HEALPix polarization map onto a map's celestial grid (ADR 0067). The server states every refusal; this form only
@@ -126,18 +126,31 @@ export function HealpixSamplePanel({ dataset, datasets, onResult }: { dataset: H
   );
 }
 
-/** What a sampling made, shown while its angle map is selected: the way it was derived, and links to the companion P and σ_P maps. */
-export function HealpixSampleDone({ result, onOpen }: { result: HealpixSampleResult; onOpen: (d: Dataset) => void }) {
-  const r = result.summary;
+/** The inspector section of a map made by a HEALPix sampling: how it was derived and links to its P and σ_P maps, read from the map's
+    own derived record, so it is there whenever the map is opened. Renders nothing for any other dataset. */
+export function HealpixSampleDone({ dataset, datasets, onOpen }: { dataset: Dataset; datasets: Dataset[]; onOpen: (d: Dataset) => void }) {
+  const [rec, setRec] = useState<Derived | null>(null);
+  useEffect(() => {
+    setRec(null);
+    getDerived(dataset.id).then((d) => setRec(d.op === "healpix_sample" ? d : null)).catch(() => setRec(null));
+  }, [dataset.id]);
+  if (!rec) return null;
+  const r = rec.summary as Partial<HealpixSampleResult["summary"]> & { companionOf?: number };
+  if (r.companionOf !== undefined) return null; // a companion's own record: the angle map holds the story
+  const ids = rec.params.companions ?? {};
+  const link = (key: "p" | "sigmaP", label: string) => {
+    const d = ids[key] === undefined ? undefined : datasets.find((x) => x.id === ids[key]);
+    return d ? <Button onClick={() => onOpen(d)}>{label}</Button> : <p className={s.note}>{label.replace("Open ", "")}: {ids[key] === undefined ? "not recorded for this map" : "no longer registered"}.</p>;
+  };
   return (
-    <div className={s.wrap} role="region" aria-label="Sampled from a HEALPix map">
-      <p className={s.note}>{r.product === "b_field" ? "Field orientation" : "Dust polarization angle"} from a HEALPix map. Companion maps on the same grid:</p>
-      <div className={s.two}>
-        {result.p ? <Button onClick={() => onOpen(result.p!)}>Open P</Button> : <p className={s.err}>P was not registered.</p>}
-        {result.sigmaP ? <Button onClick={() => onOpen(result.sigmaP!)}>Open σ_P</Button> : <p className={s.err}>σ_P was not registered.</p>}
+    <Section title="Sampled from a HEALPix map">
+      <div className={s.wrap} role="region" aria-label="Sampled from a HEALPix map">
+        <p className={s.note}>{r.product === "b_field" ? "Field orientation" : "Dust polarization angle"} from a HEALPix map. Companion maps on the same grid:</p>
+        <div className={s.two}>{link("p", "Open P")}{link("sigmaP", "Open σ_P")}</div>
+        <p className={s.note}>{r.derivation?.sampling} {r.derivation?.noise}</p>
+        <p className={s.note}>{r.policy}</p>
       </div>
-      <p className={s.note}>{r.derivation.sampling} {r.derivation.noise}</p>
-      <p className={s.note}>{r.policy}</p>
-    </div>
+    </Section>
   );
 }
+

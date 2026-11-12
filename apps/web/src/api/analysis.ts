@@ -38,7 +38,7 @@ export type MaskCarryRecord = {
   recomputed: string[];
 };
 
-export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls; masks?: { type: string; name: string; policy: string; weight?: number; tier: string; mappingVersion?: string }[]; maskCarry?: MaskCarryRecord }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
+export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls; masks?: { type: string; name: string; policy: string; weight?: number; tier: string; mappingVersion?: string }[]; maskCarry?: MaskCarryRecord; /** healpix_sample: the ids of the P and σ_P maps registered with the angle map */ companions?: { p?: number; sigmaP?: number } }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
 
 export const runAnalysis = (r: AnalysisRequest, signal?: AbortSignal, requestId?: string) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r, signal, requestId);
 export const createAnalysisJob = (r: AnalysisRequest) => post<Job>("/api/analysis/job", r);
