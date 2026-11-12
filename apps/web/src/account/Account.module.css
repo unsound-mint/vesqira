@@ -1,0 +1,137 @@
+/* The group server's sign-in and account pages (ADR 0050 slice 2). Plain on purpose: one column, the workbench tokens, no new
+   components. The owner adjusts the look later. */
+.page {
+  display: grid;
+  gap: var(--sp-6);
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--sp-10) var(--sp-4);
+  color: var(--text);
+}
+
+.wide {
+  max-width: 760px;
+}
+
+.h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  line-height: var(--lh-xl);
+  font-weight: var(--w-strong);
+}
+
+.h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--w-strong);
+}
+
+.card {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+}
+
+.form {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+}
+
+.error {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--err-bg);
+  color: var(--err);
+  font-size: var(--text-sm);
+}
+
+.secret {
+  margin: 0;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.codes {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: var(--sp-1) var(--sp-6);
+  margin: 0;
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  font-family: var(--font-data);
+  font-size: var(--text-md);
+  list-style: none;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.table th,
+.table td {
+  padding: var(--sp-2);
+  border-bottom: var(--bw) solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--text-2);
+  font-weight: var(--w-medium);
+}
+
+.bar {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  justify-content: flex-end;
+  height: var(--ctl-md);
+  padding: 0 var(--sp-3);
+  border-bottom: var(--bw) solid var(--line);
+  background: var(--bg-1);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.frame {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+.frame > :last-child {
+  min-height: 0;
+}
+
+.link {
+  color: var(--accent);
+}
