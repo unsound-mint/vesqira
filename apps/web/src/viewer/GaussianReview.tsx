@@ -161,7 +161,7 @@ export function GaussianReview({ st, v, cut }: { st: ComponentsState; v: Viewer;
   return (
     <section className={s.wrap} aria-label="Review of the decomposition">
       <h3 className={s.h}>Review the decomposition</h3>
-      <p className={s.note}>The widths and centres of all {run.nGauss} Gaussians in every pixel, weighted, and maps of them per width class. Each button reads the whole .dat once on this computer; a large fit takes minutes.</p>
+      <p className={s.note}>The widths and centres of all {run.nGauss} Gaussians in every pixel, weighted, and maps of them per width class. Drawing the diagram and making the maps each read the whole .dat once on this computer (a large fit takes minutes); a click on a cell then uses the index the diagram wrote and is quick.</p>
       <Select label="Weight" value={weight} onChange={(e) => setWeight(e.target.value as Weight)}>
         <option value="integrated" disabled={run.cropBunit === null}>Integrated intensity{run.cropBunit === null ? " (the crop's brightness unit is unresolved)" : ` (${run.cropBunit} km/s)`}</option>
         <option value="column_thin" disabled={!thinOk}>Optically thin column density (cm⁻²){thinOk ? "" : " (needs a brightness temperature in K)"}</option>

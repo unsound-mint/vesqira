@@ -61,8 +61,8 @@ type rohsaReviewReq struct {
 
 var rohsaReviewWeights = map[string]bool{"integrated": true, "column_thin": true, "count": true}
 
-// params turns the request into the analysis program's parameters; what is out of range is refused here with a sentence.
-func (in rohsaReviewReq) params(op string, t rohsaTask) (map[string]any, string) {
+// reviewParams turns the request into the analysis program's parameters; what is out of range is refused here with a sentence.
+func (s *Server) reviewParams(in rohsaReviewReq, op string, t rohsaTask) (map[string]any, string) {
 	w := in.Weight
 	if w == "" {
 		w = "integrated"
@@ -89,6 +89,8 @@ func (in rohsaReviewReq) params(op string, t rohsaTask) (map[string]any, string)
 	if msg := in.SigmaBins.check("width"); msg != "" {
 		return nil, msg
 	}
+	// the diagram writes a per-row cell index here and a cell click reads it, so a click never parses the .dat again
+	p["cache_dir"] = s.CacheDir
 	if in.VelocityBins != nil {
 		p["velocity_bins"] = in.VelocityBins
 	}
@@ -130,7 +132,7 @@ func (s *Server) rohsaReview(w http.ResponseWriter, r *http.Request, op string, 
 	if !ok {
 		return in, t, analysisOutcome{}, false
 	}
-	params, bad := in.params(op, t)
+	params, bad := s.reviewParams(in, op, t)
 	if bad != "" {
 		fail(w, 400, bad)
 		return in, t, analysisOutcome{}, false

@@ -119,12 +119,19 @@ func TestROHSAReviewDiagramMaskAndClassMaps(t *testing.T) {
 		} `json:"axes"`
 		UnitSource string `json:"unit_source"`
 		RunID      int64  `json:"runId"`
+		PixelIndex *struct {
+			Bytes int `json:"bytes"`
+			Rows  int `json:"rows"`
+		} `json:"pixel_index"`
 	}
 	if err := json.Unmarshal(raw, &d); err != nil {
 		t.Fatal(err)
 	}
 	if d.WeightUnit != "K km/s" || d.Axes.Centre.Unit != "km/s" || d.Components != 72 || d.InDiagram+d.Outside != 72 || d.RunID != run.ID {
 		t.Fatalf("diagram: %s", raw)
+	}
+	if d.PixelIndex == nil || d.PixelIndex.Rows != 72 || d.PixelIndex.Bytes != 2*72 {
+		t.Errorf("the diagram does not state its pixel index (2 bytes per row): %s", raw)
 	}
 	if math.Abs(d.Total/wantTotal-1) > 1e-12 {
 		t.Errorf("weight total %v, want %v", d.Total, wantTotal)
@@ -234,6 +241,11 @@ func TestROHSAReviewRefusesWhatItCannotDoAndAnswersInSentences(t *testing.T) {
 	resp, raw := postJSON(t, base+"/sigmav/cell", map[string]any{"runId": run.ID, "velocityBins": map[string]any{"min": -14.0, "max": 10.0, "n": 12}, "sigmaBins": map[string]any{"min": 0.0, "max": 4.0, "n": 8}, "cell": map[string]any{"s": 8, "v": 0}})
 	if resp.StatusCode != 422 || !strings.Contains(string(raw), "outside the diagram") {
 		t.Errorf("outside cell: %d %s", resp.StatusCode, raw)
+	}
+	// a cell of bins that were never drawn has no pixel index: the worker says to draw the diagram again, and the .dat is not parsed
+	resp, raw = postJSON(t, base+"/sigmav/cell", map[string]any{"runId": run.ID, "velocityBins": map[string]any{"min": -14.0, "max": 10.0, "n": 12}, "sigmaBins": map[string]any{"min": 0.0, "max": 4.0, "n": 8}, "cell": map[string]any{"s": 1, "v": 1}})
+	if resp.StatusCode != 422 || !strings.Contains(string(raw), "draw the diagram again") {
+		t.Errorf("undrawn bins: %d %s", resp.StatusCode, raw)
 	}
 	// a fit that lives on a host is refused before anything is asked of the host
 	info := run.Rohsa

@@ -19985,6 +19985,16 @@ components:
         software:
           type: "object"
           additionalProperties: true
+        pixel_index:
+          type: "object"
+          nullable: true
+          properties:
+            bytes:
+              type: "integer"
+              description: "size of the per-row cell index kept in the cache folder: 2 bytes per row of the .dat"
+            rows:
+              type: "integer"
+          description: "The index a click on a cell reads instead of the .dat; only the latest binning of a fit is kept, so drawing another diagram of the same fit replaces it. null when no cache folder is set"
       description: "The sigma-v diagram of a decomposition: the weighted 2D histogram of component width against centroid velocity, with each cell's contributor count"
     RohsaPixelMask:
       type: "object"

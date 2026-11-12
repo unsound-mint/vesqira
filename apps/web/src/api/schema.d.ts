@@ -10505,6 +10505,12 @@ export interface components {
             software?: {
                 [key: string]: unknown;
             };
+            /** @description The index a click on a cell reads instead of the .dat; only the latest binning of a fit is kept, so drawing another diagram of the same fit replaces it. null when no cache folder is set */
+            pixel_index?: {
+                /** @description size of the per-row cell index kept in the cache folder: 2 bytes per row of the .dat */
+                bytes?: number;
+                rows?: number;
+            } | null;
         };
         /** @description A compact pixel mask */
         RohsaPixelMask: {

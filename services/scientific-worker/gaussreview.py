@@ -19,7 +19,9 @@ Rules this module keeps:
 from __future__ import annotations
 
 import base64
+import hashlib
 import os
+import stat
 import time
 import zlib
 
@@ -231,9 +233,91 @@ def default_bins(sc: Scales) -> tuple[dict, dict]:
     return {"min": float(lo), "max": float(hi), "n": nv}, {"min": 0.0, "max": float(smax), "n": 48}
 
 
+NO_CELL = 65535                      # a row that is in no cell of the diagram (invalid sigma, or outside its limits)
+
+
+def cells_path(cache_dir: str, dat_path: str, nx: int, ny: int, n: int, sc: Scales, v_edges: np.ndarray, s_edges: np.ndarray) -> str:
+    """Where the per-row cell index of one diagram lives: the .dat's own cache key (path, size, mtime, as the components index) plus a
+    hash of everything that decides a row's cell (the edges, the axis and the crop's shape), so a changed file or other bins never
+    find it. The folder is the caller's cache folder, never beside the data."""
+    import rohsa
+    real = os.path.realpath(dat_path)
+    here = os.path.realpath(cache_dir)
+    if here == os.path.dirname(real) or here.startswith(os.path.dirname(real) + os.sep):
+        raise Refusal("the cache folder is inside the fit's own folder; the pixel index is not written next to the data")
+    what = repr((nx, ny, n, [float(e).hex() for e in v_edges], [float(e).hex() for e in s_edges], sc.unit, sc.w0, sc.step))
+    return os.path.join(cache_dir, f"{rohsa._key(dat_path, stat_source(dat_path))}-{hashlib.sha256(what.encode()).hexdigest()[:16]}.cells")
+
+
+def _plain(path: str) -> None:
+    """A sidecar that exists must be a plain file: a link in the cache folder is never followed."""
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(st.st_mode):
+        raise Refusal("a cache file for the pixel index is not a plain file; it is not used")
+
+
+class CellIndex:
+    """Writes one uint16 per .dat row (row = pixel x n + gaussian) while the diagram is computed: the flat cell index js x nv + iv, or NO_CELL.
+    Written under a temporary name and renamed when the whole file has passed, so a cancelled or refused pass leaves no sidecar; the
+    index of other bins of the same .dat is removed then (only the latest binning is kept)."""
+
+    def __init__(self, cache_dir: str, path: str, rows: int):
+        self.path, self.tmp, self.rows, self.written = path, path + ".tmp", rows, 0
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+        _plain(path)
+        _plain(self.tmp)
+        self.fd = os.open(self.tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+
+    def add(self, code: np.ndarray) -> None:
+        os.write(self.fd, code.astype("<u2").tobytes())
+        self.written += len(code)
+
+    def abort(self) -> None:
+        try:
+            os.close(self.fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(self.tmp)
+        except OSError:
+            pass
+
+    def commit(self) -> int:
+        os.close(self.fd)
+        if self.written != self.rows:
+            self.abort()
+            raise Refusal("the pixel index does not have one entry per row of the .dat")
+        os.replace(self.tmp, self.path)
+        folder, mine = os.path.dirname(self.path), os.path.basename(self.path)
+        for name in os.listdir(folder):
+            if name != mine and name.endswith(".cells") and name.split("-")[0] == mine.split("-")[0]:
+                p = os.path.join(folder, name)
+                if stat.S_ISREG(os.lstat(p).st_mode):
+                    os.unlink(p)
+        return 2 * self.rows
+
+
 def sigmav(dat_path: str, nx: int, ny: int, n: int, sc: Scales, weight: str, v_edges: np.ndarray, s_edges: np.ndarray,
-           max_seconds: float = MAX_SECONDS) -> dict:
-    """One pass: the 2D histogram of width (rows, `s_edges`) against centre (columns, `v_edges`), weighted, with the contributor count of each cell."""
+           max_seconds: float = MAX_SECONDS, cache_dir: str | None = None) -> dict:
+    """One pass: the 2D histogram of width (rows, `s_edges`) against centre (columns, `v_edges`), weighted, with the contributor count of each cell.
+    With a cache folder the same pass writes the per-row cell index that `cell_mask` reads, so a click on a cell never reads the .dat again."""
+    unit, how = weight_unit(weight, sc)
+    nv, ns = len(v_edges) - 1, len(s_edges) - 1
+    index = CellIndex(cache_dir, cells_path(cache_dir, dat_path, nx, ny, n, sc, v_edges, s_edges), nx * ny * n) if cache_dir else None
+    try:
+        res = _sigmav_pass(dat_path, nx, ny, n, sc, weight, v_edges, s_edges, max_seconds, index)
+    except BaseException:
+        if index:
+            index.abort()
+        raise
+    res["pixel_index"] = {"bytes": index.commit(), "rows": nx * ny * n} if index else None
+    return res
+
+
+def _sigmav_pass(dat_path, nx, ny, n, sc, weight, v_edges, s_edges, max_seconds, index) -> dict:
     unit, how = weight_unit(weight, sc)
     nv, ns = len(v_edges) - 1, len(s_edges) - 1
     counts = np.zeros(ns * nv, dtype=np.int64)
@@ -245,8 +329,12 @@ def sigmav(dat_path: str, nx: int, ny: int, n: int, sc: Scales, weight: str, v_e
         ok = valid_mask(amp, sig)
         total += len(amp)
         invalid += int((~ok).sum())
+        code = np.full(len(amp), NO_CELL, dtype=np.uint16) if index else None
+        okidx = np.flatnonzero(ok)
         amp, mean_raw, sig = amp[ok], mean_raw[ok], sig[ok]
         if not len(amp):
+            if index:
+                index.add(code)
             continue
         w = weights_of(weight, amp, sig, sc)
         negative += int((w < 0).sum())
@@ -261,6 +349,9 @@ def sigmav(dat_path: str, nx: int, ny: int, n: int, sc: Scales, weight: str, v_e
         w_total += float(w.sum())
         w_outside += float(w[~inside].sum())
         flat = js[inside] * nv + iv[inside]
+        if index:
+            code[okidx[inside]] = flat
+            index.add(code)
         counts += np.bincount(flat, minlength=ns * nv)
         sums += np.bincount(flat, weights=w[inside], minlength=ns * nv)
     nz = np.flatnonzero(counts)
@@ -280,9 +371,42 @@ def sigmav(dat_path: str, nx: int, ny: int, n: int, sc: Scales, weight: str, v_e
 
 # ---- the pixels behind a cell
 
+BLOCK_ROWS = 1 << 24
+
+
 def cell_mask(dat_path: str, nx: int, ny: int, n: int, sc: Scales, v_edges: np.ndarray, s_edges: np.ndarray, cell_s: int, cell_v: int,
-              max_seconds: float = MAX_SECONDS) -> dict:
-    """The pixels that have at least one component in the diagram cell (sigma bin `cell_s`, centre bin `cell_v`), as a packed mask."""
+              cache_dir: str) -> dict:
+    """The pixels that have at least one component in the diagram cell (sigma bin `cell_s`, centre bin `cell_v`), as a packed mask, from the
+    per-row cell index the diagram wrote: the .dat is not read. A missing index (the diagram was not drawn for these bins on this version
+    of the file, or its cache was cleared) is a Refusal that says to draw the diagram again; the file is never re-parsed here, so a click
+    stays fast on a fit of any size."""
+    nv, ns = len(v_edges) - 1, len(s_edges) - 1
+    if not (0 <= cell_s < ns and 0 <= cell_v < nv):
+        raise Refusal("that cell is outside the diagram")
+    path = cells_path(cache_dir, dat_path, nx, ny, n, sc, v_edges, s_edges)
+    _plain(path)
+    rows = nx * ny * n
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        raise Refusal("the pixel index of this diagram is not available (the diagram was not drawn with these bins for the current .dat, or the cache was cleared): draw the diagram again") from None
+    if size != 2 * rows:
+        raise Refusal("the pixel index of this diagram has the wrong size: draw the diagram again")
+    cells = np.memmap(path, dtype="<u2", mode="r", shape=(rows,))
+    want = cell_s * nv + cell_v
+    hit = np.zeros(nx * ny, dtype=bool)
+    ncomp = 0
+    for lo in range(0, rows, BLOCK_ROWS):
+        r = np.flatnonzero(np.asarray(cells[lo:lo + BLOCK_ROWS]) == want)
+        ncomp += len(r)
+        hit[(r + lo) // n] = True
+    del cells
+    return {"mask": pack_mask(hit, nx, ny), "pixels": int(hit.sum()), "components": ncomp, "source": "pixel index written by the diagram"}
+
+
+def cell_mask_stream(dat_path: str, nx: int, ny: int, n: int, sc: Scales, v_edges: np.ndarray, s_edges: np.ndarray, cell_s: int, cell_v: int,
+                     max_seconds: float = MAX_SECONDS) -> dict:
+    """The same mask by reading the whole .dat again (the reference the index is tested against; not used by the API)."""
     nv, ns = len(v_edges) - 1, len(s_edges) - 1
     if not (0 <= cell_s < ns and 0 <= cell_v < nv):
         raise Refusal("that cell is outside the diagram")

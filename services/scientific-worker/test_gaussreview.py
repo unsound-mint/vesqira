@@ -15,6 +15,7 @@ width in channels is a width in km/s and a file mean m (1-based) sits at -12 + (
 Diagram bins: centre -12..-2 in 5 bins of 2 km/s, width 0..4 in 4 bins of 1 km/s.
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -81,14 +82,18 @@ class Base(unittest.TestCase):
         self.crop, self.dat = self.dir / "crop.fits", self.dir / "rohsa_n2.dat"
         write_crop(self.crop)
         write_dat(self.dat)
+        self.cache_tmp = tempfile.TemporaryDirectory()      # never inside the .dat's folder
+        self.cache = self.cache_tmp.name
 
     def tearDown(self):
         self.tmp.cleanup()
+        self.cache_tmp.cleanup()
 
     def sigmav(self, **kw):
         kw.setdefault("velocity_bins", V_BINS)
         kw.setdefault("sigma_bins", S_BINS)
         kw.setdefault("weight", "integrated")
+        kw.setdefault("cache_dir", self.cache)
         return run("rohsa_sigmav", self.crop, self.dat, **kw)
 
 
@@ -208,8 +213,114 @@ class Sigmav(Base):
 
 
 class Mask(Base):
+    def setUp(self):
+        super().setUp()
+        code, r = self.sigmav()                  # the diagram writes the index a cell click reads
+        self.assertEqual(code, 0, r)
+        self.drawn = r["summary"]
+
     def cell(self, s, v, **kw):
+        kw.setdefault("cache_dir", self.cache)
         return run("rohsa_cellmask", self.crop, self.dat, velocity_bins=V_BINS, sigma_bins=S_BINS, cell={"s": s, "v": v}, **kw)
+
+    def sidecars(self):
+        return sorted(Path(self.cache).glob("*.cells"))
+
+    def test_the_index_is_two_bytes_per_row_and_stated_in_the_diagram(self):
+        rows = NX * NY * N
+        self.assertEqual(self.drawn["pixel_index"], {"bytes": 2 * rows, "rows": rows})
+        (f,) = self.sidecars()
+        self.assertEqual(f.stat().st_size, 2 * rows)
+        self.assertNotIn(self.cache, json.dumps(self.drawn))
+
+    def test_the_mask_from_the_index_equals_the_streaming_mask_for_every_cell(self):
+        sc = gr.Scales(NC, -12.0, 1.0, {}, "K", "file")
+        ve, se = gr.linear_edges(V_BINS, "centre"), gr.linear_edges(S_BINS, "width")
+        for s in range(4):
+            for v in range(5):
+                code, r = self.cell(s, v)
+                self.assertEqual(code, 0, r)
+                ref = gr.cell_mask_stream(str(self.dat), NX, NY, N, sc, ve, se, s, v)
+                self.assertEqual(r["summary"]["mask"], ref["mask"], (s, v))
+                self.assertEqual((r["summary"]["pixels"], r["summary"]["components"]), (ref["pixels"], ref["components"]))
+
+    def test_a_click_does_not_read_the_dat(self):
+        sc = gr.Scales(NC, -12.0, 1.0, {}, "K", "file")
+        ve, se = gr.linear_edges(V_BINS, "centre"), gr.linear_edges(S_BINS, "width")
+        orig = gr.stream_components
+        gr.stream_components = lambda *a, **k: self.fail("the .dat was read")
+        try:
+            r = gr.cell_mask(str(self.dat), NX, NY, N, sc, ve, se, 1, 1, cache_dir=self.cache)
+        finally:
+            gr.stream_components = orig
+        self.assertEqual((r["pixels"], r["components"]), (2, 3))
+
+    def test_no_index_is_a_refusal_that_says_to_draw_again(self):
+        for f in self.sidecars():
+            f.unlink()
+        code, r = self.cell(1, 1)
+        self.assertEqual(code, 2)
+        self.assertIn("draw the diagram again", r["error"])
+
+    def test_other_bins_or_a_changed_dat_find_no_index(self):
+        code, r = run("rohsa_cellmask", self.crop, self.dat, velocity_bins={"min": -12, "max": 0, "n": 4}, sigma_bins=S_BINS, cell={"s": 1, "v": 1}, cache_dir=self.cache)
+        self.assertEqual(code, 2)
+        self.assertIn("draw the diagram again", r["error"])
+        st = self.dat.stat()
+        os.utime(self.dat, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+        code, r = self.cell(1, 1)
+        self.assertEqual(code, 2)
+        self.assertIn("draw the diagram again", r["error"])
+
+    def test_a_truncated_index_is_refused(self):
+        (f,) = self.sidecars()
+        f.write_bytes(f.read_bytes()[:-2])
+        code, r = self.cell(1, 1)
+        self.assertEqual(code, 2)
+        self.assertIn("wrong size", r["error"])
+
+    def test_only_the_latest_binning_of_a_fit_is_kept(self):
+        (first,) = self.sidecars()
+        code, r = self.sigmav(velocity_bins={"min": -12, "max": 0, "n": 4})
+        self.assertEqual(code, 0, r)
+        (second,) = self.sidecars()
+        self.assertNotEqual(first, second)
+        code, r = self.cell(1, 1)                # the first bins are gone: say so
+        self.assertEqual(code, 2)
+
+    def test_a_linked_sidecar_is_refused_by_the_cell_and_by_the_diagram_and_never_written_through(self):
+        (f,) = self.sidecars()
+        victim = self.dir / "victim"
+        victim.write_bytes(b"keep")
+        f.unlink()
+        f.symlink_to(victim)
+        code, r = self.cell(1, 1)
+        self.assertEqual(code, 2)
+        self.assertIn("not a plain file", r["error"])
+        code, r = self.sigmav()
+        self.assertEqual(code, 2)
+        self.assertEqual(victim.read_bytes(), b"keep")
+        f.unlink()
+        tmp = Path(str(f) + ".tmp")
+        tmp.symlink_to(victim)
+        code, r = self.sigmav()
+        self.assertEqual(code, 2)
+        self.assertEqual(victim.read_bytes(), b"keep")
+
+    def test_the_index_is_never_written_next_to_the_data(self):
+        code, r = self.sigmav(cache_dir=str(self.dir))
+        self.assertEqual(code, 2)
+        self.assertIn("next to the data", r["error"])
+        self.assertEqual(list(self.dir.glob("*.cells*")), [])
+
+    def test_a_refused_pass_leaves_no_index(self):
+        for f in self.sidecars():
+            f.unlink()
+        bad = self.dir / "bad.dat"
+        bad.write_text(self.dat.read_text() + "1 1 1 1 1\n")   # one row too many
+        code, r = run("rohsa_sigmav", self.crop, bad, velocity_bins=V_BINS, sigma_bins=S_BINS, weight="integrated", cache_dir=self.cache)
+        self.assertEqual(code, 2)
+        self.assertEqual(list(Path(self.cache).iterdir()), [])
 
     def test_the_mask_is_the_pixels_with_a_component_in_the_cell_on_a_non_square_crop(self):
         code, r = self.cell(1, 1)

@@ -992,6 +992,16 @@ def review_inputs(args):
     return params, c, dat, c.shape[c.x], c.shape[c.y], n, sc
 
 
+def review_cache(params: dict) -> str | None:
+    """The caller's cache folder for the diagram's pixel index (the API's cache folder, never beside the data), or None."""
+    d = params.get("cache_dir")
+    if d is None:
+        return None
+    if not isinstance(d, str) or not os.path.isabs(d) or "\0" in d:
+        fail("the cache folder must be an absolute path")
+    return d
+
+
 def review_common(sc, dat, extra: dict) -> dict:
     import gaussreview as gr
     out = {"dat": gr.dat_identity(dat), "convention": "centre = the crop's velocity axis at (file mean - 1) channels; sigma in km/s = sigma in channels x |km/s per channel|; "
@@ -1012,7 +1022,7 @@ def op_rohsa_sigmav(args) -> dict:
     try:
         v_edges = gr.linear_edges(params.get("velocity_bins") or dv_default, "centre")
         s_edges = gr.linear_edges(params.get("sigma_bins") or ds_default, "width")
-        res = gr.sigmav(dat, nx, ny, n, sc, params.get("weight") or "integrated", v_edges, s_edges)
+        res = gr.sigmav(dat, nx, ny, n, sc, params.get("weight") or "integrated", v_edges, s_edges, cache_dir=review_cache(params))
     except gr.Refusal as e:
         fail(str(e))
     res["width"], res["height"] = nx, ny
@@ -1030,7 +1040,7 @@ def op_rohsa_cellmask(args) -> dict:
     try:
         v_edges = gr.linear_edges(params.get("velocity_bins") or dv_default, "centre")
         s_edges = gr.linear_edges(params.get("sigma_bins") or ds_default, "width")
-        res = gr.cell_mask(dat, nx, ny, n, sc, v_edges, s_edges, cell["s"], cell["v"])
+        res = gr.cell_mask(dat, nx, ny, n, sc, v_edges, s_edges, cell["s"], cell["v"], cache_dir=review_cache(params) or fail("the cache folder for the pixel index is not set"))
     except gr.Refusal as e:
         fail(str(e))
     res["cell"] = {"s": cell["s"], "v": cell["v"]}
