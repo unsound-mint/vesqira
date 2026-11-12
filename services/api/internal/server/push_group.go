@@ -128,14 +128,24 @@ func (s *Server) pushAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ws := wsOf(r)
+	a, _ := authz.From(r.Context())
 	if !s.Pushed.HasAsset(ws, sha) {
+		var limit pushed.LimitError
+		if err := s.Pushed.DailyRefusal(ws, a.ID, int64(len(b))); errors.As(err, &limit) {
+			s.pushRefused(r, "asset", limit.Msg)
+			w.Header().Set("Retry-After", "3600")
+			fail(w, 429, limit.Msg)
+			return
+		} else if err != nil {
+			fail(w, 500, "internal error")
+			return
+		}
 		if msg := s.quotaRefusal(ws, int64(len(b))); msg != "" {
 			s.pushRefused(r, "asset", "over the workspace quota")
 			fail(w, 507, msg)
 			return
 		}
 	}
-	a, _ := authz.From(r.Context())
 	created, err := s.Pushed.PutAsset(ws, a.ID, sha, pictureMime[format], b)
 	if err != nil {
 		log.Printf("push asset: %v", err)

@@ -54,6 +54,7 @@ export function PushedPage() {
         <section className={s.card} aria-label={`Pushed ${d.kind}: ${d.title}`}>
           <h2 className={s.h2}>{d.title}</h2>
           <p className={s.note}>{d.kind}, pushed by {open.pushedByName} at {when(d.pushedAt)}{d.supersededBy ? "; a newer version has been pushed since" : ""}. A frozen copy: it is never edited here.</p>
+          {d.item.omitted ? <p className={s.note}>{d.item.omitted} run setting(s) naming a machine, an account or an address were left out on the pusher&apos;s computer.</p> : null}
           {d.item.assets.slice(0, 12).map((sha) => <img key={sha} src={pushedAssetURL(d.id, sha)} alt={`Picture of ${d.title}`} style={{ maxWidth: "100%", height: "auto" }} />)}
           {d.references.length ? (
             <>

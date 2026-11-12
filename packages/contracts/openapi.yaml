@@ -4402,13 +4402,13 @@ paths:
       operationId: owner_s_enqueuePush_post_api_outbox
       x-listener: owner
       x-vesqira-permission: local.only
-      summary: "Freeze a board, figure, run or report and queue it for the linked workspace; answers at once (local only)"
+      summary: "Freeze a board, figure, run or report and queue it for the linked workspace, if it is still what the preflight showed (409 otherwise); answers at once (local only)"
       requestBody:
         required: true
         content:
           "application/json":
             schema:
-              $ref: "#/components/schemas/PushTarget"
+              $ref: "#/components/schemas/PushQueueRequest"
       responses:
         "202":
           description: "ok"
@@ -19123,6 +19123,9 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/PushReference"
+        omitted:
+          type: "integer"
+          description: "Run settings left out on the pusher's computer because they name a machine, an account or an address."
     PushRequest:
       type: "object"
       required:
@@ -19497,6 +19500,7 @@ components:
         - "bytes"
         - "warnings"
         - "references"
+        - "hash"
       properties:
         kind:
           type: "string"
@@ -19536,8 +19540,31 @@ components:
                   - "full"
                   - "sampled"
                   - "none"
+        hash:
+          type: "string"
+          description: "The item's content hash; queueing names it, so only what was previewed is pushed."
     Accepted:
       type: "object"
       properties:
         ok:
           type: "boolean"
+    PushQueueRequest:
+      type: "object"
+      required:
+        - "kind"
+        - "id"
+        - "hash"
+      additionalProperties: false
+      properties:
+        kind:
+          type: "string"
+          enum:
+            - "figure"
+            - "run"
+            - "board"
+            - "report"
+        id:
+          type: "integer"
+        hash:
+          type: "string"
+          description: "the hash the preflight answered"

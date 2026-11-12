@@ -4,6 +4,7 @@ import { ApiError } from "../api/http";
 import { linkGroup, outbox, retryOutbox, unlinkGroup } from "../api/push";
 import type { GroupLink, OutboxEntry } from "../api/push";
 import { Button, Input, LinkButton } from "../ui";
+import { forgetLink } from "./PushButton";
 import s from "../account/Account.module.css";
 
 const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
@@ -30,7 +31,7 @@ export function GroupPage() {
     e.preventDefault();
     setBusy(true);
     setError("");
-    linkGroup(origin, token).then((l) => { setLink(l); setToken(""); void refresh(); }, (err) => setError(message(err))).finally(() => setBusy(false));
+    linkGroup(origin, token).then((l) => { forgetLink(); setLink(l); setToken(""); void refresh(); }, (err) => setError(message(err))).finally(() => setBusy(false));
   };
   return (
     <main className={`${s.page} ${s.wide}`}>
@@ -45,7 +46,7 @@ export function GroupPage() {
           <p className={s.note}>{link.origin}, since {link.linkedAt?.slice(0, 10)}. Pushing sends frozen copies (the picture, the reviewer-safe provenance, the run line, a board snapshot or a report revision) and never a path, host name, cluster user name or this computer&apos;s ids.</p>
           <div className={s.row}>
             <Button onClick={() => void retryOutbox().then(refresh, (e) => setError(message(e)))}>Try waiting items now</Button>
-            <Button variant="danger" onClick={() => { if (confirm("Unlink this computer? The token file is deleted and the queue emptied. Your work here is untouched, and what was pushed stays on the server.")) void unlinkGroup().then(refresh, (e) => setError(message(e))); }}>Unlink</Button>
+            <Button variant="danger" onClick={() => { if (confirm("Unlink this computer? The token file is deleted and the queue emptied. Your work here is untouched, what was pushed stays on the server, and linking again to the same server continues where it left off.")) void unlinkGroup().then(() => { forgetLink(); return refresh(); }, (e) => setError(message(e))); }}>Unlink</Button>
           </div>
         </section>
       ) : (

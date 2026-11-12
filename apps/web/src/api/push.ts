@@ -18,7 +18,7 @@ export const linkGroup = (origin: string, token: string) => postJSON<GroupLink>(
 export const unlinkGroup = () => postJSON<GroupLink>("/api/group-link/unlink");
 export const outbox = () => getJSON<Schemas["Outbox"]>("/api/outbox");
 export const pushPreflight = (kind: PushKind, id: number) => postJSON<PushPreflight>("/api/outbox/preflight", { kind, id });
-export const queuePush = (kind: PushKind, id: number) => postJSON<OutboxEntry>("/api/outbox", { kind, id });
+export const queuePush = (kind: PushKind, id: number, hash: string) => postJSON<OutboxEntry>("/api/outbox", { kind, id, hash });
 export const retryOutbox = () => postJSON<{ ok?: boolean }>("/api/outbox/retry");
 
 // group server

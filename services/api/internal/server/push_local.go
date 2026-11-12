@@ -255,25 +255,15 @@ func (s *Server) linkGroup(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "paste the token the group server showed under Link a computer (it starts with vsq_)")
 		return
 	}
-	if old, err := s.Outbox.Link(); err == nil && old.Origin != origin {
-		_ = os.Remove(s.GroupKeyFile) // a changed server address never inherits the token
+	// the token is checked against the server before anything here changes: a refused or unreachable server leaves the current
+	// link, its instance, its queue and its token file exactly as they were
+	instance := hex.EncodeToString(make([]byte, 16)) // heads of an instance that pushed nothing: the check reads nothing
+	if old, err := s.Outbox.Link(); err == nil && old.Origin == origin {
+		instance = old.Instance
 	}
-	if err := writeKey(s.GroupKeyFile, tok); err != nil {
-		log.Printf("group key: %v", err)
-		fail(w, 500, "the token could not be saved")
-		return
-	}
-	l, err := s.Outbox.SetLink(origin, "")
-	if err != nil {
-		_ = os.Remove(s.GroupKeyFile)
-		fail(w, 500, "internal error")
-		return
-	}
-	c := &groupClient{base: origin, token: tok, instance: l.Instance, http: s.httpForGroup()}
+	c := &groupClient{base: origin, token: tok, instance: instance, http: s.httpForGroup()}
 	name, err := c.heads()
 	if err != nil {
-		_ = os.Remove(s.GroupKeyFile)
-		_ = s.Outbox.Unlink()
 		var ge *groupError
 		if errors.As(err, &ge) && ge.Status == 0 {
 			fail(w, 502, "the group server could not be reached; check the address and the network")
@@ -282,7 +272,16 @@ func (s *Server) linkGroup(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "the group server refused the token: "+err.Error())
 		return
 	}
+	if old, err := s.Outbox.Link(); err == nil && old.Origin != origin {
+		_ = os.Remove(s.GroupKeyFile) // a changed server address never inherits the token
+	}
+	if err := writeKey(s.GroupKeyFile, tok); err != nil {
+		log.Printf("group key: %v", err)
+		fail(w, 500, "the token could not be saved")
+		return
+	}
 	if _, err := s.Outbox.SetLink(origin, name); err != nil {
+		_ = os.Remove(s.GroupKeyFile)
 		fail(w, 500, "internal error")
 		return
 	}
@@ -475,7 +474,8 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 		return f, fmt.Errorf("push a board, a figure, a run or a report")
 	}
 	if dropped > 0 {
-		f.Warnings = append(f.Warnings, fmt.Sprintf("%d run setting(s) that look like a machine, an account or an address (partition, user, host, an e-mail, a dotted host name) are left out of what is pushed.", dropped))
+		f.Warnings = append(f.Warnings, fmt.Sprintf("%d run setting(s) that name a machine, an account or an address (partition, user, host, an e-mail) are left out of what is pushed; the workspace sees that some were left out.", dropped))
+		it.Omitted = dropped
 	}
 	raw, err := json.Marshal(doc)
 	if err != nil {
@@ -496,10 +496,11 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 	return f, nil
 }
 
-// machineLike reports whether a run setting looks like a machine, an account or an address (the preflight's rule for published
-// reports, identifyingSettings): partition, account, user, host, an e-mail, a dotted host name.
+// machineLike reports whether a run setting names a machine, an account or an address: its key says so (partition, account, user,
+// host, node, cluster, queue, login, mail, server), or its value is an e-mail address. A value is not judged by its dots, so a
+// version such as 1.4.2 stays.
 func machineLike(key, value string) bool {
-	return identifyingKey.MatchString(key) || identifyingValue.MatchString(value)
+	return identifyingKey.MatchString(key) || strings.Contains(value, "@")
 }
 
 // dropMachineParams returns the run line without the settings that look like a machine, account or address, and how many it
@@ -597,7 +598,7 @@ func (s *Server) pushPreflight(w http.ResponseWriter, r *http.Request) {
 		size += len(b)
 	}
 	writeJSON(w, 200, map[string]any{"kind": in.Kind, "title": f.Push.Item.Title, "workspace": l.Workspace, "origin": l.Origin,
-		"pictures": len(f.Assets), "bytes": size, "warnings": f.Warnings, "references": refs})
+		"pictures": len(f.Assets), "bytes": size, "warnings": f.Warnings, "references": refs, "hash": f.Push.Item.Hash})
 }
 
 func (s *Server) pushErr(w http.ResponseWriter, err error) {
@@ -610,10 +611,19 @@ func (s *Server) pushErr(w http.ResponseWriter, err error) {
 	}
 }
 
-// enqueuePush freezes the object as it is now and queues it; the background pass sends it. It answers at once.
+// enqueuePush freezes the object as it is now and queues it, only when that is what the preflight showed (the hash it answered):
+// nothing is pushed without that confirmation, and an object changed since is previewed again. The background pass sends it; this
+// answers at once.
 func (s *Server) enqueuePush(w http.ResponseWriter, r *http.Request) {
-	var in pushTarget
+	var in struct {
+		pushTarget
+		Hash string `json:"hash"`
+	}
 	if !body(w, r, 1<<10, &in, true) {
+		return
+	}
+	if !pushwire.ValidSHA(in.Hash) {
+		fail(w, 422, "preview what will be pushed first (the preflight's hash)")
 		return
 	}
 	l, err := s.Outbox.Link()
@@ -624,6 +634,10 @@ func (s *Server) enqueuePush(w http.ResponseWriter, r *http.Request) {
 	f, err := s.freezePush(wsOf(r), l, in.Kind, in.ID)
 	if err != nil {
 		s.pushErr(w, err)
+		return
+	}
+	if f.Push.Item.Hash != in.Hash {
+		fail(w, 409, "it changed since you previewed it; preview it again")
 		return
 	}
 	b, err := json.Marshal(f.Push)

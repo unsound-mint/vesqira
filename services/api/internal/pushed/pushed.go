@@ -120,6 +120,17 @@ func (s *Store) PutAsset(ws workspace.ID, by, sha, mime string, body []byte) (bo
 	return n == 1, nil
 }
 
+// DailyRefusal says whether one more picture of size bytes would take the account past its daily limit (LimitError), checked
+// before the picture is stored, so pictures that no item shows cannot exceed it either.
+func (s *Store) DailyRefusal(ws workspace.ID, account string, size int64) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return checkDaily(tx, ws, account, s.now().Unix(), size)
+}
+
 // AssetBytes is what the workspace's pushed pictures take (they count towards its byte quota, ADR 0050 section 8).
 func (s *Store) AssetBytes(ws workspace.ID) int64 {
 	var n sql.NullInt64
@@ -200,14 +211,19 @@ func (s *Store) Put(ws workspace.ID, p Pusher, it pushwire.Item, ids []pushwire.
 	defer tx.Rollback()
 	var id int64
 	var supBy sql.NullInt64
-	switch err := tx.QueryRow(`SELECT id, superseded_by FROM pushed_items WHERE workspace_id=? AND hash=?`, ws, it.Hash).Scan(&id, &supBy); {
+	var by, inst string
+	switch err := tx.QueryRow(`SELECT id, superseded_by, created_by, instance FROM pushed_items WHERE workspace_id=? AND hash=?`, ws, it.Hash).Scan(&id, &supBy, &by, &inst); {
 	case err == nil:
 		r := Result{ID: id, Hash: it.Hash}
 		if supBy.Valid {
 			_ = tx.QueryRow(`SELECT hash FROM pushed_items WHERE workspace_id=? AND id=?`, ws, supBy.Int64).Scan(&r.SupersededBy)
 		}
-		if err := addEvidence(tx, ws, id, ids); err != nil {
-			return Result{}, err
+		// only the instance that pushed an item may add evidence to it: anyone in the workspace can read the item and replay it,
+		// and must not be able to make a reference read "verified" with a full hash of their choosing
+		if by == p.Account && inst == p.Instance {
+			if r.Matches, err = addEvidence(tx, ws, id, ids, now); err != nil {
+				return Result{}, err
+			}
 		}
 		return r, tx.Commit()
 	case !errors.Is(err, sql.ErrNoRows):
@@ -271,7 +287,7 @@ func (s *Store) Put(ws workspace.ID, p Pusher, it pushwire.Item, ids []pushwire.
 
 // addEvidence records a full hash that a re-push now carries for a reference that had none, when it does not contradict what is
 // stored (a different sampled fingerprint is a different file, and the stored evidence is kept). It never removes evidence.
-func addEvidence(tx *sql.Tx, ws workspace.ID, id int64, ids []pushwire.Identity) error {
+func addEvidence(tx *sql.Tx, ws workspace.ID, id int64, ids []pushwire.Identity, now int64) ([]Match, error) {
 	changed := false
 	for n, e := range ids {
 		if e.Full == "" {
@@ -283,21 +299,20 @@ func addEvidence(tx *sql.Tx, ws workspace.ID, id int64, ids []pushwire.Identity)
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
-			return err
+			return nil, err
 		}
 		if full != "" || (sampled != "" && e.Algorithm == identity.SampledAlgorithm && e.Sampled != sampled) {
 			continue
 		}
 		if _, err := tx.Exec(`UPDATE pushed_references SET full_sha256=? WHERE item_id=? AND n=? AND full_sha256=''`, e.Full, id, n); err != nil {
-			return err
+			return nil, err
 		}
 		changed = true
 	}
 	if changed {
-		_, err := rematch(tx, ws, id, time.Now().Unix())
-		return err
+		return rematch(tx, ws, id, now)
 	}
-	return nil
+	return nil, nil
 }
 
 // checkDaily refuses a push beyond the account's daily limits (600 items, 2 GiB of documents and pictures in 24 hours). The limit

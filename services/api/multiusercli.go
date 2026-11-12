@@ -153,7 +153,7 @@ func runMultiuser(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer in.Close()
-	tmp, err := os.MkdirTemp("", "vesqira-import-*")
+	tmp, err := os.MkdirTemp(filepath.Dir(*db), ".vesqira-import-*") // beside the catalog: an archive can be large, and /tmp is often memory
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

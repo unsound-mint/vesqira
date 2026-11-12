@@ -83,12 +83,12 @@ function LinkComputer({ recent }: { recent: boolean }) {
   const [error, setError] = useState("");
   const make = () => {
     setError("");
-    createToken({ name: "Linked computer", scopes: ["push"], days: 90 }).then((r) => setShown(r.token), (e) => setError(message(e)));
+    createToken({ name: "Linked computer", scopes: ["push"], days: 30 }).then((r) => setShown(r.token), (e) => setError(message(e)));
   };
   return (
     <section className={s.card}>
       <h2 className={s.h2}>Link a computer</h2>
-      <p className={s.note}>Lets Vesqira on your own computer push frozen figures, run lines, board snapshots and report revisions to this workspace. The token can do nothing else: it cannot read the workspace or act in another. It lasts 90 days; revoke it under Tokens.</p>
+      <p className={s.note}>Lets Vesqira on your own computer push frozen figures, run lines, board snapshots and report revisions to this workspace. The token can do nothing else: it cannot read the workspace or act in another. It lasts 30 days; revoke it under Tokens, and link again when it expires.</p>
       {shown ? (
         <div className={s.form}>
           <p className={s.note}>On your computer open Group server and paste this address and token. The token is shown only now.</p>

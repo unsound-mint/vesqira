@@ -151,7 +151,10 @@ type pushLocal struct {
 	clock                               *groupClock
 }
 
-const pictureMark = "LEAKAUTHOR-q7"
+const (
+	pictureMark  = "LEAKAUTHOR-q7"
+	refusedToken = "vsq_not-a-real-token"
+)
 
 func newPushLocal(t *testing.T, group *httptest.Server) *pushLocal {
 	t.Helper()
@@ -241,9 +244,25 @@ func (l *pushLocal) link(t *testing.T, origin, token string) {
 	}
 }
 
+// preflight answers what pushing would send, with the hash queueing must name.
+func (l *pushLocal) preflight(t *testing.T, kind string, id int64) (string, string) {
+	t.Helper()
+	st, b := callJSON(t, "POST", l.ts.URL+"/api/outbox/preflight", map[string]any{"kind": kind, "id": id})
+	if st != 200 {
+		t.Fatalf("preflight %s: %d %s", kind, st, b)
+	}
+	var p struct {
+		Hash string `json:"hash"`
+	}
+	json.Unmarshal(b, &p)
+	return p.Hash, string(b)
+}
+
+// enqueue previews the object and queues what the preview showed, as the push button does.
 func (l *pushLocal) enqueue(t *testing.T, kind string, id int64) outboxEntryBody {
 	t.Helper()
-	st, b := callJSON(t, "POST", l.ts.URL+"/api/outbox", map[string]any{"kind": kind, "id": id})
+	h, _ := l.preflight(t, kind, id)
+	st, b := callJSON(t, "POST", l.ts.URL+"/api/outbox", map[string]any{"kind": kind, "id": id, "hash": h})
 	if st != 202 {
 		t.Fatalf("enqueue %s: %d %s", kind, st, b)
 	}
@@ -287,9 +306,27 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 		t.Fatal("the token is in the catalog")
 	}
 
-	st, pf := callJSON(t, "POST", l.ts.URL+"/api/outbox/preflight", map[string]any{"kind": "run", "id": l.run})
-	if st != 200 || !strings.Contains(string(pf), "left out") || !strings.Contains(string(pf), `"fingerprint":"full"`) {
-		t.Fatalf("preflight of the run: %d %s", st, pf)
+	runHash, pf := l.preflight(t, "run", l.run)
+	if !strings.Contains(pf, "2 run setting(s)") || !strings.Contains(pf, `"fingerprint":"full"`) {
+		t.Fatalf("preflight of the run: %s", pf)
+	}
+	if st, _ := callJSON(t, "POST", l.ts.URL+"/api/outbox", map[string]any{"kind": "run", "id": l.run}); st != 422 {
+		t.Errorf("queued without a preview: %d", st)
+	}
+	if st, _ := callJSON(t, "POST", l.ts.URL+"/api/outbox", map[string]any{"kind": "run", "id": l.run, "hash": strings.Repeat("0", 64)}); st != 409 {
+		t.Errorf("queued what the preview did not show: %d", st)
+	}
+	_ = runHash
+	// a token the server refuses changes nothing here: the link, its instance and its token file stay
+	before, _ := l.s.Outbox.Link()
+	keyBefore, _ := os.ReadFile(l.s.GroupKeyFile)
+	if st, b := callJSON(t, "POST", l.ts.URL+"/api/group-link", map[string]string{"origin": g.origin, "token": refusedToken}); st != 422 {
+		t.Fatalf("a refused token: %d %s", st, b)
+	}
+	after, _ := l.s.Outbox.Link()
+	keyAfter, _ := os.ReadFile(l.s.GroupKeyFile)
+	if after.Instance != before.Instance || !bytes.Equal(keyBefore, keyAfter) {
+		t.Fatal("a refused re-link replaced the working link")
 	}
 	for _, k := range []struct {
 		kind string
@@ -306,6 +343,25 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 		}
 	}
 
+	// unlinking deletes the token and empties the queue; linking again to the same server continues the same instance
+	if st, _ := callJSON(t, "POST", l.ts.URL+"/api/group-link/unlink", map[string]any{}); st != 200 {
+		t.Fatal("unlink")
+	}
+	if _, err := os.Stat(l.s.GroupKeyFile); !os.IsNotExist(err) {
+		t.Fatal("the token file survived unlinking")
+	}
+	l.link(t, g.origin, token)
+	if again, _ := l.s.Outbox.Link(); again.Instance != before.Instance {
+		t.Fatal("linking again to the same server started a new instance")
+	}
+	for _, k := range []struct {
+		kind string
+		id   int64
+	}{{"report", l.report}, {"board", l.board}, {"figure", l.figure}, {"run", l.run}} {
+		l.enqueue(t, k.kind, k.id)
+	}
+	l.s.OutboxPass(context.Background())
+
 	// what members see on the server
 	list := decode[struct {
 		Items []pushedSummary `json:"items"`
@@ -313,8 +369,11 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 	if len(list.Items) != 4 {
 		t.Fatalf("pushed list: %+v", list.Items)
 	}
-	var figID int64
+	var figID, runID int64
 	for _, it := range list.Items {
+		if it.Kind == "run" {
+			runID = it.ID
+		}
 		if it.PushedByName != "Ada" {
 			t.Errorf("pushed by %q", it.PushedByName)
 		}
@@ -322,10 +381,14 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 			figID = it.ID
 		}
 	}
-	w := g.do(req{path: "/api/pushed/" + itoa(int(figID)), cookie: full})
 	var det struct {
 		Item pushed.Detail `json:"item"`
 	}
+	json.Unmarshal(g.do(req{path: "/api/pushed/" + itoa(int(runID)), cookie: full}).Body.Bytes(), &det)
+	if det.Item.Item.Omitted != 2 || !strings.Contains(string(det.Item.Item.Doc), "block_size") {
+		t.Fatalf("the pushed run line does not say two settings were left out: %+v", det.Item.Item)
+	}
+	w := g.do(req{path: "/api/pushed/" + itoa(int(figID)), cookie: full})
 	json.Unmarshal(w.Body.Bytes(), &det)
 	if w.Code != 200 || len(det.Item.References) != 1 || det.Item.References[0].Match != "none" || det.Item.References[0].Name != "cube.fits" {
 		t.Fatalf("figure detail: %d %s", w.Code, w.Body)
@@ -364,7 +427,7 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 	// local id, secret, partition or account value, picture metadata, and the token only in the Authorization header.
 	link, _ := l.s.Outbox.Link()
 	hostname, _ := os.Hostname()
-	banned := []string{l.base, l.root, l.folder, l.runDir, "LEAKPART", "LEAKMAIL", pictureMark, hex.EncodeToString(link.Secret), token, accounts.Hash(token),
+	banned := []string{l.base, l.root, l.folder, l.runDir, "LEAKPART", "LEAKMAIL", pictureMark, hex.EncodeToString(link.Secret), token, accounts.Hash(token), refusedToken,
 		`"datasetId"`, `"path"`, `"scene"`, `"host`, "7340001", "7350001", "7360001", "7370001", "7380001"}
 	if hostname != "" {
 		banned = append(banned, hostname)
@@ -387,7 +450,7 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 	}
 	for _, e := range ex {
 		hdr := e.header.Clone()
-		if hdr.Get("Authorization") != "Bearer "+token {
+		if a := hdr.Get("Authorization"); a != "Bearer "+token && a != "Bearer "+refusedToken {
 			t.Errorf("%s %s without the token in Authorization", e.method, e.url)
 		}
 		hdr.Del("Authorization")
@@ -403,12 +466,12 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 	}
 
 	// the same content again is the same row: the queue answers the confirmed entry, and a raw resend stores nothing new
-	before := len(l.wire.exchanges())
+	sentBefore := len(l.wire.exchanges())
 	if e := l.enqueue(t, "figure", l.figure); e.Status != "pushed" {
 		t.Fatalf("an unchanged figure was queued again: %+v", e)
 	}
 	l.s.OutboxPass(context.Background())
-	if len(l.wire.exchanges()) != before {
+	if len(l.wire.exchanges()) != sentBefore {
 		t.Error("an unchanged, confirmed item was sent again")
 	}
 	var figBody []byte
@@ -522,9 +585,7 @@ func TestPushQueueRetriesTheSameBytesAfterANetworkFailure(t *testing.T) {
 	}
 
 	// a lost answer: the server stored the item but the reply never came; the next pass asks first and uploads nothing twice
-	if st, b := callJSON(t, "POST", l.ts.URL+"/api/outbox", map[string]any{"kind": "board", "id": l.board}); st != 202 {
-		t.Fatalf("%d %s", st, b)
-	}
+	l.enqueue(t, "board", l.board)
 	due, _ := l.s.Outbox.Due(l.clock.now())
 	c, _, _ := l.s.groupClient()
 	for _, sha := range due[0].Assets {
@@ -738,6 +799,14 @@ func TestPushRefusalsSayWhy(t *testing.T) {
 	if w := g.bearer(token, req{method: "POST", path: "/api/push/items", body: figureItem(t, sha, nil, nil, "after the limit")}); w.Code != 429 || w.Header().Get("Retry-After") == "" {
 		t.Errorf("past the daily limit: %d %s", w.Code, w.Body)
 	}
+	// the daily limit holds for pictures too, before they are stored
+	pic3, sha3 := cleanPNG(t, 30, 30)
+	if w := putAsset(g, token, sha3, pic3); w.Code != 429 {
+		t.Errorf("a picture past the daily item limit: %d %s", w.Code, w.Body)
+	}
+	if _, err := g.cat.DB().Exec(`DELETE FROM pushed_items WHERE bytes=2`); err != nil {
+		t.Fatal(err)
+	}
 	// the quota
 	if err := g.acc.SetQuota(workspace.Local, 10); err != nil {
 		t.Fatal(err)
@@ -826,6 +895,17 @@ func TestPushedReferencesMatchByFingerprintOnly(t *testing.T) {
 	if got := read(); got[1].Match != "probable" {
 		t.Errorf("one full hash is not proof: %+v", got[1])
 	}
+	// another member replays the item with a full hash of their choosing for the reference the server could verify: ignored
+	res := g.invite(workspace.Local, "researcher", "rita")
+	ritaTok := g.mintPush(res)
+	forged := append([]pushwire.Identity(nil), ids...)
+	forged[2] = pushwire.Identity{Algorithm: sampled, Sampled: h("other"), Full: h("fc")}
+	if w := g.bearer(ritaTok, req{method: "POST", path: "/api/push/items", body: figureItem(t, sha, refs, forged, "tiers")}); w.Code != 200 {
+		t.Fatalf("replay: %d %s", w.Code, w.Body)
+	}
+	if got := read(); got[2].Match != "none" {
+		t.Errorf("another member's replay changed the evidence: %+v", got[2])
+	}
 	if _, err := db.Exec(`UPDATE dataset_locations SET full_sha256=? WHERE dataset_id=?`, h("fb"), probable); err != nil {
 		t.Fatal(err)
 	}
@@ -862,7 +942,7 @@ func TestPushRoutesBelongToTheirSide(t *testing.T) {
 	if st, b := callJSON(t, "GET", local.URL+"/api/group-link", nil); st != 200 || !strings.Contains(string(b), `"linked":false`) {
 		t.Errorf("an unlinked local instance: %d %s", st, b)
 	}
-	if st, b := callJSON(t, "POST", local.URL+"/api/outbox", map[string]any{"kind": "run", "id": 1}); st != 409 {
+	if st, b := callJSON(t, "POST", local.URL+"/api/outbox", map[string]any{"kind": "run", "id": 1, "hash": strings.Repeat("0", 64)}); st != 409 {
 		t.Errorf("pushing while unlinked: %d %s", st, b)
 	}
 	g := newGroup(t)

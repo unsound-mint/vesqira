@@ -2859,7 +2859,7 @@ export interface paths {
         /** The push queue with each item's status (local only) */
         get: operations["owner_s_listOutbox_get_api_outbox"];
         put?: never;
-        /** Freeze a board, figure, run or report and queue it for the linked workspace; answers at once (local only) */
+        /** Freeze a board, figure, run or report and queue it for the linked workspace, if it is still what the preflight showed (409 otherwise); answers at once (local only) */
         post: operations["owner_s_enqueuePush_post_api_outbox"];
         delete?: never;
         options?: never;
@@ -10187,6 +10187,8 @@ export interface components {
             doc: Record<string, never>;
             assets: string[];
             references: components["schemas"]["PushReference"][];
+            /** @description Run settings left out on the pusher's computer because they name a machine, an account or an address. */
+            omitted?: number;
         };
         PushRequest: {
             instance: string;
@@ -10340,9 +10342,18 @@ export interface components {
                 /** @enum {string} */
                 fingerprint: "full" | "sampled" | "none";
             }[];
+            /** @description The item's content hash; queueing names it, so only what was previewed is pushed. */
+            hash: string;
         };
         Accepted: {
             ok?: boolean;
+        };
+        PushQueueRequest: {
+            /** @enum {string} */
+            kind: "figure" | "run" | "board" | "report";
+            id: number;
+            /** @description the hash the preflight answered */
+            hash: string;
         };
     };
     responses: never;
@@ -15817,7 +15828,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PushTarget"];
+                "application/json": components["schemas"]["PushQueueRequest"];
             };
         };
         responses: {

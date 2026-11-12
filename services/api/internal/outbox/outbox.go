@@ -105,13 +105,16 @@ func (s *Store) SetLink(origin, workspaceName string) (Link, error) {
 	return l, err
 }
 
-// Unlink forgets the server and empties the queue. Local work is untouched; what was pushed stays on the server.
+// Unlink empties the queue (the caller deletes the token file, which is what makes this computer unlinked). The server's address,
+// the instance id, the origin-key secret and the lineages are kept, so linking again to the same server continues the same
+// lineages instead of starting duplicates; linking to another server replaces them (SetLink). Local work is untouched; what was
+// pushed stays on the server.
 func (s *Store) Unlink() error {
-	if err := s.clearQueue(); err != nil {
+	if _, err := s.db.Exec(`DELETE FROM push_queue`); err != nil {
 		return err
 	}
-	_, err := s.db.Exec(`DELETE FROM group_link`)
-	return err
+	_ = os.RemoveAll(s.dir)
+	return nil
 }
 
 func (s *Store) clearQueue() error {

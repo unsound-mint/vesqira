@@ -25,7 +25,7 @@ describe("push to the group server", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       calls.push(`${init?.method ?? "GET"} ${url}`);
       if (url === "/api/group-link") return json(200, { linked: true, origin: "https://lab.example.org", workspace: "Lab" });
-      if (url === "/api/outbox/preflight") return json(200, { kind: "figure", title: "Peak", workspace: "Lab", origin: "https://lab.example.org", pictures: 1, bytes: 2048, warnings: ["1 run setting(s) ... left out"], references: [{ role: "source", name: "cube.fits", sizeBytes: 9, fingerprint: "sampled" }] });
+      if (url === "/api/outbox/preflight") return json(200, { kind: "figure", title: "Peak", workspace: "Lab", origin: "https://lab.example.org", pictures: 1, bytes: 2048, warnings: ["1 run setting(s) ... left out"], hash: "a".repeat(64), references: [{ role: "source", name: "cube.fits", sizeBytes: 9, fingerprint: "sampled" }] });
       if (url === "/api/outbox") return json(202, { id: 1, kind: "figure", localId: 3, title: "Peak", hash: "h", state: "waiting", message: "queued", attempts: 0, createdAt: "", status: "waiting: queued" });
       return json(404, { error: "not found" });
     }));

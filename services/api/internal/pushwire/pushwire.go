@@ -51,6 +51,9 @@ type Item struct {
 	// References are the datasets a figure or a run was made from, by what a reviewer may see: role, file name and size. What
 	// identifies their bytes travels beside the item (Push.Identity), never inside it.
 	References []Reference `json:"references"`
+	// Omitted counts the run settings the instance left out because they name a machine, an account or an address, so a reader
+	// knows the run line is not every setting. Absent when none was.
+	Omitted int `json:"omitted,omitempty"`
 }
 
 // Reference is a dataset a figure or a run was made from: never a path, a host or a local id.
@@ -136,6 +139,9 @@ func Check(p Push) error {
 	}
 	if len(it.Doc) == 0 || len(it.Doc) > MaxDocBytes {
 		return fmt.Errorf("a document is at most %d MiB", MaxDocBytes>>20)
+	}
+	if it.Omitted < 0 || it.Omitted > 10000 {
+		return fmt.Errorf("omitted is a count of settings")
 	}
 	if !sort.StringsAreSorted(it.Assets) {
 		return fmt.Errorf("assets must be sorted")
