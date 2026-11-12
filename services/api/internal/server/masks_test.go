@@ -129,6 +129,7 @@ func num(m map[string]any, k string) float64 { f, _ := m[k].(float64); return f 
 // Pixels with no value are the type `missing`, computed from the data and never declared; zero is a value and no mask flags it unless
 // its stated rule does. Each type records its rule, its tier and what it was made from; the dataset's file is not touched.
 func TestMasksAreTypedComputedFromTheDataAndNeverTreatZeroAsMissing(t *testing.T) {
+	t.Parallel()
 	e := maskServer(t)
 	d := e.reg("zeros_and_holes.fits")
 	before, _ := os.ReadFile(filepath.Join(e.root, "zeros_and_holes.fits"))
@@ -258,6 +259,7 @@ func TestMasksAreTypedComputedFromTheDataAndNeverTreatZeroAsMissing(t *testing.T
 // A moment map made with masks carries them: the owner's record has the ids and the policy, the reviewer's provenance has the type,
 // rule, policy, tier and fingerprint and no id, and it survives the mask being forgotten.
 func TestAResultCarriesTheMasksThatWereAppliedAndTheReviewerSeesTheirTiersWithoutIds(t *testing.T) {
+	t.Parallel()
 	e := maskServer(t)
 	cube := e.reg("hi_cube.fits")
 	st, sat, b := e.make(t, cube.ID, map[string]any{"method": "saturated", "threshold": 0.0, "source": "a test threshold"})
@@ -376,6 +378,7 @@ func TestAResultCarriesTheMasksThatWereAppliedAndTheReviewerSeesTheirTiersWithou
 
 // An imported mask file keeps the declared type and the meaning of nonzero; a different grid is refused.
 func TestImportedMaskKeepsItsDeclaredTypeAndMeaning(t *testing.T) {
+	t.Parallel()
 	e := maskServer(t)
 	d := e.reg("zeros_and_holes.fits")
 	mk := exec.Command("python3", "-c", `
@@ -411,6 +414,7 @@ fits.PrimaryHDU(np.zeros((5, 5), dtype='<i2')).writeto(sys.argv[2])
 
 // A mask made from other bytes than the dataset has now is stale and is refused rather than applied.
 func TestAStaleMaskIsNotApplied(t *testing.T) {
+	t.Parallel()
 	e := maskServer(t)
 	d := e.reg("zeros_and_holes.fits")
 	_, sat, _ := e.make(t, d.ID, map[string]any{"method": "saturated", "threshold": 100.0, "source": "x"})
@@ -430,6 +434,7 @@ func TestAStaleMaskIsNotApplied(t *testing.T) {
 // The region spectrum and the region histogram take the same masks as statistics, by the same rules, answered by the worker (the browser
 // has no mask bytes): a policy per mask, a mask of another dataset or a stale one refused, no-value and masked pixels counted apart.
 func TestRegionSpectrumAndHistogramTakeMasksWithThePerMaskPolicy(t *testing.T) {
+	t.Parallel()
 	e := maskServer(t)
 	d := e.reg("zeros_and_holes.fits")
 	id := itoa(int(d.ID))

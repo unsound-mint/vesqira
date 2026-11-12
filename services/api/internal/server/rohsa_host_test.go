@@ -71,6 +71,7 @@ func (e *watchEnv) auditCount(action string) int {
 }
 
 func TestROHSAImportFromAHostRegistersRemoteDatasetsAndReadsNoBulkData(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.writeROHSA(filepath.Join(e.remoteRoot, "fit"), "")
 	dir := filepath.Join(e.remoteRoot, "fit", "region_a")
@@ -153,6 +154,7 @@ func TestROHSAImportFromAHostRegistersRemoteDatasetsAndReadsNoBulkData(t *testin
 // The index of a remote .dat is built by the host's own worker in the account's cache folder, never next to the data, and a pixel
 // is then a seek there. The answer equals what the local path gives for the same fixture, byte for byte.
 func TestROHSAIndexIsBuiltOnTheHostCachedOffTheDataAndPixelsEqualTheLocalPath(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.srv.Cache = NewPlaneCache(8 << 20)
 	e.srv.CacheDir = filepath.Join(filepath.Dir(e.home), "local-cache")
@@ -263,6 +265,7 @@ func TestROHSAIndexIsBuiltOnTheHostCachedOffTheDataAndPixelsEqualTheLocalPath(t 
 // A request cannot move the host's index: the host's worker takes the folder from its launcher, not from the request, and
 // refuses to follow a link in the cache folder.
 func TestROHSAHostWorkerIgnoresACacheFolderFromTheRequest(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.writeROHSA(filepath.Join(e.remoteRoot, "fit"), "")
 	run, _ := e.importROHSAFromHost(filepath.Join(e.remoteRoot, "fit", "region_a"), 201)
@@ -306,6 +309,7 @@ func TestROHSAHostWorkerIgnoresACacheFolderFromTheRequest(t *testing.T) {
 // A job's output folder holds the fit, so the fit is imported when the job completes, once, linked to the job; Vesqira's own
 // run.json beside it is written for ROHSA jobs too, and a rescan lists the job and its fit as one run.
 func TestROHSAJobIsImportedOnceWhenItCompletesAndRescanListsOneRun(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	j := e.submit(e.rohsaDraft("rohsa-a", map[string]string{"n_gauss": "3"}, nil), nil)
@@ -403,6 +407,7 @@ func TestROHSAJobIsImportedOnceWhenItCompletesAndRescanListsOneRun(t *testing.T)
 }
 
 func TestAnAutoImportOfAROHSAJobWithNoFitOrTwoFitsIsOneNotificationAndNothingIsGuessed(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	w := newJobWatcher(MinWatchInterval)
@@ -446,6 +451,7 @@ func TestAnAutoImportOfAROHSAJobWithNoFitOrTwoFitsIsOneNotificationAndNothingIsG
 
 // The sweep's grid shows the metrics each imported ROHSA run declared, as it does for VGT, and still names no best run.
 func TestROHSASweepGridShowsTheImportedRunsMetrics(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	base := e.rohsaDraft("rohsa-base", map[string]string{"lambda": "10"}, nil)
 	sw := e.createSweep(map[string]any{"name": "rsweep", "baseJobId": base.ID, "params": []map[string]any{{"key": "n_gauss", "label": "N", "values": []string{"4", "8"}}}})
@@ -500,6 +506,7 @@ func TestROHSASweepGridShowsTheImportedRunsMetrics(t *testing.T) {
 }
 
 func TestROHSAMemoryBudgetIsEditableInAJobDraft(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	j := e.rohsaDraft("rohsa-mem", map[string]string{"n_gauss": "24", "memory_gb": "140"}, nil)
 	cfg := configOf(t, j.Script)

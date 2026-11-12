@@ -139,6 +139,7 @@ func codeFacts(c *codeRepo) map[string]string {
 }
 
 func TestRunKeepsWhatItsJobObservedAndTheRecordCarriesIt(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	code := newCodeRepo(t, filepath.Dir(e.remoteRoot))
 	_, j, _ := e.draftIn("parent", code.dir, nil)
@@ -182,6 +183,7 @@ func TestRunKeepsWhatItsJobObservedAndTheRecordCarriesIt(t *testing.T) {
 }
 
 func TestEnvironmentFileOfAnotherJobOrNoFileIsNeverTrusted(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	code := newCodeRepo(t, filepath.Dir(e.remoteRoot))
 	_, j, _ := e.draftIn("copied", code.dir, nil)
@@ -209,6 +211,7 @@ func TestEnvironmentFileOfAnotherJobOrNoFileIsNeverTrusted(t *testing.T) {
 }
 
 func TestStrictRerunIsRefusedWhenTheCodeIsNotTheParents(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	code := newCodeRepo(t, filepath.Dir(e.remoteRoot))
 	_, pj, _ := e.draftIn("parent", code.dir, nil)
@@ -289,6 +292,7 @@ func TestStrictRerunIsRefusedWhenTheCodeIsNotTheParents(t *testing.T) {
 }
 
 func TestStrictDraftNeedsAParentWhoseCodeIsKnownAndSettingsUnchanged(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	code := newCodeRepo(t, filepath.Dir(e.remoteRoot))
 	strict := func(parent int64) map[string]any { return map[string]any{"parentRunId": parent, "rerunMode": "strict"} }
@@ -346,6 +350,7 @@ func TestStrictDraftNeedsAParentWhoseCodeIsKnownAndSettingsUnchanged(t *testing.
 }
 
 func TestAdaptedRerunMarksTheSettingsThatChangedAndAsksNothingOfTheHost(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	code := newCodeRepo(t, filepath.Dir(e.remoteRoot))
 	_, pj, _ := e.draftIn("parent", code.dir, nil)
@@ -385,6 +390,7 @@ func TestAdaptedRerunMarksTheSettingsThatChangedAndAsksNothingOfTheHost(t *testi
 }
 
 func TestRunPageComparesWhatABestEffortRerunObservedWithItsParent(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	code := newCodeRepo(t, filepath.Dir(e.remoteRoot))
 	_, pj, _ := e.draftIn("parent", code.dir, nil)
@@ -432,6 +438,7 @@ func TestRunPageComparesWhatABestEffortRerunObservedWithItsParent(t *testing.T) 
 }
 
 func TestPostCompareFactsAreNeverMatchedWhenNeitherSideObservedThem(t *testing.T) {
+	t.Parallel()
 	for _, d := range runs.CompareEnv(nil, nil) {
 		if d.Result != "unknown" || d.Blocking {
 			t.Errorf("%s: %+v", d.Key, d)

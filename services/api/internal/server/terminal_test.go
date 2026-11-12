@@ -180,6 +180,7 @@ func status(resp *http.Response) int {
 }
 
 func TestTerminalIsOffByDefault(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, false, nil)
 	if code, _ := e.session(t, map[string]any{"tab": "tab-aaaaaaaa"}, nil); code != 404 {
 		t.Errorf("POST sessions with the switch off: %d", code)
@@ -205,6 +206,7 @@ func TestTerminalIsOffByDefault(t *testing.T) {
 }
 
 func TestTerminalRunsAShellAndEchoesInput(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, nil)
 	c := e.connect(t, e.token(t, "tab-aaaaaaaa", 0))
 	readUntil(t, c, "VQ$ ")
@@ -229,6 +231,7 @@ func TestTerminalRunsAShellAndEchoesInput(t *testing.T) {
 func readExitAfterOutput(t *testing.T, c *websocket.Conn) map[string]any { return readExit(t, c) }
 
 func TestTerminalTokenRules(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, func(s *Server) { s.TerminalLimits.Connect = 300 * time.Millisecond })
 	good := e.token(t, "tab-aaaaaaaa", 0)
 	cases := map[string]struct {
@@ -268,6 +271,7 @@ func TestTerminalTokenRules(t *testing.T) {
 }
 
 func TestTerminalRefusesForeignOriginHostAndSite(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, nil)
 	proto := func(tok string) []string { return []string{termProtocol, termTokenPrefix + tok} }
 	for name, h := range map[string]http.Header{
@@ -329,6 +333,7 @@ func TestTerminalRefusesForeignOriginHostAndSite(t *testing.T) {
 }
 
 func TestTerminalSessionClosesOnIdleAndLifetime(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, func(s *Server) { s.TerminalLimits = TerminalLimits{Idle: 300 * time.Millisecond, Lifetime: time.Hour} })
 	c := e.connect(t, e.token(t, "tab-aaaaaaaa", 0))
 	readUntil(t, c, "VQ$ ")
@@ -370,6 +375,7 @@ func TestTerminalSessionClosesOnIdleAndLifetime(t *testing.T) {
 }
 
 func TestTerminalFrameAndResizeBounds(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, nil)
 	// an oversized input frame ends the session
 	c := e.connect(t, e.token(t, "tab-aaaaaaaa", 0))
@@ -417,6 +423,7 @@ func TestTerminalFrameAndResizeBounds(t *testing.T) {
 }
 
 func TestTerminalOneSessionPerTabAndPerToken(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, nil)
 	first := e.connect(t, e.token(t, "tab-aaaaaaaa", 0))
 	readUntil(t, first, "VQ$ ")
@@ -441,6 +448,7 @@ func TestTerminalOneSessionPerTabAndPerToken(t *testing.T) {
 }
 
 func TestTerminalCapsOpenSessions(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, func(s *Server) { s.TerminalLimits.MaxSessions = 2 })
 	for _, tab := range []string{"tab-aaaaaaaa", "tab-bbbbbbbb"} {
 		readUntil(t, e.connect(t, e.token(t, tab, 0)), "VQ$ ")
@@ -452,6 +460,7 @@ func TestTerminalCapsOpenSessions(t *testing.T) {
 }
 
 func TestTerminalAuditHasNoContent(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, nil)
 	c := e.connect(t, e.token(t, "tab-aaaaaaaa", 0))
 	readUntil(t, c, "VQ$ ")
@@ -538,6 +547,7 @@ func TestTerminalHostSessionUsesTheConfiguredSSH(t *testing.T) {
 }
 
 func TestTerminalHostIsChosenByIDOnly(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, nil)
 	// a free-form string is not a host id; unknown ids are refused before any process starts
 	b := `{"tab":"tab-aaaaaaaa","hostId":"-oProxyCommand=evil"}`
@@ -554,6 +564,7 @@ func TestTerminalHostIsChosenByIDOnly(t *testing.T) {
 }
 
 func TestTerminalClosedPageEndsTheShell(t *testing.T) {
+	t.Parallel()
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	e := newTerminal(t, true, func(s *Server) {
 		s.TerminalShell = []string{"/bin/sh", "-c", "echo $$ > " + pidFile + "; echo up; exec sleep 600"}
@@ -580,6 +591,7 @@ func TestTerminalClosedPageEndsTheShell(t *testing.T) {
 
 // An interactive shell gives each job its own process group and a job may ignore SIGHUP: closing the tab must still end it.
 func TestTerminalEndsJobsThatIgnoreHUPInTheirOwnGroup(t *testing.T) {
+	t.Parallel()
 	e := newTerminal(t, true, func(s *Server) {
 		s.TerminalShell = []string{"/bin/sh", "-c", "trap '' HUP; PS1='VQ$ ' exec /bin/sh -i"}
 	})
@@ -625,6 +637,7 @@ func TestTerminalEndsJobsThatIgnoreHUPInTheirOwnGroup(t *testing.T) {
 
 // The shell exits by itself and leaves a HUP-ignoring background job behind: the session end still removes it.
 func TestTerminalEndsLeftoverJobsAfterTheShellExited(t *testing.T) {
+	t.Parallel()
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	e := newTerminal(t, true, func(s *Server) {
 		s.TerminalShell = []string{"/bin/sh", "-c", "trap '' HUP; sleep 1000 & echo $! > " + pidFile + "; echo up; exit 0"}
@@ -649,6 +662,7 @@ func TestTerminalEndsLeftoverJobsAfterTheShellExited(t *testing.T) {
 }
 
 func TestStatParsingSurvivesOddCommandNames(t *testing.T) {
+	t.Parallel()
 	line := []byte("123 (a) b (c) S 1 123 456 0 -1 4194560")
 	if got := parseStatSession(line); got != 456 {
 		t.Errorf("session %d", got)
@@ -663,6 +677,7 @@ func TestStatParsingSurvivesOddCommandNames(t *testing.T) {
 
 // Concurrent upgrades must not exceed the cap: the check and the registration are one critical section.
 func TestTerminalCapHoldsUnderConcurrentUpgrades(t *testing.T) {
+	t.Parallel()
 	const cap, attempts = 3, 12
 	e := newTerminal(t, true, func(s *Server) { s.TerminalLimits.MaxSessions = cap })
 	tokens := make([]string, attempts)

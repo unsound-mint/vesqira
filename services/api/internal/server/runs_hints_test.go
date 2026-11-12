@@ -26,6 +26,7 @@ func (c *countingHints) HintIndex() (map[catalog.HintKey]int64, error) {
 // The runs list suggests an input for every run from one read of the catalog, however many runs and files there are
 // (148 runs and 1 350 files is the scale it has to serve). The first file by name and id still wins a tie.
 func TestRunsListReadsTheCatalogOnceForInputHints(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
 	if err != nil {

@@ -63,6 +63,7 @@ func get(t *testing.T, url string) (*http.Response, []byte) {
 }
 
 func TestPlaneFrameAndValidation(t *testing.T) {
+	t.Parallel()
 	head := `{"ok":true,"nbytes":8}`
 	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(head), Payload: []byte{1, 2, 3, 4, 5, 6, 7, 8}}}
 	base, _, _, _, id := planeServer(t, fp)
@@ -93,6 +94,7 @@ func TestPlaneFrameAndValidation(t *testing.T) {
 }
 
 func TestPlaneRequestsAreReauthorizedAndTamperEvident(t *testing.T) {
+	t.Parallel()
 	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(`{"ok":true,"nbytes":0}`)}}
 	base, root, sibling, file, id := planeServer(t, fp)
 	u := base + "/api/datasets/" + itoa(id) + "/plane?channel=0"
@@ -121,6 +123,7 @@ func TestPlaneRequestsAreReauthorizedAndTamperEvident(t *testing.T) {
 }
 
 func TestPlaneCacheServesRepeatsAndForgetsChangedFiles(t *testing.T) {
+	t.Parallel()
 	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(`{"ok":true,"nbytes":4}`), Payload: []byte("abcd")}}
 	ts, root, _ := newPlaneServer(t, fp)
 	file := filepath.Join(root, "a.fits")
@@ -137,6 +140,7 @@ func TestPlaneCacheServesRepeatsAndForgetsChangedFiles(t *testing.T) {
 }
 
 func TestCacheEvictsLeastRecentlyUsedWithinItsByteBound(t *testing.T) {
+	t.Parallel()
 	c := NewPlaneCache(3 * (100 + 64))
 	rep := worker.Reply{Payload: make([]byte, 100)}
 	for i := 0; i < 4; i++ {
@@ -160,6 +164,7 @@ func TestCacheEvictsLeastRecentlyUsedWithinItsByteBound(t *testing.T) {
 }
 
 func TestWorkerFailuresMapToStatuses(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		err  error
 		want int
@@ -187,6 +192,7 @@ func TestWorkerFailuresMapToStatuses(t *testing.T) {
 // Expected sky values are from the independent TAN formulas in fixtures/test_fixtures.py (tan_world)
 // for pixel (x=20, y=9), channel 40, recomputed inline below.
 func TestPlaneViewerEndToEndWithRealWorker(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -320,6 +326,7 @@ func TestPlaneViewerEndToEndWithRealWorker(t *testing.T) {
 }
 
 func TestSameSecondRewriteAndCrossSiteGetAreRefused(t *testing.T) {
+	t.Parallel()
 	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(`{"ok":true,"nbytes":0}`)}}
 	base, _, _, file, id := planeServer(t, fp)
 	u := base + "/api/datasets/" + itoa(id) + "/plane?channel=0"
@@ -342,6 +349,7 @@ func TestSameSecondRewriteAndCrossSiteGetAreRefused(t *testing.T) {
 }
 
 func TestSpectrumQueryValidationAndFrame(t *testing.T) {
+	t.Parallel()
 	head := `{"ok":true,"nbytes":8}`
 	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(head), Payload: make([]byte, 8)}}
 	base, _, _, _, id := planeServer(t, fp)
@@ -386,6 +394,7 @@ func postJSON(t *testing.T, url string, body any) (*http.Response, []byte) {
 // Axial interpretation, companion compatibility, server-side refusal to average angles, and the doubled-angle
 // statistics, end to end with the real workers on generated fixtures.
 func TestAxialOrientationEndToEndWithRealWorker(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -499,6 +508,7 @@ func TestAxialOrientationEndToEndWithRealWorker(t *testing.T) {
 }
 
 func TestCompatibilityEndpointLinksOnlyKnownSameGrids(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -562,6 +572,7 @@ func TestCompatibilityEndpointLinksOnlyKnownSameGrids(t *testing.T) {
 // A VGT run folder: import links the outputs, pairs the reliability map, proposes the axial interpretation as the
 // adapter's (not the user's), shows the dirty commit as not reproducible, and nothing location-like reaches a reviewer.
 func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -718,6 +729,7 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 }
 
 func TestPreviewStepIsValidatedPassedOnAndCachedApartFromTheFullPlane(t *testing.T) {
+	t.Parallel()
 	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(`{"ok":true,"nbytes":4}`), Payload: []byte("abcd")}}
 	base, _, _, _, id := planeServer(t, fp)
 	u := base + "/api/datasets/" + itoa(id) + "/plane?channel=1"
@@ -745,6 +757,7 @@ func TestPreviewStepIsValidatedPassedOnAndCachedApartFromTheFullPlane(t *testing
 }
 
 func TestCapabilitiesReportWhatThisServerWasStartedWith(t *testing.T) {
+	t.Parallel()
 	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(`{"ok":true,"nbytes":0}`)}}
 	base, _, _, _, _ := planeServer(t, fp)
 	resp, body := get(t, base+"/api/capabilities")
@@ -772,6 +785,7 @@ func TestCapabilitiesReportWhatThisServerWasStartedWith(t *testing.T) {
 }
 
 func TestAvailabilityFlagsChangedMissingAndForeignFilesWithoutTouchingRemoteOnes(t *testing.T) {
+	t.Parallel()
 	fp := &fakePlanes{reply: worker.Reply{Head: json.RawMessage(`{"ok":true,"nbytes":0}`)}}
 	base, root, _, file, id := planeServer(t, fp)
 	check := func() map[string]string {

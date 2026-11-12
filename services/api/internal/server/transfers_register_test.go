@@ -25,6 +25,7 @@ func tinyFits() []byte {
 }
 
 func TestAVerifiedDownloadIsRegisteredWithAnExternalReferenceAndNoHostPathInTheSharedSummary(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -95,6 +96,7 @@ func TestAVerifiedDownloadIsRegisteredWithAnExternalReferenceAndNoHostPathInTheS
 }
 
 func TestCapabilitiesSayWhetherTransfersAreAvailable(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	_, b := get(t, e.api("/api/capabilities"))
 	var c Capabilities

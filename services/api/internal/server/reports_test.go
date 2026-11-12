@@ -47,6 +47,7 @@ func callJSON(t *testing.T, method, url string, in any) (int, []byte) {
 // through a named reader link, commented on, and the comment comes back to the owner. What the reader receives is
 // checked on the wire for the source path, the root, the run directory and the publisher key.
 func TestReportPublishReadCommentSyncExposesNoSource(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	root := filepath.Join(base, "private-research-root")
 	os.MkdirAll(root, 0o755)
@@ -275,6 +276,7 @@ func TestReportPublishReadCommentSyncExposesNoSource(t *testing.T) {
 // A push whose answer is lost is retried with the same bytes and lands on the same revision; a new server address
 // never inherits the key of the old one.
 func TestPublishRetryAfterALostAnswerAndKeyNotReusedForANewAddress(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
 	if err != nil {
@@ -338,6 +340,7 @@ func TestPublishRetryAfterALostAnswerAndKeyNotReusedForANewAddress(t *testing.T)
 }
 
 func TestPreflightNamesRunSettingsThatIdentifyMachinesOrPeople(t *testing.T) {
+	t.Parallel()
 	w := identifyingSettings("r1", []runs.Param{{Key: "block_size", Value: "32"}, {Key: "partition", Value: "gpu"}, {Key: "notify", Value: "someone@example.org"}, {Key: "dataset", Value: "login1.hpc.example.edu"}})
 	for _, want := range []string{"partition=gpu", "notify=someone@example.org", "dataset=login1.hpc.example.edu"} {
 		if !strings.Contains(w, want) {

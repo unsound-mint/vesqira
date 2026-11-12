@@ -15,6 +15,7 @@ import (
 // The undo of a board edit names the panel it expects at a position. The server applies the edit only if that panel is still
 // there, answers 409 with the board as it is otherwise, and still serves clients that send no expectation.
 func TestBoardItemEditsHonourTheExpectedPanel(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	rs, _ := sourceroot.New([]string{base})
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))

@@ -11,6 +11,7 @@ import (
 // The watcher's backoff state shows as "not reachable"; a successful VPN connect makes it ask again at once, inside the
 // backoff, and a success brings the state back.
 func TestWatcherRetriesAtOnceAfterAVPNConnectAndReportsReachability(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	j := e.submit(e.draft("vgt-a", nil), nil)

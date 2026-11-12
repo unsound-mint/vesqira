@@ -13,6 +13,7 @@ import (
 // path the host resolves it to. The transfer must work through it, in both directions, and be verified (the hash calls name
 // the folder the way the owner did and the host resolves it again).
 func TestAHostRootThatIsASymbolicLinkWorksBothWays(t *testing.T) {
+	t.Parallel()
 	e := newXferEnv(t)
 	link := filepath.Join(e.base, "home-link")
 	if err := os.Symlink(e.remote, link); err != nil {

@@ -133,6 +133,7 @@ func (e *vpnEnv) auditText(t *testing.T) string {
 // Every element reaches the program exactly as stored: a ";" or "$HOME" inside one is text, not shell syntax, and nothing
 // is created by it.
 func TestVPNRunsTheStoredArgvWithoutAShell(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	echo := e.script(t, "echo-argv", `for a in "$@"; do printf '[%s]\n' "$a"; done; echo SECRET-OUTPUT-TOKEN`)
 	marker := filepath.Join(e.dir, "pwned")
@@ -167,6 +168,7 @@ func TestVPNRunsTheStoredArgvWithoutAShell(t *testing.T) {
 }
 
 func TestVPNConnectThatLeavesTheHostUnreachableSaysSo(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	fail := e.script(t, "fail", `echo "auth failed" >&2; exit 3`)
 	h := e.addHost(t, []string{fail}, []string{"true"})
@@ -196,6 +198,7 @@ func TestVPNConnectThatLeavesTheHostUnreachableSaysSo(t *testing.T) {
 
 // A successful connect makes the job watcher drop its backoff for that host and wake up at once.
 func TestVPNConnectKicksTheJobWatcher(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	h := e.addHost(t, []string{"true"}, nil)
 	e.up.Store(true)
@@ -221,6 +224,7 @@ func TestVPNConnectKicksTheJobWatcher(t *testing.T) {
 }
 
 func TestVPNPageCanOnlySayConnectOrDisconnect(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	marker := filepath.Join(e.dir, "ran")
 	prog := e.script(t, "mark", `touch `+marker)
@@ -254,6 +258,7 @@ func TestVPNPageCanOnlySayConnectOrDisconnect(t *testing.T) {
 }
 
 func TestVPNIsOffUnlessStartedWithTheFlagAndUnlessTheHostHasACommand(t *testing.T) {
+	t.Parallel()
 	off := newVPN(t, false)
 	if r, _ := postJSON(t, off.ts.URL+"/api/hosts", map[string]any{"name": "x", "dest": "x", "roots": []string{"/d"}, "vpnCommand": []string{"true"}}); r.StatusCode != 403 {
 		t.Fatalf("a VPN command was accepted with the feature off: %d", r.StatusCode)
@@ -277,6 +282,7 @@ func TestVPNIsOffUnlessStartedWithTheFlagAndUnlessTheHostHasACommand(t *testing.
 }
 
 func TestVPNCommandsAreValidatedWhenStored(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	h := e.addHost(t, nil, nil)
 	long := strings.Repeat("a", hosts.MaxVPNArgLen+1)
@@ -400,6 +406,7 @@ func (e *vpnEnv) foregroundClient(t *testing.T) (prog, clientPid, childPid strin
 // A client that stays in the foreground is not killed when the wait ends: it is the tunnel. The answer says so, the host list
 // shows it running with its output, and disconnect without a disconnect command ends its whole process group.
 func TestVPNForegroundClientSurvivesTheWaitAndDisconnectStopsIt(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	e.srv.VPNTimeout = 600 * time.Millisecond
 	prog, clientPid, childPid := e.foregroundClient(t)
@@ -463,6 +470,7 @@ func TestVPNForegroundClientSurvivesTheWaitAndDisconnectStopsIt(t *testing.T) {
 
 // The host becoming reachable while the client keeps running is the success the page reports, with the seconds it took.
 func TestVPNConnectReportsWhenTheHostBecomesReachable(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	e.srv.VPNTimeout = 10 * time.Second
 	prog, clientPid, _ := e.foregroundClient(t)
@@ -489,6 +497,7 @@ func TestVPNConnectReportsWhenTheHostBecomesReachable(t *testing.T) {
 
 // With a disconnect command stored, that command is what disconnect runs; the client is not signalled by Vesqira.
 func TestVPNDisconnectCommandIsUsedWhenConfigured(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	e.srv.VPNTimeout = 500 * time.Millisecond
 	prog, clientPid, _ := e.foregroundClient(t)
@@ -517,6 +526,7 @@ func TestVPNDisconnectCommandIsUsedWhenConfigured(t *testing.T) {
 
 // A disconnect command that hangs is still bounded.
 func TestVPNDisconnectCommandIsBounded(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	e.srv.VPNTimeout = 400 * time.Millisecond
 	pidFile := filepath.Join(e.dir, "hang.pid")
@@ -543,6 +553,7 @@ func isZombie(pid int) bool {
 }
 
 func TestVPNOneRunAtATimePerHost(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	started, gate := filepath.Join(e.dir, "started"), filepath.Join(e.dir, "gate")
 	slow := e.script(t, "slow", `touch `+started+`; while [ ! -e `+gate+` ]; do sleep 0.02; done; echo done`)
@@ -596,6 +607,7 @@ func (e *vpnEnv) addHostNamed(t *testing.T, name string, connect []string) hosts
 }
 
 func TestVPNProgramThatDoesNotStartIsReported(t *testing.T) {
+	t.Parallel()
 	e := newVPN(t, true)
 	h := e.addHost(t, []string{"definitely-not-a-vpn-client-xyz", "connect"}, nil)
 	code, m := e.vpn(t, h, map[string]string{"action": "connect"})

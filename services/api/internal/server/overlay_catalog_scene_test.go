@@ -12,6 +12,7 @@ import (
 // A figure that draws a catalog is held to the catalog the scene names: a point catalog with a fresh declaration, columns that
 // exist, and a declared angle meaning for vectors. Saving a figure does not run the worker, so the server checks it here.
 func TestACatalogFigureSceneIsHeldToTheCatalogDeclaration(t *testing.T) {
+	t.Parallel()
 	quantity := "starlight_polarization"
 	header, _ := json.Marshal(catalog.CatalogHeader{Kind: catalog.KindCatalog, Format: "csv", Rows: 3, Columns: []catalog.CatalogColumn{
 		{Name: "ra", Dtype: "float", Scalar: true}, {Name: "dec", Dtype: "float", Scalar: true}, {Name: "pa", Dtype: "float", Scalar: true},

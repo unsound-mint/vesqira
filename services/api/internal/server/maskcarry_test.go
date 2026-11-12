@@ -76,6 +76,7 @@ var cutoutBox = map[string]string{"x0": "4", "x1": "20", "y0": "2", "y1": "15"}
 // says what was done, the fingerprint of its own file, fresh against the result. What was left behind is recorded; the no-value mask is
 // computed from the result, not carried. The sources are byte-identical afterwards.
 func TestACutoutCarriesOnlyTheMasksChosenAndRecordsTheRest(t *testing.T) {
+	t.Parallel()
 	f := newCarryFixture(t)
 	srcFiles := []string{filepath.Join(f.e.root, "hi_cube.fits")}
 	for _, m := range []masks.Mask{f.sat, f.reg, f.m} {
@@ -195,6 +196,7 @@ func TestACutoutCarriesOnlyTheMasksChosenAndRecordsTheRest(t *testing.T) {
 // The mask a carry is refused for: another dataset's, the no-value mask (computed again), a stale one, a listed-twice one; a stale mask can
 // still be left behind. Align and convolve want every mask decided, never a silent default.
 func TestCarryingRefusesWhatItMust(t *testing.T) {
+	t.Parallel()
 	f := newCarryFixture(t)
 	other := f.e.reg("hi_cube_coarser.fits")
 	_, foreign, _ := f.e.make(t, other.ID, map[string]any{"method": "missing"})
@@ -250,6 +252,7 @@ func fileCount(t *testing.T, dir string) int {
 
 // Convolution flags what the kernel footprint reaches; a per-channel mask stays per channel; the result's no-value mask is its own.
 func TestConvolveCarriesAMaskThroughTheKernelFootprint(t *testing.T) {
+	t.Parallel()
 	f := newCarryFixture(t)
 	st, res, b := f.analyze(t, map[string]any{"op": "convolve", "datasetId": f.cube.ID, "params": map[string]string{"targetBmaj": "144", "targetBmin": "144", "targetBpa": "0"},
 		"carryMasks": []map[string]any{{"id": f.reg.ID, "carry": true}, {"id": f.sat.ID, "carry": false}}})
@@ -283,6 +286,7 @@ func TestConvolveCarriesAMaskThroughTheKernelFootprint(t *testing.T) {
 
 // Align carries a mask through the exact (area-overlap) reprojection and names the reference; the choice is required.
 func TestAlignCarriesAMaskAndNamesTheReference(t *testing.T) {
+	t.Parallel()
 	f := newCarryFixture(t)
 	ref := f.e.reg("hi_cube_coarser.fits")
 	body := map[string]any{"op": "align", "datasetId": f.cube.ID, "referenceId": ref.ID}
@@ -306,6 +310,7 @@ func TestAlignCarriesAMaskAndNamesTheReference(t *testing.T) {
 
 // A virtual subset written as a file carries the masks chosen, cut by the same window; a request with another choice is another file.
 func TestAMaterialisedSubsetCarriesMasksByItsWindowAndIsReusedOnlyForTheSameChoice(t *testing.T) {
+	t.Parallel()
 	f := newCarryFixture(t)
 	code, b := callJSON(t, "POST", fmt.Sprintf("%s/api/datasets/%d/subsets", f.e.ts.URL, f.cube.ID), map[string]any{"name": "Core", "reason": "the source",
 		"box": map[string]any{"x0": 3, "x1": 20, "y0": 2, "y1": 15}, "step": 2, "channels": map[string]any{"c0": 10, "c1": 40}})

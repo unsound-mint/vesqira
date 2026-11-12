@@ -170,6 +170,7 @@ func def(over map[string]any) map[string]any {
 // plane, spectrum, coordinate and header routes; writing it as a file gives a dataset whose readouts are the same ones, byte for byte
 // where they are numbers.
 func TestSubsetReadsEqualAMaterialisedFile(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"hi_cube.fits", "hi_cube_rotated.fits", "hi_cube_reverse_spectral.fits"} {
 		t.Run(name, func(t *testing.T) {
 			e := newSubEnv(t, nil)
@@ -284,6 +285,7 @@ func TestSubsetReadsEqualAMaterialisedFile(t *testing.T) {
 }
 
 func TestSubsetDefinitionIsCheckedAgainstTheFile(t *testing.T) {
+	t.Parallel()
 	e := newSubEnv(t, nil)
 	src := e.register("hi_cube.fits")
 	cat := e.register("hi_cube_no_spectral_ref.fits")
@@ -356,6 +358,7 @@ func TestSubsetDefinitionIsCheckedAgainstTheFile(t *testing.T) {
 // A source that changed makes the subset stale: it is read nowhere and not offered as current; re-pinning records a new version;
 // a file written from the old version keeps the version it was written from.
 func TestSubsetGoesStaleWhenTheSourceChangesAndIsRepinned(t *testing.T) {
+	t.Parallel()
 	e := newSubEnv(t, nil)
 	src := e.register("hi_cube.fits")
 	sub := e.mustCreate(src.ID, boxDef)
@@ -443,6 +446,7 @@ func TestSubsetGoesStaleWhenTheSourceChangesAndIsRepinned(t *testing.T) {
 // Writing a subset as a file twice for the same definition, version and source bytes gives the one file; a changed file or a
 // correction that changes what it would hold gives another.
 func TestSubsetMaterialisationIsReusedAndCarriesTheCorrections(t *testing.T) {
+	t.Parallel()
 	e := newSubEnv(t, nil)
 	src := e.register("hi_cube.fits")
 	sub := e.mustCreate(src.ID, def(map[string]any{"step": 1}))
@@ -521,6 +525,7 @@ func globFits(t *testing.T, dir string) []string {
 }
 
 func TestDeletingASourceListsItsSubsetsAndRemovesThem(t *testing.T) {
+	t.Parallel()
 	e := newSubEnv(t, nil)
 	src := e.register("hi_cube.fits")
 	other := e.register("hi_cube_rotated.fits")
@@ -581,6 +586,7 @@ func TestDeletingASourceListsItsSubsetsAndRemovesThem(t *testing.T) {
 // A subset is read only through the routes that apply its window; every other route of a dataset is not offered for it, and the
 // ones that cannot be windowed yet say so instead of answering for the source's pixels.
 func TestSubsetRefusesWhatItCannotAnswerForTheWindow(t *testing.T) {
+	t.Parallel()
 	e := newSubEnv(t, nil)
 	src := e.register("hi_cube.fits")
 	sub := e.mustCreate(src.ID, boxDef)
@@ -625,6 +631,7 @@ func TestSubsetRefusesWhatItCannotAnswerForTheWindow(t *testing.T) {
 
 // A worker that does not apply the window (older, on a host) must never pass its answer off as the subset's.
 func TestSubsetNeverShowsAWorkerAnswerThatIgnoredTheWindow(t *testing.T) {
+	t.Parallel()
 	e := newSubEnv(t, func(p PlaneService) PlaneService { return stripWindow{p} })
 	src := e.register("hi_cube.fits")
 	code, _, b := e.create(src.ID, boxDef)
@@ -634,6 +641,7 @@ func TestSubsetNeverShowsAWorkerAnswerThatIgnoredTheWindow(t *testing.T) {
 }
 
 func TestWindowEchoMustMatchTheWindowSent(t *testing.T) {
+	t.Parallel()
 	win := `{"c0":10,"c1":40,"step":2,"x0":3,"x1":20,"y0":2,"y1":15}`
 	ok := `{"window":{"x0":3,"y0":2,"step":2,"c0":10,"c1":40,"width":9,"height":7}}`
 	for head, want := range map[string]bool{

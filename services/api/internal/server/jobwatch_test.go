@@ -186,6 +186,7 @@ func (e *watchEnv) writeRun(outDir string) {
 }
 
 func TestWatcherPollsOnlyWithActiveJobsOnceAPerHostPerInterval(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	w := newJobWatcher(5 * time.Second)
@@ -250,6 +251,7 @@ func TestWatcherPollsOnlyWithActiveJobsOnceAPerHostPerInterval(t *testing.T) {
 }
 
 func TestWatcherBacksOffWhenTheHostIsUnreachableAndSaysNothingAboutTheJob(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	j := e.submit(e.draft("vgt-a", nil), nil)
@@ -306,6 +308,7 @@ func TestWatcherBacksOffWhenTheHostIsUnreachableAndSaysNothingAboutTheJob(t *tes
 }
 
 func TestAnEndStateIsAnnouncedExactlyOnceWhoeverSeesItAndNeverAsSuccess(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	cases := []struct {
@@ -387,6 +390,7 @@ func TestAnEndStateIsAnnouncedExactlyOnceWhoeverSeesItAndNeverAsSuccess(t *testi
 }
 
 func TestAJobSlurmNoLongerListsIsAnnouncedAsUnknownOnceAndLeftAsItWas(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	j := e.submit(e.draft("vgt-a", nil), nil)
 	os.Remove(filepath.Join(e.bin, "state", j.SlurmID)) // gone from squeue and sacct
@@ -410,6 +414,7 @@ func TestAJobSlurmNoLongerListsIsAnnouncedAsUnknownOnceAndLeftAsItWas(t *testing
 }
 
 func TestAutoImportOptionDefaultsByTemplateAndIsStoredWithTheJob(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	if j := e.draft("vgt-a", nil); !j.AutoImport {
 		t.Errorf("a VGT job should import by default")
@@ -440,6 +445,7 @@ func TestAutoImportOptionDefaultsByTemplateAndIsStoredWithTheJob(t *testing.T) {
 }
 
 func TestACompletedJobIsImportedOnceLinkedAndAnnounced(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	j := e.submit(e.draft("vgt-a", nil), nil)
@@ -484,6 +490,7 @@ func TestACompletedJobIsImportedOnceLinkedAndAnnounced(t *testing.T) {
 }
 
 func TestAutoImportIsOffWhenTheOwnerTurnedItOff(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	j := e.submit(e.draft("vgt-a", nil), map[string]any{"autoImport": false})
 	e.setSlurm(j.SlurmID, "COMPLETED")
@@ -504,6 +511,7 @@ func TestAutoImportIsOffWhenTheOwnerTurnedItOff(t *testing.T) {
 }
 
 func TestAFailedAutoImportIsOneNotificationWithTheReasonAndIsNotRetried(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	j := e.submit(e.draft("vgt-a", nil), nil)
@@ -549,6 +557,7 @@ func TestAFailedAutoImportIsOneNotificationWithTheReasonAndIsNotRetried(t *testi
 // The notifications belong to the owner's loopback listener. The reviewer's handler has no such route, and a request to the
 // owner's with a Host that is not loopback is refused before any handler runs.
 func TestNotificationsAreOwnerOnly(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	req, _ := http.NewRequest("GET", e.api("/api/notifications"), nil)
 	req.Host = "attacker.example"

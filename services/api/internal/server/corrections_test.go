@@ -140,6 +140,7 @@ func (e *corrEnv) save(id int64, in map[string]any) (int, []byte) {
 // figure; Draw again announces a change; revert is a new record; a changed file makes the state stale and unapplied until
 // confirmed; a sidecar round-trips, and one made for another file needs a sentence.
 func TestCorrectionsWorkflowWithTheRealWorker(t *testing.T) {
+	t.Parallel()
 	e := newCorrEnv(t)
 	d := e.register("hi_cube.fits")
 	other := e.register("hi_cube_galactic.fits")
@@ -395,6 +396,7 @@ func TestCorrectionsWorkflowWithTheRealWorker(t *testing.T) {
 
 // The corrections routes answer what the spec says (ADR 0032), with the real worker.
 func TestCorrectionsRoutesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	e := newCorrEnv(t)
 	doc := loadSpec(t)
 	d := e.register("hi_cube.fits")
@@ -425,6 +427,7 @@ func TestCorrectionsRoutesMatchTheSpec(t *testing.T) {
 
 // The file is never written: reading it with corrections, saving, reverting and exporting leave its bytes as they were.
 func TestCorrectionsNeverWriteTheFile(t *testing.T) {
+	t.Parallel()
 	e := newCorrEnv(t)
 	d := e.register("hi_cube_freq.fits")
 	p := filepath.Join(e.root, "hi_cube_freq.fits")
@@ -455,6 +458,7 @@ func TestCorrectionsNeverWriteTheFile(t *testing.T) {
 // Offline copies are keyed by the file's signature, not by the corrections in force: a correction record forgets them, so a copy
 // taken before it can never be served as the corrected file (ADR 0059 with ADR 0061).
 func TestACorrectionForgetsTheDatasetsOfflineCopies(t *testing.T) {
+	t.Parallel()
 	e := newCorrEnv(t)
 	d := e.register("hi_cube.fits")
 	k := offline.Key{DatasetID: d.ID, HostID: 1, Size: d.SizeBytes, MTime: d.ModifiedAt.UnixNano(), Op: "view"}

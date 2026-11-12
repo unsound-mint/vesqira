@@ -106,6 +106,7 @@ func write(t *testing.T, p string, b []byte, mode os.FileMode) {
 }
 
 func TestEditorIsOffByDefaultAndReportedInCapabilities(t *testing.T) {
+	t.Parallel()
 	off := newEditor(t, false)
 	p := filepath.Join(off.root, "a.toml")
 	write(t, p, []byte("x = 1\n"), 0o644)
@@ -135,6 +136,7 @@ func TestEditorIsOffByDefaultAndReportedInCapabilities(t *testing.T) {
 }
 
 func TestEditorOpensAndSavesATextFileInsideTheRoots(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	p := filepath.Join(e.root, "pipeline.toml")
 	write(t, p, []byte("ker = 8\n"), 0o640)
@@ -164,6 +166,7 @@ func TestEditorOpensAndSavesATextFileInsideTheRoots(t *testing.T) {
 }
 
 func TestEditorRefusesPathsOutsideTheRootsDotDotAndSymlinkEscapes(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	outside := filepath.Join(e.other, "secret.txt")
 	write(t, outside, []byte("private\n"), 0o600)
@@ -202,6 +205,7 @@ func TestEditorRefusesPathsOutsideTheRootsDotDotAndSymlinkEscapes(t *testing.T) 
 }
 
 func TestEditorRefusesCredentialFolders(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	if err := os.Mkdir(filepath.Join(e.root, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
@@ -214,6 +218,7 @@ func TestEditorRefusesCredentialFolders(t *testing.T) {
 }
 
 func TestEditorRefusesBinaryFitsOversizeAndUnknownKinds(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	mk := func(name string, b []byte) string {
 		p := filepath.Join(e.root, name)
@@ -269,6 +274,7 @@ func TestEditorRefusesBinaryFitsOversizeAndUnknownKinds(t *testing.T) {
 }
 
 func TestEditorStaleBaseIsA409WithTheCurrentContentAndNothingIsWritten(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	p := filepath.Join(e.root, "job.sh")
 	write(t, p, []byte("echo one\n"), 0o755)
@@ -310,6 +316,7 @@ func TestEditorStaleBaseIsA409WithTheCurrentContentAndNothingIsWritten(t *testin
 }
 
 func TestEditorSaveIsAtomicAndKeepsTheMode(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	p := filepath.Join(e.root, "run.slurm")
 	write(t, p, []byte("#!/bin/bash\n"), 0o750)
@@ -333,6 +340,7 @@ func TestEditorSaveIsAtomicAndKeepsTheMode(t *testing.T) {
 }
 
 func TestEditorSaveIsAuditedWithHashesAndNeverTheContent(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	p := filepath.Join(e.root, "notes.md")
 	write(t, p, []byte("before secret-token\n"), 0o644)
@@ -386,6 +394,7 @@ func TestEditorSaveIsAuditedWithHashesAndNeverTheContent(t *testing.T) {
 }
 
 func TestEditorRefusesCrossSiteAndForeignHostRequests(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	p := filepath.Join(e.root, "a.toml")
 	write(t, p, []byte("x = 1\n"), 0o644)
@@ -429,6 +438,7 @@ func TestEditorRefusesCrossSiteAndForeignHostRequests(t *testing.T) {
 }
 
 func TestEditorRefusesRawAndExternalDataButEditsOtherRoles(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	for _, d := range []string{"raw", "external", "processed"} {
 		if err := os.MkdirAll(filepath.Join(e.root, "proj", "data", d), 0o755); err != nil {
@@ -456,6 +466,7 @@ func TestEditorRefusesRawAndExternalDataButEditsOtherRoles(t *testing.T) {
 }
 
 func TestEditorRefusesInvalidUTF8InTheSaveBody(t *testing.T) {
+	t.Parallel()
 	e := newEditor(t, true)
 	p := filepath.Join(e.root, "a.toml")
 	write(t, p, []byte("x = 1\n"), 0o644)
@@ -478,6 +489,7 @@ func TestEditorRefusesInvalidUTF8InTheSaveBody(t *testing.T) {
 }
 
 func TestWriteFileAtomicCannotBeRedirectedByASwappedFolder(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	root, outside := filepath.Join(base, "root"), filepath.Join(base, "outside")
 	for _, d := range []string{root, outside} {
@@ -507,6 +519,7 @@ func TestWriteFileAtomicCannotBeRedirectedByASwappedFolder(t *testing.T) {
 }
 
 func TestLocalOnlyOriginMustEqualHost(t *testing.T) {
+	t.Parallel()
 	// The web dev and preview servers proxy /api with changeOrigin: false, so the API sees the page's own Host
 	// (127.0.0.1:5198) next to its Origin. Origin equal to Host passes; any other origin, even another port of the
 	// same machine or another loopback name, is refused.

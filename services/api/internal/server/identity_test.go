@@ -147,6 +147,7 @@ func fileSHA(t *testing.T, p string) string {
 }
 
 func TestRegistrationRecordsTheSampledFingerprintAndForSmallFilesTheFullHash(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	small := e.write("small.fits", []byte("small file bytes"))
 	big := e.sparse("big.fits", idty.SmallFull+1, 0)
@@ -176,6 +177,7 @@ func TestRegistrationRecordsTheSampledFingerprintAndForSmallFilesTheFullHash(t *
 }
 
 func TestRegisteringAFileWithTheSameContentOffersALocationInstead(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	a := e.write("a.fits", []byte("identical bytes"))
 	first := e.mustRegister(a)
@@ -213,6 +215,7 @@ func TestRegisteringAFileWithTheSameContentOffersALocationInstead(t *testing.T) 
 }
 
 func TestSampledEqualityIsOfferedAsProbableNeverAsVerified(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	first := e.mustRegister(e.sparse("big_a.fits", idty.SmallFull+4096, 7))
 	code, _, raw := e.register(e.sparse("big_b.fits", idty.SmallFull+4096, 7), false)
@@ -237,6 +240,7 @@ func TestSampledEqualityIsOfferedAsProbableNeverAsVerified(t *testing.T) {
 }
 
 func TestLinkingRulesVerifiedProbableDeclaredAndRefused(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	a := e.write("a.fits", []byte("same bytes"))
 	d := e.mustRegister(a)
@@ -314,6 +318,7 @@ func TestLinkingRulesVerifiedProbableDeclaredAndRefused(t *testing.T) {
 }
 
 func TestFullHashRunsInTheBackgroundIsCappedAndCancellable(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	big := e.sparse("big.fits", idty.SmallFull+1<<20, 3)
 	d := e.mustRegister(big)
@@ -388,6 +393,7 @@ func TestFullHashRunsInTheBackgroundIsCappedAndCancellable(t *testing.T) {
 }
 
 func TestNewerResultsForARerunAFileChangedInPlaceAndFiguresDrawnFromIt(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	psi := e.write("psi_hnv1.fits", []byte("first run output, version one"))
 	d := e.mustRegister(psi)
@@ -468,6 +474,7 @@ func TestNewerResultsForARerunAFileChangedInPlaceAndFiguresDrawnFromIt(t *testin
 }
 
 func TestAFileChangedInPlaceReportsWhatDiffers(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	p := e.write("map.fits", []byte("0123456789abcdef"))
 	d := e.mustRegister(p)
@@ -517,6 +524,7 @@ func TestAFileChangedInPlaceReportsWhatDiffers(t *testing.T) {
 }
 
 func TestDeletingADatasetForgetsItsLocationsAndSaysSoInTheImpact(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	d := e.mustRegister(e.write("a.fits", []byte("bytes")))
 	if code, _, m := e.addLocation(d.ID, e.write("a2.fits", []byte("bytes")), false); code != 201 {
@@ -556,6 +564,7 @@ func TestDeletingADatasetForgetsItsLocationsAndSaysSoInTheImpact(t *testing.T) {
 // With the real worker: the viewer reads from a verified copy when the registered file is gone, says which, and keeps
 // reading the registered file while it is there.
 func TestViewerReadsFromTheBestAvailableLocation(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -609,6 +618,7 @@ func TestViewerReadsFromTheBestAvailableLocation(t *testing.T) {
 
 // A file on a host is fingerprinted by that host's own worker, bounded, and the value is the one this computer would compute.
 func TestRemoteFingerprintsAreComputedByTheHostsWorker(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -689,6 +699,7 @@ func TestRemoteFingerprintsAreComputedByTheHostsWorker(t *testing.T) {
 // A copy was verified against the registered file as it was. When that file is read again with other bytes the copy must not go on
 // being read under the new header; when the bytes come back (a file only touched) the comparison restores it.
 func TestAVerifiedLocationGoesStaleWhenTheRegisteredFileChangesAndIsComparedAgain(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	p := e.write("a.fits", []byte("version one"))
 	d := e.mustRegister(p)
@@ -724,6 +735,7 @@ func TestAVerifiedLocationGoesStaleWhenTheRegisteredFileChangesAndIsComparedAgai
 // What a figure records about its data, the owner-side identity, must never reach a reviewer: not the frozen snapshot, not the review
 // API, not a published report.
 func TestFigureIdentityNeverReachesAReviewerOrAReport(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	d := e.mustRegister(e.write("a.fits", []byte("figure source bytes")))
 	view := map[string]any{"kind": "plane", "channel": 3, "colormap": "viridis", "stretch": "linear", "range": "percentile"}
@@ -769,6 +781,7 @@ func TestFigureIdentityNeverReachesAReviewerOrAReport(t *testing.T) {
 }
 
 func TestWhatAFigureSaysAboutTheBytesIsWhatWasRecorded(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	small := e.mustRegister(e.write("small.fits", []byte("small")))
 	big := e.mustRegister(e.sparse("big.fits", idty.SmallFull+1, 1))
@@ -797,6 +810,7 @@ func TestWhatAFigureSaysAboutTheBytesIsWhatWasRecorded(t *testing.T) {
 }
 
 func TestAChangedFileKeepsItsChangedFlagEvenWithAVerifiedCopy(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	a := e.write("a.fits", []byte("bytes"))
 	d := e.mustRegister(a)
@@ -813,6 +827,7 @@ func TestAChangedFileKeepsItsChangedFlagEvenWithAVerifiedCopy(t *testing.T) {
 }
 
 func TestAFileThatIsAnotherDatasetsLocationIsNotRegisteredAsASecondDataset(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	d := e.mustRegister(e.write("a.fits", []byte("bytes")))
 	copyPath := e.write("a_copy.fits", []byte("bytes"))
@@ -831,6 +846,7 @@ func TestAFileThatIsAnotherDatasetsLocationIsNotRegisteredAsASecondDataset(t *te
 }
 
 func TestAvailabilityIgnoresAMissingRegisteredFileWhileAVerifiedCopyHereReads(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	a := e.write("a.fits", []byte("bytes"))
 	d := e.mustRegister(a)
@@ -858,6 +874,7 @@ func TestAvailabilityIgnoresAMissingRegisteredFileWhileAVerifiedCopyHereReads(t 
 }
 
 func TestIdentityResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	e := newIDEnv(t)
 	d := e.mustRegister(e.write("a.fits", []byte("bytes")))

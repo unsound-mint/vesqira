@@ -13,6 +13,7 @@ import (
 // An offline copy is a copy of the file, keyed without a window. When the worker on a host fails, a request for a subset must not be
 // answered with the copy of the source's plane at the same channel number.
 func TestAWindowIsNeverAnsweredFromAnOfflineCopy(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	st, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
 	if err != nil {

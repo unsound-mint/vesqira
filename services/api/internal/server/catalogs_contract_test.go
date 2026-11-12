@@ -13,6 +13,7 @@ import (
 // The wire format of the catalog routes is the one packages/contracts/openapi.yaml describes (ADR 0032): real handler answers,
 // the real worker, validated against the spec the web client's types are made from.
 func TestCatalogResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	url, root, _ := catalogServer(t)
 	f := filepath.Join(root, "stars.dat")

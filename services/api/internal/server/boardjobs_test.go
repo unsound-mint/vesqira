@@ -42,6 +42,7 @@ func getBody(t *testing.T, url string) (int, []byte) {
 }
 
 func TestABoardCanFollowAJobAndAReviewerSeesOnlyAPlaceholder(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	rs, _ := sourceroot.New([]string{base})
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
@@ -190,6 +191,7 @@ func TestABoardCanFollowAJobAndAReviewerSeesOnlyAPlaceholder(t *testing.T) {
 }
 
 func TestBoardFetchNeverWaitsLongForAJobLog(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	cat, _ := catalog.Open("file:" + filepath.Join(base, "t.db"))
 	defer cat.Close()

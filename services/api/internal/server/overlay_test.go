@@ -41,6 +41,7 @@ func (c *countingPlanes) Do(ctx context.Context, req map[string]any) (worker.Rep
 // Overlay geometry end to end with the real worker on the generated fixtures: authorization of both files, declarations
 // from the catalog (never the request), refusals with their reasons, the frame and its header against the spec, the cache.
 func TestOverlayGeometryEndToEndWithRealWorker(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy, contourpy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {

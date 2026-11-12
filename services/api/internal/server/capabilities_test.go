@@ -10,6 +10,7 @@ import (
 )
 
 func TestSSHConfigRouteOffersAliasesOnlyAndNothingWhenThereIsNoFile(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "config")
 	if err := os.WriteFile(cfg, []byte("Host cluster\n  HostName login.example.org\n  IdentityFile ~/.ssh/id_secret\n  ProxyCommand nc %h %p\n"), 0o600); err != nil {

@@ -95,6 +95,7 @@ func previewBundle(t *testing.T, ts *httptest.Server, body string) (SupportPrevi
 }
 
 func TestSupportBundleHoldsNoSecretsAndTheDownloadIsWhatWasPreviewed(t *testing.T) {
+	t.Parallel()
 	_, ts := supportServer(t)
 	p, z := previewBundle(t, ts, `{}`)
 	home, _ := os.UserHomeDir()
@@ -149,6 +150,7 @@ func TestSupportBundleHoldsNoSecretsAndTheDownloadIsWhatWasPreviewed(t *testing.
 }
 
 func TestSupportPreviewExpiresAndRefusesUnknownFieldsAndIds(t *testing.T) {
+	t.Parallel()
 	s, ts := supportServer(t)
 	if resp, _ := http.Post(ts.URL+"/api/support/preview", "application/json", strings.NewReader(`{"includeEverything":true}`)); resp.StatusCode != 400 {
 		t.Errorf("unknown field: %d", resp.StatusCode)
@@ -168,6 +170,7 @@ func TestSupportPreviewExpiresAndRefusesUnknownFieldsAndIds(t *testing.T) {
 }
 
 func TestWorkloadRouteReportsClassesAndTheReasonForOneRequest(t *testing.T) {
+	t.Parallel()
 	l := worker.NewLoad(worker.Budgets{Interactive: 1, Heavy: 1, Background: 1})
 	_, release, _ := l.Acquire(worker.WithLabel(t.Context(), "relative orientation"), worker.Heavy, "analysis")
 	defer release()

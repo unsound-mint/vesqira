@@ -41,6 +41,7 @@ func datasetWith(size int64, mod time.Time, sampled, full string) catalog.Datase
 // only equal full SHA-256 values are "unchanged"; an equal sampled fingerprint is "probable" (its blind spot is documented in
 // ADR 0053); a difference in anything computed is "changed".
 func TestRedrawComparisonSaysExactlyWhatTheEvidenceProves(t *testing.T) {
+	t.Parallel()
 	t0 := time.Unix(1_700_000_000, 0).UTC()
 	t1 := t0.Add(time.Hour)
 	cases := []struct {
@@ -147,6 +148,7 @@ func (e *idEnv) saveFigure(d catalog.Dataset, scene any, extra map[string]any) (
 // what was drawn), changed on disk and not read again (it cannot be read), probable only (a large file has no full hash) and
 // missing. A figure without a description, or without the render record, is shown as its PNG.
 func TestRedrawCheckComparesTheRecordedIdentityWithTheFilesNow(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	p := e.write("map.fits", []byte("0123456789abcdef"))
 	d := e.mustRegister(p)
@@ -221,6 +223,7 @@ func TestRedrawCheckComparesTheRecordedIdentityWithTheFilesNow(t *testing.T) {
 // A reliability map sets the opacity (or length, or the threshold) of orientation lines, so it decides how the picture looks. A
 // figure records its identity as a third role, and a change in it is announced like a change in the source.
 func TestAFiguresReliabilityMapIsRecordedAndCheckedLikeASource(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	e.srv.Worker = planeWorker{} // a map is a plane: two axes longer than 1
 	psiFile := e.write("psi.fits", []byte("orientation map bytes"))
@@ -271,6 +274,7 @@ func TestAFiguresReliabilityMapIsRecordedAndCheckedLikeASource(t *testing.T) {
 // A redrawing is a figure of its own, linked to the original, which stays exactly as it was; boards keep pointing at the figure
 // they pinned. The link is part of the new revision, so a redrawing with equal pixels does not find (and cannot replace) the original.
 func TestARedrawingIsANewRevisionLinkedToTheOriginalWhichIsUntouched(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	p := e.write("map.fits", []byte("0123456789abcdef"))
 	d := e.mustRegister(p)
@@ -344,6 +348,7 @@ func TestARedrawingIsANewRevisionLinkedToTheOriginalWhichIsUntouched(t *testing.
 // the frozen PNG and the reviewer-safe provenance only, and has no download route for the picture in any format (ADR 0011), so
 // nothing of the scene, the render record, the redraw link or an SVG can reach them.
 func TestAReviewerGetsNoSceneRedrawLinkOrSVGOfAPublishedFigure(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	d := e.mustRegister(e.write("a.fits", []byte("figure source bytes")))
 	_, orig, _ := e.saveFigure(d, renderedScene(d.ID, true), nil)
@@ -383,6 +388,7 @@ func TestAReviewerGetsNoSceneRedrawLinkOrSVGOfAPublishedFigure(t *testing.T) {
 // A declaration is the owner's statement about a file, and drawing again reads the ones in force now. The comparison with what
 // the figure recorded is worded exactly, because the owner decides on those words.
 func TestDeclarationComparisonSentences(t *testing.T) {
+	t.Parallel()
 	k := &figureDeclarations{Unit: &declUnit{Unit: "K", DeclaredBy: "user"}}
 	jy := &figureDeclarations{Unit: &declUnit{Unit: "Jy/beam", DeclaredBy: "user"}}
 	none := &figureDeclarations{}
@@ -437,6 +443,7 @@ func TestDeclarationComparisonSentences(t *testing.T) {
 // needs agreement even though the file's bytes are unchanged; the new revision records the new declaration; an older figure
 // without the record says so and is not an error.
 func TestRedrawCheckAnnouncesAChangedDeclarationAndTheRedrawingRecordsTheNewOne(t *testing.T) {
+	t.Parallel()
 	e := newIDEnv(t)
 	e.srv.Worker = planeWorker{}
 	psiFile := e.write("psi.fits", []byte("orientation map bytes"))

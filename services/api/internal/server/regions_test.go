@@ -18,6 +18,7 @@ import (
 )
 
 func TestSavedRegionsCreateEditDeleteAndExportAsDS9(t *testing.T) {
+	t.Parallel()
 	cat, err := catalog.Open("file:" + filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +94,7 @@ func TestSavedRegionsCreateEditDeleteAndExportAsDS9(t *testing.T) {
 }
 
 func TestDS9SkyRegionsAreWorkedOutWithTheDatasetsOwnWCS(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {

@@ -101,6 +101,7 @@ func (e *watchEnv) states(sw sweepOut) []string {
 func (e *watchEnv) submissions() int { return e.sshLines("sbatch --parsable") }
 
 func TestSweepExpandsToLinkedDraftsAndSubmitsNothing(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("dnker", p("dn", "8", "16", "24"), p("ker", "2", "4")))
 	if len(sw.Jobs) != 6 || sw.State != "draft" || sw.Concurrency != 1 || sw.Counts["draft"] != 6 {
@@ -137,6 +138,7 @@ func TestSweepExpandsToLinkedDraftsAndSubmitsNothing(t *testing.T) {
 }
 
 func TestSweepIsRefusedWhenItsGridOrBaseIsWrong(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	req := e.sweepRequest("bad", p("dn", "8"))
 	before, _ := e.jobs.List()
@@ -188,6 +190,7 @@ func TestSweepIsRefusedWhenItsGridOrBaseIsWrong(t *testing.T) {
 }
 
 func TestSweepPreviewCountsAndEstimatesFromTheBase(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	req := e.sweepRequest("pv", p("dn", "8", "16"), p("ker", "2", "4"))
 	base, _ := e.jobs.Get(int64(req["baseJobId"].(int64)))
@@ -216,6 +219,7 @@ func TestSweepPreviewCountsAndEstimatesFromTheBase(t *testing.T) {
 }
 
 func TestSweepSubmitsOneAtATimeWithLimitOne(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("seq", p("dn", "8", "16", "24")))
 	sw = e.approve(sw.ID, 1, false)
@@ -255,6 +259,7 @@ func TestSweepSubmitsOneAtATimeWithLimitOne(t *testing.T) {
 }
 
 func TestSweepWithLimitTwoKeepsTwoInFlight(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("par", p("dn", "8", "16", "24", "32", "40")))
 	sw = e.approve(sw.ID, 2, false)
@@ -275,6 +280,7 @@ func TestSweepWithLimitTwoKeepsTwoInFlight(t *testing.T) {
 }
 
 func TestCancellingASweepStopsTheRestAndLeavesThemDrafts(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("cx", p("dn", "8", "16", "24")))
 	sw = e.approve(sw.ID, 1, false)
@@ -305,6 +311,7 @@ func TestCancellingASweepStopsTheRestAndLeavesThemDrafts(t *testing.T) {
 }
 
 func TestCancellingWithRunningJobsAsksSlurmToCancelThem(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("cr", p("dn", "8", "16")))
 	sw = e.approve(sw.ID, 2, false)
@@ -318,6 +325,7 @@ func TestCancellingWithRunningJobsAsksSlurmToCancelThem(t *testing.T) {
 }
 
 func TestAFailedJobDoesNotBlockTheRestUnlessTheOwnerChoseToStop(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("fail", p("dn", "8", "16", "24")))
 	sw = e.approve(sw.ID, 1, false)
@@ -347,6 +355,7 @@ func TestAFailedJobDoesNotBlockTheRestUnlessTheOwnerChoseToStop(t *testing.T) {
 }
 
 func TestAnUnconfirmedSubmissionHoldsItsSlotAndIsNeverResubmitted(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("unc", p("dn", "8", "16")))
 	os.WriteFile(filepath.Join(e.home, "DOWN"), nil, 0o644) // the host does not answer
@@ -369,6 +378,7 @@ func TestAnUnconfirmedSubmissionHoldsItsSlotAndIsNeverResubmitted(t *testing.T) 
 }
 
 func TestApprovalNeedsTheHashOfTheScriptsShownAndAnEditedDraftIsHeld(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("hash", p("dn", "8", "16", "24")))
 	hash, _ := e.sweepReview(sw.ID)
@@ -411,6 +421,7 @@ func (e *watchEnv) runWithRMS(outDir, value string) {
 }
 
 func TestFinishedJobsBecomeRunsLinkedToTheSweepAndFeedTheGrid(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("grid", p("dn", "8", "16"), map[string]any{"key": "ker", "label": "κ", "values": []string{"2", "4"}}))
 	sw = e.approve(sw.ID, 4, false)
@@ -476,6 +487,7 @@ func TestFinishedJobsBecomeRunsLinkedToTheSweepAndFeedTheGrid(t *testing.T) {
 }
 
 func TestBoardFromASweepFollowsEachJobInParameterOrderWithOwnerOnlyLabels(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	sw := e.createSweep(e.sweepRequest("brd", p("dn", "8", "16"), map[string]any{"key": "ker", "label": "κ", "values": []string{"2", "4"}}))
 	r, b := postJSON(t, e.api("/api/sweeps/"+itoa(int(sw.ID))+"/board"), map[string]any{})
@@ -524,6 +536,7 @@ func TestBoardFromASweepFollowsEachJobInParameterOrderWithOwnerOnlyLabels(t *tes
 // (the usual way a base job is made), the review must not call that edit an unexpected difference in every draft: the drafts
 // are compared with what the base's settings render, and the base's own edit is reported once.
 func TestSweepReviewHasNoUnexpectedLinesWhenTheBaseScriptWasEditedByHand(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	base := e.draft("vgt-base", nil)
 	edited := strings.Replace(base.Script, `echo "job_id`, `echo "reviewed; job_id`, 1)

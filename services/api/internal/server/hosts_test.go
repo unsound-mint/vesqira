@@ -43,6 +43,7 @@ exec sh -c "$cmd"
 // The second laptop or the cluster login node: cubes stay on the host, planes come over the worker's channel, and the
 // host's own worker enforces the roots. Run against a fake ssh and the real worker.
 func TestRemoteHostEndToEndWithFakeSSH(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -216,6 +217,7 @@ func TestRemoteHostEndToEndWithFakeSSH(t *testing.T) {
 
 // Choosing source folders on a host that is not saved yet: names of folders only, from the home directory, no credentials.
 func TestBrowseHostFoldersBeforeTheHostIsSaved(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	home := filepath.Join(base, "remote-home")
 	for _, d := range []string{"cubes/run1", ".ssh", "docs", ".cache"} {

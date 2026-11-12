@@ -13,6 +13,7 @@ import (
 
 // The history routes answer as the spec says, including a step with no parent, one with a parent, and the single-step read with its scene.
 func TestExplorationHistoryResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	cat, err := catalog.Open("file:" + filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
