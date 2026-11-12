@@ -12,6 +12,7 @@ import (
 // rest on. A figure without them (the option off, no celestial WCS, or saved before the option) has no such line. A compass that is not a
 // reading (an angle outside [0, 360), a keyword that is not a FITS name) is refused and saves nothing.
 func TestAFigureRecordsTheArrowsItDrewAndSaysWhatTheyRestOn(t *testing.T) {
+	t.Parallel()
 	f := newCarryFixture(t)
 	view := map[string]any{"kind": "plane", "channel": 3, "colormap": "viridis", "stretch": "linear", "range": "percentile"}
 	save := func(compass any) (int, boards.Figure, string) {

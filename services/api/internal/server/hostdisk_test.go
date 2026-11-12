@@ -28,6 +28,7 @@ func (e *watchEnv) sshLines(sub string) int {
 }
 
 func TestEndedJobKeepsWhatSlurmReportedItUsed(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	w := newJobWatcher(MinWatchInterval)
@@ -82,6 +83,7 @@ func TestEndedJobKeepsWhatSlurmReportedItUsed(t *testing.T) {
 }
 
 func TestRerunOffersTheLastJobsMeasuredUse(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	ctx := context.Background()
 	w := newJobWatcher(MinWatchInterval)
@@ -157,6 +159,7 @@ func (e *watchEnv) storage(method, suffix string) storageBody {
 }
 
 func TestHostStorageIsCachedAndRefreshIsRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	os.WriteFile(filepath.Join(e.bin, "beegfs-ctl"), []byte("#!/bin/sh\ncat <<'EOF'\n"+`Quota information for storage pool Default (ID: 1):
 
@@ -212,6 +215,7 @@ func TestHostStorageIsCachedAndRefreshIsRateLimited(t *testing.T) {
 }
 
 func TestHostStorageWithoutAQuotaToolSaysSoAndKeepsFreeSpace(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	// a stand-in `quota` that prints nothing readable, and no other tool: this machine's own quota (if any) is not on the
 	// remote PATH of the stand-in only when it is shadowed, so shadow it
@@ -223,6 +227,7 @@ func TestHostStorageWithoutAQuotaToolSaysSoAndKeepsFreeSpace(t *testing.T) {
 }
 
 func TestRunFolderSizesAreMeasuredOnDemandBoundedToTheRootsAndSortedBySize(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	small := e.submit(e.draft("small-run", nil), nil)
 	big := e.submit(e.draft("big-run", nil), nil)

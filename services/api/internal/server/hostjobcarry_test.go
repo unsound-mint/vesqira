@@ -18,6 +18,7 @@ import (
 // the API planned, the job writes the masks next to its result, and registering the result records them as masks of that host, equal to
 // the ones the same cutout of a local copy carries. A mask file that is not there is never recorded, and the person is told.
 func TestJobCarriesMasksOnAHostLikeHere(t *testing.T) {
+	t.Parallel()
 	e := newHostParity(t)
 	loc, rem := e.pair("hi_cube.fits")
 	mk := func(d catalog.Dataset) (sat hpMask) {

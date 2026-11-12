@@ -12,6 +12,7 @@ import (
 )
 
 func TestTransferResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	e := newXferEnv(t)
 	e.file(e.remote, "a.fits", 4000)

@@ -19,6 +19,7 @@ import (
 // closed forms; a file without a unit offers and converts nothing until the person declares one, and then the conversion keeps
 // the "declared" label; an orientation map is refused a brightness conversion; nothing malformed reaches the worker.
 func TestConversionRoutesAnswerWithNativeValuesBasisAndRefusals(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -144,6 +145,7 @@ func TestConversionRoutesAnswerWithNativeValuesBasisAndRefusals(t *testing.T) {
 
 // Only what was asked for is sent, the declared unit travels with it, and the cache key separates requests.
 func TestConvertSendsOnlyValidatedFieldsAndCachesPerRequest(t *testing.T) {
+	t.Parallel()
 	ep := &echoPlanes{}
 	ts, root, _ := newPlaneServer(t, ep)
 	file := filepath.Join(root, "a.fits")

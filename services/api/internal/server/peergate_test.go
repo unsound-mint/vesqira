@@ -37,6 +37,7 @@ func procRow(sl int, local, remote string, uid int) string {
 }
 
 func TestParseProcAddrKnownLittleEndianForms(t *testing.T) {
+	t.Parallel()
 	if binary.NativeEndian.Uint16([]byte{1, 0}) != 1 {
 		t.Skip("literal kernel strings below are for little-endian hosts")
 	}
@@ -60,6 +61,7 @@ func TestParseProcAddrKnownLittleEndianForms(t *testing.T) {
 }
 
 func TestScanProcNetFindsThePeerRowByBothAddresses(t *testing.T) {
+	t.Parallel()
 	ours := netip.MustParseAddrPort("127.0.0.1:8787")
 	peer := netip.MustParseAddrPort("127.0.0.1:51000")
 	other := netip.MustParseAddrPort("127.0.0.1:51001")
@@ -85,6 +87,7 @@ func TestScanProcNetFindsThePeerRowByBothAddresses(t *testing.T) {
 }
 
 func TestScanProcNetIPv6AndMapped(t *testing.T) {
+	t.Parallel()
 	ours6 := netip.MustParseAddrPort("[::1]:8787")
 	peer6 := netip.MustParseAddrPort("[::1]:52000")
 	tab := procHeader + procRow(0, procV6("::1", 52000), procV6("::1", 8787), 777)
@@ -99,6 +102,7 @@ func TestScanProcNetIPv6AndMapped(t *testing.T) {
 }
 
 func TestScanProcNetRefusesMalformedAndOversizedRows(t *testing.T) {
+	t.Parallel()
 	p, o := netip.MustParseAddrPort("127.0.0.1:1"), netip.MustParseAddrPort("127.0.0.1:2")
 	if _, _, err := scanProcNet(strings.NewReader(procHeader+"   0: short row\n"), p, o); err == nil {
 		t.Error("short row accepted")
@@ -114,6 +118,7 @@ func TestScanProcNetRefusesMalformedAndOversizedRows(t *testing.T) {
 }
 
 func TestProcPeerUIDFailsClosedWhenTablesAreMissing(t *testing.T) {
+	t.Parallel()
 	p, o := netip.MustParseAddrPort("127.0.0.1:1"), netip.MustParseAddrPort("127.0.0.1:2")
 	if _, err := procPeerUID(t.TempDir(), p, o); err == nil {
 		t.Fatal("no tables must be an error")
@@ -148,6 +153,7 @@ func gatedServer(t *testing.T, g func(net.Listener) *PeerGate) (*PeerGate, strin
 }
 
 func TestPeerGateClosesOtherUsersBeforeAnyHTTP(t *testing.T) {
+	t.Parallel()
 	gate, addr, served := gatedServer(t, func(l net.Listener) *PeerGate {
 		return &PeerGate{Listener: l, Allowed: 1000, Lookup: func(_, _ netip.AddrPort) (uint32, error) { return 1001, nil }}
 	})
@@ -167,6 +173,7 @@ func TestPeerGateClosesOtherUsersBeforeAnyHTTP(t *testing.T) {
 }
 
 func TestPeerGateFailsClosedOnLookupError(t *testing.T) {
+	t.Parallel()
 	gate, addr, served := gatedServer(t, func(l net.Listener) *PeerGate {
 		return &PeerGate{Listener: l, Allowed: 1000, Lookup: func(_, _ netip.AddrPort) (uint32, error) { return 0, errors.New("no /proc") }}
 	})
@@ -185,6 +192,7 @@ func TestPeerGateFailsClosedOnLookupError(t *testing.T) {
 }
 
 func TestPeerGateServesTheSameUser(t *testing.T) {
+	t.Parallel()
 	_, addr, served := gatedServer(t, func(l net.Listener) *PeerGate {
 		return &PeerGate{Listener: l, Allowed: 1000, Lookup: func(_, _ netip.AddrPort) (uint32, error) { return 1000, nil }}
 	})
@@ -200,6 +208,7 @@ func TestPeerGateServesTheSameUser(t *testing.T) {
 
 // A real loopback connection from this process, checked against the real socket table.
 func TestPeerGateAcceptsARealLoopbackConnectionOfTheSameUser(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "linux" {
 		t.Skip("socket-table peer check is Linux only")
 	}

@@ -67,6 +67,7 @@ func configOf(t *testing.T, script string) string {
 }
 
 func TestROHSAJobEmbedsItsConfigAndSetsTheOutputFolderPerJob(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	j := e.rohsaDraft("rohsa-n12", map[string]string{"n_gauss": "12", "lambda": "30"}, nil)
 	cfg := configOf(t, j.Script)
@@ -103,6 +104,7 @@ func TestROHSAJobEmbedsItsConfigAndSetsTheOutputFolderPerJob(t *testing.T) {
 }
 
 func TestROHSAJobRefusesWhatVesqiraOwnsOrCannotEditSafely(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	for name, set := range map[string]map[string]string{
 		"output_dir":  {"output_dir": "/shared/home/u/elsewhere"},
@@ -157,6 +159,7 @@ type rerunReply struct {
 }
 
 func TestRerunDraftForAROHSARunWithChangedN(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	first := e.submit(e.rohsaDraft("rohsa-n16", map[string]string{"lambda": "10"}, nil), nil)
 	run := e.linkRun(first)
@@ -218,6 +221,7 @@ func diffLines(a, b string) []string {
 }
 
 func TestRerunOfAnImportedROHSARunUsesTheTraceFirstAndTheNamelistOnlyToFillGaps(t *testing.T) {
+	t.Parallel()
 	e := newROHSAEnv(t)
 	dir := filepath.Join(e.root, "rohsa_run_demo", "region_a")
 	run, _ := e.importRun(t, dir, 201)
@@ -250,6 +254,7 @@ func TestRerunOfAnImportedROHSARunUsesTheTraceFirstAndTheNamelistOnlyToFillGaps(
 }
 
 func TestSweepOverLambdaFromABaseThatSetsAMemberKeepsEveryLineOnTheSweptValue(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	for name, baseSet := range map[string]map[string]string{
 		"base sets lambda_amp": {"lambda_amp": "5", "n_gauss": "10"},
@@ -285,6 +290,7 @@ func TestSweepOverLambdaFromABaseThatSetsAMemberKeepsEveryLineOnTheSweptValue(t 
 }
 
 func TestROHSAJobReadsItsConfigFromThePathOnTheHost(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	dir := filepath.Join(e.remoteRoot, "configs", "rohsa")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -317,6 +323,7 @@ func TestROHSAJobReadsItsConfigFromThePathOnTheHost(t *testing.T) {
 }
 
 func TestDeclaredROHSASettingsNormaliseAndDropWhatIsNotAnEditableValue(t *testing.T) {
+	t.Parallel()
 	got := declaredROHSASettings([]runs.Param{
 		{Key: "noise", Value: ".true.", Source: "config"},
 		{Key: "lambda_amp", Value: "10.0d0", Source: "config"},
@@ -342,6 +349,7 @@ func TestDeclaredROHSASettingsNormaliseAndDropWhatIsNotAnEditableValue(t *testin
 }
 
 func TestROHSASizingRouteMirrorsTheScriptAndSaysWhatItAssumed(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	get := func(q string) (int, jobs.Sizing) {
 		code, b := getBody(t, e.api("/api/rohsa/sizing"+q))
@@ -370,6 +378,7 @@ func TestROHSASizingRouteMirrorsTheScriptAndSaysWhatItAssumed(t *testing.T) {
 }
 
 func TestSweepOverROHSAKeys(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	base := e.rohsaDraft("rohsa-base", map[string]string{"lambda": "10"}, nil)
 	req := map[string]any{"name": "rsweep", "baseJobId": base.ID, "params": []map[string]any{
@@ -448,6 +457,7 @@ func TestSweepOverROHSAKeys(t *testing.T) {
 }
 
 func TestSweepRefusesROHSAKeysItMustNotVaryAndVGTKeysOnAROHSABase(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	base := e.rohsaDraft("rohsa-base", nil, nil)
 	vgt := e.draft("vgt-base", nil)
@@ -482,6 +492,7 @@ func TestSweepRefusesROHSAKeysItMustNotVaryAndVGTKeysOnAROHSABase(t *testing.T) 
 }
 
 func TestROHSASweepReviewHasNoUnexpectedLinesWhenTheBaseScriptWasEditedByHand(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	base := e.rohsaDraft("rohsa-base", map[string]string{"lambda": "10"}, nil)
 	edited := strings.Replace(base.Script, `echo "job_id`, `echo "reviewed; job_id`, 1)

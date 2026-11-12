@@ -80,6 +80,7 @@ func post(t *testing.T, ts *httptest.Server, path string, hdr map[string]string)
 }
 
 func TestRegisterRefusesPathsOutsideRootsAndNeverCallsWorker(t *testing.T) {
+	t.Parallel()
 	fw := &fakeWorker{}
 	ts, root, sibling := newServer(t, fw)
 	outside := filepath.Join(sibling, "o.fits")
@@ -96,6 +97,7 @@ func TestRegisterRefusesPathsOutsideRootsAndNeverCallsWorker(t *testing.T) {
 }
 
 func TestRegisterListGet(t *testing.T) {
+	t.Parallel()
 	ts, root, _ := newServer(t, &fakeWorker{})
 	f := filepath.Join(root, "a.fits")
 	os.WriteFile(f, []byte("x"), 0o644)
@@ -123,6 +125,7 @@ func TestRegisterListGet(t *testing.T) {
 }
 
 func TestBrowserGuards(t *testing.T) {
+	t.Parallel()
 	ts, root, _ := newServer(t, &fakeWorker{})
 	f := filepath.Join(root, "a.fits")
 	os.WriteFile(f, []byte("x"), 0o644)
@@ -141,6 +144,7 @@ func TestBrowserGuards(t *testing.T) {
 
 // Real worker end to end on the generated fixtures. Needs python3 with astropy.
 func TestRealWorkerOnFixtures(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	probe := exec.Command("python3", "-c", "import astropy")
 	if probe.Run() != nil {
@@ -177,6 +181,7 @@ func TestRealWorkerOnFixtures(t *testing.T) {
 }
 
 func TestInstalledAppServesTheWebFilesAndNeverAnAPIPathFromDisk(t *testing.T) {
+	t.Parallel()
 	dist := t.TempDir()
 	os.WriteFile(filepath.Join(dist, "index.html"), []byte("<title>app</title>"), 0o644)
 	os.MkdirAll(filepath.Join(dist, "assets"), 0o755)

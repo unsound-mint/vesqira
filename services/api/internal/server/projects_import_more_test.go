@@ -127,6 +127,7 @@ func TestImportWalksOnceForConcurrentPreviews(t *testing.T) {
 }
 
 func TestWhoDeclaredAnOrientationIsSaidTruthfully(t *testing.T) {
+	t.Parallel()
 	if got := reviewerAuthor("rule:psi maps"); strings.Contains(got, "psi maps") || !strings.Contains(got, "import rule") || !strings.Contains(got, "not the file") {
 		t.Fatalf("%q", got)
 	}

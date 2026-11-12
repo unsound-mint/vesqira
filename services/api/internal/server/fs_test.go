@@ -54,6 +54,7 @@ func names(c completion) []string {
 // Completion may list a folder outside the source roots (choosing a folder to open needs it), but it answers names,
 // whether each is a folder and a path, and nothing else.
 func TestCompletionListsOutsideTheRootsAndAnswersNamesOnly(t *testing.T) {
+	t.Parallel()
 	ts, _, sibling := newServer(t, &fakeWorker{})
 	os.Mkdir(filepath.Join(sibling, "runs"), 0o755)
 	os.WriteFile(filepath.Join(sibling, "secret.fits"), []byte("private contents"), 0o600)
@@ -84,6 +85,7 @@ func TestCompletionListsOutsideTheRootsAndAnswersNamesOnly(t *testing.T) {
 }
 
 func TestCompletionFiltersAndSorts(t *testing.T) {
+	t.Parallel()
 	ts, root, _ := newServer(t, &fakeWorker{})
 	for _, f := range []string{"b.fits", "a.FITS", "c.txt", ".dot.fits", "Alpha.fits"} {
 		os.WriteFile(filepath.Join(root, f), nil, 0o644)
@@ -123,6 +125,7 @@ func TestCompletionFiltersAndSorts(t *testing.T) {
 }
 
 func TestCompletionIsLimitedAndSaysSo(t *testing.T) {
+	t.Parallel()
 	ts, root, _ := newServer(t, &fakeWorker{})
 	for i := 0; i < 70; i++ {
 		os.WriteFile(filepath.Join(root, fmt.Sprintf("f%02d.txt", i)), nil, 0o644)
@@ -167,6 +170,7 @@ func TestCompletionExpandsHomeAndRefusesBadPrefixes(t *testing.T) {
 }
 
 func TestFSRoutesGuardsAndReviewListener(t *testing.T) {
+	t.Parallel()
 	ts, root, _ := newServer(t, &fakeWorker{})
 	if code, _ := getRaw(t, ts.URL+"/api/fs/complete?prefix="+url.QueryEscape(root+"/"), map[string]string{"Sec-Fetch-Site": "cross-site"}); code != 403 {
 		t.Errorf("cross-site completion: %d", code)
@@ -211,6 +215,7 @@ func TestFSRoutesGuardsAndReviewListener(t *testing.T) {
 }
 
 func TestParseGVFS(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		in   string
 		want gvfsInfo
@@ -242,6 +247,7 @@ func TestParseGVFS(t *testing.T) {
 }
 
 func TestMatchHost(t *testing.T) {
+	t.Parallel()
 	list := []hosts.Host{
 		{ID: 1, Dest: "cluster"},
 		{ID: 2, Dest: "other.example"},
@@ -293,6 +299,7 @@ func chooseServer(t *testing.T, ch Chooser, hs []hosts.Host) *httptest.Server {
 // A path completed inside a file-manager mount of an unregistered host carries the mount's name, so the page can offer
 // to add the host; a registered host's mount carries nothing (the page has no use for it there).
 func TestCompletionInsideAGVFSMountOffersTheUnregisteredHost(t *testing.T) {
+	t.Parallel()
 	ts := chooseServer(t, nil, []hosts.Host{{Name: "Cluster", Dest: "login.hpc.example"}})
 	get := func(base string) map[string]any {
 		_, raw := getRaw(t, ts.URL+"/api/fs/complete?prefix="+url.QueryEscape(base), nil)
@@ -315,6 +322,7 @@ func TestCompletionInsideAGVFSMountOffersTheUnregisteredHost(t *testing.T) {
 }
 
 func TestChooseReturnsThePathAndMapsAGVFSMountToAHost(t *testing.T) {
+	t.Parallel()
 	var gotMode, gotTitle string
 	var gotExt []string
 	next := "/home/me/data"
@@ -354,6 +362,7 @@ func TestChooseReturnsThePathAndMapsAGVFSMountToAHost(t *testing.T) {
 }
 
 func TestChooseOutcomes(t *testing.T) {
+	t.Parallel()
 	var err error
 	ts := chooseServer(t, func(context.Context, string, string, []string) (string, error) { return "/x", err }, nil)
 	for _, c := range []struct {
@@ -379,6 +388,7 @@ func TestChooseOutcomes(t *testing.T) {
 }
 
 func TestOnlyOneChooserAtATime(t *testing.T) {
+	t.Parallel()
 	open, release := make(chan struct{}), make(chan struct{})
 	ts := chooseServer(t, func(context.Context, string, string, []string) (string, error) {
 		close(open)

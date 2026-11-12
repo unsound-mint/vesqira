@@ -7,6 +7,7 @@ import (
 )
 
 func TestEditorResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	e := newEditor(t, true)
 	p := filepath.Join(e.root, "a.toml")
@@ -35,6 +36,7 @@ func TestEditorResponsesMatchTheSpec(t *testing.T) {
 }
 
 func TestHostEditorResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	e := newHostEditor(t)
 	p := filepath.Join(e.root, "a.toml")

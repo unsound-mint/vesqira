@@ -17,6 +17,7 @@ import (
 // An imported run, or a run from a job recorded before requests were kept, gives the "run again" form nothing it
 // would have to guess; and a parent run that does not exist is refused.
 func TestRerunPrefillNeverGuessesWhatIsNotKnown(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	cat, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
 	if err != nil {

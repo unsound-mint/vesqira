@@ -10,6 +10,7 @@ import (
 )
 
 func TestHostDiskResponsesMatchTheSpec(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	e := newWatchEnv(t)
 	base := "/api/hosts/" + itoa(int(e.host.ID))

@@ -21,6 +21,7 @@ func treeOf(s *Server, path string) *httptest.ResponseRecorder {
 }
 
 func TestTreeListsNamesFoldersFirstAndHidesCredentialFolders(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	proj := filepath.Join(base, "proj")
 	other := filepath.Join(base, "other")
@@ -58,6 +59,7 @@ func TestTreeListsNamesFoldersFirstAndHidesCredentialFolders(t *testing.T) {
 }
 
 func TestTreeDoesNotFollowLinksOutOfRoots(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	root := filepath.Join(base, "root")
 	outside := filepath.Join(base, "outside")
@@ -94,6 +96,7 @@ func linksOf(t *testing.T, s *Server, dir string) map[string]dirEntry {
 }
 
 func TestTreeShowsALinkOutOfTheRootsAsALinkThatPointsOutside(t *testing.T) {
+	t.Parallel()
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	root, outside := filepath.Join(base, "root"), filepath.Join(base, "outside")
 	os.MkdirAll(root, 0o755)
@@ -121,6 +124,7 @@ func TestTreeShowsALinkOutOfTheRootsAsALinkThatPointsOutside(t *testing.T) {
 }
 
 func TestTreeShowsALinkInsideTheRootsAsALinkAndStaysUsable(t *testing.T) {
+	t.Parallel()
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	root := filepath.Join(base, "root")
 	os.MkdirAll(filepath.Join(root, "real"), 0o755)
@@ -138,6 +142,7 @@ func TestTreeShowsALinkInsideTheRootsAsALinkAndStaysUsable(t *testing.T) {
 }
 
 func TestCompletionMarksALinkAndNamesItsTarget(t *testing.T) {
+	t.Parallel()
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	os.MkdirAll(filepath.Join(base, "real"), 0o755)
 	os.Symlink("real", filepath.Join(base, "alias"))

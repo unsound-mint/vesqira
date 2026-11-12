@@ -45,6 +45,7 @@ func testPNG(t *testing.T) string {
 // The whole sharing path: figure -> board -> frozen snapshot -> reviewer. What the reviewer can read is checked on
 // the wire, not just in the types: no source path, no dataset id, and no owner route on the reviewer's surface.
 func TestFigureBoardReviewPathExposesNoSourceToTheReviewer(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	root := filepath.Join(base, "private-research-root")
 	os.MkdirAll(root, 0o755)
@@ -212,6 +213,7 @@ func TestFigureBoardReviewPathExposesNoSourceToTheReviewer(t *testing.T) {
 // A figure of a map whose unit the author declared (the file has no BUNIT) can be saved with limits in that unit, and what
 // travels with it, to the board and to the reviewer, says the unit is the author's and not the file's.
 func TestAFigureOfADeclaredUnitMapSaysTheUnitWasDeclaredNotRead(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	root := filepath.Join(base, "private-research-root")
 	os.MkdirAll(root, 0o755)

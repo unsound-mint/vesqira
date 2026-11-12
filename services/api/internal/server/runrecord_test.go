@@ -159,6 +159,7 @@ func (e *recEnv) auditCount(action string) int {
 // its output folder (Vesqira never makes it); the record is rewritten with the end state; and a run.json that Vesqira did
 // not write is never replaced.
 func TestSubmittedJobLeavesARunRecordDiscoveryReads(t *testing.T) {
+	t.Parallel()
 	e := newRecEnv(t)
 	setting := func(r discover.Run, k string) string {
 		for _, s := range r.Settings {
@@ -267,6 +268,7 @@ func TestSubmittedJobLeavesARunRecordDiscoveryReads(t *testing.T) {
 
 // At submit the record names what was actually known: sbatch returned an id. Nothing has read the queue yet.
 func TestRunRecordAtSubmitSaysSbatchReturnedAnId(t *testing.T) {
+	t.Parallel()
 	e := newRecEnv(t)
 	j := e.draft()
 	if err := os.MkdirAll(j.OutputDir, 0o755); err != nil { // a folder that already exists is written into at once
@@ -284,6 +286,7 @@ func TestRunRecordAtSubmitSaysSbatchReturnedAnId(t *testing.T) {
 
 // as_of is when the state was obtained, not when the record was written.
 func TestRunRecordAsOfIsWhenTheStateWasObtained(t *testing.T) {
+	t.Parallel()
 	obtained := time.Date(2026, 11, 4, 10, 0, 9, 0, time.UTC)
 	written := obtained.Add(3 * time.Hour)
 	j := jobs.Job{ID: 1, Name: "n", Template: "vgt", SlurmID: "9", ScriptHash: strings.Repeat("a", 64), Script: "#!/bin/bash\n"}
@@ -307,6 +310,7 @@ func TestRunRecordAsOfIsWhenTheStateWasObtained(t *testing.T) {
 // A rewrite at the terminal state that fails for a reason that may pass is retried by the next refresh, from the stored end
 // state, until it is written; a refusal that will not pass (a file that is not ours) is not retried.
 func TestRunRecordRewriteIsRetriedOnTheNextRefresh(t *testing.T) {
+	t.Parallel()
 	if os.Getuid() == 0 {
 		t.Skip("a read-only folder does not stop root")
 	}
@@ -347,6 +351,7 @@ func TestRunRecordRewriteIsRetriedOnTheNextRefresh(t *testing.T) {
 
 // The record is written after the answer: the submit response is the job as submitted, whatever the host does next.
 func TestSubmitAnswersBeforeTheRecordIsWritten(t *testing.T) {
+	t.Parallel()
 	e := newRecEnv(t)
 	j := e.draft()
 	os.MkdirAll(j.OutputDir, 0o755)
@@ -364,6 +369,7 @@ func TestSubmitAnswersBeforeTheRecordIsWritten(t *testing.T) {
 
 // A run.json that only mentions the marker (or is not JSON) is not ours; the top-level "vesqira" block is what counts.
 func TestIsRunRecord(t *testing.T) {
+	t.Parallel()
 	good, _ := jobs.RunRecord(jobs.Job{ID: 1, Script: "x"}, "H", nil, jobs.SubmittedEvidence("1", time.Now()), time.Now())
 	if !isRunRecord(good) {
 		t.Fatal("its own record must be recognised")
@@ -385,6 +391,7 @@ func TestIsRunRecord(t *testing.T) {
 // project.toml: the marker must start the first line; a project file edited on the host between the read and the write is
 // not overwritten.
 func TestProjectMarkerIsTheFirstLine(t *testing.T) {
+	t.Parallel()
 	if !hasProjectMarker([]byte(projectMarker+" (explanation)\n[project]\n")) || !hasProjectMarker([]byte(projectMarker)) {
 		t.Fatal("the first line is the marker")
 	}
@@ -400,6 +407,7 @@ func TestProjectMarkerIsTheFirstLine(t *testing.T) {
 
 // An analysis job's record carries the operation, its options and the catalog files it reads, as references.
 func TestRunRecordOfAnAnalysisJobRoundTripsThroughDiscovery(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	j := jobs.Job{ID: 7, Name: "moment-3", Template: "analysis", State: "submitted", SlurmID: "4242", ScriptHash: strings.Repeat("a", 64),
 		Script: "#!/bin/bash -l\n#SBATCH --job-name=moment-3\n#SBATCH --cpus-per-task=4\n#SBATCH --mem=16G\n#SBATCH --time=02:00:00\nset -e\n",
@@ -428,6 +436,7 @@ func TestRunRecordOfAnAnalysisJobRoundTripsThroughDiscovery(t *testing.T) {
 
 // A run.json that merely contains the marker text is another program's: it is not replaced.
 func TestARunJsonThatOnlyMentionsTheMarkerIsNotReplaced(t *testing.T) {
+	t.Parallel()
 	e := newRecEnv(t)
 	j := e.draft()
 	os.MkdirAll(j.OutputDir, 0o755)

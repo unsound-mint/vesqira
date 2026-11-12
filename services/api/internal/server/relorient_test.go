@@ -25,6 +25,7 @@ import (
 // catalog needs a fresh declaration with an angle, two maps need a common grid, and a result is a registered file with a derived
 // record and a table to download.
 func TestRelativeOrientationNeedsDeclarationsAndKeepsAResult(t *testing.T) {
+	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy, reproject").Run() != nil {
 		if os.Getenv("VESQIRA_REQUIRE_WORKER") != "" {
@@ -222,6 +223,7 @@ func TestRelativeOrientationNeedsDeclarationsAndKeepsAResult(t *testing.T) {
 }
 
 func TestRelorientConstructionIsVerifiedOnlyWhenTheNullRan(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
 	ran := json.RawMessage(`{"parameters":{"n_shifts":1000,"min_shift_deg":1.0,"keep_fraction":0.9,"seed":20261020,"bins":18},"null":{"method":"shifted map: the second map moved by whole pixels with wrap, values kept","skipped":null,"kept":987}}`)
 	k := relorientConstruction(false, ran, now)

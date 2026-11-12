@@ -14,6 +14,7 @@ import (
 // A registered file whose only role is being the file of an imported mask is marked in the dataset list with the dataset it serves,
 // from the mask's row. Any other use keeps it plain, forgetting the mask releases it, and nothing is deleted.
 func TestMaskSourceIsMarkedInTheListUntilUsedElsewhere(t *testing.T) {
+	t.Parallel()
 	e := maskServer(t)
 	d := e.reg("zeros_and_holes.fits")
 	mk := exec.Command("python3", "-c", `

@@ -20,6 +20,7 @@ import (
 // carry, and the no-value mask computed again, are written on the host with the file, registered as masks of that host, and equal the
 // ones the same subset of a local copy carries. The files appear together or not at all.
 func TestSubsetCarriesMasksOnAHostLikeHere(t *testing.T) {
+	t.Parallel()
 	e := newHostParity(t)
 	loc, rem := e.pair("hi_cube.fits")
 	hostDerived := filepath.Join(e.remoteRoot, "vesqira_derived")

@@ -15,6 +15,7 @@ func uris(u ...string) map[string]dbus.Variant {
 }
 
 func TestParsePortalResponse(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name string
 		code uint32
@@ -82,6 +83,7 @@ func fakeNew(f *fakePortal, err error) func(context.Context) (portalClient, func
 }
 
 func TestDocumentPortalPaths(t *testing.T) {
+	t.Parallel()
 	yes := func(string) bool { return true }
 	no := func(string) bool { return false }
 	for _, c := range []struct {
@@ -112,6 +114,7 @@ func TestDocumentPortalPaths(t *testing.T) {
 }
 
 func TestPortalChooserWithFake(t *testing.T) {
+	t.Parallel()
 	f := &fakePortal{res: uris("file:///run/user/1000/doc/ab/run"), hosts: map[string]string{"ab": "/shared/run"}}
 	ch := portalChooserFrom(fakeNew(f, nil), func(string) bool { return true })
 	got, err := ch(context.Background(), "folder", "Open", nil)
@@ -138,6 +141,7 @@ func TestPortalChooserWithFake(t *testing.T) {
 }
 
 func TestChooserFallbackOrder(t *testing.T) {
+	t.Parallel()
 	var order []string
 	mk := func(name string, p string, err error) func(context.Context, string, string, []string) (string, error) {
 		return func(context.Context, string, string, []string) (string, error) {

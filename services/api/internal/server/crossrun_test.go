@@ -117,6 +117,7 @@ func (e *crossEnv) conversion() map[string]any {
 // A cross-run plot is a figure of its own kind: no dataset, a description of the runs written from the catalog's own rows with the
 // recorded values beside the converted ones, and a reviewer-safe provenance that holds the words and counts and no run.
 func TestCrossRunFigureHasNoDatasetAndKeepsWhatTheRunsRecorded(t *testing.T) {
+	t.Parallel()
 	e := newCrossEnv(t)
 	code, b := e.request(map[string]any{"conversion": e.conversion()})
 	if code != 201 {
@@ -179,6 +180,7 @@ func TestCrossRunFigureHasNoDatasetAndKeepsWhatTheRunsRecorded(t *testing.T) {
 }
 
 func TestCrossRunFigureRefusesWhatTheCatalogDoesNotHold(t *testing.T) {
+	t.Parallel()
 	e := newCrossEnv(t)
 	ok := []int64{e.ids[canaryName], e.ids["run-b"], e.ids["run-deg"]}
 	cases := map[string]struct {
@@ -215,6 +217,7 @@ func TestCrossRunFigureRefusesWhatTheCatalogDoesNotHold(t *testing.T) {
 
 // A redrawing is a figure of its own, linked to the original and unable to be linked to anything else; the original is not touched.
 func TestCrossRunRedrawIsANewLinkedFigure(t *testing.T) {
+	t.Parallel()
 	e := newCrossEnv(t)
 	code, b := e.request(nil)
 	if code != 201 {
@@ -242,6 +245,7 @@ func TestCrossRunRedrawIsANewLinkedFigure(t *testing.T) {
 // The reviewer's listener holds the boards store and nothing else: a published cross-run plot is its frozen picture and its words.
 // No run name, value or id, no description of the runs and no owner route is reachable, by the wire.
 func TestReviewerSeesOnlyTheFrozenPictureOfACrossRunPlot(t *testing.T) {
+	t.Parallel()
 	e := newCrossEnv(t)
 	code, b := e.request(map[string]any{"conversion": e.conversion()})
 	if code != 201 {
@@ -308,6 +312,7 @@ func TestReviewerSeesOnlyTheFrozenPictureOfACrossRunPlot(t *testing.T) {
 
 // Deleting or archiving a run says which saved cross-run plots drew it; those plots stay, with their picture and what they recorded.
 func TestRunImpactNamesTheCrossRunPlotsThatDrewIt(t *testing.T) {
+	t.Parallel()
 	e := newCrossEnv(t)
 	code, b := e.request(nil)
 	if code != 201 {

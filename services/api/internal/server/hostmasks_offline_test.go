@@ -16,6 +16,7 @@ import (
 // and a mask's hatch plane reach the host's worker too: when that worker fails, neither may be answered from a copy, and preparing a copy
 // never keeps the hatch of a mask as the dataset's.
 func TestMaskedHostRepliesAreNeverOfflineCopies(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	st, err := catalog.Open("file:" + filepath.Join(base, "t.db"))
 	if err != nil {

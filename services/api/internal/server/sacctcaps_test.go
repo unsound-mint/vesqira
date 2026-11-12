@@ -39,6 +39,7 @@ func (e *watchEnv) endOne(name string, w *jobWatcher, t0 time.Time) (id int64) {
 const helpAll = "Account AdminComment AllocCPUS AllocNodes JobID State ExitCode Elapsed Start End Timelimit ReqMem ReqTRES TotalCPU MaxRSS NNodes"
 
 func TestASiteWhoseSacctRejectsAColumnStillTracksStatesAndNamesWhatItLacks(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.sacctFile("sacct.reject", "ReqTRES")
 	w, t0 := newJobWatcher(MinWatchInterval), time.Now()
@@ -62,6 +63,7 @@ func TestASiteWhoseSacctRejectsAColumnStillTracksStatesAndNamesWhatItLacks(t *te
 }
 
 func TestASiteWhoseSacctRejectsSeveralColumnsFallsBackToTheMinimalCallAndRemembersIt(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.sacctFile("sacct.reject", "ReqTRES", "NNodes")
 	w, t0 := newJobWatcher(MinWatchInterval), time.Now()
@@ -111,6 +113,7 @@ func TestASiteWhoseSacctRejectsSeveralColumnsFallsBackToTheMinimalCallAndRemembe
 }
 
 func TestASiteThatSupportsEveryColumnRecordsUsageWithOneProbeAndNoFallback(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.sacctFile("sacct.helpformat", helpAll)
 	w, t0 := newJobWatcher(MinWatchInterval), time.Now()
@@ -134,6 +137,7 @@ func TestASiteThatSupportsEveryColumnRecordsUsageWithOneProbeAndNoFallback(t *te
 }
 
 func TestTheHelpformatProbeRequestsOnlyTheColumnsTheSiteLists(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.sacctFile("sacct.helpformat", "AllocCPUS JobID State ExitCode Elapsed Start End Timelimit ReqMem TotalCPU NNodes") // no ReqTRES, no MaxRSS
 	e.sacctFile("sacct.reject", "ReqTRES", "MaxRSS")                                                                     // a call that asked for them would fail
@@ -152,6 +156,7 @@ func TestTheHelpformatProbeRequestsOnlyTheColumnsTheSiteLists(t *testing.T) {
 }
 
 func TestAHostWhoseMinimalSacctFailsToo(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.sacctFile("sacct.reject", "State") // nothing can be asked: accounting is unusable
 	j := e.submit(e.draft("vgt-a", nil), nil)

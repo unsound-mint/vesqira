@@ -52,20 +52,22 @@ type Server struct {
 	Planes    PlaneService // persistent plane worker; nil answers 503
 	// Load is the workload governor shared with Planes (worker.Persistent.Load): analysis programs take a heavy slot from it, and
 	// GET /api/workload reports it. Nil runs analyses ungoverned and reports nothing.
-	Load       *worker.Load
-	Cache      *PlaneCache // optional; nil disables caching
-	Boards     *boards.Store
-	Runs       *runs.Store
-	HostDB     *hosts.Store // remote hosts; nil disables them
-	Remote     *hosts.Manager
-	Jobs       *jobs.Store
-	Sweeps     *sweeps.Store    // parameter sweeps (ADR 0048); nil disables their routes
-	Transfers  *transfers.Store // the transfer queue (ADR 0051); nil disables the routes
-	Derived    *derived.Store
-	Masks      *masks.Store   // typed masks (ADR 0057); nil disables their routes
-	Offline    *offline.Store // offline copies of bounded replies (ADR 0059); nil disables them
-	offlineRun offlineRunner  // the one running preparation (offline_prepare.go)
-	ManagedDir string
+	Load      *worker.Load
+	Cache     *PlaneCache // optional; nil disables caching
+	Boards    *boards.Store
+	Runs      *runs.Store
+	HostDB    *hosts.Store // remote hosts; nil disables them
+	Remote    *hosts.Manager
+	Jobs      *jobs.Store
+	Sweeps    *sweeps.Store    // parameter sweeps (ADR 0048); nil disables their routes
+	Transfers *transfers.Store // the transfer queue (ADR 0051); nil disables the routes
+	Derived   *derived.Store
+	Masks     *masks.Store   // typed masks (ADR 0057); nil disables their routes
+	Offline   *offline.Store // offline copies of bounded replies (ADR 0059); nil disables them
+
+	OfflineProbeAfter time.Duration // zero means offlineProbeAfter; tests shorten it
+	offlineRun        offlineRunner // the one running preparation (offline_prepare.go)
+	ManagedDir        string
 	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
 	CacheDir  string
 	Analysis  *AnalysisConfig

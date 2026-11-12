@@ -30,6 +30,7 @@ func (byNameWorker) Header(ctx context.Context, p string) (json.RawMessage, erro
 // A request body the spec describes must be one the spec accepts, and the response one the spec describes: both are
 // checked on the real handlers (capabilities, figures, boards, publish).
 func TestResponsesMatchTheSpecForCapabilitiesFiguresAndBoards(t *testing.T) {
+	t.Parallel()
 	doc := loadSpec(t)
 	base := t.TempDir()
 	root := filepath.Join(base, "data")

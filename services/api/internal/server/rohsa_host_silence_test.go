@@ -13,6 +13,7 @@ import (
 // A host that stops answering during an import is not a host with no trace, no crop and no maps: nothing is saved, a good run
 // under the same key is not overwritten by a degraded one, and an interrupted request saves nothing either.
 func TestROHSAImportFromAHostThatGoesSilentSavesNothingAndKeepsTheGoodRun(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	e.writeROHSA(filepath.Join(e.remoteRoot, "fit"), "")
 	dir := filepath.Join(e.remoteRoot, "fit", "region_a")
@@ -91,6 +92,7 @@ with open(d / "rohsa_n1.dat", "w") as f:
 // The host's index of a fit bigger than one chunk is built over several bounded calls and resumed, through a worker that
 // enforces roots, and stays in the host's cache folder.
 func TestROHSAHostIndexOfAFitBiggerThanOneChunkIsBuiltInResumableCalls(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
 	dir := filepath.Join(e.remoteRoot, "big")
 	e.writeBigROHSA(dir)
