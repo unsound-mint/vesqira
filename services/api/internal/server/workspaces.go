@@ -201,6 +201,18 @@ func (s *Server) roots(ws workspace.ID) sourceroot.Roots {
 		return nil
 	}
 	var out sourceroot.Roots
+	// the workspace's own managed copies and derived outputs, which the server writes and nobody declares; never another's
+	if m := s.managedDirOf(ws); m != "" {
+		_ = os.MkdirAll(m, 0o700)
+	}
+	for _, d := range []string{s.managedDirOf(ws), s.derivedDirOf(ws)} {
+		if d == "" {
+			continue
+		}
+		if real, err := filepath.EvalSymlinks(d); err == nil {
+			out = append(out, real)
+		}
+	}
 	for _, p := range paths {
 		if real, err := filepath.EvalSymlinks(p); err == nil && real == p {
 			if fi, err := os.Stat(real); err == nil && fi.IsDir() {

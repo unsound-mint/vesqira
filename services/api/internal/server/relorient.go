@@ -212,7 +212,7 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 	}
 	var b [4]byte
 	_, _ = rand.Read(b[:])
-	stem := filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("relorient-%d-%d-%s", d.ID, other.ID, hex.EncodeToString(b[:])))
+	stem := filepath.Join(s.derivedDirOf(wsOf(r)), fmt.Sprintf("relorient-%d-%d-%s", d.ID, other.ID, hex.EncodeToString(b[:])))
 	op, outPath, tablePath := "relorient_maps", stem+".fits", stem+"-table.csv"
 	if catalogMode {
 		op, outPath, tablePath = "relorient_catalog", stem+".csv", ""
@@ -348,7 +348,7 @@ func (s *Server) relativeOrientationTable(w http.ResponseWriter, r *http.Request
 		fail(w, 404, "this result has no table")
 		return
 	}
-	f, err := os.Open(filepath.Join(s.Analysis.DerivedDir, name))
+	f, err := os.Open(filepath.Join(s.derivedDirOf(wsOf(r)), name))
 	if err != nil {
 		fail(w, 404, "the table file is no longer in the derived folder")
 		return

@@ -102,10 +102,10 @@ func (p *carryPlan) key() string {
 	return "|carry " + strings.Join(ids, ",")
 }
 
-func (s *Server) derivedMaskPath(kind string, datasetID int64, mtype string) string {
+func (s *Server) derivedMaskPath(ws workspace.ID, kind string, datasetID int64, mtype string) string {
 	var b [4]byte
 	_, _ = rand.Read(b[:])
-	return filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("mask-%s-%d-%s-%s.fits", kind, datasetID, mtype, hex.EncodeToString(b[:])))
+	return filepath.Join(s.derivedDirOf(ws), fmt.Sprintf("mask-%s-%d-%s-%s.fits", kind, datasetID, mtype, hex.EncodeToString(b[:])))
 }
 
 // planCarry checks the researcher's choices against the source dataset d and the operation, and decides what the operation carries. A
@@ -172,9 +172,9 @@ func (s *Server) planCarry(ws workspace.ID, d catalog.Dataset, op string, choice
 	for _, m := range all {
 		switch {
 		case m.Type == masks.Missing:
-			plan.missingOut = s.derivedMaskPath("missing", d.ID, masks.Missing)
+			plan.missingOut = s.derivedMaskPath(ws, "missing", d.ID, masks.Missing)
 		case decided[m.ID]:
-			plan.carried = append(plan.carried, carryOut{mask: m, out: s.derivedMaskPath("carried", d.ID, m.Type)})
+			plan.carried = append(plan.carried, carryOut{mask: m, out: s.derivedMaskPath(ws, "carried", d.ID, m.Type)})
 		default:
 			plan.left = append(plan.left, m)
 		}

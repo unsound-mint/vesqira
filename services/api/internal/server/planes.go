@@ -125,7 +125,7 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 			log.Printf("authorize: %v", err)
 		}
 	}
-	s.notePath(0, real, d.ID)
+	s.notePath(wsCtx(ctx), 0, real, d.ID)
 	return real, cacheKey{id: d.ID, host: d.HostID, size: info.Size(), mtime: info.ModTime().UnixNano(), dev: dev, ino: ino, unit: declaredUnitOf(d), corr: corrHash(d)}, 0, ""
 }
 

@@ -35,8 +35,8 @@ func (r Role) AtLeast(min Role) bool { return r.rank() > 0 && r.rank() >= min.ra
 // permission absent here and from accountLevel is held by no role: the local-only features, and the cluster, job and sweep
 // permissions, which the group server does not mount (owner answer 3).
 var matrix = map[Permission]Role{
-	CapabilitiesRead: RoleViewer, NotificationSelf: RoleViewer,
-	DatasetRead: RoleViewer, RunRead: RoleViewer, FigureRead: RoleViewer, BoardRead: RoleViewer, ReviewRead: RoleViewer,
+	NotificationSelf: RoleViewer,
+	DatasetRead:      RoleViewer, RunRead: RoleViewer, FigureRead: RoleViewer, BoardRead: RoleViewer, ReviewRead: RoleViewer,
 	ReportRead: RoleViewer, ProjectRead: RoleViewer, HistoryRead: RoleViewer, CommentWrite: RoleViewer, MemberRead: RoleViewer,
 
 	DatasetWrite: RoleResearcher, AnalysisRun: RoleResearcher, RunWrite: RoleResearcher, FigureWrite: RoleResearcher,
@@ -50,7 +50,8 @@ var matrix = map[Permission]Role{
 
 // accountLevel are the permissions that do not depend on a workspace: what an account does to itself, and the admin's.
 var accountLevel = map[Permission]bool{
-	AccountSelf: false, AccountCredentials: false, // any account
+	// any account; capabilities too, so an account in no workspace (or naming one it left) still learns where it stands
+	AccountSelf: false, AccountCredentials: false, CapabilitiesRead: false,
 	AccountAdmin: true, WorkspaceAdmin: true, SupportExport: true, ClusterAdmin: true, // admin only
 }
 

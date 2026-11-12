@@ -6,6 +6,7 @@ import { workspaceContext } from "../api/workspaces";
 import type { WorkspaceContext } from "../api/workspaces";
 import { Button, LinkButton } from "../ui";
 import { PermissionsContext } from "./permissions";
+import s from "./Account.module.css";
 
 // The sign-in and account pages exist only on the group server, so local mode never downloads them.
 const SignInPage = lazy(() => import("./SignInPage").then((m) => ({ default: m.SignInPage })));
@@ -51,6 +52,7 @@ export function AccountGate({ children }: { children: (account: ReactNode) => Re
   const [mode, setMode] = useState<"loading" | "local" | "group" | "signin">("loading");
   const [name, setName] = useState("");
   const [ws, setWs] = useState<WorkspaceContext | null>(null);
+  const [wsLoaded, setWsLoaded] = useState(false);
   useEffect(() => {
     let live = true;
     void serverMode().then((m) => {
@@ -68,8 +70,14 @@ export function AccountGate({ children }: { children: (account: ReactNode) => Re
     setWorkspace(want);
     void workspaceContext()
       .then((c) => {
-        if (c && want !== null && c.id !== want) {
+        if (want !== null && c?.id !== want) {
+          // the stored choice is not (or no longer) one of this account's workspaces: forget it and use the default
           setWorkspace(null);
+          try {
+            localStorage.removeItem(STORED);
+          } catch {
+            /* nothing stored to forget */
+          }
           return workspaceContext();
         }
         return c;
@@ -78,8 +86,12 @@ export function AccountGate({ children }: { children: (account: ReactNode) => Re
         (c) => {
           if (c) setWorkspace(c.id);
           setWs(c);
+          setWsLoaded(true);
         },
-        () => setWs(null),
+        () => {
+          setWs(null);
+          setWsLoaded(true);
+        },
       );
   }, [mode]);
 
@@ -114,6 +126,13 @@ export function AccountGate({ children }: { children: (account: ReactNode) => Re
     );
   }
   const can = (p: string) => !!ws?.permissions.includes(p);
+  if (mode === "group" && wsLoaded && !ws && hash !== "#/account") {
+    return (
+      <main className={s.page}>
+        <p role="status" className={s.note}>You are signed in as {name || "this account"} but are not a member of any workspace. Ask a workspace Owner for an invitation, or open <a href="#/account">your account</a>.</p>
+      </main>
+    );
+  }
   if (hash === "#/members" && ws) {
     return (
       <PermissionsContext.Provider value={can}>

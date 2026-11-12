@@ -25,17 +25,20 @@ import (
 // can never pass uncorrected values off as corrected ones. A state made for other bytes than the file has now is stale and is
 // applied nowhere until the researcher confirms it.
 
-// corrPathRef names a file a dataset was read from, as the worker sees it: (host, resolved path).
+// corrPathRef names a file a dataset was read from, as the worker sees it: (workspace, host, resolved path). The workspace is
+// part of it because one file may be registered in two workspaces (schema 31) as two datasets with their own corrections: one
+// workspace's corrections must never be attached to the other's reads.
 type corrPathRef struct {
+	ws   workspace.ID
 	host int64
 	path string
 }
 
 // notePath remembers which dataset a resolved path belongs to, so the correcting service can attach that dataset's corrections
 // to any worker request that names the path (the base, an overlay, the other map of a link, a reliability map).
-func (s *Server) notePath(host int64, real string, id int64) {
+func (s *Server) notePath(ws workspace.ID, host int64, real string, id int64) {
 	if real != "" && id != 0 {
-		s.corrPaths.Store(corrPathRef{host, real}, id)
+		s.corrPaths.Store(corrPathRef{ws, host, real}, id)
 	}
 }
 
@@ -115,7 +118,7 @@ func sentHash(req map[string]any) string {
 
 // correctionsAt is the state in force for the dataset read from (host, path), or nil.
 func (s *Server) correctionsAt(ws workspace.ID, host int64, path string) *catalog.CorrectionState {
-	v, ok := s.corrPaths.Load(corrPathRef{host, path})
+	v, ok := s.corrPaths.Load(corrPathRef{ws, host, path})
 	if !ok {
 		return nil
 	}
@@ -153,7 +156,7 @@ func (s *Server) corrArgs(ws workspace.ID, host int64, args []string) (opt strin
 			continue
 		}
 		p := args[i+1]
-		v, ok := s.corrPaths.Load(corrPathRef{host, p})
+		v, ok := s.corrPaths.Load(corrPathRef{ws, host, p})
 		if !ok {
 			continue
 		}

@@ -201,7 +201,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	if in.Op != "stats" {
 		var b [4]byte
 		_, _ = rand.Read(b[:])
-		outPath = filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("%s-%d-%s.fits", in.Op, d.ID, hex.EncodeToString(b[:])))
+		outPath = filepath.Join(s.derivedDirOf(wsOf(r)), fmt.Sprintf("%s-%d-%s.fits", in.Op, d.ID, hex.EncodeToString(b[:])))
 		args = append(args, "--out", outPath)
 	}
 	args = append(args, carry.args()...)

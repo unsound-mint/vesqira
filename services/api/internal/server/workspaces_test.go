@@ -424,5 +424,46 @@ func TestDataRootsConfinePathRoutes(t *testing.T) {
 	if w := g.do(req{path: "/api/files/tree?path=" + inside, cookie: admin, hdr: map[string]string{WorkspaceHeader: other.ID.String()}}); w.Code == 200 {
 		t.Errorf("a root of workspace 1 is readable from another workspace: %d %s", w.Code, w.Body)
 	}
+	// each workspace reads its own managed copies, never another's
+	managed := g.s.managedDirOf(workspace.Local)
+	_ = os.MkdirAll(managed, 0o700)
+	_ = os.WriteFile(filepath.Join(managed, leak+".fits"), []byte("x"), 0o444)
+	managed, _ = filepath.EvalSymlinks(managed)
+	if w := g.do(req{path: "/api/files/tree?path=" + managed, cookie: admin}); w.Code != 200 || !strings.Contains(w.Body.String(), leak) {
+		t.Errorf("workspace 1 cannot read its managed copies: %d %s", w.Code, w.Body)
+	}
+	if w := g.do(req{path: "/api/files/tree?path=" + managed, cookie: admin, hdr: map[string]string{WorkspaceHeader: other.ID.String()}}); w.Code == 200 || strings.Contains(w.Body.String(), leak) {
+		t.Errorf("another workspace reads workspace 1's managed copies: %d %s", w.Code, w.Body)
+	}
 	_ = http.StatusOK
+}
+
+// One file registered in two workspaces is two datasets with their own corrections: the path-to-dataset memory the correcting
+// service uses keeps them apart, so one workspace's corrections are never attached to the other's reads.
+func TestCorrectionPathsArePerWorkspace(t *testing.T) {
+	var s Server
+	s.notePath(1, 0, "/data/cube.fits", 10)
+	s.notePath(2, 0, "/data/cube.fits", 20)
+	for ws, want := range map[workspace.ID]int64{1: 10, 2: 20} {
+		v, ok := s.corrPaths.Load(corrPathRef{ws, 0, "/data/cube.fits"})
+		if !ok || v.(int64) != want {
+			t.Errorf("workspace %d: dataset %v, want %d", ws, v, want)
+		}
+	}
+}
+
+// The tables internal/arch treats as local-only (hosts, jobs, sweeps, transfers, offline copies, the publish server's side) are
+// not scoped by workspace; that is safe only while the group server mounts none of their routes.
+func TestLocalOnlyFeaturesStayUnmounted(t *testing.T) {
+	for _, p := range []authz.Permission{authz.LocalOnly, authz.ClusterRead, authz.ClusterUse, authz.ClusterAdmin, authz.JobRead, authz.JobSubmit,
+		authz.JobAccess, authz.SweepRead, authz.SweepSubmit, authz.PublishManage} {
+		if !notOnGroupServer[p] {
+			t.Errorf("%s is mounted on the group server: scope its tables by workspace first (internal/arch scope_test.go)", p)
+		}
+	}
+	for _, p := range []string{"GET /api/report-comments", "POST /api/reply-drafts/{id}/send", "GET /api/publish"} {
+		if !groupServerOff(p) {
+			t.Errorf("%s is mounted on the group server", p)
+		}
+	}
 }

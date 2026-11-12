@@ -600,7 +600,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		outPath = filepath.Join(s.Analysis.DerivedDir, fileName)
+		outPath = filepath.Join(s.derivedDirOf(wsOf(r)), fileName)
 		args := append([]string{"-P", s.Analysis.Script, "subset"}, opts...)
 		args = append(args, "--out", outPath)
 		args = append(args, carry.args()...)

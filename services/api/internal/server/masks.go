@@ -276,7 +276,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 			return maskView{}, code, msg
 		}
 	} else {
-		out = filepath.Join(s.Analysis.DerivedDir, fileName)
+		out = filepath.Join(s.derivedDirOf(wsCtx(ctx)), fileName)
 		var code int
 		res, code, msg = s.runAnalysisProgramCtx(wsCtx(ctx), ctx, []string{"-P", s.Analysis.Script, "mask", "--input", real, "--out", out, "--params", string(pj)})
 		if code != 0 {

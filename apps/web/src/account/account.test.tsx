@@ -14,6 +14,8 @@ afterEach(() => {
 
 const workbench = (account: React.ReactNode) => <div data-testid="workbench">{account}</div>;
 
+const lab = { id: 1, name: "Lab", role: "owner", permissions: ["board.read", "member.read"], workspaces: [{ workspaceId: 1, workspaceName: "Lab", accountId: "acct-1", name: "Ada", username: "ada", role: "owner", since: "2026-11-12T00:00:00Z" }] };
+
 describe("the account gate", () => {
   it("renders the workbench unchanged in local mode, with no account control", async () => {
     const fetch = vi.fn(async () => json(200, { features: { planes: true } }));
@@ -57,13 +59,31 @@ describe("the account gate", () => {
 
   it("puts the account's name and a sign-out in the workbench on the group server", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      if (url === "/api/capabilities") return json(200, { features: { accounts: true } });
+      if (url === "/api/capabilities") return json(200, { features: { accounts: true }, workspace: lab });
       if (url === "/api/auth/state") return json(200, { ...none, stage: "full", account: ada, recent: true });
       return json(404, { error: "not found" });
     }));
     render(<AccountGate>{workbench}</AccountGate>);
     await waitFor(() => expect(screen.getByRole("link", { name: "Account: Ada" })).toHaveAttribute("href", "#/account"));
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Members of Lab" })).toHaveAttribute("href", "#/members");
+  });
+
+  it("says so when the account is a member of no workspace, and forgets a stored workspace it no longer belongs to", async () => {
+    localStorage.setItem("vesqira.workspace", "9");
+    const sent: (string | null)[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/capabilities") {
+        sent.push(new Headers(init?.headers).get("X-Vesqira-Workspace"));
+        return json(200, { features: { accounts: true } });
+      }
+      if (url === "/api/auth/state") return json(200, { ...none, stage: "full", account: ada, recent: true });
+      return json(404, { error: "not found" });
+    }));
+    render(<AccountGate>{workbench}</AccountGate>);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("not a member of any workspace"));
+    expect(localStorage.getItem("vesqira.workspace")).toBeNull();
+    expect(sent.at(-1)).toBeNull();
   });
 
   it("opens the setup page from a bootstrap link, keeping the secret out of every request but the setup", async () => {

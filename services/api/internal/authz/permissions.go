@@ -12,7 +12,7 @@ const (
 	// fixed list (the OIDC callback joins it when OIDC is built).
 	Anonymous Permission = "anonymous"
 
-	CapabilitiesRead Permission = "capabilities.read" // V: what this program can do, and the workload it is carrying
+	CapabilitiesRead Permission = "capabilities.read" // any account (slice 3: not a workspace permission): what this program can do, and the workload it is carrying
 	NotificationSelf Permission = "notification.self" // V: the actor's own notifications
 
 	DatasetRead  Permission = "dataset.read"  // V: view, planes, coordinates, spectra, catalogs, regions, masks, subsets, compat; pure computations over a dataset

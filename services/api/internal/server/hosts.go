@@ -104,7 +104,7 @@ func (s *Server) authorizeRemote(ctx context.Context, d catalog.Dataset) (real s
 	if st.Size != d.SizeBytes || st.MtimeNS != d.ModifiedAt.UnixNano() {
 		return "", k, 409, "the file changed since it was registered; register it again"
 	}
-	s.notePath(d.HostID, d.Path, d.ID)
+	s.notePath(wsCtx(ctx), d.HostID, d.Path, d.ID)
 	return d.Path, cacheKey{id: d.ID, host: d.HostID, size: st.Size, mtime: st.MtimeNS, unit: declaredUnitOf(d), corr: corrHash(d)}, 0, ""
 }
 

@@ -27,7 +27,8 @@ import (
 //   - a table not classified fails the test: a new table is a decision about scope.
 //
 // The exceptions are explicit: capability lookups by a token hash (review links, invitations), and the tables of features the
-// group server never mounts (localOnly; internal/server TestLocalOnlyTablesBelongToUnmountedFeatures ties the two together).
+// group server never mounts (localOnly; internal/server TestLocalOnlyFeaturesStayUnmounted pins their permissions and routes as
+// unmounted).
 
 // scopedTables carry workspace_id and are reached by requests on the group server.
 var scopedTables = set("datasets", "dataset_locations", "figures", "reports", "runs", "run_views", "projects", "attachments",
@@ -36,8 +37,9 @@ var scopedTables = set("datasets", "dataset_locations", "figures", "reports", "r
 
 // localOnlyTables carry workspace_id (local rows: workspace 1) but belong to features the group server does not mount (hosts,
 // jobs, sweeps, transfers, offline copies: no ssh credential on the server, ADR 0050 owner answer 3; the publish server: no
-// per-workspace publisher key yet). Their queries are not scoped until those features are, and mounting one fails the server's
-// test first.
+// per-workspace publisher key yet). Their queries are not scoped until those features are; mounting one fails
+// internal/server TestLocalOnlyFeaturesStayUnmounted first. One mounted route reads one of them: the runs list asks the jobs store
+// for job lineages and keeps only those of the workspace's own runs (an empty table on a server that never ran jobs).
 var localOnlyTables = set("hosts", "jobs", "sweeps", "sweep_jobs", "transfers", "offline_entries", "offline_settings",
 	"publish_comments", "reply_drafts", "report_publications", "publish_settings")
 
@@ -217,6 +219,21 @@ func sqlSites(t *testing.T) []sqlSite {
 	return out
 }
 
+var wsPredicate = regexp.MustCompile(`workspace_id\s*(=|IN\s*\()`)
+
+// namesWorkspace: the statement filters on workspace_id by equality (or IN), or is an INSERT that sets it. Merely selecting the
+// column, or comparing it with anything else (workspace_id>0), does not scope a statement.
+func namesWorkspace(q string) bool {
+	return wsPredicate.MatchString(q) || (strings.Contains(q, "INSERT") && strings.Contains(q, "workspace_id"))
+}
+
+// crossWorkspace are the statements that read across workspaces on purpose, each with its reason. Keep it short.
+var crossWorkspace = map[string]bool{
+	// a figure's preview picture is stored once by content: deleting one figure keeps the file while any figure, in any
+	// workspace, still shows it (the count is never returned to the caller)
+	"lifecycle/lifecycle.go Delete": true,
+}
+
 // literalText joins the string literals of a literal or a concatenation; other operands (constants, variables, calls) stand
 // as a space. It reports false for anything that is not a string expression.
 func literalText(n ast.Node) (string, bool) {
@@ -275,13 +292,13 @@ func TestEveryScopedQueryNamesTheWorkspace(t *testing.T) {
 				if capability {
 					continue
 				}
-				if !strings.Contains(s.text, "workspace_id") {
-					problems = append(problems, where+": a statement on "+tbl+" does not name workspace_id")
+				if !namesWorkspace(s.text) && !crossWorkspace[s.file+" "+s.fn] {
+					problems = append(problems, where+": a statement on "+tbl+" does not filter by workspace_id = ? (nor sets it in an INSERT)")
 				} else if !s.wsParam {
 					problems = append(problems, where+": a statement on "+tbl+" is in a function that takes no workspace.ID")
 				}
 			case childTables[tbl] != nil:
-				ok := strings.Contains(s.text, "workspace_id")
+				ok := namesWorkspace(s.text)
 				for _, k := range childTables[tbl] {
 					ok = ok || strings.Contains(s.text, k)
 				}

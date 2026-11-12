@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sync"
 
@@ -126,4 +127,18 @@ func humanBytes(n int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// derivedDirOf is where analysis results, masks and subsets written as files go: the derived folder in local mode, a folder
+// per workspace on the group server, which is one of that workspace's readable roots and no other's.
+func (s *Server) derivedDirOf(ws workspace.ID) string {
+	if s.Analysis == nil {
+		return ""
+	}
+	if !s.multiUser() || s.Analysis.DerivedDir == "" {
+		return s.Analysis.DerivedDir
+	}
+	d := filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("ws-%d", ws))
+	_ = os.MkdirAll(d, 0o700)
+	return d
 }
