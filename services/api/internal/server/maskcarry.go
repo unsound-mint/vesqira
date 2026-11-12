@@ -48,18 +48,26 @@ type carryPlan struct {
 	missingOut string       // where the result's own no-value mask goes; empty when the source has none
 }
 
-func (p *carryPlan) args() []string {
-	if p == nil {
-		return nil
+// specsJSON is the --carry-masks value: a JSON list of {path, type, out}, or "" when nothing is carried.
+func (p *carryPlan) specsJSON() string {
+	if p == nil || len(p.carried) == 0 {
+		return ""
 	}
 	specs := make([]map[string]any, 0, len(p.carried))
 	for _, c := range p.carried {
 		specs = append(specs, map[string]any{"path": c.mask.Path, "type": c.mask.Type, "out": c.out})
 	}
+	b, _ := json.Marshal(specs)
+	return string(b)
+}
+
+func (p *carryPlan) args() []string {
+	if p == nil {
+		return nil
+	}
 	out := []string{}
-	if len(specs) > 0 {
-		b, _ := json.Marshal(specs)
-		out = append(out, "--carry-masks="+string(b))
+	if t := p.specsJSON(); t != "" {
+		out = append(out, "--carry-masks="+t)
 	}
 	if p.missingOut != "" {
 		out = append(out, "--missing-out="+p.missingOut)

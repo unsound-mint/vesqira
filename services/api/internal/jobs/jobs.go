@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -1056,6 +1057,10 @@ type AnalysisSettings struct {
 	// wcs}} keyed by Input, Reference or Weights. Both land in the script inside single quotes: RenderAnalysis checks their shape and
 	// refuses a single quote, so nothing in them can end the quote.
 	Masks, Corrections string
+	// Masks carried into the result of a cutout, slab, align or convolve (ADR 0055, ADR 0064 addendum): Carry is a JSON list of {path, type,
+	// out} (a mask file on this host, its type, and where its carried copy is written) and MissingOut is where the result's own no-value
+	// mask goes. Every out is a fixed name chosen by the API in OutDir; RenderAnalysis refuses any other folder or name.
+	Carry, MissingOut string
 }
 
 // maskSpecKeys are the only keys a mask spec in a job script may carry: no name, rule or meaning (free text stays in the catalog).
@@ -1095,6 +1100,55 @@ func checkJobMasks(p AnalysisSettings) error {
 				return fmt.Errorf("%w: bad masks", ErrInvalid)
 			}
 		}
+	}
+	return nil
+}
+
+// carryNameRe is the only shape of a file a job writes a mask to: the names the API makes (mask-carried-<dataset>-<type>-<hex>.fits and
+// mask-missing-<dataset>-missing-<hex>.fits), always directly in the job's own output folder.
+var carryNameRe = regexp.MustCompile(`^mask-(carried|missing)-[0-9]{1,18}-[a-z_]{1,32}-[0-9a-f]{8}\.fits$`)
+
+// CarryOutOK reports whether out is a mask file the job may write: directly in dir, with a name of the fixed shape and of the given kind.
+func CarryOutOK(out, dir, kind string) bool {
+	if !ValidPath(out) || path.Dir(out) != dir {
+		return false
+	}
+	b := path.Base(out)
+	return carryNameRe.MatchString(b) && strings.HasPrefix(b, "mask-"+kind+"-")
+}
+
+// checkJobCarry validates the Carry and MissingOut of an analysis job.
+func checkJobCarry(p AnalysisSettings) error {
+	if p.Carry == "" && p.MissingOut == "" {
+		return nil
+	}
+	if p.Op != "cutout" && p.Op != "slab" && p.Op != "align" && p.Op != "convolve" {
+		return fmt.Errorf("%w: masks are carried by a cutout, a slab, an alignment and a convolution", ErrInvalid)
+	}
+	if p.MissingOut != "" && !CarryOutOK(p.MissingOut, p.OutDir, "missing") {
+		return fmt.Errorf("%w: bad no-value mask file", ErrInvalid)
+	}
+	if p.Carry == "" {
+		return nil
+	}
+	var specs []map[string]any
+	if !inertQuoted(p.Carry) || json.Unmarshal([]byte(p.Carry), &specs) != nil || len(specs) == 0 || len(specs) > 16 {
+		return fmt.Errorf("%w: bad masks to carry", ErrInvalid)
+	}
+	seen := map[string]bool{}
+	for _, sp := range specs {
+		for k := range sp {
+			if k != "path" && k != "type" && k != "out" {
+				return fmt.Errorf("%w: bad masks to carry", ErrInvalid)
+			}
+		}
+		src, _ := sp["path"].(string)
+		typ, _ := sp["type"].(string)
+		out, _ := sp["out"].(string)
+		if !ValidPath(src) || !wordRe.MatchString(typ) || typ == "missing" || !CarryOutOK(out, p.OutDir, "carried") || seen[out] || out == p.MissingOut {
+			return fmt.Errorf("%w: bad masks to carry", ErrInvalid)
+		}
+		seen[out] = true
 	}
 	return nil
 }
@@ -1157,6 +1211,9 @@ func RenderAnalysis(p AnalysisSettings) (string, error) {
 	if err := checkJobCorrections(p); err != nil {
 		return "", err
 	}
+	if err := checkJobCarry(p); err != nil {
+		return "", err
+	}
 	var args strings.Builder
 	keys := make([]string, 0, len(p.Args))
 	for k := range p.Args {
@@ -1196,6 +1253,12 @@ func RenderAnalysis(p AnalysisSettings) (string, error) {
 	}
 	if p.Corrections != "" {
 		fmt.Fprintf(&args, " --corrections '%s'", p.Corrections)
+	}
+	if p.Carry != "" {
+		fmt.Fprintf(&args, " --carry-masks '%s'", p.Carry)
+	}
+	if p.MissingOut != "" {
+		fmt.Fprintf(&args, " --missing-out %s", p.MissingOut)
 	}
 	fmt.Fprintf(&b, "%s -P \"%s/analysis.py\" %s --input %s%s%s --out \"$out/result.fits\" > \"$out/result.json\"\n", p.Python, p.ScriptDir, p.Op, p.Input, ref, args.String())
 	return b.String(), nil

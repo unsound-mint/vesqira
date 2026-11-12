@@ -242,6 +242,7 @@ function NewJob({ hosts, jobs, onCreated }: { hosts: Host[]; jobs: Job[]; onCrea
 
 function JobDetail({ job, host, onChange, onImported, onOpenRun, onSweep }: { job: Job; host: Host | null; onChange: (j: Job) => void; onImported: (run: Run | null) => void; onOpenRun: (run: Run) => void; onSweep?: () => void }) {
   const [script, setScript] = useState(job.script);
+  const [masksNote, setMasksNote] = useState<string | null>(null); // a sentence when the result registered but its carried masks did not
   const [log, setLog] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -296,13 +297,14 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun, onSweep }: { jo
           {ACTIVE.includes(job.state) ? <Button disabled={busy} onClick={() => act(() => cancelJob(job.id), onChange)}>Cancel job</Button> : null}
           <Button disabled={busy} onClick={() => act(() => jobLog(job.id), setLog)}>Show log</Button>
           {job.template === "analysis" && job.state === "completed" ? <Button disabled={busy} onClick={() => act(() => jobResult(job.id), (r) => setLog(JSON.stringify(r.summary, null, 2)))}>Show the result</Button> : null}
-          {job.template === "analysis" && job.state === "completed" ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), () => onImported(null))}>Register the result file</Button> : null}
+          {job.template === "analysis" && job.state === "completed" ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), (r) => { setMasksNote((r as { masksNote?: string }).masksNote ?? null); onImported(null); })}>Register the result file</Button> : null}
           {(job.template === "vgt" || job.template === "rohsa") && job.state === "completed" && !job.runId ? <Button variant="primary" disabled={busy} onClick={() => act(() => registerOutputs(job.id), (r) => { setRun(r); onChange({ ...job, runId: r.id }); onImported(r); })}>Import results as a run</Button> : null}
         </div>
       ) : null}
       {!draft && (job.template === "vgt" || job.template === "rohsa") && !job.runId ? <p className={s.note}>{job.autoImport ? "Its results will be imported as a run when it completes." : "Its results are not imported automatically."}</p> : null}
       {onSweep ? <div className={s.row}><Button onClick={onSweep}>Sweep from this job…</Button></div> : null}
       {job.runId ? <p className={s.note}>Results imported. {run ? <Button onClick={() => onOpenRun(run)}>Open the run</Button> : "Find the run in the explorer."}</p> : null}
+      {masksNote ? <p role="status" className={s.note} data-testid="masks-note">{masksNote}</p> : null}
       {log !== null ? <pre className={s.log} aria-label="Job log">{log || "No output yet."}</pre> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
       {host ? <HostStorage host={host} /> : null}

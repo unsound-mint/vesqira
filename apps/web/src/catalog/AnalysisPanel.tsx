@@ -42,7 +42,7 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
   const remote = dataset.hostId !== 0;
   const takesMasks = op === "stats" || op === "moment"; // on a host too: the job applies the masks kept next to the file (ADR 0064)
   const cutsOrResamples = op === "cutout" || op === "slab" || op === "align" || op === "convolve";
-  const carryOp: CarryOp | null = !remote && cutsOrResamples ? op : null;
+  const carryOp: CarryOp | null = cutsOrResamples ? op : null; // on a host too: the job writes the masks beside its result (ADR 0064)
   const { masks } = useMasks(takesMasks || cutsOrResamples ? dataset.id : null);
   const [policy, setPolicy] = useState<PolicyChoice>({});
   const [carry, setCarry] = useState<CarryState>({});
@@ -141,12 +141,11 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
       ) : null}
       {takesMasks && masks && masks.length > 0 ? <MaskPolicies masks={masks} choice={policy} onChange={setPolicy} /> : null}
       {carryOp && masks && masks.length > 0 ? <MaskCarry masks={masks} state={carry} onChange={setCarry} op={carryOp} required={carryRequired} /> : null}
-      {remote && cutsOrResamples && masks && masks.length > 0 ? <p className={s.note} data-testid="no-carry-on-host">A job on the host does not carry this file's masks into its result yet: they stay with this file. Make them again on the result, where it is registered.</p> : null}
       <Button variant="primary" disabled={busy || badWeight(policy) || (carryOp !== null && !!masks && carryUndecided(masks, carry, carryRequired)) || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0))} onClick={go}>
         {busy ? "Working…" : remote ? "Create a job on the host" : op === "stats" ? "Compute statistics" : "Create the new file"}
       </Button>
       <QueueNote reason={queued} />
-      {remote ? <p className={s.note}>This file lives on a host. The analysis becomes a Slurm job whose script you read and submit; the result stays on the host and is registered afterwards.</p> : null}
+      {remote ? <p className={s.note}>This file lives on a host. The analysis becomes a Slurm job whose script you read and submit; the result stays on the host and is registered afterwards{carryOp && masks && masks.length > 0 ? ", with the masks you chose to carry (the job writes them beside its result; none is recorded if a file is missing)" : ""}.</p> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
       {stats ? <StatsView st={stats} /> : null}
     </div>
