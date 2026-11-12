@@ -20,14 +20,15 @@ import (
 // multiuserCommand is `vesqira-api multiuser import ...` (ADR 0050 section 7, slice 4): bring a local catalog's export into a new
 // workspace of a group server.
 //
-//	multiuser import ARCHIVE --db PATH --workspace NAME --owner USERNAME [--map FROM=TO]... --dry-run
+//	multiuser import ARCHIVE --db PATH --workspace NAME --owner USERNAME [--map FROM=TO]... [--dry-run]
 //
-// What is built is the verification and the plan, which a dry run prints in full: the archive is checked against its manifest
+// DRY RUN ONLY: it writes nothing, with or without --dry-run, and a flag that asks for a write (--write, --apply, --commit, --yes,
+// --force, --dry-run=false) is refused with exit 2, so nobody can believe data was imported. What is built is the verification
+// and the plan, printed in full: the archive is checked against its manifest
 // (backup.Restore, into a temporary folder; the archive itself is only read), the owner must exist, the workspace name must be new,
 // and every --map must go from an absolute folder to a canonical folder on this server, which would become the workspace's data
 // root. Each dataset is listed with what would happen to it: rewritten through a map, or kept as a record of a file that is not on
-// the server (no --map covers it, or it lives on a host, whose ssh alias is never imported). Writing the rows is not built yet:
-// without --dry-run the command says so and writes nothing.
+// the server (no --map covers it, or it lives on a host, whose ssh alias is never imported). Writing the rows is not built yet.
 //
 // Exit codes: 0 done, 1 failed or refused, 2 wrong usage.
 func multiuserCommand(args []string) bool {
@@ -91,23 +92,48 @@ func mapPath(maps []pathMap, p string) string {
 }
 
 func runMultiuser(args []string, stdout, stderr io.Writer) int {
-	usage := func() int {
-		fmt.Fprintln(stderr, "usage: vesqira-api multiuser import ARCHIVE.tar.gz --db PATH --workspace NAME --owner USERNAME [--map FROM=TO]... --dry-run")
-		return 2
-	}
-	if len(args) < 2 || args[0] != "import" {
-		return usage()
-	}
-	archive := args[1]
+	const dryOnly = "This is a dry run only: it checks the archive and lists what an import would do, and writes nothing. Writing the rows into a workspace is not built yet (ADR 0050 slice 4)."
 	fs := flag.NewFlagSet("multiuser import", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	usage := func() int {
+		fmt.Fprintln(stderr, "usage: vesqira-api multiuser import ARCHIVE.tar.gz --db PATH --workspace NAME --owner USERNAME [--map FROM=TO]... [--dry-run]")
+		fmt.Fprintln(stderr, dryOnly)
+		fs.PrintDefaults()
+		return 2
+	}
+	fs.Usage = func() {}
 	db := fs.String("db", "", "the group server's catalog")
 	name := fs.String("workspace", "", "the new workspace's name")
 	owner := fs.String("owner", "", "the username of the account that becomes its Owner and the author of every imported row")
-	dry := fs.Bool("dry-run", false, "check and list everything, write nothing")
+	dry := fs.Bool("dry-run", true, "accepted for clarity: the command is a dry run only, always; --dry-run=false is refused")
 	var maps pathMaps
 	fs.Var(&maps, "map", "FROM=TO: rewrite paths under FROM (the exporting computer) to TO (this server); repeatable")
-	if err := fs.Parse(args[2:]); err != nil || fs.NArg() != 0 || *db == "" || strings.TrimSpace(*name) == "" || *owner == "" {
+	writes := map[string]*bool{}
+	for _, f := range []string{"write", "apply", "commit", "yes", "force"} {
+		writes[f] = fs.Bool(f, false, "refused: the command writes nothing")
+	}
+	if len(args) < 1 || args[0] != "import" {
+		return usage()
+	}
+	if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+		_ = fs.Parse(args[1:])
+		return usage()
+	}
+	archive := args[1]
+	if err := fs.Parse(args[2:]); err != nil {
+		return usage()
+	}
+	for f, set := range writes {
+		if *set {
+			fmt.Fprintf(stderr, "--%s asks for a write. %s Nothing was written.\n", f, dryOnly)
+			return 2
+		}
+	}
+	if !*dry {
+		fmt.Fprintf(stderr, "--dry-run=false asks for a write. %s Nothing was written.\n", dryOnly)
+		return 2
+	}
+	if fs.NArg() != 0 || *db == "" || strings.TrimSpace(*name) == "" || *owner == "" {
 		return usage()
 	}
 	pm, err := parseMaps(maps)
@@ -175,6 +201,7 @@ func runMultiuser(args []string, stdout, stderr io.Writer) int {
 	}
 	defer src.Close()
 
+	fmt.Fprintf(stdout, "DRY RUN ONLY: nothing below is written; writing the rows into a workspace is not built yet (ADR 0050 slice 4).\n\n")
 	fmt.Fprintf(stdout, "Import of %s into a new workspace %q, owned by %s (%s); every imported row would be created by that account.\n", filepath.Base(archive), strings.TrimSpace(*name), o.Name, o.Username)
 	fmt.Fprintf(stdout, "The archive matches its manifest: %d files, schema %d, exported %s.\n\n", len(m.Files), m.SchemaVersion, m.CreatedAt.UTC().Format("2006-01-02 15:04 UTC"))
 	if len(pm) > 0 {
@@ -239,12 +266,8 @@ func runMultiuser(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	fmt.Fprintln(stdout, "\nNever imported: hosts (their destinations are ssh aliases of the exporting computer), the publisher key (not in an export), tokens and keys.")
-	if *dry {
-		fmt.Fprintln(stdout, "Dry run: nothing was written.")
-		return 0
-	}
-	fmt.Fprintln(stderr, "Writing the rows into a new workspace is not built yet (ADR 0050 slice 4: the dry run and the checks are). Nothing was written; the archive and this catalog are unchanged.")
-	return 1
+	fmt.Fprintln(stdout, "Dry run only: nothing was written; the archive and this catalog are unchanged.")
+	return 0
 }
 
 func count(db *sql.DB, table string) (int64, bool) {

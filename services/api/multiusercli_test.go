@@ -66,9 +66,27 @@ func TestMultiuserImportDryRunPlansAndRefuses(t *testing.T) {
 		t.Fatalf("dry run: %d %s", code, errs)
 	}
 	for _, want := range []string{"matches its manifest", "cube.fits: /home/denis/data/lmc/cube.fits -> " + filepath.Join(target, "lmc", "cube.fits") + " (present)",
-		"other.fits: /scratch/other.fits; no --map covers it", "1 rewritten through a map, 1 not covered", "Dry run: nothing was written."} {
+		"other.fits: /scratch/other.fits; no --map covers it", "1 rewritten through a map, 1 not covered", "Dry run only: nothing was written;"} {
 		if !strings.Contains(plan, want) {
 			t.Errorf("the plan lacks %q:\n%s", want, plan)
+		}
+	}
+	if !strings.HasPrefix(plan, "DRY RUN ONLY") {
+		t.Errorf("the output does not open by saying it is a dry run:\n%s", plan)
+	}
+	// it is a dry run whether or not --dry-run is given, and says so; the help says so too
+	if code, out, e := run("--workspace", "Denis's data", "--owner", "ada", "--map", "/home/denis/data="+target); code != 0 || !strings.HasPrefix(out, "DRY RUN ONLY") || !strings.Contains(out, "nothing was written") {
+		t.Errorf("without --dry-run: %d %s %s", code, out, e)
+	}
+	var help bytes.Buffer
+	if code := runMultiuser([]string{"import", "--help"}, &help, &help); code != 2 || !strings.Contains(help.String(), "dry run only") || !strings.Contains(help.String(), "writes nothing") {
+		t.Errorf("--help: %d %s", code, help.String())
+	}
+	// any flag that asks for a write is refused, so nobody believes data was imported
+	for _, flag := range []string{"--write", "--apply", "--commit", "--yes", "--force", "--dry-run=false"} {
+		code, out, e := run("--workspace", "W", "--owner", "ada", "--map", "/home/denis/data="+target, flag)
+		if code == 0 || !strings.Contains(e, "dry run only") || out != "" {
+			t.Errorf("%s: exit %d, %q, %q", flag, code, out, e)
 		}
 	}
 	for name, args := range map[string][]string{
@@ -76,7 +94,6 @@ func TestMultiuserImportDryRunPlansAndRefuses(t *testing.T) {
 		"an existing workspace":   {"--workspace", "main workspace", "--owner", "ada", "--dry-run"},
 		"a relative map":          {"--workspace", "W", "--owner", "ada", "--map", "data=" + target, "--dry-run"},
 		"a missing map target":    {"--workspace", "W", "--owner", "ada", "--map", "/a=/no/such/folder", "--dry-run"},
-		"writing, not yet built":  {"--workspace", "W", "--owner", "ada", "--map", "/home/denis/data=" + target},
 		"no workspace name given": {"--owner", "ada"},
 	} {
 		if code, _, e := run(args...); code == 0 || e == "" {
