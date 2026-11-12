@@ -76,9 +76,18 @@ func TestHealpixMapRegistersAsItsOwnKindAndIsRefusedWhereAGridIsNeeded(t *testin
 		}
 	}
 	id := itoa(int(d.ID))
+	// the dataset reply with a HEALPix header is what the spec says (the header's oneOf gained HealpixHeader)
+	doc := loadSpec(t)
+	if st, b := callJSON(t, "GET", ts.URL+"/api/datasets/"+id, nil); st != 200 {
+		t.Fatalf("get: %d %s", st, b)
+	} else {
+		conforms(t, responseSchemaAt(t, doc, "/api/datasets/{id}", "GET", 200, "application/json"), "healpix dataset", b)
+	}
 	img := post(t, ts, filepath.Join(root, "vgt_psi_rad.fits"), nil)
 	var im catalog.Dataset
 	json.NewDecoder(img.Body).Decode(&im)
+	imID := itoa(int(im.ID))
+	contours := map[string]any{"overlay": map[string]any{"id": "co", "kind": "contours", "datasetId": d.ID, "visible": true, "channel": 0, "levels": map[string]any{"mode": "sigma", "multiples": []float64{3}}, "unit": "K", "color": "amber"}}
 	for _, c := range []struct {
 		method, url string
 		body        any
@@ -89,6 +98,12 @@ func TestHealpixMapRegistersAsItsOwnKindAndIsRefusedWhereAGridIsNeeded(t *testin
 		{"POST", "/api/analysis/relative-orientation", map[string]any{"datasetId": im.ID, "otherId": d.ID}},
 		{"POST", "/api/analysis/healpix-sample", map[string]any{"datasetId": d.ID, "targetId": d.ID, "product": "b_field"}},
 		{"POST", "/api/analysis/healpix-sample", map[string]any{"datasetId": im.ID, "targetId": im.ID, "product": "b_field"}},
+		{"POST", "/api/datasets/" + id + "/unit", map[string]any{"unit": "K"}},
+		{"GET", "/api/datasets/" + id + "/corrections", nil},
+		{"GET", "/api/datasets/" + id + "/conversions", nil},
+		{"POST", "/api/datasets/" + imID + "/link", map[string]any{"otherId": d.ID, "region": map[string]any{"x0": -0.5, "y0": -0.5, "x1": 3.5, "y1": 3.5}, "points": [][]float64{{0, 0}}}},
+		{"POST", "/api/datasets/" + imID + "/overlay-geometry", contours},
+		{"POST", "/api/datasets/" + id + "/overlay-geometry", contours},
 	} {
 		st, b := callJSON(t, c.method, ts.URL+c.url, c.body)
 		if st != 409 || !strings.Contains(string(b), "HEALPix") {
