@@ -1,4 +1,5 @@
-// Command api is the Vesqira control plane (local mode: SQLite, loopback only).
+// Command api is the Vesqira control plane: local mode (SQLite, loopback only, one owner) or, with --multi-user, the group
+// server (accounts, sessions and tokens; ADR 0050).
 package main
 
 import (
@@ -45,7 +46,7 @@ func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
 func main() {
-	if archiveCommand(os.Args[1:]) || publishServerCommand(os.Args[1:]) || agentCommand(os.Args[1:]) || supportCommand(os.Args[1:]) {
+	if archiveCommand(os.Args[1:]) || publishServerCommand(os.Args[1:]) || agentCommand(os.Args[1:]) || supportCommand(os.Args[1:]) || adminCommand(os.Args[1:]) {
 		return
 	}
 	var roots multi
@@ -68,8 +69,25 @@ func main() {
 	wInteractive := flag.Int("workers-interactive", worker.DefaultBudgets().Interactive, "worker processes reserved for interactive viewing (planes, coordinates, overlays); never used by heavy or background work (ADR 0056)")
 	wHeavy := flag.Int("workers-heavy", worker.DefaultBudgets().Heavy, "heavy tasks at once: spectra over large regions, PV, channel grids, index builds, and analysis programs")
 	wBackground := flag.Int("workers-background", worker.DefaultBudgets().Background, "background tasks at once: project scans, fingerprints; at most one of them is a full file hash, which takes the last slot only when this is 1 (ADR 0056)")
+	multiUser := flag.Bool("multi-user", false, "run as the group server (ADR 0050): people sign in with a password and TOTP; clusters, jobs, sweeps, host access, the editor and the terminal are not available. Needs --public-origin; create the first admin with `vesqira-api admin bootstrap`")
+	publicOrigin := flag.String("public-origin", "", "with --multi-user: the https origin people open (for example https://vesqira.example.edu); every request must name its host and every write must come from it")
+	insecureDev := flag.Bool("insecure-dev", false, "with --multi-user: accept an http://localhost public origin, for development only")
+	clientIPHeader := flag.String("client-ip-header", "", "with --multi-user: header a trusted reverse proxy sets to the client address (for example X-Forwarded-For), for the per-address sign-in limit")
+	secretKey := flag.String("secret-key", "", "with --multi-user: the server key file that seals TOTP secrets (default: secrets/server.key beside the database, created 0600); back it up separately, it is not in exports")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
+	if !*multiUser && (*publicOrigin != "" || *insecureDev || *clientIPHeader != "" || *secretKey != "") {
+		log.Fatalf("--public-origin, --insecure-dev, --client-ip-header and --secret-key belong to --multi-user")
+	}
+	origin := ""
+	if *multiUser {
+		var err error
+		origin, err = groupStart{origin: *publicOrigin, insecureDev: *insecureDev, editor: *enableEditor, terminal: *enableTerminal, vpn: *enableVPN,
+			addr: *addr, reviewAddr: *reviewAddr, dbDir: filepath.Dir(strings.TrimPrefix(*db, "file:")), onNetworkFS: networkFS, allowOthers: *allowOthers}.check()
+		if err != nil {
+			log.Fatalf("refusing to start the group server: %v", err)
+		}
+	}
 
 	budgets := worker.Budgets{Interactive: *wInteractive, Heavy: *wHeavy, Background: *wBackground}
 	if err := budgets.Validate(); err != nil {
@@ -82,11 +100,13 @@ func main() {
 		*python = p
 	}
 	host, _, err := net.SplitHostPort(*addr)
-	if err != nil || (host != "127.0.0.1" && host != "localhost" && host != "::1") {
+	if !*multiUser && (err != nil || (host != "127.0.0.1" && host != "localhost" && host != "::1")) {
 		log.Fatalf("refusing to listen on %q: local mode binds to loopback only", *addr)
 	}
 	gateOwner := true
 	switch {
+	case *multiUser: // the group server is reached through its reverse proxy, which runs as another account; accounts guard it
+		gateOwner = false
 	case *allowOthers:
 		gateOwner = false
 		log.Printf("WARNING: --allow-other-local-users: any user account on this computer can reach the owner API on %s and act as you", *addr)
@@ -219,7 +239,15 @@ func main() {
 	}
 	planes := &worker.Persistent{Command: []string{*python, "-P", *planeScript}, Timeout: 30 * time.Second, Load: load}
 	defer planes.Close()
-	srv := &server.Server{Roots: rs, Store: store, Worker: planes, Planes: planes, Load: load, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, Masks: maskStore, Offline: offlineStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Subsets: subsetStore, History: historyStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, VPNEnabled: *enableVPN, VPNLogDir: filepath.Join(dir, "vpn"), Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
+	var group server.MultiUser
+	if *multiUser {
+		var closeGroup func()
+		group, closeGroup = openGroup(store, *db, dir, *secretKey, origin, *clientIPHeader)
+		defer closeGroup()
+		auditStore.Default = audit.System // background work on the group server acts for no account; requests record their own actor
+		hostStore, remote = nil, nil      // no ssh credential on the group server (ADR 0050 section 5): no host is reachable
+	}
+	srv := &server.Server{MultiUser: group, Roots: rs, Store: store, Worker: planes, Planes: planes, Load: load, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, Masks: maskStore, Offline: offlineStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Subsets: subsetStore, History: historyStore, Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, VPNEnabled: *enableVPN, VPNLogDir: filepath.Join(dir, "vpn"), Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
@@ -245,7 +273,11 @@ func main() {
 	if *enableTerminal {
 		log.Printf("terminal enabled: the app can open a shell as this user, here or over ssh (loopback only)")
 	}
-	log.Printf("listening on http://%s, roots: %v", *addr, []string(rs))
+	if *multiUser {
+		log.Printf("group server on %s for %s (behind your TLS proxy), roots: %v", *addr, origin, []string(rs))
+	} else {
+		log.Printf("listening on http://%s, roots: %v", *addr, []string(rs))
+	}
 	// No WriteTimeout: a cube analysis answers one request for up to its own 30-minute budget. Reading a request is
 	// bounded, and so is an idle connection.
 	owner := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 16 << 10}
@@ -267,12 +299,14 @@ func main() {
 	// copy in progress is not cut off mid-way. The deferred Closes above then run.
 	stop, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if *jobWatch > 0 { // follow queued and running jobs on the hosts while the app runs (ADR 0043)
+	if *jobWatch > 0 && !*multiUser { // follow queued and running jobs on the hosts while the app runs (ADR 0043)
 		go srv.WatchJobs(stop, *jobWatch)
 	}
 	transfersStopped := make(chan struct{}) // the transfer queue (ADR 0051); on shutdown rsync gets SIGTERM and keeps its partial files
 	go func() {
-		srv.RunTransfers(stop)
+		if !*multiUser {
+			srv.RunTransfers(stop)
+		}
 		close(transfersStopped)
 	}()
 	<-stop.Done()
