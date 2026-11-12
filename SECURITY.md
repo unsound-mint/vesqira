@@ -27,10 +27,12 @@ The owner API (`--addr`, loopback, no accounts) is the whole app: catalog, hosts
 
 With `--multi-user --public-origin https://...` the same listener becomes a group server that people sign in to. It is not limited to loopback and has no peer-uid gate; run it behind a TLS reverse proxy that passes `Host` through unchanged, and give `--client-ip-header` when the proxy sets one. What changes:
 
-- **Accounts:** a password (argon2id, m=64 MiB, t=3, p=1) and a TOTP second factor, with single-use recovery codes. The first admin is created from a one-time link printed by `vesqira-api admin bootstrap` on the server; shell access to the service account is the root of trust. Sign-in failures back off per name typed and per client address; a name kept under attack keeps backing off, and behind a proxy without `--client-ip-header` every client shares one address allowance (a restart clears both).
+- **Accounts:** a password (argon2id, m=64 MiB, t=3, p=1) and a TOTP second factor, with single-use recovery codes. The first admin is created from a one-time link printed by `vesqira-api admin bootstrap` on the server; shell access to the service account is the root of trust. Sign-in failures back off per name typed, and per client address when the address means a client (`--client-ip-header` set, or a peer that is not loopback or private); a name kept under attack keeps backing off, and a restart clears the counts. Without the header behind a proxy the server warns and limits per name only, so the proxy's shared address can never lock everyone out.
 - **Sessions and tokens:** server-side sessions in a `__Host-` cookie (`Secure`, `HttpOnly`, `SameSite=Lax`), 12 h idle and 7 days absolute; personal access tokens for programs, `read` or `write` only, never account or admin actions. Every write from a browser must carry the server's own `Origin`.
 - **Not on the group server:** hosts, clusters, jobs, sweeps, transfers, the editor, the terminal, the VPN and offline copies (their routes answer 404). The server never holds an ssh key.
-- **Known gap until slice 3:** every account is an admin, and path completion and opening a folder as a project still reach the service account's file system beyond the data roots. Only give accounts to people you would give a shell on that machine.
+- **Also not on the group server until slice 3:** path completion and opening a folder as a project (they would reach the service account's file system beyond the data roots). Every account is an admin until then.
+- **An existing local catalog** is refused unless `--adopt-existing-catalog` is given, since every account would see all of it.
+- **Second-factor reset** by an admin ends the account's sessions and revokes its access tokens; "sign out everywhere" ends sessions only.
 - **Not defended:** whoever runs the machine can read the database and the server key (`secrets/server.key`, which seals the TOTP secrets).
 
 ## Optional features that write or run things
