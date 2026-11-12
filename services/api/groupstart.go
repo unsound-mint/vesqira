@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -66,6 +67,49 @@ func (g groupStart) check() (string, error) {
 	return u.Scheme + "://" + host, nil
 }
 
+// dataTables are the tables whose rows are someone's work. A catalog with rows in any of them and no account has been used in
+// local mode; turning it into a group server shows all of it to every account, which needs the operator to say so.
+var dataTables = []string{"datasets", "figures", "boards", "snapshots", "reports", "attachments", "runs", "jobs", "sweeps", "hosts",
+	"projects", "subsets", "masks", "saved_regions", "transfers", "derived", "run_views", "exploration_steps"}
+
+// adoptionNeeded returns the data tables that hold rows when the catalog has no account yet (a local catalog), or nil for a
+// fresh catalog or one that already is a group server's.
+func adoptionNeeded(db *sql.DB) ([]string, error) {
+	var accts int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM accounts`).Scan(&accts); err != nil {
+		return nil, err
+	}
+	if accts > 0 {
+		return nil, nil
+	}
+	var held []string
+	for _, t := range dataTables {
+		var exists int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, t).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if exists == 0 {
+			continue
+		}
+		var any int
+		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM ` + t + `)`).Scan(&any); err != nil {
+			return nil, err
+		}
+		if any == 1 {
+			held = append(held, t)
+		}
+	}
+	return held, nil
+}
+
+// adoptionRefusal is the one sentence the server stops with, or "" when it may start.
+func adoptionRefusal(held []string, adopt bool) string {
+	if len(held) == 0 || adopt {
+		return ""
+	}
+	return "this catalog already holds local work (" + strings.Join(held, ", ") + ") and every account will see all of it: pass --adopt-existing-catalog to accept that, or start with a new catalog"
+}
+
 func sameAddr(a, b string) bool {
 	ha, pa, err1 := net.SplitHostPort(a)
 	hb, pb, err2 := net.SplitHostPort(b)
@@ -78,10 +122,17 @@ func sameAddr(a, b string) bool {
 
 // openGroup opens what the group server needs beside the catalog: the account store with its server key, a read-only pool
 // for the per-request session and token lookups, and the writer lock-wait log (ADR 0050 section 6). Any failure stops the start.
-func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHeader string) (server.MultiUser, func()) {
+func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHeader string, adopt bool) (server.MultiUser, func()) {
 	acc, err := accounts.Open(store.DB())
 	if err != nil {
 		log.Fatal(err)
+	}
+	held, err := adoptionNeeded(store.DB())
+	if err != nil {
+		log.Fatal(err)
+	}
+	if msg := adoptionRefusal(held, adopt); msg != "" {
+		log.Fatalf("refusing to start the group server: %s", msg)
 	}
 	if keyPath == "" {
 		keyPath = filepath.Join(dataDir, "secrets", "server.key")

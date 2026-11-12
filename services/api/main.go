@@ -73,11 +73,12 @@ func main() {
 	publicOrigin := flag.String("public-origin", "", "with --multi-user: the https origin people open (for example https://vesqira.example.edu); every request must name its host and every write must come from it")
 	insecureDev := flag.Bool("insecure-dev", false, "with --multi-user: accept an http://localhost public origin, for development only")
 	clientIPHeader := flag.String("client-ip-header", "", "with --multi-user: header a trusted reverse proxy sets to the client address (for example X-Forwarded-For), for the per-address sign-in limit")
+	adopt := flag.Bool("adopt-existing-catalog", false, "with --multi-user: start on a catalog that already holds local work (datasets, boards, runs...); every account will see all of it")
 	secretKey := flag.String("secret-key", "", "with --multi-user: the server key file that seals TOTP secrets (default: secrets/server.key beside the database, created 0600); back it up separately, it is not in exports")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
-	if !*multiUser && (*publicOrigin != "" || *insecureDev || *clientIPHeader != "" || *secretKey != "") {
-		log.Fatalf("--public-origin, --insecure-dev, --client-ip-header and --secret-key belong to --multi-user")
+	if !*multiUser && (*publicOrigin != "" || *insecureDev || *clientIPHeader != "" || *secretKey != "" || *adopt) {
+		log.Fatalf("--public-origin, --insecure-dev, --client-ip-header, --secret-key and --adopt-existing-catalog belong to --multi-user")
 	}
 	origin := ""
 	if *multiUser {
@@ -242,7 +243,7 @@ func main() {
 	var group server.MultiUser
 	if *multiUser {
 		var closeGroup func()
-		group, closeGroup = openGroup(store, *db, dir, *secretKey, origin, *clientIPHeader)
+		group, closeGroup = openGroup(store, *db, dir, *secretKey, origin, *clientIPHeader, *adopt)
 		defer closeGroup()
 		auditStore.Default = audit.System // background work on the group server acts for no account; requests record their own actor
 		hostStore, remote = nil, nil      // no ssh credential on the group server (ADR 0050 section 5): no host is reachable

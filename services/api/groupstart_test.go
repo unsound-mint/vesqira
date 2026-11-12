@@ -9,6 +9,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/fullschema"
 )
 
 // ADR 0050 section 1: what the group server refuses to start with.
@@ -40,6 +41,42 @@ func TestGroupServerRefusesUnsafeStarts(t *testing.T) {
 	}
 	if o, err := (groupStart{origin: "http://localhost:5173", insecureDev: true}).check(); err != nil || o != "http://localhost:5173" {
 		t.Fatalf("--insecure-dev localhost: %q %v", o, err)
+	}
+}
+
+// A catalog used in local mode is not turned into a group server unless the operator says so; a fresh one, and one that
+// already has accounts, start.
+func TestGroupServerRefusesALocalCatalogWithoutAdoption(t *testing.T) {
+	st, err := catalog.Open(filepath.Join(t.TempDir(), "c.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := fullschema.Open(st.DB(), t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if held, err := adoptionNeeded(st.DB()); err != nil || len(held) != 0 || adoptionRefusal(held, false) != "" {
+		t.Fatalf("a fresh catalog: %v %v", held, err)
+	}
+	if _, err := st.Upsert(catalog.Dataset{Path: "/d/a.fits", Name: "a.fits", Header: []byte(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
+	held, err := adoptionNeeded(st.DB())
+	msg := adoptionRefusal(held, false)
+	if err != nil || len(held) != 1 || !strings.Contains(msg, "--adopt-existing-catalog") || !strings.Contains(msg, "every account will see all of it") || strings.Count(msg, ". ") != 0 {
+		t.Fatalf("a local catalog: %v %q %v", held, msg, err)
+	}
+	if adoptionRefusal(held, true) != "" {
+		t.Fatal("the flag did not adopt")
+	}
+	acc, _ := accounts.Open(st.DB())
+	acc.Params = accounts.Argon2Params{MemoryKiB: 64, Time: 1, Threads: 1}
+	tok, _, _ := acc.CreateSetupToken()
+	if _, err := acc.CreateAdminFromSetup(tok, "Ada", "ada", "a long passphrase here"); err != nil {
+		t.Fatal(err)
+	}
+	if held, _ := adoptionNeeded(st.DB()); len(held) != 0 {
+		t.Fatal("a group server's own catalog needs adopting again at every start")
 	}
 }
 
