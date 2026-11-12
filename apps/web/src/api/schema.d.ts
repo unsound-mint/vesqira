@@ -4032,6 +4032,8 @@ export interface components {
             catalogDeclaration: components["schemas"]["CatalogDeclaration"] | null;
             /** @description The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053). */
             locations: components["schemas"]["DatasetLocation"][];
+            /** @description Only on the dataset list: the datasets this file is the imported mask file of, when that is its only role (a file also used for a figure, region, analysis, run, or opened in the viewer has none). Derived from the masks' rows; nothing is hidden or unregistered by it (ADR 0058, mask files). */
+            maskSourceFor?: components["schemas"]["MaskSourceRef"][];
         };
         DatasetList: {
             datasets: components["schemas"]["Dataset"][];
@@ -7181,6 +7183,8 @@ export interface components {
             sha256: string;
             /** @description The dataset's size or modification time differs from when the mask was made: it is not applied until it is made again */
             stale: boolean;
+            /** @description The registered file an imported mask was made from, when the row records it (masks made before the id was recorded do not) */
+            sourceDataset?: components["schemas"]["MaskSourceRef"];
         };
         MaskList: {
             masks: components["schemas"]["Mask"][];
@@ -7796,6 +7800,12 @@ export interface components {
             datasetId: number;
             forgotten: number;
             freedBytes: number;
+        };
+        /** @description A dataset, by id and name */
+        MaskSourceRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
         };
     };
     responses: never;

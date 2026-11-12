@@ -5266,6 +5266,11 @@ components:
           items:
             $ref: "#/components/schemas/DatasetLocation"
           description: "The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053)."
+        maskSourceFor:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MaskSourceRef"
+          description: "Only on the dataset list: the datasets this file is the imported mask file of, when that is its only role (a file also used for a figure, region, analysis, run, or opened in the viewer has none). Derived from the masks' rows; nothing is hidden or unregistered by it (ADR 0058, mask files)."
     DatasetList:
       type: "object"
       required:
@@ -12524,6 +12529,10 @@ components:
         stale:
           type: "boolean"
           description: "The dataset's size or modification time differs from when the mask was made: it is not applied until it is made again"
+        sourceDataset:
+          allOf:
+            - $ref: "#/components/schemas/MaskSourceRef"
+          description: "The registered file an imported mask was made from, when the row records it (masks made before the id was recorded do not)"
     MaskList:
       type: "object"
       required:
@@ -13967,3 +13976,15 @@ components:
           type: "integer"
         freedBytes:
           type: "integer"
+    MaskSourceRef:
+      type: "object"
+      required:
+        - "id"
+        - "name"
+      description: "A dataset, by id and name"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
