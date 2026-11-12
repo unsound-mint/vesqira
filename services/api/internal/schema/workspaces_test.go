@@ -178,3 +178,26 @@ func TestRebuildWithForeignKeysOffStillRefusesDanglingReferences(t *testing.T) {
 		t.Error("the failed step's cascade was not rolled back")
 	}
 }
+
+// A step run with foreign keys off leaves the references exactly as it found them: it may neither add a dangling row nor quietly
+// remove one that was there (rows a catalog wrote with the keys off are the researcher's to decide about, not a migration's).
+func TestRebuildWithForeignKeysOffLeavesExistingDanglingRowsAlone(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "c.db")
+	db := open(t, p)
+	exec(t, db, `CREATE TABLE parent(id INTEGER PRIMARY KEY)`, `CREATE TABLE child(pid INTEGER REFERENCES parent(id))`,
+		`INSERT INTO child VALUES(7)`, `PRAGMA user_version = 1`) // dangling already: written with the keys off
+	steps := []Migration{{To: 2, Name: "tidy", NoForeignKeys: true, Up: func(tx *sql.Tx) error {
+		_, err := tx.Exec(`DELETE FROM child`)
+		return err
+	}}}
+	if err := guard(db, "file:"+p, 2, steps); err == nil {
+		t.Fatal("a step that removed an existing dangling row was committed")
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM child`); n != 1 {
+		t.Error("the dangling row is gone after a refused step")
+	}
+	var on int
+	if err := db.QueryRow(`PRAGMA foreign_keys`).Scan(&on); err != nil || on != 0 {
+		t.Errorf("foreign keys are %d after the step on a connection that had them off", on)
+	}
+}

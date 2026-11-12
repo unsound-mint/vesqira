@@ -828,7 +828,7 @@ func guard(db *sql.DB, dsn string, target int, steps []Migration) error {
 	return err
 }
 
-func apply(db *sql.DB, m Migration) error {
+func apply(db *sql.DB, m Migration) (err error) {
 	ctx := context.Background()
 	conn, err := db.Conn(ctx) // one connection, so the pragma and the transaction are on the same one
 	if err != nil {
@@ -844,7 +844,11 @@ func apply(db *sql.DB, m Migration) error {
 			if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=OFF`); err != nil {
 				return err
 			}
-			defer conn.ExecContext(ctx, `PRAGMA foreign_keys=ON`)
+			defer func() { // a connection left with the keys off would silently drop every ON DELETE CASCADE from here on
+				if _, e := conn.ExecContext(ctx, `PRAGMA foreign_keys=ON`); e != nil && err == nil {
+					err = fmt.Errorf("turning foreign keys back on: %w", e)
+				}
+			}()
 		}
 	}
 	tx, err := conn.BeginTx(ctx, nil)
@@ -866,8 +870,10 @@ func apply(db *sql.DB, m Migration) error {
 		if err != nil {
 			return err
 		}
-		if after > before { // a catalog that already held some (written with the keys off) is not refused for them
-			return fmt.Errorf("%d rows would refer to rows that no longer exist (PRAGMA foreign_key_check)", after-before)
+		// the references are left exactly as found: none added, and the ones a catalog already held (written with the keys off)
+		// neither refuse the upgrade nor disappear in it
+		if after != before {
+			return fmt.Errorf("the step changed the rows that refer to missing rows from %d to %d (PRAGMA foreign_key_check)", before, after)
 		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, m.To)); err != nil {
