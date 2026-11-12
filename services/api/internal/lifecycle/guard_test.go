@@ -9,6 +9,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/fullschema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // keyColumns are the columns that point at a deletable entry (dataset, run, figure, board) or carry a reference to one
@@ -59,7 +60,8 @@ func TestEveryKeyedTableIsHandled(t *testing.T) {
 	handled := map[string]bool{} // "table.column" written by deleteSteps
 	tables := map[string]bool{}
 	for _, kind := range []string{KindDataset, KindRun, KindFigure, KindBoard} {
-		for _, st := range deleteSteps(kind) {
+		for _, step := range deleteSteps(workspace.Local, kind, 0) {
+			st := step.sql
 			tables[tableOf(st)] = true
 			if m := whereCol.FindStringSubmatch(st); m != nil {
 				handled[tableOf(st)+"."+m[1]] = true

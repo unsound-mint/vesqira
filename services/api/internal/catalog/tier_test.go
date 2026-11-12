@@ -1,6 +1,10 @@
 package catalog
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
+)
 
 // Every interpretation carries a tier (ADR 0055): the researcher's word is `declared`; a rule's proposal is `inferred`, named by who
 // wrote it, with its mapping version. Nothing the store writes is `verified`: that is for a check the app ran.
@@ -18,14 +22,14 @@ func TestEveryInterpretationIsWrittenWithATier(t *testing.T) {
 		if err := s.SetInterpretation(d, Interpretation{Kind: "axial_orientation", Unit: "deg", DeclaredBy: c.by}); err != nil {
 			t.Fatal(err)
 		}
-		got, _ := s.Get(d.ID)
+		got, _ := s.Get(workspace.Local, d.ID)
 		if got.Interpretation.Tier != c.tier || got.Interpretation.MappingVersion != c.mapping {
 			t.Errorf("declared by %q: %q %q, want %q %q", c.by, got.Interpretation.Tier, got.Interpretation.MappingVersion, c.tier, c.mapping)
 		}
 	}
 	// the proposals list says the same
 	_ = s.SetInterpretation(d, Interpretation{Kind: "axial_orientation", Unit: "rad", DeclaredBy: "vgt-run-adapter"})
-	p, _ := s.ProposedInterpretations()
+	p, _ := s.ProposedInterpretations(workspace.Local)
 	if p[d.ID].Tier != TierInferred || p[d.ID].MappingVersion != "1" {
 		t.Errorf("proposed: %+v", p[d.ID])
 	}
@@ -34,14 +38,14 @@ func TestEveryInterpretationIsWrittenWithATier(t *testing.T) {
 	if err := s.SetUnitDeclaration(u, "K", "rohsa-run-adapter"); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.Get(u.ID)
+	got, _ := s.Get(workspace.Local, u.ID)
 	if got.UnitDeclaration.Tier != TierInferred || got.UnitDeclaration.MappingVersion != "1" {
 		t.Errorf("rule-proposed unit: %+v", got.UnitDeclaration)
 	}
 	if err := s.SetUnitDeclaration(u, "K", "user"); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.Get(u.ID)
+	got, _ = s.Get(workspace.Local, u.ID)
 	if got.UnitDeclaration.Tier != TierDeclared || got.UnitDeclaration.MappingVersion != "" {
 		t.Errorf("confirmed unit: %+v", got.UnitDeclaration)
 	}

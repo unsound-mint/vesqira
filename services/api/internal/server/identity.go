@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	idty "github.com/unsound-mint/vesqira/services/api/internal/identity"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Dataset identity and locations (ADR 0053). A path proves nothing about bytes; what is known about them is stored per
@@ -58,8 +59,8 @@ func remoteFail(err error) (int, string) {
 }
 
 // localStat resolves a location on this computer inside the source roots and checks it is still what was recorded.
-func (s *Server) localStat(loc catalog.Location) (real string, code int, msg string) {
-	real, err := s.roots().Resolve(loc.Path)
+func (s *Server) localStat(ws workspace.ID, loc catalog.Location) (real string, code int, msg string) {
+	real, err := s.roots(ws).Resolve(loc.Path)
 	if err != nil {
 		return "", 403, err.Error()
 	}
@@ -74,7 +75,7 @@ func (s *Server) localStat(loc catalog.Location) (real string, code int, msg str
 		return "", 409, msgOtherFile
 	}
 	if dev, ino := fileIDOf(info); loc.FileIno == 0 || dev != loc.FileDev {
-		_ = s.Store.NoteFileID(loc.HostID, loc.Path, dev, ino)
+		_ = s.Store.NoteFileID(ws, loc.HostID, loc.Path, dev, ino)
 	}
 	return real, 0, ""
 }
@@ -125,7 +126,7 @@ func (s *Server) measureSampled(ctx context.Context, loc catalog.Location) (meas
 	if loc.HostID != 0 {
 		return s.measureRemote(ctx, loc, "fingerprint", nil)
 	}
-	real, code, msg := s.localStat(loc)
+	real, code, msg := s.localStat(wsCtx(ctx), loc)
 	if code != 0 {
 		return measured{}, code, msg
 	}
@@ -144,7 +145,7 @@ func (s *Server) measureFull(ctx context.Context, loc catalog.Location, progress
 	if loc.HostID != 0 {
 		return s.measureRemote(ctx, loc, "fingerprint_full", map[string]any{"max_bytes": min(s.fullCap(), remoteFullHashCap)})
 	}
-	real, code, msg := s.localStat(loc)
+	real, code, msg := s.localStat(wsCtx(ctx), loc)
 	if code != 0 {
 		return measured{}, code, msg
 	}
@@ -181,13 +182,13 @@ func primaryOf(locs []catalog.Location) (catalog.Location, bool) {
 // computed"); registration never depends on it. Returns the dataset as stored.
 func (s *Server) recordIdentity(ctx context.Context, d catalog.Dataset) catalog.Dataset {
 	if p, ok := primaryOf(d.Locations); ok {
-		s.storeMeasure(p, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, p) })
+		s.storeMeasure(wsCtx(ctx), p, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, p) })
 		if p.HostID == 0 && p.SizeBytes <= idty.SmallFull {
-			s.storeMeasure(p, "full", func() (measured, int, string) { return s.measureFull(ctx, p, nil) })
+			s.storeMeasure(wsCtx(ctx), p, "full", func() (measured, int, string) { return s.measureFull(ctx, p, nil) })
 		}
 	}
-	s.reassessLinks(d.ID)
-	if got, err := s.Store.Get(d.ID); err == nil {
+	s.reassessLinks(wsCtx(ctx), d.ID)
+	if got, err := s.Store.Get(wsCtx(ctx), d.ID); err == nil {
 		return got
 	}
 	return d
@@ -196,8 +197,8 @@ func (s *Server) recordIdentity(ctx context.Context, d catalog.Dataset) catalog.
 // reassessLinks compares each stale location with the registered file as it is now, once that has fingerprints again: equal full
 // hashes make it verified again (a file that was only touched), equal sampled fingerprints and sizes probable, and anything
 // else leaves it stale.
-func (s *Server) reassessLinks(datasetID int64) {
-	locs, err := s.Store.Locations(datasetID)
+func (s *Server) reassessLinks(ws workspace.ID, datasetID int64) {
+	locs, err := s.Store.Locations(ws, datasetID)
 	if err != nil {
 		return
 	}
@@ -211,9 +212,9 @@ func (s *Server) reassessLinks(datasetID int64) {
 		}
 		switch idty.Relate(l.Evidence(), p.Evidence()) {
 		case idty.Verified:
-			_ = s.Store.SetLink(l.ID, catalog.LinkVerified)
+			_ = s.Store.SetLink(ws, l.ID, catalog.LinkVerified)
 		case idty.Probable:
-			_ = s.Store.SetLink(l.ID, catalog.LinkProbable)
+			_ = s.Store.SetLink(ws, l.ID, catalog.LinkProbable)
 		}
 	}
 }
@@ -221,27 +222,27 @@ func (s *Server) reassessLinks(datasetID int64) {
 // ensureFingerprinted gives a dataset registered before fingerprints existed its cheap one, so what a figure says about the
 // file's bytes is what was recorded. Returns the dataset as stored.
 func (s *Server) ensureFingerprinted(ctx context.Context, d catalog.Dataset) catalog.Dataset {
-	locs, err := s.Store.Locations(d.ID)
+	locs, err := s.Store.Locations(wsCtx(ctx), d.ID)
 	if err != nil {
 		return d
 	}
 	if p, ok := primaryOf(locs); ok && p.Sampled == nil && p.Full == nil {
-		s.storeMeasure(p, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, p) })
-		s.reassessLinks(d.ID)
-		if got, err := s.Store.Get(d.ID); err == nil {
+		s.storeMeasure(wsCtx(ctx), p, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, p) })
+		s.reassessLinks(wsCtx(ctx), d.ID)
+		if got, err := s.Store.Get(wsCtx(ctx), d.ID); err == nil {
 			return got
 		}
 	}
 	return d
 }
 
-func (s *Server) storeMeasure(l catalog.Location, kind string, f func() (measured, int, string)) bool {
+func (s *Server) storeMeasure(ws workspace.ID, l catalog.Location, kind string, f func() (measured, int, string)) bool {
 	m, code, msg := f()
 	if code != 0 {
 		log.Printf("identity: %s of location %d: %d %s", kind, l.ID, code, msg)
 		return false
 	}
-	if err := s.Store.SetFingerprint(l.ID, kind, m.value, m.by, m.size, m.mtime); err != nil {
+	if err := s.Store.SetFingerprint(ws, l.ID, kind, m.value, m.by, m.size, m.mtime); err != nil {
 		log.Printf("identity: %v", err)
 		return false
 	}
@@ -294,7 +295,7 @@ func (h *hashRegistry) status() map[string]hashStatus {
 }
 
 // startFull queues the full SHA-256 of a location. One full hash runs at a time (they read whole files); the others wait.
-func (s *Server) startFull(datasetID int64, loc catalog.Location) (int, string) {
+func (s *Server) startFull(ws workspace.ID, datasetID int64, loc catalog.Location) (int, string) {
 	limit := s.fullCap()
 	if loc.HostID != 0 {
 		limit = min(limit, remoteFullHashCap)
@@ -345,12 +346,12 @@ func (s *Server) startFull(datasetID int64, loc catalog.Location) (int, string) 
 		case code != 0:
 			finish(msg)
 		default:
-			if err := s.Store.SetFingerprint(loc.ID, "full", m.value, m.by, m.size, m.mtime); err != nil {
+			if err := s.Store.SetFingerprint(ws, loc.ID, "full", m.value, m.by, m.size, m.mtime); err != nil {
 				finish("the file changed while its hash was computed")
 				return
 			}
-			s.Audit.Record("full sha256 computed", "dataset", datasetID, m.value[:12]+" by "+m.by)
-			s.reassessLinks(datasetID)
+			s.Audit.Record(ws, "full sha256 computed", "dataset", datasetID, m.value[:12]+" by "+m.by)
+			s.reassessLinks(ws, datasetID)
 			finish("")
 		}
 	}()
@@ -425,7 +426,7 @@ func (s *Server) listLocations(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	d, code, msg := s.dataset(id)
+	d, code, msg := s.dataset(wsOf(r), id)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -486,7 +487,7 @@ func (s *Server) addLocation(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 8<<10, &in, true) {
 		return
 	}
-	d, code, msg := s.dataset(id)
+	d, code, msg := s.dataset(wsOf(r), id)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -495,7 +496,7 @@ func (s *Server) addLocation(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	nl := catalog.Location{HostID: in.HostID, Kind: catalog.LocCopy}
 	if in.HostID == 0 {
-		real, err := s.roots().Resolve(in.Path)
+		real, err := s.roots(wsOf(r)).Resolve(in.Path)
 		if err != nil {
 			fail(w, 403, err.Error())
 			return
@@ -527,7 +528,7 @@ func (s *Server) addLocation(w http.ResponseWriter, r *http.Request) {
 		}
 		nl.Path, nl.SizeBytes, nl.ModifiedAt = real, size, time.Unix(0, mtime)
 	}
-	if owner, found, err := s.Store.LocationOwner(nl.HostID, nl.Path); err != nil {
+	if owner, found, err := s.Store.LocationOwner(wsOf(r), nl.HostID, nl.Path); err != nil {
 		log.Printf("locations: %v", err)
 		fail(w, 500, "internal error")
 		return
@@ -551,10 +552,10 @@ func (s *Server) addLocation(w http.ResponseWriter, r *http.Request) {
 	existing := d.Locations
 	for _, l := range existing {
 		if l.Sampled == nil && l.Full == nil {
-			s.storeMeasure(l, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, l) })
+			s.storeMeasure(wsOf(r), l, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, l) })
 		}
 	}
-	if fresh, err := s.Store.Locations(id); err == nil {
+	if fresh, err := s.Store.Locations(wsOf(r), id); err == nil {
 		existing = fresh
 	}
 	link, why := decideLink(nl, existing, in.Declare)
@@ -568,7 +569,7 @@ func (s *Server) addLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nl.Link = link
-	got, err := s.Store.AddLocation(id, nl)
+	got, err := s.Store.AddLocation(wsOf(r), id, nl)
 	switch {
 	case errors.Is(err, catalog.ErrLocationExists):
 		failCode(w, 409, "already_location", "this file is already a location of a dataset", nil)
@@ -631,7 +632,7 @@ func (s *Server) removeLocation(w http.ResponseWriter, r *http.Request) {
 	if !ok || !ok2 {
 		return
 	}
-	switch err := s.Store.RemoveLocation(id, lid); {
+	switch err := s.Store.RemoveLocation(wsOf(r), id, lid); {
 	case errors.Is(err, catalog.ErrNoLocation):
 		fail(w, 404, "location not found")
 	case errors.Is(err, catalog.ErrPrimary):
@@ -659,7 +660,7 @@ func (s *Server) fingerprintLocation(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 1<<10, &in, true) {
 		return
 	}
-	loc, err := s.Store.Location(id, lid)
+	loc, err := s.Store.Location(wsOf(r), id, lid)
 	if errors.Is(err, catalog.ErrNoLocation) {
 		fail(w, 404, "location not found")
 		return
@@ -678,15 +679,15 @@ func (s *Server) fingerprintLocation(w http.ResponseWriter, r *http.Request) {
 			fail(w, code, msg)
 			return
 		}
-		if err := s.Store.SetFingerprint(loc.ID, "sampled", m.value, m.by, m.size, m.mtime); err != nil {
+		if err := s.Store.SetFingerprint(wsOf(r), loc.ID, "sampled", m.value, m.by, m.size, m.mtime); err != nil {
 			fail(w, 409, "the file changed while it was being read")
 			return
 		}
 		s.Audit.RecordCtx(r.Context(), "sampled fingerprint computed", "dataset", id, m.value[:12]+" by "+m.by)
-		got, _ := s.Store.Location(id, lid)
+		got, _ := s.Store.Location(wsOf(r), id, lid)
 		writeJSON(w, 200, got)
 	case "full":
-		if code, msg := s.startFull(id, loc); code != 0 {
+		if code, msg := s.startFull(wsOf(r), id, loc); code != 0 {
 			fail(w, code, msg)
 			return
 		}
@@ -723,7 +724,7 @@ func (s *Server) sameContent(ctx context.Context, real string) []catalog.Match {
 			ev.Full = v.value
 		}
 	}
-	got, err := s.Store.FindSame(ev, 0)
+	got, err := s.Store.FindSame(wsCtx(ctx), ev, 0)
 	if err != nil {
 		log.Printf("identity: %v", err)
 		return nil

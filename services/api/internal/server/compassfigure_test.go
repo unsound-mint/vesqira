@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A figure that drew north and east arrows records them in its scene and says so in the reviewer's provenance, with the WCS state they
@@ -54,7 +55,7 @@ func TestAFigureRecordsTheArrowsItDrewAndSaysWhatTheyRestOn(t *testing.T) {
 			t.Errorf("%s: %d %s", name, st, b)
 		}
 	}
-	if figs, _ := f.e.srv.Boards.Figures(); len(figs) != 0 {
+	if figs, _ := f.e.srv.Boards.Figures(workspace.Local); len(figs) != 0 {
 		t.Fatalf("a refused figure saves nothing: %d", len(figs))
 	}
 

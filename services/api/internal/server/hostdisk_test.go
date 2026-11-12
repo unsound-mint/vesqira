@@ -13,6 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func (e *watchEnv) sacctRows(slurmID string, rows ...string) {
@@ -92,7 +93,7 @@ func TestRerunOffersTheLastJobsMeasuredUse(t *testing.T) {
 	e.srv.watchOnce(ctx, w, time.Now())
 	e.srv.waitRecords()
 	e.srv.waitImports()
-	run, err := e.runs.Save("/x/run-a", runs.Parsed{Run: runs.Run{Name: "run-a", Kind: "vgt"}}, nil)
+	run, err := e.runs.Save(workspace.Local, "local-owner", "/x/run-a", runs.Parsed{Run: runs.Run{Name: "run-a", Kind: "vgt"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +112,7 @@ func TestRerunOffersTheLastJobsMeasuredUse(t *testing.T) {
 		t.Errorf("%s", b)
 	}
 	// an imported run has no job and so no measurement to offer
-	imp, _ := e.runs.Save("/x/run-b", runs.Parsed{Run: runs.Run{Name: "run-b", Kind: "vgt"}}, nil)
+	imp, _ := e.runs.Save(workspace.Local, "local-owner", "/x/run-b", runs.Parsed{Run: runs.Run{Name: "run-b", Kind: "vgt"}}, nil)
 	_, b = get(t, e.api("/api/runs/"+itoa(int(imp.ID))+"/rerun"))
 	if !strings.Contains(string(b), `"lastJob":null`) {
 		t.Errorf("%s", b)
@@ -244,11 +245,11 @@ func TestRunFolderSizesAreMeasuredOnDemandBoundedToTheRootsAndSortedBySize(t *te
 		t.Fatal(err)
 	}
 	e.srv.Projects = ps
-	p, err := ps.Touch(e.host.ID, filepath.Join(e.remoteRoot, "proj"), "proj")
+	p, err := ps.Touch(workspace.Local, "local-owner", e.host.ID, filepath.Join(e.remoteRoot, "proj"), "proj")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ps.SaveScan(p.ID, time.Now(), json.RawMessage(`{}`), []projects.Row{{Group: "runs", Parent: "", Name: "run-found", Kind: "run", Path: "run-found", Data: json.RawMessage(`{}`)}}); err != nil {
+	if err := ps.SaveScan(workspace.Local, p.ID, time.Now(), json.RawMessage(`{}`), []projects.Row{{Group: "runs", Parent: "", Name: "run-found", Kind: "run", Path: "run-found", Data: json.RawMessage(`{}`)}}); err != nil {
 		t.Fatal(err)
 	}
 

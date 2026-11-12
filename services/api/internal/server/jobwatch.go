@@ -8,10 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/authz"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Watching jobs while the app runs (ADR 0043). Until now a job's state was read only when someone pressed Refresh or had
@@ -78,6 +80,7 @@ func (s *Server) WatchJobs(ctx context.Context, interval time.Duration) {
 	if s.Jobs == nil || s.HostDB == nil || s.Remote == nil {
 		return
 	}
+	ctx = localCtx(ctx) // local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
 	w := newJobWatcher(interval)
 	t := time.NewTicker(watchTick)
 	defer t.Stop()
@@ -278,7 +281,8 @@ func (s *Server) announce(j jobs.Job, h hosts.Host, st jobs.Status, kind string)
 	if kind == notify.KindUnknown {
 		key = fmt.Sprintf("job:%d:unknown", j.ID)
 	}
-	if _, err := s.Notes.Add(key, notify.Notification{Kind: kind, Title: title, Body: body, JobID: &id}); err != nil {
+	// // local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
+	if _, err := s.Notes.Add(workspace.Local, authz.LocalOwnerID, key, notify.Notification{Kind: kind, Title: title, Body: body, JobID: &id}); err != nil {
 		log.Printf("jobs: notification: %v", err)
 	}
 }
@@ -302,7 +306,8 @@ func (s *Server) autoImportAsync(j jobs.Job, h hosts.Host) {
 		if j.Template == "rohsa" {
 			limit = remoteImportTimeout // a fit's product tree is registered file by file on the host
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), limit)
+		// local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
+		ctx, cancel := context.WithTimeout(localCtx(context.Background()), limit)
 		defer cancel()
 		s.autoImport(ctx, j.ID, h)
 	}()
@@ -334,7 +339,7 @@ func (s *Server) autoImport(ctx context.Context, jobID int64, h hosts.Host) {
 	}
 	if code != 0 {
 		s.Audit.RecordCtx(ctx, "run import failed", "job", j.ID, h.Name+": "+msg)
-		_, _ = s.Notes.Add(fmt.Sprintf("job:%d:import", j.ID), notify.Notification{Kind: notify.KindImportFailed, JobID: &id,
+		_, _ = s.Notes.Add(wsCtx(ctx), actorID(ctx), fmt.Sprintf("job:%d:import", j.ID), notify.Notification{Kind: notify.KindImportFailed, JobID: &id,
 			Title: fmt.Sprintf("Results of job %s were not imported", j.Name),
 			Body:  msg + ". It was tried once and is not retried; open the job to import them by hand."})
 		return
@@ -342,7 +347,7 @@ func (s *Server) autoImport(ctx context.Context, jobID int64, h hosts.Host) {
 	run = s.linkJobRun(ctx, j, h, run)
 	s.Audit.RecordCtx(ctx, "run imported automatically", "job", j.ID, h.Name+": "+j.OutputDir)
 	rid := run.ID
-	_, _ = s.Notes.Add(fmt.Sprintf("job:%d:import", j.ID), notify.Notification{Kind: notify.KindImported, JobID: &id, RunID: &rid,
+	_, _ = s.Notes.Add(wsCtx(ctx), actorID(ctx), fmt.Sprintf("job:%d:import", j.ID), notify.Notification{Kind: notify.KindImported, JobID: &id, RunID: &rid,
 		Title: fmt.Sprintf("Results of job %s imported as a run", j.Name),
 		Body:  "The files were registered from the output folder. Nothing was checked: review the run before relying on it."})
 }

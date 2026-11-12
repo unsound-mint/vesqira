@@ -15,6 +15,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // hostEd is the editor with a host behind it: a fake ssh that runs the host's commands on this machine, a host whose one
@@ -52,7 +53,7 @@ func newHostEditor(t *testing.T) *hostEd {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pr, err := ps.Touch(h.ID, filepath.Join(root, "proj"), "proj")
+	pr, err := ps.Touch(workspace.Local, "local-owner", h.ID, filepath.Join(root, "proj"), "proj")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +128,7 @@ func TestHostEditorStaleShaIsA409ShowingTheCurrentFile(t *testing.T) {
 	if got, _ := os.ReadFile(p); string(got) != "two on the host\n" {
 		t.Fatal("a stale save wrote")
 	}
-	if es, _ := e.au.List("host", e.hostID, 10); len(es) != 1 { // the open only
+	if es, _ := e.au.List(workspace.Local, "host", e.hostID, 10); len(es) != 1 { // the open only
 		t.Fatalf("a conflict is not a save: %+v", es)
 	}
 	// keep mine: resend with the base the conflict returned
@@ -275,7 +276,7 @@ func TestHostEditorAuditsPathAndHashesNeverContent(t *testing.T) {
 	}
 	var saved textFile
 	_ = json.Unmarshal(b, &saved)
-	es, err := e.au.List("host", e.hostID, 10)
+	es, err := e.au.List(workspace.Local, "host", e.hostID, 10)
 	if err != nil || len(es) != 2 {
 		t.Fatalf("%v %+v", err, es)
 	}
@@ -305,7 +306,7 @@ func TestHostEditorAuditsPathAndHashesNeverContent(t *testing.T) {
 	// a refused open or save is not recorded
 	e.saveH(t, p, "again\n", f.textVersion)
 	e.openH(t, filepath.Join(e.root, "missing.md"))
-	if es, _ := e.au.List("host", e.hostID, 10); len(es) != 2 {
+	if es, _ := e.au.List(workspace.Local, "host", e.hostID, 10); len(es) != 2 {
 		t.Errorf("a refusal was audited: %d entries", len(es))
 	}
 }

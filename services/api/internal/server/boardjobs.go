@@ -133,7 +133,7 @@ func (s *Server) boardView(ctx context.Context, b boards.Board, live bool) board
 }
 
 func (s *Server) boardByID(ctx context.Context, id int64, live bool) (boards.Board, error) {
-	b, err := s.Boards.Board(id)
+	b, err := s.Boards.Board(wsCtx(ctx), id)
 	if err != nil {
 		return b, err
 	}
@@ -170,7 +170,7 @@ func (s *Server) boardPin(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
-	if err := s.Boards.PinItem(id, int(pos), in.FigureID); err != nil {
+	if err := s.Boards.PinItem(wsOf(r), id, int(pos), in.FigureID); err != nil {
 		s.boardErr(w, err)
 		return
 	}

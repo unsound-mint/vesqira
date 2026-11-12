@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // ROHSA decomposition runs (ADR 0046). The run record is the pipeline's own text: the Fortran namelist the fit ran with
@@ -205,10 +207,10 @@ type RohsaRun struct {
 }
 
 // ROHSA returns the record of a run, or ErrNotFound when it is not a ROHSA run.
-func (s *Store) ROHSA(runID int64) (RohsaRun, error) {
+func (s *Store) ROHSA(ws workspace.ID, runID int64) (RohsaRun, error) {
 	var r RohsaRun
 	var info string
-	err := s.db.QueryRow(`SELECT r.id,r.name,x.dat_path,x.info FROM rohsa_runs x JOIN runs r ON r.id=x.run_id WHERE x.run_id=?`, runID).Scan(&r.RunID, &r.RunName, &r.DatPath, &info)
+	err := s.db.QueryRow(`SELECT r.id,r.name,x.dat_path,x.info FROM rohsa_runs x JOIN runs r ON r.id=x.run_id WHERE x.run_id=? AND r.workspace_id=?`, runID, ws).Scan(&r.RunID, &r.RunName, &r.DatPath, &info)
 	if errors.Is(err, sql.ErrNoRows) {
 		return RohsaRun{}, ErrNotFound
 	}
@@ -219,8 +221,8 @@ func (s *Store) ROHSA(runID int64) (RohsaRun, error) {
 }
 
 // AllROHSA lists every ROHSA run, newest first.
-func (s *Store) AllROHSA() ([]RohsaRun, error) {
-	rows, err := s.db.Query(`SELECT r.id,r.name,x.dat_path,x.info FROM rohsa_runs x JOIN runs r ON r.id=x.run_id ORDER BY r.id DESC`)
+func (s *Store) AllROHSA(ws workspace.ID) ([]RohsaRun, error) {
+	rows, err := s.db.Query(`SELECT r.id,r.name,x.dat_path,x.info FROM rohsa_runs x JOIN runs r ON r.id=x.run_id WHERE r.workspace_id=? ORDER BY r.id DESC`, ws)
 	if err != nil {
 		return nil, err
 	}

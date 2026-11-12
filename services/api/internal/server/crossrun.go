@@ -153,7 +153,7 @@ func (s *Server) createRunFigure(w http.ResponseWriter, r *http.Request) {
 	var linkRev string
 	var identity json.RawMessage // the only owner-side record a cross-run plot keeps beside its description: the figure it redraws
 	if in.RedrawnFrom != nil {
-		orig, err := s.Boards.Figure(*in.RedrawnFrom)
+		orig, err := s.Boards.Figure(wsOf(r), *in.RedrawnFrom)
 		if err != nil || orig.Kind != boards.KindCrossRun {
 			fail(w, 400, "a cross-run plot can only be drawn again from a cross-run plot")
 			return
@@ -171,7 +171,7 @@ func (s *Server) createRunFigure(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	f, err := s.Boards.CreateFigure(boards.NewFigure{Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: identity, RedrawnFrom: linkRev}, png)
+	f, err := s.Boards.CreateFigure(wsOf(r), actorID(r.Context()), boards.NewFigure{Title: in.Title, Caption: in.Caption, Provenance: prov, Scene: sceneJSON, Identity: identity, RedrawnFrom: linkRev}, png)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -187,7 +187,7 @@ func (s *Server) crossRunSpecOf(ctx context.Context, in crossRunRequest) (crossR
 	if s.Runs == nil {
 		return spec, 503, "runs are not available on this server"
 	}
-	all, err := s.Runs.List()
+	all, err := s.Runs.List(wsCtx(ctx))
 	if err != nil {
 		log.Printf("cross-run figure: %v", err)
 		return spec, 500, "internal error"

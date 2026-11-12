@@ -12,6 +12,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // tinyFits is a 4x4 float32 image, small enough to write by hand.
@@ -67,7 +68,7 @@ func TestAVerifiedDownloadIsRegisteredWithAnExternalReferenceAndNoHostPathInTheS
 		t.Fatalf("%v", sum)
 	}
 	// what travels with a figure carries the policy sentence, never the host path or the host name
-	shared := e.srv.derivedSummary(out.Dataset.ID)
+	shared := e.srv.derivedSummary(workspace.Local, out.Dataset.ID)
 	blob, _ := json.Marshal(shared)
 	if shared == nil || strings.Contains(string(blob), e.remote) || strings.Contains(string(blob), "Cluster") || !strings.Contains(shared.Policy, "external reference") {
 		t.Fatalf("%s", blob)

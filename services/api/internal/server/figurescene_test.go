@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // planeScene is the scene/1 the web client sends with a plane figure of channel 3 in viridis, linear, percentile.
@@ -112,7 +113,7 @@ func TestAFigureSceneIsValidatedAgainstTheContractAndTheFigure(t *testing.T) {
 	if r, err := http.Post(owner.URL+"/api/figures", "application/json", strings.NewReader(raw)); err != nil || r.StatusCode != 400 {
 		t.Errorf("a NaN token: %v %v, want 400", r, err)
 	}
-	if fs, _ := bs.Figures(); len(fs) != 0 {
+	if fs, _ := bs.Figures(workspace.Local); len(fs) != 0 {
 		t.Fatalf("a refused scene saved a figure: %d", len(fs))
 	}
 
@@ -129,7 +130,7 @@ func TestAFigureSceneIsValidatedAgainstTheContractAndTheFigure(t *testing.T) {
 	if !strings.Contains(string(f.Scene), `"active":{"shape":"rect","x0":1,"y0":1,"x1":3,"y1":2}`) {
 		t.Fatalf("scene not kept: %s", f.Scene)
 	}
-	if got, _ := bs.Figure(f.ID); string(got.Scene) != string(f.Scene) {
+	if got, _ := bs.Figure(workspace.Local, f.ID); string(got.Scene) != string(f.Scene) {
 		t.Fatalf("scene not read back: %s", got.Scene)
 	}
 	r, out = postJSON(t, owner.URL+"/api/figures", map[string]any{"datasetId": d.ID, "title": "t", "view": view, "previewPng": testPNG(t)})

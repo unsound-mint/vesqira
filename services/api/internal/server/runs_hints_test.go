@@ -11,6 +11,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type countingHints struct {
@@ -18,9 +19,9 @@ type countingHints struct {
 	n int
 }
 
-func (c *countingHints) HintIndex() (map[catalog.HintKey]int64, error) {
+func (c *countingHints) HintIndex(ws workspace.ID) (map[catalog.HintKey]int64, error) {
 	c.n++
-	return c.s.HintIndex()
+	return c.s.HintIndex(ws)
 }
 
 // The runs list suggests an input for every run from one read of the catalog, however many runs and files there are
@@ -39,7 +40,7 @@ func TestRunsListReadsTheCatalogOnceForInputHints(t *testing.T) {
 	ids := map[string]int64{}
 	for i := 0; i < 1500; i++ {
 		name := fmt.Sprintf("cube%04d.fits", i%700) // names repeat: two sizes per name for the tie-break
-		d, err := cat.Upsert(catalog.Dataset{Path: fmt.Sprintf("/d/%d/%s", i, name), Name: name, SizeBytes: int64(1000 + i/700), ModifiedAt: time.Unix(1, 0), Header: json.RawMessage(`{}`)})
+		d, err := cat.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: fmt.Sprintf("/d/%d/%s", i, name), Name: name, SizeBytes: int64(1000 + i/700), ModifiedAt: time.Unix(1, 0), Header: json.RawMessage(`{}`)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,7 +51,7 @@ func TestRunsListReadsTheCatalogOnceForInputHints(t *testing.T) {
 	}
 	for i := 0; i < 150; i++ {
 		name := fmt.Sprintf("cube%04d.fits", i*4%700)
-		if _, err := rn.Save(fmt.Sprintf("/runs/%d", i), runs.Parsed{Run: runs.Run{Name: fmt.Sprint("r", i), Kind: "vgt", InputName: name, InputSizeBytes: 1000}}, nil); err != nil {
+		if _, err := rn.Save(workspace.Local, "local-owner", fmt.Sprintf("/runs/%d", i), runs.Parsed{Run: runs.Run{Name: fmt.Sprint("r", i), Kind: "vgt", InputName: name, InputSizeBytes: 1000}}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

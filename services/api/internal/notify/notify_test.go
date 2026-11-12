@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func open(t *testing.T) *Store {
@@ -27,12 +29,12 @@ func TestAnEventKeyedTwiceIsRecordedOnce(t *testing.T) {
 	s := open(t)
 	j := int64(3)
 	for i, want := range []bool{true, false} {
-		got, err := s.Add("job:3:end", Notification{Kind: KindCompleted, Title: "t", Body: "b", JobID: &j})
+		got, err := s.Add(workspace.Local, "local-owner", "job:3:end", Notification{Kind: KindCompleted, Title: "t", Body: "b", JobID: &j})
 		if err != nil || got != want {
 			t.Fatalf("add %d: %v %v", i, got, err)
 		}
 	}
-	ns, unread, _ := s.List(0)
+	ns, unread, _ := s.List(workspace.Local, "local-owner", 0)
 	if len(ns) != 1 || unread != 1 || ns[0].JobID == nil || *ns[0].JobID != 3 || ns[0].Read {
 		t.Fatalf("%+v unread %d", ns, unread)
 	}
@@ -41,25 +43,25 @@ func TestAnEventKeyedTwiceIsRecordedOnce(t *testing.T) {
 func TestReadMarksAreSeparateFromTheListAndOldEventsAreDropped(t *testing.T) {
 	s := open(t)
 	for i := 0; i < Keep+10; i++ {
-		s.Add(fmt.Sprint("k", i), Notification{Kind: KindFailed, Title: "t\nwith a newline", Body: "b"})
+		s.Add(workspace.Local, "local-owner", fmt.Sprint("k", i), Notification{Kind: KindFailed, Title: "t\nwith a newline", Body: "b"})
 	}
-	ns, unread, _ := s.List(Keep)
+	ns, unread, _ := s.List(workspace.Local, "local-owner", Keep)
 	if len(ns) != Keep || unread != Keep {
 		t.Fatalf("kept %d, unread %d", len(ns), unread)
 	}
 	if ns[0].Title != "t with a newline" {
 		t.Errorf("control characters stay in the text: %q", ns[0].Title)
 	}
-	s.MarkRead([]int64{ns[0].ID}, false)
-	if _, unread, _ = s.List(1); unread != Keep-1 {
+	s.MarkRead(workspace.Local, "local-owner", []int64{ns[0].ID}, false)
+	if _, unread, _ = s.List(workspace.Local, "local-owner", 1); unread != Keep-1 {
 		t.Errorf("unread after one: %d", unread)
 	}
-	s.MarkRead(nil, true)
-	if _, unread, _ = s.List(1); unread != 0 {
+	s.MarkRead(workspace.Local, "local-owner", nil, true)
+	if _, unread, _ = s.List(workspace.Local, "local-owner", 1); unread != 0 {
 		t.Errorf("unread after all: %d", unread)
 	}
 	var nilStore *Store
-	if ok, err := nilStore.Add("x", Notification{}); ok || err != nil {
+	if ok, err := nilStore.Add(workspace.Local, "local-owner", "x", Notification{}); ok || err != nil {
 		t.Errorf("a nil store must record nothing quietly")
 	}
 }

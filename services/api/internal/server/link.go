@@ -59,7 +59,7 @@ func (s *Server) link(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "points are mapped together with the region they lie in")
 		return
 	}
-	other, code, msg := s.dataset(in.OtherID)
+	other, code, msg := s.dataset(wsOf(r), in.OtherID)
 	if code != 0 {
 		fail(w, code, "other map: "+msg)
 		return

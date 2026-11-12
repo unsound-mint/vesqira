@@ -15,6 +15,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 const maxNeedPaths = 20
@@ -77,7 +78,7 @@ func absFor(p projects.Project, rel string) string {
 
 // computeNeeds builds the list from the stored scan, the catalog and the answers. It is computed when read, so a new
 // registration or an answer shows at once.
-func (s *Server) computeNeeds(p projects.Project) ([]need, error) {
+func (s *Server) computeNeeds(ws workspace.ID, p projects.Project) ([]need, error) {
 	if p.LastScanAt == nil {
 		return []need{}, nil
 	}
@@ -92,7 +93,7 @@ func (s *Server) computeNeeds(p projects.Project) ([]need, error) {
 	if err != nil {
 		return nil, err
 	}
-	facts, err := s.Store.FactsByPath(p.HostID)
+	facts, err := s.Store.FactsByPath(ws, p.HostID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,11 +101,11 @@ func (s *Server) computeNeeds(p projects.Project) ([]need, error) {
 	// (or the reliability map of one) is never asked for a brightness unit. A unit a person declared (here or on the file's
 	// own page) settles a file for as long as it describes the file as registered; once the question has been answered
 	// "declare V", it stays settled only for files that really have V, so the answer never claims more than the files show.
-	units, err := s.Store.FreshUnits()
+	units, err := s.Store.FreshUnits(ws)
 	if err != nil {
 		return nil, err
 	}
-	notBrightness, err := s.Store.NoBrightnessIDs()
+	notBrightness, err := s.Store.NoBrightnessIDs(ws)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +184,7 @@ func (s *Server) computeNeeds(p projects.Project) ([]need, error) {
 	}
 
 	// orientation maps a run import proposed and nobody confirmed
-	if props, err := s.Store.ProposedInterpretations(); err == nil && len(props) > 0 {
+	if props, err := s.Store.ProposedInterpretations(ws); err == nil && len(props) > 0 {
 		for _, r := range fits {
 			fa, ok := facts[absFor(p, r.Path)]
 			if !ok {
@@ -459,7 +460,7 @@ func (n need) validate(in answerIn) error {
 // declaration the dataset page uses, as the user's (an adapter's proposal never becomes the user's by itself). A declared
 // unit becomes the unit declaration of each registered file in the question that still has none; a file that has its own
 // declaration keeps it, and a file that states its BUNIT is never changed.
-func (s *Server) applyAnswer(n need, in answerIn) error {
+func (s *Server) applyAnswer(ws workspace.ID, n need, in answerIn) error {
 	if n.Kind == "missing_bunit" && in.Answer == "declare" {
 		targets := append([]int64{}, n.datasetIDs...)
 		if n.previousUnit != "" && n.previousUnit != in.Value {
@@ -467,7 +468,7 @@ func (s *Server) applyAnswer(n need, in answerIn) error {
 		}
 		ds := make([]catalog.Dataset, 0, len(targets))
 		for _, id := range targets {
-			d, err := s.Store.Get(id)
+			d, err := s.Store.Get(ws, id)
 			if err != nil {
 				return err
 			}
@@ -478,14 +479,14 @@ func (s *Server) applyAnswer(n need, in answerIn) error {
 			return err
 		}
 		for _, d := range applied {
-			s.Audit.Record("unit declared", "dataset", d.ID, d.Name+": "+in.Value+" (from the project's needs list)")
+			s.Audit.Record(ws, "unit declared", "dataset", d.ID, d.Name+": "+in.Value+" (from the project's needs list)")
 		}
 		return nil
 	}
 	if n.Kind != "axial_unconfirmed" || n.DatasetID == nil {
 		return nil
 	}
-	d, err := s.Store.Get(*n.DatasetID)
+	d, err := s.Store.Get(ws, *n.DatasetID)
 	if err != nil {
 		return err
 	}

@@ -185,7 +185,7 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 8<<10, &in, true) {
 		return
 	}
-	d, code, msg := s.imageDataset(in.DatasetID)
+	d, code, msg := s.imageDataset(wsOf(r), in.DatasetID)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -194,7 +194,7 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "choose another dataset to compare with")
 		return
 	}
-	other, code, msg := s.dataset(in.OtherID)
+	other, code, msg := s.dataset(wsOf(r), in.OtherID)
 	if code != 0 {
 		fail(w, code, "the other dataset: "+msg)
 		return
@@ -255,7 +255,7 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, "masks are applied to pixels of two maps; a comparison with a catalog does not take them yet")
 			return
 		}
-		specs, safe, _, code, msg := s.maskSpecs(in.Masks, d, true)
+		specs, safe, _, code, msg := s.maskSpecs(wsOf(r), in.Masks, d, true)
 		if code != 0 {
 			fail(w, code, "the map: "+msg)
 			return
@@ -263,7 +263,7 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 		if specs != "" {
 			args = append(args, "--masks", specs)
 		}
-		ospecs, osafe, _, code, msg := s.maskSpecs(in.OtherMasks, other, true)
+		ospecs, osafe, _, code, msg := s.maskSpecs(wsOf(r), in.OtherMasks, other, true)
 		if code != 0 {
 			fail(w, code, "the second map: "+msg)
 			return

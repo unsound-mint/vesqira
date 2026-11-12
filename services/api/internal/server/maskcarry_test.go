@@ -11,6 +11,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The masks of hi_cube.fits (64 channels of 32 x 24, with a NaN box): a per-channel saturated mask, a region mask of one plane that
@@ -59,7 +60,7 @@ func (f *carryFixture) analyze(t *testing.T, body map[string]any) (int, struct {
 
 func (f *carryFixture) masksOf(t *testing.T, id int64) map[string]masks.Mask {
 	t.Helper()
-	ms, err := f.e.srv.Masks.ForDataset(id)
+	ms, err := f.e.srv.Masks.ForDataset(workspace.Local, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestACutoutCarriesOnlyTheMasksChosenAndRecordsTheRest(t *testing.T) {
 	f := newCarryFixture(t)
 	srcFiles := []string{filepath.Join(f.e.root, "hi_cube.fits")}
 	for _, m := range []masks.Mask{f.sat, f.reg, f.m} {
-		stored, _ := f.e.srv.Masks.Get(m.ID)
+		stored, _ := f.e.srv.Masks.Get(workspace.Local, m.ID)
 		srcFiles = append(srcFiles, stored.Path)
 	}
 	before := map[string]string{}
@@ -129,7 +130,7 @@ func TestACutoutCarriesOnlyTheMasksChosenAndRecordsTheRest(t *testing.T) {
 	if rule.CarriedFrom.Fingerprint != "sha256:"+f.reg.SHA256 || rule.CarriedFrom.Tier != f.reg.Tier {
 		t.Fatalf("the rule names the source mask's fingerprint and tier: %s", c.Rule)
 	}
-	stored, _ := f.e.srv.Masks.Get(c.ID)
+	stored, _ := f.e.srv.Masks.Get(workspace.Local, c.ID)
 	if c.SHA256 == "" || c.SHA256 != fileSHA(t, stored.Path) || c.SHA256 == f.reg.SHA256 {
 		t.Fatalf("the fingerprint is the new file's own: %s", c.SHA256)
 	}
@@ -144,7 +145,7 @@ func TestACutoutCarriesOnlyTheMasksChosenAndRecordsTheRest(t *testing.T) {
 	}
 
 	// the record: carried and left behind, with fingerprints, tiers and no ids; the key `masks` (applied) is not used
-	der := f.e.srv.derivedSummary(res.Dataset.ID)
+	der := f.e.srv.derivedSummary(workspace.Local, res.Dataset.ID)
 	var pm struct {
 		Masks     json.RawMessage `json:"masks"`
 		MaskCarry struct {
@@ -164,7 +165,7 @@ func TestACutoutCarriesOnlyTheMasksChosenAndRecordsTheRest(t *testing.T) {
 	}
 
 	// the reviewer sees types, names, tiers and fingerprints; never an id or a path
-	d, _ := f.e.cat.Get(res.Dataset.ID)
+	d, _ := f.e.cat.Get(workspace.Local, res.Dataset.ID)
 	raw, err := buildProvenance(d, ViewParams{}, nil, der, nil)
 	if err != nil {
 		t.Fatal(err)

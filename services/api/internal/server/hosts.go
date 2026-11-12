@@ -13,6 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // hostPlanes sends plane requests for datasets on one remote host to that host's worker.
@@ -26,8 +27,8 @@ func (p hostPlanes) Do(ctx context.Context, req map[string]any) (worker.Reply, e
 }
 
 // planesFor picks the worker that holds a dataset's file: the local one, or its host's.
-func (s *Server) planesFor(datasetID int64) PlaneService {
-	d, err := s.Store.Get(datasetID)
+func (s *Server) planesFor(ws workspace.ID, datasetID int64) PlaneService {
+	d, err := s.Store.Get(ws, datasetID)
 	if err != nil {
 		return s.planesOn(0)
 	}
@@ -281,7 +282,7 @@ func (s *Server) registerRemoteFile(ctx context.Context, h hosts.Host, p string)
 		delete(meta, k)
 	}
 	clean, _ := json.Marshal(meta)
-	d, err = s.Store.Upsert(catalog.Dataset{HostID: h.ID, Path: realPath, Name: path.Base(realPath), SizeBytes: size, ModifiedAt: time.Unix(0, mtime), Header: clean})
+	d, err = s.Store.Upsert(wsCtx(ctx), actorID(ctx), catalog.Dataset{HostID: h.ID, Path: realPath, Name: path.Base(realPath), SizeBytes: size, ModifiedAt: time.Unix(0, mtime), Header: clean})
 	if errors.Is(err, catalog.ErrLocationExists) {
 		return d, 409, "this file is already another location of a dataset: remove that location first, or open that dataset"
 	}

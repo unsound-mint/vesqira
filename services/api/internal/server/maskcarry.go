@@ -15,6 +15,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Masks carried into the result of cutout, slab, virtual subset, align and convolve (ADR 0055). The researcher chooses, per mask, to
@@ -111,7 +112,7 @@ func (s *Server) derivedMaskPath(kind string, datasetID int64, mtype string) str
 // mask chosen to carry must belong to d, be fresh and have its file unchanged (usableMask, the check every analysis uses): a stale mask
 // is refused. For align and convolve every mask of d must be decided. It returns nil when there is nothing to carry and no mask to
 // recompute.
-func (s *Server) planCarry(d catalog.Dataset, op string, choices []carryChoice) (*carryPlan, int, string) {
+func (s *Server) planCarry(ws workspace.ID, d catalog.Dataset, op string, choices []carryChoice) (*carryPlan, int, string) {
 	if !carryOps[op] {
 		if len(choices) > 0 {
 			return nil, 422, "masks are carried by a cutout, a slab, a subset, an alignment and a convolution; this analysis does not take them"
@@ -127,7 +128,7 @@ func (s *Server) planCarry(d catalog.Dataset, op string, choices []carryChoice) 
 	if len(choices) > 16 {
 		return nil, 422, "at most 16 masks can be carried at once"
 	}
-	all, err := s.Masks.ForDataset(d.ID)
+	all, err := s.Masks.ForDataset(ws, d.ID)
 	if err != nil {
 		log.Printf("masks: %v", err)
 		return nil, 500, "internal error"
@@ -152,7 +153,7 @@ func (s *Server) planCarry(d catalog.Dataset, op string, choices []carryChoice) 
 		if m.Type == masks.Missing {
 			return nil, 422, "the no-value mask is computed again from the result's own values; it is never carried"
 		}
-		if _, code, msg := s.usableMask(m.ID, d); code != 0 {
+		if _, code, msg := s.usableMask(ws, m.ID, d); code != 0 {
 			return nil, code, msg
 		}
 	}
@@ -216,8 +217,8 @@ func (s *Server) recordCarried(reqCtx context.Context, p *carryPlan, summary jso
 	if p == nil {
 		return nil, 0, ""
 	}
-	ctx := context.Background()
-	if p.hostID != 0 { // reading a file's identity on a host is a round trip over the VPN: bounded
+	ctx := context.WithoutCancel(reqCtx) // keeps the actor and workspace, not the request's deadline
+	if p.hostID != 0 {                   // reading a file's identity on a host is a round trip over the VPN: bounded
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()

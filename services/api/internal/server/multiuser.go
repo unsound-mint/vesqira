@@ -21,8 +21,10 @@ type MultiUser struct {
 	// PublicOrigin is the https origin people reach the server at (--public-origin): the Host every request must name and the
 	// Origin every browser write must carry.
 	PublicOrigin string
-	Accounts     *accounts.Store
-	Limiter      *accounts.Limiter
+	// DataDir is the catalog's folder (and its secrets): never declarable as a workspace's data root.
+	DataDir  string
+	Accounts *accounts.Store
+	Limiter  *accounts.Limiter
 	// ClientIPHeader names the header a trusted reverse proxy fills with the client address (--client-ip-header); without it
 	// every client behind the proxy shares the proxy's address for the per-address limit.
 	ClientIPHeader string
@@ -150,7 +152,7 @@ func (s *Server) withAccount(next http.Handler) http.Handler {
 			for i, sc := range tok.Scopes {
 				scopes[i] = authz.Scope(sc)
 			}
-			ctx = authz.WithActor(ctx, authz.Actor{ID: acct.ID, Name: acct.Name, Via: authz.ViaToken, Admin: acct.Admin, Scopes: scopes})
+			ctx = authz.WithActor(ctx, s.placeActor(r, authz.Actor{ID: acct.ID, Name: acct.Name, Via: authz.ViaToken, Admin: acct.Admin, Scopes: scopes}))
 		case cookie != nil:
 			se, err := st.Session(cookie.Value)
 			if err != nil {
@@ -168,7 +170,7 @@ func (s *Server) withAccount(next http.Handler) http.Handler {
 				break
 			}
 			ctx = context.WithValue(ctx, sessionKey{}, se)
-			ctx = authz.WithActor(ctx, authz.Actor{ID: acct.ID, Name: acct.Name, Via: authz.ViaSession, Admin: acct.Admin, Recent: se.Recent(st.Now())})
+			ctx = authz.WithActor(ctx, s.placeActor(r, authz.Actor{ID: acct.ID, Name: acct.Name, Via: authz.ViaSession, Admin: acct.Admin, Recent: se.Recent(st.Now())}))
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

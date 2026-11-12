@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // What a job observed about where it ran (ADR 0054). The job's own script writes vesqira-env.json next to its outputs; the
@@ -57,11 +58,11 @@ func (s *Server) linkJobRun(ctx context.Context, j jobs.Job, h hosts.Host, run r
 		return run
 	}
 	facts = s.inputFingerprint(ctx, j, h, facts)
-	if err := s.Runs.SetEnvironment(run.ID, facts); err != nil {
+	if err := s.Runs.SetEnvironment(wsCtx(ctx), run.ID, facts); err != nil {
 		log.Printf("runs: environment: %v", err)
 		return run
 	}
-	if r, err := s.Runs.Get(run.ID); err == nil {
+	if r, err := s.Runs.Get(wsCtx(ctx), run.ID); err == nil {
 		return r
 	}
 	return run
@@ -87,11 +88,11 @@ func observed(facts []runs.EnvFact) bool {
 }
 
 // compareWithParent builds the comparison for the run page, or nil for a run that repeats nothing.
-func (s *Server) compareWithParent(r runs.Run, parentID *int64, mode string) *parentComparison {
+func (s *Server) compareWithParent(ws workspace.ID, r runs.Run, parentID *int64, mode string) *parentComparison {
 	if parentID == nil {
 		return nil
 	}
-	p, err := s.Runs.Get(*parentID)
+	p, err := s.Runs.Get(ws, *parentID)
 	if err != nil {
 		return nil
 	}
@@ -110,7 +111,7 @@ func (s *Server) setRunControls(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 16<<10, &in, true) {
 		return
 	}
-	if _, err := s.Runs.Get(id); err != nil {
+	if _, err := s.Runs.Get(wsOf(r), id); err != nil {
 		if errors.Is(err, runs.ErrNotFound) {
 			fail(w, 404, "run not found")
 		} else {
@@ -123,14 +124,14 @@ func (s *Server) setRunControls(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, err.Error())
 		return
 	}
-	if err := s.Runs.SetControls(id, &in); err != nil {
+	if err := s.Runs.SetControls(wsOf(r), id, &in); err != nil {
 		log.Printf("runs: controls: %v", err)
 		fail(w, 500, "internal error")
 		return
 	}
 	s.Audit.RecordCtx(r.Context(), "run controls declared", "run", id, controlsAudit(in))
-	run, _ := s.Runs.Get(id)
-	writeJSON(w, 200, s.runView(run))
+	run, _ := s.Runs.Get(wsOf(r), id)
+	writeJSON(w, 200, s.runView(wsOf(r), run))
 }
 
 func controlsAudit(c runs.Controls) string {
@@ -194,8 +195,8 @@ func (s *Server) inputFingerprint(ctx context.Context, j jobs.Job, h hosts.Host,
 		return no("the job's size or time was not a number")
 	}
 	if s.Store != nil {
-		if id, found, _ := s.Store.LocationOwner(h.ID, path); found {
-			locs, _ := s.Store.Locations(id)
+		if id, found, _ := s.Store.LocationOwner(wsCtx(ctx), h.ID, path); found {
+			locs, _ := s.Store.Locations(wsCtx(ctx), id)
 			for _, l := range locs {
 				if l.HostID == h.ID && l.Path == path && l.Sampled != nil && l.SizeBytes == size && l.ModifiedAt.Unix() == mt {
 					return set(runs.EnvFact{Key: "input.sampled_fp", Status: runs.EnvVerified, Value: l.Sampled.Value})

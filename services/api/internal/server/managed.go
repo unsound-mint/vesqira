@@ -25,7 +25,7 @@ const maxManagedCopy = 64 << 30 // 64 GiB: a copy larger than this is refused ra
 // what the header declares about the sky and the spectral axis, and what reading it costs. Nothing is stored.
 func (s *Server) previewFile(w http.ResponseWriter, r *http.Request) {
 	p, _ := url.QueryUnescape(r.URL.Query().Get("path"))
-	real, err := s.roots().Resolve(p)
+	real, err := s.roots(wsOf(r)).Resolve(p)
 	if err != nil {
 		fail(w, 403, err.Error())
 		return
@@ -126,11 +126,11 @@ func (s *Server) copyDataset(w http.ResponseWriter, r *http.Request) {
 	}
 	// the bytes were hashed while they were copied: that is a full SHA-256 of the copy, and of the original as it was read
 	if p, ok := primaryOf(nd.Locations); ok && p.Full == nil {
-		_ = s.Store.SetFingerprint(p.ID, "full", sum, "hashed while copying", p.SizeBytes, p.ModifiedAt.UnixNano())
+		_ = s.Store.SetFingerprint(wsOf(r), p.ID, "full", sum, "hashed while copying", p.SizeBytes, p.ModifiedAt.UnixNano())
 	}
 	for _, l := range d.Locations {
 		if l.HostID == d.HostID && l.Path == d.Path && l.Full == nil {
-			_ = s.Store.SetFingerprint(l.ID, "full", sum, "hashed while copying", l.SizeBytes, l.ModifiedAt.UnixNano())
+			_ = s.Store.SetFingerprint(wsOf(r), l.ID, "full", sum, "hashed while copying", l.SizeBytes, l.ModifiedAt.UnixNano())
 		}
 	}
 	summary, _ := json.Marshal(map[string]any{"sha256": sum, "bytes": n, "policy": "A byte-for-byte copy of the original at the time of copying. The original is untouched and remains the reference; the SHA-256 identifies this copy."})

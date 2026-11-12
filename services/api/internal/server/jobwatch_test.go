@@ -24,6 +24,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // watchEnv is a host whose ssh, sbatch, squeue and sacct are stand-ins that run locally. The ssh stand-in logs every command
@@ -159,7 +160,7 @@ func (e *watchEnv) job(id int64) jobs.Job {
 }
 
 func (e *watchEnv) notifications() []notify.Notification {
-	ns, _, err := e.notes.List(0)
+	ns, _, err := e.notes.List(workspace.Local, "local-owner", 0)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -472,7 +473,7 @@ func TestACompletedJobIsImportedOnceLinkedAndAnnounced(t *testing.T) {
 	if len(ns) != 2 || len(imported) != 1 || imported[0].RunID == nil || *imported[0].RunID != *got.RunID {
 		t.Fatalf("notifications: %+v", ns)
 	}
-	if rs, _ := e.runs.List(); len(rs) != 1 {
+	if rs, _ := e.runs.List(workspace.Local); len(rs) != 1 {
 		t.Fatalf("%d runs, want 1", len(rs))
 	}
 	// the board panel finds the default output the way it does after a manual import: the run is linked to its job
@@ -484,7 +485,7 @@ func TestACompletedJobIsImportedOnceLinkedAndAnnounced(t *testing.T) {
 	e.srv.autoImport(ctx, j.ID, e.host)
 	e.srv.watchOnce(ctx, w, t0.Add(time.Hour))
 	e.srv.waitImports()
-	if rs, _ := e.runs.List(); len(rs) != 1 || len(e.notifications()) != 2 {
+	if rs, _ := e.runs.List(workspace.Local); len(rs) != 1 || len(e.notifications()) != 2 {
 		t.Errorf("a second look changed things: %d runs, %d notifications", len(rs), len(e.notifications()))
 	}
 }
@@ -501,7 +502,7 @@ func TestAutoImportIsOffWhenTheOwnerTurnedItOff(t *testing.T) {
 	if got := e.job(j.ID); got.State != "completed" || got.RunID != nil {
 		t.Fatalf("job: state %s run %v", got.State, got.RunID)
 	}
-	if rs, _ := e.runs.List(); len(rs) != 0 {
+	if rs, _ := e.runs.List(workspace.Local); len(rs) != 0 {
 		t.Errorf("%d runs imported against the option", len(rs))
 	}
 	ns := e.endsOf(j.ID)

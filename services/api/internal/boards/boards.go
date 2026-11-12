@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 const (
@@ -157,7 +158,7 @@ type NewFigure struct {
 	RedrawnFrom string
 }
 
-func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
+func (s *Store) CreateFigure(ws workspace.ID, by string, in NewFigure, pngBytes []byte) (Figure, error) {
 	if len(pngBytes) == 0 || len(pngBytes) > MaxPNGBytes {
 		return Figure{}, fmt.Errorf("%w: preview must be a PNG of at most %d bytes", ErrInvalid, MaxPNGBytes)
 	}
@@ -214,16 +215,16 @@ func (s *Store) CreateFigure(in NewFigure, pngBytes []byte) (Figure, error) {
 		}
 	}
 	now := time.Now()
-	res, err := s.db.Exec(`INSERT INTO figures(dataset_id,kind,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(revision) DO NOTHING`, dataset, kind, title, caption, now.Unix(), revision, sha, cfg.Width, cfg.Height, string(in.Provenance), string(in.Scene), string(in.Identity))
+	res, err := s.db.Exec(`INSERT INTO figures(dataset_id,kind,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity,workspace_id,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(workspace_id,revision) DO NOTHING`, dataset, kind, title, caption, now.Unix(), revision, sha, cfg.Width, cfg.Height, string(in.Provenance), string(in.Scene), string(in.Identity), ws, by)
 	if err != nil {
 		return Figure{}, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 { // the same evidence again returns the existing figure
-		return s.FigureByRevision(revision)
+		return s.FigureByRevision(ws, revision)
 	}
 	id, _ := res.LastInsertId()
-	return s.Figure(id)
+	return s.Figure(ws, id)
 }
 
 var figCols = `id,dataset_id,kind,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity,` + schema.ArchivedExpr("figure", "figures.id")
@@ -249,8 +250,9 @@ func scanFigure(row interface{ Scan(...any) error }) (Figure, error) {
 	return f, nil
 }
 
-func (s *Store) Figure(id int64) (Figure, error) {
-	f, err := scanFigure(s.db.QueryRow(`SELECT `+figCols+` FROM figures WHERE id=?`, id))
+// Figure reads a figure of the workspace; another workspace's is ErrNotFound, like a missing id.
+func (s *Store) Figure(ws workspace.ID, id int64) (Figure, error) {
+	f, err := scanFigure(s.db.QueryRow(`SELECT `+figCols+` FROM figures WHERE id=? AND workspace_id=?`, id, ws))
 	if errors.Is(err, sql.ErrNoRows) {
 		return f, ErrNotFound
 	}
@@ -258,16 +260,16 @@ func (s *Store) Figure(id int64) (Figure, error) {
 }
 
 // FigureByRevision finds a figure by its evidence revision (the identity a report embeds).
-func (s *Store) FigureByRevision(rev string) (Figure, error) {
-	f, err := scanFigure(s.db.QueryRow(`SELECT `+figCols+` FROM figures WHERE revision=?`, rev))
+func (s *Store) FigureByRevision(ws workspace.ID, rev string) (Figure, error) {
+	f, err := scanFigure(s.db.QueryRow(`SELECT `+figCols+` FROM figures WHERE workspace_id=? AND revision=?`, ws, rev))
 	if errors.Is(err, sql.ErrNoRows) {
 		return f, ErrNotFound
 	}
 	return f, err
 }
 
-func (s *Store) Figures() ([]Figure, error) {
-	rows, err := s.db.Query(`SELECT ` + figCols + ` FROM figures ORDER BY id DESC`)
+func (s *Store) Figures(ws workspace.ID) ([]Figure, error) {
+	rows, err := s.db.Query(`SELECT `+figCols+` FROM figures WHERE workspace_id=? ORDER BY id DESC`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -284,12 +286,12 @@ func (s *Store) Figures() ([]Figure, error) {
 }
 
 // SetText edits the working text of a figure. The evidence (picture, provenance, revision) is unchanged.
-func (s *Store) SetText(id int64, title, caption string) error {
+func (s *Store) SetText(ws workspace.ID, id int64, title, caption string) error {
 	title = clip(title, 200)
 	if title == "" {
 		return fmt.Errorf("%w: a figure needs a title", ErrInvalid)
 	}
-	res, err := s.db.Exec(`UPDATE figures SET title=?, caption=? WHERE id=?`, title, clip(caption, MaxText), id)
+	res, err := s.db.Exec(`UPDATE figures SET title=?, caption=? WHERE id=? AND workspace_id=?`, title, clip(caption, MaxText), id, ws)
 	if err != nil {
 		return err
 	}
@@ -395,22 +397,22 @@ type Board struct {
 	Archived bool `json:"archived"`
 }
 
-func (s *Store) CreateBoard(title string) (Board, error) {
+func (s *Store) CreateBoard(ws workspace.ID, by, title string) (Board, error) {
 	title = clip(title, 200)
 	if title == "" {
 		return Board{}, fmt.Errorf("%w: a board needs a title", ErrInvalid)
 	}
 	now := time.Now().Unix()
-	res, err := s.db.Exec(`INSERT INTO boards(title,created_at,updated_at) VALUES(?,?,?)`, title, now, now)
+	res, err := s.db.Exec(`INSERT INTO boards(title,created_at,updated_at,workspace_id,created_by) VALUES(?,?,?,?,?)`, title, now, now, ws, by)
 	if err != nil {
 		return Board{}, err
 	}
 	id, _ := res.LastInsertId()
-	return s.Board(id)
+	return s.Board(ws, id)
 }
 
-func (s *Store) Boards() ([]Board, error) {
-	rows, err := s.db.Query(`SELECT id FROM boards ORDER BY updated_at DESC, id DESC`)
+func (s *Store) Boards(ws workspace.ID) ([]Board, error) {
+	rows, err := s.db.Query(`SELECT id FROM boards WHERE workspace_id=? ORDER BY updated_at DESC, id DESC`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +428,7 @@ func (s *Store) Boards() ([]Board, error) {
 	rows.Close()
 	out := []Board{}
 	for _, id := range ids {
-		b, err := s.Board(id)
+		b, err := s.Board(ws, id)
 		if err != nil {
 			return nil, err
 		}
@@ -435,10 +437,10 @@ func (s *Store) Boards() ([]Board, error) {
 	return out, nil
 }
 
-func (s *Store) Board(id int64) (Board, error) {
+func (s *Store) Board(ws workspace.ID, id int64) (Board, error) {
 	var b Board
 	var c, u int64
-	err := s.db.QueryRow(`SELECT id,title,created_at,updated_at,`+schema.ArchivedExpr("board", "boards.id")+` FROM boards WHERE id=?`, id).Scan(&b.ID, &b.Title, &c, &u, &b.Archived)
+	err := s.db.QueryRow(`SELECT id,title,created_at,updated_at,`+schema.ArchivedExpr("board", "boards.id")+` FROM boards WHERE id=? AND workspace_id=?`, id, ws).Scan(&b.ID, &b.Title, &c, &u, &b.Archived)
 	if errors.Is(err, sql.ErrNoRows) {
 		return b, ErrNotFound
 	}
@@ -477,7 +479,7 @@ func (s *Store) Board(id int64) (Board, error) {
 			b.Items = append(b.Items, Item{Position: r.pos, Kind: KindJob, Job: &JobInfo{ID: r.jid.Int64}, Note: r.note, Layout: r.rect})
 			continue
 		}
-		f, err := s.Figure(r.fid.Int64)
+		f, err := s.Figure(ws, r.fid.Int64)
 		if err != nil {
 			return b, err
 		}
@@ -486,15 +488,15 @@ func (s *Store) Board(id int64) (Board, error) {
 	return b, nil
 }
 
-func (s *Store) touch(id int64) {
-	_, _ = s.db.Exec(`UPDATE boards SET updated_at=? WHERE id=?`, time.Now().Unix(), id)
+func (s *Store) touch(ws workspace.ID, id int64) {
+	_, _ = s.db.Exec(`UPDATE boards SET updated_at=? WHERE id=? AND workspace_id=?`, time.Now().Unix(), id, ws)
 }
 
-func (s *Store) AddItem(boardID, figureID int64) error {
-	if _, err := s.Board(boardID); err != nil {
+func (s *Store) AddItem(ws workspace.ID, boardID, figureID int64) error {
+	if _, err := s.Board(ws, boardID); err != nil {
 		return err
 	}
-	if _, err := s.Figure(figureID); err != nil {
+	if _, err := s.Figure(ws, figureID); err != nil {
 		return err
 	}
 	var next int
@@ -502,13 +504,13 @@ func (s *Store) AddItem(boardID, figureID int64) error {
 	if _, err := s.db.Exec(`INSERT INTO board_items(board_id,position,figure_id) VALUES(?,?,?)`, boardID, next, figureID); err != nil {
 		return err
 	}
-	s.touch(boardID)
+	s.touch(ws, boardID)
 	return nil
 }
 
 // AddJobItem puts a panel on the board that follows a job. The caller has checked that the job exists.
-func (s *Store) AddJobItem(boardID, jobID int64) error {
-	if _, err := s.Board(boardID); err != nil {
+func (s *Store) AddJobItem(ws workspace.ID, boardID, jobID int64) error {
+	if _, err := s.Board(ws, boardID); err != nil {
 		return err
 	}
 	var next int
@@ -516,14 +518,17 @@ func (s *Store) AddJobItem(boardID, jobID int64) error {
 	if _, err := s.db.Exec(`INSERT INTO board_items(board_id,position,job_id) VALUES(?,?,?)`, boardID, next, jobID); err != nil {
 		return err
 	}
-	s.touch(boardID)
+	s.touch(ws, boardID)
 	return nil
 }
 
 // PinItem replaces the job panel at pos with a figure at the same position, keeping its note. A panel that is not a
 // job panel is ErrConflict, so pinning twice (two open tabs) cannot swap an already pinned figure.
-func (s *Store) PinItem(boardID int64, pos int, figureID int64) error {
-	if _, err := s.Figure(figureID); err != nil {
+func (s *Store) PinItem(ws workspace.ID, boardID int64, pos int, figureID int64) error {
+	if _, err := s.Board(ws, boardID); err != nil {
+		return err
+	}
+	if _, err := s.Figure(ws, figureID); err != nil {
 		return fmt.Errorf("%w: no such figure", ErrInvalid)
 	}
 	res, err := s.db.Exec(`UPDATE board_items SET figure_id=?, job_id=NULL WHERE board_id=? AND position=? AND job_id IS NOT NULL`, figureID, boardID, pos)
@@ -537,7 +542,7 @@ func (s *Store) PinItem(boardID int64, pos int, figureID int64) error {
 		}
 		return fmt.Errorf("%w: that panel does not follow a job", ErrConflict)
 	}
-	s.touch(boardID)
+	s.touch(ws, boardID)
 	return nil
 }
 
@@ -562,13 +567,13 @@ func (ConflictError) Is(t error) bool { return t == ErrConflict }
 // write lock before it reads: what expect is checked against cannot change before the edit is applied, and a second writer waits
 // (busy_timeout) instead of failing on a stale read. With expect nil an unknown position is ErrNotFound; with expect, the item
 // being absent or different is ConflictError and nothing is changed.
-func (s *Store) editTx(boardID int64, pos int, expect *Expect, edit func(tx *sql.Tx, n int) error) error {
+func (s *Store) editTx(ws workspace.ID, boardID int64, pos int, expect *Expect, edit func(tx *sql.Tx, n int) error) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`UPDATE boards SET updated_at=? WHERE id=?`, time.Now().Unix(), boardID)
+	res, err := tx.Exec(`UPDATE boards SET updated_at=? WHERE id=? AND workspace_id=?`, time.Now().Unix(), boardID, ws)
 	if err != nil {
 		return err
 	}
@@ -620,8 +625,8 @@ func reorderTx(tx *sql.Tx, boardID int64, order []int) error {
 }
 
 // RemoveItem takes the item at pos off the board and closes the gap, in one transaction. expect may be nil.
-func (s *Store) RemoveItem(boardID int64, pos int, expect *Expect) error {
-	return s.editTx(boardID, pos, expect, func(tx *sql.Tx, n int) error {
+func (s *Store) RemoveItem(ws workspace.ID, boardID int64, pos int, expect *Expect) error {
+	return s.editTx(ws, boardID, pos, expect, func(tx *sql.Tx, n int) error {
 		if _, err := tx.Exec(`DELETE FROM board_items WHERE board_id=? AND position=?`, boardID, pos); err != nil {
 			return err
 		}
@@ -636,8 +641,8 @@ func (s *Store) RemoveItem(boardID int64, pos int, expect *Expect) error {
 }
 
 // MoveItem moves the item at pos by delta places (-1 up, +1 down), in one transaction. expect may be nil.
-func (s *Store) MoveItem(boardID int64, pos, delta int, expect *Expect) error {
-	return s.editTx(boardID, pos, expect, func(tx *sql.Tx, n int) error {
+func (s *Store) MoveItem(ws workspace.ID, boardID int64, pos, delta int, expect *Expect) error {
+	return s.editTx(ws, boardID, pos, expect, func(tx *sql.Tx, n int) error {
 		to := pos + delta
 		if to < 0 || to >= n {
 			return ErrNotFound
@@ -652,8 +657,8 @@ func (s *Store) MoveItem(boardID int64, pos, delta int, expect *Expect) error {
 }
 
 // SetNote sets the note of the item at pos, in one transaction. expect may be nil.
-func (s *Store) SetNote(boardID int64, pos int, note string, expect *Expect) error {
-	return s.editTx(boardID, pos, expect, func(tx *sql.Tx, _ int) error {
+func (s *Store) SetNote(ws workspace.ID, boardID int64, pos int, note string, expect *Expect) error {
+	return s.editTx(ws, boardID, pos, expect, func(tx *sql.Tx, _ int) error {
 		_, err := tx.Exec(`UPDATE board_items SET note=? WHERE board_id=? AND position=?`, clip(note, MaxText), boardID, pos)
 		return err
 	})
@@ -665,7 +670,7 @@ func (s *Store) SetNote(boardID int64, pos int, note string, expect *Expect) err
 // and must cover the whole board: a different count or a different panel is ConflictError and nothing changes. from, when
 // given, is the layout the client is replacing; a different stored layout is also ConflictError, so a second window cannot
 // be overwritten by an undo that it did not see.
-func (s *Store) SetLayout(boardID int64, rects []*Rect, expect []Expect, from []*Rect) error {
+func (s *Store) SetLayout(ws workspace.ID, boardID int64, rects []*Rect, expect []Expect, from []*Rect) error {
 	for i, r := range rects {
 		if r == nil {
 			continue
@@ -684,7 +689,7 @@ func (s *Store) SetLayout(boardID int64, rects []*Rect, expect []Expect, from []
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`UPDATE boards SET updated_at=? WHERE id=?`, time.Now().Unix(), boardID)
+	res, err := tx.Exec(`UPDATE boards SET updated_at=? WHERE id=? AND workspace_id=?`, time.Now().Unix(), boardID, ws)
 	if err != nil {
 		return err
 	}
@@ -849,8 +854,8 @@ func hashToken(tok string) string { h := sha256.Sum256([]byte(tok)); return hex.
 
 // Publish freezes the board as it is now and returns a review token. Only the token's hash is stored, so the token
 // can be shown once and never recovered; revoke and publish again to share anew.
-func (s *Store) Publish(boardID int64, label string, ttl time.Duration) (Snapshot, string, error) {
-	return s.PublishWith(boardID, PublishOptions{Label: label, TTL: ttl})
+func (s *Store) Publish(ws workspace.ID, by string, boardID int64, label string, ttl time.Duration) (Snapshot, string, error) {
+	return s.PublishWith(ws, by, boardID, PublishOptions{Label: label, TTL: ttl})
 }
 
 // PublishOptions are what the author sets when asking for a review.
@@ -866,9 +871,9 @@ type PublishOptions struct {
 	Jobs map[int64]JobSnapshot
 }
 
-func (s *Store) PublishWith(boardID int64, o PublishOptions) (Snapshot, string, error) {
+func (s *Store) PublishWith(ws workspace.ID, by string, boardID int64, o PublishOptions) (Snapshot, string, error) {
 	label, ttl := o.Label, o.TTL
-	b, err := s.Board(boardID)
+	b, err := s.Board(ws, boardID)
 	if err != nil {
 		return Snapshot{}, "", err
 	}
@@ -890,8 +895,8 @@ func (s *Store) PublishWith(boardID int64, o PublishOptions) (Snapshot, string, 
 		return Snapshot{}, "", err
 	}
 	tok := base64.RawURLEncoding.EncodeToString(buf[:])
-	res, err := s.db.Exec(`INSERT INTO snapshots(board_id,label,created_at,expires_at,token_hash,frozen) VALUES(?,?,?,?,?,?)`,
-		boardID, fr.Label, now.Unix(), fr.ExpiresAt.Unix(), hashToken(tok), string(raw))
+	res, err := s.db.Exec(`INSERT INTO snapshots(board_id,label,created_at,expires_at,token_hash,frozen,workspace_id,created_by) VALUES(?,?,?,?,?,?,?,?)`,
+		boardID, fr.Label, now.Unix(), fr.ExpiresAt.Unix(), hashToken(tok), string(raw), ws, by)
 	if err != nil {
 		return Snapshot{}, "", err
 	}
@@ -901,15 +906,15 @@ func (s *Store) PublishWith(boardID int64, o PublishOptions) (Snapshot, string, 
 		if reason == "" {
 			reason = "The author has replaced this review with a newer version."
 		}
-		if _, err := s.db.Exec(`UPDATE snapshots SET superseded_by=?, supersede_reason=?, supersede_at=? WHERE id=? AND board_id=? AND superseded_by=0`, id, reason, now.Unix(), o.Supersedes, boardID); err != nil {
+		if _, err := s.db.Exec(`UPDATE snapshots SET superseded_by=?, supersede_reason=?, supersede_at=? WHERE id=? AND board_id=? AND workspace_id=? AND superseded_by=0`, id, reason, now.Unix(), o.Supersedes, boardID, ws); err != nil {
 			return Snapshot{}, "", err
 		}
 	}
 	return Snapshot{ID: id, BoardID: boardID, Label: fr.Label, CreatedAt: now.UTC(), ExpiresAt: fr.ExpiresAt, Items: len(fr.Items), Question: fr.Question}, tok, nil
 }
 
-func (s *Store) Snapshots(boardID int64) ([]Snapshot, error) {
-	rows, err := s.db.Query(`SELECT id,board_id,label,created_at,expires_at,revoked,frozen,superseded_by FROM snapshots WHERE board_id=? ORDER BY id DESC`, boardID)
+func (s *Store) Snapshots(ws workspace.ID, boardID int64) ([]Snapshot, error) {
+	rows, err := s.db.Query(`SELECT id,board_id,label,created_at,expires_at,revoked,frozen,superseded_by FROM snapshots WHERE board_id=? AND workspace_id=? ORDER BY id DESC`, boardID, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -937,8 +942,8 @@ func (s *Store) Snapshots(boardID int64) ([]Snapshot, error) {
 	return out, nil
 }
 
-func (s *Store) Revoke(snapshotID int64) error {
-	res, err := s.db.Exec(`UPDATE snapshots SET revoked=1 WHERE id=?`, snapshotID)
+func (s *Store) Revoke(ws workspace.ID, snapshotID int64) error {
+	res, err := s.db.Exec(`UPDATE snapshots SET revoked=1 WHERE id=? AND workspace_id=?`, snapshotID, ws)
 	if err != nil {
 		return err
 	}
@@ -1013,36 +1018,33 @@ func (a *Anchor) valid() bool {
 }
 
 // lookup resolves a token to a live snapshot. Unknown, revoked and expired tokens are indistinguishable (ErrNotFound).
-func (s *Store) lookup(token string) (id int64, fr Frozen, err error) {
+func (s *Store) lookup(token string) (id int64, fr Frozen, sup *Superseded, err error) {
 	if len(token) < 20 || len(token) > 100 {
-		return 0, fr, ErrNotFound
+		return 0, fr, nil, ErrNotFound
 	}
 	h := hashToken(token)
-	var frozen, stored string
-	var exp, rv int64
-	err = s.db.QueryRow(`SELECT id,expires_at,revoked,token_hash,frozen FROM snapshots WHERE token_hash=?`, h).Scan(&id, &exp, &rv, &stored, &frozen)
+	var frozen, stored, reason string
+	var exp, rv, by, at int64
+	err = s.db.QueryRow(`SELECT id,expires_at,revoked,token_hash,frozen,superseded_by,supersede_reason,supersede_at FROM snapshots WHERE token_hash=?`, h).Scan(&id, &exp, &rv, &stored, &frozen, &by, &reason, &at)
 	if err != nil || subtle.ConstantTimeCompare([]byte(stored), []byte(h)) != 1 || rv != 0 || time.Now().Unix() >= exp {
-		return 0, fr, ErrNotFound
+		return 0, fr, nil, ErrNotFound
 	}
 	if err := json.Unmarshal([]byte(frozen), &fr); err != nil {
-		return 0, fr, err
+		return 0, fr, nil, err
 	}
-	return id, fr, nil
+	if by != 0 {
+		sup = &Superseded{Reason: reason, At: time.Unix(at, 0).UTC()}
+	}
+	return id, fr, sup, nil
 }
 
 func (s *Store) Review(token string) (Review, error) {
-	id, fr, err := s.lookup(token)
+	id, fr, sup, err := s.lookup(token)
 	if err != nil {
 		return Review{}, err
 	}
 	cs, err := s.Comments(id)
-	rv := Review{Snapshot: fr, Comments: cs, Outcome: s.outcome(id)}
-	var by, at int64
-	var reason string
-	if s.db.QueryRow(`SELECT superseded_by,supersede_reason,supersede_at FROM snapshots WHERE id=?`, id).Scan(&by, &reason, &at) == nil && by != 0 {
-		rv.Superseded = &Superseded{Reason: reason, At: time.Unix(at, 0).UTC()}
-	}
-	return rv, err
+	return Review{Snapshot: fr, Comments: cs, Outcome: s.outcome(id), Superseded: sup}, err
 }
 
 func (s *Store) Comments(snapshotID int64) ([]Comment, error) {
@@ -1078,7 +1080,7 @@ func (s *Store) Comments(snapshotID int64) ([]Comment, error) {
 
 // ReviewPreview returns a preview only if it belongs to the token's snapshot: a valid token never opens other figures.
 func (s *Store) ReviewPreview(token, sha string) ([]byte, error) {
-	_, fr, err := s.lookup(token)
+	_, fr, _, err := s.lookup(token)
 	if err != nil {
 		return nil, err
 	}
@@ -1092,7 +1094,7 @@ func (s *Store) ReviewPreview(token, sha string) ([]byte, error) {
 
 // AddComment records a reviewer's comment, or reply, on a figure revision that is part of the snapshot.
 func (s *Store) AddComment(token string, in CommentInput) (Comment, error) {
-	id, fr, err := s.lookup(token)
+	id, fr, _, err := s.lookup(token)
 	if err != nil {
 		return Comment{}, err
 	}
@@ -1107,9 +1109,12 @@ func (s *Store) AddComment(token string, in CommentInput) (Comment, error) {
 }
 
 // OwnerReply records the author's reply inside a thread of one of their own snapshots.
-func (s *Store) OwnerReply(snapshotID int64, in CommentInput) (Comment, error) {
+func (s *Store) OwnerReply(ws workspace.ID, snapshotID int64, in CommentInput) (Comment, error) {
 	if in.ParentID == 0 {
 		return Comment{}, fmt.Errorf("%w: the author replies inside a thread", ErrInvalid)
+	}
+	if err := s.ownsSnapshot(ws, snapshotID); err != nil {
+		return Comment{}, err
 	}
 	in.Author = "Author"
 	return s.addComment(snapshotID, in, true)
@@ -1160,12 +1165,12 @@ func (s *Store) addComment(snapshotID int64, in CommentInput, owner bool) (Comme
 }
 
 // SetResolved closes or reopens a thread. Only the author does this, through the owner API.
-func (s *Store) SetResolved(commentID int64, resolved bool) error {
+func (s *Store) SetResolved(ws workspace.ID, commentID int64, resolved bool) error {
 	var at int64
 	if resolved {
 		at = time.Now().Unix()
 	}
-	res, err := s.db.Exec(`UPDATE comments SET resolved_at=? WHERE id=? AND parent_id=0`, at, commentID)
+	res, err := s.db.Exec(`UPDATE comments SET resolved_at=? WHERE id=? AND parent_id=0 AND snapshot_id IN (SELECT id FROM snapshots WHERE workspace_id=?)`, at, commentID, ws)
 	if err != nil {
 		return err
 	}
@@ -1175,5 +1180,20 @@ func (s *Store) SetResolved(commentID int64, resolved bool) error {
 	return nil
 }
 
-// OwnerComments lists the comments on a snapshot for its owner.
-func (s *Store) OwnerComments(snapshotID int64) ([]Comment, error) { return s.Comments(snapshotID) }
+// ownsSnapshot is ErrNotFound unless the snapshot belongs to the workspace.
+func (s *Store) ownsSnapshot(ws workspace.ID, snapshotID int64) error {
+	var one int
+	err := s.db.QueryRow(`SELECT 1 FROM snapshots WHERE id=? AND workspace_id=?`, snapshotID, ws).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+// OwnerComments lists the comments on a snapshot of the workspace for its owner.
+func (s *Store) OwnerComments(ws workspace.ID, snapshotID int64) ([]Comment, error) {
+	if err := s.ownsSnapshot(ws, snapshotID); err != nil {
+		return nil, err
+	}
+	return s.Comments(snapshotID)
+}

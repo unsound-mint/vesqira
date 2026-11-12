@@ -16,6 +16,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A ROHSA fit that lives on a host (ADR 0046, remote fits): imported by the host's worker, indexed there, auto-imported when its
@@ -60,7 +61,7 @@ func (e *watchEnv) cacheFiles() []string {
 
 func (e *watchEnv) auditCount(action string) int {
 	n := 0
-	if es, err := e.srv.Audit.List("", 0, 500); err == nil {
+	if es, err := e.srv.Audit.List(workspace.Local, "", 0, 500); err == nil {
 		for _, a := range es {
 			if a.Action == action {
 				n++
@@ -96,17 +97,17 @@ func TestROHSAImportFromAHostRegistersRemoteDatasetsAndReadsNoBulkData(t *testin
 		if ids[role] == 0 {
 			t.Fatalf("%s not registered: %v", role, ids)
 		}
-		d, err := e.srv.Store.Get(ids[role])
+		d, err := e.srv.Store.Get(workspace.Local, ids[role])
 		if err != nil || d.HostID != e.host.ID || !strings.HasPrefix(d.Path, e.remoteRoot) {
 			t.Errorf("%s: host %d path %q (%v), want a dataset on host %d", role, d.HostID, d.Path, err, e.host.ID)
 		}
 	}
 	// ADR 0046's unit rules apply to the remote products as to local ones
-	mu, _ := e.srv.Store.Get(ids["component_g1_mu_kms"])
+	mu, _ := e.srv.Store.Get(workspace.Local, ids["component_g1_mu_kms"])
 	if mu.UnitDeclaration == nil || mu.UnitDeclaration.Unit != "km/s" || mu.UnitDeclaration.DeclaredBy != "rohsa-run-adapter" {
 		t.Errorf("mu map unit proposal: %+v", mu.UnitDeclaration)
 	}
-	if sig, _ := e.srv.Store.Get(ids["component_g1_sigma_kms"]); sig.UnitDeclaration != nil {
+	if sig, _ := e.srv.Store.Get(workspace.Local, ids["component_g1_sigma_kms"]); sig.UnitDeclaration != nil {
 		t.Errorf("a file that states a unit is never given a declaration: %+v", sig.UnitDeclaration)
 	}
 	if n := run.Rohsa.UnitNotes["component_g1_sigma_kms"]; !strings.Contains(n, "file says K") {
@@ -124,7 +125,7 @@ func TestROHSAImportFromAHostRegistersRemoteDatasetsAndReadsNoBulkData(t *testin
 	if again.ID != run.ID {
 		t.Errorf("re-import by the .dat made a new run: %d vs %d", again.ID, run.ID)
 	}
-	if rs, _ := e.runs.List(); len(rs) != 1 {
+	if rs, _ := e.runs.List(workspace.Local); len(rs) != 1 {
 		t.Errorf("%d runs", len(rs))
 	}
 	// refusals: outside the host's roots, not a fit, several fits, nothing there, an unknown host
@@ -214,10 +215,10 @@ func TestROHSAIndexIsBuiltOnTheHostCachedOffTheDataAndPixelsEqualTheLocalPath(t 
 	// audited once when it started and once when it settled; asking again (ready) adds nothing
 	postJSON(t, rbase+"/rohsa/index", map[string]any{"runId": remote.ID})
 	if e.auditCount("rohsa index started on host") != 1 || e.auditCount("rohsa index ready on host") != 1 {
-		es, _ := e.srv.Audit.List("", 0, 50)
+		es, _ := e.srv.Audit.List(workspace.Local, "", 0, 50)
 		t.Errorf("audit of the cache write: %+v", es)
 	}
-	es, _ := e.srv.Audit.List("run", remote.ID, 50)
+	es, _ := e.srv.Audit.List(workspace.Local, "run", remote.ID, 50)
 	started := ""
 	for _, a := range es {
 		if a.Action == "rohsa index started on host" {
@@ -269,7 +270,7 @@ func TestROHSAHostWorkerIgnoresACacheFolderFromTheRequest(t *testing.T) {
 	e := newWatchEnv(t)
 	e.writeROHSA(filepath.Join(e.remoteRoot, "fit"), "")
 	run, _ := e.importROHSAFromHost(filepath.Join(e.remoteRoot, "fit", "region_a"), 201)
-	crop, _ := e.srv.Store.Get(*run.Rohsa.CropDatasetID)
+	crop, _ := e.srv.Store.Get(workspace.Local, *run.Rohsa.CropDatasetID)
 	elsewhere := filepath.Join(filepath.Dir(e.home), "elsewhere-cache")
 	req := map[string]any{"op": "rohsa_index", "path": crop.Path, "dat_path": filepath.Join(filepath.Dir(crop.Path), "rohsa_n3.dat"), "n_gauss": 3,
 		"cache_dir": elsewhere, "budget_s": 5}
@@ -338,11 +339,11 @@ func TestROHSAJobIsImportedOnceWhenItCompletesAndRescanListsOneRun(t *testing.T)
 	if len(imported) != 1 || imported[0].RunID == nil || *imported[0].RunID != *got.RunID {
 		t.Fatalf("notifications: %+v", e.notifications())
 	}
-	rs, _ := e.runs.List()
+	rs, _ := e.runs.List(workspace.Local)
 	if len(rs) != 1 || rs[0].Kind != "rohsa" {
 		t.Fatalf("runs: %+v", rs)
 	}
-	if rr, err := e.runs.ROHSA(*got.RunID); err != nil || rr.Info.HostID != e.host.ID || rr.Info.CropDatasetID == nil {
+	if rr, err := e.runs.ROHSA(workspace.Local, *got.RunID); err != nil || rr.Info.HostID != e.host.ID || rr.Info.CropDatasetID == nil {
 		t.Errorf("the run's record: %+v %v", rr, err)
 	}
 	if l, _ := e.jobs.Lineages(); l[*got.RunID].JobID != j.ID {
@@ -353,14 +354,14 @@ func TestROHSAJobIsImportedOnceWhenItCompletesAndRescanListsOneRun(t *testing.T)
 	e.srv.autoImport(ctx, j.ID, e.host)
 	e.srv.watchOnce(ctx, w, t0.Add(time.Hour))
 	e.srv.waitImports()
-	if rs, _ := e.runs.List(); len(rs) != 1 || len(e.notifications()) != 2 {
+	if rs, _ := e.runs.List(workspace.Local); len(rs) != 1 || len(e.notifications()) != 2 {
 		t.Errorf("a second look changed things: %d runs, %d notifications", len(rs), len(e.notifications()))
 	}
 	// the manual button gives the same run (one key per fit)
 	if r, b := postJSON(t, e.api("/api/jobs/"+itoa(int(j.ID))+"/register"), map[string]any{}); r.StatusCode != 201 {
 		t.Errorf("register: %d %s", r.StatusCode, b)
 	}
-	if rs, _ := e.runs.List(); len(rs) != 1 {
+	if rs, _ := e.runs.List(workspace.Local); len(rs) != 1 {
 		t.Errorf("the button made a second run: %d", len(rs))
 	}
 
@@ -423,7 +424,7 @@ func TestAnAutoImportOfAROHSAJobWithNoFitOrTwoFitsIsOneNotificationAndNothingIsG
 	e.srv.watchOnce(ctx, w, t0)
 	e.srv.waitRecords()
 	e.srv.waitImports()
-	if rs, _ := e.runs.List(); len(rs) != 0 {
+	if rs, _ := e.runs.List(workspace.Local); len(rs) != 0 {
 		t.Errorf("%d runs were imported", len(rs))
 	}
 	for _, c := range []struct {

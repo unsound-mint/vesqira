@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The layout route (ADR 0060): one write for the whole board, guarded by the panels it was computed for, answering 409 with the
@@ -33,14 +34,14 @@ func TestBoardLayoutRouteSavesGuardsAndReachesTheReviewerReadOnly(t *testing.T) 
 	defer rv.Close()
 
 	png, _ := base64.StdEncoding.DecodeString(testPNG(t))
-	b, _ := bs.CreateBoard("B")
+	b, _ := bs.CreateBoard(workspace.Local, "local-owner", "B")
 	var expect []map[string]any
 	for i, name := range []string{"A", "B"} {
-		f, err := bs.CreateFigure(boards.NewFigure{DatasetID: 1, Title: name, Provenance: json.RawMessage(`{"i":` + itoa(i) + `}`)}, png)
+		f, err := bs.CreateFigure(workspace.Local, "local-owner", boards.NewFigure{DatasetID: 1, Title: name, Provenance: json.RawMessage(`{"i":` + itoa(i) + `}`)}, png)
 		if err != nil {
 			t.Fatal(err)
 		}
-		bs.AddItem(b.ID, f.ID)
+		bs.AddItem(workspace.Local, b.ID, f.ID)
 		expect = append(expect, map[string]any{"kind": "figure", "id": f.ID})
 	}
 	url := owner.URL + "/api/boards/" + itoa(int(b.ID)) + "/layout"

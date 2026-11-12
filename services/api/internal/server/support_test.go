@@ -17,6 +17,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 const (
@@ -40,7 +41,7 @@ func supportServer(t *testing.T) (*Server, *httptest.Server) {
 		t.Fatal(err)
 	}
 	home, _ := os.UserHomeDir()
-	if _, err := cat.Upsert(catalog.Dataset{Path: filepath.Join(home, "data", fixDatasetName+".fits"), Name: fixDatasetName, SizeBytes: 5, ModifiedAt: time.Now(), Header: json.RawMessage(`{}`)}); err != nil {
+	if _, err := cat.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: filepath.Join(home, "data", fixDatasetName+".fits"), Name: fixDatasetName, SizeBytes: 5, ModifiedAt: time.Now(), Header: json.RawMessage(`{}`)}); err != nil {
 		t.Fatal(err)
 	}
 	hs, err := hosts.Open(cat.DB())
@@ -54,7 +55,7 @@ func supportServer(t *testing.T) (*Server, *httptest.Server) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	au.Record("job.submit", "job", 7, "sbatch for "+fixDatasetName)
+	au.Record(workspace.Local, "job.submit", "job", 7, "sbatch for "+fixDatasetName)
 	s := &Server{Store: cat, PublishKeyFile: keyFile, HostDB: hs, Remote: hosts.NewManager("ssh", nil), Audit: au}
 	// secrets that reached the logs
 	w := apiLogTail.Writer(io.Discard)

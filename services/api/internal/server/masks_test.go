@@ -22,6 +22,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type maskEnv struct {
@@ -305,8 +306,8 @@ func TestAResultCarriesTheMasksThatWereAppliedAndTheReviewerSeesTheirTiersWithou
 		t.Fatalf("summary: %v", exclSum)
 	}
 	// the reviewer-safe account
-	der := e.srv.derivedSummary(exclDS.ID)
-	d, _ := e.cat.Get(exclDS.ID)
+	der := e.srv.derivedSummary(workspace.Local, exclDS.ID)
+	d, _ := e.cat.Get(workspace.Local, exclDS.ID)
 	raw, err := buildProvenance(d, ViewParams{}, nil, der, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -332,7 +333,7 @@ func TestAResultCarriesTheMasksThatWereAppliedAndTheReviewerSeesTheirTiersWithou
 	}
 
 	// forgetting the mask keeps the file and the result's own record
-	stored, err := e.srv.Masks.Get(sat.ID)
+	stored, err := e.srv.Masks.Get(workspace.Local, sat.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +343,7 @@ func TestAResultCarriesTheMasksThatWereAppliedAndTheReviewerSeesTheirTiersWithou
 	if _, err := os.Stat(stored.Path); err != nil {
 		t.Fatalf("the mask file must stay: %v", err)
 	}
-	if der2 := e.srv.derivedSummary(exclDS.ID); !strings.Contains(string(der2.Params), "sha256:"+sat.SHA256) {
+	if der2 := e.srv.derivedSummary(workspace.Local, exclDS.ID); !strings.Contains(string(der2.Params), "sha256:"+sat.SHA256) {
 		t.Fatalf("the result keeps its own record of the mask: %s", der2.Params)
 	}
 	// masks go with their dataset, and the impact preview says so
@@ -350,9 +351,9 @@ func TestAResultCarriesTheMasksThatWereAppliedAndTheReviewerSeesTheirTiersWithou
 	if st != 201 {
 		t.Fatalf("%d %s", st, b)
 	}
-	storedM2, _ := e.srv.Masks.Get(m2.ID)
+	storedM2, _ := e.srv.Masks.Get(workspace.Local, m2.ID)
 	svc := lifecycle.New(e.cat.DB())
-	im, err := svc.Impact(lifecycle.KindDataset, cube.ID)
+	im, err := svc.Impact(workspace.Local, lifecycle.KindDataset, cube.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,10 +366,10 @@ func TestAResultCarriesTheMasksThatWereAppliedAndTheReviewerSeesTheirTiersWithou
 	if !said {
 		t.Fatalf("impact: %+v", im.Groups)
 	}
-	if _, err := svc.Delete(lifecycle.KindDataset, cube.ID, im.Digest); err != nil {
+	if _, err := svc.Delete(workspace.Local, lifecycle.KindDataset, cube.ID, im.Digest); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.srv.Masks.Get(m2.ID); err != masks.ErrNotFound {
+	if _, err := e.srv.Masks.Get(workspace.Local, m2.ID); err != masks.ErrNotFound {
 		t.Fatalf("the mask goes with its dataset: %v", err)
 	}
 	if _, err := os.Stat(storedM2.Path); err != nil {

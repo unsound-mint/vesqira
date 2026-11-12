@@ -46,7 +46,7 @@ const wrongCredentials = "wrong username or password"
 var anonymous = audit.Actor{ID: "anonymous", Via: "none"}
 
 func (s *Server) accountAudit(a audit.Actor, action, detail string) {
-	s.Audit.RecordAs(a, action, "account", 0, detail)
+	s.Audit.RecordAs(a.Workspace, a, action, "account", 0, detail) // an account event belongs to the server, not to a workspace
 }
 
 func sessionActor(id string) audit.Actor { return audit.Actor{ID: id, Via: string(authz.ViaSession)} }

@@ -102,7 +102,7 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 	if d.HostID != 0 {
 		return s.authorizeRemote(ctx, d)
 	}
-	real, err := s.roots().Resolve(d.Path)
+	real, err := s.roots(wsCtx(ctx)).Resolve(d.Path)
 	if err != nil {
 		return "", k, 403, err.Error()
 	}
@@ -121,7 +121,7 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 	}
 	dev, ino := fileIDOf(info)
 	if d.FileIno == 0 || dev != d.FileDev {
-		if err := s.Store.NoteFileID(0, d.Path, dev, ino); err != nil {
+		if err := s.Store.NoteFileID(wsCtx(ctx), 0, d.Path, dev, ino); err != nil {
 			log.Printf("authorize: %v", err)
 		}
 	}
@@ -145,7 +145,7 @@ func (s *Server) sourceWith(w http.ResponseWriter, r *http.Request, offlineOK bo
 		fail(w, 400, "bad id")
 		return
 	}
-	d, err = s.Store.Get(id)
+	d, err = s.Store.Get(wsOf(r), id)
 	if errors.Is(err, catalog.ErrNotFound) {
 		fail(w, 404, "dataset not found")
 		return
@@ -334,7 +334,7 @@ func (s *Server) plane(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := catalog.Dataset{}
-	if got, err := s.Store.Get(k.id); err == nil {
+	if got, err := s.Store.Get(wsOf(r), k.id); err == nil {
 		d = got
 	}
 	k.op, k.channel = "plane", ch

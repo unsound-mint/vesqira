@@ -31,7 +31,7 @@ func (s *Server) maskByRule(ctx context.Context, p projects.Project, res *applyR
 	if err != nil {
 		return []string{"no mask was made: " + err.Error()}
 	}
-	facts, err := s.Store.FactsByPath(p.HostID) // read now: the target may have been registered earlier in this same apply
+	facts, err := s.Store.FactsByPath(wsCtx(ctx), p.HostID) // read now: the target may have been registered earlier in this same apply
 	if err != nil {
 		return later("the catalog could not be read")
 	}
@@ -39,7 +39,7 @@ func (s *Server) maskByRule(ctx context.Context, p projects.Project, res *applyR
 	if !ok {
 		return later("no mask was made: the dataset this mask belongs to, " + rel + ", is not registered yet; register it, then apply again")
 	}
-	target, err := s.Store.Get(fa.ID)
+	target, err := s.Store.Get(wsCtx(ctx), fa.ID)
 	if err != nil {
 		return later("the dataset " + rel + " could not be read")
 	}
@@ -48,7 +48,7 @@ func (s *Server) maskByRule(ctx context.Context, p projects.Project, res *applyR
 	}
 	name := cleanText(path.Base(res.Path), 80)
 	by := rule.DeclaredBy()
-	if have, err := s.Masks.ForDataset(target.ID); err == nil {
+	if have, err := s.Masks.ForDataset(wsCtx(ctx), target.ID); err == nil {
 		for _, m := range have {
 			if m.Author == by && m.Name == name {
 				return []string{"already imported as a mask of " + rel + " by this rule; delete that mask to import the file again"}

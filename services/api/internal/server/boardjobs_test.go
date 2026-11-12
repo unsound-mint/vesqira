@@ -19,6 +19,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func chunkLog(done, total int) string {
@@ -169,7 +170,7 @@ func TestABoardCanFollowAJobAndAReviewerSeesOnlyAPlaceholder(t *testing.T) {
 	if r, _ := postJSON(t, api("/api/boards/"+itoa(int(b.ID))+"/items/0/pin"), map[string]any{"figureId": 9999}); r.StatusCode != 422 {
 		t.Errorf("pin to a missing figure: %d", r.StatusCode)
 	}
-	f, err := bs.CreateFigure(boards.NewFigure{DatasetID: 1, Title: "result", Provenance: json.RawMessage(`{}`)}, pngBytesForTest(t))
+	f, err := bs.CreateFigure(workspace.Local, "local-owner", boards.NewFigure{DatasetID: 1, Title: "result", Provenance: json.RawMessage(`{}`)}, pngBytesForTest(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,8 +210,8 @@ func TestBoardFetchNeverWaitsLongForAJobLog(t *testing.T) {
 	j, _ := js.CreateDraft(jobs.Job{HostID: 1, Name: "slow", Template: "vgt", Script: "#!/bin/sh\n"})
 	js.MarkSubmitted(j.ID, "5")
 	js.SetState(j.ID, jobs.StateRunning, "")
-	b, _ := bs.CreateBoard("B")
-	bs.AddJobItem(b.ID, j.ID)
+	b, _ := bs.CreateBoard(workspace.Local, "local-owner", "B")
+	bs.AddJobItem(workspace.Local, b.ID, j.ID)
 	start := time.Now()
 	view := srv.boardView(context.Background(), mustBoard(t, bs, b.ID), true)
 	if time.Since(start) > 7*time.Second {
@@ -230,7 +231,7 @@ func pngBytesForTest(t *testing.T) []byte {
 }
 
 func mustBoard(t *testing.T, bs *boards.Store, id int64) boards.Board {
-	b, err := bs.Board(id)
+	b, err := bs.Board(workspace.Local, id)
 	if err != nil {
 		t.Fatal(err)
 	}

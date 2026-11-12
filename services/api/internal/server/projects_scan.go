@@ -13,6 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 const maxRegisterPerScan = 5000
@@ -59,14 +60,15 @@ func (s *Server) scanOf(id int64) *scanState {
 }
 
 // startScan begins a scan unless one is running for the project. It returns the state and whether it started one.
-func (s *Server) startScan(p projects.Project) (*scanState, bool) {
+// reqCtx is the request that starts it: the scan outlives the request but acts as its actor, in its workspace.
+func (s *Server) startScan(reqCtx context.Context, p projects.Project) (*scanState, bool) {
 	st := s.scanOf(p.ID)
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	if st.active() {
 		return st, false
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.WithoutCancel(reqCtx))
 	now := time.Now()
 	st.State, st.Entries, st.ToRegister, st.Registered, st.Failed, st.Error, st.StartedAt, st.FinishedAt, st.cancel = "scanning", 0, 0, 0, 0, "", &now, nil, cancel
 	go s.runScan(ctx, p, st)
@@ -266,8 +268,8 @@ func summarize(r *discover.Result) storedSummary {
 	return sum
 }
 
-func (s *Server) updateSummary(id int64, f func(*storedSummary)) {
-	p, err := s.Projects.Get(id)
+func (s *Server) updateSummary(ws workspace.ID, id int64, f func(*storedSummary)) {
+	p, err := s.Projects.Get(ws, id)
 	if err != nil {
 		return
 	}
@@ -275,7 +277,7 @@ func (s *Server) updateSummary(id int64, f func(*storedSummary)) {
 	_ = json.Unmarshal(p.Summary, &sum)
 	f(&sum)
 	b, _ := json.Marshal(sum)
-	if err := s.Projects.SetSummary(id, b); err != nil {
+	if err := s.Projects.SetSummary(ws, id, b); err != nil {
 		log.Printf("projects: %v", err)
 	}
 }
@@ -380,12 +382,12 @@ func (s *Server) runScan(ctx context.Context, p projects.Project, st *scanState)
 		_ = s.Projects.SetAnswer(p.ID, projects.Answer{Need: a.Need, Answer: a.Answer, Value: a.Value, DeclaredBy: a.DeclaredBy, Date: a.Date, Written: true})
 	}
 	b, _ := json.Marshal(sum)
-	if err := s.Projects.SaveScan(p.ID, time.Now(), b, projects.Rows(res)); err != nil {
+	if err := s.Projects.SaveScan(wsCtx(ctx), p.ID, time.Now(), b, projects.Rows(res)); err != nil {
 		log.Printf("projects: %v", err)
 		st.finish("error", "internal error")
 		return
 	}
-	ignored := s.importAfterScan(p, pf, res) // counts what the rules select; registers and declares nothing
+	ignored := s.importAfterScan(wsCtx(ctx), p, pf, res) // counts what the rules select; registers and declares nothing
 	s.registerFound(ctx, p, h, res, prev, st, ignored)
 }
 
@@ -417,7 +419,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 			if remote {
 				key = hostKey(h.ID, key)
 			}
-			id, _ := s.Runs.IDByDir(key)
+			id, _ := s.Runs.IDByDir(wsCtx(ctx), key)
 			if id != 0 && prev != nil && prev[r.Path+"/"+r.Record] == fingerprint(r.RecordSize, r.MtimeNS) {
 				continue // imported before and its record has not changed
 			}
@@ -425,7 +427,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 		}
 	}
 	nRuns := len(tasks)
-	facts, _ := s.Store.FactsByPath(p.HostID)
+	facts, _ := s.Store.FactsByPath(wsCtx(ctx), p.HostID)
 	var fits []discover.File
 	for _, d := range res.Data {
 		if ignored[d.Path] {
@@ -486,7 +488,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 				_, code, msg = s.registerRemoteFile(tctx, h, abs(t.file))
 			default:
 				what = t.file
-				real, err := s.roots().Resolve(abs(t.file))
+				real, err := s.roots(wsCtx(ctx)).Resolve(abs(t.file))
 				if err != nil {
 					code, msg = 403, "not available"
 					return
@@ -511,7 +513,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 	st.mu.Lock()
 	reg, fl := st.Registered, st.Failed
 	st.mu.Unlock()
-	s.updateSummary(p.ID, func(sum *storedSummary) {
+	s.updateSummary(wsCtx(ctx), p.ID, func(sum *storedSummary) {
 		sum.Registration.Registered, sum.Registration.Failed, sum.Registration.Errors, sum.Registration.Capped = reg, fl, errs, capped
 	})
 	if ctx.Err() != nil {

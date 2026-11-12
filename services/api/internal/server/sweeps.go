@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Parameter sweeps (ADR 0048). A sweep is a base job, a grid of explicit values for one to three config settings, and the
@@ -676,7 +677,8 @@ func (s *Server) kickSweeps() {
 	s.sweepRuns.Add(1)
 	go func() {
 		defer s.sweepRuns.Done()
-		s.advanceSweeps(context.Background())
+		// local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
+		s.advanceSweeps(localCtx(context.Background()))
 	}()
 }
 
@@ -781,7 +783,7 @@ func (s *Server) advanceSweep(ctx context.Context, id int64) {
 
 // ---- the grid: table rows and plot series ----
 
-func (s *Server) sweepRows(sw sweeps.Sweep) ([]sweeps.Row, error) {
+func (s *Server) sweepRows(ws workspace.ID, sw sweeps.Sweep) ([]sweeps.Row, error) {
 	ms, err := s.Sweeps.Members(sw.ID)
 	if err != nil {
 		return nil, err
@@ -794,7 +796,7 @@ func (s *Server) sweepRows(sw sweeps.Sweep) ([]sweeps.Row, error) {
 		}
 		row := sweeps.Row{JobID: j.ID, Name: j.Name, Label: sweeps.Label(sw.Params, m.Values), Values: m.Values, State: j.State, RunID: j.RunID, Metrics: []sweeps.Metric{}}
 		if j.RunID != nil && s.Runs != nil {
-			if run, err := s.Runs.Get(*j.RunID); err == nil {
+			if run, err := s.Runs.Get(ws, *j.RunID); err == nil {
 				row.RunName = run.Name
 				for _, mt := range run.Metrics {
 					row.Metrics = append(row.Metrics, sweeps.Metric{Key: mt.Key, Value: mt.Value, Unit: mt.Unit, Uncertainty: mt.Uncertainty, Definition: mt.Definition})
@@ -816,7 +818,7 @@ func (s *Server) sweepGrid(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.sweepRows(sw)
+	rows, err := s.sweepRows(wsOf(r), sw)
 	if err != nil {
 		log.Printf("sweeps: %v", err)
 		fail(w, 500, "internal error")
@@ -855,14 +857,14 @@ func (s *Server) boardFromSweep(w http.ResponseWriter, r *http.Request) {
 	s.sweepBoardMu.Lock()
 	defer s.sweepBoardMu.Unlock()
 	if sw.BoardID != nil {
-		if _, err := s.Boards.Board(*sw.BoardID); err == nil {
+		if _, err := s.Boards.Board(wsOf(r), *sw.BoardID); err == nil {
 			writeJSON(w, 409, map[string]any{"error": "a board was already made from this sweep", "boardId": *sw.BoardID})
 			return
 		}
 		s.Sweeps.ClearBoard(sw.ID) // that board is gone
 	}
 	title := "Sweep: " + sw.Name
-	b, err := s.Boards.CreateBoard(title)
+	b, err := s.Boards.CreateBoard(wsOf(r), actorID(r.Context()), title)
 	if err != nil {
 		s.boardErr(w, err)
 		return
@@ -874,7 +876,7 @@ func (s *Server) boardFromSweep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, m := range ms {
-		if err := s.Boards.AddJobItem(b.ID, m.JobID); err != nil {
+		if err := s.Boards.AddJobItem(wsOf(r), b.ID, m.JobID); err != nil {
 			s.boardErr(w, err)
 			return
 		}

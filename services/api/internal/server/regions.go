@@ -32,7 +32,7 @@ func (s *Server) datasetFor(w http.ResponseWriter, r *http.Request) (catalog.Dat
 	if !ok {
 		return catalog.Dataset{}, false
 	}
-	d, err := s.Store.Get(id)
+	d, err := s.Store.Get(wsOf(r), id)
 	if errors.Is(err, catalog.ErrNotFound) {
 		fail(w, 404, "dataset not found")
 		return d, false
@@ -54,7 +54,7 @@ func (s *Server) listRegions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rs, err := s.Regions.List(d.ID)
+	rs, err := s.Regions.List(wsOf(r), d.ID)
 	if err != nil {
 		s.regionErr(w, err)
 		return
@@ -74,7 +74,7 @@ func (s *Server) createRegion(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
-	reg, err := s.Regions.Create(d.ID, in.Name, in.Shape)
+	reg, err := s.Regions.Create(wsOf(r), actorID(r.Context()), d.ID, in.Name, in.Shape)
 	if err != nil {
 		s.regionErr(w, err)
 		return
@@ -94,7 +94,7 @@ func (s *Server) updateRegion(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 4<<10, &in, true) {
 		return
 	}
-	reg, err := s.Regions.Update(id, in.Name, in.Shape)
+	reg, err := s.Regions.Update(wsOf(r), id, in.Name, in.Shape)
 	if err != nil {
 		s.regionErr(w, err)
 		return
@@ -107,7 +107,7 @@ func (s *Server) deleteRegion(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Regions.Delete(id); err != nil {
+	if err := s.Regions.Delete(wsOf(r), id); err != nil {
 		s.regionErr(w, err)
 		return
 	}
@@ -120,7 +120,7 @@ func (s *Server) regionsDS9(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rs, err := s.Regions.List(d.ID)
+	rs, err := s.Regions.List(wsOf(r), d.ID)
 	if err != nil {
 		s.regionErr(w, err)
 		return
@@ -187,7 +187,7 @@ func (s *Server) importRegions(w http.ResponseWriter, r *http.Request) {
 		if it.Shape == nil || (it.Status == regions.Approximate && !in.IncludeApproximated) {
 			continue
 		}
-		reg, err := s.Regions.Create(d.ID, it.Name, *it.Shape)
+		reg, err := s.Regions.Create(wsOf(r), actorID(r.Context()), d.ID, it.Name, *it.Shape)
 		if err != nil {
 			failed = append(failed, it.Name+": "+strings.TrimPrefix(err.Error(), "invalid: "))
 			continue

@@ -21,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/publish"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Reports (ADR 0036). The owner and an agent (through `vesqira mcp`, which calls these routes on loopback) write
@@ -88,7 +89,7 @@ func authorOf(a string) string {
 }
 
 func (s *Server) listReports(w http.ResponseWriter, r *http.Request) {
-	list, err := s.Reports.List()
+	list, err := s.Reports.List(wsOf(r), actorID(r.Context()))
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -106,7 +107,7 @@ func (s *Server) createReport(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, reports.MaxBody+(16<<10), &in, true) {
 		return
 	}
-	rep, err := s.Reports.CreateUnder(in.Title, in.Body, authorOf(in.Author), in.Parent)
+	rep, err := s.Reports.CreateUnder(wsOf(r), actorID(r.Context()), in.Title, in.Body, authorOf(in.Author), in.Parent)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -133,13 +134,13 @@ func (s *Server) getReport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rep, err := s.Reports.Get(id)
+	rep, err := s.Reports.Get(wsOf(r), actorID(r.Context()), id)
 	if err != nil {
 		s.reportErr(w, err)
 		return
 	}
 	v := reportView{Report: rep}
-	if v.Backlinks, err = s.Reports.Backlinks(id); err == nil {
+	if v.Backlinks, err = s.Reports.Backlinks(wsOf(r), id); err == nil {
 		if v.Publications, err = s.Reports.Publications(id); err == nil {
 			if v.Comments, err = s.Reports.Comments(rep.Key); err == nil {
 				v.Drafts, err = s.draftsFor(v.Comments)
@@ -151,12 +152,12 @@ func (s *Server) getReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, t := range reports.ReportTitles(rep.Body) {
-		if _, err := s.Reports.ByTitle(t); errors.Is(err, reports.ErrNotFound) {
+		if _, err := s.Reports.ByTitle(wsOf(r), actorID(r.Context()), t); errors.Is(err, reports.ErrNotFound) {
 			v.Unresolved = append(v.Unresolved, t)
 		}
 	}
 	space, _ := s.spaceOf(r)
-	if f, err := s.freeze(rep, space, false); err == nil {
+	if f, err := s.freeze(wsOf(r), rep, space, false); err == nil {
 		v.BlockIDs = f.SourceIDs
 	}
 	if v.BlockIDs == nil {
@@ -190,7 +191,7 @@ func (s *Server) reportChanges(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rep, err := s.Reports.Get(id)
+	rep, err := s.Reports.Get(wsOf(r), actorID(r.Context()), id)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -204,14 +205,14 @@ func (s *Server) reportChanges(w http.ResponseWriter, r *http.Request) {
 	}
 	before := ""
 	if since > 0 {
-		h, err := s.Reports.Revision(id, since)
+		h, err := s.Reports.Revision(wsOf(r), id, since)
 		if err != nil {
 			s.reportErr(w, err)
 			return
 		}
 		before = h.Body
 	}
-	hist, err := s.Reports.History(id, false)
+	hist, err := s.Reports.History(wsOf(r), id, false)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -231,12 +232,12 @@ func (s *Server) reportChanges(w http.ResponseWriter, r *http.Request) {
 
 // reportGraph is every report, the figures and runs they reference, and the links between them.
 func (s *Server) reportGraph(w http.ResponseWriter, r *http.Request) {
-	list, err := s.Reports.List()
+	list, err := s.Reports.List(wsOf(r), actorID(r.Context()))
 	if err != nil {
 		s.reportErr(w, err)
 		return
 	}
-	edges, err := s.Reports.Edges()
+	edges, err := s.Reports.Edges(wsOf(r))
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -276,7 +277,7 @@ func (s *Server) reportGraph(w http.ResponseWriter, r *http.Request) {
 			to = "figure:" + e.Target
 			if !seen[to] {
 				n := node{ID: to, Kind: "figure", Label: "Missing figure", Missing: true}
-				if f, err := s.Boards.FigureByRevision(e.Target); err == nil {
+				if f, err := s.Boards.FigureByRevision(wsOf(r), e.Target); err == nil {
 					n.Label, n.Missing = f.Title, false
 				}
 				nodes, seen[to] = append(nodes, n), true
@@ -286,7 +287,7 @@ func (s *Server) reportGraph(w http.ResponseWriter, r *http.Request) {
 			if !seen[to] {
 				n := node{ID: to, Kind: "run", Label: "Missing run", Missing: true}
 				if rid, err := strconv.ParseInt(e.Target, 10, 64); err == nil && s.Runs != nil {
-					if run, err := s.Runs.Get(rid); err == nil {
+					if run, err := s.Runs.Get(wsOf(r), rid); err == nil {
 						n.Label, n.Missing = run.Name, false
 					}
 				}
@@ -312,7 +313,7 @@ func (s *Server) updateReport(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, reports.MaxBody+(16<<10), &in, true) {
 		return
 	}
-	rep, err := s.Reports.Update(id, reports.Update{Title: in.Title, Body: in.Body, Base: in.Base, Author: authorOf(in.Author)})
+	rep, err := s.Reports.Update(wsOf(r), actorID(r.Context()), id, reports.Update{Title: in.Title, Body: in.Body, Base: in.Base, Author: authorOf(in.Author)})
 	if errors.Is(err, reports.ErrConflict) && rep.ID != 0 {
 		writeJSON(w, 409, map[string]any{"error": err.Error(), "current": rep})
 		return
@@ -338,7 +339,7 @@ func (s *Server) reportSeen(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 1<<10, &in, true) {
 		return
 	}
-	if err := s.Reports.MarkSeen(id, in.Revision); err != nil {
+	if err := s.Reports.MarkSeen(wsOf(r), actorID(r.Context()), id, in.Revision); err != nil {
 		s.reportErr(w, err)
 		return
 	}
@@ -350,7 +351,7 @@ func (s *Server) deleteReport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Reports.Delete(id); err != nil {
+	if err := s.Reports.Delete(wsOf(r), id); err != nil {
 		s.reportErr(w, err)
 		return
 	}
@@ -368,7 +369,7 @@ func (s *Server) moveReport(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 1<<10, &in, true) {
 		return
 	}
-	if err := s.Reports.Move(id, in.Parent); err != nil {
+	if err := s.Reports.Move(wsOf(r), id, in.Parent); err != nil {
 		s.reportErr(w, err)
 		return
 	}
@@ -382,7 +383,7 @@ func (s *Server) withdrawReport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rep, err := s.Reports.Get(id)
+	rep, err := s.Reports.Get(wsOf(r), actorID(r.Context()), id)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -402,7 +403,7 @@ func (s *Server) withdrawReport(w http.ResponseWriter, r *http.Request) {
 		s.reportErr(w, err)
 		return
 	}
-	if err := s.Reports.Withdrawn(id); err != nil {
+	if err := s.Reports.Withdrawn(wsOf(r), id); err != nil {
 		s.reportErr(w, err)
 		return
 	}
@@ -415,7 +416,7 @@ func (s *Server) reportHistory(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h, err := s.Reports.History(id, false)
+	h, err := s.Reports.History(wsOf(r), id, false)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -432,7 +433,7 @@ func (s *Server) reportRevision(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h, err := s.Reports.Revision(id, int(rev))
+	h, err := s.Reports.Revision(wsOf(r), id, int(rev))
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -452,7 +453,7 @@ func (s *Server) addAttachment(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "data must be base64")
 		return
 	}
-	sha, mime, err := s.Reports.AddAttachment(b)
+	sha, mime, err := s.Reports.AddAttachment(wsOf(r), actorID(r.Context()), b)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -461,7 +462,7 @@ func (s *Server) addAttachment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAttachment(w http.ResponseWriter, r *http.Request) {
-	b, mime, err := s.Reports.Attachment(r.PathValue("sha"))
+	b, mime, err := s.Reports.Attachment(wsOf(r), r.PathValue("sha"))
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -506,14 +507,14 @@ func clipRunes(s string, n int) string {
 
 // freeze builds the published revision of a report. It reads only reviewer-safe facts: figure previews and their
 // provenance (ADR 0011), run summaries (ADR 0014) and report titles and keys. It never reads a path.
-func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (frozen, error) {
+func (s *Server) freeze(ws workspace.ID, rep reports.Report, space string, withAssets bool) (frozen, error) {
 	f := frozen{Assets: map[string][]byte{}, Warnings: []string{}, Errors: []string{}, Space: space}
 	number, err := s.Reports.NextNumber(rep.ID)
 	if err != nil {
 		return f, err
 	}
 	shared := map[string]bool{rep.Key: true}
-	if keys, err := s.Reports.PublishedKeys(space); err == nil {
+	if keys, err := s.Reports.PublishedKeys(ws, space); err == nil {
 		for _, k := range keys {
 			shared[k] = true
 		}
@@ -526,7 +527,7 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 	if agent == "" {
 		agent = "the agent"
 	}
-	hist, err := s.Reports.History(rep.ID, false)
+	hist, err := s.Reports.History(ws, rep.ID, false)
 	if err != nil {
 		return f, err
 	}
@@ -547,14 +548,14 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 	unshared := map[string]bool{}
 	missing := map[string]bool{}
 	figTitle := func(revision string) string {
-		if fig, err := s.Boards.FigureByRevision(revision); err == nil {
+		if fig, err := s.Boards.FigureByRevision(ws, revision); err == nil {
 			return fig.Title
 		}
 		return ""
 	}
 	runName := func(id int64) string {
 		if s.Runs != nil {
-			if run, err := s.Runs.Get(id); err == nil {
+			if run, err := s.Runs.Get(ws, id); err == nil {
 				return run.Name
 			}
 		}
@@ -585,7 +586,7 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 		c, done := cleaned[sha]
 		if !done {
 			var err error
-			c, err = s.publishablePicture(sha, func() ([]byte, error) { b, _, err := s.Reports.Attachment(sha); return b, err }, withAssets, &f)
+			c, err = s.publishablePicture(sha, func() ([]byte, error) { b, _, err := s.Reports.Attachment(ws, sha); return b, err }, withAssets, &f)
 			switch {
 			case errors.Is(err, errCannotClean):
 				f.Errors = append(f.Errors, "An image ("+sha[:12]+"…) could not be cleaned of its metadata, so it is not published; replace it with a fresh export.")
@@ -624,7 +625,7 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 				if shown == "" {
 					shown = title
 				}
-				target, err := s.Reports.ByTitle(title)
+				target, err := s.Reports.ByTitle(ws, "", title) // only the title and id are used: no account's seen revision is needed
 				if err != nil {
 					missing[title] = true
 					return shown
@@ -650,7 +651,7 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 			t = reports.RewriteAttachments(t, addAttachment)
 			add(publish.Block{Kind: publish.BlockText, Text: t}, t)
 		case "figure":
-			fig, err := s.Boards.FigureByRevision(b.Figure)
+			fig, err := s.Boards.FigureByRevision(ws, b.Figure)
 			if err != nil {
 				f.Errors = append(f.Errors, "A figure embedded in the report ("+b.Figure[:12]+"…) no longer exists; remove the line or embed another figure.")
 				break
@@ -696,7 +697,7 @@ func (s *Server) freeze(rep reports.Report, space string, withAssets bool) (froz
 				f.Errors = append(f.Errors, "Runs are not available on this server.")
 				break
 			}
-			sum, err := s.Runs.SummaryOf(b.Run, "")
+			sum, err := s.Runs.SummaryOf(ws, b.Run, "")
 			if err != nil {
 				f.Errors = append(f.Errors, fmt.Sprintf("Run %d referenced in the report no longer exists.", b.Run))
 				break

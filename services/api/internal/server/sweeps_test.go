@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // These tests run on the stand-in host of jobwatch_test.go (ssh, sbatch, squeue, sacct, scancel run locally; the ssh stand-in
@@ -513,7 +514,7 @@ func TestBoardFromASweepFollowsEachJobInParameterOrderWithOwnerOnlyLabels(t *tes
 		t.Errorf("the sweep does not know its board: %+v", got.BoardID)
 	}
 	// a reviewer's snapshot carries the job's name and state and no parameter, label or sweep
-	_, token, err := e.srv.Boards.PublishWith(board.ID, boards.PublishOptions{Label: "x", TTL: time.Hour, Jobs: e.srv.jobSnapshots(board)})
+	_, token, err := e.srv.Boards.PublishWith(workspace.Local, "local-owner", board.ID, boards.PublishOptions{Label: "x", TTL: time.Hour, Jobs: e.srv.jobSnapshots(board)})
 	if err != nil {
 		t.Fatal(err)
 	}

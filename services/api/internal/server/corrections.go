@@ -16,6 +16,7 @@ import (
 	idty "github.com/unsound-mint/vesqira/services/api/internal/identity"
 	"github.com/unsound-mint/vesqira/services/api/internal/lifecycle"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // WCS and unit corrections (ADR 0061). A correction is a declaration at tier "declared" with a required reason, kept in an
@@ -84,7 +85,7 @@ func (c correctingService) Do(ctx context.Context, req map[string]any) (worker.R
 		if p == "" {
 			continue
 		}
-		if st := c.s.correctionsAt(c.host, p); st != nil {
+		if st := c.s.correctionsAt(wsCtx(ctx), c.host, p); st != nil {
 			pl := corrPayload(*st)
 			sent[p] = pl
 			hashes = append(hashes, pl["hash"].(string))
@@ -113,12 +114,12 @@ func sentHash(req map[string]any) string {
 }
 
 // correctionsAt is the state in force for the dataset read from (host, path), or nil.
-func (s *Server) correctionsAt(host int64, path string) *catalog.CorrectionState {
+func (s *Server) correctionsAt(ws workspace.ID, host int64, path string) *catalog.CorrectionState {
 	v, ok := s.corrPaths.Load(corrPathRef{host, path})
 	if !ok {
 		return nil
 	}
-	d, err := s.Store.Get(v.(int64))
+	d, err := s.Store.Get(ws, v.(int64))
 	if err != nil {
 		return nil
 	}
@@ -143,7 +144,7 @@ func echoes(head []byte, hashes []string) bool {
 
 // corrArgs is the --corrections option of an analysis run on `host` (0: this computer): the corrections in force for every registered file it reads (by the
 // --input, --reference, --weights and --ref-weights it was given), and their hashes, to check against the program's reply.
-func (s *Server) corrArgs(host int64, args []string) (opt string, hashes []string, snapshot []map[string]any) {
+func (s *Server) corrArgs(ws workspace.ID, host int64, args []string) (opt string, hashes []string, snapshot []map[string]any) {
 	sent := map[string]any{}
 	for i := 0; i+1 < len(args); i++ {
 		switch args[i] {
@@ -156,7 +157,7 @@ func (s *Server) corrArgs(host int64, args []string) (opt string, hashes []strin
 		if !ok {
 			continue
 		}
-		d, err := s.Store.Get(v.(int64))
+		d, err := s.Store.Get(ws, v.(int64))
 		if err != nil {
 			continue
 		}
@@ -242,7 +243,7 @@ func (s *Server) correctionsDataset(w http.ResponseWriter, r *http.Request) (cat
 	if !ok {
 		return catalog.Dataset{}, false
 	}
-	d, code, msg := s.dataset(id)
+	d, code, msg := s.dataset(wsOf(r), id)
 	if code != 0 {
 		fail(w, code, msg)
 		return d, false
@@ -290,13 +291,13 @@ func (s *Server) listCorrections(w http.ResponseWriter, r *http.Request) {
 	if has {
 		fileBunit = &fu
 	}
-	noBright, _ := s.Store.NoBrightnessIDs()
+	noBright, _ := s.Store.NoBrightnessIDs(wsOf(r))
 	writeJSON(w, 200, map[string]any{"datasetId": d.ID, "current": d.Corrections, "history": hist, "last": lastRecordID(hist),
 		"fileBunit": fileBunit, "unitCorrectable": has && !noBright[d.ID]})
 }
 
 // proposal builds the state a request would put in force, from the state in force now. It never touches the store.
-func (s *Server) proposal(d catalog.Dataset, in corrInput) (next, base catalog.CorrectionState, code int, msg string) {
+func (s *Server) proposal(ws workspace.ID, d catalog.Dataset, in corrInput) (next, base catalog.CorrectionState, code int, msg string) {
 	if d.Corrections != nil {
 		base = d.Corrections.State
 	}
@@ -359,7 +360,7 @@ func (s *Server) proposal(d catalog.Dataset, in corrInput) (next, base catalog.C
 			if !has {
 				return next, base, 409, "the file has no BUNIT: declare its unit instead (a declaration fills a missing unit; a correction replaces one the file states)"
 			}
-			if bad, _ := s.Store.NoBrightnessIDs(); bad[d.ID] {
+			if bad, _ := s.Store.NoBrightnessIDs(ws); bad[d.ID] {
 				return next, base, 409, catalog.ErrNotBrightness.Error()
 			}
 			if u == fu {
@@ -466,7 +467,7 @@ func fillFileValues(next *catalog.CorrectionState, preview map[string]any) {
 }
 
 // impactFor lists what depends on the dataset's coordinates or unit, for the keywords that change.
-func (s *Server) impactFor(d catalog.Dataset, changes []catalog.CorrectionChange) lifecycle.CorrectionImpact {
+func (s *Server) impactFor(ws workspace.ID, d catalog.Dataset, changes []catalog.CorrectionChange) lifecycle.CorrectionImpact {
 	wcs, unit := false, false
 	for _, c := range changes {
 		if c.What == "BUNIT" {
@@ -475,7 +476,7 @@ func (s *Server) impactFor(d catalog.Dataset, changes []catalog.CorrectionChange
 			wcs = true
 		}
 	}
-	im, err := lifecycle.New(s.Store.DB()).CorrectionImpact(d.ID, wcs, unit)
+	im, err := lifecycle.New(s.Store.DB()).CorrectionImpact(ws, d.ID, wcs, unit)
 	if err != nil {
 		log.Printf("corrections impact: %v", err)
 	}
@@ -494,7 +495,7 @@ func (s *Server) previewCorrection(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 16<<10, &in, true) {
 		return
 	}
-	next, base, code, msg := s.proposal(d, in)
+	next, base, code, msg := s.proposal(wsOf(r), d, in)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -517,7 +518,7 @@ func (s *Server) previewCorrection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, 200, map[string]any{"action": in.Action, "changes": changes, "state": next, "preview": pv, "impact": s.impactFor(d, changes)})
+	writeJSON(w, 200, map[string]any{"action": in.Action, "changes": changes, "state": next, "preview": pv, "impact": s.impactFor(wsOf(r), d, changes)})
 }
 
 // saveCorrection is POST /api/datasets/{id}/corrections: append a record (set, revert, confirm, withdraw). The proposal is
@@ -535,7 +536,7 @@ func (s *Server) saveCorrection(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "expect is required: the latest record you looked at (0 for none)")
 		return
 	}
-	next, base, code, msg := s.proposal(d, in)
+	next, base, code, msg := s.proposal(wsOf(r), d, in)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -597,7 +598,7 @@ func (s *Server) appendCorrection(ctx context.Context, w http.ResponseWriter, d 
 			s.audit(ctx, "offline copies forgotten", "dataset", d.ID, d.Name+": corrections changed")
 		}
 	}
-	nd, code, msg := s.dataset(d.ID)
+	nd, code, msg := s.dataset(wsCtx(ctx), d.ID)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -816,7 +817,7 @@ func (s *Server) previewSidecar(w http.ResponseWriter, r *http.Request) {
 	}
 	changes := catalog.Diff(base, sc.Corrections)
 	writeJSON(w, 200, map[string]any{"match": match, "matchText": text, "madeFor": sc.File.Name, "applies": match == idty.Verified || match == idty.Probable,
-		"changes": changes, "state": sc.Corrections, "history": len(sc.History), "preview": pv, "impact": s.impactFor(d, changes)})
+		"changes": changes, "state": sc.Corrections, "history": len(sc.History), "preview": pv, "impact": s.impactFor(wsOf(r), d, changes)})
 }
 
 // importSidecar is POST /api/datasets/{id}/corrections/sidecar: apply a sidecar's corrections as one new record, only after the

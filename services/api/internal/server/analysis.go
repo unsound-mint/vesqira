@@ -25,6 +25,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // AnalysisConfig locates the analysis program and where its results go. DerivedDir must be one of the source roots,
@@ -93,7 +94,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, err.Error())
 		return
 	}
-	d, code, msg := s.imageDataset(in.DatasetID)
+	d, code, msg := s.imageDataset(wsOf(r), in.DatasetID)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -123,7 +124,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, "masks are applied by statistics, moment maps and relative orientation; this analysis does not take them")
 			return
 		}
-		specs, safe, _, code, msg := s.maskSpecs(in.Masks, d, false)
+		specs, safe, _, code, msg := s.maskSpecs(wsOf(r), in.Masks, d, false)
 		if code != 0 {
 			fail(w, code, msg)
 			return
@@ -131,7 +132,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--masks", specs)
 		maskSafe = safe
 	}
-	carry, code, msg := s.planCarry(d, in.Op, in.CarryMasks)
+	carry, code, msg := s.planCarry(wsOf(r), d, in.Op, in.CarryMasks)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -145,7 +146,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		declared["input"] = u
 	}
 	if in.Op == "align" || in.Op == "axial_diff" || in.Op == "scalar_diff" {
-		ref, code, msg := s.imageDataset(in.ReferenceID)
+		ref, code, msg := s.imageDataset(wsOf(r), in.ReferenceID)
 		if code != 0 {
 			fail(w, 422, "reference: "+msg)
 			return
@@ -253,7 +254,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: in.Op, Params: params, Sources: sources, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
-	nd = s.finishAxialResult(analysisOutcome{Summary: res.Summary, Software: res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(waiting(r.Context()), p) }, in.Op, sources, params)
+	nd = s.finishAxialResult(wsOf(r), analysisOutcome{Summary: res.Summary, Software: res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(waiting(r.Context()), p) }, in.Op, sources, params)
 	writeJSON(w, 201, map[string]any{"dataset": nd, "summary": res.Summary})
 }
 
@@ -261,11 +262,11 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 // killed with its children when the request ends, and reads its one JSON reply. code is the HTTP status to answer with when it
 // is not 0; the caller removes any output it named.
 func (s *Server) runAnalysisProgram(r *http.Request, args []string) (analysisOutcome, int, string) {
-	return s.runAnalysisProgramCtx(r.Context(), args)
+	return s.runAnalysisProgramCtx(wsOf(r), r.Context(), args)
 }
 
 // runAnalysisProgramCtx is runAnalysisProgram for a caller with a context and no request (an import rule applying a mask).
-func (s *Server) runAnalysisProgramCtx(parent context.Context, args []string) (analysisOutcome, int, string) {
+func (s *Server) runAnalysisProgramCtx(ws workspace.ID, parent context.Context, args []string) (analysisOutcome, int, string) {
 	if s.Load != nil { // heavy class: wait for a slot, visible to the person who asked (workload.go)
 		label := "analysis"
 		if len(args) > 2 {
@@ -277,7 +278,7 @@ func (s *Server) runAnalysisProgramCtx(parent context.Context, args []string) (a
 		}
 		defer release()
 	}
-	corrOpt, corrHashes, corrSnap := s.corrArgs(0, args)
+	corrOpt, corrHashes, corrSnap := s.corrArgs(ws, 0, args)
 	if corrOpt != "" {
 		args = append(args, corrOpt)
 	}
@@ -350,7 +351,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, err.Error())
 		return
 	}
-	d, code, msg := s.imageDataset(in.DatasetID)
+	d, code, msg := s.imageDataset(wsOf(r), in.DatasetID)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -369,7 +370,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	}
 	// masks carried into the result (ADR 0055, ADR 0064 addendum): the same plan as a run here, which refuses a mask the file does not have,
 	// a stale one and an undecided one; the files are written by the job into its own output folder (below)
-	carry, code, msg := s.planCarry(d, in.Op, in.CarryMasks)
+	carry, code, msg := s.planCarry(wsOf(r), d, in.Op, in.CarryMasks)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -383,7 +384,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, "masks are applied by statistics, moment maps and relative orientation; this analysis does not take them")
 			return
 		}
-		specs, safe, _, code, msg := s.maskSpecs(in.Masks, d, false)
+		specs, safe, _, code, msg := s.maskSpecs(wsOf(r), in.Masks, d, false)
 		if code != 0 {
 			fail(w, code, msg)
 			return
@@ -416,7 +417,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	carryExtra := ""
 	var refDS *catalog.Dataset
 	if in.Op == "align" {
-		ref, code, msg := s.imageDataset(in.ReferenceID)
+		ref, code, msg := s.imageDataset(wsOf(r), in.ReferenceID)
 		if code != 0 {
 			fail(w, 422, "reference: "+msg)
 			return
@@ -438,7 +439,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 		files = append(files, jobFile{"reference", refPath, *refDS})
 	}
 	if ax != nil && ax.weights != "" && d.Interpretation != nil && d.Interpretation.ReliabilityID != nil {
-		if wd, err := s.Store.Get(*d.Interpretation.ReliabilityID); err == nil {
+		if wd, err := s.Store.Get(wsOf(r), *d.Interpretation.ReliabilityID); err == nil {
 			files = append(files, jobFile{"weights", ax.weights, wd})
 		}
 	}
@@ -545,13 +546,13 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 	if p.Axial != nil {
 		in := catalog.Interpretation{Kind: "axial_orientation", Unit: p.Axial.Unit, Frame: p.Axial.Frame, Quantity: p.Axial.Quantity}
 		reg := func(fp string) (catalog.Dataset, int, string) { return s.registerRemoteFile(ctx, h.Host, fp) }
-		d = s.finishAxialResult(analysisOutcome{Summary: res.Summary, Software: res.Software}, d, &axialRun{interp: in}, remoteRelPath(j.OutputDir), reg, p.Op, p.Sources, params)
+		d = s.finishAxialResult(wsCtx(ctx), analysisOutcome{Summary: res.Summary, Software: res.Software}, d, &axialRun{interp: in}, remoteRelPath(j.OutputDir), reg, p.Op, p.Sources, params)
 	}
 	return d, note, 0, ""
 }
 
 // derivedSummary is the reviewer-safe description of how a dataset was made, or nil.
-func (s *Server) derivedSummary(datasetID int64) *derived.Summary {
+func (s *Server) derivedSummary(ws workspace.ID, datasetID int64) *derived.Summary {
 	if s.Derived == nil {
 		return nil
 	}
@@ -565,7 +566,7 @@ func (s *Server) derivedSummary(datasetID int64) *derived.Summary {
 	_ = json.Unmarshal(rec.Summary, &sum)
 	names := []string{}
 	for _, id := range rec.Sources {
-		if d, err := s.Store.Get(id); err == nil {
+		if d, err := s.Store.Get(ws, id); err == nil {
 			names = append(names, d.Name)
 		}
 	}

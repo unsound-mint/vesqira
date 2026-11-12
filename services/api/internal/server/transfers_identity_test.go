@@ -9,6 +9,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // hostDataset registers a file of the stand-in host as a dataset, with or without the full SHA-256 recorded for it.
@@ -19,14 +20,14 @@ func (e *xferEnv) hostDataset(name string, withFull bool) catalog.Dataset {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	d, err := e.cat.Upsert(catalog.Dataset{HostID: e.host.ID, Path: p, Name: name, SizeBytes: info.Size(), ModifiedAt: info.ModTime(), Header: json.RawMessage(`{}`)})
+	d, err := e.cat.Upsert(workspace.Local, "local-owner", catalog.Dataset{HostID: e.host.ID, Path: p, Name: name, SizeBytes: info.Size(), ModifiedAt: info.ModTime(), Header: json.RawMessage(`{}`)})
 	if err != nil {
 		e.t.Fatal(err)
 	}
 	if withFull {
 		b, _ := os.ReadFile(p)
 		for _, l := range d.Locations {
-			if err := e.cat.SetFingerprint(l.ID, "full", sha(b), "test", info.Size(), info.ModTime().UnixNano()); err != nil {
+			if err := e.cat.SetFingerprint(workspace.Local, l.ID, "full", sha(b), "test", info.Size(), info.ModTime().UnixNano()); err != nil {
 				e.t.Fatal(err)
 			}
 		}
@@ -41,7 +42,7 @@ func TestAVerifiedDownloadOfARegisteredHostFileBecomesAVerifiedLocation(t *testi
 	d := e.hostDataset("cube.fits", true)
 	e.download("cube.fits", nil)
 	e.run()
-	locs, err := e.cat.Locations(d.ID)
+	locs, err := e.cat.Locations(workspace.Local, d.ID)
 	if err != nil || len(locs) != 2 {
 		t.Fatalf("%+v %v", locs, err)
 	}
@@ -59,7 +60,7 @@ func TestAVerifiedDownloadOfARegisteredHostFileBecomesAVerifiedLocation(t *testi
 
 func (e *xferEnv) auditActions(action string) []string {
 	var out []string
-	es, _ := e.srv.Audit.List("", 0, 500)
+	es, _ := e.srv.Audit.List(workspace.Local, "", 0, 500)
 	for _, a := range es {
 		if a.Action == action {
 			out = append(out, a.Detail)
@@ -75,7 +76,7 @@ func TestAVerifiedDownloadRecordsTheSourcesFullHashWhenItStillIsTheRegisteredFil
 	d := e.hostDataset("nohash.fits", false) // registered, never hashed in full
 	tr := e.download("nohash.fits", nil)
 	e.run()
-	locs, _ := e.cat.Locations(d.ID)
+	locs, _ := e.cat.Locations(workspace.Local, d.ID)
 	if len(locs) != 2 {
 		t.Fatalf("%+v", locs)
 	}
@@ -108,12 +109,12 @@ func TestADownloadIsNotLinkedAndNothingIsRecordedWhenTheSourceChangedSinceRegist
 	e.download("unrelated.fits", nil)
 	e.run()
 	for _, id := range []int64{d.ID, d2.ID} {
-		locs, _ := e.cat.Locations(id)
+		locs, _ := e.cat.Locations(workspace.Local, id)
 		if len(locs) != 1 {
 			t.Errorf("dataset %d got a location without evidence: %+v", id, locs)
 		}
 	}
-	if locs, _ := e.cat.Locations(d.ID); locs[0].Full != nil {
+	if locs, _ := e.cat.Locations(workspace.Local, d.ID); locs[0].Full != nil {
 		t.Errorf("a hash was recorded for bytes that are not the registered ones: %+v", locs[0].Full)
 	}
 	if got := e.auditActions("downloaded copy not linked"); len(got) != 2 || !strings.Contains(strings.Join(got, "\n"), "may be stale") {
@@ -130,12 +131,12 @@ func TestRegisteringAVerifiedDownloadWithTheSameBytesAsADatasetOffersALocation(t
 	own := filepath.Join(e.local, "elsewhere.fits")
 	os.WriteFile(own, b, 0o644)
 	info, _ := os.Stat(own)
-	d, err := e.cat.Upsert(catalog.Dataset{Path: own, Name: "elsewhere.fits", SizeBytes: info.Size(), ModifiedAt: info.ModTime(), Header: json.RawMessage(`{}`)})
+	d, err := e.cat.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: own, Name: "elsewhere.fits", SizeBytes: info.Size(), ModifiedAt: info.ModTime(), Header: json.RawMessage(`{}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, l := range d.Locations {
-		if err := e.cat.SetFingerprint(l.ID, "full", sha(b), "test", info.Size(), info.ModTime().UnixNano()); err != nil {
+		if err := e.cat.SetFingerprint(workspace.Local, l.ID, "full", sha(b), "test", info.Size(), info.ModTime().UnixNano()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -156,7 +157,7 @@ func TestRegisteringAVerifiedDownloadWithTheSameBytesAsADatasetOffersALocation(t
 	if r.StatusCode != 409 || offer.Code != "same_content" || len(offer.Matches) != 1 || offer.Matches[0].DatasetID != d.ID || offer.Matches[0].Relation != "verified" {
 		t.Fatalf("%d %s", r.StatusCode, body)
 	}
-	if all, _ := e.cat.List(); len(all) != 1 {
+	if all, _ := e.cat.List(workspace.Local); len(all) != 1 {
 		t.Fatalf("a duplicate dataset was created: %d datasets", len(all))
 	}
 	// the researcher's choice to keep it as its own dataset is honoured

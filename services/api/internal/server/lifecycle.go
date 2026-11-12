@@ -11,6 +11,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/lifecycle"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Archive, restore and delete for datasets, runs, figures and boards (ADR 0041). Deleting an entry forgets it in the
@@ -82,8 +83,8 @@ type impactView struct {
 	OwnedBytes *ownedBytes `json:"ownedBytes"`
 }
 
-func (s *Server) impactOf(kind string, id int64) (impactView, int, string) {
-	im, err := s.lc().Impact(kind, id)
+func (s *Server) impactOf(ws workspace.ID, kind string, id int64) (impactView, int, string) {
+	im, err := s.lc().Impact(ws, kind, id)
 	if errors.Is(err, lifecycle.ErrNotFound) {
 		return impactView{}, 404, kind + " not found"
 	}
@@ -95,7 +96,7 @@ func (s *Server) impactOf(kind string, id int64) (impactView, int, string) {
 	switch kind {
 	case lifecycle.KindDataset:
 		v.FileNote = "The file on disk is not deleted."
-		if d, err := s.Store.Get(id); err == nil {
+		if d, err := s.Store.Get(ws, id); err == nil {
 			v.OwnedBytes = s.owned(d)
 			if v.OwnedBytes != nil {
 				v.FileNote = "The original this was made from is not touched."
@@ -113,7 +114,7 @@ func (s *Server) lifecycleImpact(kind string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		v, code, msg := s.impactOf(kind, id)
+		v, code, msg := s.impactOf(wsOf(r), kind, id)
 		if code != 0 {
 			fail(w, code, msg)
 			return
@@ -131,9 +132,9 @@ func (s *Server) lifecycleArchive(kind string, archive bool) http.HandlerFunc {
 		var changed bool
 		var err error
 		if archive {
-			changed, err = s.lc().Archive(kind, id)
+			changed, err = s.lc().Archive(wsOf(r), kind, id)
 		} else {
-			changed, err = s.lc().Restore(kind, id)
+			changed, err = s.lc().Restore(wsOf(r), kind, id)
 		}
 		if errors.Is(err, lifecycle.ErrNotFound) {
 			fail(w, 404, kind+" not found")
@@ -144,7 +145,7 @@ func (s *Server) lifecycleArchive(kind string, archive bool) http.HandlerFunc {
 			fail(w, 500, "internal error")
 			return
 		}
-		v, _, _ := s.impactOf(kind, id)
+		v, _, _ := s.impactOf(wsOf(r), kind, id)
 		if changed {
 			action := "restored"
 			if archive {
@@ -173,7 +174,7 @@ func (s *Server) lifecycleDelete(kind string) http.HandlerFunc {
 			fail(w, 400, "send the impactDigest of the preview you looked at")
 			return
 		}
-		pre, code, msg := s.impactOf(kind, id)
+		pre, code, msg := s.impactOf(wsOf(r), kind, id)
 		if code != 0 {
 			fail(w, code, msg)
 			return
@@ -186,16 +187,16 @@ func (s *Server) lifecycleDelete(kind string) http.HandlerFunc {
 			fail(w, 400, "only a file Vesqira wrote itself can be removed; a registered file is never deleted")
 			return
 		}
-		res, err := s.lc().Delete(kind, id, in.ImpactDigest)
+		res, err := s.lc().Delete(wsOf(r), kind, id, in.ImpactDigest)
 		var changed *lifecycle.ChangedError
 		var blocked *lifecycle.BlockedError
 		switch {
 		case errors.As(err, &changed):
-			v, _, _ := s.impactOf(kind, id)
+			v, _, _ := s.impactOf(wsOf(r), kind, id)
 			writeJSON(w, 409, map[string]any{"error": "What depends on this changed since you looked. Review the new impact and confirm again.", "impact": v})
 			return
 		case errors.As(err, &blocked):
-			v, _, _ := s.impactOf(kind, id)
+			v, _, _ := s.impactOf(wsOf(r), kind, id)
 			writeJSON(w, 409, map[string]any{"error": blocked.Error(), "impact": v})
 			return
 		case errors.Is(err, lifecycle.ErrNotFound):

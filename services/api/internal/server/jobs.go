@@ -277,7 +277,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, "the run this job repeats does not exist")
 			return
 		}
-		if _, err := s.Runs.Get(*in.ParentRunID); err != nil {
+		if _, err := s.Runs.Get(wsOf(r), *in.ParentRunID); err != nil {
 			if errors.Is(err, runs.ErrNotFound) {
 				fail(w, 422, "the run this job repeats does not exist")
 			} else {
@@ -288,7 +288,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		job.ParentRunID = in.ParentRunID
 	}
-	rerunMode, expectRev, aerr := s.rerunFor(in.Template, in.ParentRunID, in.RerunMode)
+	rerunMode, expectRev, aerr := s.rerunFor(wsOf(r), in.Template, in.ParentRunID, in.RerunMode)
 	if aerr != nil {
 		s.failAPI(w, aerr)
 		return
@@ -598,7 +598,7 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		run = s.linkJobRun(rctx, j, h, run)
-		writeJSON(w, 201, s.runView(run))
+		writeJSON(w, 201, s.runView(wsOf(r), run))
 		return
 	}
 	if j.Template == "analysis" {
@@ -623,5 +623,5 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	run = s.linkJobRun(ctx, j, h, run)
-	writeJSON(w, 201, s.runView(run))
+	writeJSON(w, 201, s.runView(wsOf(r), run))
 }

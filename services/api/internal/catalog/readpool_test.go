@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The read pool sees what the writer committed and cannot write.
@@ -21,7 +23,7 @@ func TestReadPoolReadsAndRefusesWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ro.Close()
-	if _, err := st.Upsert(Dataset{Path: "/d/a.fits", Name: "a.fits", Header: []byte(`{}`)}); err != nil {
+	if _, err := st.Upsert(workspace.Local, "local-owner", Dataset{Path: "/d/a.fits", Name: "a.fits", Header: []byte(`{}`)}); err != nil {
 		t.Fatal(err)
 	}
 	var n int

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 var (
@@ -189,20 +190,20 @@ func insertVersion(tx *sql.Tx, id int64, v Version) error {
 }
 
 // Create makes a new subset of source with v as its first version (the version number and kind are set here).
-func (s *Store) Create(sourceID int64, v Version) (Subset, error) {
+func (s *Store) Create(ws workspace.ID, by string, sourceID int64, v Version) (Subset, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Subset{}, err
 	}
 	defer tx.Rollback()
 	var n int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM subsets WHERE source_id=?`, sourceID).Scan(&n); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM subsets WHERE source_id=? AND workspace_id=?`, sourceID, ws).Scan(&n); err != nil {
 		return Subset{}, err
 	}
 	if n >= MaxPerSource {
 		return Subset{}, fmt.Errorf("%w: at most %d subsets per dataset", ErrInvalid, MaxPerSource)
 	}
-	res, err := tx.Exec(`INSERT INTO subsets(source_id,created_at) VALUES(?,?)`, sourceID, time.Now().Unix())
+	res, err := tx.Exec(`INSERT INTO subsets(source_id,created_at,workspace_id,created_by) VALUES(?,?,?,?)`, sourceID, time.Now().Unix(), ws, by)
 	if err != nil {
 		return Subset{}, err
 	}
@@ -214,18 +215,18 @@ func (s *Store) Create(sourceID int64, v Version) (Subset, error) {
 	if err := tx.Commit(); err != nil {
 		return Subset{}, err
 	}
-	return s.Get(id)
+	return s.Get(ws, id)
 }
 
 // AddVersion appends v to subset id as its next version. expect is the version the caller was looking at: a newer one is ErrConflict.
-func (s *Store) AddVersion(id int64, expect int, kind string, v Version) (Subset, error) {
+func (s *Store) AddVersion(ws workspace.ID, id int64, expect int, kind string, v Version) (Subset, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Subset{}, err
 	}
 	defer tx.Rollback()
 	var cur sql.NullInt64
-	if err := tx.QueryRow(`SELECT MAX(version) FROM subset_versions WHERE subset_id=?`, id).Scan(&cur); err != nil {
+	if err := tx.QueryRow(`SELECT MAX(version) FROM subset_versions WHERE subset_id=? AND subset_id IN (SELECT id FROM subsets WHERE workspace_id=?)`, id, ws).Scan(&cur); err != nil {
 		return Subset{}, err
 	}
 	if !cur.Valid {
@@ -241,11 +242,15 @@ func (s *Store) AddVersion(id int64, expect int, kind string, v Version) (Subset
 	if err := tx.Commit(); err != nil {
 		return Subset{}, err
 	}
-	return s.Get(id)
+	return s.Get(ws, id)
 }
 
-const currentRow = `SELECT s.id,s.source_id,s.created_at,v.version,v.kind,v.name,v.reason,v.definition,v.source_size,v.source_mtime_ns,v.source_identity,v.author,v.created_at
-	FROM subsets s JOIN subset_versions v ON v.subset_id=s.id AND v.version=(SELECT MAX(version) FROM subset_versions WHERE subset_id=s.id)`
+// currentRow selects the workspace's subsets with their latest version; the caller appends conditions with AND and its arguments after ws.
+func currentRow(ws workspace.ID) (string, []any) {
+	return `SELECT s.id,s.source_id,s.created_at,v.version,v.kind,v.name,v.reason,v.definition,v.source_size,v.source_mtime_ns,v.source_identity,v.author,v.created_at
+	FROM subsets s JOIN subset_versions v ON v.subset_id=s.id AND v.version=(SELECT MAX(version) FROM subset_versions WHERE subset_id=s.id)
+	WHERE s.workspace_id=?`, []any{ws}
+}
 
 func scanSubset(row interface{ Scan(...any) error }) (Subset, error) {
 	var sub Subset
@@ -263,8 +268,9 @@ func scanSubset(row interface{ Scan(...any) error }) (Subset, error) {
 	return sub, nil
 }
 
-func (s *Store) Get(id int64) (Subset, error) {
-	sub, err := scanSubset(s.db.QueryRow(currentRow+` WHERE s.id=?`, id))
+func (s *Store) Get(ws workspace.ID, id int64) (Subset, error) {
+	q, args := currentRow(ws)
+	sub, err := scanSubset(s.db.QueryRow(q+` AND s.id=?`, append(args, id)...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return sub, ErrNotFound
 	}
@@ -272,12 +278,12 @@ func (s *Store) Get(id int64) (Subset, error) {
 }
 
 // List is every subset with its current version, oldest first; sourceID 0 lists all of them.
-func (s *Store) List(sourceID int64) ([]Subset, error) {
-	q, args := currentRow+` ORDER BY s.id`, []any{}
+func (s *Store) List(ws workspace.ID, sourceID int64) ([]Subset, error) {
+	q, args := currentRow(ws)
 	if sourceID != 0 {
-		q, args = currentRow+` WHERE s.source_id=? ORDER BY s.id`, []any{sourceID}
+		q, args = q+` AND s.source_id=?`, append(args, sourceID)
 	}
-	rows, err := s.db.Query(q, args...)
+	rows, err := s.db.Query(q+` ORDER BY s.id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -294,8 +300,8 @@ func (s *Store) List(sourceID int64) ([]Subset, error) {
 }
 
 // Versions is the whole history of a subset, oldest first.
-func (s *Store) Versions(id int64) ([]Version, error) {
-	rows, err := s.db.Query(`SELECT `+versionCols+` FROM subset_versions WHERE subset_id=? ORDER BY version`, id)
+func (s *Store) Versions(ws workspace.ID, id int64) ([]Version, error) {
+	rows, err := s.db.Query(`SELECT `+versionCols+` FROM subset_versions WHERE subset_id=? AND subset_id IN (SELECT id FROM subsets WHERE workspace_id=?) ORDER BY version`, id, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -312,16 +318,16 @@ func (s *Store) Versions(id int64) ([]Version, error) {
 }
 
 // Delete forgets a subset and its history. Files materialised from it are ordinary datasets and stay.
-func (s *Store) Delete(id int64) error {
+func (s *Store) Delete(ws workspace.ID, id int64) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM subset_versions WHERE subset_id=?`, id); err != nil {
+	if _, err := tx.Exec(`DELETE FROM subset_versions WHERE subset_id=? AND subset_id IN (SELECT id FROM subsets WHERE workspace_id=?)`, id, ws); err != nil {
 		return err
 	}
-	res, err := tx.Exec(`DELETE FROM subsets WHERE id=?`, id)
+	res, err := tx.Exec(`DELETE FROM subsets WHERE id=? AND workspace_id=?`, id, ws)
 	if err != nil {
 		return err
 	}

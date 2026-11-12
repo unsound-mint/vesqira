@@ -18,6 +18,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 const (
@@ -254,9 +255,9 @@ func nonNil(m []Metric) []Metric {
 }
 
 // IDByDir is the id of the run imported from dir (the canonical folder, host-qualified for a remote one), or 0.
-func (s *Store) IDByDir(dir string) (int64, error) {
+func (s *Store) IDByDir(ws workspace.ID, dir string) (int64, error) {
 	var id int64
-	err := s.db.QueryRow(`SELECT id FROM runs WHERE dir=?`, dir).Scan(&id)
+	err := s.db.QueryRow(`SELECT id FROM runs WHERE workspace_id=? AND dir=?`, ws, dir).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
@@ -264,7 +265,7 @@ func (s *Store) IDByDir(dir string) (int64, error) {
 }
 
 // Save records a run (or refreshes it when the same directory is imported again) with its linked outputs.
-func (s *Store) Save(dir string, p Parsed, outs []Output) (Run, error) {
+func (s *Store) Save(ws workspace.ID, by, dir string, p Parsed, outs []Output) (Run, error) {
 	pj, _ := jsonMarshal(p.Params)
 	dj, _ := jsonMarshal(p.Diagnostics)
 	mj, _ := jsonMarshal(nonNil(p.Metrics))
@@ -273,17 +274,17 @@ func (s *Store) Save(dir string, p Parsed, outs []Output) (Run, error) {
 		return Run{}, err
 	}
 	defer tx.Rollback()
-	_, err = tx.Exec(`INSERT INTO runs(dir,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(dir) DO UPDATE SET name=excluded.name,imported_at=excluded.imported_at,generated_at=excluded.generated_at,
+	_, err = tx.Exec(`INSERT INTO runs(dir,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,workspace_id,created_by)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(workspace_id,dir) DO UPDATE SET name=excluded.name,imported_at=excluded.imported_at,generated_at=excluded.generated_at,
 			git_commit=excluded.git_commit,elapsed=excluded.elapsed,input_name=excluded.input_name,input_size=excluded.input_size,
 			params=excluded.params,diagnostics=excluded.diagnostics,metrics=excluded.metrics`,
-		dir, p.Name, p.Kind, time.Now().Unix(), p.GeneratedAt, p.GitCommit, p.ElapsedSeconds, p.InputName, p.InputSizeBytes, pj, dj, mj)
+		dir, p.Name, p.Kind, time.Now().Unix(), p.GeneratedAt, p.GitCommit, p.ElapsedSeconds, p.InputName, p.InputSizeBytes, pj, dj, mj, ws, by)
 	if err != nil {
 		return Run{}, err
 	}
 	var id int64
-	if err := tx.QueryRow(`SELECT id FROM runs WHERE dir=?`, dir).Scan(&id); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM runs WHERE workspace_id=? AND dir=?`, ws, dir).Scan(&id); err != nil {
 		return Run{}, err
 	}
 	if _, err := tx.Exec(`DELETE FROM run_outputs WHERE run_id=?`, id); err != nil {
@@ -297,7 +298,7 @@ func (s *Store) Save(dir string, p Parsed, outs []Output) (Run, error) {
 	if err := tx.Commit(); err != nil {
 		return Run{}, err
 	}
-	return s.Get(id)
+	return s.Get(ws, id)
 }
 
 var runCols = `id,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,environment,controls,` + schema.ArchivedExpr("run", "runs.id")
@@ -351,8 +352,8 @@ func (s *Store) outputs(id int64) ([]Output, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) Get(id int64) (Run, error) {
-	r, err := scanRun(s.db.QueryRow(`SELECT `+runCols+` FROM runs WHERE id=?`, id))
+func (s *Store) Get(ws workspace.ID, id int64) (Run, error) {
+	r, err := scanRun(s.db.QueryRow(`SELECT `+runCols+` FROM runs WHERE id=? AND workspace_id=?`, id, ws))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, ErrNotFound
 	}
@@ -376,14 +377,14 @@ func (s *Store) review(id int64) Review {
 }
 
 // SetReview records the researcher's assessment. Completion of the computation is not an assessment of the science.
-func (s *Store) SetReview(id int64, rv Review) error {
+func (s *Store) SetReview(ws workspace.ID, id int64, rv Review) error {
 	if !qcValues[rv.QC] || !interpValues[rv.Interpretation] {
 		return errors.New("unknown assessment value")
 	}
 	if len(rv.Note) > 500 {
 		rv.Note = rv.Note[:500]
 	}
-	if _, err := s.Get(id); err != nil {
+	if _, err := s.Get(ws, id); err != nil {
 		return err
 	}
 	// The current assessment and its history change together: nothing is ever overwritten without a trace.
@@ -410,8 +411,8 @@ type ReviewRevision struct {
 }
 
 // History lists the assessments of a run, newest first. A run never assessed has none.
-func (s *Store) History(id int64) ([]ReviewRevision, error) {
-	if _, err := s.Get(id); err != nil {
+func (s *Store) History(ws workspace.ID, id int64) ([]ReviewRevision, error) {
+	if _, err := s.Get(ws, id); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.Query(`SELECT at,qc,interpretation,note FROM run_review_history WHERE run_id=? ORDER BY id DESC`, id)
@@ -432,8 +433,8 @@ func (s *Store) History(id int64) ([]ReviewRevision, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) List() ([]Run, error) {
-	rows, err := s.db.Query(`SELECT ` + runCols + ` FROM runs ORDER BY imported_at DESC, id DESC`)
+func (s *Store) List(ws workspace.ID) ([]Run, error) {
+	rows, err := s.db.Query(`SELECT `+runCols+` FROM runs WHERE workspace_id=? ORDER BY imported_at DESC, id DESC`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -459,8 +460,8 @@ func (s *Store) List() ([]Run, error) {
 }
 
 // OutputRoles maps every dataset that is some run's output to its role in that run (the latest run when several list it).
-func (s *Store) OutputRoles() (map[int64]string, error) {
-	rows, err := s.db.Query(`SELECT dataset_id,role FROM run_outputs ORDER BY run_id`)
+func (s *Store) OutputRoles(ws workspace.ID) (map[int64]string, error) {
+	rows, err := s.db.Query(`SELECT o.dataset_id,o.role FROM run_outputs o JOIN runs r ON r.id=o.run_id WHERE r.workspace_id=? ORDER BY o.run_id`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -478,23 +479,23 @@ func (s *Store) OutputRoles() (map[int64]string, error) {
 }
 
 // ForDataset returns the reviewer-safe summary of the run that produced a dataset, or nil.
-func (s *Store) ForDataset(datasetID int64) (*Summary, error) {
+func (s *Store) ForDataset(ws workspace.ID, datasetID int64) (*Summary, error) {
 	var id int64
 	var role string
-	err := s.db.QueryRow(`SELECT run_id,role FROM run_outputs WHERE dataset_id=? ORDER BY run_id DESC LIMIT 1`, datasetID).Scan(&id, &role)
+	err := s.db.QueryRow(`SELECT o.run_id,o.role FROM run_outputs o JOIN runs r ON r.id=o.run_id WHERE o.dataset_id=? AND r.workspace_id=? ORDER BY o.run_id DESC LIMIT 1`, datasetID, ws).Scan(&id, &role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return s.SummaryOf(id, role)
+	return s.SummaryOf(ws, id, role)
 }
 
 // SummaryOf is the reviewer-safe account of a run (no paths, directories or hosts), as a figure's provenance and a
 // published report show it. role is the output's role when the summary is about one output, else "".
-func (s *Store) SummaryOf(id int64, role string) (*Summary, error) {
-	r, err := s.Get(id)
+func (s *Store) SummaryOf(ws workspace.ID, id int64, role string) (*Summary, error) {
+	r, err := s.Get(ws, id)
 	if err != nil {
 		return nil, err
 	}
@@ -525,18 +526,18 @@ func mergeParams(a, b []Param) []Param {
 
 // SetEnvironment keeps what a job observed about where it ran. It replaces an earlier record: the latest import of the run's
 // folder is the one that read the file.
-func (s *Store) SetEnvironment(id int64, facts []EnvFact) error {
+func (s *Store) SetEnvironment(ws workspace.ID, id int64, facts []EnvFact) error {
 	b, err := jsonMarshal(facts)
 	if err != nil {
 		return err
 	}
-	res, err := s.db.Exec(`UPDATE runs SET environment=? WHERE id=?`, b, id)
+	res, err := s.db.Exec(`UPDATE runs SET environment=? WHERE id=? AND workspace_id=?`, b, id, ws)
 	return affected(res, err)
 }
 
 // SetControls replaces the controls stated for a run; nil or an empty set clears them. Blocks must already be validated and
 // stamped (Controls.Declare).
-func (s *Store) SetControls(id int64, c *Controls) error {
+func (s *Store) SetControls(ws workspace.ID, id int64, c *Controls) error {
 	j := ""
 	if !c.Empty() {
 		b, err := jsonMarshal(c)
@@ -545,7 +546,7 @@ func (s *Store) SetControls(id int64, c *Controls) error {
 		}
 		j = b
 	}
-	res, err := s.db.Exec(`UPDATE runs SET controls=? WHERE id=?`, j, id)
+	res, err := s.db.Exec(`UPDATE runs SET controls=? WHERE id=? AND workspace_id=?`, j, id, ws)
 	return affected(res, err)
 }
 

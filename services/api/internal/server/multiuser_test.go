@@ -18,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/authz"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The group server (--multi-user, ADR 0050 slice 2): sign-in, sessions, CSRF, tokens and the routes it does not mount.
@@ -200,14 +201,17 @@ func (g *group) signIn(username string, secret []byte) string {
 }
 
 func (g *group) auditActions(actor string) []string {
-	es, err := g.audit.List("", 0, 500)
-	if err != nil {
-		g.t.Fatal(err)
-	}
 	var out []string
-	for _, e := range es {
-		if e.Actor == actor {
-			out = append(out, e.Action)
+	// account events (sign-in, reset) belong to the server, workspace 0; what an account does on data belongs to its workspace
+	for _, ws := range []workspace.ID{0, workspace.Local} {
+		es, err := g.audit.List(ws, "", 0, 500)
+		if err != nil {
+			g.t.Fatal(err)
+		}
+		for _, e := range es {
+			if e.Actor == actor {
+				out = append(out, e.Action)
+			}
 		}
 	}
 	return out
@@ -490,7 +494,7 @@ func TestGroupTokensNeedARecentSignInAndStopWhenRevokedOrExpired(t *testing.T) {
 		t.Fatalf("expired token: %d", w.Code)
 	}
 	// neither a token nor its hash is in the request log or the audit log
-	es, _ := g.audit.List("", 0, 500)
+	es, _ := g.audit.List(workspace.Local, "", 0, 500)
 	logs := strings.Join(apiLogTail.Lines(), "\n")
 	for _, secret := range []string{made.Token, accounts.Hash(made.Token), day, accounts.Hash(day)} {
 		if strings.Contains(logs, secret) {
@@ -524,7 +528,7 @@ func TestGroupServerDoesNotMountDisabledFeatures(t *testing.T) {
 	h := s.Handler()
 	disabled := 0
 	for pattern, perm := range local {
-		if !notOnGroupServer[perm] && !pathsNotOnGroupServer[pattern] {
+		if !notOnGroupServer[perm] && !pathsNotOnGroupServer[pattern] && !groupServerOff(pattern) {
 			continue
 		}
 		disabled++
@@ -551,15 +555,17 @@ func TestGroupServerDoesNotMountDisabledFeatures(t *testing.T) {
 			t.Errorf("%s is listed as left out but no local server declares it", p)
 		}
 	}
+	// slice 3 mounts them again, confined to the workspace's data roots (TestDataRootsConfinePathRoutes)
 	for _, must := range []string{"GET /api/fs/complete", "POST /api/projects/open"} {
-		if _, ok := declared[must]; ok {
-			t.Errorf("%s browses or opens server paths and is mounted on the group server", must)
+		if _, ok := declared[must]; !ok {
+			t.Errorf("%s is not mounted on the group server", must)
 		}
 	}
 	for _, must := range []string{"GET /api/files/text", "PUT /api/files/text", "POST /api/fs/choose", "GET /api/hosts/ssh-config", "GET /api/terminal",
 		"POST /api/terminal/sessions", "GET /api/hosts", "POST /api/hosts", "GET /api/hosts/{id}/list", "GET /api/hosts/{id}/text", "POST /api/jobs",
-		"GET /api/jobs", "POST /api/jobs/{id}/submit", "GET /api/sweeps", "POST /api/sweeps", "POST /api/transfers", "POST /api/analysis/job", "GET /api/offline"} {
-		if !notOnGroupServer[local[must]] {
+		"GET /api/jobs", "POST /api/jobs/{id}/submit", "GET /api/sweeps", "POST /api/sweeps", "POST /api/transfers", "POST /api/analysis/job", "GET /api/offline",
+		"GET /api/publish", "POST /api/reports/{id}/publish", "GET /api/report-comments", "POST /api/reply-drafts/{id}/send"} {
+		if !notOnGroupServer[local[must]] && !groupServerOff(must) {
 			t.Errorf("%s is not among the routes the group server leaves out", must)
 		}
 	}
@@ -577,18 +583,18 @@ func TestGroupServerDoesNotMountDisabledFeatures(t *testing.T) {
 func TestGroupAuditNamesTheAccountNotTheLocalOwner(t *testing.T) {
 	g := newGroup(t)
 	full, _ := g.setupAdmin("ada")
-	d, err := g.cat.Upsert(catalog.Dataset{Path: "/data/cube.fits", Name: "cube.fits", Header: json.RawMessage(`{"naxis":2}`)})
+	d, err := g.cat.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: "/data/cube.fits", Name: "cube.fits", Header: json.RawMessage(`{"naxis":2}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if w := g.do(req{method: "POST", path: "/api/datasets/" + itoa(int(d.ID)) + "/unit", body: `{"clear":true}`, cookie: full}); w.Code != 200 {
 		t.Fatalf("unit: %d %s", w.Code, w.Body)
 	}
-	es, _ := g.audit.List("dataset", d.ID, 10)
+	es, _ := g.audit.List(workspace.Local, "dataset", d.ID, 10)
 	if len(es) != 1 || es[0].Actor != g.mustAccount("ada").ID || es[0].Via != "session" {
 		t.Fatalf("entries: %+v", es)
 	}
-	all, _ := g.audit.List("", 0, 500)
+	all, _ := g.audit.List(workspace.Local, "", 0, 500)
 	for _, e := range all {
 		if e.Actor == authz.LocalOwnerID {
 			t.Errorf("the group server recorded the local owner: %+v", e)
@@ -637,7 +643,7 @@ func TestGroupServerReadsOfAHostDatasetFailCleanly(t *testing.T) {
 	ep := &echoPlanes{}
 	g.s.Planes, g.s.Worker = ep, &fakeWorker{}
 	g.h = g.s.Handler()
-	d, err := g.cat.Upsert(catalog.Dataset{Path: "/remote/cube.fits", Name: "cube.fits", HostID: 7, Header: json.RawMessage(`{"naxis":3}`)})
+	d, err := g.cat.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: "/remote/cube.fits", Name: "cube.fits", HostID: 7, Header: json.RawMessage(`{"naxis":3}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

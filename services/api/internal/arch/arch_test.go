@@ -18,11 +18,11 @@ const mod = "github.com/unsound-mint/vesqira/services/api/internal/"
 // decision: add it here on purpose, and if the importing package faces a reviewer, re-read the reviewer boundary below.
 var allowed = map[string][]string{
 	"arch": {}, "authz": {"workspace"}, "compat": {}, "sourceroot": {}, "identity": {"sourceroot"}, "worker": {}, "support": {}, "schema": {}, "vgtlog": {}, "scene": {},
-	"notionimport": {}, "publish": {}, "imgmeta": {}, "workspace": {},
+	"notionimport": {}, "publish": {}, "imgmeta": {}, "workspace": {}, "discussion": {"workspace"},
 	// every store of user data takes a workspace.ID (ADR 0050 slice 3)
 	"audit":      {"schema", "workspace"},
 	"lifecycle":  {"workspace"},
-	"backup":     {},
+	"backup":     {"workspace"}, // the manifest lists the datasets of one workspace
 	"notify":     {"schema", "workspace"},
 	"derived":    {"workspace"},
 	"regions":    {"schema", "workspace"},
@@ -40,10 +40,10 @@ var allowed = map[string][]string{
 	"runs":       {"schema", "workspace"},
 	"discover":   {"runs", "sourceroot"},
 	"projects":   {"discover", "schema", "workspace"},
-	"fullschema": {"accounts", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers"},
+	"fullschema": {"accounts", "discussion", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers"},
 	"hosts":      {"worker", "sourceroot", "schema", "workspace"},
 	"review":     {"boards", "workspace"},
-	"server":     {"accounts", "audit", "authz", "workspace", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker"},
+	"server":     {"accounts", "audit", "authz", "workspace", "discussion", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a

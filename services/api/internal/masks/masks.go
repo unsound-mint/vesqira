@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Types of mask. Each means one thing; no type stands for "good" or "bad" in general.
@@ -150,26 +151,26 @@ func scan(r interface{ Scan(...any) error }) (Mask, error) {
 }
 
 // Add stores a mask whose file is already written.
-func (s *Store) Add(m Mask) (Mask, error) {
+func (s *Store) Add(ws workspace.ID, by string, m Mask) (Mask, error) {
 	if !ValidType(m.Type) {
 		return Mask{}, fmt.Errorf("%w: unknown mask type %q", ErrInvalid, m.Type)
 	}
 	if m.Rule == nil {
 		m.Rule = json.RawMessage(`{}`)
 	}
-	res, err := s.db.Exec(`INSERT INTO masks(dataset_id,type,name,path,width,height,channels,flagged,total,tier,mapping_version,method,rule,meaning,author,created_at,source_size,source_mtime,source_identity,file_size,file_mtime,sha256,host_id)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	res, err := s.db.Exec(`INSERT INTO masks(dataset_id,type,name,path,width,height,channels,flagged,total,tier,mapping_version,method,rule,meaning,author,created_at,source_size,source_mtime,source_identity,file_size,file_mtime,sha256,host_id,workspace_id,created_by)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		m.DatasetID, m.Type, m.Name, m.Path, m.Width, m.Height, m.Channels, m.Flagged, m.Total, m.Tier, m.Mapping, m.Method, string(m.Rule), m.Meaning, m.Author,
-		time.Now().Unix(), m.SourceSize, m.SourceMtime, m.SourceIdentity, m.FileSize, m.FileMtime, m.SHA256, m.HostID)
+		time.Now().Unix(), m.SourceSize, m.SourceMtime, m.SourceIdentity, m.FileSize, m.FileMtime, m.SHA256, m.HostID, ws, by)
 	if err != nil {
 		return Mask{}, err
 	}
 	id, _ := res.LastInsertId()
-	return s.Get(id)
+	return s.Get(ws, id)
 }
 
-func (s *Store) Get(id int64) (Mask, error) {
-	m, err := scan(s.db.QueryRow(`SELECT `+cols+` FROM masks WHERE id=?`, id))
+func (s *Store) Get(ws workspace.ID, id int64) (Mask, error) {
+	m, err := scan(s.db.QueryRow(`SELECT `+cols+` FROM masks WHERE id=? AND workspace_id=?`, id, ws))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Mask{}, ErrNotFound
 	}
@@ -177,8 +178,8 @@ func (s *Store) Get(id int64) (Mask, error) {
 }
 
 // ForDataset lists a dataset's masks, oldest first.
-func (s *Store) ForDataset(datasetID int64) ([]Mask, error) {
-	rows, err := s.db.Query(`SELECT `+cols+` FROM masks WHERE dataset_id=? ORDER BY id`, datasetID)
+func (s *Store) ForDataset(ws workspace.ID, datasetID int64) ([]Mask, error) {
+	rows, err := s.db.Query(`SELECT `+cols+` FROM masks WHERE dataset_id=? AND workspace_id=? ORDER BY id`, datasetID, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -195,8 +196,8 @@ func (s *Store) ForDataset(datasetID int64) ([]Mask, error) {
 }
 
 // Delete forgets a mask. Its file is left where it is: Vesqira never deletes a data file (ADR 0041).
-func (s *Store) Delete(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM masks WHERE id=?`, id)
+func (s *Store) Delete(ws workspace.ID, id int64) error {
+	res, err := s.db.Exec(`DELETE FROM masks WHERE id=? AND workspace_id=?`, id, ws)
 	if err != nil {
 		return err
 	}

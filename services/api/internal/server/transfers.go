@@ -13,9 +13,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/authz"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Transfers between this computer and a host (ADR 0051): a persistent queue, one transfer per host at a time, retried with
@@ -159,7 +161,7 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, err.Error())
 			return
 		}
-		real, err := s.roots().ResolveDir(in.DestDir)
+		real, err := s.roots(wsOf(r)).ResolveDir(in.DestDir)
 		if err != nil {
 			fail(w, 403, "the destination must be an existing folder inside the source roots on this computer")
 			return
@@ -170,10 +172,10 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 			t.Name = path.Base(in.SourcePath)
 		}
 	case hosts.Upload:
-		real, err := s.roots().Resolve(in.SourcePath)
+		real, err := s.roots(wsOf(r)).Resolve(in.SourcePath)
 		kind := transfers.KindFile
 		if err != nil {
-			if real, err = s.roots().ResolveDir(in.SourcePath); err != nil {
+			if real, err = s.roots(wsOf(r)).ResolveDir(in.SourcePath); err != nil {
 				fail(w, 403, "only a file or folder inside the source roots on this computer can be uploaded")
 				return
 			}
@@ -279,7 +281,7 @@ func (s *Server) cancelTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if won && in.DiscardPartial {
-		s.discardLocalPartial(t)
+		s.discardLocalPartial(wsOf(r), t)
 	}
 	s.Audit.RecordCtx(r.Context(), "transfer cancelled", "transfer", t.ID, t.SourcePath)
 	out, _ := s.Transfers.Get(t.ID)
@@ -288,11 +290,11 @@ func (s *Server) cancelTransfer(w http.ResponseWriter, r *http.Request) {
 
 // discardLocalPartial deletes the unfinished file of a cancelled download. A partial file on a host is never deleted by
 // Vesqira (it would be a delete on the researcher's account that the ADR does not authorise); it stays in PartialDir there.
-func (s *Server) discardLocalPartial(t transfers.Transfer) {
+func (s *Server) discardLocalPartial(ws workspace.ID, t transfers.Transfer) {
 	if t.Direction != hosts.Download || t.Kind == transfers.KindDir || t.FinalName == "" {
 		return
 	}
-	dir, err := s.roots().ResolveDir(t.DestDir)
+	dir, err := s.roots(ws).ResolveDir(t.DestDir)
 	if err != nil {
 		return
 	}
@@ -482,6 +484,7 @@ func (s *Server) RunTransfers(ctx context.Context) {
 	if s.Transfers == nil || s.HostDB == nil || s.Remote == nil {
 		return
 	}
+	ctx = localCtx(ctx) // local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
 	if n, err := s.Transfers.Recover(time.Now(), recoverWait); err != nil {
 		log.Printf("transfers: recover: %v", err)
 	} else if n > 0 {
@@ -544,7 +547,7 @@ func (s *Server) transferOnce(ctx context.Context, now time.Time) {
 				delete(x.userStop, id)
 				x.mu.Unlock()
 			}()
-			s.runTransfer(rctx, ctx, id)
+			s.runTransfer(wsCtx(ctx), rctx, ctx, id)
 		}(t.ID)
 	}
 }
@@ -569,7 +572,7 @@ func classify(err error) outcome {
 	return outcome{state: "retry", detail: err.Error()}
 }
 
-func (s *Server) runTransfer(ctx, parent context.Context, id int64) {
+func (s *Server) runTransfer(ws workspace.ID, ctx, parent context.Context, id int64) {
 	t, err := s.Transfers.Get(id)
 	if err != nil {
 		return
@@ -591,7 +594,7 @@ func (s *Server) runTransfer(ctx, parent context.Context, id int64) {
 			if stop.discard {
 				out.detail = "cancelled by you; the partial file was deleted"
 				if cur, err := s.Transfers.Get(id); err == nil { // the name chosen by the first attempt
-					s.discardLocalPartial(cur)
+					s.discardLocalPartial(ws, cur)
 				}
 			}
 		case parent.Err() != nil:
@@ -627,13 +630,14 @@ func (s *Server) settle(t transfers.Transfer, h hosts.Host, out outcome) {
 		}
 	case transfers.StateCancelled:
 		if ok, _ := s.Transfers.Finish(t.ID, live, transfers.StateCancelled, out.detail, transfers.Verif{}); ok {
-			s.Audit.Record("transfer cancelled", "transfer", t.ID, t.SourcePath)
+			// local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
+			s.Audit.Record(workspace.Local, "transfer cancelled", "transfer", t.ID, t.SourcePath)
 		}
 	default: // done, failed, skipped
 		if ok, _ := s.Transfers.Finish(t.ID, live, out.state, out.detail, out.verif); !ok {
 			return
 		}
-		s.Audit.Record("transfer "+out.state, "transfer", t.ID, fmt.Sprintf("%s: %s", h.Name, out.detail))
+		s.Audit.Record(workspace.Local, "transfer "+out.state, "transfer", t.ID, fmt.Sprintf("%s: %s", h.Name, out.detail))
 		switch {
 		case out.state == transfers.StateFailed:
 			s.notifyTransfer(t, h, notify.KindTransferFailed, "failed: "+tName(t), out.detail)
@@ -641,7 +645,7 @@ func (s *Server) settle(t transfers.Transfer, h hosts.Host, out outcome) {
 			s.notifyTransfer(t, h, notify.KindTransferFailed, "arrived but NOT verified: "+tName(t), out.verif.Note)
 		case out.state == transfers.StateDone:
 			if done, err := s.Transfers.Get(t.ID); err == nil { // the kind and the final name are settled by the attempt
-				s.linkDownloadedLocation(context.Background(), done, out.verif)
+				s.linkDownloadedLocation(localCtx(context.Background()), done, out.verif)
 			}
 			s.notifyTransfer(t, h, notify.KindTransferDone, "finished and verified: "+tName(t), out.detail)
 		}
@@ -667,7 +671,8 @@ func (s *Server) notifyTransfer(t transfers.Transfer, h hosts.Host, kind, title,
 	if kind == notify.KindTransferConflict {
 		key += fmt.Sprintf(":%d", time.Now().UnixNano()) // each conflict is a new decision
 	}
-	if _, err := s.Notes.Add(key, notify.Notification{Kind: kind, Title: "Transfer " + way + " " + title, Body: body}); err != nil {
+	// local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
+	if _, err := s.Notes.Add(workspace.Local, authz.LocalOwnerID, key, notify.Notification{Kind: kind, Title: "Transfer " + way + " " + title, Body: body}); err != nil {
 		log.Printf("transfers: notification: %v", err)
 	}
 }
@@ -731,7 +736,7 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 	// the folder the data goes into, resolved on its own side and re-authorised now: roots and links may have changed
 	var destReal string
 	if download {
-		if destReal, err = s.roots().ResolveDir(t.DestDir); err != nil {
+		if destReal, err = s.roots(wsCtx(ctx)).ResolveDir(t.DestDir); err != nil {
 			return failed("the destination folder is no longer an existing folder inside the source roots on this computer")
 		}
 	} else {
@@ -754,9 +759,9 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 		}
 		src = fromRemote(st)
 	} else {
-		if p, err := s.roots().Resolve(t.SourcePath); err == nil {
+		if p, err := s.roots(wsCtx(ctx)).Resolve(t.SourcePath); err == nil {
 			src = s.localEnd(p)
-		} else if p, err := s.roots().ResolveDir(t.SourcePath); err == nil {
+		} else if p, err := s.roots(wsCtx(ctx)).ResolveDir(t.SourcePath); err == nil {
 			src = s.localEnd(p)
 		} else {
 			return failed("the source is no longer a file or folder inside the source roots on this computer")
@@ -793,7 +798,7 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 				return classify(err)
 			}
 			if cur.kind != hosts.KindFile || t.WrittenSHA == "" || cur.sha != t.WrittenSHA {
-				return s.nameLost(t, final, "the file there is not the one this transfer wrote (it changed since, or its content could not be hashed)")
+				return s.nameLost(wsCtx(ctx), t, final, "the file there is not the one this transfer wrote (it changed since, or its content could not be hashed)")
 			}
 		case src.kind == hosts.KindFile && !t.Copied:
 			cur, err := s.lookDest(ctx, t, h, destReal, final, false)
@@ -805,7 +810,7 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 			case t.Policy == transfers.PolicyReplace && final == t.Name && t.Replaced != "" && cur.identity() == t.Replaced:
 				// the file this replace was going to overwrite, unchanged since the first check: the partial file is resumed
 			default:
-				return s.nameLost(t, final, "something else was put there after this transfer was queued")
+				return s.nameLost(wsCtx(ctx), t, final, "something else was put there after this transfer was queued")
 			}
 		}
 	}
@@ -1035,9 +1040,9 @@ func (s *Server) typeConflicts(ctx context.Context, t transfers.Transfer, h host
 
 // nameLost answers a retry that finds the destination changed under it: the transfer goes back to asking, nothing at the
 // destination is touched, and a partial file of a download that was only going to be resumed under the abandoned name is deleted.
-func (s *Server) nameLost(t transfers.Transfer, name, why string) outcome {
+func (s *Server) nameLost(ws workspace.ID, t transfers.Transfer, name, why string) outcome {
 	if !t.Copied {
-		s.discardLocalPartial(t)
+		s.discardLocalPartial(ws, t)
 	}
 	_ = s.Transfers.ClearFinalName(t.ID)
 	return outcome{state: transfers.StateConflict, detail: fmt.Sprintf("%s is now at the destination and %s. It was left alone and nothing was changed; choose what to do.", name, why)}

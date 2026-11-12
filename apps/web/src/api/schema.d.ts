@@ -294,6 +294,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/invitation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What an invitation is for, without spending it */
+        post: operations["owner_s_peekInvitation_post_api_auth_invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/invitation/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create the invited account with the invitation's role; starts TOTP enrolment */
+        post: operations["owner_s_acceptInvitation_post_api_auth_invitation_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/second-factor": {
         parameters: {
             query?: never;
@@ -1677,6 +1711,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/discussion/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a member's comment (its author, or a Maintainer or Owner) */
+        post: operations["owner_s_deleteDiscussion_post_api_discussion_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/figures": {
         parameters: {
             query?: never;
@@ -1742,6 +1795,26 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_lifecycleDelete_post_api_figures_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/figures/{id}/discussion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Members' comments on one of the workspace's figures */
+        get: operations["owner_s_listDiscussion_get_api_figures_id_discussion"];
+        put?: never;
+        /** Comment on one of the workspace's figures as the signed-in member */
+        post: operations["owner_s_addDiscussion_post_api_figures_id_discussion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2241,6 +2314,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invite someone with a role (a Maintainer only as Viewer or Researcher); single use, 7 days */
+        post: operations["owner_s_createInvitation_post_api_invitations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join the invitation's workspace as the signed-in account */
+        post: operations["owner_s_acceptInvitationSignedIn_post_api_invitations_accept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invitations/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke an unused invitation */
+        post: operations["owner_s_revokeInvitation_post_api_invitations_id_revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -2473,6 +2599,61 @@ export interface paths {
         get: operations["owner_s_maskPlane_get_api_masks_id_plane"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The current workspace's members, its pending invitations (for those who may invite) and its data folders */
+        get: operations["owner_s_listMembers_get_api_members"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/members/{id}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove a member from the workspace (Owner, recent sign-in; never the last Owner) */
+        post: operations["owner_s_removeMember_post_api_members_id_remove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/members/{id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change a member's role (Owner, recent sign-in; never the last Owner) */
+        post: operations["owner_s_setMemberRole_post_api_members_id_role"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3189,6 +3370,26 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_deleteReport_post_api_reports_id_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/{id}/discussion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Members' comments on one of the workspace's reports */
+        get: operations["owner_s_listDiscussion_get_api_reports_id_discussion"];
+        put?: never;
+        /** Comment on one of the workspace's reports as the signed-in member */
+        post: operations["owner_s_addDiscussion_post_api_reports_id_discussion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4211,6 +4412,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every workspace with its data folders (admin) */
+        get: operations["owner_s_listWorkspaces_get_api_workspaces"];
+        put?: never;
+        /** Create a workspace and name its first Owner by username (admin, recent sign-in) */
+        post: operations["owner_s_createWorkspace_post_api_workspaces"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add an existing account to a workspace with a role (admin, recent sign-in) */
+        post: operations["owner_s_adminAddMember_post_api_workspaces_id_members"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set a workspace's quota for managed copies and derived outputs (admin, recent sign-in) */
+        post: operations["owner_s_setWorkspaceQuota_post_api_workspaces_id_quota"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/roots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Declare a folder of the server readable for a workspace (admin, recent sign-in; canonical path, not broad, not the server's own data) */
+        post: operations["owner_s_addWorkspaceRoot_post_api_workspaces_id_roots"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/roots/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a data folder from a workspace (admin, recent sign-in) */
+        post: operations["owner_s_removeWorkspaceRoot_post_api_workspaces_id_roots_remove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/publish-api/assets/{sha}": {
         parameters: {
             query?: never;
@@ -4881,6 +5176,8 @@ export interface components {
                 previewStepMax: number;
                 metricsPerRunMax: number;
             };
+            /** @description Group server only, and only when the caller is a member of a workspace. */
+            workspace?: components["schemas"]["WorkspaceContext"];
         };
         /** @description An axis as the file declared it; null means the file did not say. */
         FigureAxis: {
@@ -9264,6 +9561,109 @@ export interface components {
             tokensKept: number;
             note: string;
         };
+        /** @description A workspace: the access unit of the group server (ADR 0050 slice 3). */
+        Workspace: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: int64
+             * @description bytes of managed copies and derived outputs it may keep
+             */
+            quotaBytes: number;
+        };
+        /** @description An account's role in one workspace. */
+        Membership: {
+            /** Format: int64 */
+            workspaceId: number;
+            workspaceName: string;
+            accountId: string;
+            name: string;
+            username: string;
+            /** @enum {string} */
+            role: "viewer" | "researcher" | "maintainer" | "owner";
+            /** Format: date-time */
+            since: string;
+        };
+        Member: components["schemas"]["Membership"] & {
+            you: boolean;
+        };
+        /** @description An invitation waiting to be accepted; its secret is never shown again. */
+        Invitation: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            workspaceId: number;
+            /** @enum {string} */
+            role: "viewer" | "researcher" | "maintainer" | "owner";
+            note: string;
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        InvitationCreated: components["schemas"]["Invitation"] & {
+            /** @description shown once; the secret is in the URL fragment */
+            link: string;
+        };
+        InvitationPeek: {
+            workspace: string;
+            /** @enum {string} */
+            role: "viewer" | "researcher" | "maintainer" | "owner";
+            note: string;
+            expiresAt: string;
+        };
+        InvitationJoined: {
+            /** Format: int64 */
+            workspaceId: number;
+            /** @enum {string} */
+            role: "viewer" | "researcher" | "maintainer" | "owner";
+        };
+        MemberList: {
+            workspace: components["schemas"]["Workspace"];
+            members: components["schemas"]["Member"][];
+            /** @description empty unless the caller may invite */
+            invitations: components["schemas"]["Invitation"][];
+            /** @description the data folders declared for the workspace */
+            roots: string[];
+        };
+        AdminWorkspaceList: {
+            workspaces: (components["schemas"]["Workspace"] & {
+                roots: string[];
+            })[];
+        };
+        /** @description A comment by a signed-in member on a figure or a report of the workspace. */
+        MemberComment: {
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "figure" | "report";
+            /** Format: int64 */
+            targetId: number;
+            authorId: string;
+            authorName: string;
+            body: string;
+            /** Format: date-time */
+            createdAt: string;
+            mine: boolean;
+        };
+        MemberCommentList: {
+            comments: components["schemas"]["MemberComment"][];
+        };
+        /** @description Where the request acts and what the caller may do there. Group server only. */
+        WorkspaceContext: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @enum {string} */
+            role: "viewer" | "researcher" | "maintainer" | "owner";
+            /** @description the caller's effective permissions here (x-vesqira-permission names); the server still enforces every one */
+            permissions: string[];
+            workspaces: components["schemas"]["Membership"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -9787,6 +10187,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrolmentConfirmed"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_peekInvitation_post_api_auth_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationPeek"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_acceptInvitation_post_api_auth_invitation_accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    name: string;
+                    username: string;
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthState"];
                 };
             };
             /** @description Error */
@@ -12347,6 +12820,39 @@ export interface operations {
             };
         };
     };
+    owner_s_deleteDiscussion_post_api_discussion_id_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listFigures_get_api_figures: {
         parameters: {
             query?: never;
@@ -12479,6 +12985,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_listDiscussion_get_api_figures_id_discussion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberCommentList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_addDiscussion_post_api_figures_id_discussion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberComment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -13556,6 +14130,111 @@ export interface operations {
             };
         };
     };
+    owner_s_createInvitation_post_api_invitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    role: "viewer" | "researcher" | "maintainer" | "owner";
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationCreated"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_acceptInvitationSignedIn_post_api_invitations_accept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description joined */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationJoined"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_revokeInvitation_post_api_invitations_id_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listJobs_get_api_jobs: {
         parameters: {
             query?: never;
@@ -13876,6 +14555,104 @@ export interface operations {
                 content: {
                     "application/vnd.vesqira.plane": string;
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listMembers_get_api_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_removeMember_post_api_members_id_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_setMemberRole_post_api_members_id_role: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    role: "viewer" | "researcher" | "maintainer" | "owner";
+                };
+            };
+        };
+        responses: {
+            /** @description changed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {
@@ -15063,6 +15840,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_listDiscussion_get_api_reports_id_discussion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberCommentList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_addDiscussion_post_api_reports_id_discussion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberComment"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -17067,6 +17912,214 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Workload"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listWorkspaces_get_api_workspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminWorkspaceList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createWorkspace_post_api_workspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    owner: string;
+                };
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_adminAddMember_post_api_workspaces_id_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    username: string;
+                    /** @enum {string} */
+                    role: "viewer" | "researcher" | "maintainer" | "owner";
+                };
+            };
+        };
+        responses: {
+            /** @description added */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_setWorkspaceQuota_post_api_workspaces_id_quota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: int64 */
+                    bytes: number;
+                };
+            };
+        };
+        responses: {
+            /** @description set */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_addWorkspaceRoot_post_api_workspaces_id_roots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    path: string;
+                };
+            };
+        };
+        responses: {
+            /** @description declared */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_removeWorkspaceRoot_post_api_workspaces_id_roots_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    path: string;
+                };
+            };
+        };
+        responses: {
+            /** @description withdrawn */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

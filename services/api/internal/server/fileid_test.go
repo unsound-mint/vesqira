@@ -13,6 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // idServer is a server over one root with a fake plane worker, returning the store so a test can look at what was recorded.
@@ -107,7 +108,7 @@ func TestARegisteredFileReplacedWithEqualSizeAndTimeIsRefusedWithASentenceAndNot
 	if len(fp.calls) != before {
 		t.Fatal("the worker must not run for another file")
 	}
-	d, _ := st.Get(int64(id))
+	d, _ := st.Get(workspace.Local, int64(id))
 	if d.FileIno != ino {
 		t.Fatalf("the recorded inode must stay the registered file's: %d, want %d", d.FileIno, ino)
 	}
@@ -136,7 +137,7 @@ func TestALocationFromBeforeSchema27IsRecordedOnceItMatchesAndThenRefusesAnother
 	if r, b := get(t, u); r.StatusCode != 200 {
 		t.Fatalf("a location with no recorded identity is read as before: %d %s", r.StatusCode, b)
 	}
-	if d, _ := st.Get(int64(id)); d.FileIno == 0 {
+	if d, _ := st.Get(workspace.Local, int64(id)); d.FileIno == 0 {
 		t.Fatal("the identity must be recorded once the size and time agree")
 	}
 	replaceKeepingSizeAndTime(t, file)
@@ -179,7 +180,7 @@ func TestADriveMountedAgainWithAnotherDeviceNumberIsTheSameFile(t *testing.T) {
 	if r, b := get(t, u); r.StatusCode != 200 {
 		t.Fatalf("a remounted drive must not ask for registering again: %d %s", r.StatusCode, b)
 	}
-	if d, _ := st.Get(int64(id)); d.FileDev != dev || d.FileIno != ino {
+	if d, _ := st.Get(workspace.Local, int64(id)); d.FileDev != dev || d.FileIno != ino {
 		t.Fatalf("the new device number is recorded, the inode kept: %d/%d, want %d/%d", d.FileDev, d.FileIno, dev, ino)
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // xferEnv is a queue with a "host" that is a folder on this machine, reached through a stand-in ssh that runs the remote
@@ -202,7 +203,7 @@ func (e *xferEnv) get(id int64) transfers.Transfer {
 }
 
 func (e *xferEnv) notifications() []notify.Notification {
-	ns, _, _ := e.notes.List(0)
+	ns, _, _ := e.notes.List(workspace.Local, "local-owner", 0)
 	return ns
 }
 
@@ -252,7 +253,7 @@ func TestDownloadArrivesVerifiedAndIsAnnouncedOnce(t *testing.T) {
 	if len(e.notifications()) != 1 {
 		t.Errorf("announced twice")
 	}
-	if rows, _ := e.au.List("", 0, 50); !strings.Contains(fmt.Sprint(rows), "transfer queued") || !strings.Contains(fmt.Sprint(rows), "transfer done") {
+	if rows, _ := e.au.List(workspace.Local, "", 0, 50); !strings.Contains(fmt.Sprint(rows), "transfer queued") || !strings.Contains(fmt.Sprint(rows), "transfer done") {
 		t.Errorf("audit: %v", rows)
 	}
 }
