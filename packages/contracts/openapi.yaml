@@ -19330,6 +19330,7 @@ components:
         - "item"
         - "lineage"
         - "references"
+        - "lineageTotal"
       properties:
         id:
           type: "integer"
@@ -19367,6 +19368,9 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/PushedReference"
+        lineageTotal:
+          type: "integer"
+          description: "How many pushes the lineage has; lineage lists the newest 50, oldest first."
     PushedItem:
       type: "object"
       required:

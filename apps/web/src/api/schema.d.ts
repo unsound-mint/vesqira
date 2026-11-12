@@ -10276,6 +10276,8 @@ export interface components {
             item: components["schemas"]["PushItem"];
             lineage: components["schemas"]["PushedSummaryPlain"][];
             references: components["schemas"]["PushedReference"][];
+            /** @description How many pushes the lineage has; lineage lists the newest 50, oldest first. */
+            lineageTotal: number;
         };
         PushedItem: {
             item: components["schemas"]["PushedDetail"];

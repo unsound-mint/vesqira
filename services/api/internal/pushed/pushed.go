@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -230,7 +231,15 @@ func (s *Store) Put(ws workspace.ID, p Pusher, it pushwire.Item, ids []pushwire.
 			if _, err := tx.Exec(`UPDATE pushed_items SET superseded_by=NULL, superseded_at=NULL WHERE workspace_id=? AND id=?`, ws, id); err != nil {
 				return Result{}, err
 			}
-			if head != 0 && head != id {
+			if head == id { // already the head (a retry): nothing to put back
+				break
+			}
+			var bytes int64
+			_ = tx.QueryRow(`SELECT bytes FROM pushed_items WHERE workspace_id=? AND id=?`, ws, id).Scan(&bytes)
+			if err := checkDaily(tx, ws, p.Account, now, bytes); err != nil { // a put-back is a push
+				return Result{}, err
+			}
+			if head != 0 {
 				if _, err := tx.Exec(`UPDATE pushed_items SET superseded_by=?, superseded_at=? WHERE workspace_id=? AND id=?`, id, now, ws, head); err != nil {
 					return Result{}, err
 				}
@@ -351,7 +360,8 @@ func checkDaily(tx *sql.Tx, ws workspace.ID, account string, now, docBytes int64
 	since := now - 24*3600
 	var items int64
 	var bytes sql.NullInt64
-	if err := tx.QueryRow(`SELECT COUNT(*), SUM(bytes) FROM pushed_items WHERE created_by=? AND pushed_at>?`, account, since).Scan(&items, &bytes); err != nil {
+	// every push counts, a new item or an older version put back: pushed_history holds one row for each
+	if err := tx.QueryRow(`SELECT COUNT(*), SUM(i.bytes) FROM pushed_history h JOIN pushed_items i ON i.id=h.item_id WHERE i.created_by=? AND h.pushed_at>?`, account, since).Scan(&items, &bytes); err != nil {
 		return err
 	}
 	var assets sql.NullInt64
@@ -392,6 +402,10 @@ func (s *Store) Heads(ws workspace.ID, account, instance string) ([]Head, error)
 	}
 	return out, rows.Err()
 }
+
+// LineageShown is how many pushes of a lineage Get returns (the newest); toggling an item back and forth grows its history,
+// never the answer.
+const LineageShown = 50
 
 // Summary is one pushed item in a list.
 type Summary struct {
@@ -463,9 +477,11 @@ type Reference struct {
 // Detail is one pushed item with its document, its lineage and its references.
 type Detail struct {
 	Summary
-	Item       pushwire.Item `json:"item"`
-	Lineage    []Summary     `json:"lineage"` // oldest first, this item among them
-	References []Reference   `json:"references"`
+	Item pushwire.Item `json:"item"`
+	// Lineage is the newest LineageShown pushes of the item's lineage, oldest first; LineageTotal counts them all.
+	Lineage      []Summary   `json:"lineage"`
+	LineageTotal int         `json:"lineageTotal"`
+	References   []Reference `json:"references"`
 }
 
 // Get returns one item of ws.
@@ -497,7 +513,7 @@ func (s *Store) Get(ws workspace.ID, id int64) (Detail, error) {
 	rows, err := s.db.Query(`SELECT i.id, i.kind, i.title, i.hash, i.created_by, h.pushed_at, i.superseded_by, i.superseded_at, i.archived_at
 		FROM pushed_history h JOIN pushed_items i ON i.id=h.item_id
 		WHERE i.workspace_id=? AND (i.created_by, i.instance, i.kind, i.origin) =
-		(SELECT created_by, instance, kind, origin FROM pushed_items WHERE workspace_id=? AND id=?) ORDER BY h.id`, ws, ws, id)
+		(SELECT created_by, instance, kind, origin FROM pushed_items WHERE workspace_id=? AND id=?) ORDER BY h.id DESC LIMIT ?`, ws, ws, id, LineageShown)
 	if err != nil {
 		return Detail{}, err
 	}
@@ -510,6 +526,10 @@ func (s *Store) Get(ws workspace.ID, id int64) (Detail, error) {
 		d.Lineage = append(d.Lineage, y)
 	}
 	rows.Close()
+	slices.Reverse(d.Lineage) // read newest first, shown oldest first
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM pushed_history h JOIN pushed_items i ON i.id=h.item_id
+		WHERE i.workspace_id=? AND (i.created_by, i.instance, i.kind, i.origin) =
+		(SELECT created_by, instance, kind, origin FROM pushed_items WHERE workspace_id=? AND id=?)`, ws, ws, id).Scan(&d.LineageTotal)
 	d.References, err = s.references(ws, id)
 	return d, err
 }

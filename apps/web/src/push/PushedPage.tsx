@@ -65,6 +65,7 @@ export function PushedPage() {
           {d.lineage.length > 1 ? (
             <>
               <h3 className={s.h2}>Versions</h3>
+              {d.lineageTotal > d.lineage.length ? <p className={s.note}>The newest {d.lineage.length} of {d.lineageTotal} pushes.</p> : null}
               <ol>{d.lineage.map((v, i) => <li key={`${i}-${v.id}`}><Button variant="ghost" onClick={() => show(v.id)}>{when(v.pushedAt)}</Button>{i === d.lineage.length - 1 ? " (current)" : ""}</li>)}</ol>
             </>
           ) : null}

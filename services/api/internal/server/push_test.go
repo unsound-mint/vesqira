@@ -837,8 +837,13 @@ func TestPushRefusalsSayWhy(t *testing.T) {
 	// the daily limit
 	ada := g.mustAccount("ada")
 	for i := 0; i < pushwire.DailyItems; i++ {
-		if _, err := g.cat.DB().Exec(`INSERT INTO pushed_items(workspace_id,created_by,token_id,instance,kind,origin,hash,title,doc,bytes,pushed_at) VALUES(1,?,'t',?,'run',?,?,'x','{}',2,?)`,
-			ada.ID, testInstance, strings.Repeat("c", 32), fmt.Sprintf("%064d", i), g.clock.now().Unix()); err != nil {
+		res, err := g.cat.DB().Exec(`INSERT INTO pushed_items(workspace_id,created_by,token_id,instance,kind,origin,hash,title,doc,bytes,pushed_at) VALUES(1,?,'t',?,'run',?,?,'x','{}',2,?)`,
+			ada.ID, testInstance, strings.Repeat("c", 32), fmt.Sprintf("%064d", i), g.clock.now().Unix())
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, _ := res.LastInsertId()
+		if _, err := g.cat.DB().Exec(`INSERT INTO pushed_history(item_id, pushed_at) VALUES(?, ?)`, id, g.clock.now().Unix()); err != nil {
 			t.Fatal(err)
 		}
 	}

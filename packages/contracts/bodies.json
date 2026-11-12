@@ -16492,7 +16492,8 @@
     "archived",
     "item",
     "lineage",
-    "references"
+    "references",
+    "lineageTotal"
    ],
    "properties": {
     "id": {
@@ -16545,6 +16546,10 @@
      "items": {
       "$ref": "#/components/schemas/PushedReference"
      }
+    },
+    "lineageTotal": {
+     "type": "integer",
+     "description": "How many pushes the lineage has; lineage lists the newest 50, oldest first."
     }
    }
   },
