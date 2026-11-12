@@ -139,6 +139,13 @@ func (s *Store) AssetBytes(ws workspace.ID) int64 {
 	return n.Int64
 }
 
+// DocBytes is what the workspace's pushed documents take; they count towards its byte quota too.
+func (s *Store) DocBytes(ws workspace.ID) int64 {
+	var n sql.NullInt64
+	_ = s.db.QueryRow(`SELECT SUM(bytes) FROM pushed_items WHERE workspace_id=?`, ws).Scan(&n)
+	return n.Int64
+}
+
 // Asset returns a picture of item id, only when that item, in ws, shows it.
 func (s *Store) Asset(ws workspace.ID, id int64, sha string) (string, []byte, error) {
 	var mime string

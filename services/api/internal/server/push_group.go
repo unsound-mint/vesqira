@@ -302,6 +302,13 @@ func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Item.Hash = h
+	if s.Pushed.Count(wsOf(r), h) == 0 {
+		if msg := s.quotaRefusal(wsOf(r), int64(len(in.Item.Doc))); msg != "" {
+			s.pushRefused(r, in.Item.Kind, "over the workspace quota")
+			fail(w, 507, msg)
+			return
+		}
+	}
 	res, err := s.Pushed.Put(wsOf(r), pushActor(r, in.Instance), in.Item, in.Identity)
 	var miss pushed.MissingError
 	var limit pushed.LimitError
