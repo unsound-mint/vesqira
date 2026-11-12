@@ -329,7 +329,7 @@ export function Shell() {
   const pageRun = mode === "run" ? cat.runs.find((r) => r.id === runId) ?? null : null;
   const singlePlane = viewer.view?.channels === 1; // nothing to scrub: give the room to the map
   // The run page is a full page of its own: the map inspector and channel timeline describe the viewer, not the run.
-  const noProjectYet = mode === "viewer" && !project && !cat.selectedImage && !cat.selectedCatalog; // nothing open at all: the way in is opening a folder
+  const noProjectYet = mode === "viewer" && !project && !cat.selectedImage && !cat.selectedCatalog && subsetId === null; // nothing open at all: the way in is opening a folder
   // Every mode but the viewer is a page of its own (Jobs, Boards and Reports included): the map inspector and the channel
   // timeline describe a dataset in the viewer, so beside a page they would be empty sections taking its width.
   const onPage = mode !== "viewer" || noProjectYet;
