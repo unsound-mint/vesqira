@@ -456,7 +456,10 @@ func TestGroupTokensNeedARecentSignInAndStopWhenRevokedOrExpired(t *testing.T) {
 	if w.Code != 200 || fresh == "" || fresh == full {
 		t.Fatalf("confirm: %d, id changed: %v", w.Code, fresh != full)
 	}
-	w = g.do(req{method: "POST", path: "/api/account/tokens", body: `{"name":"laptop","scopes":["read","push"],"days":1}`, cookie: fresh})
+	if w := g.do(req{method: "POST", path: "/api/account/tokens", body: `{"name":"laptop","scopes":["read","push"],"days":1}`, cookie: fresh}); w.Code != 422 {
+		t.Fatalf("a token mixing push with read: %d %s", w.Code, w.Body)
+	}
+	w = g.do(req{method: "POST", path: "/api/account/tokens", body: `{"name":"laptop","scopes":["read"],"days":1}`, cookie: fresh})
 	made := decode[struct {
 		Token string         `json:"token"`
 		Info  accounts.Token `json:"info"`
@@ -902,7 +905,8 @@ func TestGroupAccountRepliesMatchTheSpec(t *testing.T) {
 	check("GET", "/api/auth/state", "/api/auth/state", 200, g.do(req{path: "/api/auth/state", cookie: full}))
 	check("GET", "/api/auth/state", "/api/auth/state", 200, g.do(req{path: "/api/auth/state"}))
 	check("GET", "/api/capabilities", "/api/capabilities", 200, g.do(req{path: "/api/capabilities", cookie: full}))
-	w := g.do(req{method: "POST", path: "/api/account/tokens", body: `{"name":"laptop","scopes":["write","relay"],"days":90}`, cookie: full})
+	check("POST", "/api/account/tokens", "/api/account/tokens", 201, g.do(req{method: "POST", path: "/api/account/tokens", body: `{"name":"linked laptop","scopes":["push"],"days":90}`, cookie: full}))
+	w := g.do(req{method: "POST", path: "/api/account/tokens", body: `{"name":"laptop","scopes":["write"],"days":90}`, cookie: full})
 	check("POST", "/api/account/tokens", "/api/account/tokens", 201, w)
 	id := decode[struct {
 		Info accounts.Token `json:"info"`

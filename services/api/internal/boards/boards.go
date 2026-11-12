@@ -800,6 +800,12 @@ func (f FrozenItem) MarshalJSON() ([]byte, error) {
 // these two facts ever reach a snapshot.
 type JobSnapshot struct{ Name, State string }
 
+// Freeze is freeze for a push to the group server (ADR 0066): the same whitelist a review snapshot holds, so a pushed board shows
+// exactly what a reviewer would.
+func Freeze(items []Item, jobs map[int64]JobSnapshot, at time.Time) []FrozenItem {
+	return freeze(items, jobs, at)
+}
+
 // freeze turns the board's items into what a reviewer may see.
 func freeze(items []Item, jobs map[int64]JobSnapshot, at time.Time) []FrozenItem {
 	out := []FrozenItem{}

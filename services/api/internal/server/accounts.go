@@ -14,6 +14,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/authz"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The group server's sign-in, second factor, sessions and personal access tokens (ADR 0050 section 2, slice 2). Mounted only
@@ -558,9 +559,18 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a, _ := authz.From(r.Context())
-	raw, tok, err := s.MultiUser.Accounts.CreateToken(a.ID, in.Name, in.Scopes, time.Duration(in.Days)*24*time.Hour)
+	// "Link a computer" (ADR 0066 section 1): a push or relay token is bound to the workspace the request acts in, and needs the
+	// Researcher role there; any other token is account-wide, as before
+	var ws workspace.ID
+	if bound, msg := s.boundTokenRefusal(a, in.Scopes); msg != "" {
+		fail(w, 403, msg)
+		return
+	} else if bound {
+		ws = a.Workspace
+	}
+	raw, tok, err := s.MultiUser.Accounts.CreateTokenIn(a.ID, ws, in.Name, in.Scopes, time.Duration(in.Days)*24*time.Hour)
 	if err != nil {
-		if errors.Is(err, accounts.ErrBadName) || errors.Is(err, accounts.ErrBadScopes) || strings.HasPrefix(err.Error(), "a token lasts") {
+		if errors.Is(err, accounts.ErrBadName) || errors.Is(err, accounts.ErrBadScopes) || errors.Is(err, accounts.ErrBoundScopes) || strings.HasPrefix(err.Error(), "a token lasts") {
 			fail(w, 422, err.Error())
 			return
 		}
@@ -568,7 +578,11 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.accountAudit(sessionActor(a.ID), "access token created", fmt.Sprintf("%s %q, scopes %s, expires %s", tok.ID, tok.Name, strings.Join(tok.Scopes, " "), tok.Expires.Format("2006-01-02")))
+	detail := fmt.Sprintf("%s %q, scopes %s, expires %s", tok.ID, tok.Name, strings.Join(tok.Scopes, " "), tok.Expires.Format("2006-01-02"))
+	if ws != 0 {
+		detail += fmt.Sprintf(", bound to workspace %d", ws)
+	}
+	s.accountAudit(sessionActor(a.ID), "access token created", detail)
 	writeJSON(w, 201, map[string]any{"token": raw, "info": tok})
 }
 

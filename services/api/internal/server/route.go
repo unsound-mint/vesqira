@@ -28,7 +28,8 @@ import (
 // permissions of the ownership rule (authz.OwnershipApplies) a role below Maintainer acts only on what the actor created. A
 // mounted route with a path parameter nobody classified does not start.
 func (s *Server) route(mux *http.ServeMux, pattern string, perm authz.Permission, h http.HandlerFunc) {
-	unmounted := s.multiUser() && (notOnGroupServer[perm] || pathsNotOnGroupServer[pattern] || groupServerOff(pattern))
+	unmounted := (s.multiUser() && (notOnGroupServer[perm] || pathsNotOnGroupServer[pattern] || groupServerOff(pattern))) ||
+		(!s.multiUser() && groupServerOnly[perm])
 	scoped := ""
 	if s.multiUser() && !unmounted && perm != authz.Anonymous {
 		var err error
@@ -42,7 +43,7 @@ func (s *Server) route(mux *http.ServeMux, pattern string, perm authz.Permission
 			if ok && scoped != "" {
 				_, param, _ := strings.Cut(scoped, "/")
 				ws, role, by, found := s.objectWorkspace(scoped, r.PathValue(param), a.ID, a.Workspace)
-				if !found {
+				if !found || (a.TokenWorkspace != 0 && ws != a.TokenWorkspace) { // a bound token sees nothing of another workspace
 					fail(w, http.StatusNotFound, "not found")
 					return
 				}
@@ -84,6 +85,10 @@ var notOnGroupServer = map[authz.Permission]bool{
 	// the publish server: its publisher key is not yet per workspace (ADR 0050 section 3)
 	authz.PublishManage: true,
 }
+
+// groupServerOnly are the permissions whose routes only the group server mounts: a local instance never accepts a push (its
+// local owner holds every permission, so without this the routes would answer there), and has nothing pushed to read.
+var groupServerOnly = map[authz.Permission]bool{authz.PushUpload: true, authz.PushedRead: true, authz.PushedArchive: true}
 
 // groupServerOff are the route prefixes of the publish server's side of the catalog (comments readers left on a published
 // report, reply drafts, readers), which share permissions with routes that stay. Their tables are local-only

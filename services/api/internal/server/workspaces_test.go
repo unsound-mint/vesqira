@@ -27,7 +27,9 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/offline"
+	"github.com/unsound-mint/vesqira/services/api/internal/outbox"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
+	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -75,6 +77,10 @@ func scopedGroup(t *testing.T) (*group, map[string]authz.Permission) {
 	s.Jobs, err = jobs.Open(db) // local-only, but the runs list asks it for lineages
 	must(err)
 	s.Offline, err = offline.Open(db, "") // planes ask it whether a copy is kept
+	must(err)
+	s.Pushed, err = pushed.Open(db, filepath.Join(dir, "pushed")) // what linked instances push (ADR 0066)
+	must(err)
+	s.Outbox, err = outbox.Open(db, filepath.Join(dir, "outbox")) // local only, so its routes are declared and not mounted
 	must(err)
 	v := reflect.ValueOf(s).Elem() // the stores of features the group server does not mount, so their routes are declared too
 	for i := 0; i < v.NumField(); i++ {
@@ -162,12 +168,18 @@ func markedFixtures(t *testing.T, g *group, a workspace.ID, by, leak string) map
 	if err != nil {
 		t.Fatal(err)
 	}
+	pushedSHA := fmt.Sprintf("%064x", a)
+	pushedItem := ins(`INSERT INTO pushed_items(workspace_id,created_by,token_id,instance,kind,origin,hash,title,doc,bytes,pushed_at) VALUES(?,?,'tok','00000000000000000000000000000000','run',?,?,?,?,1,1)`,
+		a, by, fmt.Sprintf("%032x", a), fmt.Sprintf("%064x", 1000+int64(a)), leak, `{"title":"`+leak+`"}`)
+	ins(`INSERT INTO pushed_assets(workspace_id,sha,mime,size,created_by,created_at) VALUES(?,?,'image/png',1,?,1)`, a, pushedSHA, by)
+	ins(`INSERT INTO pushed_item_assets(item_id,sha) VALUES(?,?)`, pushedItem, pushedSHA)
+	ins(`INSERT INTO pushed_references(item_id,n,role,name,size_bytes) VALUES(?,0,'source',?,1)`, pushedItem, leak)
 	id := func(n int64) string { return strconv.FormatInt(n, 10) }
 	return map[string]string{
 		"datasets/id": id(ds), "figures/id": id(fig), "boards/id": id(board), "snapshots/id": id(snap), "comments/id": id(comment),
 		"reports/id": id(rep), "runs/id": id(run), "run-views/id": id(view), "regions/id": id(region), "masks/id": id(mask),
 		"subsets/sid": id(sub), "history/id": id(step), "projects/id": id(proj), "attachments/sha": "sha" + strings.ToLower(leak),
-		"discussion/id": id(disc), "invitations/id": id(inv.ID),
+		"discussion/id": id(disc), "invitations/id": id(inv.ID), "pushed/id": id(pushedItem),
 	}
 }
 

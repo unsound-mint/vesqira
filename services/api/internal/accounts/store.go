@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // LocalIssuer is the issuer of a password identity; its sub is the username. OIDC identities use the provider's issuer URL.
@@ -88,14 +89,16 @@ func (s Session) Recent(now time.Time) bool {
 }
 
 type Token struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	Scopes    []string   `json:"scopes"`
-	Created   time.Time  `json:"createdAt"`
-	Expires   time.Time  `json:"expiresAt"`
-	LastUsed  *time.Time `json:"lastUsedAt"`
-	Revoked   *time.Time `json:"revokedAt"`
-	AccountID string     `json:"-"`
+	ID       string     `json:"id"`
+	Name     string     `json:"name"`
+	Scopes   []string   `json:"scopes"`
+	Created  time.Time  `json:"createdAt"`
+	Expires  time.Time  `json:"expiresAt"`
+	LastUsed *time.Time `json:"lastUsedAt"`
+	Revoked  *time.Time `json:"revokedAt"`
+	// Workspace is the one workspace a push or relay token acts in (ADR 0066 section 1); 0 for an account-wide token.
+	Workspace workspace.ID `json:"workspace,omitempty"`
+	AccountID string       `json:"-"`
 }
 
 type Store struct {
@@ -715,6 +718,30 @@ const TokenPrefix = "vsq_"
 // CreateToken mints a token for the account: 256 random bits, returned once, stored as its hash, expiring after ttl (0 means
 // TokenDefaultTTL; longer than TokenMaxTTL is refused).
 func (s *Store) CreateToken(accountID, name string, scopes []string, ttl time.Duration) (string, Token, error) {
+	return s.CreateTokenIn(accountID, 0, name, scopes, ttl)
+}
+
+// BoundScopes are the scopes of a linked local instance (ADR 0066 section 1): a token carrying one is bound to one workspace and
+// carries no other scope, so it never implies read or write. internal/authz Scope.Bound says the same (a server test pins it).
+var BoundScopes = []string{"push", "relay"}
+
+// ErrBoundScopes refuses a token that mixes a linked instance's scopes with others, or binds account-wide scopes to a workspace.
+var ErrBoundScopes = errors.New("push and relay tokens are bound to one workspace and carry no other scope")
+
+// CreateTokenIn is CreateToken for a token bound to workspace ws (0: account-wide). Only the bound scopes may be bound, and they
+// only to a workspace; whether the account may hold them there is the caller's decision (its role, at mint and at every use).
+func (s *Store) CreateTokenIn(accountID string, ws workspace.ID, name string, scopes []string, ttl time.Duration) (string, Token, error) {
+	bound := 0
+	for _, sc := range scopes {
+		for _, b := range BoundScopes {
+			if sc == b {
+				bound++
+			}
+		}
+	}
+	if (bound > 0 && (bound != len(scopes) || ws <= 0)) || (ws > 0 && bound != len(scopes)) {
+		return "", Token{}, ErrBoundScopes
+	}
 	name = strings.TrimSpace(name)
 	if name == "" || len([]rune(name)) > 100 {
 		return "", Token{}, ErrBadName
@@ -731,9 +758,13 @@ func (s *Store) CreateToken(accountID, name string, scopes []string, ttl time.Du
 	}
 	raw := TokenPrefix + randomToken(32)
 	now := s.now()
-	t := Token{ID: "tok-" + randomHex(8), Name: name, Scopes: clean, Created: time.Unix(now.Unix(), 0).UTC(), Expires: time.Unix(now.Add(ttl).Unix(), 0).UTC(), AccountID: accountID}
-	_, err = s.db.Exec(`INSERT INTO access_tokens(id,account_id,name,token_hash,scopes,created_at,expires_at) VALUES(?,?,?,?,?,?,?)`,
-		t.ID, accountID, t.Name, Hash(raw), strings.Join(clean, " "), now.Unix(), t.Expires.Unix())
+	t := Token{ID: "tok-" + randomHex(8), Name: name, Scopes: clean, Created: time.Unix(now.Unix(), 0).UTC(), Expires: time.Unix(now.Add(ttl).Unix(), 0).UTC(), AccountID: accountID, Workspace: ws}
+	var bind any
+	if ws > 0 {
+		bind = int64(ws)
+	}
+	_, err = s.db.Exec(`INSERT INTO access_tokens(id,account_id,name,token_hash,scopes,created_at,expires_at,workspace_id) VALUES(?,?,?,?,?,?,?,?)`,
+		t.ID, accountID, t.Name, Hash(raw), strings.Join(clean, " "), now.Unix(), t.Expires.Unix(), bind)
 	return raw, t, err
 }
 
@@ -763,10 +794,11 @@ func scanToken(sc interface{ Scan(...any) error }) (Token, error) {
 	var t Token
 	var scopes string
 	var created, expires int64
-	var used, revoked sql.NullInt64
-	if err := sc.Scan(&t.ID, &t.AccountID, &t.Name, &scopes, &created, &expires, &used, &revoked); err != nil {
+	var used, revoked, ws sql.NullInt64
+	if err := sc.Scan(&t.ID, &t.AccountID, &t.Name, &scopes, &created, &expires, &used, &revoked, &ws); err != nil {
 		return Token{}, err
 	}
+	t.Workspace = workspace.ID(ws.Int64)
 	t.Scopes = strings.Fields(scopes)
 	t.Created, t.Expires = time.Unix(created, 0).UTC(), time.Unix(expires, 0).UTC()
 	if used.Valid {
@@ -780,7 +812,7 @@ func scanToken(sc interface{ Scan(...any) error }) (Token, error) {
 	return t, nil
 }
 
-const tokenCols = `id, account_id, name, scopes, created_at, expires_at, last_used_at, revoked_at`
+const tokenCols = `id, account_id, name, scopes, created_at, expires_at, last_used_at, revoked_at, workspace_id`
 
 // Tokens lists an account's tokens, newest first (never their values, which are not kept).
 func (s *Store) Tokens(accountID string) ([]Token, error) {
@@ -818,7 +850,7 @@ func (s *Store) LookupToken(raw string) (Token, error) {
 		return Token{}, ErrNotFound
 	}
 	now := s.now()
-	t, err := scanToken(s.rdb.QueryRow(`SELECT t.id, t.account_id, t.name, t.scopes, t.created_at, t.expires_at, t.last_used_at, t.revoked_at
+	t, err := scanToken(s.rdb.QueryRow(`SELECT t.id, t.account_id, t.name, t.scopes, t.created_at, t.expires_at, t.last_used_at, t.revoked_at, t.workspace_id
 		FROM access_tokens t JOIN accounts a ON a.id=t.account_id
 		WHERE t.token_hash=? AND t.revoked_at IS NULL AND t.expires_at>? AND a.disabled_at IS NULL`, Hash(raw), now.Unix()))
 	if errors.Is(err, sql.ErrNoRows) {

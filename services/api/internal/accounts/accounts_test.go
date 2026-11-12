@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 	"hash"
 	"path/filepath"
 	"strings"
@@ -472,14 +473,14 @@ func base64Decode(t *testing.T, s string) []byte {
 func TestTokensRevokedOrExpiredAreRefused(t *testing.T) {
 	s, c := newStore(t)
 	a := admin(t, s, "ada")
-	raw, tok, err := s.CreateToken(a.ID, "laptop", []string{"read", "read", "push"}, 0)
+	raw, tok, err := s.CreateToken(a.ID, "laptop", []string{"read", "read", "write"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(raw, TokenPrefix) || len(base64Decode(t, strings.TrimPrefix(raw, TokenPrefix))) != 32 {
 		t.Fatal("not a 256-bit token")
 	}
-	if tok.Expires.Sub(tok.Created) != TokenDefaultTTL || strings.Join(tok.Scopes, " ") != "read push" {
+	if tok.Expires.Sub(tok.Created) != TokenDefaultTTL || strings.Join(tok.Scopes, " ") != "read write" || tok.Workspace != 0 {
 		t.Fatalf("%+v", tok)
 	}
 	var stored string
@@ -516,8 +517,21 @@ func TestTokensRevokedOrExpiredAreRefused(t *testing.T) {
 			t.Errorf("created a token with %v %v", bad.scopes, bad.ttl)
 		}
 	}
-	if _, _, err := s.CreateToken(a.ID, "year", []string{"relay"}, TokenMaxTTL); err != nil {
-		t.Fatal(err)
+	// ADR 0066: push and relay are bound to one workspace and carry nothing else; account-wide scopes are never bound
+	for _, bad := range []struct {
+		ws     workspace.ID
+		scopes []string
+	}{{0, []string{"push"}}, {0, []string{"relay"}}, {1, []string{"read"}}, {1, []string{"push", "read"}}, {1, []string{"write", "relay"}}} {
+		if _, _, err := s.CreateTokenIn(a.ID, bad.ws, "x", bad.scopes, 0); !errors.Is(err, ErrBoundScopes) {
+			t.Errorf("created a token bound to %d with %v: %v", bad.ws, bad.scopes, err)
+		}
+	}
+	rawBound, bound, err := s.CreateTokenIn(a.ID, workspace.Local, "year", []string{"relay", "push"}, TokenMaxTTL)
+	if err != nil || bound.Workspace != workspace.Local {
+		t.Fatal(err, bound)
+	}
+	if got, err := s.LookupToken(rawBound); err != nil || got.Workspace != workspace.Local {
+		t.Fatalf("the bound workspace does not come back with the token: %+v %v", got, err)
 	}
 }
 

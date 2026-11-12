@@ -40,7 +40,7 @@ const WorkspaceHeader = "X-Vesqira-Workspace"
 var scopeKinds = map[string]bool{
 	"datasets/id": true, "figures/id": true, "boards/id": true, "reports/id": true, "runs/id": true, "run-views/id": true,
 	"regions/id": true, "masks/id": true, "subsets/sid": true, "history/id": true, "projects/id": true, "attachments/sha": true,
-	"discussion/id": true, "invitations/id": true, "snapshots/id": true, "comments/id": true,
+	"discussion/id": true, "invitations/id": true, "snapshots/id": true, "comments/id": true, "pushed/id": true,
 }
 
 // scopeLookup is the query that finds the object a path parameter names among the workspaces the account is a member of: rows of
@@ -89,6 +89,9 @@ func scopeLookup(kind, value, accountID string, selected workspace.ID) (string, 
 	case "invitations/id":
 		q = `SELECT t.workspace_id, t.created_by, m.role FROM invitations t
 			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "pushed/id": // created_by is the account that pushed it: archiving below Maintainer is the pusher's own
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM pushed_items t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
 	case "attachments/sha":
 		q = `SELECT t.workspace_id, t.created_by, m.role FROM attachments t
 			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.sha=?`
@@ -107,12 +110,13 @@ func scopeLookup(kind, value, accountID string, selected workspace.ID) (string, 
 
 // childParams name a part of the object of the route's first parameter (a location of a dataset, an item of a board, a revision
 // of a report). They are only valid beside it, and the store looks them up under it, inside its workspace.
-var childParams = map[string]string{"datasets/lid": "datasets/id", "boards/pos": "boards/id", "reports/rev": "reports/id"}
+var childParams = map[string]string{"datasets/lid": "datasets/id", "boards/pos": "boards/id", "reports/rev": "reports/id", "pushed/sha": "pushed/id"}
 
 // unscopedParams name something that is not workspace data: an account (the admin's routes, the actor's own tokens), a
 // workspace (the admin's routes), a member of the actor's current workspace (the handler scopes it), a support bundle held in
 // memory for the admin who made it.
-var unscopedParams = map[string]bool{"accounts/id": true, "account/id": true, "workspaces/id": true, "members/id": true, "support/id": true}
+// A picture a linked instance uploads (push/sha) is named by the hash of its bytes and stored in the token's workspace only.
+var unscopedParams = map[string]bool{"accounts/id": true, "account/id": true, "workspaces/id": true, "members/id": true, "support/id": true, "push/sha": true}
 
 // patternParams returns the "<segment>/<param>" keys of a route pattern.
 func patternParams(pattern string) []string {
@@ -187,6 +191,17 @@ func (s *Server) lookupDB() *sql.DB {
 // nothing is read.
 func (s *Server) placeActor(r *http.Request, a authz.Actor) authz.Actor {
 	st := s.MultiUser.Accounts
+	if a.TokenWorkspace != 0 {
+		// a push or relay token acts in the workspace it is bound to and nowhere else: a header naming another leaves it in none,
+		// and a removed membership leaves it in none too (its role is read on every request, so a demotion counts at once)
+		if h := r.Header.Get(WorkspaceHeader); h != "" && h != strconv.FormatInt(int64(a.TokenWorkspace), 10) {
+			return a
+		}
+		if role, err := st.Role(a.ID, a.TokenWorkspace); err == nil {
+			a.Workspace, a.Role = a.TokenWorkspace, authz.Role(role)
+		}
+		return a
+	}
 	if h := r.Header.Get(WorkspaceHeader); h != "" {
 		id, err := strconv.ParseInt(h, 10, 64)
 		if err != nil || id <= 0 {

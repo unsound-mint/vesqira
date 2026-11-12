@@ -29,7 +29,9 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/offline"
+	"github.com/unsound-mint/vesqira/services/api/internal/outbox"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
+	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -86,6 +88,16 @@ type Server struct {
 	Reports    *reports.Store    // nil disables reports
 	// PublishKeyFile holds the publisher key for the publish server (0600, beside the catalog); never in the catalog.
 	PublishKeyFile string
+
+	// Push to a group server (ADR 0066). On the group server Pushed keeps what linked instances push (nil disables the routes).
+	// On a local instance Outbox is the link and the queue, GroupKeyFile the 0600 file beside the catalog that holds the push
+	// token (never the catalog), and GroupHTTP the client that reaches the server (nil: a default with certificate checks and no
+	// redirects; tests hand in one that trusts their test server).
+	Pushed       *pushed.Store
+	Outbox       *outbox.Store
+	GroupKeyFile string
+	GroupHTTP    *http.Client
+	outboxState
 
 	syncState
 
@@ -417,6 +429,12 @@ func (s *Server) Handler() http.Handler {
 	if s.multiUser() {
 		s.accountRoutes(mux)
 		s.memberRoutes(mux)
+	}
+	if s.Pushed != nil {
+		s.pushRoutes(mux) // group server only (groupServerOnly in route.go): absent in local mode
+	}
+	if s.Outbox != nil {
+		s.outboxRoutes(mux) // local only (authz.LocalOnly): never mounted on the group server
 	}
 	if s.WebDist != "" {
 		s.route(mux, "GET /", authz.Anonymous, staticApp(s.WebDist))

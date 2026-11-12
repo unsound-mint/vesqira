@@ -14960,6 +14960,10 @@
      "type": "string",
      "format": "date-time",
      "nullable": true
+    },
+    "workspace": {
+     "type": "integer",
+     "description": "The one workspace a push or relay token acts in (ADR 0066); absent for an account-wide token."
     }
    }
   },
@@ -16071,6 +16075,722 @@
     },
     "summary": {
      "$ref": "#/components/schemas/RerunOnInputSummary"
+    }
+   }
+  },
+  "PushHave": {
+   "type": "object",
+   "required": [
+    "instance",
+    "hashes"
+   ],
+   "description": "Which of these item or picture hashes the workspace does not hold (at most 1000).",
+   "properties": {
+    "instance": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{32}$"
+    },
+    "hashes": {
+     "type": "array",
+     "maxItems": 1000,
+     "items": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     }
+    }
+   }
+  },
+  "PushMissing": {
+   "type": "object",
+   "required": [
+    "missing"
+   ],
+   "properties": {
+    "missing": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     }
+    }
+   }
+  },
+  "PushReference": {
+   "type": "object",
+   "required": [
+    "role",
+    "name",
+    "sizeBytes"
+   ],
+   "description": "A dataset a figure or run was made from: file name and size only.",
+   "properties": {
+    "role": {
+     "type": "string",
+     "enum": [
+      "source",
+      "overlay",
+      "reliability",
+      "output"
+     ]
+    },
+    "name": {
+     "type": "string"
+    },
+    "sizeBytes": {
+     "type": "integer"
+    }
+   }
+  },
+  "PushIdentity": {
+   "type": "object",
+   "description": "Push-only evidence about a reference's bytes (ADR 0053). Kept on the server for matching; never in the document, a review link or the publish server.",
+   "properties": {
+    "algorithm": {
+     "type": "string"
+    },
+    "sampled": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "fullSha256": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    }
+   }
+  },
+  "PushItem": {
+   "type": "object",
+   "required": [
+    "hash",
+    "kind",
+    "origin",
+    "title",
+    "doc",
+    "assets",
+    "references"
+   ],
+   "description": "One frozen item. hash is the SHA-256 of the item's JSON with hash empty; the server recomputes it.",
+   "properties": {
+    "hash": {
+     "type": "string"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "figure",
+      "run",
+      "board",
+      "report"
+     ]
+    },
+    "origin": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{32}$"
+    },
+    "title": {
+     "type": "string"
+    },
+    "doc": {
+     "type": "object",
+     "description": "The frozen document of the kind: a figure, the run line, a board snapshot or a report revision."
+    },
+    "assets": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     }
+    },
+    "references": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/PushReference"
+     }
+    }
+   }
+  },
+  "PushRequest": {
+   "type": "object",
+   "required": [
+    "instance",
+    "item",
+    "identity"
+   ],
+   "properties": {
+    "instance": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{32}$"
+    },
+    "item": {
+     "$ref": "#/components/schemas/PushItem"
+    },
+    "identity": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/PushIdentity"
+     }
+    }
+   }
+  },
+  "PushResult": {
+   "type": "object",
+   "required": [
+    "id",
+    "hash",
+    "stored"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "hash": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "stored": {
+     "type": "boolean"
+    },
+    "superseded": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "supersededBy": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    }
+   }
+  },
+  "PushAssetResult": {
+   "type": "object",
+   "required": [
+    "sha",
+    "stored"
+   ],
+   "properties": {
+    "sha": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "stored": {
+     "type": "boolean"
+    }
+   }
+  },
+  "PushHead": {
+   "type": "object",
+   "required": [
+    "kind",
+    "origin",
+    "hash",
+    "id"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string"
+    },
+    "origin": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{32}$"
+    },
+    "hash": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "id": {
+     "type": "integer"
+    }
+   }
+  },
+  "PushHeads": {
+   "type": "object",
+   "required": [
+    "workspace",
+    "heads"
+   ],
+   "properties": {
+    "workspace": {
+     "type": "string"
+    },
+    "heads": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/PushHead"
+     }
+    }
+   }
+  },
+  "PushedSummary": {
+   "type": "object",
+   "required": [
+    "id",
+    "kind",
+    "title",
+    "hash",
+    "pushedBy",
+    "pushedAt",
+    "archived"
+   ],
+   "description": "A pushed item as listed: the heads of the lineages.",
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "figure",
+      "run",
+      "board",
+      "report"
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "hash": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "pushedBy": {
+     "type": "string"
+    },
+    "pushedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "supersededBy": {
+     "type": "integer"
+    },
+    "supersededAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "archived": {
+     "type": "boolean"
+    },
+    "pushedByName": {
+     "type": "string"
+    }
+   }
+  },
+  "PushedList": {
+   "type": "object",
+   "required": [
+    "items"
+   ],
+   "properties": {
+    "items": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/PushedSummary"
+     }
+    }
+   }
+  },
+  "PushedReference": {
+   "type": "object",
+   "required": [
+    "n",
+    "role",
+    "name",
+    "sizeBytes",
+    "match"
+   ],
+   "description": "verified: equal full SHA-256 with a dataset of this workspace; probable: equal size and sampled fingerprint, not verified and never read; none: not on this server. A name never links.",
+   "properties": {
+    "n": {
+     "type": "integer"
+    },
+    "role": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "sizeBytes": {
+     "type": "integer"
+    },
+    "match": {
+     "type": "string",
+     "enum": [
+      "verified",
+      "probable",
+      "none"
+     ]
+    },
+    "datasetId": {
+     "type": "integer"
+    },
+    "datasetName": {
+     "type": "string"
+    }
+   }
+  },
+  "PushedSummaryPlain": {
+   "type": "object",
+   "required": [
+    "id",
+    "kind",
+    "title",
+    "hash",
+    "pushedBy",
+    "pushedAt",
+    "archived"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "figure",
+      "run",
+      "board",
+      "report"
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "hash": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "pushedBy": {
+     "type": "string"
+    },
+    "pushedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "supersededBy": {
+     "type": "integer"
+    },
+    "supersededAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "archived": {
+     "type": "boolean"
+    }
+   }
+  },
+  "PushedDetail": {
+   "type": "object",
+   "required": [
+    "id",
+    "kind",
+    "title",
+    "hash",
+    "pushedBy",
+    "pushedAt",
+    "archived",
+    "item",
+    "lineage",
+    "references"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "figure",
+      "run",
+      "board",
+      "report"
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "hash": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "pushedBy": {
+     "type": "string"
+    },
+    "pushedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "supersededBy": {
+     "type": "integer"
+    },
+    "supersededAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "archived": {
+     "type": "boolean"
+    },
+    "item": {
+     "$ref": "#/components/schemas/PushItem"
+    },
+    "lineage": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/PushedSummaryPlain"
+     }
+    },
+    "references": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/PushedReference"
+     }
+    }
+   }
+  },
+  "PushedItem": {
+   "type": "object",
+   "required": [
+    "item",
+    "pushedByName"
+   ],
+   "properties": {
+    "item": {
+     "$ref": "#/components/schemas/PushedDetail"
+    },
+    "pushedByName": {
+     "type": "string"
+    }
+   }
+  },
+  "PushedArchived": {
+   "type": "object",
+   "required": [
+    "id",
+    "archived"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "archived": {
+     "type": "boolean"
+    }
+   }
+  },
+  "GroupLink": {
+   "type": "object",
+   "required": [
+    "linked"
+   ],
+   "description": "The group server this computer is linked to. The token is never returned.",
+   "properties": {
+    "linked": {
+     "type": "boolean"
+    },
+    "origin": {
+     "type": "string"
+    },
+    "workspace": {
+     "type": "string"
+    },
+    "linkedAt": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "GroupLinkRequest": {
+   "type": "object",
+   "required": [
+    "origin",
+    "token"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "origin": {
+     "type": "string",
+     "description": "https only"
+    },
+    "token": {
+     "type": "string",
+     "description": "the vsq_ token from Link a computer; kept in a 0600 file beside the catalog"
+    }
+   }
+  },
+  "PushTarget": {
+   "type": "object",
+   "required": [
+    "kind",
+    "id"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "figure",
+      "run",
+      "board",
+      "report"
+     ]
+    },
+    "id": {
+     "type": "integer"
+    }
+   }
+  },
+  "OutboxEntry": {
+   "type": "object",
+   "required": [
+    "id",
+    "kind",
+    "localId",
+    "title",
+    "hash",
+    "state",
+    "message",
+    "attempts",
+    "createdAt",
+    "status"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "kind": {
+     "type": "string"
+    },
+    "localId": {
+     "type": "integer"
+    },
+    "title": {
+     "type": "string"
+    },
+    "hash": {
+     "type": "string"
+    },
+    "state": {
+     "type": "string",
+     "enum": [
+      "waiting",
+      "sent",
+      "refused"
+     ]
+    },
+    "message": {
+     "type": "string"
+    },
+    "attempts": {
+     "type": "integer"
+    },
+    "nextAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "sentAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "status": {
+     "type": "string",
+     "description": "pushed | waiting: <why> | refused: <sentence>"
+    }
+   }
+  },
+  "Outbox": {
+   "type": "object",
+   "required": [
+    "link",
+    "entries"
+   ],
+   "properties": {
+    "link": {
+     "$ref": "#/components/schemas/GroupLink"
+    },
+    "entries": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/OutboxEntry"
+     }
+    }
+   }
+  },
+  "PushPreflight": {
+   "type": "object",
+   "required": [
+    "kind",
+    "title",
+    "workspace",
+    "origin",
+    "pictures",
+    "bytes",
+    "warnings",
+    "references"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    },
+    "workspace": {
+     "type": "string"
+    },
+    "origin": {
+     "type": "string"
+    },
+    "pictures": {
+     "type": "integer"
+    },
+    "bytes": {
+     "type": "integer"
+    },
+    "warnings": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "references": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "role",
+       "name",
+       "sizeBytes",
+       "fingerprint"
+      ],
+      "properties": {
+       "role": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       },
+       "sizeBytes": {
+        "type": "integer"
+       },
+       "fingerprint": {
+        "type": "string",
+        "enum": [
+         "full",
+         "sampled",
+         "none"
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "Accepted": {
+   "type": "object",
+   "properties": {
+    "ok": {
+     "type": "boolean"
     }
    }
   }
@@ -24644,6 +25364,455 @@
     },
     "422": {
      "description": "refused, with a sentence: no kept settings, a setting that does not fit the cube, a cube on another host, and so on",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/push/have": {
+   "summary": "Which item and picture hashes the token's workspace does not hold (push token only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/PushHave"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PushMissing"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "PUT /api/push/assets/{sha}": {
+   "summary": "Upload one cleaned picture (PNG, JPEG or GIF, at most 8 MiB and 4096 x 4096, no metadata), named by its sha256 (push token only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/octet-stream": {
+      "schema": {
+       "type": "string",
+       "format": "binary"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PushAssetResult"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/push/items": {
+   "summary": "Store one frozen item; idempotent by content hash; 409 lists missing pictures; supersedes this instance's own lineage only (push token only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/PushRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PushResult"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/push/heads": {
+   "summary": "This instance's lineage heads in the token's workspace, to reconcile after a lost answer (push token only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PushHeads"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/pushed": {
+   "summary": "The workspace's pushed items: the head of each lineage (session only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PushedList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/pushed/{id}": {
+   "summary": "One pushed item with its superseded chain and its dataset references, matched again (session only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PushedItem"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/pushed/{id}/assets/{sha}": {
+   "summary": "A picture the pushed item shows (session only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "image/png": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      },
+      "image/jpeg": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      },
+      "image/gif": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/pushed/{id}/archive": {
+   "summary": "Hide a pushed item (own as Researcher, any as Maintainer or Owner; session only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PushedArchived"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/group-link": {
+   "summary": "The group server this computer is linked to (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GroupLink"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/group-link": {
+   "summary": "Link this computer to a group server with a push token (https only; the token goes to a 0600 file, never the catalog; local only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/GroupLinkRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GroupLink"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/group-link/unlink": {
+   "summary": "Unlink: delete the token file and empty the queue; local work is untouched (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GroupLink"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/outbox": {
+   "summary": "The push queue with each item's status (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Outbox"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/outbox": {
+   "summary": "Freeze a board, figure, run or report and queue it for the linked workspace; answers at once (local only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/PushTarget"
+      }
+     }
+    }
+   },
+   "responses": {
+    "202": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OutboxEntry"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/outbox/preflight": {
+   "summary": "What pushing this would send: pictures, warnings and dataset references (local only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/PushTarget"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PushPreflight"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/outbox/retry": {
+   "summary": "Try every waiting item now (local only)",
+   "responses": {
+    "202": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Accepted"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
      "content": {
       "application/json": {
        "schema": {

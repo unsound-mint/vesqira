@@ -109,6 +109,9 @@ func (s *Server) quotaRefusal(ws workspace.ID, size int64) string {
 		}
 		return nil
 	})
+	if s.Pushed != nil {
+		used += s.Pushed.AssetBytes(ws) // pictures pushed from linked instances count too (ADR 0066 limits)
+	}
 	if used+size <= wsp.QuotaBytes {
 		return ""
 	}

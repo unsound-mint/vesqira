@@ -33,7 +33,9 @@ import (
 // scopedTables carry workspace_id and are reached by requests on the group server.
 var scopedTables = set("datasets", "dataset_locations", "figures", "reports", "runs", "run_views", "projects", "attachments",
 	"boards", "snapshots", "saved_regions", "masks", "subsets", "exploration_steps", "notifications", "audit", "member_comments",
-	"invitations", "workspace_roots")
+	"invitations", "workspace_roots",
+	// slice 4: what linked instances pushed (ADR 0066)
+	"pushed_items", "pushed_assets")
 
 // localOnlyTables carry workspace_id (local rows: workspace 1) but belong to features the group server does not mount (hosts,
 // jobs, sweeps, transfers, offline copies: no ssh credential on the server, ADR 0050 owner answer 3; the publish server: no
@@ -41,7 +43,9 @@ var scopedTables = set("datasets", "dataset_locations", "figures", "reports", "r
 // internal/server TestLocalOnlyFeaturesStayUnmounted first. One mounted route reads one of them: the runs list asks the jobs store
 // for job lineages and keeps only those of the workspace's own runs (an empty table on a server that never ran jobs).
 var localOnlyTables = set("hosts", "jobs", "sweeps", "sweep_jobs", "transfers", "offline_entries", "offline_settings",
-	"publish_comments", "reply_drafts", "report_publications", "publish_settings")
+	"publish_comments", "reply_drafts", "report_publications", "publish_settings",
+	// the local side of the link to a group server (ADR 0066): its routes are local.only, so never mounted there
+	"group_link", "push_queue", "push_lineage")
 
 // childTables hold no workspace_id: each row hangs off one row of a scoped table, named by these columns, and is reached only
 // through it.
@@ -54,6 +58,7 @@ var childTables = map[string][]string{
 	"subset_versions": {"subset_id"}, "project_entries": {"project_id"}, "project_answers": {"project_id"},
 	"import_rules": {"project_id"}, "import_lists": {"project_id"}, "import_applied": {"project_id"},
 	"archived_entries": {"entity_id"}, "notification_reads": {"notification_id"},
+	"pushed_item_assets": {"item_id"}, "pushed_references": {"item_id"},
 }
 
 // globalTables are server-wide: accounts and their credentials, the workspaces themselves, memberships (read by account to
@@ -121,7 +126,7 @@ func TestEveryUserDataTableIsScoped(t *testing.T) {
 	for name, create := range tables {
 		hasWS := strings.Contains(create, "workspace_id INTEGER")
 		switch {
-		case scopedTables[name], localOnlyTables[name] && name != "sweep_jobs" && name != "offline_settings" && name != "publish_settings" && name != "report_publications":
+		case scopedTables[name], localOnlyTables[name] && name != "sweep_jobs" && name != "offline_settings" && name != "publish_settings" && name != "report_publications" && name != "group_link":
 			if !hasWS {
 				t.Errorf("%s is classified scoped but has no workspace_id column", name)
 			}
@@ -265,6 +270,8 @@ var crossWorkspace = map[string]bool{
 	// a figure's preview picture is stored once by content: deleting one figure keeps the file while any figure, in any
 	// workspace, still shows it (the count is never returned to the caller)
 	"lifecycle/lifecycle.go Delete": true,
+	// the daily push limit is the account's across every workspace it pushes to (ADR 0066 limits); only counts are read
+	"pushed/pushed.go checkDaily": true,
 }
 
 // literalText joins the string literals of a literal or a concatenation; other operands (constants, variables, calls) stand

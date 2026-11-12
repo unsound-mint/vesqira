@@ -90,7 +90,10 @@ func (s *Server) groupOnly(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
+		// a picture pushed by a linked instance is the one body that is not JSON: only with a bearer token (no cookie can carry it,
+		// so no page can send it), and only to that route, which checks its own content type
+		pushedPicture := r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, pushAssetPath) && r.Header.Get("Authorization") != ""
+		if (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch) && !pushedPicture {
 			if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 				http.Error(w, "content type must be application/json", http.StatusUnsupportedMediaType)
 				return
@@ -155,7 +158,7 @@ func (s *Server) withAccount(next http.Handler) http.Handler {
 			for i, sc := range tok.Scopes {
 				scopes[i] = authz.Scope(sc)
 			}
-			ctx = authz.WithActor(ctx, s.placeActor(r, authz.Actor{ID: acct.ID, Name: acct.Name, Via: authz.ViaToken, Admin: acct.Admin, Scopes: scopes}))
+			ctx = authz.WithActor(ctx, s.placeActor(r, authz.Actor{ID: acct.ID, Name: acct.Name, Via: authz.ViaToken, Admin: acct.Admin, Scopes: scopes, TokenID: tok.ID, TokenWorkspace: tok.Workspace}))
 		case cookie != nil:
 			se, err := st.Session(cookie.Value)
 			if err != nil {
