@@ -8,7 +8,8 @@ package authz
 type Permission string
 
 const (
-	// Anonymous needs no actor: the static app. A short, fixed list; login and the OIDC callback join it in slice 2.
+	// Anonymous needs no actor: the static app, and on the group server the sign-in steps and the first-admin setup. A short,
+	// fixed list (the OIDC callback joins it when OIDC is built).
 	Anonymous Permission = "anonymous"
 
 	CapabilitiesRead Permission = "capabilities.read" // V: what this program can do, and the workload it is carrying
@@ -52,6 +53,14 @@ const (
 	ClusterUse  Permission = "cluster.use"  // R with own cluster access: register remote, transfers, VPN connect
 	// ClusterAdmin is A: declare or delete a cluster, set its VPN commands.
 	ClusterAdmin Permission = "cluster.admin"
+	// AccountSelf is any signed-in account, acting on itself through a session: its sign-in state, signing out (here or
+	// everywhere), listing and revoking its own access tokens. Never through a token.
+	AccountSelf Permission = "account.self"
+	// AccountCredentials is the account changing what proves it is itself: creating an access token, enrolling the second factor
+	// again, new recovery codes. A session with a recent sign-in only.
+	AccountCredentials Permission = "account.credentials"
+	// AccountAdmin is A: list accounts, reset another account's second factor. A recent sign-in only.
+	AccountAdmin Permission = "account.admin"
 	// LocalOnly is nobody in multi-user mode (not mounted): file chooser, ssh config, text editor, terminal, offline copies.
 	LocalOnly Permission = "local.only"
 )
@@ -65,7 +74,7 @@ func All() []Permission {
 		ReviewRead, ReviewPublish, ReportRead, ReportWrite, PublishManage,
 		ProjectRead, ProjectWrite, HistoryRead, HistoryWrite, FilesRead, AuditRead, SupportExport,
 		JobRead, JobSubmit, JobAccess, SweepRead, SweepSubmit,
-		ClusterRead, ClusterUse, ClusterAdmin, LocalOnly,
+		ClusterRead, ClusterUse, ClusterAdmin, AccountSelf, AccountCredentials, AccountAdmin, LocalOnly,
 	}
 }
 
