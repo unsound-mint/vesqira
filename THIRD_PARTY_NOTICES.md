@@ -436,4 +436,6 @@ The scientific worker (`services/scientific-worker`) imports these packages at r
 
 `github.com/creack/pty` (v1.1.24) opens the terminal's pseudo-terminal. MIT License, Copyright (c) 2011 Keith Rarick. Full text: the module's `LICENSE`.
 
+`github.com/godbus/dbus/v5` (v5.2.4) talks to the desktop's file chooser portal over the session bus (ADR 0031). BSD-2-Clause License, Copyright (c) 2013, Georg Reinke, Google. Full text: the module's `LICENSE`.
+
 `@xterm/xterm` (6.0.0) and `@xterm/addon-fit` (0.11.0) draw the terminal in the web app. MIT License, Copyright (c) 2017-2019 The xterm.js authors. Full text: each package's `LICENSE`.

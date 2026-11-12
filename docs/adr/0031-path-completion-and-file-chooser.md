@@ -18,7 +18,7 @@ Two facts shape the design. The API listens on loopback and runs as the research
 
 **GVFS to host.** A path under `/run/user/<uid>/gvfs/sftp:host=H[,user=U][,port=P]/rest` (or `ssh:`) is parsed (the mount folder's name is URL-escaped, names below it are literal). It matches a registered host when the host's ssh destination, or the HostName its alias stands for in the user's ssh config, equals `H` (case-insensitively), and the user agrees wherever both sides state one; the port is not compared, because ssh takes it from the user's own configuration. A match answers `hostId` and `remotePath` `/rest`; no match answers `gvfs: {host, user, port}` so the page can offer to add the host. The mapping never reads anything through the mount.
 
-**Later.** xdg-desktop-portal over D-Bus replaces the two commands, and is required inside Flatpak (ADR for the Flatpak build decides how).
+**Later.** Done in the amendment below (xdg-desktop-portal first).
 
 ## Alternatives
 - **A chooser written in the web page** (a tree dialog over `/api/fs/complete`): consistent look, works everywhere, but it does not show the researcher's bookmarks or mounts, which is the point. Kept as the possible fallback when no chooser exists.
@@ -37,3 +37,19 @@ Go tests: names-only answers outside the roots, dot entries hidden, case rules, 
 
 ## Rollback/Migration
 Additive: no schema, no stored state. Remove the three routes and the `complete` worker op; the path fields keep working as plain text boxes.
+
+## Amendment (2026-11-12): the portal chooser and "Add this host"
+
+Status: **proposed; implemented, awaiting owner review.** This replaces the "Later" paragraph above.
+
+**Chooser order.** `POST /api/fs/choose` tries `org.freedesktop.portal.FileChooser.OpenFile` first, then zenity or kdialog, else 501. Only "this chooser is not there" moves on to the next one: no session bus, no portal service on the bus (neither running nor activatable), or a call the portal refuses before showing a dialog (no backend, an unknown method). A cancel, a timeout or a failure after the dialog was shown ends the request, so a second dialog never opens behind the first. Folder mode sets `directory` (FileChooser version 3); file mode sends the extensions as one glob filter. The portal returns `file://` URIs; only a local `file:` URI with an empty or `localhost` host is accepted, percent-escapes are decoded, and the first URI is cleaned and passed through the same absolute, NUL-free checks as the command choosers. What the page then does with the path (registration, `/api/projects/open`) is unchanged: the roots check on the resolved path stays where it was, and nothing is read by the chooser itself.
+
+**Library.** `github.com/godbus/dbus/v5` (BSD-2, pure Go, the library the Go portal and desktop tooling use; no cgo). It was not in `go.mod`. `gdbus` as a subprocess was rejected: a portal reply is a `Response` signal on a request object whose path is known only from the sender's unique name and a token, so the process would have to start `gdbus monitor` before the call and parse its text output to avoid losing a fast answer; the library subscribes before calling and returns typed values.
+
+**Document portal.** A path under `/run/user/<uid>/doc/<id>/` is what a sandboxed app is handed. The server asks `org.freedesktop.portal.Documents.GetHostPaths` for the id (three-second limit) and uses the real path only when the portal names it **and** this process can read it. Otherwise it keeps the document-portal path, which is what this process can read, and answers `documentPortal: true`; the field shows a note that this is not the file's real location. The host path is never reconstructed by guessing. Consequence for ADR 0052: inside a Flatpak the roots check still sees the document-portal path, so a recorded path there is the portal's, and that ADR's "displayed and recorded path must be the host path" remains open until a mapping layer exists.
+
+**Parent window.** The dialog is opened without a parent: the server has no window handle (`x11:<xid>` or `wayland:<handle>`) and the desktop shell does not pass one yet. The dialog is modal to nothing.
+
+**Add this host.** When the chosen folder is in a GVFS sftp or ssh mount with no matching host, the field offers "Add this host…". The offer carries only the mount's host, user and port to the Hosts panel, which opens, fills the SSH destination (`user@host`) and the name, and leaves the source folder and the button to the person. The mount name is parsed with the existing parser (percent-escapes decoded, `[::1]` brackets stripped). Nothing is read through the mount, no key or password is read or asked for, and nothing is created until the person presses Add host. A port other than 22 is not stored (hosts are ssh destinations; ssh takes the port from the user's configuration), and the form says so. An address that is not a valid destination (an IPv6 literal) is not filled in; the form asks for an ssh alias instead. Offered for a folder chosen through Browse only: a completed path comes from `/api/fs/complete`, which names entries and does not parse mounts.
+
+**Validation.** Go tests with a fake portal client (CI has no session bus): reply parsing (URIs, escapes, remote host, non-file schemes, relative, NUL, cancel, empty list, other codes), document-portal mapping (mapped back, folder grant with a tail, unreadable host path, portal silent, relative host path), the fallback order, and extra GVFS name cases. Web tests for the offer, the prefilled form, and the document-portal note. Not tried: the real portal on a desktop, and a Flatpak.

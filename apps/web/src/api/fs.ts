@@ -22,6 +22,8 @@ export type Chosen = {
   remotePath: string | null;
   /** A mount of a host that is not registered yet: what the page needs to offer adding it. */
   gvfs: { host: string; user?: string; port?: string } | null;
+  /** The path is inside the Documents portal's mount: what a sandbox can read, not the file's real location. */
+  documentPortal?: boolean;
 };
 
 export type ChooseResult = { status: "chosen"; chosen: Chosen } | { status: "cancelled" } | { status: "unavailable" };

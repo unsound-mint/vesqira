@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PathField } from ".";
+import { PathField, getHostOffer, subscribeHostOffer } from ".";
 
 type Entry = { name: string; path: string; dir: boolean };
 const e = (base: string, name: string, dir = false): Entry => ({ name, path: `${base}/${name}`, dir });
@@ -172,7 +172,31 @@ describe("PathField", () => {
     render(<Harness hostId={3} />);
     await user.click(screen.getByRole("button", { name: /Browse/ }));
     expect(await screen.findByRole("status")).toHaveTextContent("me@h, which is not added as a host yet");
+    expect(screen.getByRole("button", { name: "Add this host…" })).toBeInTheDocument();
     expect(box().value).toBe("");
+  });
+
+  it("a folder inside a mount of an unregistered host offers it to the add-host form, and adds nothing itself", async () => {
+    answer = () => json({ path: "/run/user/1/gvfs/sftp:host=login.hpc.example,user=me,port=2222/data", hostId: null, remotePath: null, gvfs: { host: "login.hpc.example", user: "me", port: "2222" } });
+    const seen: unknown[] = [];
+    const off = subscribeHostOffer(() => seen.push(getHostOffer()?.offer));
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole("button", { name: /Browse/ }));
+    await user.click(await screen.findByRole("button", { name: "Add this host…" }));
+    off();
+    expect(seen).toEqual([{ host: "login.hpc.example", user: "me", port: "2222" }]);
+    expect(calls.filter((c) => c.startsWith("POST") && c !== "POST /api/fs/choose")).toEqual([]); // nothing was created
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("says when a path came through the document portal", async () => {
+    answer = () => json({ path: "/run/user/1000/doc/ab12/cubes", hostId: null, remotePath: null, gvfs: null, documentPortal: true });
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole("button", { name: /Browse/ }));
+    expect(await screen.findByRole("status")).toHaveTextContent("document portal");
+    expect(box().value).toBe("/run/user/1000/doc/ab12/cubes");
   });
 
   it("a folder of another registered host is only taken after the person agrees to switch", async () => {

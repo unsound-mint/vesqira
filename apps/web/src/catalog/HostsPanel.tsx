@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import { File, Folder, X } from "lucide-react";
-import { Button, Input, PathField, Select } from "../ui";
+import { Button, Input, PathField, Select, getHostOffer, offerDest, subscribeHostOffer } from "../ui";
 import { browseHostDirs, checkHost, createHost, deleteHost, listRemote, registerRemote, sshConfigHosts, vpnEnabled } from "../api/hosts";
 import type { Host, HostCheck, RemoteEntry, SshAlias } from "../api/hosts";
 import { bytes } from "./format";
@@ -27,6 +27,29 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
   const [vpnOn, setVpnOn] = useState(false);
   const [vpnConnect, setVpnConnect] = useState("");
   const [vpnDisconnect, setVpnDisconnect] = useState("");
+  const [fromMount, setFromMount] = useState<string | null>(null);
+
+  // A folder chosen in the file manager on a host that is not added yet (ADR 0031): fill the form from the mount's name.
+  // Only the destination and a name are filled; the person checks them, picks a source folder and presses Add host.
+  const offer = useSyncExternalStore(subscribeHostOffer, getHostOffer);
+  const applied = useRef(getHostOffer()?.serial); // an offer made before this panel mounted is not replayed
+  useEffect(() => {
+    if (!offer || offer.serial === applied.current) return;
+    applied.current = offer.serial;
+    const o = offer.offer;
+    const dest = offerDest(o);
+    setOther(true);
+    setForm({ name: dest ? o.host : "", dest: dest ?? "" });
+    setRoots([]);
+    setChoosing(false);
+    setErr(null);
+    const who = `${o.user ? `${o.user}@` : ""}${o.host}`;
+    setFromMount(
+      dest
+        ? `Filled in from the file manager's connection to ${who}.${o.port && o.port !== "22" ? ` It used port ${o.port}: ssh takes the port from your ssh config, so set it there if this host needs it.` : ""}`
+        : `The file manager connected to ${who}, which cannot be written as an ssh destination here (for example an IPv6 address). Add an alias for it in your ssh config and choose that.`,
+    );
+  }, [offer]);
 
   // Names that already work with `ssh <name>`, offered while typing the destination. Failing to read them offers none.
   useEffect(() => {
@@ -53,6 +76,7 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
       setRoots([]);
       setChoosing(false);
       setErr(null);
+      setFromMount(null);
       await onChange();
     } catch (x) {
       setErr(msg(x, "Could not add the host."));
@@ -92,6 +116,7 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
           )}
         </div>
         {vpnOn ? <VpnFields connect={vpnConnect} disconnect={vpnDisconnect} onConnect={setVpnConnect} onDisconnect={setVpnDisconnect} /> : null}
+        {fromMount ? <p role="status" className={s.note}>{fromMount}</p> : null}
         <Button type="submit" disabled={busy || !form.name.trim() || !form.dest.trim() || roots.length === 0}>Add host</Button>
         {err ? <p role="alert" className={s.err}>{err}</p> : null}
       </form>

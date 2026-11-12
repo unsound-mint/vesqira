@@ -222,6 +222,11 @@ func TestParseGVFS(t *testing.T) {
 		{"/run/user/1000/gvfs/sftp:host=h,user=me,port=2222/data/x.fits", gvfsInfo{Host: "h", User: "me", Port: "2222"}, "/data/x.fits", true},
 		{"/run/user/1000/gvfs/sftp:host=h,user=me%40corp.example/d", gvfsInfo{Host: "h", User: "me@corp.example"}, "/d", true},
 		{"/run/user/1000/gvfs/sftp:host=h/dir with %20 and space/f", gvfsInfo{Host: "h"}, "/dir with %20 and space/f", true}, // names below the mount are literal
+		{"/run/user/1000/gvfs/sftp:host=fe80%3A%3A1,user=me/d", gvfsInfo{Host: "fe80::1", User: "me"}, "/d", true},
+		{"/run/user/1000/gvfs/sftp:host=[2001:db8::7],port=22/d", gvfsInfo{Host: "2001:db8::7", Port: "22"}, "/d", true},
+		{"/run/user/1000/gvfs/sftp:host=h,user=j%C3%BCrgen/d", gvfsInfo{Host: "h", User: "jürgen"}, "/d", true},
+		{"/run/user/1000/gvfs/sftp:host=h,user=/d", gvfsInfo{Host: "h"}, "/d", true}, // an empty user is no user
+		{"/run/user/1000/gvfs/sftp:host=h,user=%zz/d", gvfsInfo{}, "", false},        // bad escape
 		{"/run/user/1000/gvfs/ssh:host=h", gvfsInfo{Host: "h"}, "/", true},
 		{"/run/user/1000/gvfs/sftp:host=h/../../secret", gvfsInfo{}, "", false}, // cleaned: leaves the mount
 		{"/run/user/1000/gvfs/smb-share:server=s,share=x/y", gvfsInfo{}, "", false},

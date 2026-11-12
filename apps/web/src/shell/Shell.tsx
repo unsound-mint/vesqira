@@ -69,7 +69,7 @@ import type { LinkPrefs, PaneId } from "../scene/link";
 import { useChannelLink, useSkyLink } from "../viewer/useLinkTransform";
 import { useLinkFollow } from "../viewer/useLinkFollow";
 import type { LinkControls } from "../viewer/CompareBar";
-import { Button, IconButton, Pill, ResizeHandle, Section } from "../ui";
+import { Button, IconButton, Pill, ResizeHandle, Section, getHostOffer, subscribeHostOffer } from "../ui";
 import { ErrorReferenceHost } from "./ErrorReferenceHost";
 import { LIMITS, useLayout } from "./useLayout";
 import s from "./Shell.module.css";
@@ -87,6 +87,7 @@ const CATALOG_PROBLEM = "This catalog has changed on disk, is missing or is outs
 export function Shell() {
   const { layout: L, set, toggle } = useLayout();
   const cat = useCatalog();
+  const hostOffer = useSyncExternalStore(subscribeHostOffer, getHostOffer); // a file-manager mount of an unregistered host (ADR 0031)
   const rendererNote = useSyncExternalStore(subscribeRendererNote, getRendererNote); // set only when drawing fell back to the CPU
   const { refreshDatasets, refreshRuns } = cat;
   const proj = useProject(useCallback(() => { void refreshDatasets(); void refreshRuns(); }, [refreshDatasets, refreshRuns]));
@@ -369,7 +370,7 @@ export function Shell() {
       <Section title="Runs" meta={String(cat.runs.length)} defaultOpen={cat.runs.length > 0}>
         <RunsList runs={cat.runs} hosts={cat.hosts} onImport={cat.importRunFolder} onOpen={(r) => openRun(r.id)} />
       </Section>
-      <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0}>
+      <Section title="Hosts" meta={String(cat.hosts.length)} defaultOpen={cat.hosts.length > 0} openSignal={hostOffer?.serial}>
         <HostsPanel hosts={cat.hosts} onChange={cat.refreshHosts} onRegistered={cat.refreshDatasets} />
       </Section>
       <Section title="Datasets" meta={String(cat.datasets.length + cat.catalogCount)}>

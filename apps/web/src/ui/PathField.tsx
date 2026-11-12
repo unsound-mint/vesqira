@@ -4,6 +4,8 @@ import { File, Folder, FolderOpen } from "lucide-react";
 import { chooseFile, completePath } from "../api/fs";
 import type { Chosen, PathEntry, PathKind } from "../api/fs";
 import { Button } from "./Button";
+import { offerHost } from "./hostOffer";
+import type { HostOffer } from "./hostOffer";
 import { Icon } from "./Icon";
 import c from "./Controls.module.css";
 import s from "./PathField.module.css";
@@ -57,7 +59,7 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
   const [active, setActive] = useState(-1);
   const [browse, setBrowse] = useState(!noChooser);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ text: string; hostId?: number; remotePath?: string } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; hostId?: number; remotePath?: string; add?: HostOffer } | null>(null);
   const seq = useRef(0);
   const listed = useRef({ for: "", base: "" }); // what the shown names were fetched for
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -214,11 +216,14 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
         setNotice({ text: `That folder is on ${name(ch.hostId)}, not where this field looks.` });
       }
     } else if (ch.gvfs) {
-      setNotice({ text: `That folder is on ${ch.gvfs.user ? `${ch.gvfs.user}@` : ""}${ch.gvfs.host}, which is not added as a host yet. Add it under Hosts first.` });
+      setNotice({ text: `That folder is on ${ch.gvfs.user ? `${ch.gvfs.user}@` : ""}${ch.gvfs.host}, which is not added as a host yet.`, add: ch.gvfs });
     } else if (hostId !== undefined) {
       setNotice({ text: `That folder is on this computer, not on ${hosts?.find((h) => h.id === hostId)?.name ?? "the host"}.` });
     } else {
       onChange(ch.path);
+      if (ch.documentPortal) {
+        setNotice({ text: "This folder came through the document portal. Vesqira reads and records the portal's path, which is not the folder's real location." });
+      }
     }
   }
 
@@ -271,6 +276,9 @@ export function PathField({ value, onChange, label, kind = "any", ext, hostId: h
       {notice ? (
         <p className={s.notice} role="status">
           {notice.text}
+          {notice.add ? (
+            <Button type="button" onClick={() => { offerHost(notice.add as HostOffer); setNotice(null); }}>Add this host…</Button>
+          ) : null}
           {notice.hostId !== undefined && onHost ? (
             <Button type="button" onClick={() => { onHost(notice.hostId as number); onChange(notice.remotePath ?? ""); setNotice(null); }}>
               Use {hosts?.find((h) => h.id === notice.hostId)?.name ?? "that host"}
