@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
@@ -39,6 +40,7 @@ func Open(db *sql.DB, dir string) error {
 		{"jobs", func() error { _, e := jobs.Open(db); return e }},
 		{"sweeps", func() error { _, e := sweeps.Open(db); return e }},
 		{"audit", func() error { _, e := audit.Open(db); return e }},
+		{"accounts", func() error { _, e := accounts.Open(db); return e }},
 		{"notify", func() error { _, e := notify.Open(db); return e }},
 		{"regions", func() error { _, e := regions.Open(db); return e }},
 		{"derived", func() error { _, e := derived.Open(db); return e }},

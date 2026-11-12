@@ -443,3 +443,7 @@ The scientific worker (`services/scientific-worker`) imports these packages at r
 ## golang.org/x/sys (Go API)
 
 `golang.org/x/sys` (v0.49.0) provides `openat2` and `openat` for opening source files without following a symbolic link. BSD-3-Clause License, Copyright 2009 The Go Authors. Full text: the module's `LICENSE`.
+
+## golang.org/x/crypto (Go API)
+
+`golang.org/x/crypto` (v0.57.0) provides argon2id, which hashes the passwords of group-server accounts (ADR 0050 section 2). BSD-3-Clause License, Copyright 2009 The Go Authors. Full text: the module's `LICENSE`.
