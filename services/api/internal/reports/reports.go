@@ -74,6 +74,9 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 	return &Store{db: db, dir: dataDir}, nil
 }
 
+// Dir is the folder the store keeps files under (attachments in Dir/attachments), which must never be readable as data.
+func (s *Store) Dir() string { return s.dir }
+
 // Report is the working copy. Revision counts saves; a client that saves names the revision it started from.
 type Report struct {
 	ID           int64     `json:"id"`

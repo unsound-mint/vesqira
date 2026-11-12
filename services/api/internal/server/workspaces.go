@@ -245,14 +245,27 @@ func (s *Server) checkDataRoot(p string) string {
 	if msg := refuseBroad(real, home); msg != "" {
 		return msg
 	}
-	for _, private := range []string{s.ManagedDir, s.CacheDir, filepath.Dir(s.PublishKeyFile), s.MultiUser.DataDir} {
-		if private == "" {
+	// the server's own folders, in both directions: a root may neither hold one nor lie inside one
+	private := []string{s.ManagedDir, s.CacheDir, s.MultiUser.DataDir}
+	if s.PublishKeyFile != "" {
+		private = append(private, filepath.Dir(s.PublishKeyFile))
+	}
+	if s.Analysis != nil {
+		private = append(private, s.Analysis.DerivedDir)
+	}
+	if s.Reports != nil {
+		private = append(private, s.Reports.Dir()) // report attachments and figure previews
+	}
+	within := func(parent, child string) bool {
+		rel, err := filepath.Rel(parent, child)
+		return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
+	}
+	for _, p := range private {
+		if p == "" {
 			continue
 		}
-		if pr, err := filepath.EvalSymlinks(private); err == nil {
-			if rel, err := filepath.Rel(real, pr); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
-				return "that folder holds the server's own data (" + pr + "): declare a folder of research data instead"
-			}
+		if pr, err := filepath.EvalSymlinks(p); err == nil && (within(real, pr) || within(pr, real)) {
+			return "that folder holds or lies inside the server's own data (" + pr + "): declare a folder of research data instead"
 		}
 	}
 	return ""

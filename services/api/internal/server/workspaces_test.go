@@ -392,7 +392,17 @@ func TestDataRootsConfinePathRoutes(t *testing.T) {
 	if w := g.do(req{method: "POST", path: "/api/workspaces/1/roots", body: `{"path":"` + inside + `"}`, cookie: admin}); w.Code != 422 {
 		t.Errorf("a root holding the server's data: %d %s", w.Code, w.Body)
 	}
+	// nor a folder inside the server's data, its derived or managed folders
+	g.s.MultiUser.DataDir = inside
+	if w := g.do(req{method: "POST", path: "/api/workspaces/1/roots", body: `{"path":"` + filepath.Join(inside, "cubes") + `"}`, cookie: admin}); w.Code != 422 {
+		t.Errorf("a root inside the server's data: %d %s", w.Code, w.Body)
+	}
 	g.s.MultiUser.DataDir = ""
+	g.s.Analysis.DerivedDir = inside
+	if w := g.do(req{method: "POST", path: "/api/workspaces/1/roots", body: `{"path":"` + filepath.Join(inside, "cubes") + `"}`, cookie: admin}); w.Code != 422 {
+		t.Errorf("a root inside the derived folder: %d %s", w.Code, w.Body)
+	}
+	g.s.Analysis.DerivedDir = ""
 	if w := g.do(req{method: "POST", path: "/api/workspaces/1/roots", body: `{"path":"` + inside + `"}`, cookie: admin}); w.Code != 204 {
 		t.Fatalf("declaring a root: %d %s", w.Code, w.Body)
 	}
