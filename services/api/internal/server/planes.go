@@ -159,6 +159,10 @@ func (s *Server) sourceWith(w http.ResponseWriter, r *http.Request, offlineOK bo
 		fail(w, 409, "this is a point catalog: it has no planes, only rows (see its catalog report)")
 		return
 	}
+	if d.Kind == catalog.KindHealpix {
+		fail(w, 409, "this is a HEALPix map: it has no planes or WCS of its own; sample it onto a dataset's grid to see it")
+		return
+	}
 	eff, loc, real, k, status, msg := s.chooseRead(r.Context(), d, true)
 	if status != 0 {
 		if off := s.offlineFor(d); offlineOK && off != nil && unreachable(status, msg) {

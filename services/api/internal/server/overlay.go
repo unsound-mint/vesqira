@@ -67,6 +67,10 @@ func (s *Server) overlayGeometry(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if ov.Kind == catalog.KindHealpix {
+		fail(w, 409, "a HEALPix map cannot be drawn over a map directly: sample it onto the base map's grid first, then draw the result")
+		return
+	}
 	if (ov.Kind == catalog.KindCatalog) != (o.Kind == "catalog") {
 		fail(w, 409, "this overlay kind and this dataset do not match: a catalog overlay needs a point catalog, and a point catalog has no pixel grid to contour, sample or take a beam from")
 		return

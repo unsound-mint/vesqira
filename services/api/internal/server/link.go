@@ -64,6 +64,10 @@ func (s *Server) link(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, "other map: "+msg)
 		return
 	}
+	if other.Kind == catalog.KindHealpix {
+		fail(w, 409, "the other dataset is a HEALPix map: it has no pixel grid to link; sample it onto this map's grid first")
+		return
+	}
 	if other.Kind == catalog.KindCatalog {
 		fail(w, 409, "the other dataset is a point catalog: it has no pixel grid to link")
 		return

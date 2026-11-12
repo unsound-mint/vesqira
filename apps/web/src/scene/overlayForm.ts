@@ -1,4 +1,4 @@
-import { isCatalog, type CatalogDataset, type Dataset, type ImageDataset } from "../api/catalog";
+import { isCatalog, isImage, type CatalogDataset, type Dataset, type ImageDataset } from "../api/catalog";
 import type { OverlayColor } from "./palette";
 import type { Scene, SceneOverlay } from "./scene";
 import { ORIENTATION_ID, REGIONS_ID } from "./scene";
@@ -52,7 +52,7 @@ export function emptyDraft(kind: AddableKind, datasetId: number | null): Draft {
 }
 
 /** A point catalog has no grid to contour and no beam, so only images and cubes are overlay sources. */
-export const imageDatasets = (datasets: Dataset[]): ImageDataset[] => datasets.filter((d): d is ImageDataset => !isCatalog(d));
+export const imageDatasets = (datasets: Dataset[]): ImageDataset[] => datasets.filter((d): d is ImageDataset => isImage(d));
 
 /** The catalogs a catalog overlay may draw: point catalogs whose column declaration is in force (a missing or stale one would be refused). */
 export const catalogCandidates = (datasets: Dataset[]): CatalogDataset[] =>

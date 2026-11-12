@@ -202,6 +202,10 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, "the other dataset: "+msg)
 		return
 	}
+	if other.Kind == catalog.KindHealpix {
+		fail(w, 409, "the other dataset is a HEALPix map: sample it onto the map's grid first (Q and U, with the convention and frame turned), then compare the derived dust polarization or field orientation")
+		return
+	}
 	catalogMode := other.Kind == catalog.KindCatalog
 	params, bad := in.Params.worker(catalogMode)
 	if bad != "" {

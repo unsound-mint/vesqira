@@ -28,6 +28,7 @@ BuildRequires:  pkgconfig(gtk+-3.0)
 BuildRequires:  pkgconfig(libsoup-3.0)
 Requires:       python3 >= 3.11
 Requires:       python3-astropy
+Requires:       python3-astropy-healpix
 Requires:       python3-contourpy
 Requires:       python3-numpy
 Requires:       python3-reproject

@@ -293,6 +293,10 @@ func (s *Server) planDataset(ctx context.Context, h http.Handler, d catalog.Data
 		item.Status, item.Reason = statusRemote, "A point catalog has no planes; its rows are read from the catalog file and are not kept offline in this version."
 		return nil, item
 	}
+	if d.Kind == catalog.KindHealpix {
+		item.Status, item.Reason = statusRemote, "A HEALPix map has no planes; it is only sampled onto another dataset's grid and is not kept offline in this version."
+		return nil, item
+	}
 	eff, _, _, k, status, msg := s.chooseRead(ctx, d, true)
 	if status != 0 {
 		// The host does not answer: say what an earlier preparation still gives, and that it is not new.

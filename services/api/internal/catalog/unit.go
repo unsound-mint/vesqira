@@ -114,7 +114,7 @@ func (s *Store) SetUnitDeclarations(ds []Dataset, unit, by string) (applied []Da
 	}
 	defer tx.Rollback()
 	for _, d := range ds {
-		if fileStatesItsUnit(d) || d.Kind == KindCatalog { // a point catalog has no brightness: its columns carry their own units
+		if fileStatesItsUnit(d) || !d.HasPixelGrid() { // a point catalog or a HEALPix map has no brightness: its columns carry their own units
 			continue
 		}
 		var bad int

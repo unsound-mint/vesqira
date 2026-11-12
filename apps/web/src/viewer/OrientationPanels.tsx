@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Basis, BasisNote, Button, Select } from "../ui";
 import { TierBadge } from "../ui/TierBadge";
-import { isCatalog } from "../api/catalog";
+import { isImage } from "../api/catalog";
 import { ruleOf } from "../api/declared";
 import type { Dataset, ImageDataset } from "../api/catalog";
 import type { AngleFrame, AngleQuantity, InterpretationRequest } from "../api/catalog";
@@ -50,7 +50,7 @@ export function suggestCompanion(name: string, others: Dataset[]): Dataset | nul
 
 /** Rows and columns of a single-plane map, or null when it is a cube or not an image. */
 const planeSize = (d: Dataset): string | null => {
-  if (isCatalog(d)) return null;
+  if (!isImage(d)) return null;
   const a = (d as ImageDataset).header?.axes ?? [];
   if (a.length > 2 && (a[2]?.length ?? 1) > 1) return null;
   return a.length >= 2 ? `${a[0]!.length}×${a[1]!.length}` : null;
@@ -70,7 +70,7 @@ export function whereText(d: Dataset): string {
  */
 export function reliabilityChoices(self: Dataset, all: Dataset[], currentId: number | null): { id: number; label: string }[] {
   const size = planeSize(self);
-  const fits = all.filter((d) => d.id !== self.id && !d.archived && !isCatalog(d) && (d.id === currentId || (size !== null && planeSize(d) === size && d.hostId === self.hostId)));
+  const fits = all.filter((d) => d.id !== self.id && !d.archived && isImage(d) && (d.id === currentId || (size !== null && planeSize(d) === size && d.hostId === self.hostId)));
   const count = new Map<string, number>();
   for (const d of fits) count.set(d.name, (count.get(d.name) ?? 0) + 1);
   return fits.map((d) => ({ id: d.id, label: (count.get(d.name) ?? 0) > 1 ? `${d.name} (${whereText(d)})` : d.name }));

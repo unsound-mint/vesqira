@@ -28,9 +28,15 @@ type DatasetBase = Omit<Schemas["Dataset"], "header" | "kind" | "catalogDeclarat
 export type ImageDataset = DatasetBase & { kind?: "fits"; header: Header; catalogDeclaration?: null };
 /** A table of sources (ADR 0044): no planes, no pixel grid. */
 export type CatalogDataset = DatasetBase & { kind: "catalog"; header: CatalogHeader; catalogDeclaration: CatalogDeclaration | null };
+export type HealpixHeader = Schemas["HealpixHeader"];
+/** A HEALPix map of Stokes values (ADR 0067): no planes, no pixel grid, no WCS. It is only sampled onto another dataset's grid. */
+export type HealpixDataset = DatasetBase & { kind: "healpix"; header: HealpixHeader; catalogDeclaration?: null };
 /** `archived` is set by the server on every dataset it sends (ADR 0041); the generated type predates it. Narrow on `kind`. */
-export type Dataset = (ImageDataset | CatalogDataset) & { archived?: boolean };
+export type Dataset = (ImageDataset | CatalogDataset | HealpixDataset) & { archived?: boolean };
 export const isCatalog = (d: Dataset): d is CatalogDataset & { archived?: boolean } => d.kind === "catalog";
+export const isHealpix = (d: Dataset): d is HealpixDataset & { archived?: boolean } => d.kind === "healpix";
+/** An image or cube: the only kind with planes and a pixel grid. */
+export const isImage = (d: Dataset): d is ImageDataset & { archived?: boolean } => d.kind !== "catalog" && d.kind !== "healpix";
 
 /** Files on this computer that are no longer what was registered. Remote files are not checked here. */
 export type Problem = "modified" | "missing" | "not_allowed";

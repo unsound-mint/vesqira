@@ -1,4 +1,5 @@
 astropy==8.0.2
+astropy-healpix==2.0.1
 contourpy==1.3.3
 numpy==2.5.4
 reproject==0.21.0

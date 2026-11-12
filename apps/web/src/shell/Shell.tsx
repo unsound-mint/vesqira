@@ -47,7 +47,7 @@ import { useProject } from "../projects/useProject";
 import { writeProjectFile } from "../api/projects";
 import { editorEnabled } from "../api/editor";
 import { terminalEnabled } from "../api/terminal";
-import { getCompat, isCatalog } from "../api/catalog";
+import { getCompat, isCatalog, isImage, type HealpixDataset } from "../api/catalog";
 import type { Compat, ImageDataset } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
 import { CompareBar, linkState } from "../viewer/CompareBar";
@@ -585,7 +585,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
               <Section title="Region"><RegionPanel v={viewer} /></Section>
               <Section title="Spectrum"><SpectrumPlot v={viewer} /></Section>
             </>
-          ) : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
+          ) : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : cat.selectedHealpix ? healpixNote(cat.selectedHealpix) : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
           {compareDs && shownImage ? (
             <Section title="Comparison">
               <CompareInspector a={shownImage} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
@@ -648,7 +648,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
               <UnitControl key={actDs.id} dataset={actDs} onDeclare={cat.declareUnit} onWithdraw={(id) => cat.declareUnit(id, null)} />
             </Section>
           ) : null}
-          {actDs && !isCatalog(actDs) ? (
+          {actDs && isImage(actDs) ? (
             <Section title="Masks" defaultOpen={false}>
               <MasksPanel key={actDs.id} dataset={actDs} datasets={cat.datasets} />
             </Section>
@@ -678,7 +678,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
               <UsedIn dataset={actDs} onOpenBoards={() => setMode("boards")} />
             </Section>
           ) : null}
-          {actDs && !isCatalog(actDs) ? (
+          {actDs && isImage(actDs) ? (
             <Section title="Virtual subsets" defaultOpen={false} meta={subs.subsets.some((x) => x.sourceId === actDs.id) ? String(subs.subsets.filter((x) => x.sourceId === actDs.id).length) : undefined}>
               <SubsetsSection key={actDs.id} dataset={actDs} subsets={subs.subsets} onOpen={openSubset} onCreated={(x) => { void subs.refresh(); openSubset(x.id); }} />
             </Section>
@@ -751,4 +751,10 @@ function PaneHeader({ name, axial, active, onActivate, note = null }: { name: st
       <button type="button" className={s.paneBtn} aria-pressed={active} onClick={onActivate}>{active ? "Inspector shows this map" : "Show in inspector"}</button>
     </div>
   );
+}
+
+/** What the inspector says about a HEALPix map (ADR 0067): what its header states, and that it is only sampled onto another grid. */
+function healpixNote(d: HealpixDataset): string {
+  const h = d.header;
+  return `A HEALPix map: NSIDE ${h.nside}, ${h.ordering}, ${h.coordsys}, polarization convention ${h.polcconv}, as its header states. It has no pixel grid to view; it is sampled onto a dataset's celestial grid as Q and U (POST /api/analysis/healpix-sample). A screen for sampling is not built yet.`;
 }

@@ -414,6 +414,10 @@ The scientific worker (`services/scientific-worker`) imports these packages at r
 
 `astropy` (8.0.2). BSD-3-Clause License, Copyright (c) 2011-2026, Astropy Developers. Its wheel also carries licence texts for bundled components (`licenses/`).
 
+### astropy-healpix (BSD-3-Clause)
+
+`astropy-healpix` (2.0.1). BSD-3-Clause License, Copyright (c) 2016-2018, Astropy Developers. Used to place HEALPix polarization maps on the sky (ADR 0067); `reproject` already depends on it.
+
 ### contourpy (BSD-3-Clause)
 
 `contourpy` (1.3.3). BSD-3-Clause License, Copyright (c) 2021-2025, ContourPy Developers.

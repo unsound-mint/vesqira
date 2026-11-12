@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { addLocation, ApiError, deleteCatalogDeclaration, getAvailability, getNewer, isCatalog, listDatasets, putCatalogDeclaration, registerDataset, sameContentOffer, setInterpretation, setNature, setUnit } from "../api/catalog";
+import { addLocation, ApiError, deleteCatalogDeclaration, getAvailability, getNewer, isCatalog, isHealpix, isImage, listDatasets, putCatalogDeclaration, registerDataset, sameContentOffer, setInterpretation, setNature, setUnit } from "../api/catalog";
 import type { CatalogDataset, CatalogDeclarationRequest, Dataset, ImageDataset, InterpretationRequest, Nature, NewerResults, Problem } from "../api/catalog";
 import type { Offer } from "./SameContentOffer";
 import { listHosts } from "../api/hosts";
@@ -14,7 +14,7 @@ export function useCatalog() {
   // below is what lists and pickers offer.
   const [allDatasets, setDatasets] = useState<Dataset[]>([]);
   // The pickers (compare, reliability, analysis) offer images only: a point catalog has no pixel grid.
-  const datasets = useMemo(() => allDatasets.filter((d): d is ImageDataset & { archived?: boolean } => !d.archived && !isCatalog(d)), [allDatasets]);
+  const datasets = useMemo(() => allDatasets.filter((d): d is ImageDataset & { archived?: boolean } => !d.archived && isImage(d)), [allDatasets]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -156,8 +156,9 @@ export function useCatalog() {
 
   const catalogCount = useMemo(() => allDatasets.filter((d) => !d.archived && isCatalog(d)).length, [allDatasets]);
   const selected = allDatasets.find((d) => d.id === selectedId) ?? null;
-  const selectedImage = selected && !isCatalog(selected) ? selected : null;
+  const selectedImage = selected && isImage(selected) ? selected : null;
   const selectedCatalog = selected && isCatalog(selected) ? selected : null;
+  const selectedHealpix = selected && isHealpix(selected) ? selected : null;
 
-  return { problems, newer, offer, dismissOffer: () => setOffer(null), addAsLocation, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
+  return { problems, newer, offer, dismissOffer: () => setOffer(null), addAsLocation, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, selectedHealpix, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
 }

@@ -5,7 +5,7 @@ import { TierBadge } from "../ui/TierBadge";
 import { createMask, forgetMask, maskTypeLabel } from "../api/masks";
 import type { CreateMask, Mask } from "../api/masks";
 import type { Dataset } from "../api/catalog";
-import { isCatalog } from "../api/catalog";
+import { isImage } from "../api/catalog";
 import { listSavedRegions, isLine } from "../api/regions";
 import type { SavedRegion } from "../api/regions";
 import { masksChanged, setMaskShown, useMasks, useShownMasks } from "../viewer/useMasks";
@@ -25,7 +25,7 @@ const ruleText = (m: Mask): string => {
  * plane; applying it is decided per analysis, per mask. Zero is a value: no mask here flags it unless its rule says so.
  */
 export function MasksPanel({ dataset, datasets }: { dataset: Dataset; datasets: Dataset[] }) {
-  const image = !isCatalog(dataset);
+  const image = isImage(dataset);
   const onHost = dataset.hostId !== 0;
   const { masks, error } = useMasks(image ? dataset.id : null);
   const shown = useShownMasks(dataset.id);
@@ -38,7 +38,7 @@ export function MasksPanel({ dataset, datasets }: { dataset: Dataset; datasets: 
   const set = (k: string, v: string) => setF({ ...f, [k]: v });
   if (!image) return <p className={s.note}>Masks are made for images and cubes, not for a point catalog.</p>;
   // a noise map or a mask file is read by the program that reads this file, so it must be on the same machine (ADR 0064)
-  const sameHost = datasets.filter((d) => d.id !== dataset.id && d.hostId === dataset.hostId && !isCatalog(d) && !d.archived);
+  const sameHost = datasets.filter((d) => d.id !== dataset.id && d.hostId === dataset.hostId && isImage(d) && !d.archived);
 
   async function loadRegions() {
     setRegs((await listSavedRegions(dataset.id)).filter((r) => !isLine(r)));

@@ -452,6 +452,9 @@ func checkScene(sc scene.Scene, d catalog.Dataset, vp ViewParams, lookup func(in
 				others = append(others, got)
 			}
 		}
+		if src.Kind == catalog.KindHealpix {
+			return refuse("a HEALPix map is never drawn directly: sample it onto the base map's grid first")
+		}
 		if (src.Kind == catalog.KindCatalog) != (o.Kind == "catalog") {
 			return refuse("a catalog overlay needs a point catalog, and a point catalog is only drawn by a catalog overlay")
 		}
