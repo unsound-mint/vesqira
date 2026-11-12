@@ -5193,6 +5193,7 @@ export interface components {
             render?: components["schemas"]["SceneRender"];
             /** @description The masks hatched over the plane of a saved figure, with the legend that names them. Absent from a live pane (what is shown is a view setting) and from a figure saved before it existed. The owner's way back to the mask for "draw again"; a reviewer sees the provenance tiers, never this scene. */
             masks?: components["schemas"]["SceneMask"][];
+            compass?: components["schemas"]["SceneCompass"];
         };
         SceneBase: {
             /** Format: int64 */
@@ -8702,6 +8703,19 @@ export interface components {
             /** Format: int64 */
             id: number;
             carry: boolean;
+        };
+        /** @description The north and east arrows a saved figure drew (ADR 0047, amendment) and the WCS state they rest on, as the worker read it for the viewer (Compass). The arrows stand at pixel (x, y) of the figure's plane: 0-based pixel-centre coordinates, y up. Absent when the figure drew none (the option was off, or the file has no celestial WCS) and from figures saved before it existed, which draw again exactly as before. The server keeps what the browser reported and cannot read the WCS again; the reviewer's provenance says so. */
+        SceneCompass: {
+            x: number;
+            y: number;
+            /** @description Counter-clockwise from +x with y up (FITS), in [0, 360) */
+            northDeg: number;
+            /** @description Counter-clockwise from +x with y up (FITS), in [0, 360) */
+            eastDeg: number;
+            /** @description The astropy name of the celestial frame, when it could be named */
+            frame?: string;
+            /** @description The celestial WCS keywords the researcher corrected (ADR 0061) that the arrows rest on; absent when the file's own WCS is used */
+            corrected?: string[];
         };
     };
     responses: never;

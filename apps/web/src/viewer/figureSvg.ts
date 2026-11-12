@@ -1,4 +1,4 @@
-import { BG, canvasMeasure, FONT, INK, INK2, layoutImageFigure, MASK_ROW, MONO } from "./figure";
+import { BG, canvasMeasure, COMPASS_LETTER_PX, COMPASS_MARKER_PX, compassLayout, FONT, INK, INK2, layoutImageFigure, MASK_ROW, MONO } from "./figure";
 import type { ImageFigure, Measure } from "./figure";
 import { dashOf, FIGURE_STROKE, HALO, LABEL_PX } from "../scene/overlays";
 import { HATCH } from "./maskHatch";
@@ -96,6 +96,17 @@ function layerSvg(marks: Mark[], sx: number, sy: number): string {
   return out.join("");
 }
 
+/** The compass as SVG: the same shapes the PNG strokes (`compassLayout`), halo under ink, the letters N and E, and a "WCS corrected" marker when corrections applied. Pure vector, no style sheet. */
+function compassSvg(c: NonNullable<ImageFigure["compass"]>, planeW: number, planeH: number, iw: number, ih: number): string {
+  const L = compassLayout(c, planeW, planeH, iw, ih);
+  const shaft = (a: typeof L.north, halo: boolean) => `<line ${halo ? 'data-halo="true"' : 'data-role="compass-shaft"'} x1="0" y1="0" x2="${n(a.shaftEnd.x)}" y2="${n(a.shaftEnd.y)}" stroke="${halo ? HALO : INK}" stroke-width="${halo ? 5 : 2}" stroke-linecap="round"/>`;
+  const head = (a: typeof L.north, halo: boolean) => `<polygon ${halo ? 'data-halo="true"' : 'data-role="compass-head"'} points="${a.head.map((p) => `${n(p.x)},${n(p.y)}`).join(" ")}" fill="${halo ? HALO : INK}"${halo ? ` stroke="${HALO}" stroke-width="3" stroke-linejoin="round"` : ""}/>`;
+  const letter = (t: string, x: number, y: number, px: number) => `<text data-role="compass-letter" x="${n(x)}" y="${n(y)}" text-anchor="middle" dominant-baseline="central" font-family="${xmlEscape(MONO)}" font-size="${px}" font-weight="600" fill="${INK}" stroke="${HALO}" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke">${xmlEscape(t)}</text>`;
+  const title = `North points ${Math.round(c.northDeg)}\u00b0 and east ${Math.round(c.eastDeg)}\u00b0 counter-clockwise from the +x pixel axis${L.corrected ? ", from the corrected WCS" : ""}`;
+  const arrows = [true, false].map((halo) => [L.north, L.east].map((a) => shaft(a, halo) + head(a, halo)).join("")).join("");
+  return `<g data-compass="true" data-north-deg="${c.northDeg.toFixed(2)}" data-east-deg="${c.eastDeg.toFixed(2)}"${L.corrected ? ' data-corrected="true"' : ""} transform="translate(${n(L.at.x)} ${n(L.at.y)})"><title>${xmlEscape(title)}</title>${arrows}${letter(L.north.label, L.north.letter.x, L.north.letter.y, COMPASS_LETTER_PX)}${letter(L.east.label, L.east.letter.x, L.east.letter.y, COMPASS_LETTER_PX)}${L.corrected ? letter("WCS corrected", L.corrected.x, L.corrected.y, COMPASS_MARKER_PX) : ""}</g>`;
+}
+
 /** The SVG document of a plane figure. `raster` is the base plane as a PNG data URL (image/png, base64). */
 export function figureSvg(o: ImageFigure & { raster: string; meta: SvgMetadata }, measure: Measure = canvasMeasure()): string {
   if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(o.raster)) throw new Error("The base raster must be a PNG data URL.");
@@ -127,6 +138,7 @@ export function figureSvg(o: ImageFigure & { raster: string; meta: SvgMetadata }
     text(pad, pad + 14, o.title.slice(0, 120), `font-family="${xmlEscape(FONT)}" font-size="16" font-weight="600" fill="${INK}"`),
     `<image x="${pad}" y="${top}" width="${n(iw)}" height="${n(ih)}" preserveAspectRatio="none" style="image-rendering:pixelated" image-rendering="optimizeSpeed" xlink:href="${o.raster}"/>`,
     `<g transform="translate(${pad} ${top})" clip-path="url(#picture)">${o.layers.map((l, i) => `<g data-layer="${i + 1}">${layerSvg(l, sx, sy)}</g>`).join("")}</g>`,
+    ...(o.compass ? [`<g transform="translate(${pad} ${top})" clip-path="url(#picture)" data-layer="compass">${compassSvg(o.compass, o.planeW, o.planeH, iw, ih)}</g>`] : []),
     ...(masks.length ? [`<g transform="translate(${pad} ${top})" clip-path="url(#picture)" data-layer="masks">${masks.map((m) => (m.d ? `<path data-mask-type="${m.type}" d="${m.d}" fill="url(#hatch-${m.type})"/>` : "")).join("")}</g>`] : []),
     ...masks.map((m, i) => `<g data-mask-legend="${m.type}"><rect x="${pad}" y="${n(maskTop + i * MASK_ROW)}" width="18" height="12" fill="url(#hatch-${m.type})" stroke="${INK2}" stroke-width="1"/>${text(pad + 26, maskTop + i * MASK_ROW + 10, m.label, `font-family="${xmlEscape(FONT)}" font-size="12" fill="${INK2}"`)}</g>`),
     `<rect x="${pad}" y="${by}" width="${n(iw)}" height="12" fill="url(#scale)"/>`,
