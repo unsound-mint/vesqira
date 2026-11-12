@@ -144,12 +144,12 @@ func (s *Store) Location(datasetID, locID int64) (Location, error) {
 // upsertPrimary keeps the primary location in step with the dataset row. When the file's size or modification time changed,
 // the fingerprints stored for the old bytes are dropped: a hash must never stay attached to bytes it was not computed from.
 func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
-	var oldSize, oldMod, oldDev, oldIno int64
+	var oldSize, oldMod, oldDev, oldIno int64 // oldDev is read for completeness; only the inode tells files apart
 	changed := false
 	switch err := s.db.QueryRow(`SELECT size_bytes,modified_at,file_dev,file_ino FROM dataset_locations WHERE host_id=? AND path=?`, d.HostID, d.Path).Scan(&oldSize, &oldMod, &oldDev, &oldIno); {
 	case err == nil:
 		// another file under the same name counts as a change even when its size and time happen to be equal
-		changed = oldSize != d.SizeBytes || oldMod != d.ModifiedAt.UnixNano() || (oldIno != 0 && d.FileIno != 0 && (oldDev != d.FileDev || oldIno != d.FileIno))
+		changed = oldSize != d.SizeBytes || oldMod != d.ModifiedAt.UnixNano() || (oldIno != 0 && d.FileIno != 0 && oldIno != d.FileIno) // a new device alone is a remount
 	case !errors.Is(err, sql.ErrNoRows):
 		return err
 	}
@@ -162,26 +162,27 @@ func (s *Store) upsertPrimary(datasetID int64, d Dataset) error {
 	}
 	_, err := s.db.Exec(`INSERT INTO dataset_locations(dataset_id,host_id,path,kind,is_primary,link,size_bytes,modified_at,added_at,file_dev,file_ino) VALUES(?,?,?,?,1,?,?,?,?,?,?)
 		ON CONFLICT(host_id,path) DO UPDATE SET
-			sampled_fp=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR (file_dev=excluded.file_dev AND file_ino=excluded.file_ino)) THEN sampled_fp ELSE '' END,
-			sampled_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR (file_dev=excluded.file_dev AND file_ino=excluded.file_ino)) THEN sampled_at ELSE 0 END,
-			sampled_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR (file_dev=excluded.file_dev AND file_ino=excluded.file_ino)) THEN sampled_by ELSE '' END,
-			full_sha256=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR (file_dev=excluded.file_dev AND file_ino=excluded.file_ino)) THEN full_sha256 ELSE '' END,
-			full_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR (file_dev=excluded.file_dev AND file_ino=excluded.file_ino)) THEN full_at ELSE 0 END,
-			full_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR (file_dev=excluded.file_dev AND file_ino=excluded.file_ino)) THEN full_by ELSE '' END,
+			sampled_fp=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN sampled_fp ELSE '' END,
+			sampled_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN sampled_at ELSE 0 END,
+			sampled_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN sampled_by ELSE '' END,
+			full_sha256=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN full_sha256 ELSE '' END,
+			full_at=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN full_at ELSE 0 END,
+			full_by=CASE WHEN size_bytes=excluded.size_bytes AND modified_at=excluded.modified_at AND (file_ino=0 OR excluded.file_ino=0 OR file_ino=excluded.file_ino) THEN full_by ELSE '' END,
 			size_bytes=excluded.size_bytes, modified_at=excluded.modified_at,
 			file_dev=CASE WHEN excluded.file_ino=0 THEN file_dev ELSE excluded.file_dev END, file_ino=CASE WHEN excluded.file_ino=0 THEN file_ino ELSE excluded.file_ino END`,
 		datasetID, d.HostID, d.Path, LocRegistered, LinkRegistered, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix(), d.FileDev, d.FileIno)
 	return err
 }
 
-// NoteFileID records the device and inode of a location's file that has none recorded yet (a location made before schema 27), for
-// a caller that has just checked the file against the recorded size and modification time. It never replaces a recorded identity:
-// a different file is reported to the person, who registers it again on purpose.
+// NoteFileID records the device and inode of a location's file, for a caller that has just checked it against the recorded size,
+// modification time and inode: it fills them in for a location made before schema 27, and records the new device number of a drive
+// mounted again (same inode). It never replaces a recorded inode: a different file is reported to the person, who registers it
+// again on purpose.
 func (s *Store) NoteFileID(hostID int64, path string, dev, ino int64) error {
 	if ino == 0 || hostID != 0 {
 		return nil
 	}
-	_, err := s.db.Exec(`UPDATE dataset_locations SET file_dev=?, file_ino=? WHERE host_id=0 AND path=? AND file_ino=0`, dev, ino, path)
+	_, err := s.db.Exec(`UPDATE dataset_locations SET file_dev=?, file_ino=? WHERE host_id=0 AND path=? AND (file_ino=0 OR (file_ino=? AND file_dev<>?))`, dev, ino, path, ino, dev)
 	return err
 }
 

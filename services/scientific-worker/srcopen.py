@@ -48,8 +48,8 @@ class OtherFile(OSError):
     """The file reached is a regular file, but not the one the API recorded (device and inode differ)."""
 
 
-OTHER_FILE_MESSAGE = ("this name now belongs to a different file than the one that was registered (it was replaced, or its drive "
-                      "was mounted again); check it is the file you mean, then register it again")
+OTHER_FILE_MESSAGE = ("this name now belongs to a different file than the one that was registered (it was replaced or copied "
+                      "over); check it is the file you mean, then register it again")
 
 
 def parse_expect(raw) -> tuple[int, int] | None:

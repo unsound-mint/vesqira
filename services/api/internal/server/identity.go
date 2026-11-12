@@ -73,7 +73,7 @@ func (s *Server) localStat(loc catalog.Location) (real string, code int, msg str
 	if differentFile(info, loc.FileDev, loc.FileIno) {
 		return "", 409, msgOtherFile
 	}
-	if dev, ino := fileIDOf(info); loc.FileIno == 0 {
+	if dev, ino := fileIDOf(info); loc.FileIno == 0 || dev != loc.FileDev {
 		_ = s.Store.NoteFileID(loc.HostID, loc.Path, dev, ino)
 	}
 	return real, 0, ""

@@ -120,7 +120,7 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 		return "", k, 409, msgOtherFile
 	}
 	dev, ino := fileIDOf(info)
-	if d.FileIno == 0 {
+	if d.FileIno == 0 || dev != d.FileDev {
 		if err := s.Store.NoteFileID(0, d.Path, dev, ino); err != nil {
 			log.Printf("authorize: %v", err)
 		}

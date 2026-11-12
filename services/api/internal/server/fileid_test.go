@@ -158,3 +158,24 @@ func TestAnEditThatChangesSizeOrTimeStillSaysTheFileChanged(t *testing.T) {
 		t.Fatalf("%d %s", r.StatusCode, b)
 	}
 }
+
+func TestADriveMountedAgainWithAnotherDeviceNumberIsTheSameFile(t *testing.T) {
+	ts, st, _, root := idServer(t)
+	file := filepath.Join(root, "ext.fits")
+	if err := os.WriteFile(file, []byte("xxxx"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	id := register(t, ts, file)
+	dev, ino := devIno(t, file)
+	// a removable or network drive gets another device number when it is mounted again; the inode, size and time are the file's
+	if _, err := st.DB().Exec(`UPDATE dataset_locations SET file_dev=?`, dev+1); err != nil {
+		t.Fatal(err)
+	}
+	u := ts.URL + "/api/datasets/" + itoa(id) + "/plane?channel=0"
+	if r, b := get(t, u); r.StatusCode != 200 {
+		t.Fatalf("a remounted drive must not ask for registering again: %d %s", r.StatusCode, b)
+	}
+	if d, _ := st.Get(int64(id)); d.FileDev != dev || d.FileIno != ino {
+		t.Fatalf("the new device number is recorded, the inode kept: %d/%d, want %d/%d", d.FileDev, d.FileIno, dev, ino)
+	}
+}
