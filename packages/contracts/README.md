@@ -5,6 +5,8 @@
 - the route registrations in `services/api` (every path, method and listener), and
 - `bodies.json`, the hand-written request and response descriptions (ADR 0032). Keys of `operations` are `"METHOD /path"`; `schemas` become `components.schemas`.
 
+Every operation also carries `x-vesqira-permission` (ADR 0050): for the owner listener it is the `authz.<Permission>` named in the route's `s.route(...)` declaration (names read from `services/api/internal/authz/permissions.go`), and for the review, reader and publisher routes a capability name assigned by path prefix in `tools/contracts.py`. It is written, never edited.
+
 `make docs` fails when the file is out of date, when `bodies.json` names a route that does not exist or a schema it does not define, or when the web client (`apps/web/src/api`) calls a route that does not exist. It also enforces a ratchet: `undescribed.txt` lists the operations that still have no described bodies (one `METHOD /path` per line, sorted).
 A route missing from bodies.json and from that list fails the check (describe it), and so does a listed route that is now described (`tools/contracts.py` trims the file; it never adds to it).
 
