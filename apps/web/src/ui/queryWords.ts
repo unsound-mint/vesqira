@@ -27,3 +27,14 @@ export const unquote = (w: string) => w.replace(/"/g, "");
 
 /** A value as it is written in a query: quoted only when it has whitespace. */
 export const quoteValue = (v: string) => (/\s/.test(v) ? `"${v}"` : v);
+
+/**
+ * Archived entries are hidden unless the query asks: `archived:yes` shows only the archived ones, `archived:no` (the
+ * default) only the others, `archived:all` both. The word is a filter, not text to search for.
+ */
+export function archivedMatches(archived: boolean, q: string): boolean {
+  const w = tokenize(q).map((x) => unquote(x).toLowerCase()).find((x) => x.startsWith("archived:"));
+  const want = w?.slice("archived:".length);
+  if (want === "all") return true;
+  return want === "yes" ? archived : !archived;
+}

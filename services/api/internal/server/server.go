@@ -247,6 +247,9 @@ func (s *Server) Handler() http.Handler {
 	if s.Runs != nil {
 		mux.HandleFunc("POST /api/runs/import", s.importRun)
 		mux.HandleFunc("GET /api/runs", s.listRuns)
+		mux.HandleFunc("GET /api/run-views", s.listRunViews)
+		mux.HandleFunc("POST /api/run-views", s.saveRunView)
+		mux.HandleFunc("POST /api/run-views/{id}/delete", s.deleteRunView)
 		mux.HandleFunc("GET /api/runs/{id}", s.getRun)
 		mux.HandleFunc("GET /api/runs/{id}/rerun", s.rerunRun)
 		mux.HandleFunc("POST /api/runs/{id}/review", s.setRunReview)

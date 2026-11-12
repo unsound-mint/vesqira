@@ -225,6 +225,7 @@ func Open(db *sql.DB) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS run_review_history(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, at INTEGER NOT NULL, qc TEXT NOT NULL, interpretation TEXT NOT NULL, note TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS run_outputs(
 			run_id INTEGER NOT NULL, role TEXT NOT NULL, dataset_id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(run_id, role))`,
+		schema.RunViewsTable,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			return nil, err

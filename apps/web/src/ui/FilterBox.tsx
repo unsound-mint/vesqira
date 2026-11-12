@@ -10,7 +10,7 @@ import s from "./FilterBox.module.css";
 /** One key the list can be asked about, with what occurs for it. Built from the data by the caller. */
 export type VocabKey = {
   key: string;
-  kind: "setting" | "result" | "qc" | "unit" | "host" | "nature" | "archived";
+  kind: "setting" | "result" | "qc" | "unit" | "host" | "nature" | "archived" | "status" | "date";
   /** How many items have it. */
   count: number;
   numeric: boolean;
@@ -26,7 +26,7 @@ export type VocabKey = {
 };
 export type Vocabulary = { keys: VocabKey[]; names: string[] };
 
-const KIND: Record<VocabKey["kind"], string> = { setting: "setting", result: "result", qc: "assessment", unit: "unit", host: "host", nature: "nature", archived: "archived" };
+const KIND: Record<VocabKey["kind"], string> = { setting: "setting", result: "result", qc: "assessment", unit: "unit", host: "host", nature: "nature", archived: "archived", status: "status", date: "date" };
 const TOKEN = /^([^<>=:\s]+)(<=|>=|=|<|>|:)(.*)$/;
 const ENDS_IN_OP = /[<>=:]$/;
 const SHOW: Record<string, string> = { "<=": "≤", ">=": "≥" };
@@ -47,7 +47,8 @@ function chipLabel(token: string, vocab: Vocabulary): string {
   const [, key = "", op = "", raw = ""] = m;
   const value = unquote(raw);
   const vk = vocab.keys.find((k) => k.key.toLowerCase() === key.toLowerCase());
-  if (op === ":") return `${key === "qc" ? "QC" : key.charAt(0).toUpperCase() + key.slice(1)}: ${vk?.labels?.[value] ?? value}`;
+  // `qc:passed` and `host:name` read as labels; `block_size:16..64` keeps the key as the data spells it
+  if (op === ":") return vk?.sep || key === "qc" ? `${key === "qc" ? "QC" : key.charAt(0).toUpperCase() + key.slice(1)}: ${vk?.labels?.[value] ?? value}` : `${key}: ${value}`;
   return `${key} ${SHOW[op] ?? op} ${value}`;
 }
 
@@ -77,6 +78,8 @@ function suggest(draft: string, vocab: Vocabulary, noun: string): { options: Opt
   if (m) {
     const vk = find(m[1] ?? "");
     const op = m[2] ?? "";
+    // `block_size:` on a number asks for a range (16..64) or one value: nothing to complete, but say what occurs
+    if (vk && op === ":" && !vk.sep && vk.numeric) return { options: [], hint: m[3] === "" ? `${rangeHint(vk)}; write ${vk.key}:lo..hi` : undefined };
     if (!vk || (vk.sep ? op !== ":" : op === ":")) return { options: [] };
     return { options: valueOptions(vk, op, m[3] ?? ""), hint: vk.numeric && m[3] === "" ? rangeHint(vk) : undefined };
   }
@@ -93,7 +96,7 @@ function suggest(draft: string, vocab: Vocabulary, noun: string): { options: Opt
       for (const op of exact.numeric ? ["=", "<", ">", "<=", ">="] : ["="]) {
         options.push({ id: `o:${exact.key}:${op}`, kind: "op", label: `${exact.key} ${SHOW[op] ?? op}`, draft: `${exact.key}${op}` });
       }
-      hint = rangeHint(exact);
+      hint = exact.numeric ? `${rangeHint(exact)}; a range is ${exact.key}:lo..hi` : rangeHint(exact);
     }
   }
   const keys = vocab.keys.filter((k) => k !== exact && k.key.toLowerCase().includes(lower));

@@ -19,9 +19,6 @@ CREATE INDEX report_links_target ON report_links(kind, target);
 -- index saved_regions_dataset
 CREATE INDEX saved_regions_dataset ON saved_regions(dataset_id);
 
--- index subsets_source
-CREATE INDEX subsets_source ON subsets(source_id);
-
 -- index transfers_live_name
 CREATE UNIQUE INDEX transfers_live_name ON transfers(CASE direction WHEN 'download' THEN 0 ELSE host_id END, dest_dir, final_name) WHERE final_name<>'' AND state IN ('queued','waiting','running','verifying');
 
@@ -142,6 +139,9 @@ CREATE TABLE run_review(run_id INTEGER PRIMARY KEY, qc TEXT NOT NULL, interpreta
 -- table run_review_history
 CREATE TABLE run_review_history(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, at INTEGER NOT NULL, qc TEXT NOT NULL, interpretation TEXT NOT NULL, note TEXT NOT NULL);
 
+-- table run_views
+CREATE TABLE run_views( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, spec TEXT NOT NULL, updated_at INTEGER NOT NULL);
+
 -- table runs
 CREATE TABLE runs( id INTEGER PRIMARY KEY AUTOINCREMENT, dir TEXT NOT NULL UNIQUE, name TEXT NOT NULL, kind TEXT NOT NULL, imported_at INTEGER NOT NULL, generated_at TEXT NOT NULL, git_commit TEXT NOT NULL, elapsed REAL, input_name TEXT NOT NULL, input_size INTEGER NOT NULL, params TEXT NOT NULL, diagnostics TEXT NOT NULL, metrics TEXT NOT NULL DEFAULT '[]', environment TEXT NOT NULL DEFAULT '', controls TEXT NOT NULL DEFAULT '');
 
@@ -154,12 +154,6 @@ CREATE TABLE snapshot_outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id
 -- table snapshots
 CREATE TABLE snapshots( id INTEGER PRIMARY KEY AUTOINCREMENT, board_id INTEGER NOT NULL, label TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0, token_hash TEXT NOT NULL UNIQUE, frozen TEXT NOT NULL, superseded_by INTEGER NOT NULL DEFAULT 0, supersede_reason TEXT NOT NULL DEFAULT '', supersede_at INTEGER NOT NULL DEFAULT 0);
 
--- table subset_versions
-CREATE TABLE subset_versions( subset_id INTEGER NOT NULL REFERENCES subsets(id) ON DELETE CASCADE, version INTEGER NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, reason TEXT NOT NULL, definition TEXT NOT NULL, source_size INTEGER NOT NULL, source_mtime_ns INTEGER NOT NULL, source_identity TEXT NOT NULL DEFAULT '', author TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(subset_id, version));
-
--- table subsets
-CREATE TABLE subsets( id INTEGER PRIMARY KEY AUTOINCREMENT, source_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE, created_at INTEGER NOT NULL);
-
 -- table sweep_jobs
 CREATE TABLE sweep_jobs( sweep_id INTEGER NOT NULL REFERENCES sweeps(id) ON DELETE CASCADE, job_id INTEGER NOT NULL UNIQUE, idx INTEGER NOT NULL, vals TEXT NOT NULL, approved_hash TEXT NOT NULL DEFAULT '', PRIMARY KEY(sweep_id, idx));
 
@@ -171,7 +165,4 @@ CREATE TABLE transfers( id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NO
 
 -- trigger dataset_corrections_append_only
 CREATE TRIGGER dataset_corrections_append_only BEFORE UPDATE ON dataset_corrections BEGIN SELECT RAISE(ABORT, 'dataset_corrections is append-only: a revert is a new record'); END;
-
--- trigger subset_versions_append_only
-CREATE TRIGGER subset_versions_append_only BEFORE UPDATE ON subset_versions BEGIN SELECT RAISE(ABORT, 'subset_versions is append-only: an edit or a re-pin is a new version'); END;
 

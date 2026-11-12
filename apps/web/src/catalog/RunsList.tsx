@@ -2,21 +2,37 @@ import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { GitBranch } from "lucide-react";
 import type { Run } from "../api/runs";
+import type { Job } from "../api/jobs";
 import { Button, FilterBox, PathField, Select, TreeRow } from "../ui";
 import { matchRun } from "./filter";
 import { runVocabulary } from "./vocabulary";
+import { contextIndex } from "./runTable";
 import s from "./Explorer.module.css";
 
 /** Pipeline runs: import a run folder, open one. A dirty commit is flagged in the list itself. */
-export function RunsList({ runs, hosts = [], onImport, onOpen }: { runs: Run[]; hosts?: { id: number; name: string }[]; onImport: (path: string, hostId?: number) => Promise<string | null>; onOpen: (run: Run) => void }) {
+export function RunsList({ runs, hosts = [], jobs = [], query, onQuery, onImport, onOpen, onOpenTable }: {
+  runs: Run[];
+  hosts?: { id: number; name: string }[];
+  jobs?: Job[];
+  /** The filter words, when the page keeps them (the runs table reads the same query). Without them the list keeps its own. */
+  query?: string;
+  onQuery?: (q: string) => void;
+  onImport: (path: string, hostId?: number) => Promise<string | null>;
+  onOpen: (run: Run) => void;
+  /** Opens the runs table; the list only offers it when given. */
+  onOpenTable?: () => void;
+}) {
   const [path, setPath] = useState("");
   const [hostId, setHostId] = useState(""); // "" is this computer; otherwise a ROHSA fit on that host (ADR 0046)
   const host = hostId ? Number(hostId) : undefined;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [q, setQ] = useState("");
-  const shown = runs.filter((r) => matchRun(r, q));
-  const vocabulary = useMemo(() => runVocabulary(runs), [runs]);
+  const [own, setOwn] = useState("");
+  const q = query ?? own;
+  const setQ = onQuery ?? setOwn;
+  const ctxOf = useMemo(() => contextIndex(runs, jobs, (id) => hosts.find((h) => h.id === id)?.name), [runs, jobs, hosts]);
+  const shown = useMemo(() => runs.filter((r) => matchRun(r, q, ctxOf(r))), [runs, q, ctxOf]);
+  const vocabulary = useMemo(() => runVocabulary(runs, ctxOf), [runs, ctxOf]);
   const active = runs.filter((r) => !r.archived).length;
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -43,6 +59,7 @@ export function RunsList({ runs, hosts = [], onImport, onOpen }: { runs: Run[]; 
       </form>
       {runs.length === 0 ? <p className={s.note}>No runs yet. Point this at a folder holding run_metadata.toml and its output maps, or at a ROHSA fit (its rohsa_*.dat, or the folder holding it).</p> : null}
       {runs.length > 3 || runs.length > active ? <FilterBox label="Filter runs" placeholder="Filter runs" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={active} noun="runs" /> : null}
+      {onOpenTable && runs.length > 0 ? <Button variant="ghost" onClick={onOpenTable}>Open as a table with plot…</Button> : null}
       {runs.length > 0 && shown.length === 0 ? <p className={s.note}>No run matches. Remove a filter above to widen the list.</p> : null}
       <div role="list" aria-label="Runs">
         {shown.map((r) => (
