@@ -9,6 +9,7 @@ export type SceneSpectral = S["SceneSpectral"];
 export type SceneDisplay = S["SceneDisplay"];
 export type SceneView = S["SceneView"];
 export type SceneLink = S["SceneLink"];
+export type SceneMask = S["SceneMask"];
 export type ScenePoint = S["ScenePoint"];
 export type SceneRegion = S["SceneRegion"];
 export type SceneOverlay = S["SceneOverlay"];

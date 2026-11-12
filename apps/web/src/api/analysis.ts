@@ -6,7 +6,9 @@ import type { Controls } from "./runs";
 import type { MaskUse } from "./masks";
 
 export type AnalysisOp = "axial_diff" | "scalar_diff" | "stats" | "moment" | "cutout" | "slab" | "align" | "convolve";
-export type AnalysisRequest = { op: AnalysisOp; datasetId: number; referenceId?: number; params?: Record<string, string>; masks?: MaskUse[]; cpus?: number; mem?: string; time?: string };
+/** What to do with one mask of the source in the new file (ADR 0055): carry it, or leave it behind. */
+export type CarryChoice = { id: number; carry: boolean };
+export type AnalysisRequest = { op: AnalysisOp; datasetId: number; referenceId?: number; params?: Record<string, string>; masks?: MaskUse[]; carryMasks?: CarryChoice[]; cpus?: number; mem?: string; time?: string };
 
 export type StatsSummary = {
   channels: [number, number];
@@ -26,7 +28,17 @@ export type StatsSummary = {
 
 export type AppliedMask = { id: number; name: string; type: string; policy: string; weight?: number; tier?: string; pixels_flagged_with_value: number; pixels_excluded: number };
 
-export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls; masks?: { type: string; name: string; policy: string; weight?: number; tier: string; mappingVersion?: string }[] }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
+/** The masks a result carried from its source, left behind, and that its no-value mask was computed again (ADR 0055). No ids, no paths. */
+export type MaskCarryRecord = {
+  operation: string;
+  by: string;
+  flagsFollow: string;
+  carried: { type: string; name: string; tier: string; mappingVersion?: string; fingerprint: string; carriedFingerprint: string }[];
+  leftBehind: { type: string; name: string; tier: string; mappingVersion?: string; fingerprint: string }[];
+  recomputed: string[];
+};
+
+export type Derived = { datasetId: number; op: string; params: { options?: Record<string, string>; controls?: Controls; masks?: { type: string; name: string; policy: string; weight?: number; tier: string; mappingVersion?: string }[]; maskCarry?: MaskCarryRecord }; sources: number[]; summary: { policy?: string; unit?: string }; software: Record<string, string>; createdAt: string };
 
 export const runAnalysis = (r: AnalysisRequest, signal?: AbortSignal, requestId?: string) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r, signal, requestId);
 export const createAnalysisJob = (r: AnalysisRequest) => post<Job>("/api/analysis/job", r);

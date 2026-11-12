@@ -4,6 +4,8 @@ import { axisDisplay, segments } from "./SpectrumPlot";
 import type { RegionShape } from "../api/planes";
 import { strokeMarks } from "../scene/overlays";
 import type { Mark } from "../scene/overlays";
+import { HATCH } from "./maskHatch";
+import type { MaskType } from "../api/masks";
 
 export type FigureFacts = {
   dataset: string;
@@ -83,13 +85,20 @@ export type ImageFigure = {
   captions: string[];
   /** The width the figure is composed at; FIGURE_WIDTH unless a figure recorded another. */
   width?: number;
+  /** The masks hatched over the plane (ADR 0055), each with its legend line: the PNG, the SVG and the layout all read this one list. */
+  masks?: FigureMask[];
 };
+
+/** One mask hatched on a figure: its type (which picks the pattern), the legend line (type, name, tier, pixels), and the runs of flagged pixels as an SVG path in figure pixels over the plane, north up. */
+export type FigureMask = { type: MaskType; label: string; d: string };
+
+export const MASK_ROW = 18;
 
 export const FIGURE_PAD = 20;
 /** Output pixels per image pixel in a figure of this width: what the overlay registry draws at. */
 export const figureScale = (figureWidth: number, planeW: number) => (figureWidth - 2 * FIGURE_PAD) / planeW;
 
-export type ImageLayout = { W: number; H: number; pad: number; iw: number; ih: number; top: number; by: number; capLines: string[]; ends: [string, string] };
+export type ImageLayout = { W: number; H: number; pad: number; iw: number; ih: number; top: number; by: number; capLines: string[]; ends: [string, string]; /** Where the legend of the hatched masks starts; its rows are MASK_ROW apart. */ maskTop: number };
 
 /** Where everything of a plane figure goes. One function for the PNG and the SVG. */
 export function layoutImageFigure(o: ImageFigure, measure: Measure): ImageLayout {
@@ -98,15 +107,16 @@ export function layoutImageFigure(o: ImageFigure, measure: Measure): ImageLayout
   const iw = W - 2 * pad;
   const ih = Math.round((iw * o.planeH) / o.planeW);
   const capLines = o.captions.flatMap((c) => wrap(measure, c, iw));
-  const H = pad + 26 + ih + 14 + 40 + capLines.length * 17 + pad;
+  const legendH = (o.masks?.length ?? 0) * MASK_ROW + (o.masks?.length ? 6 : 0);
+  const H = pad + 26 + ih + 14 + legendH + 40 + capLines.length * 17 + pad;
   const top = pad + 26;
   const ends: [string, string] = o.legend.kind === "cyclic" ? ["0°", "180° (same as 0°)"] : o.legend.limits ? (o.legend.limits.map((v) => `${Number(v.toPrecision(5))}${o.legend.kind === "scalar" && o.legend.unit ? ` ${o.legend.unit}` : ""}`) as [string, string]) : ["unknown", "unknown"];
-  return { W, H, pad, iw, ih, top, by: top + ih + 14, capLines, ends };
+  return { W, H, pad, iw, ih, top, by: top + ih + 14 + legendH, capLines, ends, maskTop: top + ih + 12 };
 }
 
 /** Plane figure: the whole plane as drawn, its overlays (one list of marks per layer from the scene's overlay registry, stroked in scene order like the screen), a legend and the caption. Returns a PNG. */
 export async function composeImageFigure(o: ImageFigure & { source: HTMLCanvasElement }): Promise<Blob> {
-  const { W, H, pad, iw, ih, top, by, capLines, ends } = layoutImageFigure(o, canvasMeasure());
+  const { W, H, pad, iw, ih, top, by, capLines, ends, maskTop } = layoutImageFigure(o, canvasMeasure());
   const c = document.createElement("canvas");
   c.width = W;
   c.height = H;
@@ -123,6 +133,7 @@ export async function composeImageFigure(o: ImageFigure & { source: HTMLCanvasEl
   ctx.translate(pad, top);
   for (const layer of o.layers) strokeMarks(ctx, layer, iw / o.planeW, ih / o.planeH, INK, { w: o.planeW, h: o.planeH });
   ctx.restore();
+  if (o.masks?.length) drawMasks(ctx, o.masks, { pad, top, iw, ih, maskTop });
   // legend bar
   for (let x = 0; x < iw; x++) {
     const i = Math.round((x / (iw - 1)) * 255) * 3;
@@ -138,6 +149,60 @@ export async function composeImageFigure(o: ImageFigure & { source: HTMLCanvasEl
   ctx.font = `12px ${FONT}`;
   capLines.forEach((l, i) => ctx.fillText(l, pad, by + 52 + i * 17));
   return toBlob(c);
+}
+
+/** The tile of a type's hatch (the same 6 x 6 patterns as the viewer), in the figure's ink. */
+function hatchTile(type: MaskType): HTMLCanvasElement | null {
+  const tile = document.createElement("canvas");
+  tile.width = tile.height = 6;
+  const t = tile.getContext("2d");
+  if (!t) return null;
+  t.strokeStyle = t.fillStyle = INK;
+  t.lineWidth = 1;
+  const h = HATCH[type];
+  if (h.dots) {
+    t.beginPath();
+    t.arc(3, 3, 1.1, 0, Math.PI * 2);
+    t.fill();
+  } else t.stroke(new Path2D(h.tile));
+  return tile;
+}
+
+/** The hatches over the plane and their legend: one pattern per type, so the masks are told apart without colour, and the legend names each (type, name, tier, pixels). The picture under a hatch is not changed. */
+export function drawMasks(ctx: CanvasRenderingContext2D, masks: FigureMask[], g: { pad: number; top: number; iw: number; ih: number; maskTop: number }): void {
+  const patterns = new Map<MaskType, CanvasPattern | null>();
+  const pattern = (type: MaskType) => {
+    if (!patterns.has(type)) {
+      const tile = hatchTile(type);
+      patterns.set(type, tile ? ctx.createPattern(tile, "repeat") : null);
+    }
+    return patterns.get(type) ?? null;
+  };
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(g.pad, g.top, g.iw, g.ih);
+  ctx.clip();
+  ctx.translate(g.pad, g.top);
+  for (const m of masks) {
+    const p = pattern(m.type);
+    if (!p || !m.d) continue;
+    ctx.fillStyle = p;
+    ctx.fill(new Path2D(m.d));
+  }
+  ctx.restore();
+  ctx.font = `12px ${FONT}`;
+  masks.forEach((m, i) => {
+    const y = g.maskTop + i * MASK_ROW;
+    const p = pattern(m.type);
+    if (p) {
+      ctx.fillStyle = p;
+      ctx.fillRect(g.pad, y, 18, 12);
+    }
+    ctx.strokeStyle = INK2;
+    ctx.strokeRect(g.pad + 0.5, y + 0.5, 17, 11);
+    ctx.fillStyle = INK2;
+    ctx.fillText(m.label, g.pad + 26, y + 10);
+  });
 }
 
 /** Spectrum figure drawn from the data: gaps where the mean is unknown, axis in the unit stated. */

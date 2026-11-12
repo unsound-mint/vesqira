@@ -226,6 +226,16 @@ def build_import(c: Cube, params: dict):
 METHODS = {"missing": build_missing, "low_snr": build_low_snr, "saturated": build_saturated, "regions": build_regions, "import": build_import}
 
 
+def build_and_write(c: Cube, p: dict, out: str):
+    """Build one mask of `c` from the parameters `p` ({method, type, ...}) and write it to `out`: (flags, rule, how it was made). The one
+    path for a mask the researcher asks for and for the `missing` mask recomputed on the result of an operation."""
+    method, mtype = p.get("method"), p.get("type")
+    how = {"regions": "regions", "import": "import"}.get(method, "computed")       # how it was made: by the worker from the data and a stated rule, ...
+    flags, rule = METHODS[method](c, p)
+    write_mask(out, flags, c, mtype, how, [f"Vesqira mask {mtype} ({how}): {rule['rule']}"])
+    return flags, rule, how
+
+
 def op_mask(args) -> dict:
     """analysis.py mask --input DATA --out MASK.fits --params JSON: build one mask of the data (the type is the caller's)."""
     from analysis import open_cube, fail
@@ -243,11 +253,8 @@ def op_mask(args) -> dict:
     c = open_cube(args.input)
     if (method == "missing") != (mtype == "missing"):
         fail("the type missing is computed from the data (and only that); every other type is stated by the researcher")
-    method = {"regions": "regions", "import": "import"}.get(method, "computed")       # how it was made: by the worker from the data and a stated rule, ...
     try:
-        flags, rule = METHODS[p["method"]](c, p)
-        hist = [f"Vesqira mask {mtype} ({method}): {rule['rule']}"]
-        write_mask(args.out, flags, c, mtype, method, hist)
+        flags, rule, method = build_and_write(c, p, args.out)
     except MaskError as e:
         fail(str(e))
     total = int(flags.size)
@@ -287,6 +294,24 @@ def check_specs(specs) -> list[dict]:
     return specs
 
 
+def open_mask(s: dict, channels: int, ny: int, nx: int):
+    """(hdul, array) of the mask file a spec {path, type} names, held open for reading: it must be a mask of that type, either one plane
+    (ny, nx) or one per channel (channels, ny, nx). The caller closes hdul. Applying masks and carrying them both read through this."""
+    real = authorize(s["path"])
+    hdul = fits.open(real, memmap=True, mode="denywrite", do_not_scale_image_data=True)
+    try:
+        h = hdul[0].header
+        if h.get("VESQMTYP") != s["type"]:
+            raise MaskError(f"the mask file is not a {s['type']} mask")
+        shape = tuple(hdul[0].data.shape) if h.get("NAXIS") in (2, 3) else ()
+        if shape != (ny, nx) and not (len(shape) == 3 and shape == (channels, ny, nx)):
+            raise MaskError(f"a {s['type']} mask has shape {shape}, not the data's ({ny}, {nx}) or ({channels}, {ny}, {nx})")
+        return hdul, hdul[0].data
+    except BaseException:
+        hdul.close()
+        raise
+
+
 class Applied:
     """The masks an operation takes, opened for reading plane by plane. Use as a context manager; `plane(ch, p)` gives the pixels to
     leave out and the weight of each, and `record()` the per-mask counts for the result's summary."""
@@ -302,21 +327,14 @@ class Applied:
 
     def __enter__(self):
         ny, nx = self.c.shape[self.c.y], self.c.shape[self.c.x]
-        for s in self.specs:
-            real = authorize(s["path"])
-            hdul = fits.open(real, memmap=True, mode="denywrite", do_not_scale_image_data=True)
-            self.files.append(hdul)
-            h = hdul[0].header
-            if h.get("VESQMTYP") != s["type"]:
-                raise MaskError(f"the mask file is not a {s['type']} mask")
-            shape = tuple(hdul[0].data.shape) if h.get("NAXIS") in (2, 3) else ()
-            if shape == (ny, nx):
-                pass
-            elif len(shape) == 3 and shape == (self.c.channels, ny, nx):
-                pass
-            else:
-                raise MaskError(f"a {s['type']} mask has shape {shape}, not the data's ({ny}, {nx}) or ({self.c.channels}, {ny}, {nx})")
-            self.arrays.append(hdul[0].data)
+        try:
+            for s in self.specs:
+                hdul, arr = open_mask(s, self.c.channels, ny, nx)
+                self.files.append(hdul)
+                self.arrays.append(arr)
+        except BaseException:
+            self.__exit__()
+            raise
         return self
 
     def __exit__(self, *a):
@@ -358,6 +376,131 @@ class Applied:
             row.update(pixels_flagged_with_value=st["flagged_with_value"], pixels_excluded=st["excluded"])
             out.append(row)
         return out
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Carrying masks into the result of cutout, slab, subset, align and convolve (ADR 0055)
+#
+# A carried mask is a new mask file of the result: the same type, cut or resampled by the very window, grid or kernel the data went
+# through, flagged wherever any flagged input pixel contributes. Nothing about the source mask or data is written. The `missing`
+# mask of a result is never carried: it is computed again from the result's own values (a cut or an interpolation changes which pixels
+# have a value). Zero is a value; carrying looks at the mask only, never at the data.
+
+MAX_CARRY = 16
+# A reprojected mask is flagged where more than this share of the output pixel's covered area came from flagged input pixels. The
+# exact method sums polygon overlaps, so a neighbour that only touches an edge can come out as 1e-17 rather than 0: that is
+# arithmetic, not contribution.
+REPROJECT_MIN_SHARE = 1e-6
+
+ALIGN_RULE = (f"reprojected as a float plane with the exact (area-overlap) method onto the reference grid; an output pixel is flagged "
+              f"where more than {REPROJECT_MIN_SHARE:g} of the input area it covers is flagged, so any contributing flagged pixel flags it. "
+              "Outside the input's footprint nothing is flagged")
+CONVOLVE_RULE = ("an output pixel is flagged when the convolution kernel, truncated to the square of half-width {n} pixels that the data "
+                 "was convolved with, reaches a flagged pixel")
+
+
+def parse_carry(text: str | None) -> list[dict]:
+    """The --carry-masks option: a JSON list of {path, type, out}: the mask file, its type, and where its carried copy is written."""
+    if not text:
+        return []
+    try:
+        specs = json.loads(text)
+    except ValueError:
+        raise MaskError("the masks to carry are not a JSON list") from None
+    if not isinstance(specs, list) or len(specs) > MAX_CARRY:
+        raise MaskError(f"at most {MAX_CARRY} masks can be carried at once")
+    for s in specs:
+        if not isinstance(s, dict) or s.get("type") not in TYPES or not isinstance(s.get("path"), str) or not isinstance(s.get("out"), str):
+            raise MaskError("every mask to carry needs its file, its type and where to write the new one")
+        if s["type"] == "missing":
+            raise MaskError("the no-value mask is computed again from the result's own values; it is never carried")
+    return specs
+
+
+def cut_flags(ys: slice, xs: slice, chans: slice | None):
+    """The function that cuts a mask (ny, nx) or (channels, ny, nx) by the window the data was cut with: a plain slice, the same
+    pixels. A single-plane mask applies to every channel, so a channel range leaves it alone."""
+    def fn(a: np.ndarray) -> np.ndarray:
+        if a.ndim == 3:
+            return a[chans if chans is not None else slice(None), ys, xs]
+        return a[ys, xs]
+    return fn
+
+
+def reproject_flags(w_src, w_ref, shape_out):
+    """The function that carries a mask onto the reference grid: the mask is reprojected as a float plane (reproject_exact, the
+    conservative provider) and flagged where the result exceeds REPROJECT_MIN_SHARE. NaN, which is outside the footprint, is not flagged."""
+    from reproject import reproject_exact
+
+    def one(plane: np.ndarray) -> np.ndarray:
+        r, _ = reproject_exact((plane.astype(np.float64), w_src), w_ref, shape_out=shape_out)
+        r = np.asarray(r)
+        return np.isfinite(r) & (r > REPROJECT_MIN_SHARE)
+
+    def fn(a: np.ndarray) -> np.ndarray:
+        return one(a) if a.ndim == 2 else np.stack([one(p) for p in a])
+    return fn
+
+
+def dilate_flags(half: int):
+    """The function that carries a mask through a convolution whose kernel was truncated to a square of half-width `half` pixels:
+    flagged when that square, centred on the output pixel, holds a flagged pixel. half 0 (no smoothing) leaves it as it is."""
+    from scipy.ndimage import maximum_filter
+
+    def one(plane: np.ndarray) -> np.ndarray:
+        if half <= 0:
+            return plane.copy()
+        return maximum_filter(plane.astype(np.uint8), size=2 * half + 1, mode="constant", cval=0) != 0
+
+    def fn(a: np.ndarray) -> np.ndarray:
+        return one(a) if a.ndim == 2 else np.stack([one(p) for p in a])
+    return fn
+
+
+def carry_after(args, res: dict, src: Cube, fn, by: str, rule: str | None = None, dims: tuple[int, int, int] | None = None) -> dict:
+    """After an operation wrote `args.out`: write the masks of --carry-masks as masks of that file, each `fn` of the source mask, and a
+    `missing` mask computed from the result when --missing-out is given. `by` says what was done to the data ("cutout x 3-9, ...") and
+    `rule` how a flag follows; both go into the mask's own file and the result's summary (which carries no file path). `dims` is the
+    (channels, height, width) a mask must have: the source's, which is not the cube's own for a window onto a source."""
+    from analysis import fail
+    try:
+        specs = parse_carry(args.carry_masks)
+    except MaskError as e:
+        fail(str(e))
+    if not specs and not args.missing_out:
+        return res
+    out = Cube(args.out)
+    nc, ny, nx = dims or (src.channels, src.shape[src.y], src.shape[src.x])
+    carried = []
+    try:
+        for i, s in enumerate(specs):
+            hdul, arr = open_mask(s, nc, ny, nx)
+            try:
+                flags = np.array(arr) != 0
+            finally:
+                hdul.close()
+            new = np.asarray(fn(flags), dtype=bool)
+            oy, ox = out.shape[out.y], out.shape[out.x]
+            if new.shape not in ((oy, ox), (out.channels, oy, ox)):
+                raise MaskError(f"the carried {s['type']} mask would have shape {new.shape}, not the result's ({oy}, {ox}) or ({out.channels}, {oy}, {ox})")
+            hist = [f"Vesqira mask {s['type']} (carried): {by}"] + ([f"Rule: {rule}"] if rule else [])
+            hist = [h[j:j + 66] for h in hist for j in range(0, len(h), 66)]
+            write_mask(s["out"], new, out, s["type"], "carried", hist)
+            carried.append({"index": i, "type": s["type"], "flagged": int(new.sum()), "total": int(new.size), "width": int(new.shape[-1]),
+                            "height": int(new.shape[-2]), "channels": int(new.shape[0]) if new.ndim == 3 else 0})
+        missing = None
+        if args.missing_out:
+            flags, mrule, how = build_and_write(out, {"method": "missing", "type": "missing"}, args.missing_out)
+            missing = {"flagged": int(flags.sum()), "total": int(flags.size), "width": int(flags.shape[-1]), "height": int(flags.shape[-2]),
+                       "channels": int(flags.shape[0]) if flags.ndim == 3 else 0, "method": how, "rule": mrule}
+    except MaskError as e:
+        fail(str(e))
+    res["summary"]["mask_carry"] = {
+        "by": by, "rule": rule, "carried": carried, "missing": missing,
+        "policy": ("Each carried mask was made from the source mask by the same window, grid or kernel as the data, keeps its type and tier, and is a new file; "
+                   "the source masks and data were not changed. The no-value mask was computed again from the result's values, never carried."
+                   if carried else "No mask was carried. The no-value mask was computed again from the result's values.")}
+    return res
 
 
 def masks_policy_sentence(specs: list[dict]) -> str:

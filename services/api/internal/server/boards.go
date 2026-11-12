@@ -19,6 +19,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/scene"
 )
@@ -249,6 +250,12 @@ func ruleOf(tier, by string) string {
 }
 
 func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary, overlaySources []catalog.Dataset) (json.RawMessage, error) {
+	return buildProvenanceShown(d, p, run, der, overlaySources, nil)
+}
+
+// buildProvenanceShown is buildProvenance for a figure that hatches masks over its plane: each one is a tier line with its type, name,
+// tier, rule and fingerprint, never its id or path (ADR 0055).
+func buildProvenanceShown(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary, overlaySources []catalog.Dataset, shown []masks.Mask) (json.RawMessage, error) {
 	var pr Provenance
 	pr.Source.Name, pr.Source.SizeBytes, pr.Source.ModifiedAt = d.Name, d.SizeBytes, d.ModifiedAt
 	pr.Source.Identity = "a reference to the file by name, size and modification time; " + identityNote(d)
@@ -323,6 +330,10 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		pr.Statements = append(pr.Statements, correctionStatements(*corr, "this file")...)
 	}
 	pr.Tiers = append(pr.Tiers, masksTiers(der)...)
+	pr.Tiers = append(pr.Tiers, shownMasksTiers(shown)...)
+	if len(shown) > 0 {
+		pr.Statements = append(pr.Statements, "Hatched areas mark pixels a mask flags for its stated reason; the values under a hatch are drawn unchanged, and no hatch means the pixel is in no shown mask, not that it is good.")
+	}
 	switch d.Nature {
 	case "constructed_control":
 		pr.Statements = append(pr.Statements, "This is a constructed control (synthetic data built for a test), declared by the author. It is not an observation.")
@@ -615,6 +626,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var shownMasks []masks.Mask // the masks hatched in the picture, from the catalog's own rows
 	if hasScene {
 		sc, err := scene.Parse(in.Scene)
 		if err == nil {
@@ -622,6 +634,12 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			fail(w, 400, err.Error())
+			return
+		}
+		var code int
+		var msg string
+		if shownMasks, code, msg = s.sceneMasks(&sc, d); code != 0 {
+			fail(w, code, msg)
 			return
 		}
 		sceneRead = &sc
@@ -654,7 +672,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	for i := range rels {
 		rels[i] = s.ensureFingerprinted(r.Context(), rels[i])
 	}
-	prov, err := buildProvenance(d, vp, run, s.derivedSummary(d.ID), others)
+	prov, err := buildProvenanceShown(d, vp, run, s.derivedSummary(d.ID), others, shownMasks)
 	if errors.Is(err, errBadView) {
 		fail(w, 400, "the view description does not match the dataset")
 		return

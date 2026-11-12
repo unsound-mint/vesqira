@@ -136,6 +136,7 @@ export function FigureRedraw({ figure, onSaved, addTo, only }: {
       {check ? (
         <div className={s.box} role="region" aria-label="What changed since this figure was drawn">
           <ul className={s.list}>{check.sources.map((x) => <li key={`${x.role}-${x.datasetId}`} data-status={x.status} data-declaration={x.declaration}>{x.text}{x.declarationText && x.declaration !== "unchanged" ? ` ${x.declarationText.charAt(0).toUpperCase()}${x.declarationText.slice(1)}${x.declarationText.endsWith(".") ? "" : "."}` : ""}</li>)}</ul>
+          {check.masks && check.masks.length > 0 ? <ul className={s.list} aria-label="Masks hatched in the figure">{check.masks.map((m, i) => <li key={i} data-mask-status={m.status}>{m.text}</li>)}</ul> : null}
           <p className={s.prompt}>{check.prompt}</p>
           <div className={s.row}>
             {check.state === "ask" ? <Button variant="primary" onClick={() => void draw(true, intent)}>{intent === "svg" ? "Export anyway" : "Draw anyway"}</Button> : null}

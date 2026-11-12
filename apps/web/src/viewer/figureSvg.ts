@@ -1,6 +1,8 @@
-import { BG, canvasMeasure, FONT, INK, INK2, layoutImageFigure, MONO } from "./figure";
+import { BG, canvasMeasure, FONT, INK, INK2, layoutImageFigure, MASK_ROW, MONO } from "./figure";
 import type { ImageFigure, Measure } from "./figure";
 import { dashOf, FIGURE_STROKE, HALO, LABEL_PX } from "../scene/overlays";
+import { HATCH } from "./maskHatch";
+import type { MaskType } from "../api/masks";
 import type { Mark } from "../scene/overlays";
 import { OVERLAY_COLORS } from "../scene/palette";
 
@@ -97,8 +99,15 @@ function layerSvg(marks: Mark[], sx: number, sy: number): string {
 /** The SVG document of a plane figure. `raster` is the base plane as a PNG data URL (image/png, base64). */
 export function figureSvg(o: ImageFigure & { raster: string; meta: SvgMetadata }, measure: Measure = canvasMeasure()): string {
   if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(o.raster)) throw new Error("The base raster must be a PNG data URL.");
-  const { W, H, pad, iw, ih, top, by, capLines, ends } = layoutImageFigure(o, measure);
+  const { W, H, pad, iw, ih, top, by, capLines, ends, maskTop } = layoutImageFigure(o, measure);
   const sx = iw / o.planeW, sy = ih / o.planeH;
+  const masks = o.masks ?? [];
+  const types = [...new Set(masks.map((m) => m.type))];
+  // the same 6 x 6 tiles as the viewer and the PNG; only the types in use are defined
+  const hatch = (t: MaskType) => {
+    const h = HATCH[t];
+    return `<pattern id="hatch-${t}" width="6" height="6" patternUnits="userSpaceOnUse">${h.dots ? `<circle cx="3" cy="3" r="1.1" fill="${INK}"/>` : `<path d="${h.tile}" stroke="${INK}" stroke-width="1" fill="none"/>`}</pattern>`;
+  };
   const lut = o.legend.lut;
   const stops = Array.from({ length: 65 }, (_, k) => {
     const i = Math.round((k / 64) * 255) * 3;
@@ -113,11 +122,13 @@ export function figureSvg(o: ImageFigure & { raster: string; meta: SvgMetadata }
     `<title id="figure-title">${xmlEscape(o.meta.title)}</title>`,
     `<desc id="figure-desc">${xmlEscape(desc)}</desc>`,
     `<metadata><v:figure xmlns:v="${NS}" format="application/json">${xmlEscape(meta).replace(/&quot;/g, '"')}</v:figure></metadata>`,
-    `<defs><clipPath id="picture"><rect x="0" y="0" width="${n(iw)}" height="${n(ih)}"/></clipPath><linearGradient id="scale" x1="0" y1="0" x2="1" y2="0">${stops}</linearGradient></defs>`,
+    `<defs>${types.map(hatch).join("")}<clipPath id="picture"><rect x="0" y="0" width="${n(iw)}" height="${n(ih)}"/></clipPath><linearGradient id="scale" x1="0" y1="0" x2="1" y2="0">${stops}</linearGradient></defs>`,
     `<rect width="${W}" height="${H}" fill="${BG}"/>`,
     text(pad, pad + 14, o.title.slice(0, 120), `font-family="${xmlEscape(FONT)}" font-size="16" font-weight="600" fill="${INK}"`),
     `<image x="${pad}" y="${top}" width="${n(iw)}" height="${n(ih)}" preserveAspectRatio="none" style="image-rendering:pixelated" image-rendering="optimizeSpeed" xlink:href="${o.raster}"/>`,
     `<g transform="translate(${pad} ${top})" clip-path="url(#picture)">${o.layers.map((l, i) => `<g data-layer="${i + 1}">${layerSvg(l, sx, sy)}</g>`).join("")}</g>`,
+    ...(masks.length ? [`<g transform="translate(${pad} ${top})" clip-path="url(#picture)" data-layer="masks">${masks.map((m) => (m.d ? `<path data-mask-type="${m.type}" d="${m.d}" fill="url(#hatch-${m.type})"/>` : "")).join("")}</g>`] : []),
+    ...masks.map((m, i) => `<g data-mask-legend="${m.type}"><rect x="${pad}" y="${n(maskTop + i * MASK_ROW)}" width="18" height="12" fill="url(#hatch-${m.type})" stroke="${INK2}" stroke-width="1"/>${text(pad + 26, maskTop + i * MASK_ROW + 10, m.label, `font-family="${xmlEscape(FONT)}" font-size="12" fill="${INK2}"`)}</g>`),
     `<rect x="${pad}" y="${by}" width="${n(iw)}" height="12" fill="url(#scale)"/>`,
     text(pad, by + 28, ends[0], `font-family="${xmlEscape(MONO)}" font-size="12" fill="${INK2}"`),
     text(pad + iw, by + 28, ends[1], `font-family="${xmlEscape(MONO)}" font-size="12" fill="${INK2}" text-anchor="end"`),

@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	idty "github.com/unsound-mint/vesqira/services/api/internal/identity"
+	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/scene"
 )
 
@@ -35,6 +36,8 @@ const (
 	promptDeclared = "A declaration (unit, angle frame, quantity, catalog columns, or a WCS or unit correction) has changed since this figure was drawn. Drawing it again makes a different figure under the new declaration; the original PNG is kept. Draw it again anyway?"
 	promptBoth     = "Both the data and a declaration have changed since this figure was drawn. Drawing it again makes a different figure; the original PNG is kept. Draw it again anyway?"
 	promptBlocked  = "This figure cannot be drawn again until every file it was drawn from can be read. The original PNG is kept."
+	// promptMasks is said before a figure with hatched masks is drawn again whose mask is not the one it was drawn with (ADR 0055).
+	promptMasks    = "A mask hatched in this figure has changed or been forgotten since it was drawn. Drawing it again leaves that hatch out and says so; the original PNG is kept."
 	promptNone     = "This figure keeps no description of how it was drawn, so it is shown as the PNG that was saved."
 	promptNoRender = "This figure's description does not record the resolution its picture was drawn at, so it is shown as the PNG that was saved. A drawing at another resolution would not be the same picture."
 )
@@ -53,12 +56,24 @@ type redrawSource struct {
 	DeclarationText string `json:"declarationText,omitempty"`
 }
 
+// redrawMask is one mask the figure hatched, compared with the catalog now: unchanged | changed (another fingerprint, made from other bytes
+// than the dataset has now, or its file changed) | forgotten. It carries the type, name and tier, never an id.
+type redrawMask struct {
+	Type   string `json:"type"`
+	Name   string `json:"name"`
+	Tier   string `json:"tier"`
+	Status string `json:"status"`
+	Text   string `json:"text"`
+}
+
 type redrawResult struct {
 	FigureID int64          `json:"figureId"`
 	Kind     string         `json:"kind"`  // scene | channel-grid | none
 	State    string         `json:"state"` // ready | ask | blocked | none
 	Prompt   string         `json:"prompt,omitempty"`
 	Sources  []redrawSource `json:"sources"`
+	// Masks are the masks the figure hatched, when it hatched any (ADR 0055).
+	Masks []redrawMask `json:"masks,omitempty"`
 }
 
 // phrase turns what differs into words: "time differs", "size and fingerprint differ".
@@ -359,7 +374,49 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 	default:
 		res.State = "ready"
 	}
+	if sc != nil && len(sc.Masks) > 0 {
+		var anyMask bool
+		res.Masks, anyMask = s.checkMasks(sc)
+		if anyMask && res.State != "blocked" { // said before redrawing, with any other reason to ask
+			if res.State == "ready" {
+				res.State, res.Prompt = "ask", promptMasks+" Draw it again anyway?"
+			} else {
+				res.Prompt = strings.TrimSuffix(res.Prompt, " Draw it again anyway?") + " " + promptMasks + " Draw it again anyway?"
+			}
+		}
+	}
 	return res
+}
+
+// checkMasks compares the masks a scene hatched with the catalog as it is now.
+func (s *Server) checkMasks(sc *scene.Scene) (out []redrawMask, anyChanged bool) {
+	d, derr := s.Store.Get(sc.Base.DatasetID)
+	for _, sm := range sc.Masks {
+		r := redrawMask{Type: sm.Type, Name: sm.Name, Tier: sm.Tier, Status: "unchanged"}
+		label := masks.TypeLabel(sm.Type) + " mask \"" + sm.Name + "\""
+		var m masks.Mask
+		err := masks.ErrNotFound
+		if s.Masks != nil {
+			m, err = s.Masks.Get(sm.ID)
+		}
+		switch {
+		case errors.Is(err, masks.ErrNotFound):
+			r.Status, r.Text = "forgotten", label+" was forgotten; its hatch is left out of the new drawing."
+		case err != nil || derr != nil:
+			r.Status, r.Text = "changed", label+" could not be read; its hatch is left out of the new drawing."
+		case "sha256:"+m.SHA256 != sm.Fingerprint:
+			r.Status, r.Text = "changed", label+" has another fingerprint than the one drawn; its hatch is left out of the new drawing."
+		default:
+			if _, code, msg := s.usableMask(sm.ID, d); code != 0 {
+				r.Status, r.Text = "changed", label+": "+msg+". Its hatch is left out of the new drawing."
+			} else {
+				r.Text = label + " is unchanged (the same fingerprint)."
+			}
+		}
+		anyChanged = anyChanged || r.Status != "unchanged"
+		out = append(out, r)
+	}
+	return out, anyChanged
 }
 
 // redrawCheck is GET /api/figures/{id}/redraw-check.

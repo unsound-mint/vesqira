@@ -210,6 +210,26 @@ describe("a subset opened", () => {
     expect(await screen.findByText(/had already been written from the same file, and that file is unchanged/)).toBeInTheDocument();
   });
 
+  it("carries a mask of the source into the file only when it is chosen, and says the cut is the subset's own window", async () => {
+    const user = userEvent.setup();
+    const m = { id: 31, datasetId: 7, type: "saturated", name: "Bright", width: 32, height: 24, channels: 64, flagged: 10, total: 49152, tier: "declared", mappingVersion: "", method: "computed", rule: {}, meaning: "", author: "user", createdAt: "", sourceIdentity: "", fileSize: 1, sha256: "x", stale: false };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ masks: [m] }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    api.getSubset.mockResolvedValue(detail(view()));
+    api.getSubsetView.mockResolvedValue({ width: 9, height: 7, channels: 31, window: win });
+    api.materialiseSubset.mockResolvedValue({ dataset: { id: 12, name: "subset-1-v1-ab12.fits" }, reused: false, subset: view({ materialised: 12 }) });
+    try {
+      open();
+      const choice = await screen.findByLabelText("Saturated: Bright");
+      expect(choice).toHaveValue("leave"); // nothing is carried by default
+      expect(screen.getByText(/Cut with the subset's window, its step and its channel range/)).toBeInTheDocument();
+      await user.selectOptions(choice, "carry");
+      await user.click(screen.getByRole("button", { name: "Write as a file" }));
+      expect(api.materialiseSubset).toHaveBeenCalledWith(1, 1, [{ id: 31, carry: true }]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("shows the server's refusal in place and deletes only after a second click", async () => {
     const user = userEvent.setup();
     api.getSubset.mockResolvedValue(detail(view()));

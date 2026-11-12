@@ -47,6 +47,9 @@ type analysisReq struct {
 	Params      map[string]string `json:"params"`
 	// Masks to apply, each with its own explicit policy (ADR 0055): statistics and moment maps, on a file read here.
 	Masks []maskUse `json:"masks"`
+	// What to do with each mask of the source in the result of a cutout, slab, align or convolution: carry it or leave it behind. Nothing
+	// is carried unless asked; align and convolve want every mask decided (ADR 0055).
+	CarryMasks []carryChoice `json:"carryMasks"`
 	// remote analyses become Slurm jobs
 	CPUs int    `json:"cpus"`
 	Mem  string `json:"mem"`
@@ -128,6 +131,12 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--masks", specs)
 		maskSafe = safe
 	}
+	carry, code, msg := s.planCarry(d, in.Op, in.CarryMasks)
+	if code != 0 {
+		fail(w, code, msg)
+		return
+	}
+	carryExtra := "" // what the operation used besides the source, for a carried mask's rule
 	// A unit the person declared for a file with no BUNIT goes with the request, so the result says it, labelled as theirs. The
 	// worker uses it only when the file has no unit of its own. The "=" form keeps a unit that starts with "-" a value.
 	declared := map[string]string{}
@@ -176,6 +185,9 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		}
 		args = append(args, "--reference", rreal)
 		sources = append(sources, ref.ID)
+		if in.Op == "align" {
+			carryExtra = " (reference: " + ref.Name + ")"
+		}
 		if u := declaredUnitOf(ref); u != "" && in.Op == "scalar_diff" {
 			args = append(args, "--declared-unit-ref="+u)
 			declared["reference"] = u
@@ -191,6 +203,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		outPath = filepath.Join(s.Analysis.DerivedDir, fmt.Sprintf("%s-%d-%s.fits", in.Op, d.ID, hex.EncodeToString(b[:])))
 		args = append(args, "--out", outPath)
 	}
+	args = append(args, carry.args()...)
 	relPath := ""
 	if ax != nil {
 		relPath = strings.TrimSuffix(outPath, ".fits") + "-reliability.fits"
@@ -204,6 +217,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		if relPath != "" {
 			_ = os.Remove(relPath)
 		}
+		carry.cleanup()
 		fail(w, code, msg)
 		return
 	}
@@ -213,10 +227,19 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	}
 	nd, code, msg := s.registerPath(waiting(r.Context()), outPath)
 	if code != 0 {
+		carry.cleanup()
+		fail(w, code, msg)
+		return
+	}
+	carried, code, msg := s.recordCarried(carry, res.Summary, d, nd, carryExtra)
+	if code != 0 {
 		fail(w, code, msg)
 		return
 	}
 	pm := map[string]any{"options": opts}
+	if carried != nil {
+		pm["maskCarry"] = carried // not `masks`: those were applied by the operation; these were carried into its result (no ids, no paths)
+	}
 	if len(maskSafe) > 0 {
 		pm["masks"] = maskSafe // the reviewer sees these (type, rule, policy, tier, fingerprint); the summary keeps the ids for the owner
 	}
@@ -330,6 +353,10 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	d, code, msg := s.imageDataset(in.DatasetID)
 	if code != 0 {
 		fail(w, code, msg)
+		return
+	}
+	if len(in.CarryMasks) > 0 {
+		fail(w, 422, "masks are carried by an analysis run on this computer; a job on a host does not carry them (a mask is made on this computer, from a file read here)")
 		return
 	}
 	if in.Op == "scalar_diff" {

@@ -289,12 +289,6 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 			sum.Rule, _ = json.Marshal(rule)
 		}
 	}
-	digest, size, mtime, err := fileIdentity(out)
-	if err != nil {
-		_ = os.Remove(out)
-		log.Printf("masks: %v", err)
-		return maskView{}, 500, "internal error"
-	}
 	// Verified is a check the app ran: only the no-value mask, computed from the data. Every other rule (a threshold, a region, a file) is
 	// the researcher's word, which the app applied faithfully but did not establish.
 	tier, mapping := catalog.TierDeclared, ""
@@ -305,9 +299,8 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 	if name == "" {
 		name = defaultMaskName(mtype, in)
 	}
-	m, err := s.Masks.Add(masks.Mask{DatasetID: d.ID, Type: mtype, Name: name, Path: out, Width: sum.Width, Height: sum.Height, Channels: sum.Channels,
-		Flagged: sum.Flagged, Total: sum.Total, Tier: tier, Mapping: mapping, Method: sum.Method, Rule: sum.Rule, Meaning: cleanText(in.Meaning, 300), Author: author,
-		SourceSize: d.SizeBytes, SourceMtime: d.ModifiedAt.UnixNano(), SourceIdentity: sourceIdentity(d), FileSize: size, FileMtime: mtime, SHA256: digest})
+	m, err := s.storeMask(d, masks.Mask{Type: mtype, Name: name, Path: out, Width: sum.Width, Height: sum.Height, Channels: sum.Channels,
+		Flagged: sum.Flagged, Total: sum.Total, Tier: tier, Mapping: mapping, Method: sum.Method, Rule: sum.Rule, Meaning: cleanText(in.Meaning, 300), Author: author})
 	if err != nil {
 		_ = os.Remove(out)
 		log.Printf("masks: %v", err)
@@ -315,6 +308,28 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 	}
 	s.audit("mask created", "dataset", d.ID, mtype+" mask, "+strconv.FormatInt(sum.Flagged, 10)+" pixels flagged")
 	return s.viewOf(m, d), 0, ""
+}
+
+// storeMask records a mask file just written for d: it fills in what the mask was made from (d's size, modification time and recorded
+// identity, so it is fresh against d and stale the day d changes) and the mask file's own identity (size, mtime, SHA-256). Every way of
+// making a mask (a request, an import rule, carrying one through an operation) ends here.
+func (s *Server) storeMask(d catalog.Dataset, m masks.Mask) (masks.Mask, error) {
+	digest, size, mtime, err := fileIdentity(m.Path)
+	if err != nil {
+		return masks.Mask{}, err
+	}
+	m.DatasetID, m.SourceSize, m.SourceMtime, m.SourceIdentity = d.ID, d.SizeBytes, d.ModifiedAt.UnixNano(), sourceIdentity(d)
+	m.FileSize, m.FileMtime, m.SHA256 = size, mtime, digest
+	return s.Masks.Add(m)
+}
+
+// maskSnapshot is the id-free account of a mask that a result's parameters keep (and so the reviewer sees): no id, no path.
+func maskSnapshot(m masks.Mask) map[string]any {
+	snap := map[string]any{"type": m.Type, "name": m.Name, "tier": m.Tier, "method": m.Method, "rule": m.Rule, "fingerprint": "sha256:" + m.SHA256, "flaggedPixels": m.Flagged}
+	if m.Mapping != "" {
+		snap["mappingVersion"] = m.Mapping
+	}
+	return snap
 }
 
 func defaultMaskName(mtype string, in maskReq) string {
@@ -491,11 +506,8 @@ func (s *Server) maskSpecs(uses []maskUse, d catalog.Dataset, weightOK bool) (sp
 			return "", nil, nil, 422, "a pixel with no value cannot be kept or weighted: the policy for the no-value mask is exclude"
 		}
 		spec := map[string]any{"path": m.Path, "type": m.Type, "policy": u.Policy, "id": m.ID, "name": m.Name, "tier": m.Tier, "fingerprint": "sha256:" + m.SHA256}
-		snap := map[string]any{"type": m.Type, "name": m.Name, "policy": u.Policy, "tier": m.Tier, "method": m.Method, "rule": m.Rule, "fingerprint": "sha256:" + m.SHA256,
-			"flaggedPixels": m.Flagged}
-		if m.Mapping != "" {
-			snap["mappingVersion"] = m.Mapping
-		}
+		snap := maskSnapshot(m)
+		snap["policy"] = u.Policy
 		if u.Policy == masks.Weight {
 			spec["weight"], snap["weight"] = *u.Weight, *u.Weight
 		}
@@ -609,10 +621,15 @@ func masksTiers(der *derived.Summary) []safeTier {
 		return nil
 	}
 	var p struct {
-		Masks json.RawMessage `json:"masks"`
+		Masks     json.RawMessage `json:"masks"`
+		MaskCarry json.RawMessage `json:"maskCarry"`
 	}
-	if json.Unmarshal(der.Params, &p) != nil || len(p.Masks) == 0 {
+	if json.Unmarshal(der.Params, &p) != nil {
 		return nil
+	}
+	carried := carryTiers(p.MaskCarry) // masks carried into this result, left behind, and the no-value mask computed again
+	if len(p.Masks) == 0 {
+		return carried
 	}
 	var list []appliedMask
 	if json.Unmarshal(p.Masks, &list) != nil {
@@ -641,5 +658,5 @@ func masksTiers(der *derived.Summary) []safeTier {
 		}
 		out = append(out, safeTier{What: "mask: " + masks.TypeLabel(m.Type) + " (" + m.Name + ")", Tier: m.Tier, MappingVersion: m.MappingVersion, Note: note})
 	}
-	return out
+	return append(out, carried...)
 }

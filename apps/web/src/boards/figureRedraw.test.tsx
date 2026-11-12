@@ -72,6 +72,28 @@ describe("draw again", () => {
     expect(text).not.toContain("not proven unchanged");
   });
 
+  it("announces a hatched mask that changed or was forgotten, by type, name and tier and never an id, before drawing", async () => {
+    check.mockResolvedValue({
+      figureId: 7, kind: "scene", state: "ask",
+      prompt: "A mask hatched in this figure has changed or been forgotten since it was drawn. Drawing it again leaves that hatch out and says so; the original PNG is kept. Draw it again anyway?",
+      sources: [source("unchanged", "cube.fits: unchanged (its SHA-256 equals the one recorded when the figure was drawn).")],
+      masks: [
+        { type: "saturated", name: "Bright", tier: "declared", status: "changed", text: "Saturated mask \"Bright\" has another fingerprint than the one drawn; its hatch is left out of the new drawing." },
+        { type: "user_excluded", name: "Knot", tier: "declared", status: "forgotten", text: "Excluded by the researcher mask \"Knot\" was forgotten; its hatch is left out of the new drawing." },
+        { type: "low_snr", name: "S/N < 3", tier: "verified", status: "unchanged", text: "Low signal-to-noise mask \"S/N < 3\" is unchanged (the same fingerprint)." },
+      ],
+    });
+    redraw.mockResolvedValue(drawn({ notes: ["Saturated mask “Bright” is not the mask the figure was drawn with (its fingerprint or its data changed); its hatch is not drawn."] }));
+    render(<FigureRedraw figure={fig()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Draw again" }));
+    const list = await screen.findByRole("list", { name: "Masks hatched in the figure" });
+    expect([...list.querySelectorAll("li")].map((li) => li.getAttribute("data-mask-status"))).toEqual(["changed", "forgotten", "unchanged"]);
+    expect(list.textContent).toContain("was forgotten");
+    expect(redraw).not.toHaveBeenCalled(); // announced first; nothing is drawn until the owner agrees
+    await userEvent.click(screen.getByRole("button", { name: "Draw anyway" }));
+    expect(await screen.findByText(/its hatch is not drawn/)).toBeTruthy();
+  });
+
   it("does not call the data unchanged when the owner agreed to draw from data that was not proven so, even if the pixels are the same", async () => {
     check.mockResolvedValue({ figureId: 7, kind: "scene", state: "ask", prompt: "p", sources: [source("probable", "x")] });
     redraw.mockResolvedValue(drawn());

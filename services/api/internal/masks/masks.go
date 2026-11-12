@@ -31,6 +31,7 @@ const (
 	MethodComputed = "computed" // by the worker from the data and a stated rule
 	MethodRegions  = "regions"  // from saved regions, by the regions' pixel rule
 	MethodImport   = "import"   // from a mask file the researcher provided
+	MethodCarried  = "carried"  // cut, resampled or smoothed with the data it describes, by a cutout, slab, subset, align or convolve (ADR 0055)
 )
 
 // Policies an operation applies per mask. `weight` is accepted only by an operation that already has weights.

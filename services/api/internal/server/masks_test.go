@@ -13,12 +13,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/lifecycle"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
@@ -73,13 +75,18 @@ fits.PrimaryHDU(a, header=h).writeto(sys.argv[1])
 		t.Fatal(err)
 	}
 	rg, _ := regions.Open(cat.DB())
+	bs, _ := boards.Open(cat.DB(), base)
+	sb, err := subsets.Open(cat.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
 	rs, err := sourceroot.New([]string{root, derivedDir})
 	if err != nil {
 		t.Fatal(err)
 	}
 	pw := &worker.Persistent{Command: []string{py, "-P", filepath.Join(repo, "services/scientific-worker/plane_worker.py")}, Timeout: 60 * time.Second}
 	t.Cleanup(pw.Close)
-	srv := &Server{Roots: rs, Store: cat, Worker: headerWorker(t, py, repo), Planes: pw, Cache: NewPlaneCache(8 << 20), Derived: ds, Masks: ms, Regions: rg,
+	srv := &Server{Roots: rs, Store: cat, Worker: headerWorker(t, py, repo), Planes: pw, Cache: NewPlaneCache(8 << 20), Derived: ds, Masks: ms, Regions: rg, Boards: bs, Subsets: sb,
 		Analysis: &AnalysisConfig{Python: py, Script: filepath.Join(repo, "services/scientific-worker/analysis.py"), DerivedDir: derivedDir, Timeout: 2 * time.Minute}}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
