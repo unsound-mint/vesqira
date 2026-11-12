@@ -58,3 +58,22 @@ export const indexRohsa = (datasetId: number, runId: number, signal?: AbortSigna
 
 export const getComponents = (datasetId: number, runId: number, x: number, y: number, signal?: AbortSignal) =>
   requestRaw(`${base(datasetId)}/components?run=${runId}&x=${x}&y=${y}`, { signal }).then((r) => r.arrayBuffer()).then(parseComponents);
+
+// ---- the review of a whole decomposition (ADR 0046): each call is one bounded pass over the run's .dat, on this computer
+
+export type RohsaReviewRequest = Schemas["RohsaReviewRequest"];
+export type RohsaSigmav = Schemas["RohsaSigmav"];
+export type RohsaCellMask = Schemas["RohsaCellMask"];
+export type RohsaClassMaps = Schemas["RohsaClassMapsResult"];
+
+/** The sigma-v diagram: width against centre, weighted, with each cell's contributor count. */
+export const getSigmav = (datasetId: number, req: RohsaReviewRequest, signal?: AbortSignal, requestId?: string) =>
+  postJSON<RohsaSigmav>(`${base(datasetId)}/sigmav`, req, signal, requestId);
+
+/** The pixels behind one cell, as a packed mask (the same bins as the diagram give the same cells). */
+export const getCellMask = (datasetId: number, req: RohsaReviewRequest, signal?: AbortSignal, requestId?: string) =>
+  postJSON<RohsaCellMask>(`${base(datasetId)}/sigmav/cell`, req, signal, requestId);
+
+/** One derived map per width class, registered with a record of the run, the cut and the weighting. */
+export const makeClassMaps = (datasetId: number, req: RohsaReviewRequest, signal?: AbortSignal, requestId?: string) =>
+  postJSON<RohsaClassMaps>(`${base(datasetId)}/class-maps`, req, signal, requestId);

@@ -109,7 +109,7 @@ export function resolveVars(svg: string, value: (name: string) => string): strin
 }
 
 /** Adds the provenance as machine-readable metadata inside the SVG, after its opening tag. */
-export function svgWithProvenance(svg: string, p: PlotProvenance): string {
+export function svgWithProvenance(svg: string, p: PlotProvenance | { tool: string }): string {
   const meta = `<metadata id="vesqira-provenance">${xml(JSON.stringify(p))}</metadata>`;
   const i = svg.indexOf(">");
   return i < 0 ? svg : `${svg.slice(0, i + 1)}${meta}${svg.slice(i + 1)}`;
