@@ -71,11 +71,21 @@ describe("the arrow geometry the viewer and the exports share", () => {
     expect(figureCompassOf({ available: true, north_deg: 90, east_deg: 180 })).toBeUndefined(); // no reference pixel
   });
 
-  it("stands on the reference pixel: 0-based pixel centres with y up, in figure pixels with y down", () => {
+  it("stands as an inset in the top-right corner, not on the map centre where the source usually is", () => {
     const L = compassLayout({ x: 19.5, y: 14.5, northDeg: 90, eastDeg: 180 }, 40, 30, 400, 300);
-    expect(L.at).toEqual({ x: 200, y: 150 }); // the middle of the plane
-    const corner = compassLayout({ x: 0, y: 0, northDeg: 90, eastDeg: 180 }, 40, 30, 400, 300);
-    expect(corner.at).toEqual({ x: 5, y: 295 }); // the centre of the bottom-left pixel
+    expect(L.at.x).toBeGreaterThan(300);
+    expect(L.at.y).toBeLessThan(100);
+    // the arrows and letters stay inside the picture whatever the angles
+    for (const deg of [0, 45, 90, 135, 180, 225, 270, 315]) {
+      const R = compassLayout({ x: 0, y: 0, northDeg: deg, eastDeg: (deg + 90) % 360 }, 40, 30, 400, 300);
+      for (const p of [R.north.letter, R.east.letter, R.north.tip, R.east.tip]) {
+        expect(R.at.x + p.x).toBeGreaterThan(0);
+        expect(R.at.x + p.x).toBeLessThan(400);
+        expect(R.at.y + p.y).toBeGreaterThan(0);
+        expect(R.at.y + p.y).toBeLessThan(300);
+      }
+    }
+    expect(compassLayout({ x: 0, y: 0, northDeg: 90, eastDeg: 180 }, 4, 3, 80, 60).at).toEqual({ x: 40, y: 30 }); // too small: centred
     expect(L.corrected).toBeNull();
     expect(compassLayout({ x: 19.5, y: 14.5, northDeg: 90, eastDeg: 180, corrected: ["PC1_2"] }, 40, 30, 400, 300).corrected).not.toBeNull();
   });
@@ -88,12 +98,12 @@ describe("the SVG of a figure with a compass", () => {
     return d;
   };
 
-  it("draws N and E at their true angles from the reference pixel, with letters as well as arrows", () => {
+  it("draws N and E at their true angles (read at the reference pixel), with letters as well as arrows", () => {
     const d = doc({ compass: figureCompassOf(rotated) });
     const g = d.querySelector("[data-compass]")!;
     expect(g.getAttribute("data-north-deg")).toBe("120.00");
     expect(g.getAttribute("data-east-deg")).toBe("210.00");
-    expect(g.getAttribute("transform")).toBe("translate(340 255)"); // the middle of a 40 x 30 plane drawn 680 x 510
+    expect(g.getAttribute("transform")).toBe("translate(624.75 55.25)"); // the top-right inset of a 40 x 30 plane drawn 680 x 510
     expect([...g.querySelectorAll("text")].map((t) => t.textContent)).toEqual(["N", "E"]);
     const shafts = [...g.querySelectorAll("[data-role='compass-shaft']")].map((l) => ({ x: Number(l.getAttribute("x2")), y: Number(l.getAttribute("y2")) }));
     expect(shafts).toHaveLength(2);

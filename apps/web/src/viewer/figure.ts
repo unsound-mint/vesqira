@@ -104,11 +104,20 @@ export const COMPASS_HEAD = 7;
 export const COMPASS_LETTER_PX = 14;
 export const COMPASS_MARKER_PX = 11;
 
-/** The compass of a figure, laid out around its anchor (figure pixels; y down): both arrows, and where the "corrected" marker stands. */
+/** Room the arrows and their letters need around the anchor, in figure pixels. */
+const COMPASS_REACH = COMPASS_LEN + COMPASS_HEAD * 1.75 + COMPASS_LETTER_PX / 2 + 6;
+
+/**
+ * The compass of a figure, laid out around its anchor (figure pixels; y down): both arrows, and where the "corrected" marker stands.
+ * The arrows are an inset in the top-right corner, as on a published map, not on the reference pixel itself: the map centre is
+ * usually where the source is, and arrows there would cover it. The directions are the ones at the reference pixel (the caption
+ * says "at the map centre"); a figure too small for the inset centres it.
+ */
 export function compassLayout(c: FigureCompass, planeW: number, planeH: number, iw: number, ih: number) {
-  // pixel (x, y) is 0-based with y up and pixel i covers i to i+1; the figure's y runs down
+  void c, planeW, planeH; // the anchor no longer depends on the reference pixel; the angles do
+  const fits = iw >= 2 * COMPASS_REACH && ih >= 2 * COMPASS_REACH;
   return {
-    at: { x: ((c.x + 0.5) * iw) / planeW, y: ih - ((c.y + 0.5) * ih) / planeH },
+    at: fits ? { x: iw - COMPASS_REACH, y: COMPASS_REACH } : { x: iw / 2, y: ih / 2 },
     ...compassShapes({ north_deg: c.northDeg, east_deg: c.eastDeg }, COMPASS_LEN, COMPASS_HEAD),
     corrected: c.corrected && c.corrected.length > 0 ? { x: 0, y: COMPASS_LEN + COMPASS_HEAD * 1.75 + COMPASS_LETTER_PX } : null,
   };
