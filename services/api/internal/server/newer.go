@@ -103,7 +103,7 @@ func storedSampled(d catalog.Dataset) string {
 // newerResults is GET /api/datasets/newer: notices for datasets and figures. Only files on this computer are looked at
 // (looking on a host would wait on the network, as availability does not).
 func (s *Server) newerResults(w http.ResponseWriter, r *http.Request) {
-	ds, err := s.Store.List()
+	ds, err := s.Store.List(wsOf(r))
 	if err != nil {
 		log.Printf("newer: %v", err)
 		fail(w, 500, "internal error")
@@ -111,7 +111,7 @@ func (s *Server) newerResults(w http.ResponseWriter, r *http.Request) {
 	}
 	roles := map[int64]string{}
 	if s.Runs != nil {
-		if roles, err = s.Runs.OutputRoles(); err != nil {
+		if roles, err = s.Runs.OutputRoles(wsOf(r)); err != nil {
 			log.Printf("newer: %v", err)
 			fail(w, 500, "internal error")
 			return
@@ -130,7 +130,7 @@ func (s *Server) newerResults(w http.ResponseWriter, r *http.Request) {
 		if d.Archived || d.HostID != 0 {
 			continue
 		}
-		real, err := s.roots().Resolve(d.Path)
+		real, err := s.roots(wsOf(r)).Resolve(d.Path)
 		if err != nil {
 			continue
 		}
@@ -155,7 +155,7 @@ func (s *Server) newerResults(w http.ResponseWriter, r *http.Request) {
 		if !found {
 			continue
 		}
-		creal, err := s.roots().Resolve(filepath.Join(dir, name))
+		creal, err := s.roots(wsOf(r)).Resolve(filepath.Join(dir, name))
 		if err != nil {
 			continue
 		}
@@ -172,7 +172,7 @@ func (s *Server) newerResults(w http.ResponseWriter, r *http.Request) {
 	}
 	figNotes := map[int64][]Newer{}
 	if s.Boards != nil {
-		figs, err := s.Boards.Figures()
+		figs, err := s.Boards.Figures(wsOf(r))
 		if err != nil {
 			log.Printf("newer: %v", err)
 			fail(w, 500, "internal error")
@@ -263,7 +263,7 @@ func figureDiffers(src figureDatasetIdentity, d catalog.Dataset) []string {
 func (s *Server) buildFigureIdentity(ctx context.Context, source catalog.Dataset, overlays, reliability []catalog.Dataset, from *redrawnFrom) json.RawMessage {
 	doc := figureIdentity{Schema: "figure-identity/1", RedrawnFrom: from}
 	add := func(role string, d catalog.Dataset) {
-		locs, err := s.Store.Locations(d.ID)
+		locs, err := s.Store.Locations(wsCtx(ctx), d.ID)
 		if err != nil {
 			return
 		}

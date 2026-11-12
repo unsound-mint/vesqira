@@ -23,6 +23,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 const (
@@ -59,8 +61,9 @@ type Manifest struct {
 	Note          string      `json:"note"`
 }
 
-// Export writes the archive. The catalog is copied with VACUUM INTO, which is consistent while the server runs.
-func Export(dbPath, dataDir string, out io.Writer) (Manifest, error) {
+// Export writes the archive. The catalog is copied with VACUUM INTO, which is consistent while the server runs; the manifest lists
+// the files the datasets of workspace ws point at.
+func Export(ws workspace.ID, dbPath, dataDir string, out io.Writer) (Manifest, error) {
 	tmp, err := os.MkdirTemp("", "vesqira-export-")
 	if err != nil {
 		return Manifest{}, err
@@ -83,7 +86,7 @@ func Export(dbPath, dataDir string, out io.Writer) (Manifest, error) {
 	}
 	defer sdb.Close()
 	_ = sdb.QueryRow(`PRAGMA user_version`).Scan(&m.SchemaVersion)
-	if rows, err := sdb.Query(`SELECT name,path,host_id,size_bytes,modified_at FROM datasets ORDER BY id`); err == nil {
+	if rows, err := sdb.Query(`SELECT name,path,host_id,size_bytes,modified_at FROM datasets WHERE workspace_id=? ORDER BY id`, ws); err == nil {
 		for rows.Next() {
 			var r Reference
 			if rows.Scan(&r.Name, &r.Path, &r.HostID, &r.SizeBytes, &r.ModifiedNS) == nil && !inside(r.Path, dataDir) {

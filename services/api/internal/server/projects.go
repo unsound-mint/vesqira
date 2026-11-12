@@ -17,18 +17,19 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // ---- readable roots: the configured ones plus the project folders that were opened ----
 
-// roots is every folder the API may read: the roots it was started with and the folders of opened local projects.
+// localRoots is every folder local mode may read: the roots it was started with and the folders of opened local projects.
 // Opening a project adds its canonical folder; the projects are loaded again from the catalog at start.
-func (s *Server) roots() sourceroot.Roots {
+func (s *Server) localRoots(ws workspace.ID) sourceroot.Roots {
 	s.rootsOnce.Do(func() {
 		if s.Projects == nil {
 			return
 		}
-		saved, err := s.Projects.Roots(0)
+		saved, err := s.Projects.Roots(ws, 0)
 		if err != nil {
 			log.Printf("projects: %v", err)
 			return
@@ -50,8 +51,8 @@ func (s *Server) roots() sourceroot.Roots {
 	return append(append(out, s.Roots...), s.projRoots...)
 }
 
-func (s *Server) addProjectRoot(real string) {
-	s.roots() // make sure the saved ones are loaded first
+func (s *Server) addProjectRoot(ws workspace.ID, real string) {
+	s.roots(ws) // make sure the saved ones are loaded first
 	s.rootsMu.Lock()
 	defer s.rootsMu.Unlock()
 	for _, r := range s.projRoots {
@@ -95,7 +96,7 @@ func (s *Server) projectFrom(w http.ResponseWriter, r *http.Request) (projects.P
 	if !ok {
 		return projects.Project{}, false
 	}
-	p, err := s.Projects.Get(id)
+	p, err := s.Projects.Get(wsOf(r), id)
 	if errors.Is(err, projects.ErrNotFound) {
 		fail(w, 404, "project not found")
 		return p, false
@@ -139,12 +140,20 @@ func (s *Server) openProject(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, msg)
 			return
 		}
-		if p, err = s.Projects.Touch(0, real, filepath.Base(real)); err != nil {
+		// On the group server a folder is opened only inside the workspace's data roots, and opening it adds no root: the
+		// admin declares what is readable (ADR 0050 section 3). Outside them it is "cannot be opened", like a missing folder.
+		if s.multiUser() && !s.roots(wsOf(r)).ResolveDirOK(real) {
+			fail(w, 422, "that folder cannot be opened")
+			return
+		}
+		if p, err = s.Projects.Touch(wsOf(r), actorID(r.Context()), 0, real, filepath.Base(real)); err != nil {
 			log.Printf("projects: %v", err)
 			fail(w, 500, "internal error")
 			return
 		}
-		s.addProjectRoot(real)
+		if !s.multiUser() {
+			s.addProjectRoot(wsOf(r), real)
+		}
 	} else {
 		var code int
 		var msg string
@@ -154,8 +163,8 @@ func (s *Server) openProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.Audit.RecordCtx(r.Context(), "project opened", "project", p.ID, p.Name)
-	s.startScan(p) // rescan on open; a scan already running is left to finish
-	s.writeSummary(w, 200, p)
+	s.startScan(r.Context(), p) // rescan on open; a scan already running is left to finish
+	s.writeSummary(wsOf(r), w, 200, p)
 }
 
 // openRemote adds a folder on a host as one of the host's roots (its worker is restarted with it, because the worker
@@ -206,7 +215,7 @@ func (s *Server) openRemote(ctx context.Context, hostID int64, in string) (proje
 		code, msg := hostErrStatus(err)
 		return projects.Project{}, code, msg
 	}
-	p, err := s.Projects.Touch(h.ID, real, path.Base(real))
+	p, err := s.Projects.Touch(wsCtx(ctx), actorID(ctx), h.ID, real, path.Base(real))
 	if err != nil {
 		log.Printf("projects: %v", err)
 		return projects.Project{}, 500, "internal error"
@@ -231,7 +240,7 @@ type summaryOut struct {
 	NeedsCount int          `json:"needsCount"`
 }
 
-func (s *Server) summaryOf(p projects.Project) (summaryOut, error) {
+func (s *Server) summaryOf(ws workspace.ID, p projects.Project) (summaryOut, error) {
 	out := summaryOut{ID: p.ID, HostID: p.HostID, Path: p.Path, Name: p.Name, OpenedAt: p.OpenedAt, LastScanAt: p.LastScanAt, Scan: s.scanOf(p.ID).snapshot(), Scanned: p.LastScanAt != nil}
 	out.storedSummary = s.storedSummaryOf(p)
 	if out.Counts.ByFormat == nil {
@@ -256,7 +265,7 @@ func (s *Server) summaryOf(p projects.Project) (summaryOut, error) {
 		pr := out.storedSummary.Proposed
 		out.Proposed = &pr
 	}
-	ns, err := s.computeNeeds(p)
+	ns, err := s.computeNeeds(ws, p)
 	if err != nil {
 		return out, err
 	}
@@ -267,8 +276,8 @@ func (s *Server) summaryOf(p projects.Project) (summaryOut, error) {
 	return out, nil
 }
 
-func (s *Server) writeSummary(w http.ResponseWriter, code int, p projects.Project) {
-	out, err := s.summaryOf(p)
+func (s *Server) writeSummary(ws workspace.ID, w http.ResponseWriter, code int, p projects.Project) {
+	out, err := s.summaryOf(ws, p)
 	if err != nil {
 		log.Printf("projects: %v", err)
 		fail(w, 500, "internal error")
@@ -278,7 +287,7 @@ func (s *Server) writeSummary(w http.ResponseWriter, code int, p projects.Projec
 }
 
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
-	ps, err := s.Projects.List(50)
+	ps, err := s.Projects.List(wsOf(r), 50)
 	if err != nil {
 		log.Printf("projects: %v", err)
 		fail(w, 500, "internal error")
@@ -305,7 +314,7 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
 	if p, ok := s.projectFrom(w, r); ok {
-		s.writeSummary(w, 200, p)
+		s.writeSummary(wsOf(r), w, 200, p)
 	}
 }
 
@@ -314,7 +323,7 @@ func (s *Server) scanProject(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	st, started := s.startScan(p)
+	st, started := s.startScan(r.Context(), p)
 	writeJSON(w, 202, map[string]any{"started": started, "scan": st.snapshot()})
 }
 
@@ -407,7 +416,7 @@ func (s *Server) projectTree(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	facts, _ := s.Store.FactsByPath(p.HostID)
+	facts, _ := s.Store.FactsByPath(wsOf(r), p.HostID)
 	out := make([]treeEntry, 0, len(rows))
 	for _, row := range rows {
 		e := treeEntry{Name: row.Name, Path: row.Path, Kind: row.Kind}
@@ -427,7 +436,7 @@ func (s *Server) projectTree(w http.ResponseWriter, r *http.Request) {
 				if p.HostID != 0 {
 					key = hostKey(p.HostID, key)
 				}
-				if id, _ := s.Runs.IDByDir(key); id != 0 {
+				if id, _ := s.Runs.IDByDir(wsOf(r), key); id != 0 {
 					tr.RunID = &id
 				}
 			}
@@ -475,7 +484,7 @@ func (s *Server) projectNeeds(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ns, err := s.computeNeeds(p)
+	ns, err := s.computeNeeds(wsOf(r), p)
 	if err != nil {
 		log.Printf("projects: %v", err)
 		fail(w, 500, "internal error")
@@ -493,7 +502,7 @@ func (s *Server) answerProject(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 8<<10, &in, true) {
 		return
 	}
-	ns, err := s.computeNeeds(p)
+	ns, err := s.computeNeeds(wsOf(r), p)
 	if err != nil {
 		log.Printf("projects: %v", err)
 		fail(w, 500, "internal error")
@@ -523,7 +532,7 @@ func (s *Server) answerProject(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	if err := s.applyAnswer(*n, in); err != nil {
+	if err := s.applyAnswer(wsOf(r), *n, in); err != nil {
 		if errors.Is(err, errAnswer) {
 			fail(w, 422, strings.TrimPrefix(err.Error(), "answer: "))
 			return
@@ -534,9 +543,9 @@ func (s *Server) answerProject(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Audit.RecordCtx(r.Context(), "project question answered", "project", p.ID, n.Kind)
 	if n.Kind == "result_folder" && in.Answer == "mark_run" {
-		s.startScan(p) // the folder is a run now: the next scan lists it as one
+		s.startScan(r.Context(), p) // the folder is a run now: the next scan lists it as one
 	}
-	ns, _ = s.computeNeeds(p)
+	ns, _ = s.computeNeeds(wsOf(r), p)
 	var updated *need
 	for i := range ns {
 		if ns[i].ID == in.Need {
@@ -595,6 +604,6 @@ func (s *Server) writeProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Audit.RecordCtx(r.Context(), "project file written", "project", p.ID, p.Name)
-	s.startScan(p) // read it back: the file is the layout from now on
+	s.startScan(r.Context(), p) // read it back: the file is the layout from now on
 	writeJSON(w, 200, map[string]any{"written": true, "path": discover.ProjectFilePath, "replaced": exists})
 }

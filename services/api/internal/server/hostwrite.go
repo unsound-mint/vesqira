@@ -15,6 +15,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Writing on a host is the one place Vesqira changes a file that is not on this computer (ADR 0039). It writes two
@@ -168,7 +169,7 @@ func (s *Server) writeProjectOnHost(w http.ResponseWriter, r *http.Request, p pr
 		}
 		return
 	}
-	s.startScan(p) // read it back through the host: the file is the layout from now on
+	s.startScan(r.Context(), p) // read it back through the host: the file is the layout from now on
 	writeJSON(w, 200, map[string]any{"written": true, "path": discover.ProjectFilePath, "replaced": exists})
 }
 
@@ -196,7 +197,8 @@ func (s *Server) recordRunAsync(jobID int64, h hosts.Host, ev jobs.StateEvidence
 	s.records.Add(1)
 	go func() {
 		defer s.records.Done()
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		// local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
+		ctx, cancel := context.WithTimeout(localCtx(context.Background()), 3*time.Minute)
 		defer cancel()
 		s.recordRun(ctx, jobID, h, ev)
 	}()
@@ -248,7 +250,7 @@ func (s *Server) recordRun(ctx context.Context, jobID int64, h hosts.Host, ev jo
 			env, _ = json.Marshal(facts)
 		}
 	}
-	data, err := jobs.RunRecordWithEnvironment(j, h.Name, s.runInputs(j), ev, time.Now(), env)
+	data, err := jobs.RunRecordWithEnvironment(j, h.Name, s.runInputs(wsCtx(ctx), j), ev, time.Now(), env)
 	if err != nil {
 		note(err.Error(), true)
 		return
@@ -296,7 +298,7 @@ func splitRoot(h hosts.Host, dir string) (root, rel string, ok bool) {
 }
 
 // runInputs names the catalog files an analysis job was asked to read. They are references to paths on the host.
-func (s *Server) runInputs(j jobs.Job) []jobs.RunInput {
+func (s *Server) runInputs(ws workspace.ID, j jobs.Job) []jobs.RunInput {
 	var p struct {
 		Sources []int64 `json:"sources"`
 	}
@@ -305,7 +307,7 @@ func (s *Server) runInputs(j jobs.Job) []jobs.RunInput {
 	}
 	var out []jobs.RunInput
 	for _, id := range p.Sources {
-		if d, code, _ := s.dataset(id); code == 0 {
+		if d, code, _ := s.dataset(ws, id); code == 0 {
 			out = append(out, jobs.RunInput{DatasetID: d.ID, Name: d.Name, Path: d.Path, Source: "the catalog entry the job was drafted from; the file was not hashed"})
 		}
 	}

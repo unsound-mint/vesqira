@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func rp(x, y, w, h int) *Rect { return &Rect{x, y, w, h} }
@@ -12,16 +14,16 @@ func rp(x, y, w, h int) *Rect { return &Rect{x, y, w, h} }
 func layoutBoard(t *testing.T) (*Store, Board, []Expect) {
 	t.Helper()
 	s, _ := newStore(t)
-	b, _ := s.CreateBoard("B")
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "B")
 	var ex []Expect
 	for i, n := range []string{"A", "B", "C"} {
 		f := fig(t, s, n, uint8(i+1))
-		if err := s.AddItem(b.ID, f.ID); err != nil {
+		if err := s.AddItem(workspace.Local, b.ID, f.ID); err != nil {
 			t.Fatal(err)
 		}
 		ex = append(ex, Expect{Kind: KindFigure, ID: f.ID})
 	}
-	b, _ = s.Board(b.ID)
+	b, _ = s.Board(workspace.Local, b.ID)
 	return s, b, ex
 }
 
@@ -35,26 +37,26 @@ func TestLayoutRoundTripAndTravelsWithThePanel(t *testing.T) {
 		}
 	}
 	want := []*Rect{rp(0, 0, 6, 7), rp(6, 0, 6, 7), rp(0, 7, 12, 4)}
-	if err := s.SetLayout(b.ID, want, ex, []*Rect{nil, nil, nil}); err != nil {
+	if err := s.SetLayout(workspace.Local, b.ID, want, ex, []*Rect{nil, nil, nil}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.Board(b.ID)
+	got, _ := s.Board(workspace.Local, b.ID)
 	for i, it := range got.Items {
 		if it.Layout == nil || *it.Layout != *want[i] {
 			t.Fatalf("item %d: %+v", i, it.Layout)
 		}
 	}
-	if err := s.MoveItem(b.ID, 0, 1, nil); err != nil {
+	if err := s.MoveItem(workspace.Local, b.ID, 0, 1, nil); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.Board(b.ID)
+	got, _ = s.Board(workspace.Local, b.ID)
 	if got.Items[1].Figure.Title != "A" || *got.Items[1].Layout != *want[0] {
 		t.Fatalf("the place did not travel with the panel: %+v", got.Items[1])
 	}
 	// mixed state: a panel added after the layout has no place
 	f := fig(t, s, "D", 9)
-	s.AddItem(b.ID, f.ID)
-	got, _ = s.Board(b.ID)
+	s.AddItem(workspace.Local, b.ID, f.ID)
+	got, _ = s.Board(workspace.Local, b.ID)
 	if got.Items[3].Layout != nil || got.Items[0].Layout == nil {
 		t.Fatal("an added panel must start without a place and leave the others alone")
 	}
@@ -63,10 +65,10 @@ func TestLayoutRoundTripAndTravelsWithThePanel(t *testing.T) {
 	for _, it := range got.Items {
 		cur = append(cur, Expect{Kind: KindFigure, ID: it.Figure.ID})
 	}
-	if err := s.SetLayout(b.ID, []*Rect{nil, nil, nil, nil}, cur, nil); err != nil {
+	if err := s.SetLayout(workspace.Local, b.ID, []*Rect{nil, nil, nil, nil}, cur, nil); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = s.Board(b.ID)
+	got, _ = s.Board(workspace.Local, b.ID)
 	for _, it := range got.Items {
 		if it.Layout != nil {
 			t.Fatal("clear left a place")
@@ -77,7 +79,7 @@ func TestLayoutRoundTripAndTravelsWithThePanel(t *testing.T) {
 func TestLayoutRefusesWhatCannotBeShownAndChangesNothing(t *testing.T) {
 	s, b, ex := layoutBoard(t)
 	ok := []*Rect{rp(0, 0, 6, 7), rp(6, 0, 6, 7), rp(0, 7, 12, 4)}
-	if err := s.SetLayout(b.ID, ok, ex, nil); err != nil {
+	if err := s.SetLayout(workspace.Local, b.ID, ok, ex, nil); err != nil {
 		t.Fatal(err)
 	}
 	for name, c := range map[string]struct {
@@ -96,18 +98,18 @@ func TestLayoutRefusesWhatCannotBeShownAndChangesNothing(t *testing.T) {
 		"stale from":   {ok, ex, []*Rect{nil, nil, nil}, true},
 		"short expect": {ok, ex[:2], nil, true},
 	} {
-		err := s.SetLayout(b.ID, c.rects, c.expect, c.from)
+		err := s.SetLayout(workspace.Local, b.ID, c.rects, c.expect, c.from)
 		if err == nil || errors.Is(err, ErrConflict) != c.conf {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	got, _ := s.Board(b.ID)
+	got, _ := s.Board(workspace.Local, b.ID)
 	for i, it := range got.Items {
 		if it.Layout == nil || *it.Layout != *ok[i] {
 			t.Fatalf("a refused save changed item %d: %+v", i, it.Layout)
 		}
 	}
-	if err := s.SetLayout(999, ok, ex, nil); !errors.Is(err, ErrNotFound) {
+	if err := s.SetLayout(workspace.Local, 999, ok, ex, nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown board: %v", err)
 	}
 }
@@ -116,7 +118,7 @@ func TestLayoutRefusesWhatCannotBeShownAndChangesNothing(t *testing.T) {
 // owner does not reach the snapshot. A board that was never arranged freezes with no layout at all.
 func TestFrozenSnapshotKeepsTheLayoutAsPublished(t *testing.T) {
 	s, b, ex := layoutBoard(t)
-	_, tok0, err := s.Publish(b.ID, "plain", time.Hour)
+	_, tok0, err := s.Publish(workspace.Local, "local-owner", b.ID, "plain", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,14 +129,14 @@ func TestFrozenSnapshotKeepsTheLayoutAsPublished(t *testing.T) {
 		}
 	}
 	first := []*Rect{rp(0, 0, 12, 7), rp(0, 7, 6, 7), rp(6, 7, 6, 7)}
-	if err := s.SetLayout(b.ID, first, ex, nil); err != nil {
+	if err := s.SetLayout(workspace.Local, b.ID, first, ex, nil); err != nil {
 		t.Fatal(err)
 	}
-	_, tok, err := s.Publish(b.ID, "v1", time.Hour)
+	_, tok, err := s.Publish(workspace.Local, "local-owner", b.ID, "v1", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetLayout(b.ID, []*Rect{rp(0, 0, 6, 7), rp(6, 0, 6, 7), rp(0, 7, 12, 7)}, ex, first); err != nil {
+	if err := s.SetLayout(workspace.Local, b.ID, []*Rect{rp(0, 0, 6, 7), rp(6, 0, 6, 7), rp(0, 7, 12, 7)}, ex, first); err != nil {
 		t.Fatal(err)
 	}
 	rv, err := s.Review(tok)

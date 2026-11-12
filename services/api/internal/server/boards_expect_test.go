@@ -10,6 +10,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The undo of a board edit names the panel it expects at a position. The server applies the edit only if that panel is still
@@ -30,21 +31,21 @@ func TestBoardItemEditsHonourTheExpectedPanel(t *testing.T) {
 	png, _ := base64.StdEncoding.DecodeString(testPNG(t))
 	var figs []boards.Figure
 	for i, name := range []string{"A", "B", "C"} {
-		f, err := bs.CreateFigure(boards.NewFigure{DatasetID: 1, Title: name, Provenance: json.RawMessage(`{"i":` + itoa(i) + `}`)}, png)
+		f, err := bs.CreateFigure(workspace.Local, "local-owner", boards.NewFigure{DatasetID: 1, Title: name, Provenance: json.RawMessage(`{"i":` + itoa(i) + `}`)}, png)
 		if err != nil {
 			t.Fatal(err)
 		}
 		figs = append(figs, f)
 	}
-	b, _ := bs.CreateBoard("B")
+	b, _ := bs.CreateBoard(workspace.Local, "local-owner", "B")
 	for _, f := range figs {
-		bs.AddItem(b.ID, f.ID)
+		bs.AddItem(workspace.Local, b.ID, f.ID)
 	}
 	item := func(op string, pos int) string {
 		return ts.URL + "/api/boards/" + itoa(int(b.ID)) + "/items/" + itoa(pos) + "/" + op
 	}
 	titles := func() string {
-		cur, _ := bs.Board(b.ID)
+		cur, _ := bs.Board(workspace.Local, b.ID)
 		s := ""
 		for _, it := range cur.Items {
 			s += it.Figure.Title
@@ -60,7 +61,7 @@ func TestBoardItemEditsHonourTheExpectedPanel(t *testing.T) {
 	}
 
 	// another window moved B before A since this client read the board: its undo of "move A down" expects A at position 1
-	bs.MoveItem(b.ID, 1, -1, nil)                                                                    // BAC
+	bs.MoveItem(workspace.Local, b.ID, 1, -1, nil)                                                   // BAC
 	r, out := postJSON(t, item("move", 1), map[string]any{"delta": -1, "expect": exp(figs[0], nil)}) // A is at 1
 	if r.StatusCode != 200 || titles() != "ABC" {
 		t.Fatalf("matching expect: %d %s %s", r.StatusCode, out, titles())
@@ -81,7 +82,7 @@ func TestBoardItemEditsHonourTheExpectedPanel(t *testing.T) {
 	if r, _ := postJSON(t, item("note", 0), map[string]any{"note": "x", "expect": exp(figs[0], map[string]any{"note": "stale"})}); r.StatusCode != 409 {
 		t.Fatalf("note mismatch: %d", r.StatusCode)
 	}
-	if cur, _ := bs.Board(b.ID); cur.Items[0].Note != "" {
+	if cur, _ := bs.Board(workspace.Local, b.ID); cur.Items[0].Note != "" {
 		t.Fatal("a refused note edit changed the note")
 	}
 	if r, out := postJSON(t, item("note", 0), map[string]any{"note": "x", "expect": exp(figs[0], map[string]any{"note": ""})}); r.StatusCode != 200 {

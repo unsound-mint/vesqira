@@ -313,7 +313,7 @@ func (s *Server) afterFailure(w http.ResponseWriter, r *http.Request, k cacheKey
 	if s.Offline == nil || k.host == 0 || k.op == "" || k.win != "" || !s.Offline.Has(k.id) { // a window is never answered from a copy of the file (ADR 0063)
 		return worker.Reply{}, false
 	}
-	d, err := s.Store.Get(k.id)
+	d, err := s.Store.Get(wsOf(r), k.id)
 	if err != nil {
 		return worker.Reply{}, false
 	}

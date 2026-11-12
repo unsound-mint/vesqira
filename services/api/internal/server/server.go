@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/unsound-mint/vesqira/services/api/internal/discussion"
 	"io/fs"
 	"log"
 	"net/http"
@@ -37,6 +38,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type HeaderReader interface {
@@ -69,18 +71,19 @@ type Server struct {
 	offlineRun        offlineRunner // the one running preparation (offline_prepare.go)
 	ManagedDir        string
 	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
-	CacheDir  string
-	Analysis  *AnalysisConfig
-	Audit     *audit.Store  // nil records nothing
-	Notes     *notify.Store // events for the owner (jobs ended, results imported); nil records nothing and disables the routes
-	Regions   *regions.Store
-	Subsets   *subsets.Store // virtual subsets (ADR 0063); nil disables their routes
-	subsetMu  sync.Mutex     // one subset is written as a file at a time (subsets.go)
-	History   *history.Store // the viewer's exploration history (ADR 0057); nil disables the routes
-	SSHConfig string         // the user's ssh_config, only read to offer host aliases; empty offers none
-	Hints     hintSource     // overrides the catalog for the runs list's input hints (tests count calls)
-	WebDist   string         // built web app served at / on this (loopback) listener; empty serves the API only
-	Reports   *reports.Store // nil disables reports
+	CacheDir   string
+	Analysis   *AnalysisConfig
+	Audit      *audit.Store  // nil records nothing
+	Notes      *notify.Store // events for the owner (jobs ended, results imported); nil records nothing and disables the routes
+	Regions    *regions.Store
+	Subsets    *subsets.Store    // virtual subsets (ADR 0063); nil disables their routes
+	subsetMu   sync.Mutex        // one subset is written as a file at a time (subsets.go)
+	History    *history.Store    // the viewer's exploration history (ADR 0057); nil disables the routes
+	Discussion *discussion.Store // members' comments on figures and reports (ADR 0050 slice 3); nil disables the routes
+	SSHConfig  string            // the user's ssh_config, only read to offer host aliases; empty offers none
+	Hints      hintSource        // overrides the catalog for the runs list's input hints (tests count calls)
+	WebDist    string            // built web app served at / on this (loopback) listener; empty serves the API only
+	Reports    *reports.Store    // nil disables reports
 	// PublishKeyFile holds the publisher key for the publish server (0600, beside the catalog); never in the catalog.
 	PublishKeyFile string
 
@@ -147,6 +150,7 @@ type Server struct {
 	hashing     hashRegistry
 	hashes      sync.WaitGroup // full hashes in flight
 
+	batch    batchLane     // the group server's per-account batch lane (batchlane.go)
 	support  supportStore  // support bundle previews waiting to be saved (support.go)
 	choosing atomic.Bool   // a chooser dialog is open
 	progress progressCache // what job logs said about progress, for board panels that follow a job
@@ -158,7 +162,9 @@ func (s *Server) Handler() http.Handler {
 	s.route(mux, "GET /api/workload", authz.CapabilitiesRead, s.workload)
 	s.route(mux, "POST /api/support/preview", authz.SupportExport, s.supportPreview)
 	s.route(mux, "GET /api/support/bundle/{id}", authz.SupportExport, s.supportDownload)
-	s.route(mux, "GET /api/roots", authz.FilesRead, func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"roots": s.roots()}) })
+	s.route(mux, "GET /api/roots", authz.FilesRead, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"roots": s.roots(wsOf(r))})
+	})
 	s.route(mux, "GET /api/files/tree", authz.FilesRead, s.fileTree)
 	s.route(mux, "GET /api/datasets", authz.DatasetRead, s.list)
 	s.route(mux, "GET /api/datasets/availability", authz.DatasetRead, s.availability)
@@ -402,8 +408,10 @@ func (s *Server) Handler() http.Handler {
 	if s.Reports != nil && s.Boards != nil {
 		s.reportRoutes(mux)
 	}
+	s.discussionRoutes(mux)
 	if s.multiUser() {
 		s.accountRoutes(mux)
+		s.memberRoutes(mux)
 	}
 	if s.WebDist != "" {
 		s.route(mux, "GET /", authz.Anonymous, staticApp(s.WebDist))
@@ -492,7 +500,7 @@ func fail(w http.ResponseWriter, code int, msg string) {
 }
 
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
-	ds, err := s.Store.List()
+	ds, err := s.Store.List(wsOf(r))
 	if err != nil {
 		log.Printf("list: %v", err)
 		fail(w, 500, "internal error")
@@ -511,7 +519,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		rows[i] = datasetRow{Dataset: d}
 		at[d.ID] = i
 	}
-	if srcs, err := s.lc().MaskSources(); err != nil {
+	if srcs, err := s.lc().MaskSources(wsOf(r)); err != nil {
 		log.Printf("list: mask sources: %v", err) // the list is still right; the explorer just does not group these
 	} else {
 		for _, m := range srcs {
@@ -537,7 +545,7 @@ type datasetRow struct {
 // other hosts are not contacted here (that would wait on the network and the VPN) and are reported as unchecked. Only datasets
 // that are not simply available are listed.
 func (s *Server) availability(w http.ResponseWriter, r *http.Request) {
-	ds, err := s.Store.List()
+	ds, err := s.Store.List(wsOf(r))
 	if err != nil {
 		log.Printf("availability: %v", err)
 		fail(w, 500, "internal error")
@@ -575,7 +583,7 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad id")
 		return
 	}
-	d, err := s.Store.Get(id)
+	d, err := s.Store.Get(wsOf(r), id)
 	if errors.Is(err, catalog.ErrNotFound) {
 		fail(w, 404, "dataset not found")
 		return
@@ -617,7 +625,7 @@ func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset
 		return catalog.Dataset{}, 404, "file not found"
 	}
 	dev, ino := fileIDOf(info)
-	d, err := s.Store.Upsert(catalog.Dataset{Path: real, Name: filepath.Base(real), SizeBytes: info.Size(), ModifiedAt: info.ModTime(), FileDev: dev, FileIno: ino, Header: hdr})
+	d, err := s.Store.Upsert(wsCtx(ctx), actorID(ctx), catalog.Dataset{Path: real, Name: filepath.Base(real), SizeBytes: info.Size(), ModifiedAt: info.ModTime(), FileDev: dev, FileIno: ino, Header: hdr})
 	if errors.Is(err, catalog.ErrLocationExists) {
 		return catalog.Dataset{}, 409, "this file is already another location of a dataset: remove that location first, or open that dataset"
 	}
@@ -630,8 +638,8 @@ func (s *Server) registerPath(ctx context.Context, real string) (catalog.Dataset
 
 // knownFile says whether a path on this computer already is a dataset's registered file or location: registering it again
 // refreshes that dataset, so there is nothing to offer.
-func (s *Server) knownFile(real string) bool {
-	_, found, _ := s.Store.LocationOwner(0, real)
+func (s *Server) knownFile(ws workspace.ID, real string) bool {
+	_, found, _ := s.Store.LocationOwner(ws, 0, real)
 	return found
 }
 
@@ -656,12 +664,12 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid request body")
 		return
 	}
-	real, err := s.roots().Resolve(in.Path)
+	real, err := s.roots(wsOf(r)).Resolve(in.Path)
 	if err != nil {
 		fail(w, 403, err.Error())
 		return
 	}
-	if !in.AsNew && !s.knownFile(real) {
+	if !in.AsNew && !s.knownFile(wsOf(r), real) {
 		if m := s.sameContent(r.Context(), real); len(m) > 0 {
 			failCode(w, 409, "same_content", "A dataset already holds this content. Add the file as another location of it, or register it as a separate dataset.", map[string]any{"matches": m})
 			return

@@ -58,6 +58,9 @@ func Open(db *sql.DB) (*Store, error) {
 	if _, err := db.Exec(schema.SweepsTables); err != nil {
 		return nil, err
 	}
+	if err := schema.Scope(db, "sweeps"); err != nil {
+		return nil, err
+	}
 	return &Store{db}, nil
 }
 

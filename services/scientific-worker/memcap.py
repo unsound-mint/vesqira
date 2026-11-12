@@ -1,4 +1,4 @@
-"""The worker memory cap, shared by every entry point that runs as its own process (plane_worker.py, analysis.py).
+"""The worker memory cap, shared by every entry point that runs as its own process (plane_worker.py, analysis.py, fits_header.py; the other scripts are modules those import).
 
 Call limit_memory() once in main(), after the libraries are imported. An allocation over the cap raises MemoryError;
 the entry point answers that one request with over_cap_message() and carries on (plane_worker) or exits 2 (analysis).

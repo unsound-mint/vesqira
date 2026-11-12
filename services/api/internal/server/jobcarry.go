@@ -78,7 +78,7 @@ func (s *Server) registerJobCarry(ctx context.Context, h hosts.Host, j jobs.Job,
 	if len(p.Sources) == 0 || s.Masks == nil {
 		return skip("the job's record of what to carry is incomplete")
 	}
-	src, err := s.Store.Get(p.Sources[0])
+	src, err := s.Store.Get(wsCtx(ctx), p.Sources[0])
 	if err != nil {
 		return skip("the file the job read is no longer in the catalog")
 	}
@@ -112,7 +112,7 @@ func (s *Server) registerJobCarry(ctx context.Context, h hosts.Host, j jobs.Job,
 		real[w] = r
 	}
 	// registering again must not record the same files twice: they are already masks of this result
-	if existing, err := s.Masks.ForDataset(nd.ID); err == nil {
+	if existing, err := s.Masks.ForDataset(wsCtx(ctx), nd.ID); err == nil {
 		for _, m := range existing {
 			for _, r := range real {
 				if m.HostID == h.ID && m.Path == r {
@@ -123,7 +123,7 @@ func (s *Server) registerJobCarry(ctx context.Context, h hosts.Host, j jobs.Job,
 	}
 	plan := &carryPlan{op: p.Op, hostID: h.ID}
 	for _, c := range cp.Carried {
-		m, code, msg := s.usableMask(c.ID, src)
+		m, code, msg := s.usableMask(wsCtx(ctx), c.ID, src)
 		switch {
 		case code == 502:
 			return nil, "", code, msg
@@ -138,7 +138,7 @@ func (s *Server) registerJobCarry(ctx context.Context, h hosts.Host, j jobs.Job,
 		plan.missingOut = real[cp.Missing]
 	}
 	for _, id := range cp.Left {
-		if m, err := s.Masks.Get(id); err == nil {
+		if m, err := s.Masks.Get(wsCtx(ctx), id); err == nil {
 			plan.left = append(plan.left, m)
 		}
 	}

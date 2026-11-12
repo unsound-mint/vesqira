@@ -11,6 +11,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func f64(v float64) *float64 { return &v }
@@ -42,7 +43,7 @@ func TestRunListingWithParametersAndMetricsAtScale(t *testing.T) {
 		if i%10 == 0 {
 			p.Metrics = p.Metrics[:1] // some runs never recorded the others
 		}
-		if _, err := rn.Save(fmt.Sprintf("/runs/%d", i), p, nil); err != nil {
+		if _, err := rn.Save(workspace.Local, "local-owner", fmt.Sprintf("/runs/%d", i), p, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

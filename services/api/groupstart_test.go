@@ -11,6 +11,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/fullschema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // ADR 0050 section 1: what the group server refuses to start with.
@@ -100,12 +101,12 @@ func TestGroupServerRefusesALocalCatalogWithoutAdoption(t *testing.T) {
 	if held, err := adoptionNeeded(st.DB()); err != nil || len(held) != 0 || adoptionRefusal(held, false) != "" {
 		t.Fatalf("a fresh catalog: %v %v", held, err)
 	}
-	if _, err := st.Upsert(catalog.Dataset{Path: "/d/a.fits", Name: "a.fits", Header: []byte(`{}`)}); err != nil {
+	if _, err := st.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: "/d/a.fits", Name: "a.fits", Header: []byte(`{}`)}); err != nil {
 		t.Fatal(err)
 	}
 	held, err := adoptionNeeded(st.DB())
 	msg := adoptionRefusal(held, false)
-	if err != nil || len(held) != 1 || !strings.Contains(msg, "--adopt-existing-catalog") || !strings.Contains(msg, "every account will see all of it") || strings.Count(msg, ". ") != 0 {
+	if err != nil || len(held) != 1 || !strings.Contains(msg, "--adopt-existing-catalog") || !strings.Contains(msg, "every member of its main workspace will see all of it") || strings.Count(msg, ". ") != 0 {
 		t.Fatalf("a local catalog: %v %q %v", held, msg, err)
 	}
 	if adoptionRefusal(held, true) != "" {

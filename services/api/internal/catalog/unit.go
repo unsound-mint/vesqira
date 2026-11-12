@@ -8,6 +8,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // UnitDeclaration is the physical unit a person declared for a file whose header has no BUNIT. It is an overlay: the
@@ -142,9 +144,10 @@ func (s *Store) noBrightness(id int64) (bool, error) {
 
 // NoBrightnessIDs returns the datasets that cannot be given a brightness unit: orientation maps (proposed or confirmed), the
 // reliability maps declared for them, and point catalogs.
-func (s *Store) NoBrightnessIDs() (map[int64]bool, error) {
-	rows, err := s.db.Query(`SELECT dataset_id FROM interpretations UNION SELECT reliability_id FROM interpretations WHERE reliability_id IS NOT NULL
-		UNION SELECT id FROM datasets WHERE header LIKE '%"kind":"catalog"%'`)
+func (s *Store) NoBrightnessIDs(ws workspace.ID) (map[int64]bool, error) {
+	rows, err := s.db.Query(`SELECT i.dataset_id FROM interpretations i JOIN datasets d ON d.id=i.dataset_id WHERE d.workspace_id=?1
+		UNION SELECT i.reliability_id FROM interpretations i JOIN datasets d ON d.id=i.dataset_id WHERE i.reliability_id IS NOT NULL AND d.workspace_id=?1
+		UNION SELECT id FROM datasets WHERE workspace_id=?1 AND header LIKE '%"kind":"catalog"%'`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -171,9 +174,9 @@ func (s *Store) ClearUnitDeclaration(id int64) error {
 
 // FreshUnits returns the declared unit of every dataset whose declaration still describes the file as registered (a stale
 // declaration, made about other bytes, is not applied anywhere and does not settle a question).
-func (s *Store) FreshUnits() (map[int64]string, error) {
+func (s *Store) FreshUnits(ws workspace.ID) (map[int64]string, error) {
 	rows, err := s.db.Query(`SELECT u.dataset_id, u.unit FROM dataset_units u JOIN datasets d ON d.id=u.dataset_id
-		WHERE u.size_bytes=d.size_bytes AND u.modified_ns=d.modified_at`)
+		WHERE d.workspace_id=? AND u.size_bytes=d.size_bytes AND u.modified_ns=d.modified_at`, ws)
 	if err != nil {
 		return nil, err
 	}

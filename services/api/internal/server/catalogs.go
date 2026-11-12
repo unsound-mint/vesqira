@@ -85,7 +85,7 @@ func (s *Server) registerCatalogPath(ctx context.Context, real string) (catalog.
 		return catalog.Dataset{}, 404, "file not found"
 	}
 	dev, ino := fileIDOf(info)
-	ds, err := s.Store.Upsert(catalog.Dataset{Path: real, Name: filepath.Base(real), SizeBytes: info.Size(), ModifiedAt: info.ModTime(), FileDev: dev, FileIno: ino, Header: hdr})
+	ds, err := s.Store.Upsert(wsCtx(ctx), actorID(ctx), catalog.Dataset{Path: real, Name: filepath.Base(real), SizeBytes: info.Size(), ModifiedAt: info.ModTime(), FileDev: dev, FileIno: ino, Header: hdr})
 	if errors.Is(err, catalog.ErrLocationExists) {
 		return catalog.Dataset{}, 409, "this file is already another location of a dataset: remove that location first, or open that dataset"
 	}
@@ -116,7 +116,7 @@ func (s *Server) registerCatalog(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid request body")
 		return
 	}
-	real, err := s.roots().Resolve(in.Path)
+	real, err := s.roots(wsOf(r)).Resolve(in.Path)
 	if err != nil {
 		fail(w, 403, err.Error())
 		return
@@ -136,7 +136,7 @@ func (s *Server) catalogSource(w http.ResponseWriter, r *http.Request) (d catalo
 		fail(w, 400, "bad id")
 		return
 	}
-	d, code, msg := s.dataset(id)
+	d, code, msg := s.dataset(wsOf(r), id)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -267,7 +267,7 @@ func (s *Server) putCatalogDeclaration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Audit.RecordCtx(r.Context(), "catalog columns declared", "dataset", d.ID, d.Name+": "+in.Frame+" "+in.Format)
-	nd, code, msg := s.dataset(d.ID)
+	nd, code, msg := s.dataset(wsOf(r), d.ID)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -287,7 +287,7 @@ func (s *Server) deleteCatalogDeclaration(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.Audit.RecordCtx(r.Context(), "catalog declaration withdrawn", "dataset", d.ID, d.Name)
-	nd, code, msg := s.dataset(d.ID)
+	nd, code, msg := s.dataset(wsOf(r), d.ID)
 	if code != 0 {
 		fail(w, code, msg)
 		return

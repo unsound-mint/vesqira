@@ -21,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type vpnEnv struct {
@@ -119,7 +120,7 @@ func (e *vpnEnv) waitAudit(t *testing.T, want string) string {
 
 func (e *vpnEnv) auditText(t *testing.T) string {
 	t.Helper()
-	es, err := e.au.List("", 0, 100)
+	es, err := e.au.List(workspace.Local, "", 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}

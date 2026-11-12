@@ -16,6 +16,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 	"github.com/unsound-mint/vesqira/services/api/internal/support"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The support bundle (ADR 0056). Owner listener only. A bundle is built once by the preview route, kept in memory for ten
@@ -88,7 +89,7 @@ func (s *Server) supportPreview(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength != 0 && !body(w, r, 1<<10, &in, true) {
 		return
 	}
-	b := support.Build(s.supportInput(r.Context(), in.IncludeDatasetNames))
+	b := support.Build(s.supportInput(r.Context(), wsOf(r), in.IncludeDatasetNames))
 	z, err := b.Zip()
 	if err != nil {
 		fail(w, 500, "could not build the bundle")
@@ -116,7 +117,7 @@ func (s *Server) supportDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 // supportInput gathers the bundle's inputs. Everything is read-only and bounded; a part that cannot be read is left empty.
-func (s *Server) supportInput(ctx context.Context, names bool) support.Input {
+func (s *Server) supportInput(ctx context.Context, ws workspace.ID, names bool) support.Input {
 	home, _ := os.UserHomeDir()
 	in := support.Input{
 		Now: time.Now(), AppVersion: Version, Protocol: ProtocolVersion, Schema: schema.Version,
@@ -132,7 +133,7 @@ func (s *Server) supportInput(ctx context.Context, names bool) support.Input {
 	if s.Analysis != nil && s.Analysis.Python != "" {
 		in.Python = pythonVersions(ctx, s.Analysis.Python)
 	}
-	if ds, err := s.Store.List(); err == nil {
+	if ds, err := s.Store.List(wsCtx(ctx)); err == nil {
 		for _, d := range ds {
 			in.DatasetNames = append(in.DatasetNames, d.Name, filepath.Base(d.Path))
 			for _, l := range d.Locations {
@@ -167,7 +168,7 @@ func (s *Server) supportInput(ctx context.Context, names bool) support.Input {
 			}
 			rows.Close()
 		}
-		if rows, err := db.QueryContext(ctx, `SELECT at, action, kind FROM audit ORDER BY id DESC LIMIT ?`, support.MaxAuditLines); err == nil {
+		if rows, err := db.QueryContext(ctx, `SELECT at, action, kind FROM audit WHERE workspace_id=? ORDER BY id DESC LIMIT ?`, ws, support.MaxAuditLines); err == nil {
 			for rows.Next() {
 				var at int64
 				var e support.AuditEntry

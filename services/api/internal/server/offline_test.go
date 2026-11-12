@@ -24,6 +24,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type offEnv struct {
@@ -356,9 +357,9 @@ func TestChangedFileMakesTheCopyStaleAndItIsRefused(t *testing.T) {
 func TestCopyIsServedOnlyForTheSameRecordedIdentity(t *testing.T) {
 	t.Parallel()
 	e := newOfflineEnv(t)
-	d, _ := e.cat.Get(e.remote.ID)
+	d, _ := e.cat.Get(workspace.Local, e.remote.ID)
 	loc := d.Locations[0]
-	if err := e.cat.SetFingerprint(loc.ID, "full", strings.Repeat("ab", 32), "test", loc.SizeBytes, loc.ModifiedAt.UnixNano()); err != nil {
+	if err := e.cat.SetFingerprint(workspace.Local, loc.ID, "full", strings.Repeat("ab", 32), "test", loc.SizeBytes, loc.ModifiedAt.UnixNano()); err != nil {
 		t.Fatal(err)
 	}
 	e.prepare(t, map[string]any{"datasetIds": []int64{e.remote.ID}, "channels": map[string]int{"from": 2, "to": 2}, "detail": "full", "budgetBytes": 8 << 20})
@@ -485,7 +486,7 @@ func TestHostLostBetweenStatAndReadFallsBackToTheVerifiedCopy(t *testing.T) {
 	k := cacheKey{id: e.remote.ID, host: e.host.ID, size: e.remote.SizeBytes, mtime: e.remote.ModifiedAt.UnixNano(), op: "plane", channel: 5}
 	try := func(k cacheKey) (worker.Reply, bool, http.Header) {
 		w := httptest.NewRecorder()
-		rep, ok := e.srv.afterFailure(w, httptest.NewRequest("GET", "/", nil), k)
+		rep, ok := e.srv.afterFailure(w, localRequest("GET", "/"), k)
 		return rep, ok, w.Header()
 	}
 	rep, ok, h := try(k)

@@ -89,6 +89,10 @@ func (s *Server) completeLocal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := c.prefix
+	if s.multiUser() { // the group server completes only inside the workspace's data roots (ADR 0050 section 3)
+		s.completeInRoots(w, r, p, c)
+		return
+	}
 	if p == "~" || strings.HasPrefix(p, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil || !filepath.IsAbs(home) {
@@ -110,6 +114,25 @@ func (s *Server) completeLocal(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, _, g := s.gvfsHost(out.Base); g != nil {
 		out.GVFS = g
+	}
+	writeJSON(w, 200, out)
+}
+
+// completeInRoots is path completion on the group server: no home folder (the server account's is nobody's business), and a
+// folder is listed only when its real path lies inside one of the workspace's data roots; anything else is the same empty
+// answer as a folder that does not exist, so the answer does not reveal what is outside. A link listed inside a root is only
+// labelled, never entered, as in local mode.
+func (s *Server) completeInRoots(w http.ResponseWriter, r *http.Request, p string, c completeQuery) {
+	dir, last := splitPrefix(p)
+	empty := completion{Base: dir, Entries: []completeEntry{}}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil || !s.roots(wsOf(r)).ResolveDirOK(real) {
+		writeJSON(w, 200, empty)
+		return
+	}
+	out, err := listNames(real, last, c) // the checked real folder, not the typed name a link could be swapped under
+	if err != nil {
+		out = empty
 	}
 	writeJSON(w, 200, out)
 }

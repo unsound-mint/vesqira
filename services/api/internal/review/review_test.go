@@ -16,6 +16,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func setup(t *testing.T) (*httptest.Server, *boards.Store, string, boards.Figure, string) {
@@ -32,13 +33,13 @@ func setup(t *testing.T) (*httptest.Server, *boards.Store, string, boards.Figure
 	}
 	var b bytes.Buffer
 	png.Encode(&b, image.NewGray(image.Rect(0, 0, 4, 4)))
-	f, err := st.CreateFigure(boards.NewFigure{DatasetID: 1, Title: "Peak", Caption: "cap", Provenance: json.RawMessage(`{"channel":3}`)}, b.Bytes())
+	f, err := st.CreateFigure(workspace.Local, "local-owner", boards.NewFigure{DatasetID: 1, Title: "Peak", Caption: "cap", Provenance: json.RawMessage(`{"channel":3}`)}, b.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
-	bd, _ := st.CreateBoard("B")
-	st.AddItem(bd.ID, f.ID)
-	_, tok, err := st.Publish(bd.ID, "v1", time.Hour)
+	bd, _ := st.CreateBoard(workspace.Local, "local-owner", "B")
+	st.AddItem(workspace.Local, bd.ID, f.ID)
+	_, tok, err := st.Publish(workspace.Local, "local-owner", bd.ID, "v1", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -761,6 +761,9 @@ func Open(db *sql.DB) (*Store, error) {
 	if err == nil {
 		err = schema.AddColumn(db, "jobs", "usage", "TEXT NOT NULL DEFAULT ''")
 	}
+	if err == nil {
+		err = schema.Scope(db, "jobs")
+	}
 	if err != nil {
 		return nil, err
 	}

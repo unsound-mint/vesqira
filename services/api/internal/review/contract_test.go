@@ -16,6 +16,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // What a supervisor's browser receives is decoded from the real handler and validated against
@@ -119,20 +120,20 @@ func TestReviewerResponsesMatchTheSpec(t *testing.T) {
 	}
 	var pb bytes.Buffer
 	png.Encode(&pb, image.NewGray(image.Rect(0, 0, 4, 4)))
-	fig, err := st.CreateFigure(boards.NewFigure{DatasetID: 1, Title: "Peak", Caption: "cap", Provenance: json.RawMessage(provenance)}, pb.Bytes())
+	fig, err := st.CreateFigure(workspace.Local, "local-owner", boards.NewFigure{DatasetID: 1, Title: "Peak", Caption: "cap", Provenance: json.RawMessage(provenance)}, pb.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
-	bd, _ := st.CreateBoard("B")
-	st.AddItem(bd.ID, fig.ID)
-	st.AddJobItem(bd.ID, 7)
+	bd, _ := st.CreateBoard(workspace.Local, "local-owner", "B")
+	st.AddItem(workspace.Local, bd.ID, fig.ID)
+	st.AddJobItem(workspace.Local, bd.ID, 7)
 	// v1 is replaced by v2, so the reviewer of v1 gets the superseded branch; it also carries a job panel
-	v1, tok, err := st.PublishWith(bd.ID, boards.PublishOptions{Label: "v1", Question: "Is it real?", TTL: time.Hour, Jobs: map[int64]boards.JobSnapshot{7: {Name: "vgt-ker16", State: "running"}}})
+	v1, tok, err := st.PublishWith(workspace.Local, "local-owner", bd.ID, boards.PublishOptions{Label: "v1", Question: "Is it real?", TTL: time.Hour, Jobs: map[int64]boards.JobSnapshot{7: {Name: "vgt-ker16", State: "running"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = v1
-	_, tok2, err := st.PublishWith(bd.ID, boards.PublishOptions{Label: "v2", TTL: time.Hour, Supersedes: v1.ID, Reason: "rescaled"})
+	_, tok2, err := st.PublishWith(workspace.Local, "local-owner", bd.ID, boards.PublishOptions{Label: "v2", TTL: time.Hour, Supersedes: v1.ID, Reason: "rescaled"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,10 +168,10 @@ func TestReviewerResponsesMatchTheSpec(t *testing.T) {
 	post(map[string]any{"parentId": first.ID, "author": "Sam", "body": "reply"}, 201)
 	post(map[string]any{"figureRevision": fig.Revision, "body": ""}, 422)
 	post(map[string]any{"figureRevision": fig.Revision, "body": "x", "anchor": map[string]any{"kind": "box", "x": 0.9, "y": 0.9, "x1": 0.1, "y1": 0.1}}, 422)
-	if _, err := st.OwnerReply(v1.ID, boards.CommentInput{ParentID: first.ID, Body: "No, an artefact"}); err != nil {
+	if _, err := st.OwnerReply(workspace.Local, v1.ID, boards.CommentInput{ParentID: first.ID, Body: "No, an artefact"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetResolved(first.ID, true); err != nil {
+	if err := st.SetResolved(workspace.Local, first.ID, true); err != nil {
 		t.Fatal(err)
 	}
 

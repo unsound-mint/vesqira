@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 
 	_ "modernc.org/sqlite"
 )
@@ -110,14 +111,13 @@ func Open(dsn string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS datasets(
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		path TEXT NOT NULL UNIQUE,
-		name TEXT NOT NULL,
-		size_bytes INTEGER NOT NULL,
-		modified_at INTEGER NOT NULL, -- Unix nanoseconds
-		added_at INTEGER NOT NULL,
-		header TEXT NOT NULL)`)
+	_, err = db.Exec(schema.WorkspaceTables)
+	if err == nil {
+		err = schema.SeedLocalWorkspace(db)
+	}
+	if err == nil {
+		_, err = db.Exec(schema.DatasetsTable) // modified_at is Unix nanoseconds
+	}
 	if err == nil {
 		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS interpretations(
 			dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id) ON DELETE CASCADE,
@@ -181,26 +181,26 @@ func (s *Store) DB() *sql.DB { return s.db }
 
 // Upsert registers a path or refreshes its metadata. The path is the identity of a reference;
 // it does not prove bytewise identity, so size and mtime are stored for later comparison.
-func (s *Store) Upsert(d Dataset) (Dataset, error) {
+func (s *Store) Upsert(ws workspace.ID, by string, d Dataset) (Dataset, error) {
 	var owner int64
-	if err := s.db.QueryRow(`SELECT dataset_id FROM dataset_locations WHERE host_id=? AND path=? AND is_primary=0`, d.HostID, d.Path).Scan(&owner); err == nil {
+	if err := s.db.QueryRow(`SELECT dataset_id FROM dataset_locations WHERE workspace_id=? AND host_id=? AND path=? AND is_primary=0`, ws, d.HostID, d.Path).Scan(&owner); err == nil {
 		// the file is another location of a dataset: registering it too would give one file two datasets
 		return Dataset{}, fmt.Errorf("%w (dataset %d)", ErrLocationExists, owner)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Dataset{}, err
 	}
 	key := pathKey(d.HostID, d.Path)
-	_, err := s.db.Exec(`INSERT INTO datasets(path,name,size_bytes,modified_at,added_at,header,host_id) VALUES(?,?,?,?,?,?,?)
-		ON CONFLICT(path) DO UPDATE SET name=excluded.name,size_bytes=excluded.size_bytes,modified_at=excluded.modified_at,header=excluded.header`,
-		key, d.Name, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix(), string(d.Header), d.HostID)
+	_, err := s.db.Exec(`INSERT INTO datasets(path,name,size_bytes,modified_at,added_at,header,host_id,workspace_id,created_by) VALUES(?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(workspace_id,host_id,path) DO UPDATE SET name=excluded.name,size_bytes=excluded.size_bytes,modified_at=excluded.modified_at,header=excluded.header`,
+		key, d.Name, d.SizeBytes, d.ModifiedAt.UnixNano(), time.Now().Unix(), string(d.Header), d.HostID, ws, by)
 	if err != nil {
 		return Dataset{}, err
 	}
-	got, err := s.byPath(key)
+	got, err := s.byPath(ws, d.HostID, key)
 	if err != nil {
 		return Dataset{}, err
 	}
-	if err := s.upsertPrimary(got.ID, d); err != nil {
+	if err := s.upsertPrimary(ws, got.ID, d); err != nil {
 		return Dataset{}, err
 	}
 	if fileStatesItsUnit(d) { // the file says its unit now: a declaration made while it did not must not linger or come back
@@ -208,7 +208,7 @@ func (s *Store) Upsert(d Dataset) (Dataset, error) {
 			return Dataset{}, err
 		}
 	}
-	return s.Get(got.ID)
+	return s.Get(ws, got.ID)
 }
 
 // pathKey keeps one unique key per (host, path): a path on another machine is not the same file as the same path here.
@@ -236,12 +236,13 @@ func scan(row interface{ Scan(...any) error }) (Dataset, error) {
 
 var cols = `id,path,name,size_bytes,modified_at,added_at,header,host_id,` + schema.ArchivedExpr("dataset", "datasets.id")
 
-func (s *Store) byPath(p string) (Dataset, error) {
-	return scan(s.db.QueryRow(`SELECT `+cols+` FROM datasets WHERE path=?`, p))
+func (s *Store) byPath(ws workspace.ID, host int64, p string) (Dataset, error) {
+	return scan(s.db.QueryRow(`SELECT `+cols+` FROM datasets WHERE workspace_id=? AND host_id=? AND path=?`, ws, host, p))
 }
 
-func (s *Store) Get(id int64) (Dataset, error) {
-	d, err := scan(s.db.QueryRow(`SELECT `+cols+` FROM datasets WHERE id=?`, id))
+// Get reads a dataset of the workspace; one of another workspace answers ErrNotFound like a missing id.
+func (s *Store) Get(ws workspace.ID, id int64) (Dataset, error) {
+	d, err := scan(s.db.QueryRow(`SELECT `+cols+` FROM datasets WHERE id=? AND workspace_id=?`, id, ws))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Dataset{}, ErrNotFound
 	}
@@ -259,7 +260,7 @@ func (s *Store) Get(id int64) (Dataset, error) {
 		d.CatalogDeclaration, err = s.catalogDeclaration(id, d)
 	}
 	if err == nil {
-		d.Locations, err = s.Locations(id)
+		d.Locations, err = s.Locations(ws, id)
 		for _, l := range d.Locations {
 			if l.Primary {
 				d.FileDev, d.FileIno = l.FileDev, l.FileIno
@@ -349,8 +350,8 @@ func (s *Store) ClearInterpretation(id int64) error {
 	return err
 }
 
-func (s *Store) List() ([]Dataset, error) {
-	rows, err := s.db.Query(`SELECT ` + cols + ` FROM datasets ORDER BY name, id`)
+func (s *Store) List(ws workspace.ID) ([]Dataset, error) {
+	rows, err := s.db.Query(`SELECT `+cols+` FROM datasets WHERE workspace_id=? ORDER BY name, id`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +368,7 @@ func (s *Store) List() ([]Dataset, error) {
 		return nil, err
 	}
 	rows.Close()
-	locs, err := s.allLocations()
+	locs, err := s.allLocations(ws)
 	if err != nil {
 		return nil, err
 	}
@@ -404,8 +405,8 @@ type HintKey struct {
 
 // HintIndex maps (name, size) to the first registered dataset (by name, then id) with that name and size, in one
 // query and without reading any header: what the runs list needs to suggest an input, for every run at once.
-func (s *Store) HintIndex() (map[HintKey]int64, error) {
-	rows, err := s.db.Query(`SELECT id,name,size_bytes FROM datasets ORDER BY name, id`)
+func (s *Store) HintIndex(ws workspace.ID) (map[HintKey]int64, error) {
+	rows, err := s.db.Query(`SELECT id,name,size_bytes FROM datasets WHERE workspace_id=? ORDER BY name, id`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -433,8 +434,8 @@ type PathFacts struct {
 }
 
 // FactsByPath returns, for the datasets on one host, the facts above keyed by the file's path on that host.
-func (s *Store) FactsByPath(hostID int64) (map[string]PathFacts, error) {
-	rows, err := s.db.Query(`SELECT id,path,size_bytes,modified_at,COALESCE(json_extract(header,'$.bunit_status'),'') FROM datasets WHERE host_id=?`, hostID)
+func (s *Store) FactsByPath(ws workspace.ID, hostID int64) (map[string]PathFacts, error) {
+	rows, err := s.db.Query(`SELECT id,path,size_bytes,modified_at,COALESCE(json_extract(header,'$.bunit_status'),'') FROM datasets WHERE workspace_id=? AND host_id=?`, ws, hostID)
 	if err != nil {
 		return nil, err
 	}
@@ -456,8 +457,9 @@ func (s *Store) FactsByPath(hostID int64) (map[string]PathFacts, error) {
 
 // ProposedInterpretations returns the interpretations someone other than the user declared (a run import's proposal),
 // by dataset id. Until the user confirms one it stays labelled with its author.
-func (s *Store) ProposedInterpretations() (map[int64]Interpretation, error) {
-	rows, err := s.db.Query(`SELECT dataset_id,kind,unit,reliability_id,declared_by,frame,quantity,tier,mapping_version FROM interpretations WHERE declared_by<>'user'`)
+func (s *Store) ProposedInterpretations(ws workspace.ID) (map[int64]Interpretation, error) {
+	rows, err := s.db.Query(`SELECT i.dataset_id,i.kind,i.unit,i.reliability_id,i.declared_by,i.frame,i.quantity,i.tier,i.mapping_version FROM interpretations i
+		JOIN datasets d ON d.id=i.dataset_id WHERE d.workspace_id=? AND i.declared_by<>'user'`, ws)
 	if err != nil {
 		return nil, err
 	}

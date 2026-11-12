@@ -13,6 +13,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/publish"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func newStore(t *testing.T) *Store {
@@ -34,21 +35,21 @@ func ptr(s string) *string { return &s }
 
 func TestASaveFromAStaleRevisionIsRefusedAndNothingIsOverwritten(t *testing.T) {
 	s := newStore(t)
-	r, err := s.Create("Block size 32 vs 64", "first", AuthorAgent)
+	r, err := s.Create(workspace.Local, "local-owner", "Block size 32 vs 64", "first", AuthorAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Update(r.ID, Update{Body: ptr("owner edit"), Base: 1, Author: AuthorOwner}); err != nil {
+	if _, err := s.Update(workspace.Local, "local-owner", r.ID, Update{Body: ptr("owner edit"), Base: 1, Author: AuthorOwner}); err != nil {
 		t.Fatal(err)
 	}
-	cur, err := s.Update(r.ID, Update{Body: ptr("agent edit from rev 1"), Base: 1, Author: AuthorAgent})
+	cur, err := s.Update(workspace.Local, "local-owner", r.ID, Update{Body: ptr("agent edit from rev 1"), Base: 1, Author: AuthorAgent})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale save: %v", err)
 	}
 	if cur.Body != "owner edit" || cur.Revision != 2 || cur.LastAuthor != AuthorOwner {
 		t.Fatalf("conflict should return the current report: %+v", cur)
 	}
-	h, _ := s.History(r.ID, true)
+	h, _ := s.History(workspace.Local, r.ID, true)
 	if len(h) != 2 || h[0].Author != AuthorOwner || h[1].Author != AuthorAgent || h[1].Body != "first" {
 		t.Fatalf("history: %+v", h)
 	}
@@ -56,27 +57,27 @@ func TestASaveFromAStaleRevisionIsRefusedAndNothingIsOverwritten(t *testing.T) {
 
 func TestAgentSavesAreNewUntilTheOwnerOpensTheReport(t *testing.T) {
 	s := newStore(t)
-	r, _ := s.Create("Weekly notes 2026-W45", "x", AuthorOwner)
-	list, _ := s.List()
+	r, _ := s.Create(workspace.Local, "local-owner", "Weekly notes 2026-W45", "x", AuthorOwner)
+	list, _ := s.List(workspace.Local, "local-owner")
 	if list[0].AgentUnseen {
 		t.Fatal("an owner's own report is not new to them")
 	}
-	r, _ = s.Update(r.ID, Update{Body: ptr("y"), Base: r.Revision, Author: AuthorAgent})
-	list, _ = s.List()
+	r, _ = s.Update(workspace.Local, "local-owner", r.ID, Update{Body: ptr("y"), Base: r.Revision, Author: AuthorAgent})
+	list, _ = s.List(workspace.Local, "local-owner")
 	if !list[0].AgentUnseen || list[0].LastAuthor != AuthorAgent {
 		t.Fatalf("agent save should be new: %+v", list[0])
 	}
-	if err := s.MarkSeen(r.ID, r.Revision); err != nil {
+	if err := s.MarkSeen(workspace.Local, "local-owner", r.ID, r.Revision); err != nil {
 		t.Fatal(err)
 	}
-	list, _ = s.List()
+	list, _ = s.List(workspace.Local, "local-owner")
 	if list[0].AgentUnseen {
 		t.Fatal("seen")
 	}
-	if err := s.MarkSeen(r.ID, 99); err != nil { // cannot mark beyond what exists
+	if err := s.MarkSeen(workspace.Local, "local-owner", r.ID, 99); err != nil { // cannot mark beyond what exists
 		t.Fatal(err)
 	}
-	got, _ := s.Get(r.ID)
+	got, _ := s.Get(workspace.Local, "local-owner", r.ID)
 	if got.SeenRevision != got.Revision {
 		t.Fatalf("seen revision clamped: %d vs %d", got.SeenRevision, got.Revision)
 	}
@@ -84,38 +85,38 @@ func TestAgentSavesAreNewUntilTheOwnerOpensTheReport(t *testing.T) {
 
 func TestTitlesAreUniqueIgnoringCaseAndCannotHoldLinkSyntax(t *testing.T) {
 	s := newStore(t)
-	if _, err := s.Create("Noise masking", "", AuthorOwner); err != nil {
+	if _, err := s.Create(workspace.Local, "local-owner", "Noise masking", "", AuthorOwner); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Create("noise  MASKING", "", AuthorOwner); !errors.Is(err, ErrConflict) {
+	if _, err := s.Create(workspace.Local, "local-owner", "noise  MASKING", "", AuthorOwner); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate title: %v", err)
 	}
 	for _, bad := range []string{"", "  ", "a|b", "see [[x]]", "a#b", strings.Repeat("x", MaxTitle+1)} {
-		if _, err := s.Create(bad, "", AuthorOwner); !errors.Is(err, ErrInvalid) {
+		if _, err := s.Create(workspace.Local, "local-owner", bad, "", AuthorOwner); !errors.Is(err, ErrInvalid) {
 			t.Errorf("title %q: %v", bad, err)
 		}
 	}
-	if _, err := s.Create("ok", "", "someone"); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Create(workspace.Local, "local-owner", "ok", "", "someone"); !errors.Is(err, ErrInvalid) {
 		t.Errorf("unknown author accepted")
 	}
-	if _, err := s.Create("big", strings.Repeat("x", MaxBody+1), AuthorOwner); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Create(workspace.Local, "local-owner", "big", strings.Repeat("x", MaxBody+1), AuthorOwner); !errors.Is(err, ErrInvalid) {
 		t.Errorf("oversized body accepted")
 	}
 }
 
 func TestBacklinksFollowLinksAndARenameRewritesThem(t *testing.T) {
 	s := newStore(t)
-	target, _ := s.Create("Noise masking threshold sweep", "body", AuthorOwner)
-	a, _ := s.Create("Block size 32 vs 64", "See [[noise masking threshold sweep]] and [[Noise masking threshold sweep|the sweep]].\n\n```\n[[Not a link]]\n```", AuthorAgent)
-	_, _ = s.Create("Unrelated", "nothing", AuthorOwner)
-	bl, _ := s.Backlinks(target.ID)
+	target, _ := s.Create(workspace.Local, "local-owner", "Noise masking threshold sweep", "body", AuthorOwner)
+	a, _ := s.Create(workspace.Local, "local-owner", "Block size 32 vs 64", "See [[noise masking threshold sweep]] and [[Noise masking threshold sweep|the sweep]].\n\n```\n[[Not a link]]\n```", AuthorAgent)
+	_, _ = s.Create(workspace.Local, "local-owner", "Unrelated", "nothing", AuthorOwner)
+	bl, _ := s.Backlinks(workspace.Local, target.ID)
 	if len(bl) != 1 || bl[0].ID != a.ID {
 		t.Fatalf("backlinks: %+v", bl)
 	}
-	if _, err := s.Update(target.ID, Update{Title: ptr("Masking threshold sweep"), Base: target.Revision, Author: AuthorOwner}); err != nil {
+	if _, err := s.Update(workspace.Local, "local-owner", target.ID, Update{Title: ptr("Masking threshold sweep"), Base: target.Revision, Author: AuthorOwner}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := s.Get(a.ID)
+	got, _ := s.Get(workspace.Local, "local-owner", a.ID)
 	want := "See [[Masking threshold sweep]] and [[Masking threshold sweep|the sweep]].\n\n```\n[[Not a link]]\n```"
 	if got.Body != want {
 		t.Fatalf("relinked body:\n%s", got.Body)
@@ -123,7 +124,7 @@ func TestBacklinksFollowLinksAndARenameRewritesThem(t *testing.T) {
 	if got.Revision != 2 || got.LastAuthor != AuthorOwner {
 		t.Fatalf("relink is a recorded save by the renamer: %+v", got)
 	}
-	bl, _ = s.Backlinks(target.ID)
+	bl, _ = s.Backlinks(workspace.Local, target.ID)
 	if len(bl) != 1 {
 		t.Fatalf("backlinks after rename: %+v", bl)
 	}
@@ -164,44 +165,44 @@ func TestAttachmentsMustBeCompleteImages(t *testing.T) {
 	s := newStore(t)
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, image.NewGray(image.Rect(0, 0, 4, 3)))
-	sha, mime, err := s.AddAttachment(buf.Bytes())
+	sha, mime, err := s.AddAttachment(workspace.Local, "local-owner", buf.Bytes())
 	if err != nil || mime != "image/png" {
 		t.Fatal(err, mime)
 	}
-	sha2, _, _ := s.AddAttachment(buf.Bytes())
+	sha2, _, _ := s.AddAttachment(workspace.Local, "local-owner", buf.Bytes())
 	if sha2 != sha {
 		t.Fatal("identical bytes are one attachment")
 	}
-	b, m, err := s.Attachment(sha)
+	b, m, err := s.Attachment(workspace.Local, sha)
 	if err != nil || m != "image/png" || !bytes.Equal(b, buf.Bytes()) {
 		t.Fatal("read back", err)
 	}
 	for name, bad := range map[string][]byte{
 		"empty": nil, "text": []byte("<svg onload=alert(1)>"), "truncated": buf.Bytes()[:len(buf.Bytes())-12],
 	} {
-		if _, _, err := s.AddAttachment(bad); !errors.Is(err, ErrInvalid) {
+		if _, _, err := s.AddAttachment(workspace.Local, "local-owner", bad); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s accepted: %v", name, err)
 		}
 	}
-	if _, _, err := s.Attachment("../../etc/passwd"); !errors.Is(err, ErrNotFound) {
+	if _, _, err := s.Attachment(workspace.Local, "../../etc/passwd"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("path in sha: %v", err)
 	}
 }
 
 func TestAPublishedReportCannotBeDeleted(t *testing.T) {
 	s := newStore(t)
-	r, _ := s.Create("Draft", "", AuthorOwner)
-	p, _ := s.Create("Shared", "", AuthorOwner)
+	r, _ := s.Create(workspace.Local, "local-owner", "Draft", "", AuthorOwner)
+	p, _ := s.Create(workspace.Local, "local-owner", "Shared", "", AuthorOwner)
 	if err := s.RecordPublication(p.ID, Publication{Number: 1, RevisionID: "x", WorkingRevision: 1, PublishedAt: time.Now(), Space: "supervisor"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Delete(p.ID); !errors.Is(err, ErrConflict) {
+	if err := s.Delete(workspace.Local, p.ID); !errors.Is(err, ErrConflict) {
 		t.Fatalf("published delete: %v", err)
 	}
-	if err := s.Delete(r.ID); err != nil {
+	if err := s.Delete(workspace.Local, r.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Get(r.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Get(workspace.Local, "local-owner", r.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatal("deleted report still there")
 	}
 }

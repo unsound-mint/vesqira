@@ -6,6 +6,7 @@ package fullschema
 import (
 	"database/sql"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/discussion"
 	"path/filepath"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
@@ -48,6 +49,7 @@ func Open(db *sql.DB, dir string) error {
 		{"reports", func() error { _, e := reports.Open(db, dir); return e }},
 		{"projects", func() error { _, e := projects.Open(db); return e }},
 		{"history", func() error { _, e := history.Open(db); return e }},
+		{"discussion", func() error { discussion.Open(db); return nil }}, // its table comes with the catalog (schema.WorkspaceTables)
 		{"transfers", func() error { _, e := transfers.Open(db); return e }},
 		{"subsets", func() error { _, e := subsets.Open(db); return e }},
 		{"offline", func() error { _, e := offline.Open(db, filepath.Join(dir, "offline")); return e }},

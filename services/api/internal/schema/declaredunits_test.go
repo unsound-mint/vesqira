@@ -23,10 +23,10 @@ func TestDeclaredUnitsMigrationKeepsEveryDatasetAndAddsTheOverlay(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 4 {
+	if version(t, db) != toyVersion || Version < 4 {
 		t.Fatalf("version %d", version(t, db))
 	}
 	var n int
@@ -56,7 +56,7 @@ func TestDeclaredUnitsMigrationSkipsACatalogWithoutDatasets(t *testing.T) {
 	db := open(t, p)
 	db.Exec(`CREATE TABLE other(id INTEGER)`)
 	db.Exec(`PRAGMA user_version = 3`)
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
 	var n int

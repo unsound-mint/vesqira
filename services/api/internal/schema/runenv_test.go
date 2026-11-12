@@ -19,14 +19,14 @@ func TestRunEnvironmentMigrationKeepsRunsAndInventsNothing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
 	var n, withEnv, withControls int
 	if err := db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(environment<>''),0), COALESCE(SUM(controls<>''),0) FROM runs`).Scan(&n, &withEnv, &withControls); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || n != 2 || withEnv != 0 || withControls != 0 {
+	if version(t, db) != toyVersion || n != 2 || withEnv != 0 || withControls != 0 {
 		t.Fatalf("version %d, %d runs, %d with an environment, %d with controls", version(t, db), n, withEnv, withControls)
 	}
 	// a catalog without a runs table needs nothing

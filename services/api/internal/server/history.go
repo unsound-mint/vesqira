@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/history"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/scene"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The viewer's exploration history (ADR 0057): owner routes only. The reviewer listener (internal/review) has no history
@@ -35,7 +36,7 @@ func (s *Server) historyErr(w http.ResponseWriter, err error) {
 }
 
 // projectOK accepts 0 (no project open) or an existing project, and answers the request itself when it is neither.
-func (s *Server) projectOK(w http.ResponseWriter, id int64) bool {
+func (s *Server) projectOK(ws workspace.ID, w http.ResponseWriter, id int64) bool {
 	if id < 0 {
 		fail(w, 400, "bad project")
 		return false
@@ -47,7 +48,7 @@ func (s *Server) projectOK(w http.ResponseWriter, id int64) bool {
 		fail(w, 404, "project not found")
 		return false
 	}
-	if _, err := s.Projects.Get(id); errors.Is(err, projects.ErrNotFound) {
+	if _, err := s.Projects.Get(ws, id); errors.Is(err, projects.ErrNotFound) {
 		fail(w, 404, "project not found")
 		return false
 	} else if err != nil {
@@ -60,10 +61,10 @@ func (s *Server) projectOK(w http.ResponseWriter, id int64) bool {
 
 func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
 	pid, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
-	if !s.projectOK(w, pid) {
+	if !s.projectOK(wsOf(r), w, pid) {
 		return
 	}
-	steps, err := s.History.List(pid)
+	steps, err := s.History.List(wsOf(r), pid)
 	if err != nil {
 		s.historyErr(w, err)
 		return
@@ -76,7 +77,7 @@ func (s *Server) getHistoryStep(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	st, err := s.History.Get(id)
+	st, err := s.History.Get(wsOf(r), id)
 	if err != nil {
 		s.historyErr(w, err)
 		return
@@ -95,7 +96,7 @@ func (s *Server) addHistoryStep(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, history.MaxScene+4<<10, &in, true) {
 		return
 	}
-	if !s.projectOK(w, in.ProjectID) {
+	if !s.projectOK(wsOf(r), w, in.ProjectID) {
 		return
 	}
 	sc, err := scene.Parse(in.Scene) // strict: the same reader a figure's scene goes through
@@ -103,7 +104,7 @@ func (s *Server) addHistoryStep(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "the scene is not valid: "+err.Error())
 		return
 	}
-	if _, err := s.Store.Get(sc.Base.DatasetID); errors.Is(err, catalog.ErrNotFound) {
+	if _, err := s.Store.Get(wsOf(r), sc.Base.DatasetID); errors.Is(err, catalog.ErrNotFound) {
 		fail(w, 422, "the scene opens a dataset that is not in the catalog")
 		return
 	} else if err != nil {
@@ -111,7 +112,7 @@ func (s *Server) addHistoryStep(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	st, err := s.History.Add(in.ProjectID, in.ParentID, sc.Base.DatasetID, in.Kind, in.Label, in.Scene)
+	st, err := s.History.Add(wsOf(r), actorID(r.Context()), in.ProjectID, in.ParentID, sc.Base.DatasetID, in.Kind, in.Label, in.Scene)
 	if err != nil {
 		s.historyErr(w, err)
 		return

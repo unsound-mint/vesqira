@@ -22,6 +22,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type subEnv struct {
@@ -330,7 +331,7 @@ func TestSubsetDefinitionIsCheckedAgainstTheFile(t *testing.T) {
 		t.Fatalf("world interval: %s", b)
 	}
 	// a box from a saved region: a circle's square, clipped to the image
-	rg, err := e.regions.Create(src.ID, "Peak", regions.Shape{Shape: "circle", CX: 20, CY: 9, R: 12})
+	rg, err := e.regions.Create(workspace.Local, "local-owner", src.ID, "Peak", regions.Shape{Shape: "circle", CX: 20, CY: 9, R: 12})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +339,7 @@ func TestSubsetDefinitionIsCheckedAgainstTheFile(t *testing.T) {
 	if b := sub.Definition.Box; b == nil || *b != (subsets.Box{X0: 8, X1: 31, Y0: 0, Y1: 21}) || sub.Definition.Region == nil || sub.Definition.Region.Name != "Peak" {
 		t.Fatalf("region box: %+v", sub.Definition)
 	}
-	line, _ := e.regions.Create(src.ID, "Cut", regions.Shape{Shape: "line", Points: [][]int{{1, 1}, {9, 9}}, Width: 1, WidthUnit: "pixel"})
+	line, _ := e.regions.Create(workspace.Local, "local-owner", src.ID, "Cut", regions.Shape{Shape: "line", Points: [][]int{{1, 1}, {9, 9}}, Width: 1, WidthUnit: "pixel"})
 	if code, _, b := e.create(src.ID, map[string]any{"name": "x", "reason": "a line", "regionId": line.ID}); code != 422 || !strings.Contains(string(b), "no area") {
 		t.Errorf("a line: %d %s", code, b)
 	}

@@ -22,10 +22,10 @@ func TestCatalogDeclarationsMigrationKeepsEveryDatasetAndAddsTheOverlay(t *testi
 			t.Fatal(err)
 		}
 	}
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 10 {
+	if version(t, db) != toyVersion || Version < 10 {
 		t.Fatalf("version %d", version(t, db))
 	}
 	var n int
@@ -58,12 +58,12 @@ func TestCatalogDeclarationsMigrationSkipsACatalogWithoutDatasets(t *testing.T) 
 	db := open(t, p)
 	db.Exec(`CREATE TABLE other(id INTEGER)`)
 	db.Exec(`PRAGMA user_version = 9`)
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
 	var n int
 	db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name='catalog_declarations'`).Scan(&n)
-	if n != 0 || version(t, db) != Version {
+	if n != 0 || version(t, db) != toyVersion {
 		t.Fatalf("created for a catalog with no datasets, or not upgraded: %d, %d", n, version(t, db))
 	}
 }

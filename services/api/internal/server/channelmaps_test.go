@@ -17,6 +17,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // frameOf splits a binary frame into its JSON head and payload.
@@ -323,7 +324,7 @@ func TestAChannelGridFigureIsValidatedAgainstItsViewAndStoredAsTheServerReadIt(t
 			t.Errorf("%s: %d %s", name, r.StatusCode, out)
 		}
 	}
-	if fs, _ := bs.Figures(); len(fs) != 0 {
+	if fs, _ := bs.Figures(workspace.Local); len(fs) != 0 {
 		t.Fatalf("a refused grid saved a figure: %d", len(fs))
 	}
 	r, out := postJSON(t, owner.URL+"/api/figures", fig(grid(nil), view(nil)))
@@ -346,7 +347,7 @@ func TestAChannelGridFigureIsValidatedAgainstItsViewAndStoredAsTheServerReadIt(t
 		!strings.Contains(joined, "display previews") || !strings.Contains(joined, "km/s (radio convention)") {
 		t.Errorf("provenance: %s", f.Provenance)
 	}
-	if got, _ := bs.Figure(f.ID); string(got.Scene) != string(f.Scene) {
+	if got, _ := bs.Figure(workspace.Local, f.ID); string(got.Scene) != string(f.Scene) {
 		t.Errorf("not read back")
 	}
 

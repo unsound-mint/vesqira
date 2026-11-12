@@ -17,29 +17,38 @@ const mod = "github.com/unsound-mint/vesqira/services/api/internal/"
 // allowed lists, for every internal package, the internal packages it may import directly. A new import is a design
 // decision: add it here on purpose, and if the importing package faces a reviewer, re-read the reviewer boundary below.
 var allowed = map[string][]string{
-	"arch": {}, "audit": {}, "authz": {}, "lifecycle": {}, "backup": {}, "notify": {}, "compat": {}, "derived": {}, "regions": {}, "subsets": {"schema"}, "masks": {"schema"}, "sourceroot": {}, "identity": {"sourceroot"}, "worker": {}, "support": {}, "schema": {}, "vgtlog": {}, "scene": {},
-	"notionimport": {}, "publish": {}, "imgmeta": {},
-	"accounts":   {"schema"},
-	"transfers":  {"schema"},
-	"history":    {"schema"},
-	"offline":    {"schema"},
-	"boards":     {"schema"},
-	"reports":    {"publish"},
-	"catalog":    {"identity", "schema"},
-	"jobs":       {"schema"},
-	"sweeps":     {"schema"},
-	"runs":       {"schema"},
+	"arch": {}, "authz": {"workspace"}, "compat": {}, "sourceroot": {}, "identity": {"sourceroot"}, "worker": {}, "support": {}, "schema": {}, "vgtlog": {}, "scene": {},
+	"notionimport": {}, "publish": {}, "imgmeta": {}, "workspace": {}, "discussion": {"workspace"},
+	// every store of user data takes a workspace.ID (ADR 0050 slice 3)
+	"audit":      {"schema", "workspace"},
+	"lifecycle":  {"workspace"},
+	"backup":     {"workspace"}, // the manifest lists the datasets of one workspace
+	"notify":     {"schema", "workspace"},
+	"derived":    {"workspace"},
+	"regions":    {"schema", "workspace"},
+	"subsets":    {"schema", "workspace"},
+	"masks":      {"schema", "workspace"},
+	"accounts":   {"schema", "workspace"},
+	"transfers":  {"schema", "workspace"},
+	"history":    {"schema", "workspace"},
+	"offline":    {"schema", "workspace"},
+	"boards":     {"schema", "workspace"},
+	"reports":    {"publish", "schema", "workspace"},
+	"catalog":    {"identity", "schema", "workspace"},
+	"jobs":       {"schema", "workspace"},
+	"sweeps":     {"schema", "workspace"},
+	"runs":       {"schema", "workspace"},
 	"discover":   {"runs", "sourceroot"},
-	"projects":   {"discover", "schema"},
-	"fullschema": {"accounts", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers"},
-	"hosts":      {"worker", "sourceroot"},
-	"review":     {"boards"},
-	"server":     {"accounts", "audit", "authz", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker"},
+	"projects":   {"discover", "schema", "workspace"},
+	"fullschema": {"accounts", "discussion", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers"},
+	"hosts":      {"worker", "sourceroot", "schema", "workspace"},
+	"review":     {"boards", "workspace"},
+	"server":     {"accounts", "audit", "authz", "workspace", "discussion", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker"},
 }
 
 // reviewerReach is everything the reviewer-facing package may reach, directly or not. A reviewer holds a capability to a
 // published snapshot and nothing else: no catalog, files, hosts, jobs, workers or runs may be reachable from that code.
-var reviewerReach = []string{"boards", "schema"}
+var reviewerReach = []string{"boards", "schema", "workspace"}
 
 func list(t *testing.T, format string, args ...string) []string {
 	t.Helper()

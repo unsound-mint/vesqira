@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, newRequestId, onApiError, postJSON, request, requestRaw } from "./http";
+import { ApiError, newRequestId, onApiError, postJSON, request, requestRaw, setWorkspace } from "./http";
 
 const answer = (body: string | null, status: number, type?: string) => vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status, headers: type ? { "Content-Type": type } : {} })));
 const failure = async (p: Promise<unknown>) => (await p.then(() => null, (e: unknown) => e)) as ApiError;
@@ -138,5 +138,20 @@ describe("request id", () => {
     await postJSON("/api/x", {}, undefined, "abcdefgh12");
     expect(new Headers((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers).get("X-Request-Id")).toBe("abcdefgh12");
     expect(newRequestId()).toMatch(/^[A-Za-z0-9._-]{8,64}$/);
+  });
+});
+
+describe("workspace header", () => {
+  it("names the group server's workspace on /api requests only, and nothing once cleared", async () => {
+    const f = vi.fn(async (_u: string, _i?: RequestInit) => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", f);
+    setWorkspace(7);
+    await postJSON("/api/boards", { title: "t" });
+    await request("/review-api/tok");
+    setWorkspace(null);
+    await request("/api/boards");
+    const sent = f.mock.calls.map((c) => new Headers(c[1]?.headers).get("X-Vesqira-Workspace"));
+    expect(sent).toEqual(["7", null, null]);
+    expect(new Headers(f.mock.calls[0]?.[1]?.headers).get("Content-Type")).toBe("application/json");
   });
 });

@@ -15,6 +15,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A unit the person declared for a file without BUNIT follows the file into the analyses run on it, labelled as theirs: the
@@ -141,7 +142,7 @@ func TestAnalysisCarriesADeclaredUnitAsTheAuthorsAndNeverAStaleOne(t *testing.T)
 	if !strings.Contains(string(rec), `"declaredUnits":{"input":"K"}`) {
 		t.Errorf("the record must say what was offered to the worker: %s", rec)
 	}
-	if sum := (&Server{Derived: ds, Store: cat}).derivedSummary(r.Dataset.ID); sum == nil || !strings.Contains(sum.Policy, "declared by the author") {
+	if sum := (&Server{Derived: ds, Store: cat}).derivedSummary(workspace.Local, r.Dataset.ID); sum == nil || !strings.Contains(sum.Policy, "declared by the author") {
 		t.Errorf("the reviewer-safe summary must carry the attribution: %+v", sum)
 	}
 

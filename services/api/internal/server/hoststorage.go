@@ -188,7 +188,7 @@ func (s *Server) hostFolders(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if s.Projects != nil {
-		if ps, err := s.Projects.List(200); err == nil {
+		if ps, err := s.Projects.List(wsOf(r), 200); err == nil {
 			for _, p := range ps {
 				if p.HostID != h.ID {
 					continue

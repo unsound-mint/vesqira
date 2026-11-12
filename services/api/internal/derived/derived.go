@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 	"time"
 )
 
@@ -60,8 +61,9 @@ func (s *Store) Save(r Record) error {
 
 // ByOp lists the records of one operation, newest first. It is for an operation with few results (a subset, ADR 0063), where the
 // caller looks for the one that was made with given parameters.
-func (s *Store) ByOp(op string) ([]Record, error) {
-	rows, err := s.db.Query(`SELECT dataset_id FROM derived WHERE op=? ORDER BY created_at DESC, dataset_id DESC`, op)
+func (s *Store) ByOp(ws workspace.ID, op string) ([]Record, error) {
+	rows, err := s.db.Query(`SELECT r.dataset_id FROM derived r JOIN datasets d ON d.id=r.dataset_id
+		WHERE r.op=? AND d.workspace_id=? ORDER BY r.created_at DESC, r.dataset_id DESC`, op, ws)
 	if err != nil {
 		return nil, err
 	}

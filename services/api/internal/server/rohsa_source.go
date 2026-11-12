@@ -46,19 +46,19 @@ func (l localROHSA) Failed() (int, string) { return 0, "" }
 func (l localROHSA) HostID() int64         { return 0 }
 func (l localROHSA) Dat() string           { return l.dat }
 func (l localROHSA) Key() string           { return l.dat }
-func (l localROHSA) Near(_ context.Context, name string) []byte {
-	return l.s.readNear(filepath.Dir(l.dat), name)
+func (l localROHSA) Near(ctx context.Context, name string) []byte {
+	return l.s.readNear(wsCtx(ctx), filepath.Dir(l.dat), name)
 }
 func (l localROHSA) Register(ctx context.Context, rel string) (catalog.Dataset, bool, int, string) {
-	real, err := l.s.roots().Resolve(filepath.Join(filepath.Dir(l.dat), filepath.FromSlash(rel)))
+	real, err := l.s.roots(wsCtx(ctx)).Resolve(filepath.Join(filepath.Dir(l.dat), filepath.FromSlash(rel)))
 	if err != nil {
 		return catalog.Dataset{}, false, 0, ""
 	}
 	d, code, msg := l.s.registerPath(ctx, real)
 	return d, true, code, msg
 }
-func (l localROHSA) Fits(_ context.Context, rel string) []string {
-	pdir, err := l.s.roots().ResolveDir(filepath.Join(filepath.Dir(l.dat), filepath.FromSlash(rel)))
+func (l localROHSA) Fits(ctx context.Context, rel string) []string {
+	pdir, err := l.s.roots(wsCtx(ctx)).ResolveDir(filepath.Join(filepath.Dir(l.dat), filepath.FromSlash(rel)))
 	if err != nil {
 		return nil
 	}

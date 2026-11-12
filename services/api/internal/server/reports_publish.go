@@ -39,13 +39,13 @@ func (s *Server) reportPreflight(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rep, err := s.Reports.Get(id)
+	rep, err := s.Reports.Get(wsOf(r), actorID(r.Context()), id)
 	if err != nil {
 		s.reportErr(w, err)
 		return
 	}
 	space, _ := s.spaceOf(r)
-	f, err := s.freeze(rep, space, true)
+	f, err := s.freeze(wsOf(r), rep, space, true)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -82,7 +82,7 @@ func (s *Server) publishReport(w http.ResponseWriter, r *http.Request) {
 	}
 	s.publishMu.Lock()
 	defer s.publishMu.Unlock()
-	rep, err := s.Reports.Get(id)
+	rep, err := s.Reports.Get(wsOf(r), actorID(r.Context()), id)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -97,7 +97,7 @@ func (s *Server) publishReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	space, title := s.spaceOf(r)
-	f, err := s.freeze(rep, space, true)
+	f, err := s.freeze(wsOf(r), rep, space, true)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -146,7 +146,7 @@ func (s *Server) publishReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Reports.SetSetting(pendingKey, "")
-	keys, err := s.Reports.PublishedKeys(space)
+	keys, err := s.Reports.PublishedKeys(wsOf(r), space)
 	if err != nil {
 		s.reportErr(w, err)
 		return
@@ -346,7 +346,7 @@ func (s *Server) createReader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	space, title := s.spaceOf(r)
-	keys, err := s.Reports.PublishedKeys(space)
+	keys, err := s.Reports.PublishedKeys(wsOf(r), space)
 	if err != nil {
 		s.reportErr(w, err)
 		return

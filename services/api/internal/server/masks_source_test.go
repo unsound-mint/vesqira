@@ -9,6 +9,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // A registered file whose only role is being the file of an imported mask is marked in the dataset list with the dataset it serves,
@@ -83,6 +84,9 @@ fits.PrimaryHDU(m).writeto(sys.argv[1])
 	if _, err := db.Exec(schema.ExplorationStepsTable); err != nil {
 		t.Fatal(err)
 	}
+	if err := schema.Scope(db, "exploration_steps"); err != nil { // what the history store's Open does
+		t.Fatal(err)
+	}
 	for _, use := range []struct{ name, table, insert string }{
 		{"opened in the viewer", "exploration_steps", `INSERT INTO exploration_steps(project_id,dataset_id,kind,label,scene,at) VALUES(0,?,'open','x','{}',0)`},
 		{"saved region", "saved_regions", `INSERT INTO saved_regions(dataset_id,name,shape,created_at,updated_at) VALUES(?,'r','{}',0,0)`},
@@ -110,7 +114,7 @@ fits.PrimaryHDU(m).writeto(sys.argv[1])
 	if got := marks(); len(got) != 0 {
 		t.Fatalf("mask forgotten: %v", got)
 	}
-	if _, err := e.srv.Store.Get(theirs.ID); err != nil {
+	if _, err := e.srv.Store.Get(workspace.Local, theirs.ID); err != nil {
 		t.Fatalf("nothing is unregistered: %v", err)
 	}
 }

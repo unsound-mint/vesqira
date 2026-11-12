@@ -21,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/publish"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 const imageSecret = "GPS-SECRET-51.5N-0.12W"
@@ -93,7 +94,7 @@ func TestPublishedPicturesCarryNoMetadata(t *testing.T) {
 		return b
 	}
 	dirty, wantPixels := jpegWithPrivateExif(t)
-	sha, _, err := rp.AddAttachment(dirty)
+	sha, _, err := rp.AddAttachment(workspace.Local, "local-owner", dirty)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +148,7 @@ func TestPublishedPicturesCarryNoMetadata(t *testing.T) {
 			t.Fatal("the orientation was not kept")
 		}
 	}
-	if kept, _, err := rp.Attachment(sha); err != nil || !bytes.Equal(kept, dirty) {
+	if kept, _, err := rp.Attachment(workspace.Local, sha); err != nil || !bytes.Equal(kept, dirty) {
 		t.Fatal("the attachment on this computer must be unchanged")
 	}
 }
@@ -166,7 +167,7 @@ func TestAPictureThatCannotBeCleanedBlocksPublishing(t *testing.T) {
 	overlay := append([]byte{0x21, 0x01, 12}, make([]byte, 12)...)
 	overlay = append(overlay, 0)
 	g = append(append(append([]byte{}, g[:at]...), overlay...), g[at:]...)
-	sha, _, err := rp.AddAttachment(g)
+	sha, _, err := rp.AddAttachment(workspace.Local, "local-owner", g)
 	if err != nil {
 		t.Skipf("the decoder refuses this file already: %v", err)
 	}
@@ -245,7 +246,7 @@ func TestAKeptColourProfileIsSaidInThePreflight(t *testing.T) {
 	dirty, _ := jpegWithPrivateExif(t)
 	icc := append([]byte{0xFF, 0xE2, 0, 54}, append([]byte("ICC_PROFILE\x00\x01\x01"), bytes.Repeat([]byte{7}, 38)...)...)
 	withICC := append(append(append([]byte{}, dirty[:2]...), icc...), dirty[2:]...)
-	sha, _, err := rp.AddAttachment(withICC)
+	sha, _, err := rp.AddAttachment(workspace.Local, "local-owner", withICC)
 	if err != nil {
 		t.Skipf("the decoder does not accept this synthetic profile: %v", err)
 	}

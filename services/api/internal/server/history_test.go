@@ -12,6 +12,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/history"
 	"github.com/unsound-mint/vesqira/services/api/internal/lifecycle"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func sceneFor(id int64, channel int) map[string]any {
@@ -38,7 +39,7 @@ func TestExplorationHistoryRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := cat.Upsert(catalog.Dataset{Path: "/data/cube.fits", Name: "cube.fits", SizeBytes: 1, ModifiedAt: time.Now(), Header: json.RawMessage(`{"ok":true}`)})
+	d, err := cat.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: "/data/cube.fits", Name: "cube.fits", SizeBytes: 1, ModifiedAt: time.Now(), Header: json.RawMessage(`{"ok":true}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +101,7 @@ func TestExplorationHistoryRoutes(t *testing.T) {
 
 	// deleting the dataset removes the steps that open it, and the impact says so first
 	svc := lifecycle.New(cat.DB())
-	im, err := svc.Impact(lifecycle.KindDataset, d.ID)
+	im, err := svc.Impact(workspace.Local, lifecycle.KindDataset, d.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,10 +112,10 @@ func TestExplorationHistoryRoutes(t *testing.T) {
 	if !said {
 		t.Errorf("impact does not name the history: %+v", im.Groups)
 	}
-	if _, err := svc.Delete(lifecycle.KindDataset, d.ID, im.Digest); err != nil {
+	if _, err := svc.Delete(workspace.Local, lifecycle.KindDataset, d.ID, im.Digest); err != nil {
 		t.Fatal(err)
 	}
-	if steps, _ := hs.List(0); len(steps) != 0 {
+	if steps, _ := hs.List(workspace.Local, 0); len(steps) != 0 {
 		t.Errorf("steps of a deleted dataset remain: %v", steps)
 	}
 }

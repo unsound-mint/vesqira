@@ -24,6 +24,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // hpEnv is one API with a local source root and a stand-in host (ADR 0064): the host is a folder reached through a fake ssh that runs the
@@ -222,7 +223,7 @@ func TestMasksOnAHostMatchTheSameMasksHere(t *testing.T) {
 	before := derivedFiles(t, e.derivedDir)
 
 	reg := func(d catalog.Dataset) int64 {
-		g, err := e.regions.Create(d.ID, "Knot", regions.Shape{Shape: "rect", X0: 4, Y0: 3, X1: 11, Y1: 9})
+		g, err := e.regions.Create(workspace.Local, "local-owner", d.ID, "Knot", regions.Shape{Shape: "rect", X0: 4, Y0: 3, X1: 11, Y1: 9})
 		if err != nil {
 			t.Fatal(err)
 		}

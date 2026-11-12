@@ -10,6 +10,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The refusals ADR 0064 keeps, each with what to do instead: a mask that lives on another machine than the file being read (a dataset with
@@ -27,17 +28,17 @@ func TestHostParityRefusalsSayWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	mtime := time.Unix(100, 0)
-	d, err := st.Upsert(catalog.Dataset{Path: "/data/a.fits", Name: "a.fits", SizeBytes: 10, ModifiedAt: mtime, Header: []byte(`{}`)})
+	d, err := st.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: "/data/a.fits", Name: "a.fits", SizeBytes: 10, ModifiedAt: mtime, Header: []byte(`{}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := ms.Add(masks.Mask{DatasetID: d.ID, HostID: 3, Type: masks.Saturated, Name: "Bright", Path: "/cluster/data/vesqira_derived/mask-1-saturated-0a.fits", Width: 4, Height: 3,
+	m, err := ms.Add(workspace.Local, "local-owner", masks.Mask{DatasetID: d.ID, HostID: 3, Type: masks.Saturated, Name: "Bright", Path: "/cluster/data/vesqira_derived/mask-1-saturated-0a.fits", Width: 4, Height: 3,
 		Tier: catalog.TierDeclared, Method: masks.MethodComputed, Rule: json.RawMessage(`{}`), Author: "user", SourceSize: 10, SourceMtime: mtime.UnixNano(), FileSize: 1, FileMtime: 1, SHA256: "ab"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := &Server{Store: st, Masks: ms}
-	if _, code, msg := s.usableMask(m.ID, d); code != 409 || !strings.Contains(msg, "make it again where the file is read") {
+	if _, code, msg := s.usableMask(workspace.Local, m.ID, d); code != 409 || !strings.Contains(msg, "make it again where the file is read") {
 		t.Errorf("a host mask applied to the file read here: %d %s", code, msg)
 	}
 

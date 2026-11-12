@@ -25,6 +25,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // ROHSA decomposition runs (ADR 0046): import from the raw .dat and the pipeline's text records, and the per-pixel
@@ -36,9 +37,9 @@ var rohsaDat = regexp.MustCompile(`^rohsa_[A-Za-z0-9._-]+\.dat$`)
 
 // rohsaTarget decides whether an import path names a ROHSA fit: a rohsa_*.dat file, or a folder with exactly one of them
 // and no run_metadata.toml. found is false when the path is something else and the VGT import should look at it.
-func (s *Server) rohsaTarget(p string) (datReal string, found bool, code int, msg string) {
+func (s *Server) rohsaTarget(ws workspace.ID, p string) (datReal string, found bool, code int, msg string) {
 	if strings.HasSuffix(strings.ToLower(p), ".dat") {
-		real, err := s.roots().Resolve(p)
+		real, err := s.roots(ws).Resolve(p)
 		if err != nil {
 			return "", true, 403, err.Error()
 		}
@@ -50,7 +51,7 @@ func (s *Server) rohsaTarget(p string) (datReal string, found bool, code int, ms
 	if filepath.Base(p) == "run_metadata.toml" {
 		return "", false, 0, ""
 	}
-	dir, err := s.roots().ResolveDir(p)
+	dir, err := s.roots(ws).ResolveDir(p)
 	if err != nil {
 		return "", false, 0, ""
 	}
@@ -71,7 +72,7 @@ func (s *Server) rohsaTarget(p string) (datReal string, found bool, code int, ms
 	case 0:
 		return "", false, 0, ""
 	case 1:
-		real, err := s.roots().Resolve(filepath.Join(dir, dats[0]))
+		real, err := s.roots(ws).Resolve(filepath.Join(dir, dats[0]))
 		if err != nil {
 			return "", true, 403, err.Error()
 		}
@@ -82,8 +83,8 @@ func (s *Server) rohsaTarget(p string) (datReal string, found bool, code int, ms
 }
 
 // readNear reads an optional text record next to the .dat; absent or unreadable is nil (a record that is not there is not invented).
-func (s *Server) readNear(dir, name string) []byte {
-	real, err := s.roots().Resolve(filepath.Join(dir, name))
+func (s *Server) readNear(ws workspace.ID, dir, name string) []byte {
+	real, err := s.roots(ws).Resolve(filepath.Join(dir, name))
 	if err != nil {
 		return nil
 	}
@@ -165,7 +166,7 @@ func (s *Server) importROHSA(ctx context.Context, src rohsaSource) (runs.Run, in
 			}
 			seen[role] = true
 			outs = append(outs, runs.Output{Role: role, DatasetID: d.ID, Name: d.Name})
-			if note := s.proposeProductUnit(d, role); note != "" {
+			if note := s.proposeProductUnit(wsCtx(ctx), d, role); note != "" {
 				info.UnitNotes[role] = note
 			}
 		}
@@ -182,7 +183,7 @@ func (s *Server) importROHSA(ctx context.Context, src rohsaSource) (runs.Run, in
 	if err := ctx.Err(); err != nil {
 		return runs.Run{}, 502, "the import was interrupted before it finished; nothing was saved"
 	}
-	run, err := s.Runs.Save(src.Key(), parsed.Parsed, outs)
+	run, err := s.Runs.Save(wsCtx(ctx), actorID(ctx), src.Key(), parsed.Parsed, outs)
 	if err != nil {
 		log.Printf("runs: %v", err)
 		return runs.Run{}, 500, "internal error"
@@ -222,7 +223,7 @@ func (s *Server) importROHSAFromHost(w http.ResponseWriter, r *http.Request, hos
 		return
 	}
 	s.Audit.RecordCtx(r.Context(), "rohsa run imported from host", "run", run.ID, h.Name+": "+dat)
-	writeJSON(w, 201, s.runView(run))
+	writeJSON(w, 201, s.runView(wsOf(r), run))
 }
 
 // importROHSAJob imports the fit a finished ROHSA job left in its output folder on its host: the one rohsa_*.dat found in the
@@ -247,7 +248,7 @@ func (s *Server) importROHSAJob(ctx context.Context, j jobs.Job, h hosts.Host) (
 // the run adapter's proposal (shown labelled, replaceable by the person, never over theirs). When the file has a BUNIT that the
 // name contradicts, the file's value stands and the conflict is returned as a note: the pipeline copies the crop's BUNIT onto
 // every map, so a map named *_kms can say K.
-func (s *Server) proposeProductUnit(d catalog.Dataset, role string) string {
+func (s *Server) proposeProductUnit(ws workspace.ID, d catalog.Dataset, role string) string {
 	unit, basis, ok := runs.ProposeUnit(role)
 	if !ok {
 		return ""
@@ -260,7 +261,7 @@ func (s *Server) proposeProductUnit(d catalog.Dataset, role string) string {
 		}
 		return fmt.Sprintf("The file says %s; its name suggests %s. The file's value is the one shown and used.", *h.Bunit, unit)
 	}
-	cur, err := s.Store.Get(d.ID)
+	cur, err := s.Store.Get(ws, d.ID)
 	if err != nil {
 		return ""
 	}
@@ -291,8 +292,8 @@ type rohsaRunView struct {
 
 // rohsaRunsFor lists the ROHSA runs whose components can be drawn over d: d is the run's crop, or exactly on its grid. A run
 // whose crop has the same axis lengths but a different grid is listed with the reason it is refused; unrelated files list nothing.
-func (s *Server) rohsaRunsFor(d catalog.Dataset) ([]rohsaRunView, error) {
-	all, err := s.Runs.AllROHSA()
+func (s *Server) rohsaRunsFor(ws workspace.ID, d catalog.Dataset) ([]rohsaRunView, error) {
+	all, err := s.Runs.AllROHSA(ws)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +302,7 @@ func (s *Server) rohsaRunsFor(d catalog.Dataset) ([]rohsaRunView, error) {
 		if r.Info.CropDatasetID == nil {
 			continue
 		}
-		crop, err := s.Store.Get(*r.Info.CropDatasetID)
+		crop, err := s.Store.Get(ws, *r.Info.CropDatasetID)
 		if err != nil {
 			continue
 		}
@@ -358,7 +359,7 @@ func (s *Server) datasetByPath(w http.ResponseWriter, r *http.Request) (catalog.
 		fail(w, 400, "bad id")
 		return catalog.Dataset{}, false
 	}
-	d, err := s.Store.Get(id)
+	d, err := s.Store.Get(wsOf(r), id)
 	if errors.Is(err, catalog.ErrNotFound) {
 		fail(w, 404, "dataset not found")
 		return d, false
@@ -377,7 +378,7 @@ func (s *Server) rohsaRuns(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rs, err := s.rohsaRunsFor(d)
+	rs, err := s.rohsaRunsFor(wsOf(r), d)
 	if err != nil {
 		log.Printf("rohsa: %v", err)
 		fail(w, 500, "internal error")
@@ -407,7 +408,7 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 	if !ok {
 		return t, false
 	}
-	rr, err := s.Runs.ROHSA(runID)
+	rr, err := s.Runs.ROHSA(wsOf(r), runID)
 	if errors.Is(err, runs.ErrNotFound) {
 		fail(w, 404, "ROHSA run not found")
 		return t, false
@@ -425,7 +426,7 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 		fail(w, 409, "this run has no usable crop or Gaussian count")
 		return t, false
 	}
-	views, err := s.rohsaRunsFor(d)
+	views, err := s.rohsaRunsFor(wsOf(r), d)
 	if err != nil {
 		fail(w, 500, "internal error")
 		return t, false
@@ -444,7 +445,7 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 		fail(w, 409, "this dataset is not on the run's grid")
 		return t, false
 	}
-	crop, err := s.Store.Get(*rr.Info.CropDatasetID)
+	crop, err := s.Store.Get(wsOf(r), *rr.Info.CropDatasetID)
 	if err != nil {
 		fail(w, 404, "the run's crop is no longer registered")
 		return t, false
@@ -461,7 +462,7 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 	}
 	t = rohsaTask{run: rr, crop: crop, cropReal: cropReal, key: key}
 	if rr.Info.HostID == 0 {
-		datReal, err := s.roots().Resolve(rr.DatPath)
+		datReal, err := s.roots(wsOf(r)).Resolve(rr.DatPath)
 		if err != nil {
 			fail(w, 403, err.Error())
 			return t, false
@@ -506,7 +507,7 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 }
 
 func (s *Server) rohsaDo(w http.ResponseWriter, r *http.Request, t rohsaTask, req map[string]any) (worker.Reply, bool) {
-	svc := s.planesFor(t.crop.ID) // the host's worker for a crop on a host, this machine's otherwise
+	svc := s.planesFor(wsOf(r), t.crop.ID) // the host's worker for a crop on a host, this machine's otherwise
 	if svc == nil {
 		fail(w, 503, "the scientific worker is not configured")
 		return worker.Reply{}, false

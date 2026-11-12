@@ -9,6 +9,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/history"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The history routes answer as the spec says, including a step with no parent, one with a parent, and the single-step read with its scene.
@@ -21,7 +22,7 @@ func TestExplorationHistoryResponsesMatchTheSpec(t *testing.T) {
 	}
 	defer cat.Close()
 	hs, _ := history.Open(cat.DB())
-	d, err := cat.Upsert(catalog.Dataset{Path: "/data/cube.fits", Name: "cube.fits", SizeBytes: 1, ModifiedAt: time.Now(), Header: json.RawMessage(`{"ok":true}`)})
+	d, err := cat.Upsert(workspace.Local, "local-owner", catalog.Dataset{Path: "/data/cube.fits", Name: "cube.fits", SizeBytes: 1, ModifiedAt: time.Now(), Header: json.RawMessage(`{"ok":true}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

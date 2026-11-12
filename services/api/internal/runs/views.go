@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Saved views of the runs table (ADR 0062): a name for a filter query, the columns the researcher exposed, the sort and the
@@ -106,7 +108,7 @@ func CleanView(name string, sp ViewSpec) (string, ViewSpec, error) {
 }
 
 // SaveView stores a view under its name, replacing a view of that name (compared without regard to case).
-func (s *Store) SaveView(name string, sp ViewSpec) (View, error) {
+func (s *Store) SaveView(ws workspace.ID, by, name string, sp ViewSpec) (View, error) {
 	name, sp, err := CleanView(name, sp)
 	if err != nil {
 		return View{}, err
@@ -121,21 +123,21 @@ func (s *Store) SaveView(name string, sp ViewSpec) (View, error) {
 	}
 	defer tx.Rollback()
 	var id int64
-	err = tx.QueryRow(`SELECT id FROM run_views WHERE name=? COLLATE NOCASE`, name).Scan(&id)
+	err = tx.QueryRow(`SELECT id FROM run_views WHERE workspace_id=? AND name=? COLLATE NOCASE`, ws, name).Scan(&id)
 	now := time.Now().Unix()
 	switch {
 	case err == nil:
-		_, err = tx.Exec(`UPDATE run_views SET name=?, spec=?, updated_at=? WHERE id=?`, name, string(raw), now, id)
+		_, err = tx.Exec(`UPDATE run_views SET name=?, spec=?, updated_at=? WHERE id=? AND workspace_id=?`, name, string(raw), now, id, ws)
 	case errors.Is(err, sql.ErrNoRows):
 		var n int
-		if err = tx.QueryRow(`SELECT COUNT(*) FROM run_views`).Scan(&n); err != nil {
+		if err = tx.QueryRow(`SELECT COUNT(*) FROM run_views WHERE workspace_id=?`, ws).Scan(&n); err != nil {
 			return View{}, err
 		}
 		if n >= MaxViews {
 			return View{}, invalid("at most 100 views are kept; delete one first")
 		}
 		var res sql.Result
-		if res, err = tx.Exec(`INSERT INTO run_views(name,spec,updated_at) VALUES(?,?,?)`, name, string(raw), now); err == nil {
+		if res, err = tx.Exec(`INSERT INTO run_views(name,spec,updated_at,workspace_id,created_by) VALUES(?,?,?,?,?)`, name, string(raw), now, ws, by); err == nil {
 			id, err = res.LastInsertId()
 		}
 	}
@@ -149,8 +151,8 @@ func (s *Store) SaveView(name string, sp ViewSpec) (View, error) {
 }
 
 // Views lists the saved views by name.
-func (s *Store) Views() ([]View, error) {
-	rows, err := s.db.Query(`SELECT id,name,spec,updated_at FROM run_views ORDER BY name COLLATE NOCASE`)
+func (s *Store) Views(ws workspace.ID) ([]View, error) {
+	rows, err := s.db.Query(`SELECT id,name,spec,updated_at FROM run_views WHERE workspace_id=? ORDER BY name COLLATE NOCASE`, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -176,8 +178,8 @@ func (s *Store) Views() ([]View, error) {
 }
 
 // DeleteView removes a view; the runs it filtered are untouched.
-func (s *Store) DeleteView(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM run_views WHERE id=?`, id)
+func (s *Store) DeleteView(ws workspace.ID, id int64) error {
+	res, err := s.db.Exec(`DELETE FROM run_views WHERE id=? AND workspace_id=?`, id, ws)
 	if err != nil {
 		return err
 	}

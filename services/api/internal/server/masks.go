@@ -25,6 +25,7 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Typed masks (ADR 0055). A mask is a derived uint8 FITS file next to the other derived outputs, with a row that says what it
@@ -48,10 +49,10 @@ type maskSourceRef struct {
 	Name string `json:"name"`
 }
 
-func (s *Server) viewOf(m masks.Mask, d catalog.Dataset) maskView {
+func (s *Server) viewOf(ws workspace.ID, m masks.Mask, d catalog.Dataset) maskView {
 	v := maskView{Mask: m, Stale: m.SourceSize != d.SizeBytes || m.SourceMtime != d.ModifiedAt.UnixNano()}
 	if id := m.SourceDatasetID(); id != 0 {
-		if src, err := s.Store.Get(id); err == nil {
+		if src, err := s.Store.Get(ws, id); err == nil {
 			v.SourceDataset = &maskSourceRef{ID: src.ID, Name: src.Name}
 		}
 	}
@@ -63,7 +64,7 @@ func (s *Server) listMasks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ms, err := s.Masks.ForDataset(d.ID)
+	ms, err := s.Masks.ForDataset(wsOf(r), d.ID)
 	if err != nil {
 		log.Printf("masks: %v", err)
 		fail(w, 500, "internal error")
@@ -71,7 +72,7 @@ func (s *Server) listMasks(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]maskView, len(ms))
 	for i, m := range ms {
-		out[i] = s.viewOf(m, d)
+		out[i] = s.viewOf(wsOf(r), m, d)
 	}
 	writeJSON(w, 200, map[string]any{"masks": out})
 }
@@ -185,7 +186,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 			sg["value"] = *in.Sigma.Value
 		case "mad":
 		case "map":
-			nm, code, msg := s.imageDataset(in.Sigma.DatasetID)
+			nm, code, msg := s.imageDataset(wsCtx(ctx), in.Sigma.DatasetID)
 			if code != 0 {
 				return maskView{}, 422, "noise map: " + msg
 			}
@@ -212,7 +213,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 		if len(in.RegionIDs) == 0 || s.Regions == nil {
 			return maskView{}, 422, "name at least one saved region"
 		}
-		all, err := s.Regions.List(d.ID)
+		all, err := s.Regions.List(wsCtx(ctx), d.ID)
 		if err != nil {
 			return maskView{}, 500, "internal error"
 		}
@@ -238,7 +239,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 		if in.Nonzero != "flagged" && in.Nonzero != "valid" {
 			return maskView{}, 422, "say what a nonzero pixel of the mask file means: flagged, or valid"
 		}
-		src, code, msg := s.imageDataset(in.ImportDatasetID)
+		src, code, msg := s.imageDataset(wsCtx(ctx), in.ImportDatasetID)
 		if code != 0 {
 			return maskView{}, 422, "mask file: " + msg
 		}
@@ -275,9 +276,9 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 			return maskView{}, code, msg
 		}
 	} else {
-		out = filepath.Join(s.Analysis.DerivedDir, fileName)
+		out = filepath.Join(s.derivedDirOf(wsCtx(ctx)), fileName)
 		var code int
-		res, code, msg = s.runAnalysisProgramCtx(ctx, []string{"-P", s.Analysis.Script, "mask", "--input", real, "--out", out, "--params", string(pj)})
+		res, code, msg = s.runAnalysisProgramCtx(wsCtx(ctx), ctx, []string{"-P", s.Analysis.Script, "mask", "--input", real, "--out", out, "--params", string(pj)})
 		if code != 0 {
 			_ = os.Remove(out)
 			return maskView{}, code, msg
@@ -334,7 +335,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 		return maskView{}, 500, "internal error"
 	}
 	s.audit(ctx, "mask created", "dataset", d.ID, mtype+" mask, "+strconv.FormatInt(sum.Flagged, 10)+" pixels flagged")
-	return s.viewOf(m, d), 0, ""
+	return s.viewOf(wsCtx(ctx), m, d), 0, ""
 }
 
 // storeMask records a mask file just written for d: it fills in what the mask was made from (d's size, modification time and recorded
@@ -359,7 +360,7 @@ func (s *Server) storeMask(ctx context.Context, d catalog.Dataset, m masks.Mask)
 	}
 	m.DatasetID, m.SourceSize, m.SourceMtime, m.SourceIdentity = d.ID, d.SizeBytes, d.ModifiedAt.UnixNano(), sourceIdentity(d)
 	m.FileSize, m.FileMtime, m.SHA256 = size, mtime, digest
-	return s.Masks.Add(m)
+	return s.Masks.Add(wsCtx(ctx), actorID(ctx), m)
 }
 
 // maskSnapshot is the id-free account of a mask that a result's parameters keep (and so the reviewer sees): no id, no path.
@@ -460,12 +461,12 @@ func (s *Server) deleteMask(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	m, err := s.Masks.Get(id)
+	m, err := s.Masks.Get(wsOf(r), id)
 	if err != nil {
 		s.maskErr(w, err)
 		return
 	}
-	if err := s.Masks.Delete(id); err != nil {
+	if err := s.Masks.Delete(wsOf(r), id); err != nil {
 		s.maskErr(w, err)
 		return
 	}
@@ -484,15 +485,15 @@ func (s *Server) maskErr(w http.ResponseWriter, err error) {
 
 // usableMask returns a mask that may be applied now: it belongs to the dataset, was made from the bytes the dataset has, and its own
 // file is the one that was written.
-func (s *Server) usableMask(id int64, d catalog.Dataset) (masks.Mask, int, string) {
-	m, err := s.Masks.Get(id)
+func (s *Server) usableMask(ws workspace.ID, id int64, d catalog.Dataset) (masks.Mask, int, string) {
+	m, err := s.Masks.Get(ws, id)
 	if err != nil {
 		return m, 422, "a mask is not in the catalog"
 	}
 	if m.DatasetID != d.ID {
 		return m, 422, "a mask belongs to another dataset"
 	}
-	if v := s.viewOf(m, d); v.Stale {
+	if v := s.viewOf(ws, m, d); v.Stale {
 		return m, 409, "the mask \"" + m.Name + "\" was made from other bytes than this file has now (the file changed): make it again"
 	}
 	if m.HostID != d.HostID { // a dataset has one primary location; a mask is read by the program that reads that file
@@ -535,7 +536,7 @@ type maskUse struct {
 // maskSpecs checks the masks an operation was asked to apply against the dataset and returns the worker's --masks JSON, and the
 // reviewer-safe snapshot of what was applied (no ids, no paths), which the result's provenance keeps whatever happens to the masks
 // later. weightOK is true for an operation that already has weights.
-func (s *Server) maskSpecs(uses []maskUse, d catalog.Dataset, weightOK bool) (specJSON string, safe []map[string]any, owner []maskUse, code int, msg string) {
+func (s *Server) maskSpecs(ws workspace.ID, uses []maskUse, d catalog.Dataset, weightOK bool) (specJSON string, safe []map[string]any, owner []maskUse, code int, msg string) {
 	if len(uses) == 0 {
 		return "", nil, nil, 0, ""
 	}
@@ -563,7 +564,7 @@ func (s *Server) maskSpecs(uses []maskUse, d catalog.Dataset, weightOK bool) (sp
 				return "", nil, nil, 422, "the weight policy needs a factor from 0 to 1 for a flagged pixel"
 			}
 		}
-		m, code, msg := s.usableMask(u.ID, d)
+		m, code, msg := s.usableMask(ws, u.ID, d)
 		if code != 0 {
 			return "", nil, nil, code, msg
 		}
@@ -614,7 +615,7 @@ func (s *Server) regionMasks(w http.ResponseWriter, r *http.Request, d catalog.D
 		fail(w, 422, "at most 8 masks can be applied to a region at once")
 		return nil, "", false
 	}
-	text, _, _, code, msg := s.maskSpecs(uses, d, false)
+	text, _, _, code, msg := s.maskSpecs(wsOf(r), uses, d, false)
 	if code != 0 {
 		fail(w, code, msg)
 		return nil, "", false
@@ -641,7 +642,7 @@ func (s *Server) maskPlane(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	m, err := s.Masks.Get(id)
+	m, err := s.Masks.Get(wsOf(r), id)
 	if err != nil {
 		s.maskErr(w, err)
 		return
@@ -673,7 +674,7 @@ func (s *Server) maskPlane(w http.ResponseWriter, r *http.Request) {
 		writeFrame(w, rep)
 		return
 	}
-	real, err := s.roots().Resolve(m.Path)
+	real, err := s.roots(wsOf(r)).Resolve(m.Path)
 	if err != nil {
 		fail(w, 403, err.Error())
 		return

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func newStore(t *testing.T) *Store {
@@ -61,44 +63,44 @@ func TestADefinitionIsCheckedAndBecomesTheWorkersWindow(t *testing.T) {
 
 func TestVersionsAreAppendedAndAStaleEditIsRefused(t *testing.T) {
 	s := newStore(t)
-	sub, err := s.Create(7, version("Core", Definition{Step: 1, Box: &Box{X0: 0, X1: 3, Y0: 0, Y1: 3}}))
+	sub, err := s.Create(workspace.Local, "local-owner", 7, version("Core", Definition{Step: 1, Box: &Box{X0: 0, X1: 3, Y0: 0, Y1: 3}}))
 	if err != nil || sub.Current.Version != 1 || sub.Current.Kind != "create" || sub.SourceID != 7 {
 		t.Fatalf("%+v %v", sub, err)
 	}
 	if !sub.Current.SourceModified.Equal(time.Unix(5, 7)) || sub.Current.SourceIdentity != "sha256:ab" || sub.Current.SourceSize != 100 {
 		t.Fatalf("the pinned identity was not kept: %+v", sub.Current)
 	}
-	next, err := s.AddVersion(sub.ID, 1, "edit", version("Core, wider", Definition{Step: 2, Box: &Box{X0: 0, X1: 9, Y0: 0, Y1: 9}}))
+	next, err := s.AddVersion(workspace.Local, sub.ID, 1, "edit", version("Core, wider", Definition{Step: 2, Box: &Box{X0: 0, X1: 9, Y0: 0, Y1: 9}}))
 	if err != nil || next.Current.Version != 2 || next.Current.Name != "Core, wider" || next.Current.Def.Step != 2 {
 		t.Fatalf("%+v %v", next, err)
 	}
-	if _, err := s.AddVersion(sub.ID, 1, "edit", version("late", Definition{Step: 1})); !errors.Is(err, ErrConflict) {
+	if _, err := s.AddVersion(workspace.Local, sub.ID, 1, "edit", version("late", Definition{Step: 1})); !errors.Is(err, ErrConflict) {
 		t.Fatalf("an edit made from version 1 after version 2 exists: %v", err)
 	}
-	if _, err := s.AddVersion(99, 1, "edit", version("none", Definition{Step: 1})); !errors.Is(err, ErrNotFound) {
+	if _, err := s.AddVersion(workspace.Local, 99, 1, "edit", version("none", Definition{Step: 1})); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown subset: %v", err)
 	}
-	vs, err := s.Versions(sub.ID)
+	vs, err := s.Versions(workspace.Local, sub.ID)
 	if err != nil || len(vs) != 2 || vs[0].Name != "Core" || vs[1].Kind != "edit" {
 		t.Fatalf("history: %+v %v", vs, err)
 	}
-	other, _ := s.Create(8, version("Other", Definition{Step: 1}))
-	if all, _ := s.List(0); len(all) != 2 {
+	other, _ := s.Create(workspace.Local, "local-owner", 8, version("Other", Definition{Step: 1}))
+	if all, _ := s.List(workspace.Local, 0); len(all) != 2 {
 		t.Fatalf("all: %d", len(all))
 	}
-	if of7, _ := s.List(7); len(of7) != 1 || of7[0].Current.Version != 2 {
+	if of7, _ := s.List(workspace.Local, 7); len(of7) != 1 || of7[0].Current.Version != 2 {
 		t.Fatalf("of source 7: %+v", of7)
 	}
-	if err := s.Delete(sub.ID); err != nil {
+	if err := s.Delete(workspace.Local, sub.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Get(sub.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Get(workspace.Local, sub.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("deleted subset: %v", err)
 	}
-	if _, err := s.Get(other.ID); err != nil {
+	if _, err := s.Get(workspace.Local, other.ID); err != nil {
 		t.Fatalf("another subset went with it: %v", err)
 	}
-	if err := s.Delete(sub.ID); !errors.Is(err, ErrNotFound) {
+	if err := s.Delete(workspace.Local, sub.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("delete twice: %v", err)
 	}
 }

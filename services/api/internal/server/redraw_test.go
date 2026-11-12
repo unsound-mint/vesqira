@@ -13,6 +13,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 func identityOf(size int64, mod time.Time, sampled, full string) figureDatasetIdentity {
@@ -291,7 +292,7 @@ func TestARedrawingIsANewRevisionLinkedToTheOriginalWhichIsUntouched(t *testing.
 	if code, out := e.call("POST", "/api/boards/"+itoa(int(board.ID))+"/items", map[string]any{"figureId": orig.ID}); code/100 != 2 {
 		t.Fatalf("add: %d %s", code, out)
 	}
-	before, _ := e.srv.Boards.Figure(orig.ID)
+	before, _ := e.srv.Boards.Figure(workspace.Local, orig.ID)
 
 	code, re, b := e.saveFigure(d, renderedScene(d.ID, true), map[string]any{"redrawnFrom": orig.ID})
 	if code != 201 {
@@ -310,7 +311,7 @@ func TestARedrawingIsANewRevisionLinkedToTheOriginalWhichIsUntouched(t *testing.
 		t.Errorf("the same redrawing twice: %d and %d", re.ID, again.ID)
 	}
 
-	after, err := e.srv.Boards.Figure(orig.ID)
+	after, err := e.srv.Boards.Figure(workspace.Local, orig.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +320,7 @@ func TestARedrawingIsANewRevisionLinkedToTheOriginalWhichIsUntouched(t *testing.
 	if string(ja) != string(jb) || strings.Contains(string(after.Identity), "redrawnFrom") {
 		t.Fatalf("the original changed:\n%s\n%s", ja, jb)
 	}
-	bd, err := e.srv.Boards.Board(board.ID)
+	bd, err := e.srv.Boards.Board(workspace.Local, board.ID)
 	if err != nil || len(bd.Items) != 1 || bd.Items[0].Figure == nil || bd.Items[0].Figure.ID != orig.ID || bd.Items[0].Figure.Revision != orig.Revision {
 		t.Fatalf("the board keeps what it pinned: %+v %v", bd.Items, err)
 	}

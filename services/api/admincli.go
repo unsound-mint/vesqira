@@ -79,7 +79,7 @@ func runAdmin(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		log.RecordAs(cli, "setup link issued", "account", 0, "expires "+exp.UTC().Format("2006-01-02 15:04 UTC"))
+		log.RecordAs(cli.Workspace, cli, "setup link issued", "account", 0, "expires "+exp.UTC().Format("2006-01-02 15:04 UTC"))
 		// the secret travels in the fragment, so it never reaches a server log, a proxy log or a Referer header
 		link := strings.TrimRight(*origin, "/") + "/#/setup/" + secret
 		fmt.Fprintf(stdout, "Open this link within 30 minutes to create an admin account (it works once):\n\n  %s\n\n", link)
@@ -101,9 +101,9 @@ func runAdmin(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		log.RecordAs(cli, "second factor reset", "account", 0, "for "+a.ID+" ("+a.Username+")")
-		log.RecordAs(cli, "sessions ended by the reset", "account", 0, fmt.Sprintf("%d sessions of %s", sessions, a.ID))
-		log.RecordAs(cli, "access tokens revoked by the reset", "account", 0, fmt.Sprintf("%d tokens of %s", tokens, a.ID))
+		log.RecordAs(cli.Workspace, cli, "second factor reset", "account", 0, "for "+a.ID+" ("+a.Username+")")
+		log.RecordAs(cli.Workspace, cli, "sessions ended by the reset", "account", 0, fmt.Sprintf("%d sessions of %s", sessions, a.ID))
+		log.RecordAs(cli.Workspace, cli, "access tokens revoked by the reset", "account", 0, fmt.Sprintf("%d tokens of %s", tokens, a.ID))
 		fmt.Fprintf(stdout, "The second factor of %s is removed, %d sessions ended and %d access tokens revoked; they enrol again at their next sign-in.\n", a.Username, sessions, tokens)
 		return 0
 	}

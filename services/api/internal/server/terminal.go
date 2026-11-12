@@ -25,6 +25,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // The integrated terminal (ADR 0029, step 2; --enable-terminal). A terminal runs any command as the user, so the route is
@@ -330,7 +331,8 @@ func (s *Server) runTerminal(conn *websocket.Conn, cmd *exec.Cmd, where string, 
 		_ = conn.Close()
 		return
 	}
-	s.Audit.Record("terminal session opened", "terminal", p.hostID, where)
+	// // local-only feature: never mounted on the group server (ADR 0050 owner answer 3)
+	s.Audit.Record(workspace.Local, "terminal session opened", "terminal", p.hostID, where)
 
 	stop := make(chan struct{})
 	var reason string
@@ -458,7 +460,7 @@ func (s *Server) runTerminal(conn *websocket.Conn, cmd *exec.Cmd, where string, 
 	s.terms.mu.Lock()
 	delete(s.terms.live, live)
 	s.terms.mu.Unlock()
-	s.Audit.Record("terminal session closed", "terminal", p.hostID, fmt.Sprintf("%s, %s, %s", where, time.Since(started).Round(time.Second), reason))
+	s.Audit.Record(workspace.Local, "terminal session closed", "terminal", p.hostID, fmt.Sprintf("%s, %s, %s", where, time.Since(started).Round(time.Second), reason))
 }
 
 // terminate ends the shell and everything it started. pty.Start makes the shell a session leader, so its session id

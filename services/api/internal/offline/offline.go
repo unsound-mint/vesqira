@@ -81,6 +81,9 @@ func Open(db *sql.DB, dir string) (*Store, error) {
 			return nil, err
 		}
 	}
+	if err := schema.Scope(db, "offline_entries"); err != nil {
+		return nil, err
+	}
 	s := &Store{db: db, dir: dir}
 	if dir == "" {
 		return s, nil

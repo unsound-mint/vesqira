@@ -15,6 +15,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 type edEnv struct {
@@ -351,7 +352,7 @@ func TestEditorSaveIsAuditedWithHashesAndNeverTheContent(t *testing.T) {
 	}
 	var saved textFile
 	_ = json.Unmarshal(b, &saved)
-	es, err := e.au.List("file", 0, 10)
+	es, err := e.au.List(workspace.Local, "file", 0, 10)
 	if err != nil || len(es) != 2 {
 		t.Fatalf("audit: %v %+v", err, es)
 	}
@@ -383,12 +384,12 @@ func TestEditorSaveIsAuditedWithHashesAndNeverTheContent(t *testing.T) {
 	}
 	// a refused save is not a save
 	e.save(t, p, "again\n", f.textVersion)
-	if es, _ := e.au.List("file", 0, 10); len(es) != 2 {
+	if es, _ := e.au.List(workspace.Local, "file", 0, 10); len(es) != 2 {
 		t.Errorf("a refused save was audited: %d entries", len(es))
 	}
 	// a refused open is not an open
 	e.open(t, filepath.Join(e.root, "missing.md"))
-	if es, _ := e.au.List("file", 0, 10); len(es) != 2 {
+	if es, _ := e.au.List(workspace.Local, "file", 0, 10); len(es) != 2 {
 		t.Errorf("a refused open was audited: %d entries", len(es))
 	}
 }

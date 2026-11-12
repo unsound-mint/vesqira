@@ -349,6 +349,75 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/auth/invitation:
+    post:
+      operationId: owner_s_peekInvitation_post_api_auth_invitation
+      x-listener: owner
+      x-vesqira-permission: anonymous
+      summary: "What an invitation is for, without spending it"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "token"
+              properties:
+                token:
+                  type: "string"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/InvitationPeek"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/auth/invitation/accept:
+    post:
+      operationId: owner_s_acceptInvitation_post_api_auth_invitation_accept
+      x-listener: owner
+      x-vesqira-permission: anonymous
+      summary: "Create the invited account with the invitation's role; starts TOTP enrolment"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "token"
+                - "name"
+                - "username"
+                - "password"
+              properties:
+                token:
+                  type: "string"
+                name:
+                  type: "string"
+                username:
+                  type: "string"
+                password:
+                  type: "string"
+      responses:
+        "201":
+          description: "created"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AuthState"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/auth/second-factor:
     post:
       operationId: owner_s_secondFactor_post_api_auth_second_factor
@@ -2707,6 +2776,29 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/discussion/{id}/delete:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_deleteDiscussion_post_api_discussion_id_delete
+      x-listener: owner
+      x-vesqira-permission: comment.write
+      summary: "Delete a member's comment (its author, or a Maintainer or Owner)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+      responses:
+        "204":
+          description: "deleted"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/figures:
     get:
       operationId: owner_s_listFigures_get_api_figures
@@ -2791,6 +2883,56 @@ paths:
       x-listener: owner
       x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
+  /api/figures/{id}/discussion:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_listDiscussion_get_api_figures_id_discussion
+      x-listener: owner
+      x-vesqira-permission: figure.read
+      summary: "Members' comments on one of the workspace's figures"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/MemberCommentList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: owner_s_addDiscussion_post_api_figures_id_discussion
+      x-listener: owner
+      x-vesqira-permission: comment.write
+      summary: "Comment on one of the workspace's figures as the signed-in member"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "body"
+              properties:
+                body:
+                  type: "string"
+      responses:
+        "201":
+          description: "created"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/MemberComment"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/figures/{id}/download:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -3566,6 +3708,96 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/invitations:
+    post:
+      operationId: owner_s_createInvitation_post_api_invitations
+      x-listener: owner
+      x-vesqira-permission: member.invite
+      summary: "Invite someone with a role (a Maintainer only as Viewer or Researcher); single use, 7 days"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "role"
+              properties:
+                role:
+                  type: "string"
+                  enum:
+                    - "viewer"
+                    - "researcher"
+                    - "maintainer"
+                    - "owner"
+                note:
+                  type: "string"
+      responses:
+        "201":
+          description: "created"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/InvitationCreated"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/invitations/accept:
+    post:
+      operationId: owner_s_acceptInvitationSignedIn_post_api_invitations_accept
+      x-listener: owner
+      x-vesqira-permission: account.self
+      summary: "Join the invitation's workspace as the signed-in account"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "token"
+              properties:
+                token:
+                  type: "string"
+      responses:
+        "200":
+          description: "joined"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/InvitationJoined"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/invitations/{id}/revoke:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_revokeInvitation_post_api_invitations_id_revoke
+      x-listener: owner
+      x-vesqira-permission: member.invite
+      summary: "Revoke an unused invitation"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+      responses:
+        "204":
+          description: "revoked"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/jobs:
     get:
       operationId: owner_s_listJobs_get_api_jobs
@@ -3752,6 +3984,81 @@ paths:
               schema:
                 type: "string"
                 format: "binary"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/members:
+    get:
+      operationId: owner_s_listMembers_get_api_members
+      x-listener: owner
+      x-vesqira-permission: member.read
+      summary: "The current workspace's members, its pending invitations (for those who may invite) and its data folders"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/MemberList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/members/{id}/remove:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_removeMember_post_api_members_id_remove
+      x-listener: owner
+      x-vesqira-permission: member.manage
+      summary: "Remove a member from the workspace (Owner, recent sign-in; never the last Owner)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+      responses:
+        "204":
+          description: "removed"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/members/{id}/role:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_setMemberRole_post_api_members_id_role
+      x-listener: owner
+      x-vesqira-permission: member.manage
+      summary: "Change a member's role (Owner, recent sign-in; never the last Owner)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "role"
+              properties:
+                role:
+                  type: "string"
+                  enum:
+                    - "viewer"
+                    - "researcher"
+                    - "maintainer"
+                    - "owner"
+      responses:
+        "204":
+          description: "changed"
         default:
           description: "Error"
           content:
@@ -4427,6 +4734,56 @@ paths:
       x-listener: owner
       x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
+  /api/reports/{id}/discussion:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_listDiscussion_get_api_reports_id_discussion
+      x-listener: owner
+      x-vesqira-permission: report.read
+      summary: "Members' comments on one of the workspace's reports"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/MemberCommentList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: owner_s_addDiscussion_post_api_reports_id_discussion
+      x-listener: owner
+      x-vesqira-permission: comment.write
+      summary: "Comment on one of the workspace's reports as the signed-in member"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "body"
+              properties:
+                body:
+                  type: "string"
+      responses:
+        "201":
+          description: "created"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/MemberComment"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/reports/{id}/history:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -4474,7 +4831,7 @@ paths:
     post:
       operationId: owner_s_reportSeen_post_api_reports_id_seen
       x-listener: owner
-      x-vesqira-permission: report.write
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
   /api/reports/{id}/withdraw:
     parameters:
@@ -5998,6 +6355,178 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/workspaces:
+    get:
+      operationId: owner_s_listWorkspaces_get_api_workspaces
+      x-listener: owner
+      x-vesqira-permission: workspace.admin
+      summary: "Every workspace with its data folders (admin)"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AdminWorkspaceList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: owner_s_createWorkspace_post_api_workspaces
+      x-listener: owner
+      x-vesqira-permission: workspace.admin
+      summary: "Create a workspace and name its first Owner by username (admin, recent sign-in)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "name"
+                - "owner"
+              properties:
+                name:
+                  type: "string"
+                owner:
+                  type: "string"
+      responses:
+        "201":
+          description: "created"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/workspaces/{id}/members:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_adminAddMember_post_api_workspaces_id_members
+      x-listener: owner
+      x-vesqira-permission: workspace.admin
+      summary: "Add an existing account to a workspace with a role (admin, recent sign-in)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "username"
+                - "role"
+              properties:
+                username:
+                  type: "string"
+                role:
+                  type: "string"
+                  enum:
+                    - "viewer"
+                    - "researcher"
+                    - "maintainer"
+                    - "owner"
+      responses:
+        "204":
+          description: "added"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/workspaces/{id}/quota:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_setWorkspaceQuota_post_api_workspaces_id_quota
+      x-listener: owner
+      x-vesqira-permission: workspace.admin
+      summary: "Set a workspace's quota for managed copies and derived outputs (admin, recent sign-in)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "bytes"
+              properties:
+                bytes:
+                  type: "integer"
+                  format: "int64"
+      responses:
+        "204":
+          description: "set"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/workspaces/{id}/roots:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_addWorkspaceRoot_post_api_workspaces_id_roots
+      x-listener: owner
+      x-vesqira-permission: workspace.admin
+      summary: "Declare a folder of the server readable for a workspace (admin, recent sign-in; canonical path, not broad, not the server's own data)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "path"
+              properties:
+                path:
+                  type: "string"
+      responses:
+        "204":
+          description: "declared"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/workspaces/{id}/roots/remove:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_removeWorkspaceRoot_post_api_workspaces_id_roots_remove
+      x-listener: owner
+      x-vesqira-permission: workspace.admin
+      summary: "Withdraw a data folder from a workspace (admin, recent sign-in)"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              required:
+                - "path"
+              properties:
+                path:
+                  type: "string"
+      responses:
+        "204":
+          description: "withdrawn"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /publish-api/assets/{sha}:
     parameters:
       - {name: sha, in: path, required: true, schema: {type: string}}
@@ -7131,6 +7660,10 @@ components:
               type: "integer"
             metricsPerRunMax:
               type: "integer"
+        workspace:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceContext"
+          description: "Group server only, and only when the caller is a member of a workspace."
     FigureAxis:
       type: "object"
       description: "An axis as the file declared it; null means the file did not say."
@@ -17288,3 +17821,265 @@ components:
           description: "tokens that still work"
         note:
           type: "string"
+    Workspace:
+      type: "object"
+      required:
+        - "id"
+        - "name"
+        - "createdAt"
+        - "quotaBytes"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        createdAt:
+          type: "string"
+          format: "date-time"
+        quotaBytes:
+          type: "integer"
+          format: "int64"
+          description: "bytes of managed copies and derived outputs it may keep"
+      description: "A workspace: the access unit of the group server (ADR 0050 slice 3)."
+    Membership:
+      type: "object"
+      required:
+        - "workspaceId"
+        - "workspaceName"
+        - "accountId"
+        - "name"
+        - "username"
+        - "role"
+        - "since"
+      properties:
+        workspaceId:
+          type: "integer"
+          format: "int64"
+        workspaceName:
+          type: "string"
+        accountId:
+          type: "string"
+        name:
+          type: "string"
+        username:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "viewer"
+            - "researcher"
+            - "maintainer"
+            - "owner"
+        since:
+          type: "string"
+          format: "date-time"
+      description: "An account's role in one workspace."
+    Member:
+      allOf:
+        - $ref: "#/components/schemas/Membership"
+        - type: "object"
+          required:
+            - "you"
+          properties:
+            you:
+              type: "boolean"
+    Invitation:
+      type: "object"
+      required:
+        - "id"
+        - "workspaceId"
+        - "role"
+        - "note"
+        - "createdBy"
+        - "createdAt"
+        - "expiresAt"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        workspaceId:
+          type: "integer"
+          format: "int64"
+        role:
+          type: "string"
+          enum:
+            - "viewer"
+            - "researcher"
+            - "maintainer"
+            - "owner"
+        note:
+          type: "string"
+        createdBy:
+          type: "string"
+        createdAt:
+          type: "string"
+          format: "date-time"
+        expiresAt:
+          type: "string"
+          format: "date-time"
+      description: "An invitation waiting to be accepted; its secret is never shown again."
+    InvitationCreated:
+      allOf:
+        - $ref: "#/components/schemas/Invitation"
+        - type: "object"
+          required:
+            - "link"
+          properties:
+            link:
+              type: "string"
+              description: "shown once; the secret is in the URL fragment"
+    InvitationPeek:
+      type: "object"
+      required:
+        - "workspace"
+        - "role"
+        - "note"
+        - "expiresAt"
+      properties:
+        workspace:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "viewer"
+            - "researcher"
+            - "maintainer"
+            - "owner"
+        note:
+          type: "string"
+        expiresAt:
+          type: "string"
+    InvitationJoined:
+      type: "object"
+      required:
+        - "workspaceId"
+        - "role"
+      properties:
+        workspaceId:
+          type: "integer"
+          format: "int64"
+        role:
+          type: "string"
+          enum:
+            - "viewer"
+            - "researcher"
+            - "maintainer"
+            - "owner"
+    MemberList:
+      type: "object"
+      required:
+        - "workspace"
+        - "members"
+        - "invitations"
+        - "roots"
+      properties:
+        workspace:
+          $ref: "#/components/schemas/Workspace"
+        members:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Member"
+        invitations:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Invitation"
+          description: "empty unless the caller may invite"
+        roots:
+          type: "array"
+          items:
+            type: "string"
+          description: "the data folders declared for the workspace"
+    AdminWorkspaceList:
+      type: "object"
+      required:
+        - "workspaces"
+      properties:
+        workspaces:
+          type: "array"
+          items:
+            allOf:
+              - $ref: "#/components/schemas/Workspace"
+              - type: "object"
+                required:
+                  - "roots"
+                properties:
+                  roots:
+                    type: "array"
+                    items:
+                      type: "string"
+    MemberComment:
+      type: "object"
+      required:
+        - "id"
+        - "kind"
+        - "targetId"
+        - "authorId"
+        - "authorName"
+        - "body"
+        - "createdAt"
+        - "mine"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        kind:
+          type: "string"
+          enum:
+            - "figure"
+            - "report"
+        targetId:
+          type: "integer"
+          format: "int64"
+        authorId:
+          type: "string"
+        authorName:
+          type: "string"
+        body:
+          type: "string"
+        createdAt:
+          type: "string"
+          format: "date-time"
+        mine:
+          type: "boolean"
+      description: "A comment by a signed-in member on a figure or a report of the workspace."
+    MemberCommentList:
+      type: "object"
+      required:
+        - "comments"
+      properties:
+        comments:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MemberComment"
+    WorkspaceContext:
+      type: "object"
+      required:
+        - "id"
+        - "name"
+        - "role"
+        - "permissions"
+        - "workspaces"
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "viewer"
+            - "researcher"
+            - "maintainer"
+            - "owner"
+        permissions:
+          type: "array"
+          items:
+            type: "string"
+          description: "the caller's effective permissions here (x-vesqira-permission names); the server still enforces every one"
+        workspaces:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Membership"
+      description: "Where the request acts and what the caller may do there. Group server only."

@@ -20,6 +20,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Virtual subsets (ADR 0063). A subset is a saved window onto a dataset: a box, an optional spatial step and a spectral interval,
@@ -63,11 +64,11 @@ func subsetStale(v subsets.Version, src catalog.Dataset) bool {
 }
 
 // subsetRecords are the records of the files written from subsets, read once per request (nil when there is no derived store).
-func (s *Server) subsetRecords() []derived.Record {
+func (s *Server) subsetRecords(ws workspace.ID) []derived.Record {
 	if s.Derived == nil {
 		return nil
 	}
-	recs, err := s.Derived.ByOp("subset")
+	recs, err := s.Derived.ByOp(ws, "subset")
 	if err != nil {
 		log.Printf("subsets: %v", err)
 		return nil
@@ -75,13 +76,13 @@ func (s *Server) subsetRecords() []derived.Record {
 	return recs
 }
 
-func (s *Server) subsetOf(sub subsets.Subset, src catalog.Dataset, recs []derived.Record) subsetView {
+func (s *Server) subsetOf(ws workspace.ID, sub subsets.Subset, src catalog.Dataset, recs []derived.Record) subsetView {
 	v := subsetView{ID: sub.ID, SourceID: sub.SourceID, SourceName: src.Name, Name: sub.Current.Name, Reason: sub.Current.Reason, Version: sub.Current.Version,
 		Kind: sub.Current.Kind, Definition: sub.Current.Def, Author: sub.Current.Author, CreatedAt: sub.CreatedAt, EditedAt: sub.Current.At, Virtual: true}
 	v.Pinned.Size, v.Pinned.ModifiedAt, v.Pinned.Identity = sub.Current.SourceSize, sub.Current.SourceModified, sub.Current.SourceIdentity
 	if subsetStale(sub.Current, src) {
 		v.Stale, v.StaleReason = true, staleSentence
-	} else if id, ok := s.materialisedFor(recs, sub.ID, sub.Current.Version, src, "", true); ok {
+	} else if id, ok := s.materialisedFor(ws, recs, sub.ID, sub.Current.Version, src, "", true); ok {
 		v.Materialised = &id
 	}
 	return v
@@ -93,7 +94,7 @@ func (s *Server) subsetAndSource(w http.ResponseWriter, r *http.Request) (subset
 	if !ok {
 		return subsets.Subset{}, catalog.Dataset{}, false
 	}
-	sub, err := s.Subsets.Get(sid)
+	sub, err := s.Subsets.Get(wsOf(r), sid)
 	if errors.Is(err, subsets.ErrNotFound) {
 		fail(w, 404, "subset not found")
 		return sub, catalog.Dataset{}, false
@@ -103,7 +104,7 @@ func (s *Server) subsetAndSource(w http.ResponseWriter, r *http.Request) (subset
 		fail(w, 500, "internal error")
 		return sub, catalog.Dataset{}, false
 	}
-	src, err := s.Store.Get(sub.SourceID)
+	src, err := s.Store.Get(wsOf(r), sub.SourceID)
 	if err != nil {
 		fail(w, 404, "the dataset this subset is a window onto is no longer in the catalog")
 		return sub, src, false
@@ -253,20 +254,20 @@ func (in subsetInput) definition() subsets.Definition {
 }
 
 func (s *Server) listSubsets(w http.ResponseWriter, r *http.Request) {
-	all, err := s.Subsets.List(0)
+	all, err := s.Subsets.List(wsOf(r), 0)
 	if err != nil {
 		log.Printf("subsets: %v", err)
 		fail(w, 500, "internal error")
 		return
 	}
 	out := make([]subsetView, 0, len(all))
-	recs := s.subsetRecords()
+	recs := s.subsetRecords(wsOf(r))
 	for _, sub := range all {
-		src, err := s.Store.Get(sub.SourceID)
+		src, err := s.Store.Get(wsOf(r), sub.SourceID)
 		if err != nil {
 			continue // its source is gone: the delete removes the subset with it, so this is a row about to go
 		}
-		out = append(out, s.subsetOf(sub, src, recs))
+		out = append(out, s.subsetOf(wsOf(r), sub, src, recs))
 	}
 	writeJSON(w, 200, map[string]any{"subsets": out})
 }
@@ -276,20 +277,20 @@ func (s *Server) getSubset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	versions, err := s.Subsets.Versions(sub.ID)
+	versions, err := s.Subsets.Versions(wsOf(r), sub.ID)
 	if err != nil {
 		log.Printf("subsets: %v", err)
 		fail(w, 500, "internal error")
 		return
 	}
 	made := []map[string]any{}
-	recs := s.subsetRecords()
+	recs := s.subsetRecords(wsOf(r))
 	for _, rec := range recs {
 		if sm := subsetSummary(rec); sm.ID == sub.ID {
 			made = append(made, map[string]any{"datasetId": rec.DatasetID, "version": sm.Version, "at": rec.CreatedAt})
 		}
 	}
-	writeJSON(w, 200, map[string]any{"subset": s.subsetOf(sub, src, recs), "versions": versions, "materialised": made})
+	writeJSON(w, 200, map[string]any{"subset": s.subsetOf(wsOf(r), sub, src, recs), "versions": versions, "materialised": made})
 }
 
 // checkNote validates the name and the reason of a version: plain printable text, both required.
@@ -312,7 +313,7 @@ func (s *Server) resolveDefinition(w http.ResponseWriter, r *http.Request, src c
 			fail(w, 422, "give a box or a saved region, not both")
 			return def, nil, false
 		}
-		rg, err := s.Regions.Get(in.RegionID)
+		rg, err := s.Regions.Get(wsOf(r), in.RegionID)
 		if err != nil || rg.DatasetID != src.ID {
 			fail(w, 422, "that region is not a saved region of this dataset")
 			return def, nil, false
@@ -351,7 +352,7 @@ func (s *Server) createSubset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	src, code, msg := s.imageDataset(id)
+	src, code, msg := s.imageDataset(wsOf(r), id)
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -368,7 +369,7 @@ func (s *Server) createSubset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	sub, err := s.Subsets.Create(src.ID, pinned(src, in.Name, in.Reason, def))
+	sub, err := s.Subsets.Create(wsOf(r), actorID(r.Context()), src.ID, pinned(src, in.Name, in.Reason, def))
 	if errors.Is(err, subsets.ErrInvalid) {
 		fail(w, 422, strings.TrimPrefix(err.Error(), "invalid: "))
 		return
@@ -379,7 +380,7 @@ func (s *Server) createSubset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r.Context(), "virtual subset created", "dataset", src.ID, in.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+")")
-	writeJSON(w, 201, map[string]any{"subset": s.subsetOf(sub, src, s.subsetRecords()), "geometry": head})
+	writeJSON(w, 201, map[string]any{"subset": s.subsetOf(wsOf(r), sub, src, s.subsetRecords(wsOf(r))), "geometry": head})
 }
 
 // editSubset records a new version with another definition, name or reason, pinned to the source as it is now. The earlier versions
@@ -435,7 +436,7 @@ func (s *Server) saveVersion(ctx context.Context, w http.ResponseWriter, sub sub
 	if expect == 0 {
 		expect = sub.Current.Version
 	}
-	next, err := s.Subsets.AddVersion(sub.ID, expect, kind, v)
+	next, err := s.Subsets.AddVersion(wsCtx(ctx), sub.ID, expect, kind, v)
 	switch {
 	case errors.Is(err, subsets.ErrConflict):
 		fail(w, 409, err.Error())
@@ -446,7 +447,7 @@ func (s *Server) saveVersion(ctx context.Context, w http.ResponseWriter, sub sub
 		return
 	}
 	s.audit(ctx, "virtual subset "+kind, "dataset", src.ID, v.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+", version "+strconv.Itoa(next.Current.Version)+")")
-	writeJSON(w, 200, map[string]any{"subset": s.subsetOf(next, src, s.subsetRecords()), "geometry": head})
+	writeJSON(w, 200, map[string]any{"subset": s.subsetOf(wsCtx(ctx), next, src, s.subsetRecords(wsCtx(ctx))), "geometry": head})
 }
 
 func (s *Server) deleteSubset(w http.ResponseWriter, r *http.Request) {
@@ -454,7 +455,7 @@ func (s *Server) deleteSubset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Subsets.Delete(sub.ID); err != nil {
+	if err := s.Subsets.Delete(wsOf(r), sub.ID); err != nil {
 		log.Printf("subsets: %v", err)
 		fail(w, 500, "internal error")
 		return
@@ -498,13 +499,13 @@ func reuseKey(subsetID int64, version int, src catalog.Dataset, carry string) st
 // was registered. It never makes one.
 // With anyCarry, a file made with any choice of masks counts (the explorer's "written as a file" mark); without it, only the file made with
 // exactly this carry key (a request to write it).
-func (s *Server) materialisedFor(recs []derived.Record, subsetID int64, version int, src catalog.Dataset, carry string, anyCarry bool) (int64, bool) {
+func (s *Server) materialisedFor(ws workspace.ID, recs []derived.Record, subsetID int64, version int, src catalog.Dataset, carry string, anyCarry bool) (int64, bool) {
 	want := reuseKey(subsetID, version, src, carry)
 	for _, rec := range recs {
 		if got := subsetSummary(rec).ReuseKey; got != want && !(anyCarry && strings.HasPrefix(got, want)) {
 			continue
 		}
-		nd, err := s.Store.Get(rec.DatasetID)
+		nd, err := s.Store.Get(ws, rec.DatasetID)
 		if err != nil {
 			continue
 		}
@@ -544,17 +545,17 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 		failCode(w, 409, "subset_stale", staleSentence, map[string]any{"subsetId": sub.ID, "version": cur.Version})
 		return
 	}
-	carry, code, msg := s.planCarry(src, "subset", in.CarryMasks)
+	carry, code, msg := s.planCarry(wsOf(r), src, "subset", in.CarryMasks)
 	if code != 0 {
 		fail(w, code, msg)
 		return
 	}
 	s.subsetMu.Lock() // one writer at a time: two identical requests make one file, not two
 	defer s.subsetMu.Unlock()
-	if id, ok := s.materialisedFor(s.subsetRecords(), sub.ID, cur.Version, src, carry.key(), false); ok {
-		nd, err := s.Store.Get(id)
+	if id, ok := s.materialisedFor(wsOf(r), s.subsetRecords(wsOf(r)), sub.ID, cur.Version, src, carry.key(), false); ok {
+		nd, err := s.Store.Get(wsOf(r), id)
 		if err == nil {
-			writeJSON(w, 200, map[string]any{"dataset": nd, "reused": true, "subset": s.subsetOf(sub, src, s.subsetRecords())})
+			writeJSON(w, 200, map[string]any{"dataset": nd, "reused": true, "subset": s.subsetOf(wsOf(r), sub, src, s.subsetRecords(wsOf(r)))})
 			return
 		}
 	}
@@ -599,7 +600,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		outPath = filepath.Join(s.Analysis.DerivedDir, fileName)
+		outPath = filepath.Join(s.derivedDirOf(wsOf(r)), fileName)
 		args := append([]string{"-P", s.Analysis.Script, "subset"}, opts...)
 		args = append(args, "--out", outPath)
 		args = append(args, carry.args()...)
@@ -650,12 +651,12 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 		out := catalog.Interpretation{Kind: in.Kind, Unit: in.Unit, Frame: in.Frame, Quantity: in.Quantity, DeclaredBy: analysisAuthor}
 		if err := s.Store.SetInterpretation(nd, out); err != nil {
 			log.Printf("subsets: interpretation of the file: %v", err)
-		} else if got, err := s.Store.Get(nd.ID); err == nil {
+		} else if got, err := s.Store.Get(wsOf(r), nd.ID); err == nil {
 			nd = got
 		}
 	}
 	s.audit(r.Context(), "virtual subset written as a file", "dataset", src.ID, cur.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+", version "+strconv.Itoa(cur.Version)+") as "+filepath.Base(outPath))
-	writeJSON(w, 201, map[string]any{"dataset": nd, "reused": false, "summary": json.RawMessage(sraw), "subset": s.subsetOf(sub, src, s.subsetRecords())})
+	writeJSON(w, 201, map[string]any{"dataset": nd, "reused": false, "summary": json.RawMessage(sraw), "subset": s.subsetOf(wsOf(r), sub, src, s.subsetRecords(wsOf(r)))})
 }
 
 // reviewerDefinition is the definition as a derived record keeps it for a reviewer: the region a box came from by name only, no id.

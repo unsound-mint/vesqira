@@ -225,7 +225,7 @@ func (s *Server) planOffline(ctx context.Context, in offlineRequest) (offlinePla
 	ids := append([]int64(nil), in.DatasetIDs...)
 	seen := map[int64]bool{}
 	if in.BoardID != nil {
-		b, err := s.Boards.Board(*in.BoardID)
+		b, err := s.Boards.Board(wsCtx(ctx), *in.BoardID)
 		if errors.Is(err, boards.ErrNotFound) {
 			return p, 404, "board not found"
 		}
@@ -263,7 +263,7 @@ func (s *Server) planOffline(ctx context.Context, in offlineRequest) (offlinePla
 			continue
 		}
 		done[id] = true
-		d, err := s.Store.Get(id)
+		d, err := s.Store.Get(wsCtx(ctx), id)
 		if err != nil {
 			p.Items = append(p.Items, offlineItem{Kind: "dataset", ID: id, Name: "dataset " + strconv.FormatInt(id, 10), Status: statusRemote, Reason: "This dataset is not in the catalog."})
 			continue
@@ -345,7 +345,7 @@ func (s *Server) planDataset(ctx context.Context, h http.Handler, d catalog.Data
 		dp.estimate += int64(len(dp.preview)) * planeBytes(v.Width, v.Height, dp.step)
 	}
 	if s.Regions != nil && !dp.axial {
-		if rs, err := s.Regions.List(d.ID); err == nil {
+		if rs, err := s.Regions.List(wsCtx(ctx), d.ID); err == nil {
 			for _, r := range rs {
 				if r.Shape.Shape == "rect" || r.Shape.Shape == "circle" {
 					qs, q := spectrumQuery(r.Shape)
@@ -459,7 +459,8 @@ func (s *Server) waitOffline() {
 }
 
 // startPrepare plans again (the host may have changed its mind since the sheet was shown), refuses what does not fit, and runs.
-func (s *Server) startPrepare(in offlineRequest) (int, string) {
+// reqCtx is the request that starts it: the preparation outlives the request but acts in its workspace.
+func (s *Server) startPrepare(reqCtx context.Context, in offlineRequest) (int, string) {
 	s.offlineRun.mu.Lock()
 	defer s.offlineRun.mu.Unlock()
 	if j := s.offlineRun.job; j != nil {
@@ -470,7 +471,7 @@ func (s *Server) startPrepare(in offlineRequest) (int, string) {
 			return 409, "another preparation is running; wait for it or cancel it"
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.WithoutCancel(reqCtx))
 	p, code, msg := s.planOffline(ctx, in)
 	if code != 0 {
 		cancel()
@@ -604,7 +605,7 @@ func (s *Server) offlineOverview(w http.ResponseWriter, r *http.Request) {
 		byID[e.DatasetID] = append(byID[e.DatasetID], e)
 	}
 	for _, id := range order {
-		d, err := s.Store.Get(id)
+		d, err := s.Store.Get(wsOf(r), id)
 		if err != nil {
 			continue
 		}
@@ -644,7 +645,7 @@ func (s *Server) offlinePrepareRoute(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, 64<<10, &in, true) {
 		return
 	}
-	if code, msg := s.startPrepare(in); code != 0 {
+	if code, msg := s.startPrepare(r.Context(), in); code != 0 {
 		fail(w, code, msg)
 		return
 	}

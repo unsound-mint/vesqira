@@ -41,16 +41,17 @@ var classes = map[Permission]class{
 	CapabilitiesRead: readClass, NotificationSelf: readClass,
 	DatasetRead: readClass, RunRead: readClass, FigureRead: readClass, BoardRead: readClass, ReviewRead: readClass,
 	ReportRead: readClass, ProjectRead: readClass, HistoryRead: readClass, FilesRead: readClass, AuditRead: readClass,
-	JobRead: readClass, SweepRead: readClass, ClusterRead: readClass,
+	JobRead: readClass, SweepRead: readClass, ClusterRead: readClass, MemberRead: readClass,
 
 	DatasetWrite: writeClass, AnalysisRun: writeClass, RunWrite: writeClass, FigureWrite: writeClass, BoardWrite: writeClass,
 	LifecycleArchive: writeClass, ReportWrite: writeClass, ProjectWrite: writeClass, HistoryWrite: writeClass,
-	JobSubmit: writeClass, JobAccess: writeClass, SweepSubmit: writeClass, ClusterUse: writeClass,
+	JobSubmit: writeClass, JobAccess: writeClass, SweepSubmit: writeClass, ClusterUse: writeClass, CommentWrite: writeClass,
 
 	// a recent sign-in, an outsider-facing act or an account or admin act: a person at a browser, never a token
 	LifecycleDelete: sessionOnly, ReviewPublish: sessionOnly, PublishManage: sessionOnly, SupportExport: sessionOnly,
 	ClusterAdmin: sessionOnly, AccountSelf: sessionOnly, AccountCredentials: sessionOnly, AccountAdmin: sessionOnly,
 	LocalOnly: sessionOnly, Anonymous: sessionOnly,
+	MemberInvite: sessionOnly, MemberManage: sessionOnly, WorkspaceAdmin: sessionOnly,
 }
 
 // Allows reports whether a token carrying this scope may use p.
@@ -69,10 +70,10 @@ func (s Scope) Allows(p Permission) bool {
 }
 
 // recent are the permissions a session may use only within the recent sign-in window (ADR 0050 section 2: creating an access
-// token, deleting, publishing outside the group, admin actions; changing roles joins in slice 3).
+// token, deleting, publishing outside the group, admin actions, changing roles).
 var recent = map[Permission]bool{
 	AccountCredentials: true, AccountAdmin: true, LifecycleDelete: true, ReviewPublish: true, PublishManage: true,
-	SupportExport: true, ClusterAdmin: true,
+	SupportExport: true, ClusterAdmin: true, MemberManage: true, WorkspaceAdmin: true,
 }
 
 // NeedsRecentSignIn reports whether p needs a recent sign-in. The route check enforces it after Can.
