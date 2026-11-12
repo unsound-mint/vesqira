@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // declareUnit records, or withdraws, the physical unit a person declares for a dataset whose header has no BUNIT. The
@@ -41,6 +42,12 @@ func (s *Server) declareUnit(w http.ResponseWriter, r *http.Request) {
 	if d.Kind == catalog.KindCatalog {
 		fail(w, 409, "a point catalog has no brightness: its columns carry their own units")
 		return
+	}
+	if !in.Clear {
+		if bad, err := s.noBrightness(wsOf(r)); err == nil && bad[id] {
+			fail(w, 409, catalog.ErrNotBrightness.Error())
+			return
+		}
 	}
 	switch {
 	case in.Clear:
@@ -81,4 +88,24 @@ func declaredUnitOf(d catalog.Dataset) string {
 		return ""
 	}
 	return d.UnitDeclaration.Unit
+}
+
+// noBrightness is the datasets that cannot be given a brightness unit: the store's (orientation maps, the reliability maps declared for
+// them, point catalogs) and the psi and reliability outputs of a run. The run record says what those files are, and an orientation map
+// whose frame, quantity or unit nobody has declared yet (ADR 0068, slice 2: none is assumed) is still an angle map, not a brightness one.
+func (s *Server) noBrightness(ws workspace.ID) (map[int64]bool, error) {
+	out, err := s.Store.NoBrightnessIDs(ws)
+	if err != nil || s.Runs == nil {
+		return out, err
+	}
+	roles, err := s.Runs.OutputRoles(ws)
+	if err != nil {
+		return out, err
+	}
+	for id, role := range roles {
+		if role == "psi" || role == "reliability" {
+			out[id] = true
+		}
+	}
+	return out, nil
 }

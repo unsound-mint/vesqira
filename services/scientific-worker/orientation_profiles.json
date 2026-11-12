@@ -8,7 +8,8 @@
       "source": "https://github.com/ISM-NU/VGT.jl: src/pipeline/outputs.jl (vgt_product_header), src/science/sky_angles.jl (INB*), src/config.jl (ANGLE_FRAMES); read at af0a7946f4579a67f0135e09c96237a4271db28e",
       "detect": ["PSIFRAME", "PSIANGLE", "VGTPROD"],
       "producer_cards": ["PSIFRAME", "PSIANGLE", "INB(MAJ|MIN|PA)", "VGT[A-Z0-9]{1,5}"],
-      "statistics": {"value": "axial", "note": "VGT.jl's psi is an axial orientation in radians (README); the BUNIT card states the unit"},
+      "applies": {"card": "VGTPROD", "values": ["PSI"], "note": "only the psi product carries an angle; reliability, support and fit_rbar2 are scalars and are not read as orientation maps"},
+      "statistics": {"value": "axial", "note": "VGT.jl's psi is an axial orientation in radians (README); it writes BUNIT = rad, and no other unit is placed"},
       "fields": {
         "frame": {
           "card": "PSIFRAME",
@@ -19,7 +20,7 @@
           }
         },
         "quantity": {"card": "PSIANGLE", "values": {"BFIELD": "b_field"}},
-        "unit": {"card": "BUNIT", "values": {"RAD": "rad", "DEG": "deg"}}
+        "unit": {"card": "BUNIT", "values": {"RAD": "rad"}}
       }
     }
   ]

@@ -31,6 +31,9 @@ def check(doc: dict) -> list[dict]:
                 raise ValueError(f"orientation profile {p.get('name')!r} lacks {key!r}")
         if "@" in p["name"] or ":" in p["name"]:
             raise ValueError(f"orientation profile name {p['name']!r} must not contain '@' or ':' (it is part of the declaration's label)")
+        applies = p.get("applies")
+        if applies is not None and (not isinstance(applies.get("card"), str) or not applies.get("values") or any(v != v.upper() for v in applies["values"])):
+            raise ValueError(f"orientation profile {p['name']!r}: applies needs a card and values in upper case")
         if set(p["fields"]) - set(FIELDS):
             raise ValueError(f"orientation profile {p['name']!r} declares unknown fields {sorted(set(p['fields']) - set(FIELDS))}")
         for field, spec in p["fields"].items():
@@ -60,12 +63,17 @@ def _word(value) -> str | None:
 
 def read(header, profiles=None) -> dict | None:
     """What a header declares of an orientation map, by the first profile whose detect cards it carries; None when none does.
+    A profile may say which products carry an angle (`applies`: a card and its values): a header whose card names another product, such as
+    VGT.jl's reliability map, is not an orientation map of that profile and gets None, not an orientation with everything unresolved.
 
     The result names the profile and the cards as written, then each field (frame, sky_frame, zero_direction, sense, quantity, unit,
     statistics) as the profile places it, or None; `unresolved` lists the fields among frame, quantity and unit that are None and
     `notes` say why a card that is present was not placed; `from` gives, for each field that was placed, the card and value it came from. `header` is any mapping of card to value (an astropy Header)."""
     for p in (shipped() if profiles is None else profiles):
         if not any(c in header for c in p["detect"]):
+            continue
+        applies = p.get("applies")
+        if applies and applies["card"] in header and _word(header[applies["card"]]) not in applies["values"]:
             continue
         cards, basis, stated, notes = {}, {}, {}, []
         out = {"frame": None, "sky_frame": None, "zero_direction": None, "sense": None, "quantity": None, "unit": None}

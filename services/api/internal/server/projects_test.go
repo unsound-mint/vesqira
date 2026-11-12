@@ -476,30 +476,11 @@ func TestUntidyProjectAsksInsteadOfGuessing(t *testing.T) {
 	}
 }
 
-// declareOrientationMaps is the researcher declaring the psi maps under dir as orientation maps. A run import no longer proposes that
-// for a map whose header no profile places (ADR 0068, slice 2): without it the fake worker's header-less psi files are just FITS files.
-func declareOrientationMaps(t *testing.T, e *projEnv, dir string) {
-	t.Helper()
-	all, err := e.cat.List(workspace.Local)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, d := range all {
-		if strings.Contains(d.Path, "/"+dir+"/") {
-			if err := e.cat.SetInterpretation(d, catalog.Interpretation{Kind: "axial_orientation", Unit: "rad", DeclaredBy: "user"}); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-}
-
 func TestFitsWithoutBUNITAreGroupedAndAnswersWriteTheProjectFileOnlyWhenAsked(t *testing.T) {
 	e := newProjEnv(t)
 	root := e.project(t, "units")
 	vgtProject(t, root)
 	s := e.open(t, root)
-	declareOrientationMaps(t, e, "validation_output")
-	s = e.settle(t, s.ID)
 	var needs struct {
 		Needs []struct {
 			ID, Kind, State string
@@ -778,7 +759,6 @@ func TestAUnitAnsweredInTheNeedsListBecomesTheDatasetsDeclarationAndWithdrawingR
 	root := e.project(t, "units2")
 	vgtProject(t, root)
 	s := e.open(t, root)
-	declareOrientationMaps(t, e, "validation_output")
 	type need struct {
 		ID, Kind, State string
 		Scope           struct{ Count int }

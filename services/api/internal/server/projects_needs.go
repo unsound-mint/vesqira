@@ -105,7 +105,7 @@ func (s *Server) computeNeeds(ws workspace.ID, p projects.Project) ([]need, erro
 	if err != nil {
 		return nil, err
 	}
-	notBrightness, err := s.Store.NoBrightnessIDs(ws)
+	notBrightness, err := s.noBrightness(ws)
 	if err != nil {
 		return nil, err
 	}

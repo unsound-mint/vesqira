@@ -179,7 +179,7 @@ export function FileDeclaration({ dataset, busy, onAdopt }: { dataset: Dataset; 
       {o && !inForce ? (
         <p className={s.note}>
           The file declares its angle as {o.frame === "pixel" ? "measured on the pixel grid" : `a position angle east of north in the ${SKY_NAME[o.skyFrame ?? ""] ?? ""} frame`}
-          {o.quantity ? ", the B-field" : ", without saying what the angle is"}, in {o.unit === "deg" ? "degrees" : "radians"} (read by the profile {o.profile}; declared by the file, not verified).{" "}
+          {o.quantity ? `, ${QUANTITY_LABEL[o.quantity as AngleQuantity] ?? o.quantity}` : ", without saying what the angle is"}, in {o.unit === "deg" ? "degrees" : "radians"} (read by the profile {o.profile}; declared by the file, not verified).{" "}
           <Button type="button" disabled={busy} onClick={onAdopt}>Use the file’s declaration</Button>
         </p>
       ) : null}

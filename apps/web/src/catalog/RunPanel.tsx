@@ -41,7 +41,7 @@ export function RohsaFacts({ run, role }: { run: Run; role?: string }) {
 }
 
 /** Compact summary in the inspector; the run itself opens as a page. */
-export function RunPanel({ run, role, job, onOpenPage, onRunAgain }: { run: Run; role: string; job?: { name: string; slurmId: string; state: string } | null; onOpenPage: () => void; onRunAgain?: () => void }) {
+export function RunPanel({ run, role, job, onOpenPage, onRunAgain, orientationUnresolved }: { run: Run; role: string; orientationUnresolved?: boolean; job?: { name: string; slurmId: string; state: string } | null; onOpenPage: () => void; onRunAgain?: () => void }) {
   return (
     <div className={s.wrap}>
       <dl className={s.facts}>
@@ -57,6 +57,7 @@ export function RunPanel({ run, role, job, onOpenPage, onRunAgain }: { run: Run;
         ) : null}
       </dl>
       <RohsaFacts run={run} role={role} />
+      {orientationUnresolved ? <p className={s.note}>This orientation map has no declared frame, quantity or unit: its file does not state them and none is assumed. The map still displays; declare it in the inspector before an analysis that needs it.</p> : null}
       {run.reproducibleFromCommit ? (
         <Pill tone="ok">Commit recorded</Pill>
       ) : (

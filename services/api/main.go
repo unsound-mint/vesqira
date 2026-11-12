@@ -332,6 +332,10 @@ func main() {
 	if *jobWatch > 0 && !*multiUser { // follow queued and running jobs on the hosts while the app runs (ADR 0043)
 		go srv.WatchJobs(stop, *jobWatch)
 	}
+	// headers stored before orientation profiles get their reading (ADR 0068); files that changed are skipped
+	if !*multiUser {
+		go srv.RefreshProfileHeaders(stop)
+	}
 	if !*multiUser { // send the push queue to the linked group server, if any, without ever blocking a request (ADR 0066)
 		go srv.RunOutbox(stop)
 	}

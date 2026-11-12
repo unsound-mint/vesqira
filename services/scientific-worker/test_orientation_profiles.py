@@ -81,6 +81,14 @@ class Vgt(unittest.TestCase):
         o = op.read(h)
         self.assertEqual((o["frame"], o["quantity"], o["unit"]), ("pixel", "b_field", None))
         self.assertEqual(o["unresolved"], ["unit"])
+        self.assertEqual(op.read(fits.Header({"VGTPROD": "psi", "PSIFRAME": "PIXEL", "PSIANGLE": "BFIELD", "BUNIT": "deg"}))["unit"], None)   # VGT.jl never writes it
+
+    def test_the_other_products_of_a_run_are_not_orientation_maps(self):
+        for name in ("reliability", "support", "fit_rbar2"):
+            h = fits.Header({k: v for k, v, _ in g.vgt_product_cards(name, None)})
+            self.assertIsNone(op.read(h), name)                                         # VGTPROD says it is a scalar: no orientation, unresolved or not
+        self.assertEqual(describe(Path(self.tmp.name) / "vgt_run_current" / "psi_reliability_demo.fits")["orientation"], None)
+        self.assertEqual(describe(Path(self.tmp.name) / "vgt_run_current" / "psi_reliability_demo.fits")["vgt"]["vgtprod"], "reliability")   # its VGT cards are still reported
 
     def test_a_file_with_none_of_a_profiles_cards_has_no_orientation_block(self):
         self.assertIsNone(self.read("vgt_psi_rad.fits"))

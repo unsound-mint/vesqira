@@ -101,6 +101,25 @@ func TestHeaderNeverFillsWhatItDoesNotSay(t *testing.T) {
 	}
 }
 
+// A product of the run that is not an orientation map (the worker reports orientation: null) has nothing unresolved to say, and a header
+// read by a profile of another tool becomes a declaration the same way: nothing here is VGT's.
+func TestOtherProductsAndOtherToolsThroughTheSameReading(t *testing.T) {
+	rel := json.RawMessage(`{"vgt":{"psiframe":null,"psiangle":null,"vgtprod":"reliability","params":{"VGTDN":10}},"orientation":null}`)
+	if v := VGTOf(rel); v == nil || v.Orientation != nil || len(v.Unresolved) != 0 || len(v.Notes) != 0 || v.Profile != nil || v.Params[0].Key != "VGTDN" {
+		t.Fatalf("a reliability map is not an orientation map with everything unresolved: %+v", v)
+	}
+	hog := json.RawMessage(`{"vgt":null,"orientation":{"label":"profile:hog-fixture@0.1","frame":"pixel","sky_frame":null,"zero_direction":"+x","sense":"counter-clockwise",` +
+		`"quantity":"gradient","unit":"deg","from":{"frame":"HOGFRAME=IMAGE","quantity":"HOGANGLE=GRADIENT","unit":"HOGUNIT=degrees"},"unresolved":[],"notes":[]}}`)
+	v := VGTOf(hog)
+	if v == nil || v.Orientation == nil || v.Orientation.Profile != "profile:hog-fixture@0.1" || v.Orientation.Unit != "deg" || v.Orientation.Frame != "pixel" ||
+		v.Orientation.Quantity == nil || *v.Orientation.Quantity != "gradient" || !strings.Contains(v.Orientation.Text(), "counter-clockwise from +x (HOGFRAME=IMAGE)") {
+		t.Fatalf("a profile of another tool: %+v", v)
+	}
+	if tier, mapping := TierOf(v.Orientation.Profile); !IsFileHeaderAuthor(v.Orientation.Profile) || tier != TierDeclared || mapping != "0.1" {
+		t.Errorf("its author is a header author, declared and never verified")
+	}
+}
+
 func TestConflictsAreListedNotResolved(t *testing.T) {
 	file := *VGTOf(hdr("GALACTIC", "BFIELD", "rad")).Orientation
 	user := Interpretation{Kind: "axial_orientation", Unit: "deg", Frame: strp("pixel"), Quantity: strp("gradient"), DeclaredBy: "user"}

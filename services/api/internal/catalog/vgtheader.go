@@ -81,6 +81,20 @@ type VGTHeader struct {
 	Conflicts []string `json:"conflicts"`
 }
 
+// profileReading is the object form of headerCards.Orientation.
+type profileReading struct {
+	Label         string            `json:"label"`
+	Frame         *string           `json:"frame"`
+	SkyFrame      *string           `json:"sky_frame"`
+	ZeroDirection *string           `json:"zero_direction"`
+	Sense         *string           `json:"sense"`
+	Quantity      *string           `json:"quantity"`
+	Unit          *string           `json:"unit"`
+	From          map[string]string `json:"from"`
+	Unresolved    []string          `json:"unresolved"`
+	Notes         []string          `json:"notes"`
+}
+
 type headerCards struct {
 	VGT *struct {
 		PsiFrame   *string         `json:"psiframe"`
@@ -89,21 +103,11 @@ type headerCards struct {
 		Params     map[string]any  `json:"params"`
 		Resolution json.RawMessage `json:"resolution"`
 	} `json:"vgt"`
-	// Orientation is the worker's reading of the header through its profile table (orientation_profiles.py).
-	Orientation *struct {
-		Label         string            `json:"label"`
-		Frame         *string           `json:"frame"`
-		SkyFrame      *string           `json:"sky_frame"`
-		ZeroDirection *string           `json:"zero_direction"`
-		Sense         *string           `json:"sense"`
-		Quantity      *string           `json:"quantity"`
-		Unit          *string           `json:"unit"`
-		From          map[string]string `json:"from"`
-		Unresolved    []string          `json:"unresolved"`
-		Notes         []string          `json:"notes"`
-	} `json:"orientation"`
-	Bunit *string `json:"bunit"`
-	Axes  []struct {
+	// Orientation is the worker's reading of the header through its profile table (orientation_profiles.py): absent in a header stored
+	// before profiles existed, null when no profile reads the header as an orientation map, an object otherwise.
+	Orientation json.RawMessage `json:"orientation"`
+	Bunit       *string         `json:"bunit"`
+	Axes        []struct {
 		Ctype *string `json:"ctype"`
 	} `json:"axes"`
 	Radesys *string `json:"radesys"`
@@ -112,22 +116,27 @@ type headerCards struct {
 // VGTOf reads what a dataset's stored header declares of a profile's product (nil when it has none). Conflicts are filled by the
 // caller that knows the declaration in force (Dataset.attachVGT).
 func VGTOf(header json.RawMessage) *VGTHeader {
-	if !bytes.Contains(header, []byte(`"psiframe"`)) {
+	// a header with VGT.jl's cards has the "vgt" block; one a profile read as an orientation map has a label that starts with "profile:"
+	if !bytes.Contains(header, []byte(`"psiframe"`)) && !bytes.Contains(header, []byte(`"profile:`)) {
 		return nil
 	}
 	var h headerCards
-	if json.Unmarshal(header, &h) != nil || h.VGT == nil {
+	if json.Unmarshal(header, &h) != nil || (h.VGT == nil && len(h.Orientation) == 0) {
 		return nil
 	}
-	v := &VGTHeader{Product: h.VGT.VgtProd, PsiFrame: h.VGT.PsiFrame, PsiAngle: h.VGT.PsiAngle, Resolution: h.VGT.Resolution, Params: []HeaderParam{}, Unresolved: []string{}, Notes: []string{}, Conflicts: []string{}}
-	keys := make([]string, 0, len(h.VGT.Params))
-	for k := range h.VGT.Params {
+	v := &VGTHeader{Params: []HeaderParam{}, Unresolved: []string{}, Notes: []string{}, Conflicts: []string{}}
+	var params map[string]any
+	if h.VGT != nil {
+		v.Product, v.PsiFrame, v.PsiAngle, v.Resolution, params = h.VGT.VgtProd, h.VGT.PsiFrame, h.VGT.PsiAngle, h.VGT.Resolution, h.VGT.Params
+	}
+	keys := make([]string, 0, len(params))
+	for k := range params {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
 		var s string
-		switch x := h.VGT.Params[k].(type) {
+		switch x := params[k].(type) {
 		case string:
 			s = x
 		case float64:
@@ -141,12 +150,15 @@ func VGTOf(header json.RawMessage) *VGTHeader {
 		}
 		v.Params = append(v.Params, HeaderParam{Key: k, Value: s})
 	}
-	p := h.Orientation
-	if p == nil {
+	if len(h.Orientation) == 0 {
 		// stored before orientation profiles: the cards are there but nothing was read from them, and nothing is guessed here
 		v.Unresolved = []string{"frame", "quantity", "unit"}
 		v.Notes = append(v.Notes, "this header was stored before orientation profiles existed, so what it declares has not been read; register the file again")
 		return v
+	}
+	var p *profileReading
+	if json.Unmarshal(h.Orientation, &p) != nil || p == nil {
+		return v // the cards are VGT.jl's but the profile reads this product as no orientation map (reliability, support, fit_rbar2): nothing is unresolved
 	}
 	v.Profile = &p.Label
 	v.Unresolved = append(v.Unresolved, p.Unresolved...)
