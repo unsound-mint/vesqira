@@ -10,7 +10,7 @@ import { MaskPolicies, badWeight, usesOf } from "./MaskPolicies";
 import type { PolicyChoice } from "./MaskPolicies";
 
 const mask = (over: Partial<Mask> = {}): Mask => ({
-  id: 1, datasetId: 1, type: "saturated", name: "Saturated ≥ 100", width: 4, height: 3, channels: 0, flagged: 2, total: 12, tier: "declared", mappingVersion: "", method: "computed",
+  id: 1, datasetId: 1, hostId: 0, type: "saturated", name: "Saturated ≥ 100", width: 4, height: 3, channels: 0, flagged: 2, total: 12, tier: "declared", mappingVersion: "", method: "computed",
   rule: { rule: "value >= 100" }, meaning: "", author: "user", createdAt: "", sourceIdentity: "", fileSize: 1, sha256: "x", stale: false, ...over,
 });
 

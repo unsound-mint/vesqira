@@ -55,7 +55,7 @@ describe("analysis panel", () => {
     await userEvent.selectOptions(screen.getByLabelText("Analysis"), "stats");
     await userEvent.click(screen.getByRole("button", { name: "Create a job on the host" }));
     await waitFor(() => expect(jobs).toEqual([9]));
-    expect(calls[0]!.url).toBe("/api/analysis/job");
+    expect(calls.filter((c) => c.init?.method === "POST").map((c) => c.url)).toEqual(["/api/analysis/job"]); // the masks of the file are listed first (a job on a host takes them, ADR 0064)
   });
 
   it("shows statistics with the missing-data rule and counts no value separately", () => {

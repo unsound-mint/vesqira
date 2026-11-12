@@ -38,7 +38,7 @@ export function proposeSnrColumns(values: string[]): { p: string; sigma: string 
 
 /** What is still missing before a dataset can enter a comparison, or null when it can. */
 export function notReady(d: Dataset): string | null {
-  if (d.hostId !== 0) return "it lives on another host; relative orientation runs on this computer only for now";
+  if (d.hostId !== 0) return "it lives on a host, and relative orientation is computed on this computer only: download it with Transfers and compare the copy";
   if (isCatalog(d)) {
     const c = d.catalogDeclaration;
     if (!c) return "its columns are not declared";

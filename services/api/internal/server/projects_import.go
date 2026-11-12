@@ -667,8 +667,8 @@ func (s *Server) applyOne(ctx context.Context, p projects.Project, h hosts.Host,
 	if rule.Role == discover.RoleCatalog && remote {
 		return skip("point catalogs are read from this computer only (ADR 0044), so a catalog on a host is not registered")
 	}
-	if rule.Role == discover.RoleMask && remote {
-		return skip("a mask is made on this computer from files read here, so a mask file on a host is not imported (copy it here first)")
+	if rule.Role == discover.RoleMask && remote { // the mask itself can be made on the host (ADR 0064); a rule doing it there is not tested yet
+		return skip("a mask rule is not applied to a project on a host yet: register the mask file, then make the mask in the dataset's Masks section (From a mask file you provide), which works on the host")
 	}
 	var d catalog.Dataset
 	registered := false

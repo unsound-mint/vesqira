@@ -141,9 +141,9 @@ func echoes(head []byte, hashes []string) bool {
 	return true
 }
 
-// corrArgs is the --corrections option of an analysis: the corrections in force for every registered file it reads (by the
+// corrArgs is the --corrections option of an analysis run on `host` (0: this computer): the corrections in force for every registered file it reads (by the
 // --input, --reference, --weights and --ref-weights it was given), and their hashes, to check against the program's reply.
-func (s *Server) corrArgs(args []string) (opt string, hashes []string, snapshot []map[string]any) {
+func (s *Server) corrArgs(host int64, args []string) (opt string, hashes []string, snapshot []map[string]any) {
 	sent := map[string]any{}
 	for i := 0; i+1 < len(args); i++ {
 		switch args[i] {
@@ -152,7 +152,7 @@ func (s *Server) corrArgs(args []string) (opt string, hashes []string, snapshot 
 			continue
 		}
 		p := args[i+1]
-		v, ok := s.corrPaths.Load(corrPathRef{0, p})
+		v, ok := s.corrPaths.Load(corrPathRef{host, p})
 		if !ok {
 			continue
 		}

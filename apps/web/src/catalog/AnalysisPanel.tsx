@@ -40,9 +40,10 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
   const [rid, setRid] = useState<string | null>(null);
   const queued = useQueueReason(busy, rid);
   const remote = dataset.hostId !== 0;
-  const takesMasks = !remote && (op === "stats" || op === "moment");
-  const carryOp: CarryOp | null = !remote && (op === "cutout" || op === "slab" || op === "align" || op === "convolve") ? op : null;
-  const { masks } = useMasks(takesMasks || carryOp ? dataset.id : null);
+  const takesMasks = op === "stats" || op === "moment"; // on a host too: the job applies the masks kept next to the file (ADR 0064)
+  const cutsOrResamples = op === "cutout" || op === "slab" || op === "align" || op === "convolve";
+  const carryOp: CarryOp | null = !remote && cutsOrResamples ? op : null;
+  const { masks } = useMasks(takesMasks || cutsOrResamples ? dataset.id : null);
   const [policy, setPolicy] = useState<PolicyChoice>({});
   const [carry, setCarry] = useState<CarryState>({});
   const carryRequired = op === "align" || op === "convolve"; // a resampling or a smoothing wants every mask decided; a cut leaves behind what is not chosen
@@ -140,6 +141,7 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
       ) : null}
       {takesMasks && masks && masks.length > 0 ? <MaskPolicies masks={masks} choice={policy} onChange={setPolicy} /> : null}
       {carryOp && masks && masks.length > 0 ? <MaskCarry masks={masks} state={carry} onChange={setCarry} op={carryOp} required={carryRequired} /> : null}
+      {remote && cutsOrResamples && masks && masks.length > 0 ? <p className={s.note} data-testid="no-carry-on-host">A job on the host does not carry this file's masks into its result yet: they stay with this file. Make them again on the result, where it is registered.</p> : null}
       <Button variant="primary" disabled={busy || badWeight(policy) || (carryOp !== null && !!masks && carryUndecided(masks, carry, carryRequired)) || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0))} onClick={go}>
         {busy ? "Working…" : remote ? "Create a job on the host" : op === "stats" ? "Compute statistics" : "Create the new file"}
       </Button>

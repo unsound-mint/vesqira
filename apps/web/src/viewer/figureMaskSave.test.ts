@@ -11,7 +11,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgo=";
 const sent: FigureRequest[] = [];
 const composed: { masks?: { type: string; label: string; d: string }[]; captions: string[] }[] = [];
 const mask = (over: Partial<Mask>): Mask => ({
-  id: 7, datasetId: 3, type: "saturated", name: "Bright", width: 10, height: 10, channels: 0, flagged: 2, total: 100, tier: "declared", mappingVersion: "", method: "computed",
+  id: 7, datasetId: 3, hostId: 0, type: "saturated", name: "Bright", width: 10, height: 10, channels: 0, flagged: 2, total: 100, tier: "declared", mappingVersion: "", method: "computed",
   rule: { rule: "value >= 100" }, meaning: "", author: "user", createdAt: "", sourceIdentity: "", fileSize: 1, sha256: "ab".repeat(32), stale: false, ...over,
 });
 let listed: Mask[] = [];

@@ -133,6 +133,6 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 	if unit {
 		out.Live = append(out.Live, "Open views, readouts, spectra, conversions and figure limits from now on use the corrected unit and say it is a correction.")
 	}
-	out.Notes = []string{"Analyses run as jobs on a host would read the file's own header, so Vesqira refuses to draft one for a dataset with corrections in force. VGT and ROHSA jobs read their input files as they are and never see corrections."}
+	out.Notes = []string{"Analyses drafted as jobs on a host from now on are given these corrections, and their result is registered only if the job says it applied them; a job drafted before keeps the state it was drafted with. VGT and ROHSA jobs read their input files as they are and never see corrections."}
 	return out, nil
 }

@@ -1031,7 +1031,7 @@ export interface paths {
         put?: never;
         /**
          * Make a typed mask of a dataset as a derived file
-         * @description The dataset's file is never changed. 409 for a file on another host. A mask of type other needs a description; the type missing is computed from the data and cannot be declared.
+         * @description The dataset's file is never changed. A file on a host gets its mask on that host, written in the host's derived folder by the host's copy of the program (ADR 0064); a noise map or mask file must be on the same machine as the dataset (409). A mask of type other needs a description; the type missing is computed from the data and cannot be declared.
          */
         post: operations["owner_s_createMask_post_api_datasets_id_masks"];
         delete?: never;
@@ -2174,7 +2174,7 @@ export interface paths {
         };
         /**
          * One plane of a mask, for the viewer's hatch overlay
-         * @description The same frame as a data plane (uint32 header length, JSON header, payload) with a uint8 payload, row 0 = FITS y 1, 1 = flagged. A mask of one plane answers the same for every channel.
+         * @description The same frame as a data plane (uint32 header length, JSON header, payload) with a uint8 payload, row 0 = FITS y 1, 1 = flagged. A mask of one plane answers the same for every channel. A mask on a host is read there by the host's worker; only this plane crosses (ADR 0064).
          */
         get: operations["owner_s_maskPlane_get_api_masks_id_plane"];
         put?: never;
@@ -3451,7 +3451,7 @@ export interface paths {
         put?: never;
         /**
          * Write the current version as an ordinary FITS file and register it as a derived dataset
-         * @description The same window the viewer reads through, with the shifted WCS, the corrections in force as HISTORY and BUNIT. A file on another host is refused (409); 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone.
+         * @description The same window the viewer reads through, with the shifted WCS, the corrections in force as HISTORY and BUNIT. A subset of a file on a host is written on that host, in its derived folder, and registered there (ADR 0064); carrying masks into it is refused there (409); 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone.
          */
         post: operations["owner_s_materialiseSubset_post_api_subsets_sid_materialise"];
         delete?: never;
@@ -7526,6 +7526,11 @@ export interface components {
             /** Format: int64 */
             datasetId: number;
             /**
+             * Format: int64
+             * @description Where the mask file lives: 0 for this computer, otherwise the host whose derived folder holds it, next to the dataset's file (ADR 0064). Its bytes stay there.
+             */
+            hostId: number;
+            /**
              * @description missing: no value in the file (NaN, BLANK), computed and never declared. Zero is a value and is never `missing`.
              * @enum {string}
              */
@@ -10767,7 +10772,7 @@ export interface operations {
                 cx?: number;
                 cy?: number;
                 r?: number;
-                /** @description A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). Masks are applied to files read on this computer (409 for a host). */
+                /** @description A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). For a file on a host the masks are applied by the host's worker, where the mask files live (ADR 0064). */
                 mask?: string[];
             };
             header?: never;
@@ -11114,7 +11119,7 @@ export interface operations {
                 cx?: number;
                 cy?: number;
                 r?: number;
-                /** @description A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). Masks are applied to files read on this computer (409 for a host). */
+                /** @description A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). For a file on a host the masks are applied by the host's worker, where the mask files live (ADR 0064). */
                 mask?: string[];
             };
             header?: never;
@@ -14881,7 +14886,7 @@ export interface operations {
                 cx?: number;
                 cy?: number;
                 r?: number;
-                /** @description A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). Masks are applied to files read on this computer (409 for a host). */
+                /** @description A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). For a file on a host the masks are applied by the host's worker, where the mask files live (ADR 0064). */
                 mask?: string[];
             };
             header?: never;

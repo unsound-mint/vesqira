@@ -25,8 +25,9 @@ const ruleText = (m: Mask): string => {
  * plane; applying it is decided per analysis, per mask. Zero is a value: no mask here flags it unless its rule says so.
  */
 export function MasksPanel({ dataset, datasets }: { dataset: Dataset; datasets: Dataset[] }) {
-  const local = dataset.hostId === 0 && !isCatalog(dataset);
-  const { masks, error } = useMasks(local ? dataset.id : null);
+  const image = !isCatalog(dataset);
+  const onHost = dataset.hostId !== 0;
+  const { masks, error } = useMasks(image ? dataset.id : null);
   const shown = useShownMasks(dataset.id);
   const [method, setMethod] = useState<Method>("low_snr");
   const [f, setF] = useState<Record<string, string>>({ sigmaKind: "mad", k: "3", nonzero: "flagged", type: "invalid" });
@@ -35,8 +36,9 @@ export function MasksPanel({ dataset, datasets }: { dataset: Dataset; datasets: 
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: string) => setF({ ...f, [k]: v });
-  if (!local) return <p className={s.note}>Masks are made on this computer, for an image read here.</p>;
-  const sameHost = datasets.filter((d) => d.id !== dataset.id && d.hostId === 0 && !isCatalog(d) && !d.archived);
+  if (!image) return <p className={s.note}>Masks are made for images and cubes, not for a point catalog.</p>;
+  // a noise map or a mask file is read by the program that reads this file, so it must be on the same machine (ADR 0064)
+  const sameHost = datasets.filter((d) => d.id !== dataset.id && d.hostId === dataset.hostId && !isCatalog(d) && !d.archived);
 
   async function loadRegions() {
     setRegs((await listSavedRegions(dataset.id)).filter((r) => !isLine(r)));
@@ -84,6 +86,7 @@ export function MasksPanel({ dataset, datasets }: { dataset: Dataset; datasets: 
   return (
     <div className={s.wrap}>
       <p className={s.note}>A mask flags pixels for a stated reason and changes nothing in the data. Pixels with no value are their own type, computed from the file; a value of zero is a value and is never flagged as missing. Each analysis says what to do with each mask.</p>
+      {onHost ? <p className={s.note} data-testid="masks-on-host">This file lives on a host: its masks are made and kept there, next to the file, and only the hatch of the plane you look at comes to this computer.</p> : null}
       {masks === null ? <p className={s.note}>Reading the masks…</p> : masks.length === 0 ? <p className={s.note}>No mask yet.</p> : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--sp-3)" }} aria-label="Masks">
           {masks.map((m) => (
@@ -96,7 +99,7 @@ export function MasksPanel({ dataset, datasets }: { dataset: Dataset; datasets: 
               <span className={s.note}>{ruleText(m)}{m.meaning ? ` Meaning: ${m.meaning}` : ""}</span>
               {m.sourceDataset ? <span className={s.note} data-testid="mask-source">Mask file: {m.sourceDataset.name}, a mask source for {dataset.name}. It stays registered; the explorer keeps it out of its list unless the file is used for anything else.</span> : null}
               {m.stale ?<span role="status" className={s.note}>The file changed since this mask was made from it: it is not applied until you make it again.</span> : null}
-              <div><Button type="button" onClick={() => void forget(m)}>Forget this mask</Button> <span className={s.note}>(its file stays on disk)</span></div>
+              <div><Button type="button" onClick={() => void forget(m)}>Forget this mask</Button> <span className={s.note}>{onHost ? "(its file stays on the host)" : "(its file stays on disk)"}</span></div>
             </li>
           ))}
         </ul>

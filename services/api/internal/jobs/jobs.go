@@ -1051,7 +1051,78 @@ type AnalysisSettings struct {
 	// A map the person declared as an axial orientation map (ADR 0042): its unit, its frame when declared, and its reliability
 	// map's absolute host path. align and convolve then resample the doubled angle and write result.reliability.fits.
 	AxialUnit, AxialFrame, Weights string
+	// Masks to apply (statistics and moment maps, ADR 0064): a JSON list of {path, type, policy[, weight]}, each path a mask file on this
+	// host. Corrections are the researcher's WCS and unit corrections for the input files (ADR 0061), a JSON object {path: {hash, bunit,
+	// wcs}} keyed by Input, Reference or Weights. Both land in the script inside single quotes: RenderAnalysis checks their shape and
+	// refuses a single quote, so nothing in them can end the quote.
+	Masks, Corrections string
 }
+
+// maskSpecKeys are the only keys a mask spec in a job script may carry: no name, rule or meaning (free text stays in the catalog).
+var maskSpecKeys = map[string]bool{"path": true, "type": true, "policy": true, "weight": true}
+
+// inertQuoted reports whether a JSON text can stand inside single quotes in the script: valid JSON, one line, no single quote.
+func inertQuoted(text string) bool {
+	return json.Valid([]byte(text)) && !strings.ContainsAny(text, "'\n\r\x00")
+}
+
+// checkJobMasks validates the Masks of an analysis job.
+func checkJobMasks(p AnalysisSettings) error {
+	if p.Masks == "" {
+		return nil
+	}
+	if p.Op != "stats" && p.Op != "moment" {
+		return fmt.Errorf("%w: masks are applied by statistics and moment maps", ErrInvalid)
+	}
+	var specs []map[string]any
+	if !inertQuoted(p.Masks) || json.Unmarshal([]byte(p.Masks), &specs) != nil || len(specs) == 0 || len(specs) > 16 {
+		return fmt.Errorf("%w: bad masks", ErrInvalid)
+	}
+	for _, sp := range specs {
+		for k := range sp {
+			if !maskSpecKeys[k] {
+				return fmt.Errorf("%w: bad masks", ErrInvalid)
+			}
+		}
+		path, _ := sp["path"].(string)
+		typ, _ := sp["type"].(string)
+		pol, _ := sp["policy"].(string)
+		if !ValidPath(path) || !wordRe.MatchString(typ) || (pol != "exclude" && pol != "keep" && pol != "weight") {
+			return fmt.Errorf("%w: bad masks", ErrInvalid)
+		}
+		if w, ok := sp["weight"]; ok {
+			if f, isNum := w.(float64); !isNum || f < 0 || f > 1 {
+				return fmt.Errorf("%w: bad masks", ErrInvalid)
+			}
+		}
+	}
+	return nil
+}
+
+// checkJobCorrections validates the Corrections of an analysis job: an object keyed by the job's own input files.
+func checkJobCorrections(p AnalysisSettings) error {
+	if p.Corrections == "" {
+		return nil
+	}
+	var m map[string]map[string]any
+	if !inertQuoted(p.Corrections) || json.Unmarshal([]byte(p.Corrections), &m) != nil || len(m) == 0 {
+		return fmt.Errorf("%w: bad corrections", ErrInvalid)
+	}
+	for k, st := range m {
+		if k == "" || (k != p.Input && k != p.Reference && k != p.Weights) {
+			return fmt.Errorf("%w: corrections name a file the job does not read", ErrInvalid)
+		}
+		if h, _ := st["hash"].(string); !hexRe.MatchString(h) {
+			return fmt.Errorf("%w: bad corrections", ErrInvalid)
+		}
+	}
+	return nil
+}
+
+var (
+	wordRe = regexp.MustCompile(`^[a-z_]{1,32}$`)
+	hexRe  = regexp.MustCompile(`^[0-9a-f]{16,64}$`)
+)
 
 var (
 	pyRe       = regexp.MustCompile(`^[A-Za-z0-9_./~-]{1,200}$`)
@@ -1079,6 +1150,12 @@ func RenderAnalysis(p AnalysisSettings) (string, error) {
 	case p.AxialUnit != "" && p.AxialUnit != "deg" && p.AxialUnit != "rad", p.AxialFrame != "" && p.AxialFrame != "pixel" && p.AxialFrame != "sky",
 		p.Weights != "" && !ValidPath(p.Weights), p.AxialUnit == "" && (p.AxialFrame != "" || p.Weights != ""):
 		return "", fmt.Errorf("%w: bad orientation declaration", ErrInvalid)
+	}
+	if err := checkJobMasks(p); err != nil {
+		return "", err
+	}
+	if err := checkJobCorrections(p); err != nil {
+		return "", err
 	}
 	var args strings.Builder
 	keys := make([]string, 0, len(p.Args))
@@ -1113,6 +1190,12 @@ func RenderAnalysis(p AnalysisSettings) (string, error) {
 			fmt.Fprintf(&args, " --weights %s", p.Weights)
 		}
 		args.WriteString(" --rel-out \"$out/result.reliability.fits\"")
+	}
+	if p.Masks != "" {
+		fmt.Fprintf(&args, " --masks '%s'", p.Masks) // checked above: valid JSON, no single quote, no newline
+	}
+	if p.Corrections != "" {
+		fmt.Fprintf(&args, " --corrections '%s'", p.Corrections)
 	}
 	fmt.Fprintf(&b, "%s -P \"%s/analysis.py\" %s --input %s%s%s --out \"$out/result.fits\" > \"$out/result.json\"\n", p.Python, p.ScriptDir, p.Op, p.Input, ref, args.String())
 	return b.String(), nil

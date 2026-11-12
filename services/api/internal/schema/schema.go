@@ -43,7 +43,8 @@ import (
 // Version 23: a researcher's WCS and unit corrections, an append-only history per dataset (dataset_corrections; ADR 0061).
 // Version 24: saved views of the runs table (run_views; ADR 0062).
 // Version 25: virtual subsets, a saved window onto a dataset with an append-only history of versions (subsets, subset_versions; ADR 0063).
-const Version = 25
+// Version 26: a mask records the machine its file lives on (masks.host_id, 0 for this computer; ADR 0064).
+const Version = 26
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -77,6 +78,16 @@ var migrations = []Migration{
 	{To: 23, Name: "WCS and unit corrections", Up: correctionsTable},
 	{To: 24, Name: "saved run views", Up: savedRunViews},
 	{To: 25, Name: "virtual subsets", Up: subsetsTables},
+	{To: 26, Name: "masks on a host", Up: masksHost},
+}
+
+// masksHost records where a mask file lives (ADR 0064): 0 is this computer, which every existing mask is (masks were made only for
+// files read here). A catalog without the masks table gets it from MasksTable, which already has the column.
+func masksHost(tx *sql.Tx) error {
+	if _, err := tx.Exec(MasksTable); err != nil {
+		return err
+	}
+	return AddColumn(tx, "masks", "host_id", "INTEGER NOT NULL DEFAULT 0")
 }
 
 // SubsetsTables are the virtual subsets of a dataset (ADR 0063): `subsets` is the identity (which source it is a window onto) and
@@ -148,7 +159,8 @@ func boardLayoutGrid(tx *sql.Tx) error {
 
 // MasksTable is the table of typed masks (ADR 0055): one row per derived mask file, with what the mask is for (the dataset), what
 // it means (type, rule, meaning), how it was made (method, author, tier) and which bytes it was made from and is (source and own
-// identity). The masks package creates it for a fresh install and the migration for an upgraded one, from this one text.
+// identity). host_id is the machine the file lives on (0: this computer; a host's id: the host's derived folder, ADR 0064). The masks
+// package creates it for a fresh install and the migration for an upgraded one, from this one text.
 const MasksTable = `CREATE TABLE IF NOT EXISTS masks(
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	dataset_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
@@ -158,7 +170,8 @@ const MasksTable = `CREATE TABLE IF NOT EXISTS masks(
 	tier TEXT NOT NULL, mapping_version TEXT NOT NULL DEFAULT '',
 	method TEXT NOT NULL, rule TEXT NOT NULL, meaning TEXT NOT NULL DEFAULT '', author TEXT NOT NULL, created_at INTEGER NOT NULL,
 	source_size INTEGER NOT NULL, source_mtime INTEGER NOT NULL, source_identity TEXT NOT NULL DEFAULT '',
-	file_size INTEGER NOT NULL, file_mtime INTEGER NOT NULL, sha256 TEXT NOT NULL)`
+	file_size INTEGER NOT NULL, file_mtime INTEGER NOT NULL, sha256 TEXT NOT NULL,
+	host_id INTEGER NOT NULL DEFAULT 0)`
 
 // AddTierColumns adds the tier and mapping_version columns of ADR 0055 to a declaration table (a default of "declared" suits
 // every row the researcher wrote; tiersAndMasks corrects the rows a rule wrote).

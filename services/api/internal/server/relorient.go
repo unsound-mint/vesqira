@@ -154,7 +154,7 @@ func (s *Server) orientationSide(r *http.Request, d catalog.Dataset, prefix, whi
 		return nil, 422, which + ": " + strings.Join(missing, " and ") + " must be declared before it can be compared with another tracer; the file does not say it"
 	}
 	if d.HostID != 0 {
-		return nil, 409, which + " lives on another host: relative orientation runs on this computer only for now; copy the map here or compare it on the host"
+		return nil, 409, which + " lives on a host, and relative orientation is computed on this computer only (it is not built as a job on a host): download the map with Transfers, register the copy, and compare that"
 	}
 	if n := nonDegenerateAxes(d.Header); n != 2 {
 		return nil, 422, which + " is not a single plane"
