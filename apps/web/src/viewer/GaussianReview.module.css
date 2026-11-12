@@ -95,6 +95,18 @@
   background: var(--bg-2);
 }
 
+.stack {
+  position: relative;
+}
+
+.overlay {
+  position: absolute;
+  inset: var(--bw);
+  width: calc(100% - 2 * var(--bw));
+  height: calc(100% - 2 * var(--bw));
+  pointer-events: none;
+}
+
 .canvas:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

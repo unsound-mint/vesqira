@@ -205,7 +205,7 @@ export function GaussianReview({ st, v, cut }: { st: ComponentsState; v: Viewer;
           </div>
           {sel ? (
             <p role="status" className={s.note}>
-              Cell σ {rangeText(cellRange(shown.d.sigma_edges, sel.cell.s))}, centre {rangeText(cellRange(shown.d.v_edges, sel.cell.v))} {shown.d.axes.centre?.unit}: {sel.components.toLocaleString("en-US")} component{sel.components === 1 ? "" : "s"} in {sel.pixels.toLocaleString("en-US")} pixel{sel.pixels === 1 ? "" : "s"}. The pixels carry a checkerboard on the class maps below.
+              Cell σ {rangeText(cellRange(shown.d.sigma_edges, sel.cell.s))}, centre {rangeText(cellRange(shown.d.v_edges, sel.cell.v))} {shown.d.axes.centre?.unit}: {sel.components.toLocaleString("en-US")} component{sel.components === 1 ? "" : "s"} in {sel.pixels.toLocaleString("en-US")} pixel{sel.pixels === 1 ? "" : "s"}. The pixels carry stripes on the class maps below.
             </p>
           ) : (
             <p className={s.note}>Click a cell (or move with the arrow keys and press Enter) to mark its pixels on the class maps.</p>

@@ -127,11 +127,11 @@ describe("the review panel", () => {
     await user.click(await waitFor(() => container.querySelector('[data-cell="1,1"]')!));
     await screen.findByText(/3 components in 2 pixels/);
     await user.click(screen.getByRole("button", { name: "Make the class maps" }));
-    expect((await screen.findAllByText(/Checkerboard: pixels of the selected cell/)).length).toBe(2);
+    expect((await screen.findAllByText(/Stripes: pixels of the selected cell/)).length).toBe(2);
     api.plane.mockImplementation(() => Promise.resolve({ head: { width: 4, height: 2 }, data: new Float32Array(8) }));
     await user.click(screen.getByRole("button", { name: "Make the maps again" }));
     expect(await screen.findByText(/not on the same grid/)).toBeInTheDocument();
-    expect(screen.queryByText(/Checkerboard/)).toBeNull();
+    expect(screen.queryByText(/Stripes: pixels/)).toBeNull();
   });
   it("disables the weights the crop's unit cannot support", () => {
     render(<GaussianReview st={{ run: { ...run, cropBunit: "Jy/beam" }, setEnabled } as unknown as ComponentsState} v={viewer} cut={2.03} />);

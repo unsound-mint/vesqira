@@ -49,11 +49,12 @@ type Props = {
 
 /**
  * One width-class map on a log scale. NaN (no valid component there) stays the page background, zero (components there, none in this
- * class) is a flat dark grey, and the pixels of a selected diagram cell carry a checkerboard, so the highlight is a pattern and not a colour.
+ * class) is a flat dark grey, and the pixels of a selected diagram cell carry stripes drawn over the values, so the highlight is a pattern and not a colour.
  * Click, or arrow keys and Enter, pin a pixel in the viewer.
  */
 export function ClassMapView({ title, unit, width, height, data, mask, pinned, onPick }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const over = useRef<HTMLCanvasElement>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const range = useMemo(() => positiveRange(data), [data]);
   const counts = useMemo(() => countPixels(data), [data]);
@@ -76,7 +77,6 @@ export function ClassMapView({ title, unit, width, height, data, mask, pinned, o
           const i = Math.round(Math.min(1, Math.max(0, t)) * 255) * 3;
           rgb = [map[i]!, map[i + 1]!, map[i + 2]!];
         } else rgb = [58, 58, 62];
-        if (mask && mask[at]) rgb = (x + y) & 1 ? [255, 255, 255] : [0, 0, 0];
         if (rgb) {
           img.data[o] = rgb[0];
           img.data[o + 1] = rgb[1];
@@ -86,13 +86,64 @@ export function ClassMapView({ title, unit, width, height, data, mask, pinned, o
       }
     }
     g.putImageData(img, 0, 0);
-    const mark = (p: { x: number; y: number }, style: string) => {
-      g.strokeStyle = style;
-      g.lineWidth = Math.max(1, width / 160);
-      g.strokeRect(p.x + 0.5 - 1.5, height - 1 - p.y + 0.5 - 1.5, 3, 3);
-    };
-    if (pinned && pinned.x < width && pinned.y < height) mark(pinned, "#ff3b30");
-  }, [data, mask, pinned, range, map, width, height]);
+  }, [data, range, map, width, height]);
+
+  // The highlight and the pin are drawn at screen resolution over the data (never into it), so the values stay visible under the
+  // stripes and a marker keeps its size whether the crop is 6 pixels wide or 2000.
+  const [box, setBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setBox({ w: cv.clientWidth, h: cv.clientHeight }));
+    ro.observe(cv);
+    return () => ro.disconnect();
+  }, []);
+  useEffect(() => {
+    const ov = over.current;
+    const g = ov?.getContext("2d");
+    if (!ov || !g || box.w === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    ov.width = Math.round(box.w * dpr);
+    ov.height = Math.round(box.h * dpr);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, box.w, box.h);
+    const sx = box.w / width;
+    const sy = box.h / height;
+    if (mask) {
+      const area = new Path2D();
+      for (let y = 0; y < height; y++) {
+        let x = 0;
+        while (x < width) {
+          if (!mask[y * width + x]) { x++; continue; }
+          const x0 = x;
+          while (x < width && mask[y * width + x]) x++;
+          area.rect(x0 * sx, (height - 1 - y) * sy, (x - x0) * sx, sy);   // one rectangle per run of marked pixels in a row
+        }
+      }
+      g.save();
+      g.clip(area);
+      g.lineWidth = 3;
+      g.strokeStyle = "rgba(0, 0, 0, 0.85)";
+      g.beginPath();
+      for (let d = -box.h; d < box.w; d += 7) { g.moveTo(d, box.h); g.lineTo(d + box.h, 0); }
+      g.stroke();
+      g.lineWidth = 1.25;
+      g.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      g.stroke();
+      g.restore();
+    }
+    if (pinned && pinned.x < width && pinned.y < height) {
+      const cx = (pinned.x + 0.5) * sx;
+      const cy = (height - 1 - pinned.y + 0.5) * sy;
+      const r = Math.max(5, Math.min(sx, sy) / 2 + 2);
+      g.lineWidth = 3.5;
+      g.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      g.strokeRect(cx - r, cy - r, 2 * r, 2 * r);
+      g.lineWidth = 1.75;
+      g.strokeStyle = "#ff3b30";
+      g.strokeRect(cx - r, cy - r, 2 * r, 2 * r);
+    }
+  }, [mask, pinned, box, width, height]);
 
   const pick = (e: MouseEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -117,6 +168,7 @@ export function ClassMapView({ title, unit, width, height, data, mask, pinned, o
   return (
     <figure className={s.map}>
       <figcaption>{title}</figcaption>
+      <div className={s.stack}>
       <canvas
         ref={ref}
         width={width}
@@ -129,9 +181,11 @@ export function ClassMapView({ title, unit, width, height, data, mask, pinned, o
         onClick={pick}
         onKeyDown={key}
       />
+      <canvas ref={over} className={s.overlay} aria-hidden="true" />
+      </div>
       <p className={s.note}>
         {range ? `log scale, ${num(10 ** range.lo)} to ${num(10 ** range.hi)} ${unit}` : `no pixel above zero (${unit})`}. Grey: components there, none in this class
-        ({counts.zero.toLocaleString("en-US")} pixels). Blank: no valid component ({counts.nan.toLocaleString("en-US")}).{mask ? " Checkerboard: pixels of the selected cell." : ""}
+        ({counts.zero.toLocaleString("en-US")} pixels). Blank: no valid component ({counts.nan.toLocaleString("en-US")}).{mask ? " Stripes: pixels of the selected cell." : ""}
       </p>
     </figure>
   );
