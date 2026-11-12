@@ -3786,6 +3786,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{id}/rerun-on-input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Preview running a recorded VGT or ROHSA configuration on another cube: what is carried over and what changes, or why it is refused. Stores nothing (jobs are local-mode only) */
+        get: operations["owner_s_previewInputRerun_get_api_runs_id_rerun_on_input"];
+        put?: never;
+        /** Draft a job that runs a recorded configuration on another cube: the settings, code folder and resources are kept, only the input is replaced; the draft records the input's identity and the source run (jobs are local-mode only; nothing is submitted) */
+        post: operations["owner_s_createInputRerun_post_api_runs_id_rerun_on_input"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{id}/restore": {
         parameters: {
             query?: never;
@@ -9843,6 +9863,63 @@ export interface components {
             /** @description The companion sigma_P map; null if it could not be registered */
             sigmaP: components["schemas"]["Dataset"] | null;
             summary: components["schemas"]["HealpixSampleSummary"];
+        };
+        /** @description What the catalog knew about the chosen input cube when the draft was made (ADR 0053). sampledFp is sampled/1, which is not a hash of the whole file; fullSha256 is the SHA-256 of every byte. Either is empty when none was computed; neither is computed for a draft. */
+        RerunInputIdentity: {
+            datasetId: number;
+            name: string;
+            hostId: number;
+            path: string;
+            sizeBytes: number;
+            /** @description seconds since 1970 */
+            modifiedAt: number;
+            sampledFp: string;
+            fullSha256: string;
+        };
+        RerunOnInputRequest: {
+            /** @description the cube to run the recorded configuration on: a registered FITS cube on the host the recorded run's job ran on */
+            datasetId: number;
+            /** @description job name; a default is suggested from the run and the cube */
+            name?: string;
+            /**
+             * @description best_effort (the default) or adapted; strict is refused because it insists on the same input file
+             * @enum {string}
+             */
+            rerunMode?: "best_effort" | "adapted";
+        };
+        /** @description What a configuration run on another cube carries over from the recorded run and what changes (ADR 0014 amendment). Nothing is guessed, converted or silently adjusted. */
+        RerunOnInputSummary: {
+            sourceRunId: number;
+            sourceRunName: string;
+            sourceJobId: number;
+            /** @enum {string} */
+            template: "vgt" | "rohsa";
+            hostId: number;
+            /** @enum {string} */
+            mode: "best_effort" | "adapted";
+            name: string;
+            /** @description vesqira-config/1: SHA-256 of the whole config with the overrides applied and the input and output paths left out */
+            sourceConfigHash: string;
+            /** @description the draft's own hash; equal to sourceConfigHash by construction */
+            configHash: string;
+            input: components["schemas"]["RerunInputIdentity"];
+            /** @description the input path in the recorded config; empty when it named none */
+            previousInput: string;
+            changed: components["schemas"]["RerunSettingChange"][];
+            carried: {
+                key: string;
+                value: string;
+            }[];
+            /** @description lines of the source job's script edited by hand; the draft is rendered from settings, so they are not carried */
+            sourceEditedLines: number;
+            notes: string[];
+        };
+        RerunOnInputCreated: {
+            /** @description the stored draft job (nothing is submitted) */
+            job: {
+                [key: string]: unknown;
+            };
+            summary: components["schemas"]["RerunOnInputSummary"];
         };
     };
     responses: never;
@@ -16679,6 +16756,94 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_previewInputRerun_get_api_runs_id_rerun_on_input: {
+        parameters: {
+            query: {
+                datasetId: number;
+                name?: string;
+                rerunMode?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RerunOnInputSummary"];
+                };
+            };
+            /** @description no such run */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the run kept no settings, or a setting cannot hold for the chosen cube; the sentence says which */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createInputRerun_post_api_runs_id_rerun_on_input: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RerunOnInputRequest"];
+            };
+        };
+        responses: {
+            /** @description the draft and its summary */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RerunOnInputCreated"];
+                };
+            };
+            /** @description no such run */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description refused, with a sentence: no kept settings, a setting that does not fit the cube, a cube on another host, and so on */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

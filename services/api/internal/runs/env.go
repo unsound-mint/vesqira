@@ -67,6 +67,7 @@ var EnvKeys = []envKey{
 	{"input.size_bytes", "Input file size (bytes)", digits, "strict"},
 	{"input.mtime_epoch", "Input file modification time (seconds since 1970)", digits, "strict"},
 	{"input.sampled_fp", "Input content fingerprint (sampled/1, not a hash of the whole file; measured when the run was imported, accepted only if the file's size and time still matched what the job saw)", hex64, "strict"},
+	{"input.full_sha256", "Input file SHA-256 (every byte; computed by the job itself before the program started, with the file's size and time equal before and after)", hex64, "strict"},
 	{"slurm.job_id", "Slurm job id", digits, ""},
 }
 

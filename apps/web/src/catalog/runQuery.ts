@@ -8,6 +8,7 @@ import { archivedMatches, tokenize, unquote } from "../ui/queryWords";
  * A word is one of
  *   `qc:passed`                        the researcher's assessment
  *   `status:completed`  `host:name`    where the run came from (from its job; an imported run records neither)
+ *   `config:3fa9c1`                    runs of one configuration (a prefix of the configuration hash: the same settings, whatever the input)
  *   `generated>=2026-08-01`            dates, as UTC days: `generated:2026-08-01`, `imported:2026-08-01..2026-08-31`
  *   `block_size=32`  `noise>=0.3`      a parameter, and when no parameter has that name, a declared result
  *   `block_size:16..64`  `am:..0.2`    an inclusive range (either end may be left open)
@@ -33,7 +34,7 @@ type Numeric = { op: Op } & { n: number } | { lo: number | null; hi: number | nu
 type Test = { num: Numeric; unit: string } | { text: string } | { invalid: true };
 
 export type Condition =
-  | { kind: "qc" | "status" | "host"; word: string; value: string }
+  | { kind: "qc" | "status" | "host" | "config"; word: string; value: string }
   | { kind: "date"; word: string; field: "generated" | "imported"; day: Day }
   | { kind: "value"; word: string; key: string; test: Test }
   | { kind: "text"; word: string };
@@ -44,7 +45,7 @@ const NUMBER = String.raw`[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?`;
 const WITH_UNIT = new RegExp(`^(${NUMBER})(.*)$`, "i");
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const WORD = /^([^<>=:]+)(<=|>=|=|<|>|:)(.*)$/;
-const RESERVED = new Set(["qc", "status", "host", "generated", "imported", "archived"]);
+const RESERVED = new Set(["qc", "status", "host", "config", "generated", "imported", "archived"]);
 
 const num = (s: string): number | null => {
   const n = Number(s);
@@ -104,7 +105,7 @@ export function parseRunQuery(q: string): Condition[] {
     }
     const op = m[2] ?? "";
     const rest = (m[3] ?? "").trim();
-    if (key === "qc" || key === "status" || key === "host") {
+    if (key === "qc" || key === "status" || key === "host" || key === "config") {
       if (op === ":") out.push({ kind: key, word: raw, value: rest.toLowerCase() });
       else out.push({ kind: "text", word: raw.toLowerCase() });
     } else if (key === "generated" || key === "imported") {
@@ -145,6 +146,8 @@ export function judge(r: Run, c: Condition, ctx: RunContext): Verdict {
       return ctx.status === "" ? "missing" : ctx.status.toLowerCase() === c.value ? "yes" : "no";
     case "host":
       return ctx.host === "" ? "missing" : ctx.host.toLowerCase() === c.value ? "yes" : "no";
+    case "config":
+      return !r.configHash ? "missing" : c.value !== "" && r.configHash.startsWith(c.value) ? "yes" : "no";
     case "date": {
       const d = dayOf(c.field === "generated" ? r.generatedAt : r.importedAt);
       if (d === null) return "missing";

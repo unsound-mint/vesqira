@@ -161,6 +161,19 @@ func envFacts(env []EnvFact) []Fact {
 	return []Fact{
 		group("environment", "Software environment", "julia.version", "julia.manifest_sha256", "python.version", "modules.sha256"),
 		group("machine", "Machine", "node.name", "cpu.model"),
-		group("input_file", "Input file as observed", "input.size_bytes", "input.mtime_epoch"),
+		group("input_file", "Input file as observed", inputKeys(env)...),
 	}
+}
+
+// inputKeys are the facts about the input file the run page lists. The full hash is listed only for a run whose job tried to take
+// it (verified, or unresolved with a reason of its own): most jobs do not hash their input, and "not reported" on every run would
+// be noise.
+func inputKeys(env []EnvFact) []string {
+	keys := []string{"input.size_bytes", "input.mtime_epoch"}
+	for _, f := range env {
+		if f.Key == "input.full_sha256" && (f.Status == EnvVerified || f.Reason != "the job did not report it") {
+			keys = append(keys, f.Key)
+		}
+	}
+	return keys
 }

@@ -168,6 +168,22 @@ func (s *Server) rerunCheck(ctx context.Context, j jobs.Job, h hosts.Host) (reru
 	if out.Settings == nil {
 		out.Settings = []settingChange{}
 	}
+	if rec := j.InputRerunOf(); rec != nil {
+		// A configuration run on another cube: the one change is the input, said the same way for both templates (a ROHSA config's
+		// input is not among the settings compared above), with the notes the draft was made with.
+		kept := out.Settings[:0]
+		for _, c := range out.Settings {
+			if c.Key != "input.input_file" && c.Key != "input.input" {
+				kept = append(kept, c)
+			}
+		}
+		in := settingChange{Key: "input", Now: strp(rec.Input.Path)}
+		if rec.PreviousInput != "" {
+			in.Parent = strp(rec.PreviousInput)
+		}
+		out.Settings = append([]settingChange{in}, kept...)
+		out.Notes = append(out.Notes, rec.Notes...)
+	}
 	if !out.SettingsKnown {
 		out.Notes = append(out.Notes, "The parent run's settings were not kept (it was imported), so changed settings cannot be marked.")
 	}
@@ -179,7 +195,7 @@ func (s *Server) rerunCheck(ctx context.Context, j jobs.Job, h hosts.Host) (reru
 		return out, &apiErr{404, "the run this job repeats does not exist"}
 	}
 	cfg, _ := jobs.EmbeddedConfig(j.Script)
-	input, _ := jobs.ConfigPaths(cfg)
+	input := jobs.InputPathOf(j.Template, cfg)
 	if !jobs.ValidPath(input) { // a relative or unusual path is not interpolated; the facts that need it come back unresolved
 		input = ""
 	}

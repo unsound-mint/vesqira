@@ -185,7 +185,7 @@ func (s *Server) inputFingerprint(ctx context.Context, j jobs.Job, h hosts.Host,
 		return no("the job did not record the input file's size and time, so a later measurement cannot be tied to it")
 	}
 	cfg, _ := jobs.EmbeddedConfig(j.Script)
-	path, _ := jobs.ConfigPaths(cfg)
+	path := jobs.InputPathOf(j.Template, cfg)
 	if !jobs.ValidPath(path) {
 		return no("the input file is not a plain absolute path")
 	}

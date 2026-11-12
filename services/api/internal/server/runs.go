@@ -193,6 +193,45 @@ type runJSON struct {
 	// ParentComparison out.
 	RerunMode        *string           `json:"rerunMode"`
 	ParentComparison *parentComparison `json:"parentComparison"`
+	// ConfigHash identifies the configuration the run's job was rendered from, apart from its input and output paths
+	// (jobs.ConfigHash); null when the run's job kept no settings. Runs that share it ran the same configuration. InputRerun is
+	// set for a run made with "run this configuration on another cube": the source run, and the input as the catalog knew it.
+	ConfigHash *string         `json:"configHash"`
+	InputRerun *inputRerunView `json:"inputRerun"`
+}
+
+// inputRerunView is the record of a run made by running another run's configuration on a different cube.
+type inputRerunView struct {
+	SourceRunID       int64                   `json:"sourceRunId"`
+	SourceConfigHash  string                  `json:"sourceConfigHash"`
+	ConfigHash        string                  `json:"configHash"`
+	SameConfiguration bool                    `json:"sameConfiguration"`
+	PreviousInput     string                  `json:"previousInput"`
+	Input             jobs.RerunInputIdentity `json:"input"`
+	Notes             []string                `json:"notes"`
+}
+
+func inputRerunViewOf(l jobs.Lineage) *inputRerunView {
+	rec := l.InputRerun
+	if rec == nil {
+		return nil
+	}
+	notes := rec.Notes
+	if notes == nil {
+		notes = []string{}
+	}
+	return &inputRerunView{SourceRunID: rec.SourceRunID, SourceConfigHash: rec.SourceConfigHash, ConfigHash: rec.ConfigHash,
+		SameConfiguration: l.ConfigHash != "" && l.ConfigHash == rec.SourceConfigHash, PreviousInput: rec.PreviousInput, Input: rec.Input, Notes: notes}
+}
+
+// lineageOf is the lineage the runs list reads for every run, for one job.
+func lineageOf(j jobs.Job) jobs.Lineage {
+	l := jobs.Lineage{JobID: j.ID, ParentRunID: j.ParentRunID}
+	if req, ok := j.ConfigRequest(); ok {
+		l.ConfigHash, _ = jobs.ConfigHash(j.Template, req)
+		l.InputRerun = req.InputRerun
+	}
+	return l
 }
 
 // hintSource is what the runs list reads the registered files' names and sizes through (the catalog; a test counts calls).
@@ -227,7 +266,7 @@ func (s *Server) runView(ws workspace.ID, r runs.Run) runJSON {
 	mode := ""
 	if s.localJobs() != nil {
 		if j, err := s.localJobs().ForRun(r.ID); err == nil {
-			lin = map[int64]jobs.Lineage{r.ID: {JobID: j.ID, ParentRunID: j.ParentRunID}}
+			lin = map[int64]jobs.Lineage{r.ID: lineageOf(j)}
 			mode = j.RerunMode()
 		}
 	}
@@ -244,6 +283,11 @@ func (s *Server) runViewWith(ws workspace.ID, r runs.Run, lin map[int64]jobs.Lin
 	if l, ok := lin[r.ID]; ok {
 		id := l.JobID
 		out.JobID, out.ParentRunID = &id, l.ParentRunID
+		if l.ConfigHash != "" {
+			h := l.ConfigHash
+			out.ConfigHash = &h
+		}
+		out.InputRerun = inputRerunViewOf(l)
 	}
 	if r.InputName != "" && r.InputSizeBytes > 0 {
 		if id, ok := hints[catalog.HintKey{Name: r.InputName, Size: r.InputSizeBytes}]; ok {
@@ -445,6 +489,11 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 			text, code, _ := s.remoteText(ctx, h, req.ConfigPath)
 			cancel()
 			if code == 0 {
+				if req.InputRerun != nil { // the stored text names the new cube; compare the file with its input line the same
+					if t, err := jobs.SetInputFile(job.Template, text, jobs.InputPathOf(job.Template, req.BaseConfigText)); err == nil {
+						text = t
+					}
+				}
 				changed := strings.TrimRight(text, "\r\n") != strings.TrimRight(req.BaseConfigText, "\r\n")
 				out.ConfigChanged = &changed
 				if changed {

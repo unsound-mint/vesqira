@@ -1,5 +1,5 @@
-import { request as call } from "./http";
-import type { JobUsage } from "./jobs";
+import { postJSON, request as call } from "./http";
+import type { Job, JobUsage } from "./jobs";
 
 export type RunParam = { key: string; value: string; source: "config" | "run_parameters" | "parameters" | "run_trace" };
 /** psi, reliability, support, fit_rbar2 for a VGT run; the product name (component_g1_mu_kms, cube_model, ...) for a ROHSA run. */
@@ -61,6 +61,23 @@ export type Run = {
   /** How the draft repeated its parent run, and what both runs observed; null for a run that repeats nothing. */
   rerunMode?: RerunMode | null;
   parentComparison?: ParentComparison | null;
+  /** The configuration the run's job was rendered from, apart from its input and output paths (a SHA-256, hex); runs that share it ran the same configuration. Null when the job kept no settings. */
+  configHash?: string | null;
+  /** Set for a run made with "run this configuration on another cube": the run it repeats and the input as the catalog knew it. */
+  inputRerun?: InputRerunRecord | null;
+};
+
+export type RerunOnInputSummary = components["schemas"]["RerunOnInputSummary"];
+export type RerunInputIdentity = components["schemas"]["RerunInputIdentity"];
+export type InputRerunRecord = {
+  sourceRunId: number;
+  sourceConfigHash: string;
+  configHash: string;
+  /** The recorded hashes agree: it is the same configuration as the source run. */
+  sameConfiguration: boolean;
+  previousInput: string;
+  input: RerunInputIdentity;
+  notes: string[];
 };
 
 export type RerunRequest = {
@@ -110,3 +127,8 @@ export const getRerun = (id: number) => call<Rerun>(`/api/runs/${id}/rerun`);
 
 export const setRunControls = (id: number, c: ControlsDeclaration) =>
   call<Run>(`/api/runs/${id}/controls`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) });
+
+/** What running this run's recorded configuration on another cube would carry over and change; refused (an Error with the sentence) when it cannot be done. Stores nothing. */
+export const previewRerunOnInput = (runId: number, datasetId: number) => call<RerunOnInputSummary>(`/api/runs/${runId}/rerun-on-input?datasetId=${datasetId}`);
+/** Makes the draft job (nothing is submitted). */
+export const createRerunOnInput = (runId: number, datasetId: number) => postJSON<{ job: Job; summary: RerunOnInputSummary }>(`/api/runs/${runId}/rerun-on-input`, { datasetId });
