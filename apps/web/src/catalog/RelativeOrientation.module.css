@@ -176,3 +176,38 @@
   display: grid;
   gap: var(--sp-2);
 }
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: var(--bw) solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table thead th {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.table tbody th {
+  color: var(--text-2);
+  font-weight: 400;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}

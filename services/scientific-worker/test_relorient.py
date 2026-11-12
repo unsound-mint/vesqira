@@ -77,7 +77,8 @@ def decl(quantity="starlight_polarization", sigma=False, frame="icrs"):
 
 def args(**kw):
     base = dict(input=None, axial_unit="deg", axial_frame="pixel", axial_quantity="b_field", weights=None, catalog=None, declaration=None,
-                out=None, reference=None, ref_axial_unit="deg", ref_axial_frame="pixel", ref_axial_quantity="b_field", ref_weights=None, table_out=None)
+                out=None, reference=None, ref_axial_unit="deg", ref_axial_frame="pixel", ref_axial_quantity="b_field", ref_weights=None, table_out=None,
+                third=None, declared_unit_third=None)
     base.update(kw)
     return types.SimpleNamespace(**base)
 
@@ -557,6 +558,193 @@ class MapMode(Base):
         s1 = self.run_op(pa, pb, {"n_shifts": 50, "min_shift_deg": 0.1, "seed": 3})
         s2 = self.run_op(pa, pb, {"n_shifts": 50, "min_shift_deg": 0.1, "seed": 3})
         self.assertEqual(s1["null"], s2["null"])
+
+
+class Strata(Base):
+    """Relative orientation inside bins of a third map: expected numbers come from plain numpy loops written here."""
+    N = 40
+
+    def pair(self, a, b, third, bunit="cm-2", beam=True, name="c"):
+        n = a.shape[0]
+        extra = {"BMAJ": 3.0 / 60.0, "BMIN": 2.0 / 60.0, "BPA": 0.0} if beam else {}
+        h = header(n, n, 1.0 / 60.0, extra=extra)
+        ht = header(n, n, 1.0 / 60.0, extra={"BUNIT": bunit} if bunit else {})
+        return (write_map(self.p("a.fits"), a, h), write_map(self.p("b.fits"), b, h), write_map(self.p(f"{name}.fits"), third, ht))
+
+    def run_op(self, pa, pb, pc, params=None, **kw):
+        a = args(input=pa, reference=pb, third=pc, out=self.p("d.fits"), table_out=self.p("t.csv"), **kw)
+        return ro.op_maps(a, {"n_shifts": 0, **(params or {})})["summary"]
+
+    @staticmethod
+    def headless(d):
+        return (d + 90.0) % 180.0 - 90.0
+
+    def column(self):
+        """A column-density-like map without ties: increases to the right, with a tiny rise upwards."""
+        yy, xx = np.mgrid[0:self.N, 0:self.N]
+        return 1.0 + xx + yy / 1000.0
+
+    def test_alignment_that_depends_on_the_third_map_is_found_bin_by_bin_and_matches_a_hand_computation(self):
+        n = self.N
+        a = field(n, n, 5)
+        a[0:3, 0:5] = np.nan
+        third = self.column()
+        third[5, 30] = np.nan                                              # no value in the third map at one pixel
+        rnd = np.random.default_rng(3).uniform(0, 180, (n, n))
+        yy, xx = np.mgrid[0:n, 0:n]
+        b = np.where(xx >= n // 2, (a + np.random.default_rng(4).normal(0, 5, (n, n))) % 180.0, rnd)   # aligned at high column, random at low
+        a, b, third = (np.asarray(x, dtype="<f4").astype(float) for x in (a, b, third))     # the files hold float32
+        pa, pb, pc = self.pair(a, b, third)
+        s = self.run_op(pa, pb, pc, {"strata_bins": 4})
+        st = s["stratified"]
+        ok = np.isfinite(a) & np.isfinite(b)
+        have = ok & np.isfinite(third)
+        self.assertEqual(st["counts"], {"compared": int(ok.sum()), "third_map_missing": int((ok & ~np.isfinite(third)).sum()), "outside_edges": 0, "in_bins": int(have.sum())})
+        self.assertEqual(st["counts"]["third_map_missing"], 1)
+        self.assertEqual(st["third_map"]["unit"], "cm-2")
+        self.assertEqual(st["third_map"]["unit_source"], "file")
+        t = third[have]
+        order = np.argsort(t)
+        m = t.size
+        cuts = [0] + [(i * m) // 4 for i in range(1, 4)] + [m]
+        dv = self.headless(a - b)[have]
+        dcos = np.cos(np.radians(2 * dv))
+        self.assertEqual([r["n"] for r in st["bins"]], [cuts[i + 1] - cuts[i] for i in range(4)])
+        pix_area = (1.0 / 60.0) ** 2
+        for i, row in enumerate(st["bins"]):
+            idx = order[cuts[i]:cuts[i + 1]]
+            self.assertAlmostEqual(row["am"], dcos[idx].mean(), places=9)
+            self.assertAlmostEqual(row["prs"]["V"], dcos[idx].sum() / math.sqrt(idx.size / 2.0), places=6)
+            self.assertAlmostEqual(row["lo"], t[order[0]] if i == 0 else t[order[cuts[i]]], places=9)
+            self.assertAlmostEqual(row["hi"], t[order[-1]] if i == 3 else t[order[cuts[i + 1]]], places=9)
+            self.assertAlmostEqual(row["centre"], 0.5 * (row["lo"] + row["hi"]), places=12)
+            expect = idx.size * pix_area / (1.1331 * (3.0 / 60.0) * (2.0 / 60.0))
+            self.assertAlmostEqual(row["independent_beams"], expect, delta=expect * 1e-3)
+            self.assertAlmostEqual(row["uniform_reference"]["sigma_pixels"], 1.0 / math.sqrt(2.0 * idx.size), places=12)
+            self.assertEqual(row["uniform_reference"]["am"], 0.0)
+            lo, hi = row["bootstrap_am_16_84"]
+            self.assertLessEqual(lo, row["am"] + 1e-9)
+            self.assertGreaterEqual(hi, row["am"] - 1e-9)
+        # aligned where the column is high, no preferred orientation where it is low
+        self.assertGreater(st["bins"][3]["am"], 0.95)
+        self.assertLess(abs(st["bins"][0]["am"]), 4 * st["bins"][0]["uniform_reference"]["sigma_pixels"])
+        # the whole comparison is the one it would have been without a third map
+        base = self.run_op(pa, pb, None)
+        self.assertNotIn("stratified", base)
+        self.assertEqual(base["am"], s["am"])
+        self.assertEqual(base["counts"], s["counts"])
+
+    def test_one_and_179_degrees_in_a_bin_are_aligned_not_averaged_arithmetically(self):
+        n = self.N
+        a = np.full((n, n), 1.0)
+        yy, xx = np.mgrid[0:n, 0:n]
+        left = xx < n // 2
+        b = np.where(left, 179.0, 91.0)           # 1° vs 179° (2° apart) on the left, 1° vs 91° (perpendicular) on the right
+        third = np.where(left, 10.0, 90.0) + xx / 100.0
+        pa, pb, pc = self.pair(a, b, third)
+        s = self.run_op(pa, pb, pc, {"strata_edges": [0.0, 50.0, 100.0]})["stratified"]
+        lo, hi = s["bins"]
+        self.assertAlmostEqual(lo["am"], math.cos(math.radians(4.0)), places=9)       # Δψ = 2°, cos 2Δψ = cos 4°
+        self.assertAlmostEqual(hi["am"], -1.0, places=9)
+        self.assertAlmostEqual(lo["median_abs_dpsi_deg"], 2.0, places=9)
+        self.assertGreater(lo["am"], 0.99)        # the arithmetic mean of 1° and 179° is 90°: it would call this pair perpendicular
+        self.assertEqual(s["binning"]["mode"], "edges")
+        self.assertEqual(lo["lo"], 0.0)
+        self.assertEqual(hi["hi"], 100.0)
+
+    def test_equal_count_bins_never_split_tied_values(self):
+        n = 10
+        a = field(n, n, 8)
+        b = field(n, n, 9)
+        vals = np.concatenate([np.zeros(60), np.arange(1.0, 41.0)])
+        third = np.random.default_rng(1).permutation(vals).reshape(n, n)
+        a, b = (np.asarray(x, dtype="<f4").astype(float) for x in (a, b))
+        pa, pb, pc = self.pair(a, b, third)
+        s = self.run_op(pa, pb, pc, {"strata_bins": 5})["stratified"]
+        self.assertEqual([r["n"] for r in s["bins"]], [60, 20, 20])             # 5 asked; the 0s at ranks 20, 40 and 60 cannot be split
+        self.assertEqual(s["binning"]["asked"], 5)
+        self.assertEqual(s["binning"]["bins"], 3)
+        self.assertEqual(s["binning"]["edges"], [0.0, 1.0, 21.0, 40.0])
+        self.assertTrue(any("tied" in x for x in s["binning"]["notes"]))
+        self.assertEqual(sum(r["n"] for r in s["bins"]), 100)
+        d = self.headless(a - b)
+        self.assertAlmostEqual(s["bins"][0]["am"], float(np.cos(np.radians(2 * d[third == 0])).mean()), places=9)
+        # without ties, the same call gives equal bins and no note
+        t2 = np.random.default_rng(2).permutation(np.arange(100.0)).reshape(n, n)
+        pa, pb, pc = self.pair(a, b, t2, name="c2")
+        s2 = self.run_op(pa, pb, pc, {"strata_bins": 5})["stratified"]
+        self.assertEqual([r["n"] for r in s2["bins"]], [20] * 5)
+        self.assertEqual(s2["binning"]["notes"], [])
+
+    def test_missing_and_outside_pixels_are_left_out_and_counted(self):
+        n = self.N
+        a = field(n, n, 11)
+        b = field(n, n, 12)
+        a[0:4, 0:4] = np.nan                         # 16 pixels with no orientation in the first map
+        b[10:12, 10:14] = np.nan                     # 8 in the second
+        third = self.column()
+        third[20:22, 0:30] = np.nan                  # 60 with no value in the third map
+        pa, pb, pc = self.pair(a, b, third)
+        ok = np.isfinite(a) & np.isfinite(b)
+        s = self.run_op(pa, pb, pc, {"strata_edges": [5.0, 20.0, 30.0]})["stratified"]
+        c = s["counts"]
+        self.assertEqual(c["compared"], int(ok.sum()))
+        self.assertEqual(c["third_map_missing"], int((ok & ~np.isfinite(third)).sum()))
+        inside = ok & np.isfinite(third) & (third >= 5.0) & (third <= 30.0)
+        self.assertEqual(c["in_bins"], int(inside.sum()))
+        self.assertEqual(c["outside_edges"], int((ok & np.isfinite(third)).sum() - inside.sum()))
+        self.assertEqual(c["compared"], c["third_map_missing"] + c["outside_edges"] + c["in_bins"])
+        self.assertEqual(sum(r["n"] for r in s["bins"]), c["in_bins"])
+        self.assertEqual(s["third_map"]["pixels_without_value"], 60)
+        # an edge value belongs to the bin above it; the last bin is closed
+        vals = third[inside]
+        self.assertEqual(s["bins"][0]["n"], int(((vals >= 5.0) & (vals < 20.0)).sum()))
+        self.assertEqual(s["bins"][1]["n"], int(((vals >= 20.0) & (vals <= 30.0)).sum()))
+
+    def test_refusals_say_what_is_wrong_with_the_third_map_or_the_bins(self):
+        n = self.N
+        a, b, third = field(n, n, 1), field(n, n, 2), self.column()
+        pa, pb, pc = self.pair(a, b, third)
+        small = write_map(self.p("small.fits"), np.ones((10, 12)), header(12, 10, 1.0 / 60.0, extra={"BUNIT": "K"}))
+        with self.assertRaises(ro.Refusal) as e:
+            self.run_op(pa, pb, small)
+        self.assertIn("align", str(e.exception))
+        nounit = self.pair(a, b, third, bunit=None, name="nounit")[2]
+        with self.assertRaises(ro.Refusal) as e:
+            self.run_op(pa, pb, nounit)
+        self.assertIn("no brightness unit", str(e.exception))
+        # a unit its author declares fills the gap, and is labelled as theirs
+        st = self.run_op(pa, pb, nounit, declared_unit_third="1e20 cm-2")["stratified"]
+        self.assertEqual((st["third_map"]["unit"], st["third_map"]["unit_source"]), ("1e20 cm-2", "user"))
+        allnan = self.pair(a, b, np.full((n, n), np.nan), name="nan")[2]
+        with self.assertRaises(ro.Refusal) as e:
+            self.run_op(pa, pb, allnan)
+        self.assertIn("no value", str(e.exception))
+        for params, why in (({"strata_bins": 3, "strata_edges": [0, 1]}, "not both"), ({"strata_edges": [0, 2, 1]}, "strictly increasing"),
+                            ({"strata_edges": [1]}, "2 to"), ({"strata_edges": [0, float("nan")]}, "finite"), ({"strata_bins": 0}, "whole number"),
+                            ({"strata_bins": 2.5}, "whole number"), ({"strata_bins": True}, "whole number")):
+            with self.assertRaises(ro.Refusal) as e:
+                self.run_op(pa, pb, pc, params)
+            self.assertIn(why, str(e.exception), params)
+        with self.assertRaises(ro.Refusal) as e:
+            self.run_op(pa, pb, None, {"strata_bins": 3})
+        self.assertIn("no third map", str(e.exception))
+        # a bin with no pixel is reported empty, never as AM 0
+        s = self.run_op(pa, pb, pc, {"strata_edges": [0.0, 20.0, 500.0, 600.0]})["stratified"]
+        self.assertEqual(s["bins"][2]["n"], 0)
+        self.assertIsNone(s["bins"][2]["am"])
+        self.assertIsNone(s["bins"][2]["uniform_reference"])
+
+    def test_the_default_is_five_equal_count_bins_and_the_bootstrap_is_deterministic(self):
+        n = self.N
+        a, b, third = field(n, n, 21), field(n, n, 22), self.column()
+        pa, pb, pc = self.pair(a, b, third)
+        s1 = self.run_op(pa, pb, pc, {"seed": 9})["stratified"]
+        s2 = self.run_op(pa, pb, pc, {"seed": 9})["stratified"]
+        self.assertEqual(s1, s2)
+        self.assertEqual((s1["binning"]["mode"], s1["binning"]["bins"]), ("equal_count", 5))
+        other = self.run_op(pa, pb, pc, {"seed": 10})["stratified"]
+        self.assertNotEqual(s1["bins"][0]["bootstrap_am_16_84"], other["bins"][0]["bootstrap_am_16_84"])
 
 
 class Program(Base):
