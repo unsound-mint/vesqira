@@ -174,7 +174,7 @@ func (s *Server) boardPin(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
-	s.Audit.Record("job panel pinned", "board", id, "panel "+strconv.FormatInt(pos, 10)+" is now figure "+strconv.FormatInt(in.FigureID, 10))
+	s.Audit.RecordCtx(r.Context(), "job panel pinned", "board", id, "panel "+strconv.FormatInt(pos, 10)+" is now figure "+strconv.FormatInt(in.FigureID, 10))
 	b, err := s.boardByID(r.Context(), id, false)
 	if err != nil && !errors.Is(err, boards.ErrNotFound) {
 		log.Printf("boards: %v", err)

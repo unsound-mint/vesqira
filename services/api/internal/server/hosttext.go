@@ -139,7 +139,7 @@ func (s *Server) getHostText(w http.ResponseWriter, r *http.Request, rawID strin
 		return
 	}
 	// hash first, host and path last (the detail is cut at 300 characters); never the content.
-	s.Audit.Record("file opened for editing on host", "host", h.ID, "sha256 "+f.Sha256+" "+h.Name+":"+p)
+	s.Audit.RecordCtx(r.Context(), "file opened for editing on host", "host", h.ID, "sha256 "+f.Sha256+" "+h.Name+":"+p)
 	writeJSON(w, 200, asHostTextFile(h, p, f))
 }
 
@@ -175,7 +175,7 @@ func (s *Server) putHostText(w http.ResponseWriter, r *http.Request, in textSave
 		writeJSON(w, 409, textConflict{Error: "the file changed on the host since you opened it; nothing was written", Current: asHostTextFile(h, in.Path, *current)})
 		return
 	}
-	s.Audit.Record("file saved on host", "host", h.ID, "sha256 "+in.Base.Sha256+" -> "+saved.Sha256+" "+h.Name+":"+in.Path)
+	s.Audit.RecordCtx(r.Context(), "file saved on host", "host", h.ID, "sha256 "+in.Base.Sha256+" -> "+saved.Sha256+" "+h.Name+":"+in.Path)
 	writeJSON(w, 200, asHostTextFile(h, in.Path, saved))
 }
 

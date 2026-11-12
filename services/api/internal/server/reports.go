@@ -112,7 +112,7 @@ func (s *Server) createReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rep.LastAuthor == reports.AuthorAgent {
-		s.audit("report drafted by the agent", "report", rep.ID, fmt.Sprintf("%q created", rep.Title))
+		s.audit(r.Context(), "report drafted by the agent", "report", rep.ID, fmt.Sprintf("%q created", rep.Title))
 	}
 	writeJSON(w, 201, rep)
 }
@@ -322,7 +322,7 @@ func (s *Server) updateReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Author == reports.AuthorAgent {
-		s.audit("report drafted by the agent", "report", rep.ID, fmt.Sprintf("%q saved as revision %d", rep.Title, rep.Revision))
+		s.audit(r.Context(), "report drafted by the agent", "report", rep.ID, fmt.Sprintf("%q saved as revision %d", rep.Title, rep.Revision))
 	}
 	writeJSON(w, 200, rep)
 }
@@ -406,7 +406,7 @@ func (s *Server) withdrawReport(w http.ResponseWriter, r *http.Request) {
 		s.reportErr(w, err)
 		return
 	}
-	s.audit("report withdrawn from readers", "report", id, fmt.Sprintf("%q", rep.Title))
+	s.audit(r.Context(), "report withdrawn from readers", "report", id, fmt.Sprintf("%q", rep.Title))
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 

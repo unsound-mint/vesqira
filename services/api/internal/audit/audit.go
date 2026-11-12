@@ -4,6 +4,7 @@
 package audit
 
 import (
+	"context"
 	"database/sql"
 	"strings"
 	"time"
@@ -26,8 +27,16 @@ type Entry struct {
 // Actor is who an entry is recorded for. The package knows nothing of internal/authz; the server hands it plain strings.
 type Actor struct{ ID, OnBehalfOf, Via string }
 
-// LocalOwner is the actor of every entry in local mode, the only mode so far. internal/server tests that it matches authz.LocalOwner.
+// LocalOwner is the actor of every entry in local mode. internal/server tests that it matches authz.LocalOwner.
 var LocalOwner = Actor{ID: "local-owner", Via: "local"}
+
+// System is the actor of an entry made by background work with no account to name, on the group server (ADR 0050 section 4).
+var System = Actor{ID: "system", Via: "system"}
+
+type actorKey struct{}
+
+// WithActor returns a context whose entries RecordCtx attributes to a. The server installs the request's actor here.
+func WithActor(ctx context.Context, a Actor) context.Context { return context.WithValue(ctx, actorKey{}, a) }
 
 type Store struct {
 	db *sql.DB
@@ -53,6 +62,18 @@ func (s *Store) Record(action, kind string, target int64, detail string) {
 		return
 	}
 	s.RecordAs(s.Default, action, kind, target, detail)
+}
+
+// RecordCtx appends one entry for the actor the context carries (WithActor), or the store's default actor when it carries none.
+func (s *Store) RecordCtx(ctx context.Context, action, kind string, target int64, detail string) {
+	if s == nil {
+		return
+	}
+	a, ok := ctx.Value(actorKey{}).(Actor)
+	if !ok {
+		a = s.Default
+	}
+	s.RecordAs(a, action, kind, target, detail)
 }
 
 // RecordAs appends one entry for the given actor.

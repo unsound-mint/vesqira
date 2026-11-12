@@ -266,7 +266,7 @@ func (s *Server) importRulesPut(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("import rules saved", "project", p.ID, fmt.Sprintf("%d rules", len(in.Rules)))
+	s.Audit.RecordCtx(r.Context(), "import rules saved", "project", p.ID, fmt.Sprintf("%d rules", len(in.Rules)))
 	s.importMu.Lock()
 	cur := s.importInvs[p.ID]
 	s.importMu.Unlock()
@@ -330,7 +330,7 @@ func (s *Server) importRulesWrite(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("import rules written to project file", "project", p.ID, fmt.Sprintf("%d rules", len(rs)))
+	s.Audit.RecordCtx(r.Context(), "import rules written to project file", "project", p.ID, fmt.Sprintf("%d rules", len(rs)))
 	s.startScan(p)
 	writeJSON(w, 200, map[string]any{"written": true, "path": discover.ProjectFilePath, "rules": len(rs)})
 }
@@ -643,7 +643,7 @@ func (s *Server) importApplyRoute(w http.ResponseWriter, r *http.Request) {
 	if err := s.Projects.SaveApplied(p.ID, records); err != nil {
 		log.Printf("import: %v", err)
 	}
-	s.Audit.Record("import rules applied", "project", p.ID, fmt.Sprintf("%d registered, %d declared, %d offered as duplicates, %d skipped, %d failed", sum.Registered, sum.Declared, sum.Duplicates, sum.Skipped, sum.Failed))
+	s.Audit.RecordCtx(r.Context(), "import rules applied", "project", p.ID, fmt.Sprintf("%d registered, %d declared, %d offered as duplicates, %d skipped, %d failed", sum.Registered, sum.Declared, sum.Duplicates, sum.Skipped, sum.Failed))
 	if inv.folder == "" { // the summary counts the whole project; a walk of a subfolder would shrink it
 		s.refreshImportSummary(p, inv, rules)
 	}

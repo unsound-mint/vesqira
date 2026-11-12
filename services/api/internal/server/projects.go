@@ -153,7 +153,7 @@ func (s *Server) openProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.Audit.Record("project opened", "project", p.ID, p.Name)
+	s.Audit.RecordCtx(r.Context(), "project opened", "project", p.ID, p.Name)
 	s.startScan(p) // rescan on open; a scan already running is left to finish
 	s.writeSummary(w, 200, p)
 }
@@ -532,7 +532,7 @@ func (s *Server) answerProject(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("project question answered", "project", p.ID, n.Kind)
+	s.Audit.RecordCtx(r.Context(), "project question answered", "project", p.ID, n.Kind)
 	if n.Kind == "result_folder" && in.Answer == "mark_run" {
 		s.startScan(p) // the folder is a run now: the next scan lists it as one
 	}
@@ -594,7 +594,7 @@ func (s *Server) writeProject(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("project file written", "project", p.ID, p.Name)
+	s.Audit.RecordCtx(r.Context(), "project file written", "project", p.ID, p.Name)
 	s.startScan(p) // read it back: the file is the layout from now on
 	writeJSON(w, 200, map[string]any{"written": true, "path": discover.ProjectFilePath, "replaced": exists})
 }

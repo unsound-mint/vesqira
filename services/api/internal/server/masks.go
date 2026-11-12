@@ -333,7 +333,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 		}
 		return maskView{}, 500, "internal error"
 	}
-	s.audit("mask created", "dataset", d.ID, mtype+" mask, "+strconv.FormatInt(sum.Flagged, 10)+" pixels flagged")
+	s.audit(ctx, "mask created", "dataset", d.ID, mtype+" mask, "+strconv.FormatInt(sum.Flagged, 10)+" pixels flagged")
 	return s.viewOf(m, d), 0, ""
 }
 
@@ -469,7 +469,7 @@ func (s *Server) deleteMask(w http.ResponseWriter, r *http.Request) {
 		s.maskErr(w, err)
 		return
 	}
-	s.audit("mask forgotten", "dataset", m.DatasetID, m.Type+" mask; the file was kept")
+	s.audit(r.Context(), "mask forgotten", "dataset", m.DatasetID, m.Type+" mask; the file was kept")
 	writeJSON(w, 200, map[string]any{"removed": id})
 }
 

@@ -63,7 +63,7 @@ func (s *Server) setRunReview(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.Audit.Record("run assessment recorded", "run", id, "qc: "+in.QC+", interpretation: "+in.Interpretation)
+	s.Audit.RecordCtx(r.Context(), "run assessment recorded", "run", id, "qc: "+in.QC+", interpretation: "+in.Interpretation)
 	run, _ := s.Runs.Get(id)
 	writeJSON(w, 200, s.runView(run))
 }

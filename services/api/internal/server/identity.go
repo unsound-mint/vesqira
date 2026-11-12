@@ -578,7 +578,7 @@ func (s *Server) addLocation(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("location added", "dataset", id, link+": "+filepath.Base(nl.Path))
+	s.Audit.RecordCtx(r.Context(), "location added", "dataset", id, link+": "+filepath.Base(nl.Path))
 	writeJSON(w, 201, got)
 }
 
@@ -641,7 +641,7 @@ func (s *Server) removeLocation(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 	default:
 		s.cancelFull(lid)
-		s.Audit.Record("location removed", "dataset", id, "location "+strconv.FormatInt(lid, 10))
+		s.Audit.RecordCtx(r.Context(), "location removed", "dataset", id, "location "+strconv.FormatInt(lid, 10))
 		writeJSON(w, 200, map[string]any{"removed": lid})
 	}
 }
@@ -682,7 +682,7 @@ func (s *Server) fingerprintLocation(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "the file changed while it was being read")
 			return
 		}
-		s.Audit.Record("sampled fingerprint computed", "dataset", id, m.value[:12]+" by "+m.by)
+		s.Audit.RecordCtx(r.Context(), "sampled fingerprint computed", "dataset", id, m.value[:12]+" by "+m.by)
 		got, _ := s.Store.Location(id, lid)
 		writeJSON(w, 200, got)
 	case "full":

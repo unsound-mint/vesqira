@@ -1009,7 +1009,7 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
-	s.Audit.Record("review published", "snapshot", sn.ID, "board "+strconv.FormatInt(id, 10)+", label: "+in.Label)
+	s.Audit.RecordCtx(r.Context(), "review published", "snapshot", sn.ID, "board "+strconv.FormatInt(id, 10)+", label: "+in.Label)
 	writeJSON(w, 201, publishResponse{Snapshot: sn, Token: tok, ReviewPath: "/#/review/" + tok,
 		Note: "Shown once. Anyone with this link can read the frozen board and comment; revoke it to end access."})
 }
@@ -1038,7 +1038,7 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
-	s.Audit.Record("review revoked", "snapshot", id, "")
+	s.Audit.RecordCtx(r.Context(), "review revoked", "snapshot", id, "")
 	writeJSON(w, 200, map[string]bool{"revoked": true})
 }
 
@@ -1073,7 +1073,7 @@ func (s *Server) ownerReply(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
-	s.Audit.Record("reply to a reviewer", "snapshot", id, "thread "+strconv.FormatInt(in.ParentID, 10))
+	s.Audit.RecordCtx(r.Context(), "reply to a reviewer", "snapshot", id, "thread "+strconv.FormatInt(in.ParentID, 10))
 	writeJSON(w, 201, c)
 }
 
@@ -1097,7 +1097,7 @@ func (s *Server) resolveComment(w http.ResponseWriter, r *http.Request) {
 	if in.Resolved {
 		act = "thread resolved"
 	}
-	s.Audit.Record(act, "comment", id, "")
+	s.Audit.RecordCtx(r.Context(), act, "comment", id, "")
 	writeJSON(w, 200, map[string]bool{"resolved": in.Resolved})
 }
 

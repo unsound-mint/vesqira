@@ -194,7 +194,7 @@ func (s *Server) importRegions(w http.ResponseWriter, r *http.Request) {
 		}
 		created = append(created, reg)
 	}
-	s.Audit.Record("regions imported", "dataset", d.ID, strconv.Itoa(len(created))+" from a DS9 file")
+	s.Audit.RecordCtx(r.Context(), "regions imported", "dataset", d.ID, strconv.Itoa(len(created))+" from a DS9 file")
 	writeJSON(w, 201, map[string]any{"items": items, "created": created, "failed": failed})
 }
 

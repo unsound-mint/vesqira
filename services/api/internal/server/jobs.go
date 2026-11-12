@@ -423,7 +423,7 @@ func (s *Server) submitDraft(ctx context.Context, j jobs.Job, h hosts.Host, scri
 	if rerunNote != "" {
 		detail += "; " + rerunNote
 	}
-	s.Audit.Record("job submitted", "job", j.ID, detail)
+	s.Audit.RecordCtx(ctx, "job submitted", "job", j.ID, detail)
 	j, _ = s.Jobs.Get(j.ID)
 	// Settings are known now. The record is written in the background (the answer does not wait for ssh), and only once the
 	// job has created its output folder; a refresh completes it and adds the end state.
@@ -456,14 +456,14 @@ func (s *Server) checkSubmitting(ctx context.Context, j jobs.Job, h hosts.Host, 
 	seen := time.Now()
 	switch {
 	case found:
-		s.Audit.Record("job found on the host", "job", j.ID, "Slurm job "+id)
+		s.Audit.RecordCtx(ctx, "job found on the host", "job", j.ID, "Slurm job "+id)
 		if err := s.Jobs.MarkSubmitted(j.ID, id); err != nil {
 			return err
 		}
 		s.recordRunAsync(j.ID, h, jobs.FoundEvidence(id, seen))
 		return nil
 	case reopen:
-		s.Audit.Record("job reopened as draft", "job", j.ID, "the host holds no such job")
+		s.Audit.RecordCtx(ctx, "job reopened as draft", "job", j.ID, "the host holds no such job")
 		return s.Jobs.Reopen(j.ID)
 	default:
 		return s.Jobs.NoteSubmitting(j.ID, "Slurm does not list this job (checked "+time.Now().Format("15:04")+"). If you are sure it was not submitted, reopen it as a draft.")
@@ -544,7 +544,7 @@ func (s *Server) cancelSlurm(ctx context.Context, j jobs.Job, h hosts.Host) *api
 	if _, err := s.Remote.RunShell(ctx, h, cmd, nil, 30*time.Second); err != nil {
 		return &apiErr{502, err.Error()}
 	}
-	s.Audit.Record("job cancel requested", "job", j.ID, "Slurm job "+j.SlurmID)
+	s.Audit.RecordCtx(ctx, "job cancel requested", "job", j.ID, "Slurm job "+j.SlurmID)
 	_, _ = s.Jobs.ApplyStatus(j.ID, j.State, "cancel requested") // guarded: never over an end state a refresh just read
 	return nil
 }

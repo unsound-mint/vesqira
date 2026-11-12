@@ -309,7 +309,7 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: op, Params: rec, Sources: []int64{d.ID, other.ID}, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
-	s.Audit.Record("relative orientation", "dataset", nd.ID, d.Name+" with "+other.Name)
+	s.Audit.RecordCtx(r.Context(), "relative orientation", "dataset", nd.ID, d.Name+" with "+other.Name)
 	writeJSON(w, 201, map[string]any{"dataset": nd, "summary": res.Summary})
 }
 

@@ -211,7 +211,8 @@ type carrySummary struct {
 // record keeps (`maskCarry`: no ids, no paths): the masks carried with their source's and their own fingerprints, the masks left behind,
 // and that the no-value mask was computed again. `extra` names what the operation used besides the source (the reference of an
 // alignment), for the rule's sentence.
-func (s *Server) recordCarried(p *carryPlan, summary json.RawMessage, src, nd catalog.Dataset, extra string) (map[string]any, int, string) {
+// reqCtx is the request this runs for, only to attribute the audit entry; the reads below use their own bounded context.
+func (s *Server) recordCarried(reqCtx context.Context, p *carryPlan, summary json.RawMessage, src, nd catalog.Dataset, extra string) (map[string]any, int, string) {
 	if p == nil {
 		return nil, 0, ""
 	}
@@ -265,7 +266,7 @@ func (s *Server) recordCarried(p *carryPlan, summary json.RawMessage, src, nd ca
 		snap := maskSnapshot(c.mask)
 		snap["carriedFingerprint"], snap["carriedFlaggedPixels"] = "sha256:"+m.SHA256, m.Flagged
 		carried = append(carried, snap)
-		s.audit("mask carried", "dataset", nd.ID, c.mask.Type+" mask \""+c.mask.Name+"\" from "+src.Name+" by "+p.op)
+		s.audit(reqCtx, "mask carried", "dataset", nd.ID, c.mask.Type+" mask \""+c.mask.Name+"\" from "+src.Name+" by "+p.op)
 	}
 	recomputed := []string{}
 	if cs.Missing != nil {

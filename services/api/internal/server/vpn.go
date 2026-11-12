@@ -266,16 +266,16 @@ func (s *Server) vpnConnect(ctx context.Context, w http.ResponseWriter, h hosts.
 	start := time.Now()
 	c, err := hosts.StartVPNClient(h.VPNCommand, s.vpnLogPath(h))
 	if err != nil {
-		s.Audit.Record("host vpn connect", "host", h.ID, h.Name+": did not start")
+		s.Audit.RecordCtx(ctx, "host vpn connect", "host", h.ID, h.Name+": did not start")
 		writeJSON(w, 200, vpnReply{Action: "connect", ExitCode: -1, Output: err.Error(), Message: "VPN command could not be started; the host is still not reachable"})
 		return
 	}
 	s.vpn.setClient(h.ID, c)
-	s.Audit.Record("host vpn connect", "host", h.ID, fmt.Sprintf("%s: client started (pid %d)", h.Name, c.Pid))
+	s.Audit.RecordCtx(ctx, "host vpn connect", "host", h.ID, fmt.Sprintf("%s: client started (pid %d)", h.Name, c.Pid))
 	go func() { // also records an exit long after the request ended
 		<-c.Done()
 		code, _, _ := c.Exit()
-		s.Audit.Record("host vpn client exit", "host", h.ID, fmt.Sprintf("%s: exit %d after %s", h.Name, code, time.Since(c.Started).Round(time.Second)))
+		s.Audit.RecordCtx(ctx, "host vpn client exit", "host", h.ID, fmt.Sprintf("%s: exit %d after %s", h.Name, code, time.Since(c.Started).Round(time.Second)))
 	}()
 
 	window, poll := s.vpnWindow(), s.VPNPoll
@@ -363,7 +363,7 @@ func (s *Server) vpnDisconnect(ctx context.Context, w http.ResponseWriter, h hos
 		case res.StartError != "":
 			ended = "did not start"
 		}
-		s.Audit.Record("host vpn disconnect", "host", h.ID, fmt.Sprintf("%s: command %s after %d ms", h.Name, ended, res.Duration.Milliseconds()))
+		s.Audit.RecordCtx(ctx, "host vpn disconnect", "host", h.ID, fmt.Sprintf("%s: command %s after %d ms", h.Name, ended, res.Duration.Milliseconds()))
 		rep.ExitCode, rep.TimedOut, rep.Output, rep.OutputTruncated = res.ExitCode, res.TimedOut, res.Output, res.OutputTruncated
 		if res.StartError != "" {
 			rep.Output = res.StartError
@@ -390,11 +390,11 @@ func (s *Server) vpnDisconnect(ctx context.Context, w http.ResponseWriter, h hos
 			how = "SIGKILL"
 		}
 		if err != nil {
-			s.Audit.Record("host vpn disconnect", "host", h.ID, fmt.Sprintf("%s: client (pid %d) could not be stopped", h.Name, c.Pid))
+			s.Audit.RecordCtx(ctx, "host vpn disconnect", "host", h.ID, fmt.Sprintf("%s: client (pid %d) could not be stopped", h.Name, c.Pid))
 			fail(w, 500, err.Error())
 			return
 		}
-		s.Audit.Record("host vpn disconnect", "host", h.ID, fmt.Sprintf("%s: client (pid %d) stopped with %s", h.Name, c.Pid, how))
+		s.Audit.RecordCtx(ctx, "host vpn disconnect", "host", h.ID, fmt.Sprintf("%s: client (pid %d) stopped with %s", h.Name, c.Pid, how))
 		rep.Output, rep.OutputTruncated = c.Output()
 		rep.Message = "VPN client stopped"
 		if killed {
@@ -428,7 +428,7 @@ func (s *Server) setHostVPN(w http.ResponseWriter, r *http.Request) {
 		s.hostErr(w, err)
 		return
 	}
-	s.Audit.Record("host vpn commands", "host", h.ID, fmt.Sprintf("%s: connect %s, disconnect %s", h.Name, setOrCleared(nh.VPNCommand), setOrCleared(nh.VPNDisconnectCommand)))
+	s.Audit.RecordCtx(r.Context(), "host vpn commands", "host", h.ID, fmt.Sprintf("%s: connect %s, disconnect %s", h.Name, setOrCleared(nh.VPNCommand), setOrCleared(nh.VPNDisconnectCommand)))
 	writeJSON(w, 200, nh)
 }
 

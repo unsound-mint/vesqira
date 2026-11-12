@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -154,7 +155,7 @@ func (s *Server) publishReport(w http.ResponseWriter, r *http.Request) {
 		s.reportErr(w, err)
 		return
 	}
-	s.audit("report published", "report", rep.ID, fmt.Sprintf("%q as published revision %d to space %s", rep.Title, stored.Number, space))
+	s.audit(r.Context(), "report published", "report", rep.ID, fmt.Sprintf("%q as published revision %d to space %s", rep.Title, stored.Number, space))
 	writeJSON(w, 200, map[string]any{"number": stored.Number, "revisionId": stored.ID, "space": space})
 }
 
@@ -197,9 +198,10 @@ func sameContent(lastDoc json.RawMessage, next publish.Revision) bool {
 	return true
 }
 
-func (s *Server) audit(action, kind string, id int64, detail string) {
+// audit records an entry for the actor of the request ctx belongs to (see route).
+func (s *Server) audit(ctx context.Context, action, kind string, id int64, detail string) {
 	if s.Audit != nil {
-		s.Audit.Record(action, kind, id, detail)
+		s.Audit.RecordCtx(ctx, action, kind, id, detail)
 	}
 }
 
@@ -302,7 +304,7 @@ func (s *Server) publishSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if in.URL != nil || in.Key != nil {
-		s.audit("publish server set", "publish", 0, "address "+set["publish_url"])
+		s.audit(r.Context(), "publish server set", "publish", 0, "address "+set["publish_url"])
 		if c, err := s.publisher(); err == nil {
 			if err := c.ping(); err != nil {
 				fail(w, 502, "saved, but the publish server did not accept the key: "+err.Error())
@@ -359,7 +361,7 @@ func (s *Server) createReader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	base, _ := s.Reports.Setting("publish_url")
-	s.audit("reader link created", "publish", rd.ID, fmt.Sprintf("for %q on space %s", rd.Name, space))
+	s.audit(r.Context(), "reader link created", "publish", rd.ID, fmt.Sprintf("for %q on space %s", rd.Name, space))
 	writeJSON(w, 201, map[string]any{"reader": rd, "link": base + "/read/" + rd.Token})
 }
 
@@ -384,7 +386,7 @@ func (s *Server) revokeReader(w http.ResponseWriter, r *http.Request) {
 		s.reportErr(w, err)
 		return
 	}
-	s.audit("reader link revoked", "publish", id, "")
+	s.audit(r.Context(), "reader link revoked", "publish", id, "")
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
@@ -516,7 +518,7 @@ func (s *Server) replyReportComment(w http.ResponseWriter, r *http.Request) {
 		s.reportErr(w, err)
 		return
 	}
-	s.audit("report reply sent", "comment", out.ID, "")
+	s.audit(r.Context(), "report reply sent", "comment", out.ID, "")
 	writeJSON(w, 201, out)
 }
 
@@ -569,7 +571,7 @@ func (s *Server) deleteReportComment(w http.ResponseWriter, r *http.Request) {
 		s.reportErr(w, err)
 		return
 	}
-	s.audit("report comment deleted", "comment", id, "")
+	s.audit(r.Context(), "report comment deleted", "comment", id, "")
 	writeJSON(w, 200, map[string]any{"deleted": append(ids, id)})
 }
 
@@ -632,7 +634,7 @@ func (s *Server) sendReplyDraft(w http.ResponseWriter, r *http.Request) {
 		s.reportErr(w, err)
 		return
 	}
-	s.audit("report reply sent", "comment", out.ID, "from a drafted reply")
+	s.audit(r.Context(), "report reply sent", "comment", out.ID, "from a drafted reply")
 	writeJSON(w, 201, out)
 }
 

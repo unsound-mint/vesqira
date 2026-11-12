@@ -378,7 +378,7 @@ func (s *Server) createSubset(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.audit("virtual subset created", "dataset", src.ID, in.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+")")
+	s.audit(r.Context(), "virtual subset created", "dataset", src.ID, in.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+")")
 	writeJSON(w, 201, map[string]any{"subset": s.subsetOf(sub, src, s.subsetRecords()), "geometry": head})
 }
 
@@ -401,7 +401,7 @@ func (s *Server) editSubset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.saveVersion(w, sub, src, in.Expect, "edit", pinned(src, in.Name, in.Reason, def), head)
+	s.saveVersion(r.Context(), w, sub, src, in.Expect, "edit", pinned(src, in.Name, in.Reason, def), head)
 }
 
 // repinSubset records the same definition again, pinned to the source as it is now, after the file changed. The definition is checked
@@ -428,10 +428,10 @@ func (s *Server) repinSubset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.saveVersion(w, sub, src, in.Expect, "repin", pinned(src, sub.Current.Name, in.Reason, sub.Current.Def), head)
+	s.saveVersion(r.Context(), w, sub, src, in.Expect, "repin", pinned(src, sub.Current.Name, in.Reason, sub.Current.Def), head)
 }
 
-func (s *Server) saveVersion(w http.ResponseWriter, sub subsets.Subset, src catalog.Dataset, expect int, kind string, v subsets.Version, head json.RawMessage) {
+func (s *Server) saveVersion(ctx context.Context, w http.ResponseWriter, sub subsets.Subset, src catalog.Dataset, expect int, kind string, v subsets.Version, head json.RawMessage) {
 	if expect == 0 {
 		expect = sub.Current.Version
 	}
@@ -445,7 +445,7 @@ func (s *Server) saveVersion(w http.ResponseWriter, sub subsets.Subset, src cata
 		fail(w, 500, "internal error")
 		return
 	}
-	s.audit("virtual subset "+kind, "dataset", src.ID, v.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+", version "+strconv.Itoa(next.Current.Version)+")")
+	s.audit(ctx, "virtual subset "+kind, "dataset", src.ID, v.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+", version "+strconv.Itoa(next.Current.Version)+")")
 	writeJSON(w, 200, map[string]any{"subset": s.subsetOf(next, src, s.subsetRecords()), "geometry": head})
 }
 
@@ -459,7 +459,7 @@ func (s *Server) deleteSubset(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.audit("virtual subset deleted", "dataset", src.ID, sub.Current.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+")")
+	s.audit(r.Context(), "virtual subset deleted", "dataset", src.ID, sub.Current.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+")")
 	writeJSON(w, 200, map[string]any{"deleted": sub.ID})
 }
 
@@ -617,7 +617,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	carried, code, msg := s.recordCarried(carry, res.Summary, src, nd, "")
+	carried, code, msg := s.recordCarried(r.Context(), carry, res.Summary, src, nd, "")
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -654,7 +654,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 			nd = got
 		}
 	}
-	s.audit("virtual subset written as a file", "dataset", src.ID, cur.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+", version "+strconv.Itoa(cur.Version)+") as "+filepath.Base(outPath))
+	s.audit(r.Context(), "virtual subset written as a file", "dataset", src.ID, cur.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+", version "+strconv.Itoa(cur.Version)+") as "+filepath.Base(outPath))
 	writeJSON(w, 201, map[string]any{"dataset": nd, "reused": false, "summary": json.RawMessage(sraw), "subset": s.subsetOf(sub, src, s.subsetRecords())})
 }
 

@@ -128,7 +128,7 @@ func (s *Server) setRunControls(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.Audit.Record("run controls declared", "run", id, controlsAudit(in))
+	s.Audit.RecordCtx(r.Context(), "run controls declared", "run", id, controlsAudit(in))
 	run, _ := s.Runs.Get(id)
 	writeJSON(w, 200, s.runView(run))
 }

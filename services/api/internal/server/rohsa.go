@@ -221,7 +221,7 @@ func (s *Server) importROHSAFromHost(w http.ResponseWriter, r *http.Request, hos
 		fail(w, code, msg)
 		return
 	}
-	s.Audit.Record("rohsa run imported from host", "run", run.ID, h.Name+": "+dat)
+	s.Audit.RecordCtx(r.Context(), "rohsa run imported from host", "run", run.ID, h.Name+": "+dat)
 	writeJSON(w, 201, s.runView(run))
 }
 
@@ -238,7 +238,7 @@ func (s *Server) importROHSAJob(ctx context.Context, j jobs.Job, h hosts.Host) (
 	}
 	run, code, msg := s.importROHSA(ctx, newRemoteROHSA(s, h, dat))
 	if code == 0 {
-		s.Audit.Record("rohsa run imported from host", "run", run.ID, h.Name+": "+dat)
+		s.Audit.RecordCtx(ctx, "rohsa run imported from host", "run", run.ID, h.Name+": "+dat)
 	}
 	return run, code, msg
 }
@@ -578,10 +578,10 @@ func (s *Server) rohsaIndex(w http.ResponseWriter, r *http.Request) {
 		_ = json.Unmarshal(head["cache_file"], &file)
 		_ = json.Unmarshal(head["state"], &state)
 		if flag("created") {
-			s.Audit.Record("rohsa index started on host", "run", in.RunID, t.host.Name+": index written under "+path.Dir(file)+" (a rebuildable cache, never in the data's folder) for "+t.datReal)
+			s.Audit.RecordCtx(r.Context(), "rohsa index started on host", "run", in.RunID, t.host.Name+": index written under "+path.Dir(file)+" (a rebuildable cache, never in the data's folder) for "+t.datReal)
 		}
 		if flag("settled") {
-			s.Audit.Record("rohsa index "+state+" on host", "run", in.RunID, t.host.Name+": "+path.Base(file))
+			s.Audit.RecordCtx(r.Context(), "rohsa index "+state+" on host", "run", in.RunID, t.host.Name+": "+path.Base(file))
 		}
 		head["where"] = json.RawMessage(`"host"`)
 	} else {

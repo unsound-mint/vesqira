@@ -45,7 +45,7 @@ func (s *Server) declareUnit(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, "internal error")
 			return
 		}
-		s.Audit.Record("unit declaration withdrawn", "dataset", id, d.Name)
+		s.Audit.RecordCtx(r.Context(), "unit declaration withdrawn", "dataset", id, d.Name)
 	default:
 		switch err := s.Store.SetUnitDeclaration(d, in.Unit, "user"); {
 		case errors.Is(err, catalog.ErrInvalidUnit):
@@ -59,7 +59,7 @@ func (s *Server) declareUnit(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, "internal error")
 			return
 		}
-		s.Audit.Record("unit declared", "dataset", id, d.Name+": "+in.Unit)
+		s.Audit.RecordCtx(r.Context(), "unit declared", "dataset", id, d.Name+": "+in.Unit)
 	}
 	d, code, msg = s.dataset(id)
 	if code != 0 {
