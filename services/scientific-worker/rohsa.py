@@ -17,9 +17,13 @@ import hashlib
 import json
 import os
 import stat
+import sys
 import time
 
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -P does not add the script dir
+from srcopen import source_file, stat_source
 
 MAX_ROW_BYTES = 512                # a data line longer than this is malformed
 MAX_GAUSSIANS = 64
@@ -157,7 +161,7 @@ def index_step(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, budget_s
     described above, so no pixel of it is read.
     """
     _check_args(nx, ny, n)
-    st = os.stat(dat_path)
+    st = stat_source(dat_path)
     os.makedirs(cache_dir, exist_ok=True)
     key = _key(dat_path, st)
     meta_path, offs_path = _paths(cache_dir, key)
@@ -173,7 +177,7 @@ def index_step(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, budget_s
         return {**_summary(m, st), "created": False, "settled": False, "cache_file": offs_path}
     t0 = time.monotonic()
     # the sidecar may hold more offsets than the metadata admits (a call died between the two writes): trust the metadata
-    with open(offs_path, "r+b") as out, open(dat_path, "rb") as f:
+    with open(offs_path, "r+b") as out, source_file(dat_path) as (_, f):
         out.truncate(m["pixels"] * 8)
         out.seek(0, os.SEEK_END)
         while m["state"] == "building":
@@ -235,7 +239,7 @@ def read_pixel(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, x: int, 
     _check_args(nx, ny, n)
     if not (0 <= x < nx and 0 <= y < ny):
         raise Bad("bad_request", "pixel outside the crop")
-    st = os.stat(dat_path)
+    st = stat_source(dat_path)
     meta_path, offs_path = _paths(cache_dir, _key(dat_path, st))
     m = _load_meta(meta_path, st, nx, ny, n)
     if m is None or m["state"] == "building":
@@ -249,7 +253,7 @@ def read_pixel(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, x: int, 
     if len(raw) != 8:
         raise Bad("unsupported", "the index is shorter than the crop; rebuild it")
     off = int(np.frombuffer(raw, dtype="<u8")[0])
-    with open(dat_path, "rb") as f:
+    with source_file(dat_path) as (_, f):
         f.seek(off)
         chunk = f.read(n * MAX_ROW_BYTES)
     rows = []

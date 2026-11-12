@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -22,6 +23,8 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
 
 // ROHSA decomposition runs (ADR 0046): import from the raw .dat and the pipeline's text records, and the per-pixel
@@ -87,8 +90,13 @@ func (s *Server) readNear(dir, name string) []byte {
 	if fi, err := os.Stat(real); err != nil || fi.Size() > runs.MaxMetadataBytes {
 		return nil
 	}
-	b, err := os.ReadFile(real)
+	f, err := sourceroot.OpenFile(real)
 	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, runs.MaxMetadataBytes+1)) // the file may have grown since the size check
+	if err != nil || int64(len(b)) > runs.MaxMetadataBytes {
 		return nil
 	}
 	return b

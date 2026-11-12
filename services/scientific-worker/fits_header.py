@@ -7,10 +7,14 @@ Usage: fits_header.py <path>    Prints one JSON object on stdout. Exit 0 on succ
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 
 from astropy.io import fits
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -P does not add the script dir
+from srcopen import Refused, source_file
 
 BLOCK = 2880
 MAX_HEADER_BLOCKS = 64            # 184 kB of header: far beyond any real primary header
@@ -30,16 +34,22 @@ def clean(v, limit=80):
     return None
 
 
-def read_header(path: str) -> fits.Header:
-    with open(path, "rb") as f:
-        raw = b""
-        for _ in range(MAX_HEADER_BLOCKS):
-            block = f.read(BLOCK)
-            if len(block) < BLOCK:
-                raise ValueError("file ends inside the header")
-            raw += block
-            if any(block[i : i + 80].rstrip() == b"END" for i in range(0, BLOCK, 80)):
-                return fits.Header.fromstring(raw.decode("ascii", "replace"))
+def read_header(src) -> fits.Header:
+    """The primary header of `src`: an open binary file (already authorised and opened without following links), or a path,
+    which is opened that way here."""
+    if isinstance(src, str):
+        with source_file(src) as (_, f):
+            return read_header(f)
+    f = src
+    f.seek(0)
+    raw = b""
+    for _ in range(MAX_HEADER_BLOCKS):
+        block = f.read(BLOCK)
+        if len(block) < BLOCK:
+            raise ValueError("file ends inside the header")
+        raw += block
+        if any(block[i : i + 80].rstrip() == b"END" for i in range(0, BLOCK, 80)):
+            return fits.Header.fromstring(raw.decode("ascii", "replace"))
     raise ValueError("header exceeds the size limit")
 
 
@@ -111,7 +121,7 @@ def main(argv: list[str]) -> int:
     try:
         print(json.dumps(describe(argv[1])))
         return 0
-    except (OSError, ValueError, KeyError, TypeError) as e:
+    except (OSError, ValueError, KeyError, TypeError, Refused) as e:
         print(json.dumps({"ok": False, "error": clean(str(e), 120)}))
         return 2
 

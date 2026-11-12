@@ -36,6 +36,7 @@ from plane_worker import Cube, Refused, authorize, declared_unit as checked_decl
 import masks as mk
 import orientation as ori
 import subset as sub
+from srcopen import fits_open
 from memcap import limit_memory, over_cap_message
 
 MAX_OUTPUT_ELEMENTS = 1 << 28
@@ -56,7 +57,7 @@ OWNED_UNIT = ("user", "corrected")     # a unit that is the researcher's, not th
 
 def planes(c: Cube, c0: int, c1: int, ys=slice(None), xs=slice(None)):
     """Yield (channel index, float64 plane with NaN for missing) for channels c0..c1 inclusive."""
-    with fits.open(c.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
+    with fits_open(c.path, do_not_scale_image_data=True) as hdul:
         hdu = hdul[0]
         for ch in range(c0, c1 + 1):
             yield ch, c._physical(np.array(fits_array(hdul)[c._index(ch, ys, xs)]))

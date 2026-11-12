@@ -8,6 +8,10 @@ The layout must stay byte-identical to identity.go (a test hashes the same files
 import hashlib
 import os
 import struct
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -P does not add the script dir
+from srcopen import source_file
 
 ALGORITHM = "sampled/1"
 BLOCK = 64 << 10
@@ -35,7 +39,7 @@ def primary_header(f, size: int) -> bytes:
 
 
 def sampled(path: str) -> str:
-    with open(path, "rb") as f:
+    with source_file(path) as (_, f):
         size = os.fstat(f.fileno()).st_size
         hdr = primary_header(f, size)
         h = hashlib.sha256()
@@ -61,7 +65,7 @@ def sampled(path: str) -> str:
 
 def full(path: str, cap: int):
     """(sha256 hex, bytes read), or None when the file is above the cap (checked before reading and while reading)."""
-    with open(path, "rb") as f:
+    with source_file(path) as (_, f):
         if os.fstat(f.fileno()).st_size > cap:
             return None
         h, done = hashlib.sha256(), 0

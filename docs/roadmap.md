@@ -162,7 +162,7 @@ Needs an ADR before code: it changes the security boundary.
 
 - [ ] Accounts and roles per project and per cluster (Q29–Q31). Design proposed in ADR 0050 (no code until accepted; open questions for the owner listed there).
 - [ ] Authentication before anyone but the owner can act; delegation and approval lifecycle for other users' requests (Q44, Q71).
-- [~] Worker memory cap and the authorize-then-open window for source files. The memory cap applies to every worker entry point and its setting reaches the workers; the authorize-then-open window is not closed (ADR 0050 specifies opening by component without following links).
+- [x] Worker memory cap and the authorize-then-open window for source files. The memory cap applies to every worker entry point and its setting reaches the workers. Every source read goes through `srcopen.py` in the worker and `sourceroot.OpenFile` in the API: the resolved path is opened without following a link, so a component swapped after the check is refused (ADR 0050, section 8). The device and inode check against what the API resolved is not built (the API does not send them yet); directory listings (`walk`, `list`, `canon`) still use path names.
 
 ## Stage 8 — Later phases (kept, not scheduled)
 

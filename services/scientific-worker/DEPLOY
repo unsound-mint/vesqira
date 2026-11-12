@@ -16,3 +16,4 @@ fingerprint.py
 masks.py
 corrections.py
 subset.py
+srcopen.py

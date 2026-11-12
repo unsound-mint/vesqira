@@ -15,6 +15,8 @@ import (
 	"strconv"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
 
 const maxManagedCopy = 64 << 30 // 64 GiB: a copy larger than this is refused rather than filling the disk
@@ -82,7 +84,7 @@ func (s *Server) copyDataset(w http.ResponseWriter, r *http.Request) {
 		fail(w, 503, "managed copies are not configured")
 		return
 	}
-	in, err := os.Open(real)
+	in, err := sourceroot.OpenFile(real)
 	if err != nil {
 		fail(w, 404, "file not found")
 		return

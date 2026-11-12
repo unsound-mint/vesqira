@@ -20,7 +20,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"os"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
 
 const (
@@ -47,7 +48,7 @@ var ErrTooLarge = errors.New("the file is larger than the cap for a full hash")
 
 // Sampled returns the sampled fingerprint of the file (lowercase hex SHA-256 of the layout described in the package comment).
 func Sampled(path string) (string, error) {
-	f, err := os.Open(path)
+	f, err := sourceroot.OpenFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -130,7 +131,7 @@ func primaryHeader(f io.ReaderAt, size int64) ([]byte, error) {
 // MiB), with ErrTooLarge before reading when the file is above max, and also if the file grows past max while it is read.
 // progress, when set, is told the bytes read so far.
 func Full(ctx context.Context, path string, max int64, progress func(done int64)) (string, int64, error) {
-	f, err := os.Open(path)
+	f, err := sourceroot.OpenFile(path)
 	if err != nil {
 		return "", 0, err
 	}
