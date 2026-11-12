@@ -10,6 +10,7 @@ import type { Scene } from "../scene/scene";
 import { lut } from "./colormaps";
 import type { ColormapId } from "./colormaps";
 import { captionLines, composeImageFigure, figureScale } from "./figure";
+import { compassSentence } from "../ui/compassGeometry";
 import type { ImageFigure } from "./figure";
 import { figureMaskLayers } from "./figureMasks";
 import type { FigureMaskInput } from "./figureMasks";
@@ -65,9 +66,10 @@ export function planeFigureParts(i: PlaneFigureInput): { figure: ImageFigure; vi
     layers: sceneLayers(drawn, { plane, scale, interp: i.interp, reliability: i.reliability, geometry: i.geometry }).map((l) => l.marks),
     legend: axial ? { kind: "cyclic", lut: lut("twilight") } : { kind: "scalar", lut: lut(d.colormap as ColormapId), limits: lim, unit: view.bunit },
     title: i.title,
-    captions: [...captions, ...overlayLines, ...(masks.length ? ["Hatched areas mark pixels the masks in the legend flag for their stated reason; the values under a hatch are drawn unchanged, and no hatch does not mean a pixel is good."] : [])],
+    captions: [...captions, ...overlayLines, ...(drawn.compass ? [compassSentence(drawn.compass.frame, drawn.compass.corrected)] : []), ...(masks.length ? ["Hatched areas mark pixels the masks in the legend flag for their stated reason; the values under a hatch are drawn unchanged, and no hatch does not mean a pixel is good."] : [])],
     width: i.figureWidth,
     ...(masks.length ? { masks } : {}),
+    ...(drawn.compass ? { compass: drawn.compass } : {}),
   };
   const kind = axial ? ("orientation" as const) : ("plane" as const);
   const viewParams: FigureRequest["view"] = {

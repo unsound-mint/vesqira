@@ -2885,6 +2885,9 @@
       "$ref": "#/components/schemas/SceneMask"
      },
      "description": "The masks hatched over the plane of a saved figure, with the legend that names them. Absent from a live pane (what is shown is a view setting) and from a figure saved before it existed. The owner's way back to the mask for \"draw again\"; a reviewer sees the provenance tiers, never this scene."
+    },
+    "compass": {
+     "$ref": "#/components/schemas/SceneCompass"
     }
    }
   },
@@ -14178,6 +14181,53 @@
     },
     "carry": {
      "type": "boolean"
+    }
+   }
+  },
+  "SceneCompass": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "x",
+    "y",
+    "northDeg",
+    "eastDeg"
+   ],
+   "description": "The north and east arrows a saved figure drew (ADR 0047, amendment) and the WCS state they rest on, as the worker read it for the viewer (Compass). The arrows stand at pixel (x, y) of the figure's plane: 0-based pixel-centre coordinates, y up. Absent when the figure drew none (the option was off, or the file has no celestial WCS) and from figures saved before it existed, which draw again exactly as before. The server keeps what the browser reported and cannot read the WCS again; the reviewer's provenance says so.",
+   "properties": {
+    "x": {
+     "type": "number",
+     "minimum": 0
+    },
+    "y": {
+     "type": "number",
+     "minimum": 0
+    },
+    "northDeg": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 360,
+     "description": "Counter-clockwise from +x with y up (FITS), in [0, 360)"
+    },
+    "eastDeg": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 360,
+     "description": "Counter-clockwise from +x with y up (FITS), in [0, 360)"
+    },
+    "frame": {
+     "type": "string",
+     "maxLength": 64,
+     "description": "The astropy name of the celestial frame, when it could be named"
+    },
+    "corrected": {
+     "type": "array",
+     "maxItems": 32,
+     "items": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_-]{1,16}$"
+     },
+     "description": "The celestial WCS keywords the researcher corrected (ADR 0061) that the arrows rest on; absent when the file's own WCS is used"
     }
    }
   }

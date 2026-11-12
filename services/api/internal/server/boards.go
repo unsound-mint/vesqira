@@ -250,12 +250,12 @@ func ruleOf(tier, by string) string {
 }
 
 func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary, overlaySources []catalog.Dataset) (json.RawMessage, error) {
-	return buildProvenanceShown(d, p, run, der, overlaySources, nil)
+	return buildProvenanceShown(d, p, run, der, overlaySources, nil, nil)
 }
 
 // buildProvenanceShown is buildProvenance for a figure that hatches masks over its plane: each one is a tier line with its type, name,
 // tier, rule and fingerprint, never its id or path (ADR 0055).
-func buildProvenanceShown(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary, overlaySources []catalog.Dataset, shown []masks.Mask) (json.RawMessage, error) {
+func buildProvenanceShown(d catalog.Dataset, p ViewParams, run *runs.Summary, der *derived.Summary, overlaySources []catalog.Dataset, shown []masks.Mask, compass *scene.Compass) (json.RawMessage, error) {
 	var pr Provenance
 	pr.Source.Name, pr.Source.SizeBytes, pr.Source.ModifiedAt = d.Name, d.SizeBytes, d.ModifiedAt
 	pr.Source.Identity = "a reference to the file by name, size and modification time; " + identityNote(d)
@@ -333,6 +333,11 @@ func buildProvenanceShown(d catalog.Dataset, p ViewParams, run *runs.Summary, de
 	pr.Tiers = append(pr.Tiers, shownMasksTiers(shown)...)
 	if len(shown) > 0 {
 		pr.Statements = append(pr.Statements, "Hatched areas mark pixels a mask flags for its stated reason; the values under a hatch are drawn unchanged, and no hatch means the pixel is in no shown mask, not that it is good.")
+	}
+	if compass != nil {
+		tier, note := compassTier(*compass)
+		pr.Tiers = append(pr.Tiers, tier)
+		pr.Statements = append(pr.Statements, note)
 	}
 	switch d.Nature {
 	case "constructed_control":
@@ -672,7 +677,7 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 	for i := range rels {
 		rels[i] = s.ensureFingerprinted(r.Context(), rels[i])
 	}
-	prov, err := buildProvenanceShown(d, vp, run, s.derivedSummary(d.ID), others, shownMasks)
+	prov, err := buildProvenanceShown(d, vp, run, s.derivedSummary(d.ID), others, shownMasks, compassOf(sceneRead))
 	if errors.Is(err, errBadView) {
 		fail(w, 400, "the view description does not match the dataset")
 		return

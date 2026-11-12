@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button, Input, Select } from "../ui";
+import { Button, Checkbox, Input, Select } from "../ui";
+import { compassNote, usableCompass } from "../ui/Compass";
 import type { Dataset } from "../api/catalog";
 import { createBoard, listBoards } from "../api/boards";
 import { addFigure } from "../undo/boardCommands";
@@ -15,6 +16,8 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
   const [kind, setKind] = useState<"plane" | "spectrum">("plane");
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
+  // north and east arrows: on whenever the viewer has them; the choice is kept in the figure's scene, so a redraw reproduces it
+  const [compass, setCompass] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState<Figure | null>(null);
@@ -31,6 +34,7 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
     setSaved(null);
     setNote(null);
     setTitle("");
+    setCompass(true);
   }, [dataset.id]);
 
   if (!view || !plane) return <p className={s.note}>{EM}</p>;
@@ -42,7 +46,7 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
     setErr(null);
     setNote(null);
     try {
-      setSaved(await saveViewFigure(v, dataset, { title, caption, kind, datasets }));
+      setSaved(await saveViewFigure(v, dataset, { title, caption, kind, datasets, compass }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not save the figure.");
     } finally {
@@ -81,6 +85,13 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
         <label htmlFor="fig-caption" className={s.label}>Caption (optional)</label>
         <textarea id="fig-caption" className={s.area} rows={3} value={caption} maxLength={2000} onChange={(e) => setCaption(e.target.value)} />
       </div>
+      {kind !== "spectrum" ? (
+        usableCompass(view.compass) ? (
+          <Checkbox label="North and east arrows" checked={compass} onChange={(e) => setCompass(e.target.checked)} />
+        ) : (
+          <p role="note" className={s.note}>{compassNote(view.compass)}</p>
+        )
+      ) : null}
       <Button variant="primary" onClick={save} disabled={busy || (kind === "spectrum" && !canSpectrum) || (kind !== "spectrum" && Boolean(v.plane?.head.preview))}>{busy ? "Saving…" : "Save as figure"}</Button>
       {kind !== "spectrum" && v.plane?.head.preview ? <p className={s.note}>This is a reduced preview. The figure can be saved when the full plane has loaded.</p> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
