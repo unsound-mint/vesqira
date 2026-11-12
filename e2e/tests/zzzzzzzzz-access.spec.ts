@@ -35,7 +35,7 @@ test("a labelled dataset marks its figure, publishing asks for confirmation, and
   const access = inspector(page).getByRole("button", { name: /^Access/ });
   if ((await access.getAttribute("aria-expanded")) !== "true") await access.click();
   await inspector(page).getByLabel("Access label").selectOption("unreleased");
-  await inspector(page).getByLabel(/Why/).fill("not yet validated");
+  await inspector(page).getByLabel(/^Reason/).fill("not yet validated");
   await inspector(page).getByRole("button", { name: "Set label" }).click();
   await expect(inspector(page).getByText(/History \(1\)/).or(inspector(page).getByText(/History \(\d+\)/))).toBeVisible();
   await expect(page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}.*unreleased`) })).toBeVisible();

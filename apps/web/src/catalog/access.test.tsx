@@ -53,7 +53,7 @@ describe("the access label of a dataset", () => {
     render(<AccessPanel id={7} />);
     expect(await screen.findByText(/also carries/)).toHaveTextContent("Collaboration only from parent.fits");
     await user.selectOptions(screen.getByLabelText("Access label"), "unreleased");
-    await user.type(screen.getByLabelText(/Why/), "not validated");
+    await user.type(screen.getByLabelText(/^Reason/), "not validated");
     await user.click(screen.getByRole("button", { name: "Set label" }));
     expect(calls).toEqual([{ url: "/api/datasets/7/access", body: { label: "unreleased", reason: "not validated" } }]);
     expect(await screen.findByText(/History \(1\)/)).toBeInTheDocument();

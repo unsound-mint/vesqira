@@ -273,7 +273,7 @@ test("register, read, region, orientation, compare, figure, share, review", asyn
   await expect(page.getByText(/SHA-256 of its bytes was recorded|sampled fingerprint of it|bytes were not hashed/)).toBeVisible();
   await page.getByLabel("Note for the reviewer").fill("Check the unit of the colour bar.");
   await page.getByLabel("Note for the reviewer").blur();
-  await page.getByLabel("Label").fill("Group meeting draft");
+  await page.getByLabel("Label", { exact: true }).fill("Group meeting draft");
   await page.getByLabel("What should the reviewer look at?").fill("Is the colour stretch hiding the edge?");
   await page.getByRole("button", { name: "Check what will be shared" }).click();
   const region = page.getByRole("region", { name: "What the reviewer will see" });
