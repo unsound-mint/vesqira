@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"net"
@@ -21,6 +22,8 @@ type MultiUser struct {
 	// PublicOrigin is the https origin people reach the server at (--public-origin): the Host every request must name and the
 	// Origin every browser write must carry.
 	PublicOrigin string
+	// ReadDB is the catalog's read-only pool (catalog.OpenReadPool), for lookups made on every request; nil uses the writer.
+	ReadDB *sql.DB
 	// DataDir is the catalog's folder (and its secrets): never declarable as a workspace's data root.
 	DataDir  string
 	Accounts *accounts.Store

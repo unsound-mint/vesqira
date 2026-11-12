@@ -173,8 +173,14 @@ func (s *Server) objectWorkspace(kind string, value string, accountID string, se
 	return ws, authz.Role(r), createdBy, true
 }
 
-// lookupDB is where route's workspace lookups run: the catalog's single writer connection here; see objectWorkspace.
-func (s *Server) lookupDB() *sql.DB { return s.Store.DB() }
+// lookupDB is where route's workspace lookups run: the read-only pool when the group server has one, so a lookup made on every
+// request never queues behind a write (ADR 0050 section 6); the writer otherwise.
+func (s *Server) lookupDB() *sql.DB {
+	if s.MultiUser.ReadDB != nil {
+		return s.MultiUser.ReadDB
+	}
+	return s.Store.DB()
+}
 
 // placeActor puts an account's actor in the workspace the request names (header) or its oldest membership, with its role there.
 // A header naming a workspace the account is not a member of leaves it in none: every workspace route then answers 403, and

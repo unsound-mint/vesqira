@@ -14,10 +14,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
 	"github.com/unsound-mint/vesqira/services/api/internal/authz"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
+	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/discussion"
 	"github.com/unsound-mint/vesqira/services/api/internal/history"
@@ -648,5 +650,42 @@ func TestReadersMarkReportsSeen(t *testing.T) {
 		if w := g.do(req{method: "POST", path: "/api/reports/" + ids["reports/id"] + "/seen", body: `{"revision":1}`, cookie: who}); w.Code >= 300 {
 			t.Errorf("a %s cannot mark a report seen: %d %s", role, w.Code, w.Body)
 		}
+	}
+}
+
+// route's workspace lookup runs on every request that names an object, so it reads from the read-only pool and never waits behind
+// the single writer connection (ADR 0050 section 6).
+func TestWorkspaceLookupUsesTheReadPool(t *testing.T) {
+	g, _ := scopedGroup(t)
+	g.setupAdmin("ada")
+	ada := g.mustAccount("ada")
+	ids := fixtures(t, g, workspace.Local, ada.ID)
+	var path string
+	if err := g.cat.DB().QueryRow(`SELECT file FROM pragma_database_list WHERE name='main'`).Scan(&path); err != nil {
+		t.Fatal(err)
+	}
+	ro, err := catalog.OpenReadPool(path, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ro.Close()
+	g.s.MultiUser.ReadDB = ro
+	tx, err := g.cat.DB().Begin() // takes the one writer connection and keeps it
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	done := make(chan bool, 1)
+	go func() {
+		_, _, _, found := g.s.objectWorkspace("boards/id", ids["boards/id"], ada.ID, workspace.Local)
+		done <- found
+	}()
+	select {
+	case found := <-done:
+		if !found {
+			t.Error("the board was not found through the read pool")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the workspace lookup waited for the writer connection")
 	}
 }

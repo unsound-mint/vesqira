@@ -233,6 +233,7 @@ func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHead
 	}
 	mu := server.NewMultiUser(origin, acc, clientIPHeader, trusted)
 	mu.DataDir = dataDir
+	mu.ReadDB = ro
 	return mu, func() {
 		stop()
 		ro.Close()
