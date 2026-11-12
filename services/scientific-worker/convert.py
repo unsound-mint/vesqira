@@ -73,6 +73,20 @@ def rest_of(h):
     return None, None
 
 
+def rest_of_cube(c):
+    """rest_of for a cube, saying when the rest frequency is one the researcher corrected (ADR 0061), so a velocity readout never
+    presents a corrected value as the file's."""
+    rest, src = rest_of(c.h)
+    if src is not None and src in getattr(c, "corrected", ()):
+        src = f"{src} (corrected by the researcher)"
+    return rest, src
+
+
+def _rest_words(src):
+    """'the file's RESTFRQ', or 'the RESTFRQ (corrected by the researcher)'."""
+    return f"the {src}" if "corrected" in src else f"the file's {src}"
+
+
 def _axis(c):
     """What kind of spectral axis the cube has and what stands in the way of converting it: (info, refusal)."""
     f = c.spectral_facts()
@@ -128,7 +142,7 @@ def spectral_offers(c) -> dict | None:
     if f is None:
         return None
     axis, why = _axis(c)
-    rest, src = rest_of(c.h)
+    rest, src = rest_of_cube(c)
     out = {"native_unit": f.get("unit"), "native_kind": None if axis is None else axis["kind"], "ctype": f.get("ctype"),
            "file_convention": None if axis is None else axis["convention"], "specsys": f.get("specsys"),
            "rest": None if rest is None else {"value": float(rest.value), "unit": "Hz", "source": src},
@@ -166,7 +180,7 @@ def spectral_plan(c, unit_text, convention):
     native = {"unit": axis["unit_text"], "unit_status": axis["unit_status"]}
     base = {"native": native, "converted": None, "refused": None, "basis": None, "convention": None,
             "convention_source": None, "rest": None, "specsys": axis["specsys"], "reference_frame_note": SPECSYS_NOTE}
-    rest, src = rest_of(c.h)
+    rest, src = rest_of_cube(c)
     if rest is not None:
         base["rest"] = {"value": float(rest.value), "unit": "Hz", "source": src}
 
@@ -179,7 +193,7 @@ def spectral_plan(c, unit_text, convention):
             if rest is None:
                 return refuse("no rest frequency or wavelength in the file (RESTFRQ, RESTFREQ, RESTWAV)")
             base["convention"], base["convention_source"] = axis["convention"], "file"
-            basis = (f"astropy.units doppler_{axis['convention']} with the file's {src} = {rest.value:.12g} Hz (CTYPE {axis['ctype']} declares the "
+            basis = (f"astropy.units doppler_{axis['convention']} with {_rest_words(src)} = {rest.value:.12g} Hz (CTYPE {axis['ctype']} declares the "
                      f"{axis['convention']} convention), then spectral()")
             return base, None, (lambda q: q.to(u.Hz, CONVENTIONS[axis["convention"]](rest)).to(target, u.spectral())), basis
         basis = "astropy.units.spectral(): c = 299792458 m/s, vacuum wavelength; no rest frequency or convention involved"
@@ -199,7 +213,7 @@ def spectral_plan(c, unit_text, convention):
     if convention is None:
         return refuse(f"the axis is {axis['ctype']} and the file declares no velocity convention: choose radio, optical or relativistic")
     base["convention"], base["convention_source"] = convention, "user"
-    basis = (f"astropy.units doppler_{convention} with the file's {src} = {rest.value:.12g} Hz; the {convention} convention was chosen by "
+    basis = (f"astropy.units doppler_{convention} with {_rest_words(src)} = {rest.value:.12g} Hz; the {convention} convention was chosen by "
              f"you, the file ({axis['ctype']}) declares none")
     return base, None, (lambda q: q.to(u.Hz, u.spectral()).to(target, CONVENTIONS[convention](rest))), basis
 
@@ -373,8 +387,8 @@ def link_channels(a, b) -> dict:
     if a.channels > MAX_LINK_CHANNELS or b.channels > MAX_LINK_CHANNELS:
         return refuse(f"more than {MAX_LINK_CHANNELS} channels: not linked")
     ka, kb = ax["kind"], bx["kind"]
-    ra, srca = rest_of(a.h)
-    rb, srcb = rest_of(b.h)
+    ra, srca = rest_of_cube(a)
+    rb, srcb = rest_of_cube(b)
     if ka == "vel" and kb == "vel":
         if ax["legacy"] != bx["legacy"]:
             return refuse(f"{ax['ctype'] if ax['legacy'] else bx['ctype']} is a legacy spelling that does not declare its velocity convention: it links only to another legacy velocity axis")
@@ -467,7 +481,7 @@ def plane_frequency(c, channel: int):
     v = float(c._world(0, 0, channel)[c.spec])
     if not math.isfinite(v):
         return None, "the spectral value of this channel is not finite"
-    rest, _ = rest_of(c.h)
+    rest, _ = rest_of_cube(c)
     freq, why = _frequency(v * axis["unit"], axis, rest)
     return freq, why
 

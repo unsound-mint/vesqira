@@ -114,8 +114,9 @@ def _sigma_for(c: Cube, spec: dict):
         return ({"kind": "mad", "source": "a robust estimate: 1.4826 x the median absolute deviation of the finite values of each channel, "
                  "about their median. It includes the signal, so it overestimates sigma in a channel with bright emission"}, mad)
     if kind == "map":
+        import corrections as corr
         real = authorize(spec.get("path"))
-        sc = Cube(real)
+        sc = Cube(real, corr.CURRENT.get(real))     # the noise map's own corrections, when the API sent any (ADR 0061)
         if (sc.shape[sc.y], sc.shape[sc.x]) != (c.shape[c.y], c.shape[c.x]):
             raise MaskError("the noise map is not on the same pixel grid as the data")
         if sc.channels not in (1, c.channels):

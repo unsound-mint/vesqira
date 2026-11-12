@@ -25,13 +25,14 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 import convert
+import corrections as corr
 import rohsa
 from memcap import limit_memory, over_cap_message
 from fits_header import axes_shape, clean, read_header
 
 MAX_PLANE_ELEMENTS = 1 << 24      # 16.7M pixels = 64 MiB as float32
 MAX_PREVIEW_STEP = 64
-MAX_REQUEST_BYTES = 8192
+MAX_REQUEST_BYTES = 16384
 MAX_CHANNELS = 1 << 24
 MAX_TEXT_BYTES = 256 << 10
 WALK_MAX_ENTRIES = 5000           # entries in one page of a project walk
@@ -88,16 +89,30 @@ def has_grid(h: fits.Header, i: int) -> bool:
 
 
 class Cube:
-    """Parsed header facts for one file, keyed by (size, mtime) so a changed file is re-read."""
+    """Parsed header facts for one file, keyed by (size, mtime) so a changed file is re-read.
 
-    def __init__(self, path: str):
+    `corrections` is the researcher's correction state for this file (ADR 0061), already validated by corrections.check_state:
+    the WCS keywords are applied to a copy of the header (self.h) and the file's own header stays in self.file_h; a corrected
+    brightness unit is kept apart (self.unit_override) and only unit_of reads it. Nothing is written to the file.
+    """
+
+    def __init__(self, path: str, corrections: dict | None = None):
         st = os.stat(path)
         self.path, self.sig = path, (st.st_size, st.st_mtime_ns)
-        self.h = h = read_header(path)
-        self.shape = axes_shape(h)                    # FITS order: shape[0] is axis 1
+        self.file_h = read_header(path)
+        self.shape = axes_shape(self.file_h)          # FITS order: shape[0] is axis 1
         n = len(self.shape)
         if n < 2 or all(s <= 1 for s in self.shape):
             raise Refused("unsupported", "the primary HDU holds no image of at least two axes")
+        self.corrections = corrections
+        self.unit_override = corrections.get("bunit") if corrections else None
+        self.corrected = set((corrections or {}).get("wcs") or {})
+        if self.unit_override is not None and "BUNIT" not in self.file_h:
+            raise Refused("unsupported", "a unit correction is for a file that states a BUNIT; this file has none (declare its unit instead)")
+        try:
+            self.h = h = corr.validate(self.file_h, (corrections or {}).get("wcs") or {}, n) if self.corrected else self.file_h
+        except corr.Bad as e:
+            raise Refused("unsupported", "the WCS correction is not applied: " + str(e))
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             self.spectral_error = False
@@ -120,6 +135,11 @@ class Cube:
                     self.wcs = None
         self._locate_axes()
         self._flags = None
+        if self.corrected:
+            # the roles of the axes (x, y, channel) come from the file; a correction that would change them is refused
+            plain = Cube(path)
+            if (plain.x, plain.y, plain.chan) != (self.x, self.y, self.chan):
+                raise Refused("unsupported", "the WCS correction is not applied: it would change which axes are the image and the channel axis")
 
     # ----- which FITS axis is what, decided from the WCS rather than assumed -----
     def _locate_axes(self):
@@ -561,17 +581,21 @@ class Cube:
             head["mask_policy"] += " " + mk.masks_policy_sentence(ap.specs)
         return head, payload
 
-_cubes: dict[str, Cube] = {}
+_cubes: dict[tuple, Cube] = {}
 
 
 def cube_for(path: str) -> Cube:
+    """The Cube of a file, with the corrections the current request carries for it (ADR 0061). The cache key includes the
+    corrections' hash, so a corrected, an uncorrected and a reverted reading of one file are never served for each other."""
     if os.path.realpath(path) != path:          # the caller sends a resolved path; a swapped-in symlink is refused
         raise Refused("bad_request", "bad request")
     st = os.stat(path)
-    c = _cubes.pop(path, None)
+    cs = corr.CURRENT.get(path)
+    key = (path, cs["hash"] if cs else None)
+    c = _cubes.pop(key, None)
     if c is None or c.sig != (st.st_size, st.st_mtime_ns):
-        c = Cube(path)
-    _cubes[path] = c
+        c = Cube(path, cs)
+    _cubes[key] = c
     while len(_cubes) > CUBES_KEPT:
         _cubes.pop(next(iter(_cubes)))
     return c
@@ -994,7 +1018,10 @@ MAX_DECLARED_UNIT = 40
 
 
 def unit_of(c: "Cube", declared) -> tuple:
-    """(unit, status) of a file's values: what the file says always wins; a declared unit only fills a gap."""
+    """(unit, status) of a file's values: a unit the researcher corrected (ADR 0061) is "corrected"; otherwise what the file
+    says always wins and a declared unit only fills a gap."""
+    if c.unit_override is not None:
+        return c.unit_override, "corrected"
     if "BUNIT" in c.h:
         return clean(c.h.get("BUNIT")), "declared"
     if declared is not None:
@@ -1226,7 +1253,22 @@ def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
 
 
 def handle(req: dict) -> tuple[dict, bytes]:
+    """One request. The corrections it carries (ADR 0061) are in force for its duration only; every reply that read a file
+    says which correction states it accepted (`corrections_applied`), so the API can refuse a worker that ignored them."""
+    try:
+        with corr.CURRENT.using(req.get("corrections")) as applied:
+            head, payload = _handle(req)
+    except corr.Bad as e:
+        raise Refused("bad_request", str(e))
+    if applied:
+        head = {**head, "corrections_applied": sorted(st["hash"] for st in applied.values())}
+    return head, payload
+
+
+def _handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
+    if op == "wcs_preview":
+        return wcs_preview(req)
     if op in ("rohsa_index", "rohsa_pixel"):
         return rohsa_op(op, req)
     if op == "cards":
@@ -1265,6 +1307,10 @@ def handle(req: dict) -> tuple[dict, bytes]:
     c = cube_for(path)
     bunit, status = unit_of(c, declared_unit(req))
     base = {"ok": True, "op": op, "origin": 0, "bunit": bunit, "bunit_status": status}
+    if c.corrections:
+        # what the file itself says, beside the corrected values, so every surface can say "the file says K; you declared ..."
+        base["file_bunit"] = clean(c.file_h.get("BUNIT")) if "BUNIT" in c.file_h else None
+        base["wcs_corrected"] = sorted(c.corrected)
     if op == "overlay_geometry":
         head, payload = overlay_geometry(c, req)
         return {**base, **head}, payload
@@ -1338,6 +1384,37 @@ def handle(req: dict) -> tuple[dict, bytes]:
             "spectral_value": None if value is None else float(value),
             "spectral_unit": None if spectral is None else spectral.get("unit"),
             "flagged": (channel in fl["channels"]) if fl["declared"] else None, "preview": preview}, payload
+
+
+def wcs_preview(req: dict) -> tuple[dict, bytes]:
+    """What a proposed correction does, before it is saved (ADR 0061): it is validated exactly as it would be applied, and the
+    coordinates at the image centre and corners and of the first, middle and last channel are given before (the corrections in
+    force now, `current`) and after (`proposed`). A refused proposal answers with the reason, not an error, so the form can show
+    it. Nothing is written."""
+    path = req.get("path")
+    if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
+        raise Refused("bad_request", "bad request")
+    authorize(path)
+    if os.path.realpath(path) != path:
+        raise Refused("bad_request", "bad request")
+    try:
+        cur = corr.check_state(req["current"]) if req.get("current") is not None else None
+        prop = corr.check_state(req.get("proposed"))
+    except (corr.Bad, KeyError) as e:
+        raise Refused("bad_request", str(e) or "bad request")
+    before = Cube(path, cur)
+    out = {"ok": True, "op": "wcs_preview", "nbytes": 0, "before": corr.coords(before), "after": None, "refused": None,
+           "file_bunit": clean(before.file_h.get("BUNIT")) if "BUNIT" in before.file_h else None,
+           "changes": corr.changes(before.file_h, (cur or {}).get("wcs") or {}, prop["wcs"]),
+           "note": "coordinates by astropy from the file's header with the corrections applied in memory; the file is not changed"}
+    try:
+        after = Cube(path, prop)
+    except Refused as e:
+        out["refused"] = e.message
+        return out, b""
+    out["after"] = corr.coords(after)
+    out["bunit_after"] = unit_of(after, None)[0]
+    return out, b""
 
 
 def orientation_sky(c: Cube, req: dict) -> dict:
