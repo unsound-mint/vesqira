@@ -45,7 +45,8 @@ export function useCatalog() {
     listHosts().then((h) => live && setHosts(h)).catch(() => undefined);
     listJobs().then((j) => live && setJobs(j)).catch(() => undefined);
     listDatasets({ archived: "all" })
-      .then((d) => live && (setDatasets(d), setError(null)))
+      // The list starts empty, so anything already in it was registered while this first read was in flight: keep it.
+      .then((d) => live && (setDatasets((cur) => [...d, ...cur.filter((x) => !d.some((y) => y.id === x.id))].sort((a, b) => a.name.localeCompare(b.name))), setError(null)))
       .catch((e: unknown) => live && setError(e instanceof ApiError ? e.message : "Could not load datasets."))
       .finally(() => live && setLoading(false));
     return () => {

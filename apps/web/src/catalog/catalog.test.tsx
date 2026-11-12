@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DatasetInspector } from "./DatasetInspector";
 import { Explorer } from "./Explorer";
@@ -54,6 +54,30 @@ describe("Explorer", () => {
     await user.click(screen.getByRole("button", { name: "Register" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("outside the configured source roots");
     expect(screen.getByLabelText("Register a FITS file or a catalog")).toHaveValue("/etc/passwd");
+  });
+
+  it("keeps a path typed while the previous registration is still in flight", async () => {
+    const user = userEvent.setup();
+    let reply: (v: string | null) => void = () => {};
+    const onRegister = vi.fn().mockReturnValue(new Promise<string | null>((r) => { reply = r; }));
+    render(<Explorer datasets={[]} selectedId={null} loading={false} error={null} onSelect={() => {}} onRegister={onRegister} />);
+    const field = screen.getByLabelText("Register a FITS file or a catalog");
+    await user.type(field, "/data/a.fits");
+    await user.click(screen.getByRole("button", { name: "Register" }));
+    await user.clear(field);
+    await user.type(field, "/data/b.fits");
+    await act(async () => { reply(null); });
+    expect(field).toHaveValue("/data/b.fits");
+    expect(screen.getByRole("button", { name: "Register" })).toBeEnabled();
+  });
+
+  it("clears the field when the registered path is still the one typed", async () => {
+    const user = userEvent.setup();
+    render(<Explorer datasets={[]} selectedId={null} loading={false} error={null} onSelect={() => {}} onRegister={async () => null} />);
+    const field = screen.getByLabelText("Register a FITS file or a catalog");
+    await user.type(field, "/data/a.fits");
+    await user.click(screen.getByRole("button", { name: "Register" }));
+    await waitFor(() => expect(field).toHaveValue(""));
   });
 
   it("lists datasets and reports the empty state", () => {
