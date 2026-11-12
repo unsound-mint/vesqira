@@ -69,6 +69,16 @@ describe("review page", () => {
     expect(screen.getByRole("article").style.getPropertyValue("--col")).toBe("1 / span 12");
   });
 
+  it("states the access label the author gave the data, as words, and never names a dataset", async () => {
+    const labelled = { ...review, snapshot: { ...review.snapshot, access: "unreleased", items: [{ ...review.snapshot.items[0]!, access: "unreleased" }] } };
+    mockFetch({ "/review-api/tok": () => ({ body: labelled }) });
+    render(<ReviewPage token="tok" />);
+    await screen.findByRole("heading", { name: "Group meeting" });
+    expect(screen.getByRole("note")).toHaveTextContent("Unreleased");
+    expect(screen.getByRole("note")).toHaveTextContent(/marked the data behind this board as unreleased/);
+    expect(screen.getAllByText("Unreleased").length).toBeGreaterThan(1); // the board's and the figure's
+  });
+
   it("gives one message for an invalid, expired or revoked link", async () => {
     mockFetch({ "/review-api/bad": () => ({ status: 404, body: { error: "not found" } }) });
     render(<ReviewPage token="bad" />);
@@ -89,6 +99,46 @@ describe("boards", () => {
     const link = (await screen.findByLabelText("Review link")) as HTMLInputElement;
     expect(link.value).toBe("http://127.0.0.1:8788/#/review/SECRETTOKEN");
     expect(screen.getByText(/never receive the data, file paths or any credential/)).toBeInTheDocument();
+  });
+});
+
+describe("publishing a board that uses labelled data", () => {
+  const board = { id: 1, title: "Draft", createdAt: "", updatedAt: "", items: [{ position: 0, note: "", figure: { id: 5, title: "Peak", caption: "", createdAt: "", revision: "r".repeat(64), previewSha: "b".repeat(64), width: 8, height: 6, provenance: prov, access: { label: "unreleased", via: [{ datasetId: 3, name: "lmc.fits", label: "unreleased" }] } } }] };
+  const refusal = (status: number, code: string) => ({ status, body: { error: "This board uses data labelled unreleased: Peak (lmc.fits). Confirm to publish.", code, label: "unreleased", restricted: [] } });
+
+  it("shows the label on the figure, asks for confirmation naming the data, and sends confirmAccess only after the author says yes", async () => {
+    let published = 0;
+    const calls = mockFetch({
+      "/api/boards/1/publish": (init) => {
+        const body = JSON.parse(String(init?.body));
+        if (!body.confirmAccess) return refusal(409, "access_confirmation_required");
+        published++;
+        return { status: 201, body: { snapshot: { id: 9 }, token: "TOK", reviewPath: "/#/review/TOK", note: "" } };
+      },
+      "/api/boards/1/snapshots": () => ({ body: { snapshots: [] } }),
+      "/api/boards": () => ({ body: { boards: [board] } }),
+    });
+    render(<BoardsView />);
+    expect(await screen.findByText(/Made from lmc.fits/)).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Freeze and create link" }));
+    expect(await screen.findByRole("alert", { name: "Labelled data" })).toHaveTextContent("lmc.fits");
+    expect(published).toBe(0);
+    await userEvent.click(screen.getByRole("button", { name: /I confirm: publish/ }));
+    expect(await screen.findByLabelText("Review link")).toBeInTheDocument();
+    const sent = calls.filter((c) => c.url.endsWith("/publish")).map((c) => JSON.parse(String(c.init!.body)).confirmAccess);
+    expect(sent).toEqual([undefined, true]);
+  });
+
+  it("offers no way past a block set by the workspace's admin", async () => {
+    mockFetch({
+      "/api/boards/1/publish": () => refusal(403, "publishing_blocked"),
+      "/api/boards/1/snapshots": () => ({ body: { snapshots: [] } }),
+      "/api/boards": () => ({ body: { boards: [board] } }),
+    });
+    render(<BoardsView />);
+    await userEvent.click(await screen.findByRole("button", { name: "Freeze and create link" }));
+    expect(await screen.findByRole("alert", { name: "Labelled data" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /I confirm/ })).toBeNull();
   });
 });
 

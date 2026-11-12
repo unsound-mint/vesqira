@@ -9,6 +9,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/discussion"
 	"path/filepath"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/access"
 	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -38,6 +39,7 @@ func Open(db *sql.DB, dir string) error {
 		name string
 		open func() error
 	}{
+		{"access", func() error { _, e := access.Open(db); return e }},
 		{"boards", func() error { _, e := boards.Open(db, dir); return e }},
 		{"runs", func() error { _, e := runs.Open(db); return e }},
 		{"hosts", func() error { _, e := hosts.Open(db); return e }},

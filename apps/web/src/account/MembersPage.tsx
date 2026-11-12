@@ -3,7 +3,8 @@ import type { FormEvent } from "react";
 import { ApiError } from "../api/http";
 import { ROLES, createInvitation, listMembers, removeMember, revokeInvitation, roleName, setMemberRole } from "../api/workspaces";
 import type { InvitationCreated, MemberList, Role } from "../api/workspaces";
-import { Button, Input, LinkButton, Select } from "../ui";
+import { getAccessOverview, setBlockedLabels } from "../api/access";
+import { Button, Checkbox, Input, LinkButton, Select } from "../ui";
 import { useCan } from "./permissions";
 import s from "./Account.module.css";
 
@@ -71,6 +72,7 @@ export function MembersPage({ myRole }: { myRole: string }) {
         {manage ? <p className={s.note}>Changing a role or removing someone needs a sign-in within the last 15 minutes (confirm it on the account page). A workspace always keeps one Owner.</p> : null}
       </section>
       {can("member.invite") ? <Invite roles={invitable} list={list} onChange={refresh} onError={setError} /> : null}
+      {can("workspace.admin") ? <PublishingPolicy workspaceId={list.workspace.id} onError={setError} /> : null}
       <section className={s.card} aria-labelledby="roots-h">
         <h2 id="roots-h" className={s.h2}>Data folders</h2>
         {list.roots.length ? (
@@ -80,6 +82,31 @@ export function MembersPage({ myRole }: { myRole: string }) {
         )}
       </section>
     </main>
+  );
+}
+
+/**
+ * Which access labels block publishing in this workspace (ADR 0069). A blocked label stops a board or report that uses data with
+ * it from being published or pushed here, whatever its author confirms. Only an admin sees it; the server checks the permission.
+ */
+function PublishingPolicy({ workspaceId, onError }: { workspaceId: number; onError: (m: string) => void }) {
+  const [blocked, setBlocked] = useState<string[] | null>(null);
+  useEffect(() => {
+    getAccessOverview().then((o) => setBlocked(o.blockedLabels), (e) => onError(message(e)));
+  }, [onError]);
+  if (!blocked) return null;
+  const toggle = (l: "collaboration" | "unreleased", on: boolean) => {
+    const next = (["collaboration", "unreleased"] as const).filter((x) => (x === l ? on : blocked.includes(x)));
+    setBlockedLabels(workspaceId, [...next]).then((r) => setBlocked(r.blockedLabels), (e) => onError(message(e)));
+  };
+  return (
+    <section className={s.card} aria-labelledby="policy-h">
+      <h2 id="policy-h" className={s.h2}>Publishing policy</h2>
+      <p className={s.note}>Datasets can carry an access label. Choose the labels that block publishing: a board using such data cannot be published here, work using it cannot be pushed to this workspace, and its author cannot confirm past it. Other labelled work asks its author to confirm.</p>
+      <Checkbox label="Block collaboration-only data" checked={blocked.includes("collaboration")} onChange={(e) => toggle("collaboration", e.target.checked)} />
+      <Checkbox label="Block unreleased data" checked={blocked.includes("unreleased")} onChange={(e) => toggle("unreleased", e.target.checked)} />
+      <p className={s.note}>Changing this needs a sign-in within the last 15 minutes. Labels are what researchers declare; the server enforces them but cannot check them against the files.</p>
+    </section>
   );
 }
 

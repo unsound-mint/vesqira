@@ -12,6 +12,25 @@ paths:
       x-listener: owner, publish, review
       x-vesqira-permission: anonymous
       responses: {'200': {description: ok}}
+  /api/access:
+    get:
+      operationId: owner_s_accessOverview_get_api_access
+      x-listener: owner
+      x-vesqira-permission: dataset.read
+      summary: "Every dataset that carries an access label, own or inherited, for the badges of the lists"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AccessOverview"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/account/recovery-codes:
     post:
       operationId: owner_s_newRecoveryCodes_post_api_account_recovery_codes
@@ -1045,6 +1064,18 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: "A label on the board blocks publishing in this workspace (code publishing_blocked), or the caller may not publish"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AccessRefusal"
+        "409":
+          description: "The board uses labelled data and confirmAccess was not sent (code access_confirmation_required)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AccessRefusal"
   /api/boards/{id}/restore:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -1276,6 +1307,65 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Dataset"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/datasets/{id}/access:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_getAccess_get_api_datasets_id_access
+      x-listener: owner
+      x-vesqira-permission: dataset.read
+      summary: "A dataset's access label, what it inherits and its history"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/DatasetAccess"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: owner_s_setAccess_post_api_datasets_id_access
+      x-listener: owner
+      x-vesqira-permission: dataset.write
+      summary: "Set a dataset's access label (audited; lowering needs Maintainer or higher)"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SetAccessRequest"
+      responses:
+        "200":
+          description: "set"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/DatasetAccess"
         default:
           description: "Error"
           content:
@@ -7565,6 +7655,47 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/workspaces/{id}/blocked-labels:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_setBlockedLabels_post_api_workspaces_id_blocked_labels
+      x-listener: owner
+      x-vesqira-permission: workspace.admin
+      summary: "Choose which access labels block publishing in a workspace (admin, recent sign-in)"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/BlockedLabelsRequest"
+      responses:
+        "200":
+          description: "set"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "blockedLabels"
+                properties:
+                  blockedLabels:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/AccessLabel"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/workspaces/{id}/members:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -9324,6 +9455,10 @@ components:
           enum:
             - "dataset"
             - "crossrun"
+        access:
+          allOf:
+            - $ref: "#/components/schemas/AccessEffective"
+          description: "The access label the figure carries, from its source datasets at the time of the reply; absent when released. Owner API only (it names datasets)."
     FigureList:
       type: "object"
       required:
@@ -9636,6 +9771,11 @@ components:
         lastActivity:
           type: "string"
           format: "date-time"
+        access:
+          type: "string"
+          enum:
+            - "collaboration"
+            - "unreleased"
     SnapshotList:
       type: "object"
       required:
@@ -9682,6 +9822,12 @@ components:
           allOf:
             - $ref: "#/components/schemas/BoardRect"
           description: "The place as saved when the board was published; absent for a board that was never arranged and for snapshots made before layouts, which the reader lays out from the order."
+        access:
+          type: "string"
+          enum:
+            - "collaboration"
+            - "unreleased"
+          description: "The label the figure carried when the board was published (ADR 0069); absent for released figures and for snapshots made before labels. The name of the label only."
     FrozenJob:
       type: "object"
       description: "A run that had not finished: only its name and state at that moment."
@@ -9740,6 +9886,12 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/FrozenItem"
+        access:
+          type: "string"
+          enum:
+            - "collaboration"
+            - "unreleased"
+          description: "The most restrictive label among the board's figures when it was published, stated on the review page; absent when released."
     Preflight:
       type: "object"
       description: "What publishing would expose and what a careful author would want to know first. Creates nothing."
@@ -9753,6 +9905,18 @@ components:
           type: "array"
           items:
             type: "string"
+        restricted:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/RestrictedPanel"
+          description: "Figures that carry a label; publishing needs confirmAccess"
+        blockedLabels:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AccessLabel"
+        blocked:
+          type: "boolean"
+          description: "True when a label on the board blocks publishing in this workspace"
     PublishRequest:
       type: "object"
       description: "Unknown keys are refused."
@@ -9770,6 +9934,9 @@ components:
           description: "The snapshot this one replaces"
         reason:
           type: "string"
+        confirmAccess:
+          type: "boolean"
+          description: "The author's explicit yes to publishing a board that uses labelled data. Without it such a publication is refused with 409; it never overrides a blocked label (403)."
     PublishResponse:
       type: "object"
       required:
@@ -21845,3 +22012,192 @@ components:
           type: "object"
           additionalProperties: true
       description: "The decomposition summed per width class, registered as derived maps"
+    AccessLabel:
+      type: "string"
+      enum:
+        - "none"
+        - "collaboration"
+        - "unreleased"
+      description: "What a researcher declares about whether a dataset may be shown to others (ADR 0069): none (released), collaboration (collaboration only) or unreleased. Ordered unreleased > collaboration > none. A declaration, not a verified fact about the file."
+    AccessSource:
+      type: "object"
+      required:
+        - "datasetId"
+        - "name"
+        - "label"
+      description: "A labelled dataset a result depends on. Owner API only: it names a dataset."
+      properties:
+        datasetId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+          description: "The dataset's name when its label was set"
+        label:
+          $ref: "#/components/schemas/AccessLabel"
+        how:
+          type: "string"
+          description: "How the label reached the result when not by a recorded dataset edge: a run's input named by the job that made it, or inferred by file name and size. Absent for a direct or derived edge."
+    AccessEffective:
+      type: "object"
+      required:
+        - "label"
+      description: "The label a dataset, figure or run carries: the most restrictive among its own and those of the datasets it was made from, computed from the recorded dependency edges when asked, never stored. via lists the labelled datasets that bring a label in; it is omitted when the label is none."
+      properties:
+        label:
+          $ref: "#/components/schemas/AccessLabel"
+        via:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AccessSource"
+    AccessChange:
+      type: "object"
+      required:
+        - "id"
+        - "datasetId"
+        - "name"
+        - "label"
+        - "previous"
+        - "reason"
+        - "author"
+        - "at"
+      description: "One record of a dataset's label history (append-only)."
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        datasetId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        label:
+          $ref: "#/components/schemas/AccessLabel"
+        previous:
+          $ref: "#/components/schemas/AccessLabel"
+        reason:
+          type: "string"
+        author:
+          type: "string"
+        at:
+          type: "string"
+          format: "date-time"
+    DatasetAccess:
+      type: "object"
+      required:
+        - "datasetId"
+        - "label"
+        - "effective"
+        - "history"
+        - "blockedLabels"
+        - "canLower"
+      properties:
+        datasetId:
+          type: "integer"
+          format: "int64"
+        label:
+          $ref: "#/components/schemas/AccessLabel"
+        effective:
+          $ref: "#/components/schemas/AccessEffective"
+        history:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AccessChange"
+        blockedLabels:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AccessLabel"
+          description: "Labels that block publishing in this workspace (always empty on a local instance)"
+        canLower:
+          type: "boolean"
+          description: "Whether the caller may set a less restrictive label than the one in force (Maintainer or higher)"
+    AccessOverview:
+      type: "object"
+      required:
+        - "datasets"
+        - "blockedLabels"
+        - "canLower"
+      description: "Every dataset that carries a label, its own or an inherited one, keyed by dataset id."
+      properties:
+        datasets:
+          type: "object"
+          additionalProperties:
+            type: "object"
+            required:
+              - "own"
+              - "effective"
+            properties:
+              own:
+                $ref: "#/components/schemas/AccessLabel"
+              effective:
+                $ref: "#/components/schemas/AccessEffective"
+        blockedLabels:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AccessLabel"
+        canLower:
+          type: "boolean"
+    SetAccessRequest:
+      type: "object"
+      required:
+        - "label"
+      description: "Unknown keys are refused. Setting a less restrictive label than the one in force needs the Maintainer role or higher."
+      properties:
+        label:
+          $ref: "#/components/schemas/AccessLabel"
+        reason:
+          type: "string"
+          description: "At most 500 characters; kept in the history"
+    BlockedLabelsRequest:
+      type: "object"
+      required:
+        - "labels"
+      properties:
+        labels:
+          type: "array"
+          items:
+            type: "string"
+            enum:
+              - "collaboration"
+              - "unreleased"
+          description: "The labels that block publishing in the workspace; an empty list blocks none"
+    RestrictedPanel:
+      type: "object"
+      required:
+        - "position"
+        - "title"
+        - "label"
+        - "via"
+      description: "A figure on the board that carries a label, with the datasets behind it."
+      properties:
+        position:
+          type: "integer"
+          description: "1-based place on the board; 0 in a report"
+        title:
+          type: "string"
+        label:
+          $ref: "#/components/schemas/AccessLabel"
+        via:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AccessSource"
+    AccessRefusal:
+      type: "object"
+      required:
+        - "error"
+        - "code"
+      description: "A publication refused for its labels. 409 access_confirmation_required: confirmAccess was not sent. 403 publishing_blocked: the workspace's admin made a label on the board block publishing, and confirmAccess does not override it."
+      properties:
+        error:
+          type: "string"
+        code:
+          type: "string"
+          enum:
+            - "access_confirmation_required"
+            - "publishing_blocked"
+        label:
+          $ref: "#/components/schemas/AccessLabel"
+        restricted:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/RestrictedPanel"

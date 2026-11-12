@@ -186,7 +186,7 @@ func toString(v any) string {
 }
 
 func TestWhatAReviewerCanSeeIsAWhitelist(t *testing.T) {
-	want := map[string]bool{"kind": true, "state": true, "at": true, "revision": true, "title": true, "caption": true, "note": true, "previewSha": true, "width": true, "height": true, "provenance": true, "layout": true} // layout: four small integers on the fixed grid (ADR 0060), reviewed
+	want := map[string]bool{"kind": true, "state": true, "at": true, "revision": true, "title": true, "caption": true, "note": true, "previewSha": true, "width": true, "height": true, "provenance": true, "layout": true, "access": true} // access: the name of a label, never a dataset (ADR 0069), reviewed; layout: four small integers on the fixed grid (ADR 0060), reviewed
 	rt := reflect.TypeOf(FrozenItem{})
 	for i := 0; i < rt.NumField(); i++ {
 		tag := strings.Split(rt.Field(i).Tag.Get("json"), ",")[0]

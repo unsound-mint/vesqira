@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Download, Printer, Trash2 } from "lucide-react";
-import { Button, Checkbox, IconButton, Input, LinkButton, Select } from "../ui";
+import { AccessBadge, Button, Checkbox, IconButton, Input, LinkButton, Select } from "../ui";
 import { addToBoard, createBoard, figurePreviewUrl, getBoard, listBoards, listSnapshots, publish, revokeSnapshot, snapshotComments, ownerReply, preflight, OUTCOME_TEXT } from "../api/boards";
 import { boardStack, moveItem, removeItem, resolveComment, setNote } from "../undo/boardCommands";
 import { useUndoStack } from "../undo/useUndoStack";
@@ -10,6 +10,8 @@ import { Threads } from "./Threads";
 // loaded when someone presents: it brings the modal primitives (ADR 0033), which the rest of the app does not need
 const PresentView = lazy(() => import("./PresentView").then((m) => ({ default: m.PresentView })));
 import { markSeen, readSeen } from "./seen";
+import { accessRefusal } from "../api/access";
+import type { AccessRefusal } from "../api/access";
 import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
 import type { NewerNotice } from "../api/catalog";
 import { NewerNotices } from "../catalog/NewerNotices";
@@ -69,6 +71,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
   const [replaces, setReplaces] = useState(false);
   const [reason, setReason] = useState("");
   const [pre, setPre] = useState<Preflight | null>(null);
+  const [refusal, setRefusal] = useState<(AccessRefusal & { status: number }) | null>(null); // a publication refused for its access labels (ADR 0069)
   const [presenting, setPresenting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [ticked, setTicked] = useState<number[]>([]); // item positions ticked for "what differs", oldest first; at most two
@@ -150,12 +153,13 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
     }
   }
 
-  async function share() {
+  async function share(confirmAccess = false) {
     if (!board) return;
     try {
       const prev = snaps.find((x) => !x.revoked && !x.supersededBy);
-      const r = await publish(board.id, label, Number(hours), { question, ...(replaces && prev ? { supersedes: prev.id, reason } : {}) });
+      const r = await publish(board.id, label, Number(hours), { question, ...(replaces && prev ? { supersedes: prev.id, reason } : {}), ...(confirmAccess ? { confirmAccess: true } : {}) });
       setPre(null);
+      setRefusal(null);
       try {
         localStorage.setItem(BASE_KEY, base);
       } catch {
@@ -165,6 +169,12 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
       setSnaps(await listSnapshots(board.id));
       setErr(null);
     } catch (e) {
+      const ref = accessRefusal(e);
+      if (ref) {
+        setRefusal(ref);
+        setErr(null);
+        return;
+      }
       setErr(e instanceof Error ? e.message : "Could not share the board.");
     }
   }
@@ -222,6 +232,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
               {f ? (
                 <>
                   <h3 className={s.title}>{f.title}</h3>
+                  {f.access && f.access.label !== "none" ? <p className={s.src}><AccessBadge label={f.access.label} /> Made from {(f.access.via ?? []).map((v) => (v.how ? `${v.name} (${v.how})` : v.name)).join("; ")}</p> : null}
                   <p className={s.src}>{provenanceLine(f.provenance)}</p>
                   <NewerNotices notices={newer?.[String(f.id)]} />
                   {f.caption ? <p className={s.cap}>{f.caption}</p> : null}
@@ -286,10 +297,27 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
             </Select>
             <Input label="Review address" value={base} onChange={(e) => setBase(e.target.value)} />
             <Button onClick={() => void run(async () => setPre(await preflight(board.id, question)))}>Check what will be shared</Button>
-            <Button variant="primary" onClick={share}>Freeze and create link</Button>
+            <Button variant="primary" onClick={() => void share()}>Freeze and create link</Button>
           </div>
+          {refusal ? (
+            <div className={s.link} role="alert" aria-label="Labelled data">
+              <p className={s.note}><AccessBadge label={refusal.label} /> {refusal.error}</p>
+              {refusal.status === 409 ? (
+                <div className={s.row}>
+                  <Button variant="primary" onClick={() => void share(true)}>I confirm: publish with this data</Button>
+                  <Button onClick={() => setRefusal(null)}>Cancel</Button>
+                </div>
+              ) : <Button onClick={() => setRefusal(null)}>Close</Button>}
+            </div>
+          ) : null}
           {pre ? (
             <div className={s.link} role="region" aria-label="What the reviewer will see">
+              {pre.blocked ? <p className={s.note}>Publishing is blocked in this workspace: a label on this board is one its admin does not allow to be shared.</p> : null}
+              {(pre.restricted ?? []).length > 0 ? (
+                <ul className={s.comments} aria-label="Labelled figures">
+                  {pre.restricted!.map((r) => <li key={`${r.position}-${r.title}`}><AccessBadge label={r.label} /> {r.title} (panel {r.position}), from {r.via.map((v) => v.name).join(", ")}</li>)}
+                </ul>
+              ) : null}
               <p className={s.note}>The reviewer will see exactly this and nothing else:</p>
               {pre.warnings.length > 0 ? <ul className={s.comments}>{pre.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : <p className={s.note}>Nothing to flag.</p>}
               <ol className={s.comments}>
@@ -312,7 +340,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
           <ul className={s.snaps}>
             {snaps.map((sn) => (
               <li key={sn.id}>
-                <span>{sn.label || `Snapshot ${sn.id}`}</span> <span className={s.src}>· {sn.items} figures · {sn.comments} comment{sn.comments === 1 ? "" : "s"} · {status(sn)}{sn.supersededBy ? " · replaced by a newer version" : ""} · expires {new Date(sn.expiresAt).toLocaleDateString()}</span>
+                <span>{sn.label || `Snapshot ${sn.id}`}</span> {sn.access ? <AccessBadge label={sn.access} /> : null} <span className={s.src}>· {sn.items} figures · {sn.comments} comment{sn.comments === 1 ? "" : "s"} · {status(sn)}{sn.supersededBy ? " · replaced by a newer version" : ""} · expires {new Date(sn.expiresAt).toLocaleDateString()}</span>
                 {sn.lastActivity && new Date(sn.lastActivity).getTime() > (seenAt[sn.id] ?? readSeen(`snapshot.${sn.id}`)) ? <p className={s.note} role="status"><strong>New since you last looked:</strong> {sn.outcome ? "the reviewer's outcome or " : ""}comments from the reviewer.</p> : null}
                 <p className={s.note}>{sn.outcome ? `Reviewer: ${OUTCOME_TEXT[sn.outcome]}${sn.outcomeBy ? ` (${sn.outcomeBy})` : ""}${sn.outcomeNote ? ` · ${sn.outcomeNote}` : ""}` : "Not yet reviewed."}</p>
                 <div className={s.row}>

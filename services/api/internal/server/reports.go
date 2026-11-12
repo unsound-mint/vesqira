@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/access"
 	"log"
 	"net/http"
 	"regexp"
@@ -483,7 +484,9 @@ type frozen struct {
 	Errors   []string    `json:"errors"` // anything here blocks publishing
 	Changes  []blockDiff `json:"changes"`
 	Space    string      `json:"space"`
-	Readers  []string    `json:"readers"` // names of live reader links on the space, when the server could be asked
+	// Restricted are the figures drawn from labelled data (ADR 0069); the revision states the most restrictive label.
+	Restricted []restrictedPanel `json:"restricted"`
+	Readers    []string          `json:"readers"` // names of live reader links on the space, when the server could be asked
 	// SourceIDs is, for each block of the working body (reports.Blocks), the id it would have when published, or ""
 	// when it cannot be published. Comments name published block ids, so this places them on the draft.
 	SourceIDs []string `json:"-"`
@@ -547,6 +550,11 @@ func (s *Server) freeze(ws workspace.ID, rep reports.Report, space string, withA
 		Date: reports.ReportDate(rep.Body), Summary: reports.ReportSummary(rep.Body)} // front matter: only these two keys leave the laptop
 	unshared := map[string]bool{}
 	missing := map[string]bool{}
+	labels, err := s.accessView(ws)
+	if err != nil {
+		return f, err
+	}
+	reportLabel := access.None
 	figTitle := func(revision string) string {
 		if fig, err := s.Boards.FigureByRevision(ws, revision); err == nil {
 			return fig.Title
@@ -665,6 +673,10 @@ func (s *Server) freeze(ws workspace.ID, rep reports.Report, space string, withA
 				break
 			}
 			note(pic)
+			if e := labels.Figure(fig.DatasetID, fig.Scene, fig.Identity); e.Label.Restricted() {
+				reportLabel = access.Max(reportLabel, e.Label)
+				f.Restricted = append(f.Restricted, restrictedPanel{Title: fig.Title, Label: e.Label, Via: e.Via})
+			}
 			add(publish.Block{Kind: publish.BlockFigure, Figure: &publish.Figure{Asset: pic.pub, Width: fig.Width, Height: fig.Height, Title: fig.Title, Caption: fig.Caption, Revision: fig.Revision, Provenance: fig.Provenance}}, b.Figure)
 			if fig.Caption == "" {
 				f.Warnings = append(f.Warnings, fmt.Sprintf("Figure %q has no caption.", fig.Title))
@@ -731,6 +743,9 @@ func (s *Server) freeze(ws workspace.ID, rep reports.Report, space string, withA
 	}
 	if len(rev.Blocks) == 0 {
 		f.Errors = append(f.Errors, "The report is empty.")
+	}
+	if reportLabel.Restricted() {
+		rev.Access = string(reportLabel)
 	}
 	f.Revision = rev
 	// What changed since the last publication, by block identity.

@@ -23,6 +23,8 @@ type Props = {
   hosts?: Host[];
   selectedId: number | null;
   problems?: Record<string, Problem>;
+  /** The access label each dataset carries, by id (ADR 0069); shown as words in the row, unlabelled datasets are absent. */
+  access?: Record<string, string>;
   loading: boolean;
   error: string | null;
   onSelect: (id: number) => void;
@@ -41,7 +43,7 @@ type Host = { id: number; name: string };
 const NO_HOSTS: Host[] = [];
 const NO_SUBSETS: SubsetView[] = [];
 
-export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}, loading, error, onSelect, subsets = NO_SUBSETS, selectedSubsetId = null, onSelectSubset, onRegister, offer = null, onAddLocation, onDismissOffer }: Props) {
+export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}, access = {}, loading, error, onSelect, subsets = NO_SUBSETS, selectedSubsetId = null, onSelectSubset, onRegister, offer = null, onAddLocation, onDismissOffer }: Props) {
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -121,7 +123,7 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
       <div role="list" aria-label="Datasets" {...roving.listProps}>
         {shown.map((d) => (
           <div role="listitem" key={d.id}>
-            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId && selectedSubsetId === null} onSelect={() => onSelect(d.id)} trailing={`${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${isHealpix(d) ? `HEALPix ${d.header.nside} · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
+            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId && selectedSubsetId === null} onSelect={() => onSelect(d.id)} trailing={`${access[String(d.id)] === "unreleased" ? "unreleased · " : access[String(d.id)] === "collaboration" ? "collaboration only · " : ""}${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${isHealpix(d) ? `HEALPix ${d.header.nside} · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
             {subsetsOf(d.id).map((x) => (
               <TreeRow key={`s${x.id}`} icon={Layers} level={1} rowProps={roving.itemProps(`s${x.id}`)} selected={x.id === selectedSubsetId} onSelect={() => onSelectSubset?.(x.id)}
                 title="A virtual subset: a saved window onto the file above, not a file"

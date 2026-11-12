@@ -20,6 +20,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every dataset that carries an access label, own or inherited, for the badges of the lists */
+        get: operations["owner_s_accessOverview_get_api_access"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/recovery-codes": {
         parameters: {
             query?: never;
@@ -887,6 +904,26 @@ export interface paths {
         get: operations["owner_s_get_get_api_datasets_id"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** A dataset's access label, what it inherits and its history */
+        get: operations["owner_s_getAccess_get_api_datasets_id_access"];
+        put?: never;
+        /** Set a dataset's access label (audited; lowering needs Maintainer or higher) */
+        post: operations["owner_s_setAccess_post_api_datasets_id_access"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5121,6 +5158,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{id}/blocked-labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Choose which access labels block publishing in a workspace (admin, recent sign-in) */
+        post: operations["owner_s_setBlockedLabels_post_api_workspaces_id_blocked_labels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{id}/members": {
         parameters: {
             query?: never;
@@ -6078,6 +6134,8 @@ export interface components {
             identity?: components["schemas"]["FigureIdentity"];
             /** @enum {string} */
             kind: "dataset" | "crossrun";
+            /** @description The access label the figure carries, from its source datasets at the time of the reply; absent when released. Owner API only (it names datasets). */
+            access?: components["schemas"]["AccessEffective"];
         };
         FigureList: {
             figures: components["schemas"]["Figure"][];
@@ -6237,6 +6295,8 @@ export interface components {
             comments: number;
             /** Format: date-time */
             lastActivity?: string;
+            /** @enum {string} */
+            access?: "collaboration" | "unreleased";
         };
         SnapshotList: {
             snapshots: components["schemas"]["Snapshot"][];
@@ -6255,6 +6315,11 @@ export interface components {
             provenance: components["schemas"]["FigureProvenance"];
             /** @description The place as saved when the board was published; absent for a board that was never arranged and for snapshots made before layouts, which the reader lays out from the order. */
             layout?: components["schemas"]["BoardRect"];
+            /**
+             * @description The label the figure carried when the board was published (ADR 0069); absent for released figures and for snapshots made before labels. The name of the label only.
+             * @enum {string}
+             */
+            access?: "collaboration" | "unreleased";
         };
         /** @description A run that had not finished: only its name and state at that moment. */
         FrozenJob: {
@@ -6280,11 +6345,21 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
             items: components["schemas"]["FrozenItem"][];
+            /**
+             * @description The most restrictive label among the board's figures when it was published, stated on the review page; absent when released.
+             * @enum {string}
+             */
+            access?: "collaboration" | "unreleased";
         };
         /** @description What publishing would expose and what a careful author would want to know first. Creates nothing. */
         Preflight: {
             frozen: components["schemas"]["Frozen"];
             warnings: string[];
+            /** @description Figures that carry a label; publishing needs confirmAccess */
+            restricted?: components["schemas"]["RestrictedPanel"][];
+            blockedLabels?: components["schemas"]["AccessLabel"][];
+            /** @description True when a label on the board blocks publishing in this workspace */
+            blocked?: boolean;
         };
         /** @description Unknown keys are refused. */
         PublishRequest: {
@@ -6298,6 +6373,8 @@ export interface components {
              */
             supersedes?: number;
             reason?: string;
+            /** @description The author's explicit yes to publishing a board that uses labelled data. Without it such a publication is refused with 409; it never overrides a blocked label (403). */
+            confirmAccess?: boolean;
         };
         PublishResponse: {
             snapshot: components["schemas"]["Snapshot"];
@@ -11440,6 +11517,88 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * @description What a researcher declares about whether a dataset may be shown to others (ADR 0069): none (released), collaboration (collaboration only) or unreleased. Ordered unreleased > collaboration > none. A declaration, not a verified fact about the file.
+         * @enum {string}
+         */
+        AccessLabel: "none" | "collaboration" | "unreleased";
+        /** @description A labelled dataset a result depends on. Owner API only: it names a dataset. */
+        AccessSource: {
+            /** Format: int64 */
+            datasetId: number;
+            /** @description The dataset's name when its label was set */
+            name: string;
+            label: components["schemas"]["AccessLabel"];
+            /** @description How the label reached the result when not by a recorded dataset edge: a run's input named by the job that made it, or inferred by file name and size. Absent for a direct or derived edge. */
+            how?: string;
+        };
+        /** @description The label a dataset, figure or run carries: the most restrictive among its own and those of the datasets it was made from, computed from the recorded dependency edges when asked, never stored. via lists the labelled datasets that bring a label in; it is omitted when the label is none. */
+        AccessEffective: {
+            label: components["schemas"]["AccessLabel"];
+            via?: components["schemas"]["AccessSource"][];
+        };
+        /** @description One record of a dataset's label history (append-only). */
+        AccessChange: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            datasetId: number;
+            name: string;
+            label: components["schemas"]["AccessLabel"];
+            previous: components["schemas"]["AccessLabel"];
+            reason: string;
+            author: string;
+            /** Format: date-time */
+            at: string;
+        };
+        DatasetAccess: {
+            /** Format: int64 */
+            datasetId: number;
+            label: components["schemas"]["AccessLabel"];
+            effective: components["schemas"]["AccessEffective"];
+            history: components["schemas"]["AccessChange"][];
+            /** @description Labels that block publishing in this workspace (always empty on a local instance) */
+            blockedLabels: components["schemas"]["AccessLabel"][];
+            /** @description Whether the caller may set a less restrictive label than the one in force (Maintainer or higher) */
+            canLower: boolean;
+        };
+        /** @description Every dataset that carries a label, its own or an inherited one, keyed by dataset id. */
+        AccessOverview: {
+            datasets: {
+                [key: string]: {
+                    own: components["schemas"]["AccessLabel"];
+                    effective: components["schemas"]["AccessEffective"];
+                };
+            };
+            blockedLabels: components["schemas"]["AccessLabel"][];
+            canLower: boolean;
+        };
+        /** @description Unknown keys are refused. Setting a less restrictive label than the one in force needs the Maintainer role or higher. */
+        SetAccessRequest: {
+            label: components["schemas"]["AccessLabel"];
+            /** @description At most 500 characters; kept in the history */
+            reason?: string;
+        };
+        BlockedLabelsRequest: {
+            /** @description The labels that block publishing in the workspace; an empty list blocks none */
+            labels: ("collaboration" | "unreleased")[];
+        };
+        /** @description A figure on the board that carries a label, with the datasets behind it. */
+        RestrictedPanel: {
+            /** @description 1-based place on the board; 0 in a report */
+            position: number;
+            title: string;
+            label: components["schemas"]["AccessLabel"];
+            via: components["schemas"]["AccessSource"][];
+        };
+        /** @description A publication refused for its labels. 409 access_confirmation_required: confirmAccess was not sent. 403 publishing_blocked: the workspace's admin made a label on the board block publishing, and confirmAccess does not override it. */
+        AccessRefusal: {
+            error: string;
+            /** @enum {string} */
+            code: "access_confirmation_required" | "publishing_blocked";
+            label?: components["schemas"]["AccessLabel"];
+            restricted?: components["schemas"]["RestrictedPanel"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -11464,6 +11623,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_accessOverview_get_api_access: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessOverview"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -12799,6 +12987,24 @@ export interface operations {
                     "application/json": components["schemas"]["PublishResponse"];
                 };
             };
+            /** @description A label on the board blocks publishing in this workspace (code publishing_blocked), or the caller may not publish */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRefusal"];
+                };
+            };
+            /** @description The board uses labelled data and confirmAccess was not sent (code access_confirmation_required) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRefusal"];
+                };
+            };
             /** @description Error */
             default: {
                 headers: {
@@ -13120,6 +13326,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Dataset"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_getAccess_get_api_datasets_id_access: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetAccess"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_setAccess_post_api_datasets_id_access: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetAccess"];
                 };
             };
             /** @description Error */
@@ -21319,6 +21591,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_setBlockedLabels_post_api_workspaces_id_blocked_labels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockedLabelsRequest"];
+            };
+        };
+        responses: {
+            /** @description set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        blockedLabels: components["schemas"]["AccessLabel"][];
+                    };
                 };
             };
             /** @description Error */

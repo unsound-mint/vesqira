@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/access"
 	"io"
 	"log"
 	"net/http"
@@ -402,7 +403,16 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 		}
 		prov, n := dropMachineParamsIn(fig.Provenance, false)
 		dropped += n
-		doc = pushedFigure{Title: fig.Title, Caption: fig.Caption, Revision: fig.Revision, Asset: sha, Width: fig.Width, Height: fig.Height, Provenance: prov}
+		labels, err := s.accessView(ws)
+		if err != nil {
+			return f, fmt.Errorf("the access labels could not be read: %v", err)
+		}
+		pf := pushedFigure{Title: fig.Title, Caption: fig.Caption, Revision: fig.Revision, Asset: sha, Width: fig.Width, Height: fig.Height, Provenance: prov}
+		if e := labels.Figure(fig.DatasetID, fig.Scene, fig.Identity); e.Label.Restricted() {
+			pf.Access = string(e.Label)
+			f.Warnings = append(f.Warnings, fmt.Sprintf("This figure is drawn from data labelled %s. The label goes with it, and a group server whose admin blocks that label will refuse it.", e.Label.Name()))
+		}
+		doc = pf
 	case pushwire.KindRun:
 		if s.Runs == nil {
 			return f, errors.New("runs are not available")
@@ -451,7 +461,15 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 			items[i].Provenance, n = dropMachineParamsIn(items[i].Provenance, false)
 			dropped += n
 		}
-		doc, it.Title = pushedBoard{Title: b.Title, Items: items}, b.Title
+		ba, err := s.stampPushedBoard(ws, b, items)
+		if err != nil {
+			return f, err
+		}
+		pb := pushedBoard{Title: b.Title, Items: items, Access: ba.labels().Board}
+		if ba.Label.Restricted() {
+			f.Warnings = append(f.Warnings, fmt.Sprintf("This board uses data labelled %s: %s. The labels go with it, and a group server whose admin blocks a label will refuse it.", ba.Label.Name(), ba.sentence()))
+		}
+		doc, it.Title = pb, b.Title
 	case pushwire.KindReport:
 		if s.Reports == nil || s.Boards == nil {
 			return f, errors.New("reports are not available")
@@ -484,6 +502,10 @@ func (s *Server) freezePush(ws workspace.ID, l outbox.Link, kind string, id int6
 			f.Assets[sha] = b
 		}
 		f.Warnings = append(f.Warnings, fr.Warnings...)
+		if len(fr.Restricted) > 0 {
+			f.Warnings = append(f.Warnings, fmt.Sprintf("This report shows figures from data labelled %s: %s. The label goes with it, and a group server whose admin blocks it will refuse it.",
+				access.Label(fr.Revision.Access).Name(), boardAccess{Restricted: fr.Restricted}.sentence()))
+		}
 		doc, it.Title = fr.Revision, rep.Title
 	default:
 		return f, fmt.Errorf("push a board, a figure, a run or a report")

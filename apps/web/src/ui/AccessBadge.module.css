@@ -1,0 +1,23 @@
+/* An access label is a status the author declared, not an error: it uses the neutral text colour on a neutral chip so its contrast
+   holds on every surface (the review page's accent note box, the inspector, the board card) in both schemes. The words and the
+   icon tell the two labels apart; unreleased is also heavier. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--pill);
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
+  color: var(--text);
+  font-size: var(--text-xs);
+  font-weight: var(--w-medium);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.unreleased {
+  border-width: 2px;
+  font-weight: var(--w-semibold, 600);
+}

@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/access"
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
@@ -218,6 +219,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	accessStore, err := access.Open(store.DB())
+	if err != nil {
+		log.Fatalf("access labels: %v", err)
+	}
 	derivedStore, err := derived.Open(store.DB())
 	if err != nil {
 		log.Fatal(err)
@@ -282,7 +287,7 @@ func main() {
 		auditStore.Default = audit.System // background work on the group server acts for no account; requests record their own actor
 		hostStore, remote = nil, nil      // no ssh credential on the group server (ADR 0050 section 5): no host is reachable
 	}
-	srv := &server.Server{MultiUser: group, Roots: rs, Store: store, Worker: planes, Planes: planes, Load: load, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, Masks: maskStore, Offline: offlineStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Subsets: subsetStore, History: historyStore, Discussion: discussion.Open(store.DB()), Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, VPNEnabled: *enableVPN, VPNLogDir: filepath.Join(dir, "vpn"), Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
+	srv := &server.Server{MultiUser: group, Roots: rs, Store: store, Worker: planes, Planes: planes, Load: load, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, Access: accessStore, Masks: maskStore, Offline: offlineStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Subsets: subsetStore, History: historyStore, Discussion: discussion.Open(store.DB()), Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, VPNEnabled: *enableVPN, VPNLogDir: filepath.Join(dir, "vpn"), Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
 	if *multiUser {
 		srv.Pushed, srv.Relay = pushedStore, relayStore
