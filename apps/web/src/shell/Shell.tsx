@@ -47,7 +47,9 @@ import { useProject } from "../projects/useProject";
 import { writeProjectFile } from "../api/projects";
 import { editorEnabled } from "../api/editor";
 import { terminalEnabled } from "../api/terminal";
-import { getCompat, isCatalog, isImage, type HealpixDataset } from "../api/catalog";
+import { getCompat, isCatalog, isImage } from "../api/catalog";
+import { HealpixSampleDone, HealpixSamplePanel } from "../catalog/HealpixSample";
+import type { HealpixSampleResult } from "../api/analysis";
 import type { Compat, ImageDataset } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
 import { CompareBar, linkState } from "../viewer/CompareBar";
@@ -98,6 +100,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const { layout: L, set, toggle } = useLayout();
   const cat = useCatalog();
   const subs = useSubsets();
+  const [sampled, setSampled] = useState<HealpixSampleResult | null>(null); // the last HEALPix sampling, kept while its angle map is open (ADR 0067)
   const [subsetId, setSubsetId] = useState<number | null>(null); // a virtual subset is open in the main area instead of a dataset (ADR 0063)
   useEffect(() => { void subs.refresh(); }, [cat.allDatasets]); // eslint-disable-line react-hooks/exhaustive-deps -- a changed file makes its subsets stale
   const hostOffer = useSyncExternalStore(subscribeHostOffer, getHostOffer); // a file-manager mount of an unregistered host (ADR 0031)
@@ -585,7 +588,11 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
               <Section title="Region"><RegionPanel v={viewer} /></Section>
               <Section title="Spectrum"><SpectrumPlot v={viewer} /></Section>
             </>
-          ) : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : cat.selectedHealpix ? healpixNote(cat.selectedHealpix) : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
+          ) : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : cat.selectedHealpix ? (
+            <Section title="HEALPix map">
+              <HealpixSamplePanel key={cat.selectedHealpix.id} dataset={cat.selectedHealpix} datasets={cat.allDatasets} onResult={(r) => { setSampled(r); void cat.refreshDatasets().then(() => cat.select(r.dataset.id)); }} />
+            </Section>
+          ) : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
           {compareDs && shownImage ? (
             <Section title="Comparison">
               <CompareInspector a={shownImage} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
@@ -607,6 +614,11 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
           {actDs && (viewer.view === null || viewer.view.channels === 1) ? (
             <Section title="Interpretation">
               <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} declare={cat.declare} />
+            </Section>
+          ) : null}
+          {actDs && sampled && sampled.dataset.id === actDs.id ? (
+            <Section title="Sampled from a HEALPix map">
+              <HealpixSampleDone result={sampled} onOpen={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} />
             </Section>
           ) : null}
           {actDs ? <RelativeOrientationResult dataset={actDs} datasets={cat.allDatasets} /> : null}
@@ -753,8 +765,3 @@ function PaneHeader({ name, axial, active, onActivate, note = null }: { name: st
   );
 }
 
-/** What the inspector says about a HEALPix map (ADR 0067): what its header states, and that it is only sampled onto another grid. */
-function healpixNote(d: HealpixDataset): string {
-  const h = d.header;
-  return `A HEALPix map: NSIDE ${h.nside}, ${h.ordering}, ${h.coordsys}, polarization convention ${h.polcconv}, as its header states. It has no pixel grid to view; it is sampled onto a dataset's celestial grid as Q and U (POST /api/analysis/healpix-sample). A screen for sampling is not built yet.`;
-}
