@@ -58,6 +58,16 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 - [x] Pages and presentation (ADR 0036, "Pages, front matter, changes and deletions"): page tree kept from the Notion import, front matter date and summary under the title, reader list newest first, what changed since the revision last read, comments on selected words, withdraw a report, delete a comment.
 - [x] Follow-ups from the security review (ADR 0036, "Hardening"): image metadata stripped when publishing (`internal/imgmeta`, pixel-checked, fuzzed), fixed shape for derived `software`, bounded Markdown scans (one was cubic), comment-cursor guard. Left: a schema for derived `summary`.
 
+## Tool profiles (owner direction, 2026-11-13; ADR 0068, proposed)
+
+Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC become declared profiles, and other tools plug in the same way.
+- [ ] 0: template drift fixed (VGT.jl config keys, ROHSA-LMC repository label)
+- [ ] 1: analysis presets; results stop citing the owner's script lines
+- [ ] 2: orientation conventions from a header-card profile; "unresolved" instead of an assumed default
+- [ ] 3: run detection and generic output roles
+- [ ] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps)
+- [ ] 5: run templates as data, pinned to a repository and commit
+
 ## Stage S — Scene, cross-tracer comparison and the researcher's loop (owner direction, 2026-11-11)
 
 The owner asked for the most convenient app for this kind of work, beyond the interview list. Items come from the owner's own research (VGT and ROHSA on LMC H I and CO, Slurm over a VPN, weekly reports) and from common radio-astronomy practice (contours, vectors, channel maps, PV diagrams, relative-orientation statistics). Design: ADR 0042. New screens do not wait for an approved mock during this push; the owner reviews afterwards.
