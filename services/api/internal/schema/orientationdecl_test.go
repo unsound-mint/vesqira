@@ -25,10 +25,10 @@ func TestOrientationDeclarationMigrationKeepsEveryRowAndLeavesTheNewFieldsUnknow
 			t.Fatal(err)
 		}
 	}
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 7 {
+	if version(t, db) != toyVersion || Version < 7 {
 		t.Fatalf("version %d", version(t, db))
 	}
 	rows, err := db.Query(`SELECT dataset_id,kind,unit,reliability_id,declared_by,frame,quantity FROM interpretations ORDER BY dataset_id`)
@@ -66,7 +66,7 @@ func TestOrientationDeclarationMigrationSkipsACatalogWithoutInterpretations(t *t
 	db := open(t, p)
 	db.Exec(`CREATE TABLE other(id INTEGER)`)
 	db.Exec(`PRAGMA user_version = 4`)
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
 	var n int

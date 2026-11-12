@@ -6,6 +6,7 @@ package notify
 
 import (
 	"database/sql"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 	"strings"
 	"time"
 )
@@ -45,6 +46,9 @@ func Open(db *sql.DB) (*Store, error) {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS notifications(
 		id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
 		job_id INTEGER, run_id INTEGER, read INTEGER NOT NULL DEFAULT 0, dedupe TEXT NOT NULL UNIQUE)`)
+	if err == nil { // read is no longer used: what each account has read is notification_reads (schema 31)
+		err = schema.Scope(db, "notifications")
+	}
 	if err != nil {
 		return nil, err
 	}

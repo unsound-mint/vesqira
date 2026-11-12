@@ -130,6 +130,9 @@ func Open(db *sql.DB) (*Store, error) {
 	if _, err := db.Exec(schema.MasksTable); err != nil {
 		return nil, err
 	}
+	if err := schema.Scope(db, "masks"); err != nil {
+		return nil, err
+	}
 	return &Store{db}, nil
 }
 

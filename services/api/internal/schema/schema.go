@@ -3,6 +3,7 @@
 package schema
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -49,13 +50,22 @@ import (
 // Version 29: an audit entry records who acted (audit.actor, .on_behalf_of, .via; ADR 0050 section 4, slice 1).
 // Version 30: group-server accounts and sessions (accounts, identities, password_credentials, totp_credentials, recovery_codes,
 // sessions, access_tokens, setup_tokens; ADR 0050 section 2, slice 2). Empty in a local catalog.
-const Version = 30
+// Version 31: workspaces (workspaces, memberships, invitations, workspace_roots), workspace_id and created_by on every table of
+// user data (existing rows: workspace 1, local-owner), uniqueness per workspace (datasets, dataset_locations, figures, reports,
+// runs, run_views, projects and attachments rebuilt), per-account read state (report_seen, notification_reads) and comments by
+// members (member_comments; ADR 0050 sections 3 and 6, slice 3).
+const Version = 31
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
 	To   int
 	Name string
 	Up   func(tx *sql.Tx) error
+	// NoForeignKeys runs the step with foreign keys off, for a step that rebuilds a table other tables reference: with them on,
+	// dropping the old table is an implicit DELETE that fires every ON DELETE CASCADE. SQLite ignores the pragma inside a
+	// transaction, so apply sets it on the connection before beginning, runs PRAGMA foreign_key_check before committing (a
+	// dangling reference fails the step), and turns the keys back on whatever happens.
+	NoForeignKeys bool
 }
 
 var migrations = []Migration{
@@ -88,6 +98,7 @@ var migrations = []Migration{
 	{To: 28, Name: "cross-run figures", Up: crossRunFigures},
 	{To: 29, Name: "audit actor", Up: auditActor},
 	{To: 30, Name: "accounts and sessions", Up: accountsTables},
+	{To: 31, Name: "workspaces", Up: workspacesMigration, NoForeignKeys: true},
 }
 
 // AccountsTables are the group server's accounts (ADR 0050 section 2, slice 2). An account carries no credential itself: a way to
@@ -165,10 +176,12 @@ func accountsTables(tx *sql.Tx) error {
 // migration for an upgraded one, from this one text.
 const FiguresTable = `CREATE TABLE IF NOT EXISTS figures(
 	id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER, title TEXT NOT NULL, caption TEXT NOT NULL,
-	created_at INTEGER NOT NULL, revision TEXT NOT NULL UNIQUE, preview_sha TEXT NOT NULL, width INTEGER NOT NULL,
+	created_at INTEGER NOT NULL, revision TEXT NOT NULL, preview_sha TEXT NOT NULL, width INTEGER NOT NULL,
 	height INTEGER NOT NULL, provenance TEXT NOT NULL, scene TEXT NOT NULL DEFAULT '', identity TEXT NOT NULL DEFAULT '',
 	kind TEXT NOT NULL DEFAULT 'dataset' CHECK(kind IN ('dataset','crossrun')),
-	CHECK((kind='dataset') = (dataset_id IS NOT NULL)))`
+	workspace_id INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL DEFAULT 'local-owner',
+	CHECK((kind='dataset') = (dataset_id IS NOT NULL)),
+	UNIQUE(workspace_id, revision))`
 
 // crossRunFigures rebuilds figures so dataset_id may be NULL and adds kind (every existing figure is 'dataset'). SQLite cannot relax
 // a NOT NULL in place, so the table is copied: every row keeps its id, revision, picture and text, and the AUTOINCREMENT counter is
@@ -408,7 +421,8 @@ const DatasetLocationsTable = `CREATE TABLE IF NOT EXISTS dataset_locations(
 	sampled_fp TEXT NOT NULL DEFAULT '', sampled_at INTEGER NOT NULL DEFAULT 0, sampled_by TEXT NOT NULL DEFAULT '',
 	full_sha256 TEXT NOT NULL DEFAULT '', full_at INTEGER NOT NULL DEFAULT 0, full_by TEXT NOT NULL DEFAULT '',
 	file_dev INTEGER NOT NULL DEFAULT 0, file_ino INTEGER NOT NULL DEFAULT 0,
-	UNIQUE(host_id, path))`
+	workspace_id INTEGER NOT NULL DEFAULT 1,
+	UNIQUE(workspace_id, host_id, path))`
 
 // datasetIdentity adds dataset_locations and gives every existing dataset its primary location (no fingerprint yet: none was
 // computed, which the empty columns say), and adds figures.identity (” for every existing figure: it recorded none). A
@@ -549,7 +563,9 @@ const OfflineSettingsTable = `CREATE TABLE IF NOT EXISTS offline_settings(
 // RunViewsTable holds the researcher's saved views of the runs table (ADR 0062): a name, and a JSON spec of the filter query, the
 // exposed columns, the sort and the plot's axes. Words and keys only; no run id or value is stored in it.
 const RunViewsTable = `CREATE TABLE IF NOT EXISTS run_views(
-	id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, spec TEXT NOT NULL, updated_at INTEGER NOT NULL)`
+	id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL COLLATE NOCASE, spec TEXT NOT NULL, updated_at INTEGER NOT NULL,
+	workspace_id INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL DEFAULT 'local-owner',
+	UNIQUE(workspace_id, name))`
 
 // savedRunViews adds the table. Nothing to carry over: no view was kept before.
 func savedRunViews(tx *sql.Tx) error {
@@ -813,18 +829,65 @@ func guard(db *sql.DB, dsn string, target int, steps []Migration) error {
 }
 
 func apply(db *sql.DB, m Migration) error {
-	tx, err := db.Begin()
+	ctx := context.Background()
+	conn, err := db.Conn(ctx) // one connection, so the pragma and the transaction are on the same one
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if m.NoForeignKeys {
+		var on int
+		if err := conn.QueryRowContext(ctx, `PRAGMA foreign_keys`).Scan(&on); err != nil {
+			return err
+		}
+		if on == 1 {
+			if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=OFF`); err != nil {
+				return err
+			}
+			defer conn.ExecContext(ctx, `PRAGMA foreign_keys=ON`)
+		}
+	}
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	var before int
+	if m.NoForeignKeys {
+		if before, err = danglingRefs(tx); err != nil {
+			return err
+		}
+	}
 	if err := m.Up(tx); err != nil {
 		return err
+	}
+	if m.NoForeignKeys {
+		after, err := danglingRefs(tx)
+		if err != nil {
+			return err
+		}
+		if after > before { // a catalog that already held some (written with the keys off) is not refused for them
+			return fmt.Errorf("%d rows would refer to rows that no longer exist (PRAGMA foreign_key_check)", after-before)
+		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, m.To)); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// danglingRefs counts the rows PRAGMA foreign_key_check reports.
+func danglingRefs(tx *sql.Tx) (int, error) {
+	rows, err := tx.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		n++
+	}
+	return n, rows.Err()
 }
 
 func filePath(dsn string) string {

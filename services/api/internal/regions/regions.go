@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 	"math"
 	"strconv"
 	"strings"
@@ -125,6 +126,9 @@ func Open(db *sql.DB) (*Store, error) {
 		return nil, err
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS saved_regions_dataset ON saved_regions(dataset_id)`); err != nil {
+		return nil, err
+	}
+	if err := schema.Scope(db, "saved_regions"); err != nil {
 		return nil, err
 	}
 	return &Store{db}, nil

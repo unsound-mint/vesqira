@@ -50,6 +50,9 @@ func Open(db *sql.DB) (*Store, error) {
 			return nil, err
 		}
 	}
+	if err := schema.Scope(db, "exploration_steps"); err != nil {
+		return nil, err
+	}
 	return &Store{db}, nil
 }
 

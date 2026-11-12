@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -34,6 +35,11 @@ func openPublishing(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS publish_settings(k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
+			return err
+		}
+	}
+	for _, t := range []string{"publish_comments", "reply_drafts"} {
+		if err := schema.Scope(db, t); err != nil {
 			return err
 		}
 	}

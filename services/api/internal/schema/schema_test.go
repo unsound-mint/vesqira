@@ -22,6 +22,13 @@ func open(t *testing.T, path string) *sql.DB {
 	return db
 }
 
+// toyGuard upgrades a test catalog through schema 30. The older migration tests build toy tables holding only the columns their
+// own step reads; schema 31 rebuilds whole tables from their real definitions and needs real ones, which
+// TestWorkspacesMigrationKeepsEveryRowAndEveryChildOfADataset covers on a catalog built from the schema 30 snapshot.
+func toyGuard(db *sql.DB, p string) error { return guard(db, "file:"+p, toyVersion, migrations) }
+
+const toyVersion = 30
+
 func version(t *testing.T, db *sql.DB) int {
 	var v int
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
@@ -122,7 +129,7 @@ func TestReportPagesMigrationKeepsReportsAtTheTop(t *testing.T) {
 	db.Exec(`INSERT INTO reports VALUES (1,'a')`)
 	db.Exec(`INSERT INTO publish_comments VALUES (5,'b')`)
 	db.Exec(`PRAGMA user_version = 2`)
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
 	var parent int

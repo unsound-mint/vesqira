@@ -16,10 +16,10 @@ func TestBoardItemsMigrationKeepsEveryRowAndAllowsJobs(t *testing.T) {
 	db.Exec(`CREATE TABLE board_items(board_id INTEGER NOT NULL, position INTEGER NOT NULL, figure_id INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '', PRIMARY KEY(board_id, position))`)
 	db.Exec(`INSERT INTO board_items VALUES (1,0,7,'first'),(1,1,9,''),(2,0,7,'other board')`)
 	db.Exec(`PRAGMA user_version = 1`)
-	if err := Guard(db, "file:"+p); err != nil {
+	if err := toyGuard(db, p); err != nil {
 		t.Fatal(err)
 	}
-	if v := version(t, db); v != Version {
+	if v := version(t, db); v != toyVersion {
 		t.Fatalf("version %d", v)
 	}
 	rows, err := db.Query(`SELECT board_id,position,figure_id,job_id,note FROM board_items ORDER BY board_id,position`)
@@ -56,10 +56,10 @@ func TestBoardItemsMigrationSkipsACatalogWithoutBoards(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "c.db"))
 	db.Exec(`CREATE TABLE datasets(id INTEGER)`)
 	db.Exec(`PRAGMA user_version = 1`)
-	if err := Guard(db, "file:"+filepath.Join(t.TempDir(), "x.db")); err != nil {
+	if err := guard(db, "file:"+filepath.Join(t.TempDir(), "x.db"), toyVersion, migrations); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version {
+	if version(t, db) != toyVersion {
 		t.Fatal("not upgraded")
 	}
 }

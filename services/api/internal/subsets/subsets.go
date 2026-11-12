@@ -159,6 +159,9 @@ func Open(db *sql.DB) (*Store, error) {
 	if _, err := db.Exec(schema.SubsetsTables); err != nil {
 		return nil, err
 	}
+	if err := schema.Scope(db, "subsets"); err != nil {
+		return nil, err
+	}
 	return &Store{db}, nil
 }
 

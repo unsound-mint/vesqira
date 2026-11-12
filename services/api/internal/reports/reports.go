@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 	"image"
 	_ "image/gif" // decoders for attachment validation
 	_ "image/jpeg"
@@ -50,17 +51,14 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 		return nil, err
 	}
 	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS reports(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, title TEXT NOT NULL UNIQUE COLLATE NOCASE,
-			body TEXT NOT NULL, revision INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-			seen_revision INTEGER NOT NULL DEFAULT 0, parent_id INTEGER NOT NULL DEFAULT 0)`, // parent_id: schema 3
+		schema.ReportsTable, // parent_id: schema 3; per-workspace uniqueness and no seen_revision: schema 31
 		`CREATE TABLE IF NOT EXISTS report_history(
 			report_id INTEGER NOT NULL, revision INTEGER NOT NULL, author TEXT NOT NULL, at INTEGER NOT NULL,
 			title TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(report_id, revision))`,
 		`CREATE TABLE IF NOT EXISTS report_links(
 			report_id INTEGER NOT NULL, kind TEXT NOT NULL, target TEXT NOT NULL, PRIMARY KEY(report_id, kind, target))`,
 		`CREATE INDEX IF NOT EXISTS report_links_target ON report_links(kind, target)`,
-		`CREATE TABLE IF NOT EXISTS attachments(sha TEXT PRIMARY KEY, mime TEXT NOT NULL, size INTEGER NOT NULL, created_at INTEGER NOT NULL)`,
+		schema.AttachmentsTable,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			return nil, err

@@ -217,10 +217,7 @@ type Store struct{ db *sql.DB }
 
 func Open(db *sql.DB) (*Store, error) {
 	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS runs(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, dir TEXT NOT NULL UNIQUE, name TEXT NOT NULL, kind TEXT NOT NULL,
-			imported_at INTEGER NOT NULL, generated_at TEXT NOT NULL, git_commit TEXT NOT NULL, elapsed REAL,
-			input_name TEXT NOT NULL, input_size INTEGER NOT NULL, params TEXT NOT NULL, diagnostics TEXT NOT NULL)`,
+		schema.RunsTable,
 		`CREATE TABLE IF NOT EXISTS run_review(run_id INTEGER PRIMARY KEY, qc TEXT NOT NULL, interpretation TEXT NOT NULL, note TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS run_review_history(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, at INTEGER NOT NULL, qc TEXT NOT NULL, interpretation TEXT NOT NULL, note TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS run_outputs(

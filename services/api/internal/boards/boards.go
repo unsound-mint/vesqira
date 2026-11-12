@@ -90,6 +90,11 @@ func Open(db *sql.DB, dataDir string) (*Store, error) {
 			return nil, err
 		}
 	}
+	for _, t := range []string{"boards", "snapshots"} {
+		if err := schema.Scope(db, t); err != nil {
+			return nil, err
+		}
+	}
 	return &Store{db: db, dir: dataDir}, nil
 }
 

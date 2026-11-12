@@ -110,14 +110,13 @@ func Open(dsn string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS datasets(
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		path TEXT NOT NULL UNIQUE,
-		name TEXT NOT NULL,
-		size_bytes INTEGER NOT NULL,
-		modified_at INTEGER NOT NULL, -- Unix nanoseconds
-		added_at INTEGER NOT NULL,
-		header TEXT NOT NULL)`)
+	_, err = db.Exec(schema.WorkspaceTables)
+	if err == nil {
+		err = schema.SeedLocalWorkspace(db)
+	}
+	if err == nil {
+		_, err = db.Exec(schema.DatasetsTable) // modified_at is Unix nanoseconds
+	}
 	if err == nil {
 		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS interpretations(
 			dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id) ON DELETE CASCADE,

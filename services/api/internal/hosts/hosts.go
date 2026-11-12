@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 	"os"
 	"os/exec"
 	"path"
@@ -96,6 +97,9 @@ func Open(db *sql.DB) (*Store, error) {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS hosts(
 		id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, dest TEXT NOT NULL, python TEXT NOT NULL,
 		roots TEXT NOT NULL, created_at INTEGER NOT NULL, vpn_command TEXT NOT NULL DEFAULT '', vpn_disconnect TEXT NOT NULL DEFAULT '')`)
+	if err == nil {
+		err = schema.Scope(db, "hosts")
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ package audit
 import (
 	"context"
 	"database/sql"
+	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 	"strings"
 	"time"
 )
@@ -54,6 +55,9 @@ func Open(db *sql.DB) (*Store, error) {
 		if _, err := db.Exec(q); err != nil {
 			return nil, err
 		}
+	}
+	if err := schema.Scope(db, "audit"); err != nil {
+		return nil, err
 	}
 	return &Store{db: db, Default: LocalOwner}, nil
 }

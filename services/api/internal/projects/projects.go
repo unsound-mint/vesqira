@@ -53,9 +53,7 @@ type Store struct{ db *sql.DB }
 
 func Open(db *sql.DB) (*Store, error) {
 	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS projects(
-			id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, root TEXT NOT NULL, name TEXT NOT NULL,
-			opened_at INTEGER NOT NULL, last_scan_at INTEGER, summary TEXT NOT NULL DEFAULT '{}', UNIQUE(host_id, root))`,
+		schema.ProjectsTable,
 		`CREATE TABLE IF NOT EXISTS project_entries(
 			project_id INTEGER NOT NULL, grp TEXT NOT NULL, parent TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL,
 			path TEXT NOT NULL, format TEXT NOT NULL DEFAULT '', data TEXT NOT NULL, PRIMARY KEY(project_id, grp, parent, name))`,
