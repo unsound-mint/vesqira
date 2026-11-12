@@ -211,10 +211,12 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
         <ConvertedRows v={v} />
       </dl>
       <ConversionControls v={v} />
-      {view.bunit_status === "unresolved" || view.bunit_status === "user" || v.coordError ? (
+      {view.bunit_status === "unresolved" || view.bunit_status === "user" || view.bunit_status === "corrected" || (view.wcs_corrected?.length ?? 0) > 0 || v.coordError ? (
         <p className={s.note}>
           {view.bunit_status === "unresolved" ? "Brightness unit unresolved: the header has no BUNIT. " : ""}
           {view.bunit_status === "user" ? `Brightness unit (${view.bunit}) declared by you: the header has no BUNIT. ` : ""}
+          {view.bunit_status === "corrected" ? `Brightness unit (${view.bunit}) is your correction: the file says ${view.file_bunit ?? "nothing"}. ` : ""}
+          {(view.wcs_corrected?.length ?? 0) > 0 ? `Coordinates use your correction of ${view.wcs_corrected!.join(", ")}; the file says otherwise and is not changed. ` : ""}
           {v.coordError ?? ""}
         </p>
       ) : null}
@@ -326,6 +328,7 @@ export function DisplayControls({ v }: { v: Viewer }) {
         </div>
       </div>
       {v.view?.bunit_status === "user" ? <p className={s.note}>The unit ({v.view.bunit}) is the one you declared; the file has no BUNIT.</p> : null}
+      {v.view?.bunit_status === "corrected" ? <p className={s.note}>The unit ({v.view.bunit}) is your correction; the file says {v.view.file_bunit ?? "nothing"}.</p> : null}
       <p className={s.note}>{v.range === "custom" ? "Limits set by hand; values outside them are drawn at the ends of the colour bar." : "Limits come from the plane’s finite pixels only."}{v.plane?.head.scaled ? " BSCALE/BZERO applied." : ""}{precisionNote(v.plane?.head.source_bitpix ?? null)}</p>
     </div>
   );

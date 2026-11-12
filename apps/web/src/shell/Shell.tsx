@@ -12,6 +12,7 @@ import { CatalogInspector } from "../catalog/CatalogInspector";
 import { LocationsPanel } from "../catalog/LocationsPanel";
 import { NewerNotices } from "../catalog/NewerNotices";
 import { UnitControl } from "../catalog/UnitControl";
+import { CorrectionsPanel } from "../catalog/CorrectionsPanel";
 import { MasksPanel } from "../catalog/MasksPanel";
 import { fileStatesItsUnit } from "../catalog/unit";
 import { Explorer } from "../catalog/Explorer";
@@ -632,6 +633,7 @@ export function Shell() {
               <>
                 <NewerNotices notices={cat.newer.datasets[String(actDs.id)]} onOpen={selectDataset} onRegister={(p) => { void cat.register(p); }} />
                 <DatasetInspector d={actDs} problem={cat.problems[String(actDs.id)]} onReread={() => { void cat.register(actDs.path); }} />
+                <CorrectionsPanel key={actDs.id} dataset={actDs} onChanged={() => void cat.refreshDatasets()} />
               </>
             ) : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
           </Section>

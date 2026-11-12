@@ -5,7 +5,7 @@ import { tierText } from "../api/tier";
 import { bytes, show } from "./format";
 import { beamText, pixelScale } from "./resolution";
 import { HeaderCards } from "./HeaderCards";
-import { fileStatesItsUnit } from "./unit";
+import { correctedUnit, fileStatesItsUnit } from "./unit";
 import s from "./DatasetInspector.module.css";
 
 /** What the file header declares, in native FITS axis order. Nothing here is verified. */
@@ -17,6 +17,8 @@ const PROBLEM_TEXT: Record<Problem, string> = {
 
 /** The unit as the file gave it, or as you declared it (said so), or unresolved: the three are never mixed up. */
 function unitText(d: ImageDataset): string {
+  const corrected = correctedUnit(d);
+  if (corrected) return `${corrected} (corrected by you; the file says ${show(d.header.bunit)})`;
   if (fileStatesItsUnit(d)) return show(d.header.bunit);
   if (d.interpretation) return `${show(d.header.bunit)} (orientation map: values are angles, not a brightness)`;
   const u = d.unitDeclaration;
@@ -28,6 +30,7 @@ function unitText(d: ImageDataset): string {
 
 /** How far the unit is established (ADR 0055): verified when the file's BUNIT was read, else the declaration's tier, else unresolved. */
 function unitTier(d: ImageDataset): string {
+  if (correctedUnit(d)) return `${tierText("declared")}: your correction of the file's BUNIT`;
   if (fileStatesItsUnit(d)) return `${tierText("verified")}: BUNIT is in the file and was read (not checked against the data)`;
   const u = d.unitDeclaration;
   if (d.interpretation || !u || u.stale) return tierText("unresolved");

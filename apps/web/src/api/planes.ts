@@ -134,8 +134,8 @@ export type SpectrumHeader = {
   axis: { kind: "spectral" | "channel"; name: string | null; unit: string | null };
   mask_policy: string;
   bunit: string | null;
-  /** declared: the file's BUNIT; user: a unit you declared for a file with none; unresolved: neither */
-  bunit_status?: "declared" | "user" | "unresolved";
+  /** declared: the file's BUNIT; user: a unit you declared for a file with none; corrected: your correction of the file's BUNIT (ADR 0061); unresolved: neither */
+  bunit_status?: "declared" | "user" | "corrected" | "unresolved";
   /** Present when masks were applied (ADR 0055): each with its policy and counts, the region's pixel-channels with no value, and the ones with a value that masks left out. */
   masks?: AppliedRegionMask[];
   no_value?: number;
