@@ -258,7 +258,7 @@ func RenderVGT(p VGTSettings) (string, error) {
 // ROHSASettings are the fields of the ROHSA job template.
 type ROHSASettings struct {
 	Name       string
-	RepoDir    string // the VGT checkout on the host, which holds the ROHSA sources and its command line
+	RepoDir    string // the ROHSA-LMC checkout on the host (github.com/ISM-NU/ROHSA-LMC), which holds the ROHSA sources and rohsa/cli/preprocess.jl
 	ConfigPath string // the config on the host the settings started from (recorded; the job runs Config)
 	Config     string // the full ROHSA config text, written into the job directory by the script
 	CPUs       int
@@ -329,25 +329,28 @@ func RenderROHSA(p ROHSASettings) (string, error) {
 
 type configKey struct {
 	Section string
-	Kind    string // number | enum | path | int
+	Kind    string // number | enum | path | int | posint (a whole number of at least 1)
 	Enum    []string
 }
 
 var configKeys = map[string]configKey{
 	"noise":                  {"noise", "number", nil},
-	"noise_mode":             {"noise", "enum", []string{"scalar", "channel", "spatial", "separable", "separable_shrinkage", "auto"}},
+	"noise_mode":             {"noise", "enum", []string{"scalar", "channel", "spatial", "separable", "auto"}},
 	"noise_tile_size":        {"noise", "int", nil},
 	"noise_sigma_multiplier": {"noise", "number", nil},
 	"dn":                     {"vgt", "int", nil},
 	"ker":                    {"vgt", "int", nil},
 	"min_valid":              {"vgt", "int", nil},
+	"angle_frame":            {"vgt", "enum", []string{"pixel", "galactic", "icrs"}}, // the PSIFRAME card of the outputs
+	"output_bin":             {"vgt", "posint", nil},
 	"input_file":             {"input", "path", nil},
 	"output_dir":             {"input", "path", nil},
 }
 
 var (
-	numRe = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$`)
-	intRe = regexp.MustCompile(`^[0-9]{1,9}$`)
+	numRe    = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$`)
+	intRe    = regexp.MustCompile(`^[0-9]{1,9}$`)
+	posIntRe = regexp.MustCompile(`^[1-9][0-9]{0,8}$`)
 )
 
 // SetConfigValues returns config text with the given keys set. Only the keys in the table above are accepted, each
@@ -369,6 +372,11 @@ func SetConfigValues(text string, values map[string]string) (string, error) {
 		case "int":
 			if !intRe.MatchString(val) {
 				return "", fmt.Errorf("%w: %s must be a whole number", ErrInvalid, key)
+			}
+			rendered = val
+		case "posint":
+			if !posIntRe.MatchString(val) {
+				return "", fmt.Errorf("%w: %s must be a whole number, 1 or more", ErrInvalid, key)
 			}
 			rendered = val
 		case "enum":

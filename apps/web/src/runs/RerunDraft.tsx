@@ -9,7 +9,7 @@ import type { Board } from "../api/boards";
 import { getRerun } from "../api/runs";
 import type { Rerun, RerunMode, Run } from "../api/runs";
 import { bytes, EM } from "../catalog/format";
-import { NOISE_MODES, SETTINGS } from "../jobs/JobsView";
+import { SETTINGS, enumOptions } from "../jobs/JobsView";
 import { SizingHint } from "../jobs/JobUsage";
 import { RohsaSizingHint } from "../jobs/RohsaSizingHint";
 import { KERNELS, ROHSA_SETTINGS, readRohsaSetting, sameValue } from "../jobs/rohsaSettings";
@@ -221,13 +221,14 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
           const hint = `was-${st.key}`;
           const isChanged = changed(st.key);
           const wasText = base[st.key] ? base[st.key] : EM;
-          const options = st.kind === "noise_mode" ? NOISE_MODES : st.kind === "bool" ? ["true", "false"] : st.kind === "kernel" ? KERNELS : null;
+          const options = enumOptions(st.kind) ?? (st.kind === "bool" ? ["true", "false"] : st.kind === "kernel" ? KERNELS : null);
           return (
             <div key={st.key} className={`${s.setting} ${isChanged ? s.changed : ""}`}>
               {options ? (
                 <Select label={st.label} value={vals[st.key] ?? ""} aria-describedby={isChanged ? hint : undefined} onChange={(e) => setVals({ ...vals, [st.key]: e.target.value })}>
                   <option value="">{imported ? "(not declared)" : "(keep)"}</option>
                   {options.map((m) => <option key={m} value={m}>{m}</option>)}
+                  {vals[st.key] && !options.includes(vals[st.key]!) ? <option value={vals[st.key]}>{vals[st.key]} (not accepted for a new run)</option> : null}
                 </Select>
               ) : (
                 <Input label={st.label} value={vals[st.key] ?? ""} aria-describedby={isChanged ? hint : undefined} onChange={(e) => setVals({ ...vals, [st.key]: e.target.value })} spellCheck={false} />
@@ -270,7 +271,8 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
           {hosts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
         </Select>
         <div className={s.wide}>
-          <PathField label="VGT folder on the host" kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} required placeholder="/shared/home/you/vgt" />
+          <PathField label={rohsa ? "ROHSA-LMC folder on the host" : "VGT folder on the host"} kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} required placeholder={rohsa ? "/shared/home/you/ROHSA-LMC" : "/shared/home/you/vgt"} />
+          {rohsa ? <p className={s.note}>The checkout of github.com/ISM-NU/ROHSA-LMC, which holds rohsa/cli/preprocess.jl.</p> : null}
         </div>
         <div className={s.wide}>
           <PathField label={rohsa ? "ROHSA config on the host" : "Config on the host"} kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} required placeholder="/shared/home/you/vgt/configs/run.toml" />
