@@ -42,7 +42,8 @@ import (
 // Version 22: offline copies of bounded, derived replies (offline_entries) and the size limit for them (offline_settings; ADR 0059).
 // Version 23: a researcher's WCS and unit corrections, an append-only history per dataset (dataset_corrections; ADR 0061).
 // Version 24: saved views of the runs table (run_views; ADR 0062).
-const Version = 24
+// Version 25: virtual subsets, a saved window onto a dataset with an append-only history of versions (subsets, subset_versions; ADR 0063).
+const Version = 25
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -75,6 +76,34 @@ var migrations = []Migration{
 	{To: 22, Name: "offline copies", Up: offlineCopies},
 	{To: 23, Name: "WCS and unit corrections", Up: correctionsTable},
 	{To: 24, Name: "saved run views", Up: savedRunViews},
+	{To: 25, Name: "virtual subsets", Up: subsetsTables},
+}
+
+// SubsetsTables are the virtual subsets of a dataset (ADR 0063): `subsets` is the identity (which source it is a window onto) and
+// `subset_versions` the append-only history of its definitions. A version holds the name, the reason, the definition (box, step,
+// channel range or world interval, as JSON), who and when, and the identity of the source file it was pinned to (size, modification
+// time, recorded content identity). An edit or a re-pin is a new row; rows are never updated (the trigger refuses it). They go with
+// their source (catalog delete, ADR 0041); a file materialised from a version is an ordinary dataset and stays. The subsets
+// package creates them for a fresh install and the migration for an upgraded one, from this one text.
+const SubsetsTables = `CREATE TABLE IF NOT EXISTS subsets(
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	source_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+	created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS subsets_source ON subsets(source_id);
+CREATE TABLE IF NOT EXISTS subset_versions(
+	subset_id INTEGER NOT NULL REFERENCES subsets(id) ON DELETE CASCADE,
+	version INTEGER NOT NULL,
+	kind TEXT NOT NULL, name TEXT NOT NULL, reason TEXT NOT NULL, definition TEXT NOT NULL,
+	source_size INTEGER NOT NULL, source_mtime_ns INTEGER NOT NULL, source_identity TEXT NOT NULL DEFAULT '',
+	author TEXT NOT NULL, created_at INTEGER NOT NULL,
+	PRIMARY KEY(subset_id, version));
+CREATE TRIGGER IF NOT EXISTS subset_versions_append_only BEFORE UPDATE ON subset_versions
+BEGIN SELECT RAISE(ABORT, 'subset_versions is append-only: an edit or a re-pin is a new version'); END`
+
+// subsetsTables adds the tables. No row to carry over: no subset existed before.
+func subsetsTables(tx *sql.Tx) error {
+	_, err := tx.Exec(SubsetsTables)
+	return err
 }
 
 // CorrectionsTable is the append-only history of a researcher's WCS and unit corrections (ADR 0061): one row per record (a

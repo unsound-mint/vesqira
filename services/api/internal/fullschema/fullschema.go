@@ -21,6 +21,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
 )
@@ -46,6 +47,7 @@ func Open(db *sql.DB, dir string) error {
 		{"projects", func() error { _, e := projects.Open(db); return e }},
 		{"history", func() error { _, e := history.Open(db); return e }},
 		{"transfers", func() error { _, e := transfers.Open(db); return e }},
+		{"subsets", func() error { _, e := subsets.Open(db); return e }},
 		{"offline", func() error { _, e := offline.Open(db, filepath.Join(dir, "offline")); return e }},
 	} {
 		if err := s.open(); err != nil {

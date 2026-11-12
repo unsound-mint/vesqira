@@ -34,6 +34,7 @@ from astropy.io import fits
 import corrections as corr
 from plane_worker import Cube, Refused, authorize, declared_unit as checked_declared_unit, fits_array
 import orientation as ori
+import subset as sub
 from memcap import limit_memory, over_cap_message
 
 MAX_OUTPUT_ELEMENTS = 1 << 28
@@ -406,6 +407,44 @@ def op_cutout(args) -> dict:
     return _write_cube(c, out, h, "cutout", {"x": [x0, x1], "y": [y0, y1]}, args)
 
 
+def op_subset(args) -> dict:
+    """Materialise a virtual subset (ADR 0063): the same window the viewer reads through, written as an ordinary FITS file. The window
+    is applied by Cube (shifted WCS, corrections in force, channels resolved by the stated rule), the planes are read through it one
+    channel at a time like cutout and slab, and the result goes out through _write_cube."""
+    try:
+        window = json.loads(args.window) if args.window else None
+    except ValueError:
+        window = None
+    if not isinstance(window, dict):
+        fail("--window must be a JSON object")
+    real = authorize(args.input)
+    try:
+        c = Cube(real, corr.CURRENT.get(real), window)
+    except Refused as e:
+        fail(e.message)
+    if not (((c.chan, c.y, c.x) == (2, 1, 0) and len(c.shape) == 3) or (c.chan is None and (c.y, c.x) == (1, 0) and len(c.shape) == 2)):
+        fail("a subset can be written as a file for an image or a cube with axes (x, y) or (x, y, channel) in that order; it can still be viewed")
+    ny, nx = c.shape[c.y], c.shape[c.x]
+    if nx * ny * c.channels > MAX_OUTPUT_ELEMENTS:
+        fail("the subset is too large to write as a file")
+    out = np.full((c.channels, ny, nx), np.nan, dtype="<f4")
+    for ch, p in planes(c, 0, c.channels - 1):
+        out[ch] = p
+    rep = c.win_report()
+    h = c.h.copy()
+    note = (args.note or "").strip()
+    if note:
+        h["HISTORY"] = "Vesqira: " + note
+    h["HISTORY"] = f"Vesqira: window of the source, 0-based pixels x {rep['x0']}-{rep['x1']}, y {rep['y0']}-{rep['y1']}, every {rep['step']}, channels {rep['c0']}-{rep['c1']}"
+    summary = {k: rep[k] for k in ("x0", "x1", "y0", "y1", "step", "c0", "c1", "world", "source")}
+    res = _write_cube(c, out, h, "subset", summary, args)
+    s = res["summary"]
+    s["channel_rule"] = rep["channel_rule"]                       # in the result's summary, not repeated in every header card
+    if rep["step"] > 1:
+        s["policy"] += f" Every {rep['step']}th pixel of the source is kept (strided sampling, nothing averaged); the pixel step in the WCS is {rep['step']} times the source's."
+    return res
+
+
 def op_slab(args) -> dict:
     refuse_axial(args, "A slab")
     c = open_cube(args.input)
@@ -420,6 +459,8 @@ def _write_cube(c: Cube, data: np.ndarray, h: fits.Header, op: str, summary: dic
     n = len(c.shape)
     if n == 3 and (c.chan, c.y, c.x) == (2, 1, 0):
         arr = data
+    elif op == "subset" and n == 2 and c.chan is None and (c.y, c.x) == (1, 0):
+        arr = data[0]                                   # an image: one channel, written as a 2D file
     else:
         fail("cutouts and slabs support cubes with axes (x, y, channel) in that order")
     h["BITPIX"] = -32
@@ -818,7 +859,7 @@ def op_mask(args) -> dict:
     return mk.op_mask(args)
 
 
-OPS = {"mask": op_mask, "relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "slab": op_slab, "align": op_align}
+OPS = {"mask": op_mask, "relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "subset": op_subset, "slab": op_slab, "align": op_align}
 
 
 def log_failure(op: str, what: str) -> None:
@@ -865,6 +906,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--masks")                # masks to apply, a JSON list of {path, type, policy[, weight, id, name, tier, rule, fingerprint]} (ADR 0055)
     ap.add_argument("--ref-masks")            # the same for the reference of relorient_maps
     ap.add_argument("--table-out")            # relorient_maps: where the per-pixel CSV goes
+    ap.add_argument("--window")               # subset: the window as a JSON object (subset.py)
+    ap.add_argument("--note")                 # subset: one line of provenance for the file's HISTORY
     ap.add_argument("--corrections")          # the researcher's corrections, a JSON object {resolved path: {hash, bunit, wcs}} (ADR 0061)
     args = ap.parse_args(argv)
     limit_memory()

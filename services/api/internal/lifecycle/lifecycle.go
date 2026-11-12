@@ -334,6 +334,16 @@ func datasetImpact(q querier, b *builder, id int64) error {
 	b.add("masks", "removed", mk, func(n int) string {
 		return plural(n, "mask goes", "masks go") + " with it; the mask files stay on disk. Results made with them keep their own record of the masks."
 	})
+	// A virtual subset is a window defined on this dataset (ADR 0063): without its source it is a definition of nothing, so it goes.
+	// A file materialised from it is an ordinary dataset and stays (it is listed under "derived" above with its provenance).
+	subs, err := items(q, "subsets", `SELECT s.id, v.name FROM subsets s JOIN subset_versions v ON v.subset_id=s.id
+		AND v.version=(SELECT MAX(version) FROM subset_versions WHERE subset_id=s.id) WHERE s.source_id=?`, id)
+	if err != nil {
+		return err
+	}
+	b.add("subsets", "removed", subs, func(n int) string {
+		return plural(n, "virtual subset is", "virtual subsets are") + " defined on this dataset and go with it (a subset is a window onto its source, not a file). Files already written from a subset are ordinary datasets and stay."
+	})
 	// Offline copies (ADR 0059) are derived bytes Vesqira wrote into its own store: they go with the dataset, files included.
 	off, err := items(q, "offline_entries", `SELECT MIN(id), COUNT(*)||' kept replies, '||SUM(bytes)||' bytes' FROM offline_entries WHERE dataset_id=? GROUP BY dataset_id`, id)
 	if err != nil {
@@ -577,12 +587,13 @@ func tableOf(st string) string {
 // writes to must exist: a missing or renamed one is an error, not a silent skip. TestEveryKeyedTableIsHandled runs
 // against the full schema, so a rename fails there.
 var optionalTables = map[string]bool{
-	"exploration_steps": true,                                                                      // history store (ADR 0057)
-	"saved_regions":     true,                                                                      // regions store
-	"masks":             true,                                                                      // masks store (ADR 0055)
-	"offline_entries":   true,                                                                      // offline store (ADR 0059)
-	"derived":           true,                                                                      // derived store
-	"run_review":        true, "run_review_history": true, "run_outputs": true, "rohsa_runs": true, // runs store
+	"exploration_steps": true,                  // history store (ADR 0057)
+	"saved_regions":     true,                  // regions store
+	"masks":             true,                  // masks store (ADR 0055)
+	"offline_entries":   true,                  // offline store (ADR 0059)
+	"subset_versions":   true, "subsets": true, // subsets store (ADR 0063)
+	"derived":    true,                                                                      // derived store
+	"run_review": true, "run_review_history": true, "run_outputs": true, "rohsa_runs": true, // runs store
 	"jobs":        true, // jobs store
 	"transfers":   true, // transfers store
 	"board_items": true, // boards store
@@ -597,6 +608,7 @@ func deleteSteps(kind string) []string {
 	case KindDataset:
 		return []string{
 			`DELETE FROM run_outputs WHERE dataset_id=?`, `DELETE FROM saved_regions WHERE dataset_id=?`, `DELETE FROM exploration_steps WHERE dataset_id=?`, `DELETE FROM masks WHERE dataset_id=?`, `DELETE FROM offline_entries WHERE dataset_id=?`, `DELETE FROM derived WHERE dataset_id=?`,
+			`DELETE FROM subset_versions WHERE subset_id IN (SELECT id FROM subsets WHERE source_id=?)`, `DELETE FROM subsets WHERE source_id=?`,
 			`DELETE FROM dataset_locations WHERE dataset_id=?`, `DELETE FROM interpretations WHERE dataset_id=?`, `DELETE FROM dataset_nature WHERE dataset_id=?`, `DELETE FROM dataset_units WHERE dataset_id=?`, `DELETE FROM catalog_declarations WHERE dataset_id=?`, `DELETE FROM dataset_corrections WHERE dataset_id=?`, `UPDATE transfers SET dataset_id=NULL WHERE dataset_id=?`,
 			`DELETE FROM datasets WHERE id=?`}
 	case KindRun:

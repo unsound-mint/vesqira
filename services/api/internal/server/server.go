@@ -32,6 +32,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
+	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
 	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 	"github.com/unsound-mint/vesqira/services/api/internal/transfers"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
@@ -70,6 +71,8 @@ type Server struct {
 	Audit     *audit.Store  // nil records nothing
 	Notes     *notify.Store // events for the owner (jobs ended, results imported); nil records nothing and disables the routes
 	Regions   *regions.Store
+	Subsets   *subsets.Store // virtual subsets (ADR 0063); nil disables their routes
+	subsetMu  sync.Mutex     // one subset is written as a file at a time (subsets.go)
 	History   *history.Store // the viewer's exploration history (ADR 0057); nil disables the routes
 	SSHConfig string         // the user's ssh_config, only read to offer host aliases; empty offers none
 	Hints     hintSource     // overrides the catalog for the runs list's input hints (tests count calls)
@@ -337,6 +340,20 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/datasets/{id}/regions/import", s.importRegions)
 		mux.HandleFunc("POST /api/regions/{id}", s.updateRegion)
 		mux.HandleFunc("POST /api/regions/{id}/delete", s.deleteRegion)
+	}
+	if s.Subsets != nil { // owner listener only. A subset is viewed through these five routes and no other: each reads through its window
+		mux.HandleFunc("GET /api/subsets", s.listSubsets)
+		mux.HandleFunc("GET /api/subsets/{sid}", s.getSubset)
+		mux.HandleFunc("POST /api/datasets/{id}/subsets", s.createSubset)
+		mux.HandleFunc("POST /api/subsets/{sid}", s.editSubset)
+		mux.HandleFunc("POST /api/subsets/{sid}/repin", s.repinSubset)
+		mux.HandleFunc("POST /api/subsets/{sid}/materialise", s.materialiseSubset)
+		mux.HandleFunc("POST /api/subsets/{sid}/delete", s.deleteSubset)
+		mux.HandleFunc("GET /api/subsets/{sid}/view", s.view)
+		mux.HandleFunc("GET /api/subsets/{sid}/header-cards", s.headerCards)
+		mux.HandleFunc("GET /api/subsets/{sid}/plane", s.plane)
+		mux.HandleFunc("GET /api/subsets/{sid}/coord", s.coord)
+		mux.HandleFunc("GET /api/subsets/{sid}/spectrum", s.spectrum)
 	}
 	if s.Offline != nil { // owner listener only: the review listener has no route to an offline copy (ADR 0059)
 		mux.HandleFunc("GET /api/offline", s.offlineOverview)

@@ -9,7 +9,7 @@ import (
 // analysisLabels name the analysis programs in a queue reason.
 var analysisLabels = map[string]string{
 	"relorient_maps": "relative orientation", "relorient_catalog": "relative orientation", "stats": "statistics",
-	"moment": "moment map", "cutout": "cutout", "slab": "slab mean", "align": "alignment", "convolve": "convolution",
+	"moment": "moment map", "cutout": "cutout", "subset": "virtual subset", "slab": "slab mean", "align": "alignment", "convolve": "convolution",
 	"scalar_diff": "difference map", "axial_diff": "axial difference",
 }
 

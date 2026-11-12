@@ -99,6 +99,14 @@ func (s *Service) CorrectionImpact(id int64, wcs, unit bool) (CorrectionImpact, 
 			return plural(n, "mask has", "masks have") + " a threshold stated in the unit in force when it was made. The mask keeps its pixels and its rule; make it again if the threshold should be read in the new unit."
 		})
 	}
+	subs, err := items(q, "subsets", `SELECT s.id, v.name FROM subsets s JOIN subset_versions v ON v.subset_id=s.id
+		AND v.version=(SELECT MAX(version) FROM subset_versions WHERE subset_id=s.id) WHERE s.source_id=?`, id)
+	if err != nil {
+		return out, err
+	}
+	b.add("subsets", "live", subs, func(n int) string {
+		return plural(n, "virtual subset reads", "virtual subsets read") + " this dataset through a window, with the corrections in force each time (a spectral interval in world units is resolved to channels again). Files already written from a subset keep the values and header they were written with."
+	})
 	steps, err := items(q, "exploration_steps", `SELECT id, label FROM exploration_steps WHERE dataset_id=?`, id)
 	if err != nil {
 		return out, err

@@ -1341,6 +1341,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/subsets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a virtual subset of a dataset, pinned to the file as it is now
+         * @description Checked against the real file by the worker (every bound inside the source, a world interval resolved to channels, a frame never converted). 422 with the reason when the window does not fit; 409 for a point catalog.
+         */
+        post: operations["owner_s_createSubset_post_api_datasets_id_subsets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/unit": {
         parameters: {
             query?: never;
@@ -3310,6 +3332,222 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/subsets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every virtual subset with its current version, marked stale when its source changed
+         * @description A subset is a saved window onto a dataset, never a file (ADR 0063). The explorer lists it under its source, marked virtual.
+         */
+        get: operations["owner_s_listSubsets_get_api_subsets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /** One subset: its current version, the whole history and the datasets written from it */
+        get: operations["owner_s_getSubset_get_api_subsets_sid"];
+        put?: never;
+        /**
+         * Edit a subset: a new version with another window, name or reason, pinned to the source as it is now
+         * @description Earlier versions stay, and a file written from one keeps the version it was written from. 409 when a newer version exists (expectVersion).
+         */
+        post: operations["owner_s_editSubset_post_api_subsets_sid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/coord": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * World coordinates of a pixel of the subset (its own 0-based pixel frame)
+         * @description Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409).
+         */
+        get: operations["owner_s_coord_get_api_subsets_sid_coord"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget a subset and its history; the source and any files written from it stay */
+        post: operations["owner_s_deleteSubset_post_api_subsets_sid_delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/header-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The header the subset would have as a file: shifted WCS, corrections applied, a COMMENT saying it is a window
+         * @description Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409).
+         */
+        get: operations["owner_s_headerCards_get_api_subsets_sid_header_cards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/materialise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write the current version as an ordinary FITS file and register it as a derived dataset
+         * @description The same window the viewer reads through, with the shifted WCS, the corrections in force as HISTORY and BUNIT. A file on another host is refused (409); 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone.
+         */
+        post: operations["owner_s_materialiseSubset_post_api_subsets_sid_materialise"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/plane": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * One plane as a binary frame
+         * @description Frame layout: uint32 little-endian header length n, then n bytes of JSON (a PlaneHeader, padded with spaces so the payload is 8-byte aligned), then width*height little-endian float32 pixels, row-major, row 0 = FITS y=1. Non-finite means no value. Only the transport and the JSON header are described here, not the binary payload. Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409).
+         */
+        get: operations["owner_s_plane_get_api_subsets_sid_plane"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/repin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-pin a stale subset to the current file: a new version, same window
+         * @description The window is checked against the changed file first; one that no longer fits is refused with the reason and the subset stays stale. 409 when it is not stale.
+         */
+        post: operations["owner_s_repinSubset_post_api_subsets_sid_repin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/spectrum": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Mean spectrum of a region, with masks applied per mask (ADR 0055)
+         * @description A frame: uint32 little-endian header length n, n bytes of JSON (shape, region, size, axis, mask_policy, bunit and, when masks were applied, masks, no_value and excluded_by_mask), then float64 axis[channels], float64 mean[channels] (NaN: no finite pixel left, never zero) and uint32 count[channels] (pixels that entered the mean), little-endian. Only the transport and the JSON header are described here. Over a subset the region is in the subset's pixels. Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409).
+         */
+        get: operations["owner_s_spectrum_get_api_subsets_sid_spectrum"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Axis roles, sky and spectral readouts of the subset, with what its window resolved to
+         * @description Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409).
+         */
+        get: operations["owner_s_view_get_api_subsets_sid_view"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/support/bundle/{id}": {
         parameters: {
             query?: never;
@@ -4238,6 +4476,8 @@ export interface components {
             offline?: components["schemas"]["OfflineMark"];
             /** @description North and east at the map centre; absent from a view kept before it was recorded (an offline copy) */
             compass?: components["schemas"]["Compass"];
+            /** @description Present only for a virtual subset */
+            window?: components["schemas"]["SubsetWindow"];
         };
         PlaneStats: {
             finite_count: number;
@@ -4270,6 +4510,8 @@ export interface components {
                 method: string;
             } | null;
             offline?: components["schemas"]["OfflineMark"];
+            /** @description Present only for a virtual subset */
+            window?: components["schemas"]["SubsetWindow"];
         };
         /** @description The physical unit a person declared for a file whose header has no BUNIT. An overlay: the file and its header facts are never changed, and wherever the unit is shown it is labelled as declared by the person. */
         UnitDeclaration: {
@@ -8203,6 +8445,173 @@ export interface components {
             frame?: string | null;
             note?: string;
         };
+        /** @description A rectangle of the source image in whole 0-based pixels, inclusive (the frame regions use). */
+        SubsetBox: {
+            x0: number;
+            x1: number;
+            y0: number;
+            y1: number;
+        };
+        /** @description A channel range of the source, 0-based and inclusive. */
+        SubsetChannels: {
+            c0: number;
+            c1: number;
+        };
+        /** @description A spectral interval in world units, resolved to channels by the worker against the WCS in force (ADR 0063): a channel is in when its centre lies in the closed interval. The unit must convert to the axis unit without a convention, and a frame must be the one the file declares. */
+        SubsetWorld: {
+            lo: number;
+            hi: number;
+            unit: string;
+            /** @description Empty or absent: the file's own */
+            frame?: string;
+        };
+        /** @description The saved region a box was taken from (a copy of its bounding box). */
+        SubsetRegionRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description What a subset is: a window onto its source. Absent box or spectral interval mean the whole axis; step keeps every step-th pixel of the box (values untouched). */
+        SubsetDefinition: {
+            box?: components["schemas"]["SubsetBox"];
+            region?: components["schemas"]["SubsetRegionRef"];
+            step: number;
+            channels?: components["schemas"]["SubsetChannels"];
+            world?: components["schemas"]["SubsetWorld"];
+        };
+        /** @description A virtual subset (ADR 0063): never a file. Stale: the source file is no longer the one this version was pinned to, so it is read nowhere until re-pinned. */
+        SubsetView: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            sourceId: number;
+            sourceName: string;
+            name: string;
+            reason: string;
+            version: number;
+            /** @enum {string} */
+            kind: "create" | "edit" | "repin";
+            definition: components["schemas"]["SubsetDefinition"];
+            author: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            editedAt: string;
+            /** @enum {boolean} */
+            virtual: true;
+            stale: boolean;
+            staleReason?: string;
+            pinned: {
+                /** Format: int64 */
+                size: number;
+                /** Format: date-time */
+                modifiedAt: string;
+                /** @description sha256:… or sampled:…, empty when none was recorded */
+                identity: string;
+            };
+            /**
+             * Format: int64
+             * @description The dataset written from this version for the source as it is now, when one exists and is unchanged
+             */
+            materialised: number | null;
+        };
+        /** @description One row of the append-only history. */
+        SubsetVersion: {
+            version: number;
+            kind: string;
+            name: string;
+            reason: string;
+            definition: components["schemas"]["SubsetDefinition"];
+            /** Format: int64 */
+            sourceSize: number;
+            /** Format: date-time */
+            sourceModifiedAt: string;
+            sourceIdentity: string;
+            author: string;
+            /** Format: date-time */
+            at: string;
+        };
+        SubsetList: {
+            subsets: components["schemas"]["SubsetView"][];
+        };
+        /** @description A dataset written from a version of the subset. */
+        SubsetMade: {
+            /** Format: int64 */
+            datasetId: number;
+            version: number;
+            /** Format: date-time */
+            at: string;
+        };
+        SubsetDetail: {
+            subset: components["schemas"]["SubsetView"];
+            versions: components["schemas"]["SubsetVersion"][];
+            materialised: components["schemas"]["SubsetMade"][];
+        };
+        /** @description Create or edit a subset. The box is given directly or taken from a saved region of the source (regionId: its bounding box, clipped to the image), not both. The worker checks every bound against the real file. */
+        SubsetInput: {
+            /** @description 1 to 80 characters of plain text */
+            name: string;
+            /** @description Required, up to 500 characters of plain text */
+            reason: string;
+            box?: components["schemas"]["SubsetBox"];
+            /** Format: int64 */
+            regionId?: number;
+            step?: number;
+            channels?: components["schemas"]["SubsetChannels"];
+            world?: components["schemas"]["SubsetWorld"];
+            /** @description Edit: the version the person was looking at; a newer one is a 409 */
+            expectVersion?: number;
+        };
+        SubsetRepinInput: {
+            reason: string;
+            expectVersion?: number;
+        };
+        SubsetMaterialiseInput: {
+            expectVersion?: number;
+        };
+        /** @description What the window resolved to, in the source file's own 0-based pixels and channels, echoed by the worker in every reply that read through it. A reply without it is refused. */
+        SubsetWindow: {
+            x0?: number;
+            x1?: number;
+            y0?: number;
+            y1?: number;
+            step?: number;
+            c0?: number;
+            c1?: number;
+            width?: number;
+            height?: number;
+            channels?: number;
+            source?: {
+                width?: number;
+                height?: number;
+                channels?: number;
+            };
+            /** @description The rule that chose the channels */
+            channel_rule?: string | null;
+            world?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        SubsetSaved: {
+            subset: components["schemas"]["SubsetView"];
+            /** @description The worker's view of the window: size, channels, window, sky and spectral facts */
+            geometry?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description The file written from a version of a subset, an ordinary dataset with a derived record naming the subset, its version and the source identity. reused: the same subset, version and source bytes (with the same corrections and declared unit) had already been written and the file is unchanged. */
+        SubsetMaterialised: {
+            dataset: components["schemas"]["Dataset"];
+            reused: boolean;
+            summary?: {
+                [key: string]: unknown;
+            };
+            subset: components["schemas"]["SubsetView"];
+        };
+        SubsetDeleted: {
+            /** Format: int64 */
+            deleted: number;
+        };
         /** @description What a saved view of the runs table remembers: words and keys only, never a run id or a value. */
         RunViewSpec: {
             /** @description The filter words, as typed in the filter box */
@@ -10680,6 +11089,41 @@ export interface operations {
                 };
                 content: {
                     "application/vnd.vesqira.plane": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createSubset_post_api_datasets_id_subsets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubsetInput"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubsetSaved"];
                 };
             };
             /** @description Error */
@@ -14053,6 +14497,396 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Revoked"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listSubsets_get_api_subsets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubsetList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_getSubset_get_api_subsets_sid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubsetDetail"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_editSubset_post_api_subsets_sid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubsetInput"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubsetSaved"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_coord_get_api_subsets_sid_coord: {
+        parameters: {
+            query: {
+                x: number;
+                y: number;
+                channel: number;
+            };
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_deleteSubset_post_api_subsets_sid_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubsetDeleted"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_headerCards_get_api_subsets_sid_header_cards: {
+        parameters: {
+            query?: {
+                format?: "text";
+            };
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_materialiseSubset_post_api_subsets_sid_materialise: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubsetMaterialiseInput"];
+            };
+        };
+        responses: {
+            /** @description the file already written for this subset, version and source bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubsetMaterialised"];
+                };
+            };
+            /** @description written */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubsetMaterialised"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_plane_get_api_subsets_sid_plane: {
+        parameters: {
+            query: {
+                channel: number;
+                /** @description Reduction factor for a display preview; refused for an orientation map */
+                step?: number;
+            };
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.plane": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_repinSubset_post_api_subsets_sid_repin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubsetRepinInput"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubsetSaved"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_spectrum_get_api_subsets_sid_spectrum: {
+        parameters: {
+            query: {
+                /** @description rect or circle (a line has no area) */
+                shape: "rect" | "circle";
+                /** @description rect: 0-based pixel, y from the bottom */
+                x0?: number;
+                y0?: number;
+                x1?: number;
+                y1?: number;
+                /** @description circle: centre */
+                cx?: number;
+                cy?: number;
+                r?: number;
+                /** @description A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). Masks are applied to files read on this computer (409 for a host). */
+                mask?: string[];
+            };
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description a frame */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.vesqira.plane": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_view_get_api_subsets_sid_view: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["View"];
                 };
             };
             /** @description Error */

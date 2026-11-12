@@ -515,6 +515,10 @@ func (s *Server) regionMasks(w http.ResponseWriter, r *http.Request, d catalog.D
 	if len(raw) == 0 {
 		return nil, "", true
 	}
+	if k.win != "" { // masks are in the source's pixels; a window would need them cut the same way
+		fail(w, 409, "masks are not applied to a virtual subset yet: they are in the source's pixels. Write the subset as a file, or take the spectrum of the source")
+		return nil, "", false
+	}
 	if k.off != nil { // offline copies are unmasked replies (ADR 0059); a masked answer needs the file
 		fail(w, 503, "masks cannot be applied while the file's host is unreachable; offline copies are unmasked")
 		return nil, "", false

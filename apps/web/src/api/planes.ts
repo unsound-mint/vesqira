@@ -56,7 +56,11 @@ export type ConvertRequest = { spectral: string; convention: string; frame: stri
 /** The checked Response: these bodies are binary (planes, spectra) or JSON, and the caller reads them. */
 const request = (url: string, signal?: AbortSignal) => requestRaw(url, { signal });
 
-const base = (id: number) => `/api/datasets/${id}`;
+/** The routes a viewer reads through: a dataset's, or a virtual subset's (ADR 0063). A subset opened in the viewer has the negative of its
+ *  subset id as its viewer id, which no dataset can have, so every client below serves both and nothing else needs to know. */
+export const isVirtualId = (id: number) => id < 0;
+export const virtualId = (subsetId: number) => -subsetId;
+const base = (id: number) => (isVirtualId(id) ? `/api/subsets/${-id}` : `/api/datasets/${id}`);
 
 export const getView = (id: number, signal?: AbortSignal) => request(`${base(id)}/view`, signal).then((r) => r.json() as Promise<View>);
 

@@ -3,7 +3,7 @@ import { ApiError } from "../api/catalog";
 import { usesOf } from "../catalog/MaskPolicies";
 import type { PolicyChoice } from "../catalog/MaskPolicies";
 import { useMasks } from "./useMasks";
-import { expandPreview, getAxial, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
+import { expandPreview, getAxial, isVirtualId, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
 import { isOfflineMissing, setOfflineMissing } from "../api/offlineState";
 import { newRequestId } from "../api/http";
 import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
@@ -38,6 +38,9 @@ const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.mes
  */
 export function useViewer(dataset: Dataset | null) {
   const datasetId = dataset?.id ?? null;
+  // A virtual subset (ADR 0063) is read through its window by the view, plane, coordinate and spectrum routes and by nothing else:
+  // masks, saved regions, conversions, orientation statistics, a paired reliability map and overlays are the file's, not the window's.
+  const virtual = datasetId !== null && isVirtualId(datasetId);
   const fileTime = dataset?.modifiedAt ?? null; // a file that was read again starts the viewer over
   const interp = dataset?.interpretation ?? null;
   const relId = interp?.reliabilityId ?? null;
@@ -87,7 +90,7 @@ export function useViewer(dataset: Dataset | null) {
   const [spectrumRequestId, setSpectrumRequestId] = useState<string | null>(null);
   // The masks a region's spectrum and histogram apply, and what each does (ADR 0055). Each mask is named with its policy by the person;
   // a mask not named is not applied. A view setting of the moment, like the pinned pixel: it starts empty with every dataset.
-  const { masks: datasetMasks } = useMasks(datasetId);
+  const { masks: datasetMasks } = useMasks(virtual ? null : datasetId);
   const [maskChoice, setMaskChoice] = useState<PolicyChoice>({});
   const maskUses = useMemo(() => usesOf(maskChoice).filter((u) => !datasetMasks || datasetMasks.some((m) => m.id === u.id)), [maskChoice, datasetMasks]);
   const maskKey = JSON.stringify(maskUses);
@@ -124,7 +127,7 @@ export function useViewer(dataset: Dataset | null) {
   const setZoom = useCallback((z: number) => dispatch({ type: "setView", view: { zoom: z } }), []);
   const setCentre = useCallback((c: ScenePoint | null) => dispatch({ type: "setView", view: { centre: c } }), []);
   const [path, setPath] = useState<LineShape | null>(null);
-  const savedRegions = useSavedRegions(datasetId, setRegion, setPath);
+  const savedRegions = useSavedRegions(virtual ? null : datasetId, setRegion, setPath);
 
   // The declaration can change while the map is open (declared axial, or withdrawn); the scene's mapping and its own
   // orientation lines follow it.
@@ -184,7 +187,7 @@ export function useViewer(dataset: Dataset | null) {
   // scrubbing over a slow link stays responsive; the preview is labelled as one. After the full plane arrives the
   // neighbouring channels are requested quietly so the next step is already cached by the server.
   const lastStep = useRef(1);
-  const remote = (dataset?.hostId ?? 0) !== 0;
+  const remote = (dataset?.hostId ?? 0) !== 0; // a window of a remote file previews like the file (the plane route takes the step)
   useEffect(() => {
     if (datasetId === null || !view) return;
     const ac = new AbortController();
@@ -279,7 +282,7 @@ export function useViewer(dataset: Dataset | null) {
 
   // What the file allows (spectral units, sky frames, brightness units) is read again whenever the layout is: a declared unit changes it.
   useEffect(() => {
-    if (datasetId === null || !view) {
+    if (datasetId === null || !view || virtual) {
       setOffers(null);
       return;
     }
@@ -372,7 +375,7 @@ export function useViewer(dataset: Dataset | null) {
   // The paired reliability map (one plane), for readouts and line opacity.
   useEffect(() => {
     setReliability(null);
-    if (datasetId === null || !view || relId === null) return;
+    if (datasetId === null || !view || relId === null || virtual) return;
     const ac = new AbortController();
     getPlane(relId, 0, ac.signal)
       .then(setReliability)
@@ -382,7 +385,7 @@ export function useViewer(dataset: Dataset | null) {
 
   // Orientation statistics (doubled-angle) for the whole map or the region, once the user has declared the map axial.
   useEffect(() => {
-    if (datasetId === null || !view || !interp) {
+    if (datasetId === null || !view || !interp || virtual) {
       setAxial(null);
       setAxialError(null);
       return;
@@ -420,7 +423,7 @@ export function useViewer(dataset: Dataset | null) {
   const pixelValue = pixelNumber;
 
   return {
-    scene, dispatch, dispatchFact, undo, redo, undoName, redoName, applyScene, datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
+    virtual, scene, dispatch, dispatchFact, undo, redo, undoName, redoName, applyScene, datasetId, view, viewError, channel, setChannel, channels, plane, planeError, loading, shownChannel,
     zoom, setZoom, setCentre, colormap, setColormap, stretch, setStretch, range, setRange, customLimits, setCustomLimits, setScaleGroup,
     hover, setHover, mirror, setMirror, pinned, setPinned, picked, setPicked, probe, pixelValue, coord, coordError,
     conv, setConv, offers, convError, convertedNow: converted && converted.key === convKey ? converted.r : null,
