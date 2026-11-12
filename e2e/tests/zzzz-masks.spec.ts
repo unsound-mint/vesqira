@@ -11,6 +11,12 @@ import { API } from "../ports";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");
 
+/** The inspector sections stay as they were left when another dataset opens: open one only if it is closed. */
+async function openSection(page: Page, name: string) {
+  const b = page.getByRole("button", { name, exact: true });
+  if ((await b.getAttribute("aria-expanded")) !== "true") await b.click();
+}
+
 async function expectNoAxeViolations(page: Page) {
   const r = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).analyze();
   expect(r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
@@ -69,36 +75,9 @@ test("masks are typed, hatched with a legend, applied per mask with a policy the
   await expect(insp.getByText(/never treated as masked/)).toBeVisible();
   await expectNoAxeViolations(page);
 
-  // a cutout carries a mask only when it is chosen: nothing by default, the rule stated, the no-value mask never offered
-  await insp.getByLabel("Analysis", { exact: true }).selectOption("cutout");
-  const carry = insp.getByTestId("mask-carry");
-  await expect(carry.getByLabel("Saturated: Saturated ≥ 0.5")).toHaveValue("leave");
-  await expect(carry).toContainText("Cut with exactly the same window as the data");
-  await expect(carry).toContainText("never carried");
-  await expect(carry.getByLabel(/^No value/)).toHaveCount(0);
-  for (const [label, v] of [["x from", "1"], ["x to", "16"], ["y from", "1"], ["y to", "12"]] as const) await insp.getByLabel(label, { exact: true }).fill(v);
-  await carry.getByLabel("Saturated: Saturated ≥ 0.5").selectOption("carry");
-  await insp.getByRole("button", { name: "Create the new file" }).click();
-  const cut = page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^cutout-/ }).first();
-  await expect(cut).toBeVisible();
-  await cut.click();
-  await page.getByRole("button", { name: "Masks", exact: true }).click();
-  const carried = insp.getByRole("list", { name: "Masks", exact: true });
-  await expect(carried.getByTestId("mask-row")).toHaveCount(2); // the carried mask, and the no-value mask computed again
-  await expect(carried).toContainText("carried from mask “Saturated ≥ 0.5” of hi_cube.fits by cutout x 0-15, y 0-11");
-  await expect(carried).toContainText("declared"); // the tier did not change
-  await expect(carried).toContainText("No value");
-  await expect(carried).toContainText("verified");
-  await page.getByRole("button", { name: "Made from", exact: true }).click();
-  await expect(insp.getByTestId("derived-mask-carry")).toContainText("carried by cutout x 0-15, y 0-11");
-  await expectNoAxeViolations(page);
-
   // a figure saved with a mask shown hatches it with the legend and records which one, by type, name, tier and fingerprint
-  await page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^hi_cube\.fits/ }).first().click();
-  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();
-  await page.getByRole("button", { name: "Masks", exact: true }).click();
   await expect(page.getByTestId("mask-legend")).toContainText("Saturated: Saturated ≥ 0.5");
-  await page.getByRole("button", { name: "Figure", exact: true }).click();
+  await openSection(page, "Figure");
   await insp.getByLabel("Title").first().fill("Hatched figure");
   await insp.getByRole("button", { name: "Save as figure" }).click();
   await expect(insp.getByText(/Saved: “Hatched figure”/)).toBeVisible();
@@ -108,4 +87,28 @@ test("masks are typed, hatched with a legend, applied per mask with a policy the
   expect(fig.scene!.masks!.every((m) => /^sha256:[0-9a-f]{64}$/.test(m.fingerprint))).toBe(true);
   expect(fig.provenance.tiers.map((t) => t.what)).toEqual(expect.arrayContaining(["mask shown: saturated (Saturated ≥ 0.5)", "mask shown: no value (No value (NaN, BLANK))"]));
   expect(JSON.stringify(fig.provenance)).not.toMatch(/"id":\d|\/\.run\//); // the reviewer's provenance has no id and no path
+
+  // a cutout carries a mask only when it is chosen: nothing by default, the rule stated, the no-value mask never offered
+  await insp.getByLabel("Analysis", { exact: true }).selectOption("cutout");
+  const carry = insp.getByTestId("mask-carry");
+  await expect(carry.getByLabel("Saturated: Saturated ≥ 0.5")).toHaveValue("leave");
+  await expect(carry).toContainText("Cut with exactly the same window as the data");
+  await expect(carry).toContainText("never carried");
+  await expect(carry.getByLabel(/^No value/)).toHaveCount(0);
+  for (const [label, v] of [["x from", "1"], ["x to", "16"], ["y from", "1"], ["y to", "12"]] as const) await insp.getByLabel(label, { exact: true }).last().fill(v); // the region form has the same labels, earlier in the inspector
+  await carry.getByLabel("Saturated: Saturated ≥ 0.5").selectOption("carry");
+  await insp.getByRole("button", { name: "Create the new file" }).click();
+  const cut = page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^cutout-/ }).first();
+  await expect(cut).toBeVisible();
+  await cut.click();
+  await openSection(page, "Masks");
+  const carried = insp.getByRole("list", { name: "Masks", exact: true });
+  await expect(carried.getByTestId("mask-row")).toHaveCount(2); // the carried mask, and the no-value mask computed again
+  await expect(carried).toContainText("carried from mask \"Saturated ≥ 0.5\" of hi_cube.fits by cutout x 0-15, y 0-11");
+  await expect(carried).toContainText("declared"); // the tier did not change
+  await expect(carried).toContainText("No value");
+  await expect(carried).toContainText("verified");
+  await openSection(page, "Made from");
+  await expect(insp.getByTestId("derived-mask-carry")).toContainText("carried by cutout x 0-15, y 0-11");
+  await expectNoAxeViolations(page);
 });
