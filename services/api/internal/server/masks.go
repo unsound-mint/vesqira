@@ -271,7 +271,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 			return maskView{}, code, msg
 		}
 		// nothing to remove on a refusal: the host keeps no file unless the program succeeded (hostrun.py)
-		if res, out, code, msg = s.hostRunAnalysis(ctx, h, "mask", fileName, []string{"--input", real, "--params", string(pj)}); code != 0 {
+		if res, out, code, msg = s.hostRunAnalysis(ctx, h, "mask", fileName, []string{"--input", real, "--params", string(pj)}, nil); code != 0 {
 			return maskView{}, code, msg
 		}
 	} else {

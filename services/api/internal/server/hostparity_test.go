@@ -503,16 +503,13 @@ func TestSubsetsOnAHostMatchTheSameSubsetHere(t *testing.T) {
 	same("coord", "/coord?x=4&y=3&channel=12", "/coord?x=4&y=3&channel=12")
 	same("spectrum", "/spectrum?shape=rect&x0=1&y0=1&x1=4&y1=3", "/spectrum?shape=rect&x0=1&y0=1&x1=4&y1=3")
 
-	// a mask of the source is left behind on the host (carrying there is not built), and the record says so
+	// a mask of the source that is not carried is left behind on the host, and the record says so (carrying: its own test)
 	if code, _, b := e.mask(rem.ID, map[string]any{"method": "saturated", "threshold": 0.5, "source": "datasheet"}); code != 201 {
 		t.Fatalf("mask: %d %s", code, b)
 	}
 	_, lb := e.get(fmt.Sprintf("/api/datasets/%d/masks", rem.ID))
 	var list struct{ Masks []hpMask }
 	json.Unmarshal(lb, &list)
-	if code, b := e.call("POST", rp+"/materialise", map[string]any{"carryMasks": []map[string]any{{"id": list.Masks[0].ID, "carry": true}}}); code != 409 || !strings.Contains(string(b), "leave them behind") {
-		t.Errorf("carrying into a host subset: %d %s", code, b)
-	}
 
 	code, lb2 := e.call("POST", lp+"/materialise", map[string]any{})
 	if code != 201 {

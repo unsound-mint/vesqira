@@ -25,11 +25,27 @@ var ErrHostRunTimeout = errors.New("the host run took too long")
 // ErrHostRunFailed is a host that answered but whose program gave no reply (a missing module, a crash): not an unreachable host.
 var ErrHostRunFailed = errors.New("the program failed on the host without an answer; check the host (Hosts, Check) for its Python and astropy")
 
+// HostCarry is one mask a subset written on the host carries: the final file name (a plain mask-… name, chosen by Vesqira), the source mask's
+// path on the host and its type. The program on the host writes it as a mask of the result (ADR 0055).
+type HostCarry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Type string `json:"type"`
+}
+
+// HostOutputs are the files a subset written on the host writes besides its own: the carried masks and the result's own no-value mask,
+// which the program computes again. They are placed with the result, all or none (hostrun.py). Nil for none.
+type HostOutputs struct {
+	Carry   []HostCarry
+	Missing string // file name; empty for none
+}
+
 // HostRun runs one bounded write on the host (hostrun.py, ADR 0064): op is "mask" or "subset", name the file to write in the host's derived
 // folder, argv the analysis program's options. The command line is fixed (the deployed folder, the host's roots and derived folder, the
 // host's Python); the request, which carries the researcher's free text, goes on stdin. The worker on the host enforces the roots on what it
-// reads, writes only that one new file in the derived folder, and never replaces an existing one. It returns the program's JSON reply.
-func (m *Manager) HostRun(ctx context.Context, h Host, op, name string, argv []string, timeout time.Duration) ([]byte, error) {
+// reads, writes only the new files named in the request in the derived folder (the result and, for a subset, its carried masks, all or none), and
+// never replaces an existing one. It returns the program's JSON reply.
+func (m *Manager) HostRun(ctx context.Context, h Host, op, name string, argv []string, outs *HostOutputs, timeout time.Duration) ([]byte, error) {
 	if len(h.Roots) == 0 {
 		return nil, fmt.Errorf("%w: the host has no source root", ErrInvalid)
 	}
@@ -40,7 +56,16 @@ func (m *Manager) HostRun(ctx context.Context, h Host, op, name string, argv []s
 	if err := m.Deploy(ctx, h); err != nil {
 		return nil, err
 	}
-	req, err := json.Marshal(map[string]any{"op": op, "name": name, "argv": argv})
+	body := map[string]any{"op": op, "name": name, "argv": argv}
+	if outs != nil {
+		if len(outs.Carry) > 0 {
+			body["carry"] = outs.Carry
+		}
+		if outs.Missing != "" {
+			body["missing"] = outs.Missing
+		}
+	}
+	req, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}

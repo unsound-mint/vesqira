@@ -18,7 +18,6 @@ import (
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
-	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/subsets"
 )
@@ -550,23 +549,6 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	if src.HostID != 0 && carry != nil {
-		// written on the host (ADR 0064), where carrying is not built: the masks stay with the source and are recorded as left behind
-		if len(carry.carried) > 0 {
-			fail(w, 409, "carrying masks into a file written on a host is not built yet: write the subset without them (leave them behind), then make the masks again on the new file, on the host")
-			return
-		}
-		if carry.missingOut != "" { // not computed again there either: said as left behind, and the researcher can make it on the result
-			carry.missingOut = ""
-			if all, err := s.Masks.ForDataset(src.ID); err == nil {
-				for _, m := range all {
-					if m.Type == masks.Missing {
-						carry.left = append(carry.left, m)
-					}
-				}
-			}
-		}
-	}
 	s.subsetMu.Lock() // one writer at a time: two identical requests make one file, not two
 	defer s.subsetMu.Unlock()
 	if id, ok := s.materialisedFor(s.subsetRecords(), sub.ID, cur.Version, src, carry.key(), false); ok {
@@ -608,7 +590,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 			fail(w, code, msg)
 			return
 		}
-		if res, outPath, code, msg = s.hostRunAnalysis(r.Context(), h, "subset", fileName, opts); code != 0 {
+		if res, outPath, code, msg = s.hostRunAnalysis(r.Context(), h, "subset", fileName, opts, carry); code != 0 {
 			fail(w, code, msg)
 			return
 		}
