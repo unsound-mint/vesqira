@@ -1196,6 +1196,18 @@ func (s *Server) detachRelayed(w http.ResponseWriter, r *http.Request) {
 			ids = append(ids, x.JobID)
 		}
 	}
+	// only drafts that still exist: a decline (or a request gone from the server) deletes them but keeps the ids on the mirror
+	kept := ids[:0]
+	for _, id := range ids {
+		if j, err := s.Jobs.Get(id); err == nil && j.State == jobs.StateDraft {
+			kept = append(kept, id)
+		}
+	}
+	if len(kept) == 0 {
+		fail(w, 409, "this request has no drafts left to keep")
+		return
+	}
+	ids = kept
 	for _, id := range ids {
 		_ = s.Jobs.SetRequestRef(id, "")
 	}

@@ -105,6 +105,10 @@ func TestGoneAndClosedRequestsLeaveNoStuckDraft(t *testing.T) {
 	if _, err := r.srv.Jobs.Get(*m.JobID); err == nil {
 		t.Fatal("the declined draft was kept")
 	}
+	// the mirror still names the deleted draft, so detaching must not claim to keep it
+	if st, b := callJSON(t, "POST", r.api("/api/relayed/"+itoa(int(m.ID))+"/detach"), map[string]any{}); st != 409 {
+		t.Fatalf("detach with no drafts left: %d %s", st, b)
+	}
 
 	id = r.file(singleAsk)
 	r.pass()

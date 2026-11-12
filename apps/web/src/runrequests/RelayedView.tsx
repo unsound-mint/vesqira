@@ -68,7 +68,7 @@ export function RelayedView({ summary, onChanged, onClose }: { summary: Relayed;
       {detail?.sweep && q.localState === "draft" ? <SweepReview detail={detail} onError={(m) => { setError(m); setDone(""); }} onDone={(m) => { setError(""); setDone(m); void onChanged(); void load(); }} /> : null}
       {editable ? <Actions relayed={q} onError={(m) => { setError(m); setDone(""); }} onDone={(m) => { setError(""); setDone(m); void onChanged(); void load(); }} /> : null}
       {/* a request that closed while drafted leaves drafts that cannot be submitted under it: keeping them as your own frees them */}
-      {q.localState === "closed" && (q.jobId != null || q.sweepId != null) ? (
+      {q.localState === "closed" && (detail?.job != null || (detail?.sweep?.drafts.length ?? 0) > 0) ? (
         <div className={s.row}>
           <Button onClick={() => detachRelayed(q.id).then(() => { setError(""); setDone("Detached: the drafts are now your own."); void onChanged(); void load(); }, (e) => { setError(message(e)); setDone(""); })}>Keep the drafts as my own</Button>
         </div>
