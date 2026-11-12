@@ -64,3 +64,40 @@ test("a ROHSA fit is imported and its Gaussian components are read at a pinned p
   const axe = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).analyze();
   expect(axe.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
 });
+
+// Reviewing the whole decomposition (#131): the sigma-v diagram, the class maps, and the pixels of a cell marked on them.
+test("the decomposition's sigma-v diagram marks the pixels of a cell on the width-class maps", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Runs", exact: false }).first().click().catch(() => undefined);
+  const runs = page.getByRole("list", { name: "Runs" });
+  if (!(await runs.getByRole("listitem").filter({ hasText: "rohsa_n3" }).count())) {
+    await page.getByLabel("Import a run (VGT or ROHSA)").fill(path.join(data, "rohsa_run_demo", "region_a"));
+    await page.getByRole("button", { name: "Import run" }).click();
+  }
+  await page.getByRole("button", { name: /^region_a\.fits/ }).click();
+  const canvas = page.locator('canvas[aria-label*="pixels"]').first();
+  await expect(canvas).toBeVisible();
+  await page.waitForTimeout(500);
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.click(box.x + (2.5 / 6) * box.width, box.y + (1 - 1.5 / 4) * box.height);
+  await page.getByRole("switch", { name: "Gaussian components" }).check();
+
+  const review = page.getByRole("region", { name: "Review of the decomposition" });
+  await review.getByRole("button", { name: "Draw the diagram" }).click();
+  await expect(review.getByRole("button", { name: "Draw the diagram again" })).toBeVisible({ timeout: 60_000 });
+  await expect(review.getByText(/components are inside the diagram/)).toBeVisible();
+  await review.getByRole("button", { name: "Make the class maps" }).click();
+  await expect(review.getByRole("button", { name: "Make the maps again" })).toBeVisible({ timeout: 60_000 });
+  await review.getByRole("button", { name: "Mark pixels" }).first().click();
+  await expect(review.getByText(/carry stripes on the class maps/)).toBeVisible({ timeout: 30_000 });
+
+  const axe = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).analyze();
+  expect(axe.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
+  // pictures for the visual review (not assertions): a tall window so the whole review fits in the inspector
+  await page.setViewportSize({ width: 1440, height: 2600 });
+  for (const scheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await review.scrollIntoViewIfNeeded();
+    await review.screenshot({ path: path.resolve(here, `../test-results/rohsa-review-${scheme}.png`) });
+  }
+});

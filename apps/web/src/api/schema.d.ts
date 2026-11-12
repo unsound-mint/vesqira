@@ -1584,6 +1584,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/rohsa/class-maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sum a ROHSA decomposition per width class (narrow below a cut, or the person's edges) and register one derived map per class, with a record of the run, the cut, the weighting and the fit */
+        post: operations["owner_s_rohsaClassMaps_post_api_datasets_id_rohsa_class_maps"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/rohsa/components": {
         parameters: {
             query?: never;
@@ -1619,6 +1638,44 @@ export interface paths {
         put?: never;
         /** Advance (or confirm) the index of a run's .dat; each call works for a bounded time */
         post: operations["owner_s_rohsaIndex_post_api_datasets_id_rohsa_index"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/rohsa/sigmav": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The sigma-v diagram of a ROHSA decomposition: component width against centroid velocity, weighted, with each cell's contributor count (ADR 0046); one bounded pass over the .dat as a heavy analysis */
+        post: operations["owner_s_rohsaSigmav_post_api_datasets_id_rohsa_sigmav"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/rohsa/sigmav/cell": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The pixels that have a component in one cell of the sigma-v diagram, as a compact packed mask; the same bins as the diagram give the same cells */
+        post: operations["owner_s_rohsaCellMask_post_api_datasets_id_rohsa_sigmav_cell"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10438,6 +10495,172 @@ export interface components {
             /** @description the hash the preflight answered */
             hash: string;
         };
+        /** @description Linear bins in the diagram's own unit: km/s when the crop's spectral axis is a resolved velocity axis, channels otherwise */
+        RohsaBins: {
+            min: number;
+            /** @description above min */
+            max: number;
+            /** @description equal-width bins; half-open [lo, hi): a value on a bin's upper edge is in the next bin, a value on the last edge is outside */
+            n: number;
+        };
+        /** @description A review of a ROHSA decomposition (ADR 0046). Bins omitted: defaults from the crop (the spectral range, widths 0 to 12 km/s) */
+        RohsaReviewRequest: {
+            /** Format: int64 */
+            runId: number;
+            /**
+             * @description What each component adds to a cell or a map. integrated: amp x sigma x sqrt(2 pi) in the crop's brightness unit times km/s (refused when the unit or the velocity axis is unknown). column_thin: optically thin H I column density in cm^-2 (only for a brightness temperature in K). count: 1 per component. Default integrated
+             * @enum {string}
+             */
+            weight?: "integrated" | "column_thin" | "count";
+            velocityBins?: components["schemas"]["RohsaBins"];
+            sigmaBins?: components["schemas"]["RohsaBins"];
+            /** @description Only for /sigmav/cell */
+            cell?: {
+                /** @description width bin, counted from the first width bin */
+                s: number;
+                /** @description centre bin, counted from the first centre bin */
+                v: number;
+            };
+            /** @description Only for /class-maps: the width edges in km/s, positive and strictly increasing; classes are half-open [lo, hi), so a width on an edge is in the class above */
+            edges?: number[];
+        };
+        /** @description [width bin, centre bin, contributor count, summed weight]; only cells with a contributor are listed */
+        RohsaSigmavCell: number[];
+        /** @description The sigma-v diagram of a decomposition: the weighted 2D histogram of component width against centroid velocity, with each cell's contributor count */
+        RohsaSigmav: {
+            /** Format: int64 */
+            runId: number;
+            cropName?: string;
+            weight: string;
+            /** @description the unit of the weights: K km/s (the crop's own brightness unit times km/s), cm^-2, or components */
+            weight_unit: string;
+            /** @description how each component's weight is formed, in words, with its assumptions */
+            weight_how: string;
+            axes: {
+                centre?: {
+                    /** @enum {string} */
+                    unit?: "km/s" | "channels";
+                    name?: string | null;
+                };
+                sigma?: {
+                    /** @enum {string} */
+                    unit?: "km/s" | "channels";
+                };
+            };
+            /** @description the spectral axis as the worker resolved it (kind velocity or channel, with the note that says why not a velocity) */
+            velocity_axis?: {
+                [key: string]: unknown;
+            };
+            brightness_unit?: string | null;
+            brightness_unit_source?: string;
+            unit_source?: string;
+            policy?: string;
+            v_edges: number[];
+            sigma_edges: number[];
+            binning?: string;
+            cells: components["schemas"]["RohsaSigmavCell"][];
+            /** @description every component of the fit */
+            components: number;
+            /** @description components whose sigma is not positive and finite, left out */
+            invalid_sigma: number;
+            /** @description valid components outside the diagram's limits (never folded into an edge bin) */
+            outside: number;
+            in_diagram: number;
+            weight_total: number;
+            weight_outside: number;
+            negative_weight_components?: number;
+            /** @description the range of widths and centres over the valid components, to help set the bins */
+            observed: {
+                sigma?: (number | null)[];
+                centre?: (number | null)[];
+            };
+            /** @description the fit by file name, size and time; never its folder */
+            dat: {
+                name?: string;
+                size_bytes?: number;
+                mtime_ns?: number;
+            };
+            convention?: string;
+            width: number;
+            height: number;
+            software?: {
+                [key: string]: unknown;
+            };
+            /** @description The index a click on a cell reads instead of the .dat; only the latest binning of a fit is kept, so drawing another diagram of the same fit replaces it. null when no cache folder is set */
+            pixel_index?: {
+                /** @description size of the per-row cell index kept in the cache folder: 2 bytes per row of the .dat */
+                bytes?: number;
+                rows?: number;
+            } | null;
+        };
+        /** @description A compact pixel mask */
+        RohsaPixelMask: {
+            width: number;
+            height: number;
+            /**
+             * @description width x height booleans in row-major order (row 0 is the fit's first row, the FITS bottom row; x fastest), 8 to a byte most significant bit first, zlib-deflated, then base64
+             * @enum {string}
+             */
+            encoding: "packbits-msb-row-major+zlib+base64";
+            data: string;
+        };
+        /** @description The pixels behind one cell of the sigma-v diagram */
+        RohsaCellMask: {
+            mask: components["schemas"]["RohsaPixelMask"];
+            /** @description pixels with at least one valid component in the cell */
+            pixels: number;
+            /** @description components in the cell: equal to the diagram's contributor count for the same bins */
+            components: number;
+            cell: {
+                s?: number;
+                v?: number;
+            };
+            /** Format: int64 */
+            runId: number;
+            dat?: {
+                [key: string]: unknown;
+            };
+            weight_unit?: string;
+            software?: {
+                [key: string]: unknown;
+            };
+        };
+        RohsaWidthClass: {
+            index: number;
+            label: string;
+            lo: number;
+            /** @description null for the widest class */
+            hi: number | null;
+            components: number;
+            weight_total: number;
+        };
+        /** @description The decomposition summed per width class, registered as derived maps */
+        RohsaClassMapsResult: {
+            /** @description one registered derived map per width class, narrowest first, each on the crop's sky grid */
+            maps: {
+                dataset: components["schemas"]["Dataset"];
+                class: components["schemas"]["RohsaWidthClass"];
+            }[];
+            classes: components["schemas"]["RohsaWidthClass"][];
+            weight: string;
+            weight_unit: string;
+            weight_how?: string;
+            invalid_sigma?: number;
+            /** @description NaN in every class map: nothing was fitted there that can be used */
+            pixels_without_valid_component?: number;
+            policy: string;
+            unit_source?: string;
+            dat?: {
+                [key: string]: unknown;
+            };
+            convention?: string;
+            /** Format: int64 */
+            runId: number;
+            cropName?: string;
+            software?: {
+                [key: string]: unknown;
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -13393,6 +13616,95 @@ export interface operations {
             };
         };
     };
+    owner_s_rohsaClassMaps_post_api_datasets_id_rohsa_class_maps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RohsaReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description the registered class maps */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RohsaClassMapsResult"];
+                };
+            };
+            /** @description a bin, edge, weight or cell outside its range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such run */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the analysis refused: an unknown brightness unit or velocity axis for the weight asked, a .dat that is not the regular layout, or a cell outside the diagram */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description too many analyses waiting */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the pass over the .dat took longer than its time budget and was stopped */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_rohsaComponents_get_api_datasets_id_rohsa_components: {
         parameters: {
             query: {
@@ -13464,6 +13776,184 @@ export interface operations {
             };
             /** @description the dataset is not on the run's grid (the reasons are listed), or the run has no crop */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_rohsaSigmav_post_api_datasets_id_rohsa_sigmav: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RohsaReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description the diagram */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RohsaSigmav"];
+                };
+            };
+            /** @description a bin, edge, weight or cell outside its range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such run */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the analysis refused: an unknown brightness unit or velocity axis for the weight asked, a .dat that is not the regular layout, or a cell outside the diagram */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description too many analyses waiting */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the pass over the .dat took longer than its time budget and was stopped */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_rohsaCellMask_post_api_datasets_id_rohsa_sigmav_cell: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RohsaReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description the mask */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RohsaCellMask"];
+                };
+            };
+            /** @description a bin, edge, weight or cell outside its range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such run */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the analysis refused: an unknown brightness unit or velocity axis for the weight asked, a .dat that is not the regular layout, or a cell outside the diagram */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description too many analyses waiting */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the pass over the .dat took longer than its time budget and was stopped */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };
