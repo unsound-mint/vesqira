@@ -151,7 +151,11 @@ Every result carries `label: "agreement statistic"` and a policy saying that it 
 ### Deferred
 - **Source selection by P/σP** (`vgt_phase_vs_stars.py:87`): the catalog declaration names no P columns. Filter the catalog before registering it.
 - **Block (Stokes) averaging before comparison** (`compare_vgt_polarization.py:67-70, 159-178`): use convolve or align first.
-- **Planck HEALPix ingestion and the COSMO→IAU U flip** (88, 96). An angle map derived from Planck must already be in the IAU convention: an angle map carries no POLCCONV, so this cannot be checked here.
+- ~~**Planck HEALPix ingestion and the COSMO→IAU U flip** (88, 96).~~ Implemented by [ADR 0067](0067-planck-healpix-polarization-maps.md):
+  - a HEALPix map is registered only when it states POLCCONV and COORDSYS;
+  - it is sampled onto the map's grid as Q and U, with the flip and the per-pixel turn from Galactic north;
+  - the result is a `dust_polarization` or `b_field` map declared by the operation, which this comparison takes like any other, and its P/σP threshold restricts the comparison.
+  An angle map made outside Vesqira still carries no POLCCONV, so for such a map the convention remains unchecked.
 - **Remote data.** Both inputs must be on this computer, as for the axial difference and for catalogs (ADR 0044). There is no host job for this analysis yet.
 - **Drawing the segments through the scene's catalog overlay.** That overlay is not drawn yet (ADR 0042), so the figure is self-contained and has no raster underlay.
 - **A cell or friends-of-friends grouping and a half-split ceiling** (`star_vgt_scale_analysis.py:123-156`).
