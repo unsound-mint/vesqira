@@ -41,6 +41,26 @@ def _load_roots():
 
 ROOTS = _load_roots()      # canonicalised once, at startup
 
+_U64 = (1 << 64) - 1
+
+
+class OtherFile(OSError):
+    """The file reached is a regular file, but not the one the API recorded (device and inode differ)."""
+
+
+OTHER_FILE_MESSAGE = ("this name now belongs to a different file than the one that was registered (it was replaced or copied "
+                      "over); check it is the file you mean, then register it again")
+
+
+def parse_expect(raw) -> tuple[int, int] | None:
+    """The (device, inode) the API recorded, from a request's `expect`; None when the request has none. The API sends signed 64-bit
+    values, so both sides are compared modulo 2**64."""
+    if raw is None:
+        return None
+    if (not isinstance(raw, (list, tuple)) or len(raw) != 2 or any(isinstance(v, bool) or not isinstance(v, int) for v in raw)):
+        raise Refused("bad_request", "bad request")
+    return raw[0] & _U64, raw[1] & _U64
+
 
 def inside_roots(real: str) -> bool:
     if ROOTS is None:
@@ -89,8 +109,10 @@ def open_beneath(real: str, expect: tuple[int, int] | None = None) -> int:
         os.close(fd)
     try:
         st = os.fstat(out)
-        if not stat.S_ISREG(st.st_mode) or (expect is not None and (st.st_dev, st.st_ino) != tuple(expect)):
+        if not stat.S_ISREG(st.st_mode):
             raise OSError("not the file that was authorised")
+        if expect is not None and (st.st_dev & _U64, st.st_ino & _U64) != tuple(v & _U64 for v in expect):
+            raise OtherFile("not the file that was recorded")
     except BaseException:
         os.close(out)
         raise
@@ -118,6 +140,8 @@ def open_source(path: str, expect: tuple[int, int] | None = None) -> tuple[str, 
         _hook(real)
     try:
         fd = open_beneath(real, expect)
+    except OtherFile:
+        raise Refused("changed", OTHER_FILE_MESSAGE) from None
     except OSError:
         raise refused from None
     return real, _Source(io.FileIO(fd, "rb"))

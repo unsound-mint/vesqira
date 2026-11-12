@@ -119,7 +119,24 @@ class OpenNoFollow(unittest.TestCase):
         st = os.stat(self.real)
         _, f = srcopen.open_source(self.real, (st.st_dev, st.st_ino))
         f.close()
-        self.not_available(lambda: srcopen.open_source(self.real, (st.st_dev, st.st_ino + 1)))
+        with self.assertRaises(srcopen.Refused) as cm:
+            srcopen.open_source(self.real, (st.st_dev, st.st_ino + 1))
+        self.assertEqual(cm.exception.code, "changed")           # a sentence the person can act on, not the plain "not available"
+        self.assertIn("register it again", cm.exception.message)
+
+    def test_a_request_that_carries_the_recorded_identity_is_checked_before_any_read(self):
+        st = os.stat(self.real)
+        req = {"op": "view", "path": self.real, "channel": 0}
+        try:                                                     # the bare fixture has no spectral axis: any refusal but "changed" is fine here
+            pw._handle({**req, "expect": [st.st_dev, st.st_ino]})
+        except srcopen.Refused as e:
+            self.assertNotEqual(e.code, "changed")
+        with self.assertRaises(srcopen.Refused) as cm:
+            pw._handle({**req, "expect": [st.st_dev, st.st_ino + 1]})
+        self.assertEqual(cm.exception.code, "changed")
+        with self.assertRaises(srcopen.Refused) as cm:
+            pw._handle({**req, "expect": "nope"})
+        self.assertEqual(cm.exception.code, "bad_request")
 
     def test_without_roots_the_walk_still_refuses_a_swapped_component(self):
         srcopen.ROOTS = None
