@@ -317,6 +317,18 @@ func TestCorrectionsWorkflowWithTheRealWorker(t *testing.T) {
 	if code != 200 || !strings.Contains(string(b), `"applies":true`) {
 		t.Fatalf("sidecar preview on the same file: %d %s", code, b)
 	}
+	// round trip: applied to a byte-identical copy (registered separately) it is one import record with exactly the exported state
+	copyPath := filepath.Join(e.root, "hi_cube_copy.fits")
+	os.WriteFile(copyPath, mustRead(t, filepath.Join(e.root, "hi_cube.fits")), 0o644)
+	cp := e.register("hi_cube_copy.fits")
+	code, b = e.call("POST", fmt.Sprintf("/api/datasets/%d/corrections/sidecar", cp.ID), map[string]any{"sidecar": json.RawMessage(sc), "confirm": true, "expect": 0})
+	if code != 201 {
+		t.Fatalf("import on a copy: %d %s", code, b)
+	}
+	if got := e.list(cp.ID); got.Current == nil || got.Current.Hash != e.list(id).Current.Hash || got.History[0].Action != "import" {
+		t.Fatalf("the round trip changed the state: %+v", got.Current)
+	}
+	galBefore := sha256.Sum256(mustRead(t, filepath.Join(e.root, "hi_cube_galactic.fits")))
 	// on another file it is "made for a different file"; applying needs confirmation and a sentence; a unit correction cannot go
 	// to a file with another BUNIT story, so this one is the WCS part only
 	var doc map[string]any
@@ -358,10 +370,11 @@ func TestCorrectionsWorkflowWithTheRealWorker(t *testing.T) {
 	if h := e.head(id, "/view"); h["bunit"] != "Jy/beam" || h["bunit_status"] != "corrected" {
 		t.Fatalf("after confirming: %v %v", h["bunit"], h["bunit_status"])
 	}
-	// the file the corrections were never written to is byte-identical; the edited one was changed by the test, not by Vesqira
-	if sha256.Sum256(mustRead(t, filepath.Join(e.root, "hi_cube_galactic.fits"))) == before {
-		t.Fatal("fixtures are not distinct")
+	// the other file got corrections through the import and was read with them, yet is byte-identical
+	if sha256.Sum256(mustRead(t, filepath.Join(e.root, "hi_cube_galactic.fits"))) != galBefore {
+		t.Fatal("importing corrections changed the file")
 	}
+	_ = before
 	// withdraw everything: a record, and the file's own values again
 	if code, b := e.save(id, map[string]any{"action": "withdraw", "reason": "the archive released a fixed file"}); code != 201 {
 		t.Fatalf("withdraw: %d %s", code, b)

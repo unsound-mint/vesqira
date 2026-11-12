@@ -4038,9 +4038,11 @@ export interface components {
             projection: string | null;
             frame: string | null;
             /** @enum {string} */
-            frame_status: "declared" | "inferred" | "unresolved";
+            frame_status: "declared" | "corrected" | "inferred" | "unresolved";
             /** @enum {string} */
             unit: "deg";
+            /** @description Present when some of these facts come from the researcher's corrections (ADR 0061): the keywords */
+            corrected?: string[];
         };
         SpectralFacts: {
             fits_axis: number;
@@ -4050,12 +4052,14 @@ export interface components {
             resolved: boolean;
             unit: string | null;
             /** @enum {string} */
-            unit_status: "declared" | "inferred" | "unresolved";
+            unit_status: "declared" | "corrected" | "inferred" | "unresolved";
             /** @enum {string} */
-            velocity: "declared" | "unresolved";
+            velocity: "declared" | "corrected" | "unresolved";
             note?: string;
             specsys?: string | null;
             restfrq?: number | null;
+            /** @description Present when some of these facts come from the researcher's corrections (ADR 0061): the keywords */
+            corrected?: string[];
         };
         /** @description Data-provider channel flags. Flagged channels keep their data; declared false means the file states no flags at all. */
         Flags: {

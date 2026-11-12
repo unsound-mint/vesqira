@@ -445,6 +445,7 @@
      "type": "string",
      "enum": [
       "declared",
+      "corrected",
       "inferred",
       "unresolved"
      ]
@@ -454,6 +455,13 @@
      "enum": [
       "deg"
      ]
+    },
+    "corrected": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Present when some of these facts come from the researcher's corrections (ADR 0061): the keywords"
     }
    }
   },
@@ -494,6 +502,7 @@
      "type": "string",
      "enum": [
       "declared",
+      "corrected",
       "inferred",
       "unresolved"
      ]
@@ -502,6 +511,7 @@
      "type": "string",
      "enum": [
       "declared",
+      "corrected",
       "unresolved"
      ]
     },
@@ -515,6 +525,13 @@
     "restfrq": {
      "type": "number",
      "nullable": true
+    },
+    "corrected": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Present when some of these facts come from the researcher's corrections (ADR 0061): the keywords"
     }
    }
   },

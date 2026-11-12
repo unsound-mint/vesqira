@@ -103,6 +103,15 @@ func (c correctingService) Do(ctx context.Context, req map[string]any) (worker.R
 	return rep, nil
 }
 
+// sentHash is the hash of the corrections the correcting service attached for the request's own file ("" for none).
+func sentHash(req map[string]any) string {
+	m, _ := req["corrections"].(map[string]any)
+	p, _ := req["path"].(string)
+	pl, _ := m[p].(map[string]any)
+	h, _ := pl["hash"].(string)
+	return h
+}
+
 // correctionsAt is the state in force for the dataset read from (host, path), or nil.
 func (s *Server) correctionsAt(host int64, path string) *catalog.CorrectionState {
 	v, ok := s.corrPaths.Load(corrPathRef{host, path})
@@ -729,8 +738,8 @@ func readSidecar(raw json.RawMessage) (sidecar, error) {
 		}
 		st.WCS[k] = e
 	}
-	if len(sc.File.Name) > 255 {
-		return sc, errors.New("the file name in the corrections file is too long")
+	if !catalog.ValidNote(sc.File.Name, 1, 255) {
+		return sc, errors.New("the file name in the corrections file is missing or not plain text")
 	}
 	return sc, nil
 }
@@ -835,8 +844,8 @@ func (s *Server) importSidecar(w http.ResponseWriter, r *http.Request) {
 		}
 		reason = "imported from a corrections file made for " + sc.File.Name + " and applied to this different file: " + in.DifferentFile
 	}
-	if len(reason) > catalog.MaxReason {
-		reason = reason[:catalog.MaxReason]
+	if r := []rune(reason); len(r) > catalog.MaxReason {
+		reason = strings.TrimSpace(string(r[:catalog.MaxReason]))
 	}
 	pv, code, msg := s.workerPreview(r.Context(), d, nil, sc.Corrections)
 	if code != 0 {

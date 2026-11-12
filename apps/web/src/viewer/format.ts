@@ -42,7 +42,7 @@ export function limitText(v: number, unit: string | null): string {
 export const degrees = (v: number) => `${v.toFixed(5)}°`;
 
 export function provenanceNote(p: Provenance): string {
-  return p === "declared" ? "" : p === "inferred" ? " (unit inferred from the CTYPE standard)" : " (unresolved)";
+  return p === "declared" ? "" : p === "corrected" ? " (axis corrected by you)" : p === "inferred" ? " (unit inferred from the CTYPE standard)" : " (unresolved)";
 }
 
 export type FlagState = { tone: "neutral" | "warn"; text: string };

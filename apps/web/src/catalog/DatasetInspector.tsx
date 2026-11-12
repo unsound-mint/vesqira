@@ -97,6 +97,9 @@ export function DatasetInspector({ d, problem, onReread }: { d: ImageDataset; pr
         </tbody>
       </table>
       </div>
+      {d.corrections && !d.corrections.stale && Object.keys(d.corrections.state.wcs ?? {}).length > 0 ? (
+        <p role="note" className={s.note}>The rows above are what the file says. Your corrections of {Object.keys(d.corrections.state.wcs ?? {}).sort().join(", ")} are in force for every view and readout (see Corrections below).</p>
+      ) : null}
       <HeaderCards id={d.id} />
       <p className={s.note}>Pixel scale (sampling) and beam (resolution) are different things. Declared by the file, not verified. Unresolved means the header does not say; Vesqira does not guess.</p>
     </div>

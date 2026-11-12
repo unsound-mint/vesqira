@@ -36,7 +36,7 @@ export type Conversions = {
     reference_frame_note: string;
     targets: ConvTarget[];
   } | null;
-  sky: { frame: string | null; frame_status: "declared" | "inferred" | "assumed"; source: string | null; refused: string | null; targets: { id: string; label: string; enabled: boolean; reason: string | null }[] } | null;
+  sky: { frame: string | null; frame_status: "declared" | "corrected" | "inferred" | "assumed"; source: string | null; refused: string | null; targets: { id: string; label: string; enabled: boolean; reason: string | null }[] } | null;
   value: { unit: string | null; unit_status: string; targets: ConvTarget[]; reason: string | null };
 };
 
@@ -46,7 +46,7 @@ export type Converted = {
   y: number;
   channel: number;
   spectral: (Part<{ value: number | null; unit: string; unit_status: string }, { value: number; unit: string }> & {
-    convention?: string | null; convention_source?: "file" | "user" | null; rest?: { value: number; unit: string; source: string } | null; specsys?: string | null; reference_frame_note?: string;
+    convention?: string | null; convention_source?: "file" | "user" | "corrected" | null; rest?: { value: number; unit: string; source: string } | null; specsys?: string | null; reference_frame_note?: string;
   }) | null;
   sky: (Part<{ lon: number; lat: number; frame: string; frame_status: string; lon_name: string; lat_name: string }, { lon: number; lat: number; frame: string; lon_name: string; lat_name: string }> & { frame_note?: string | null }) | null;
   value: Part<{ value: number | null; unit: string | null; unit_status: string }, { value: number; unit: string; unit_status: string }> | null;

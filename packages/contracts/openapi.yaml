@@ -5354,12 +5354,18 @@ components:
           type: "string"
           enum:
             - "declared"
+            - "corrected"
             - "inferred"
             - "unresolved"
         unit:
           type: "string"
           enum:
             - "deg"
+        corrected:
+          type: "array"
+          items:
+            type: "string"
+          description: "Present when some of these facts come from the researcher's corrections (ADR 0061): the keywords"
     SpectralFacts:
       type: "object"
       required:
@@ -5390,12 +5396,14 @@ components:
           type: "string"
           enum:
             - "declared"
+            - "corrected"
             - "inferred"
             - "unresolved"
         velocity:
           type: "string"
           enum:
             - "declared"
+            - "corrected"
             - "unresolved"
         note:
           type: "string"
@@ -5405,6 +5413,11 @@ components:
         restfrq:
           type: "number"
           nullable: true
+        corrected:
+          type: "array"
+          items:
+            type: "string"
+          description: "Present when some of these facts come from the researcher's corrections (ADR 0061): the keywords"
     Flags:
       type: "object"
       required:

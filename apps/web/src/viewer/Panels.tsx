@@ -101,7 +101,7 @@ function ConvertedRows({ v }: { v: Viewer }) {
           <dt>{`As ${conv.spectral}`}</dt>
           <dd className="mono">
             {sp.converted ? `${sig(sp.converted.value)} ${sp.converted.unit}` : EM}
-            {sp.converted && sp.convention ? ` (${sp.convention} convention, ${sp.convention_source === "user" ? "chosen by you" : "the file's"})` : ""}
+            {sp.converted && sp.convention ? ` (${sp.convention} convention, ${sp.convention_source === "user" ? "chosen by you" : sp.convention_source === "corrected" ? "from your corrected CTYPE" : "the file's"})` : ""}
             {sp.refused ? <span className={s.refused}>not converted: {sp.refused}</span> : null}
           </dd>
         </>
@@ -146,6 +146,7 @@ function frameCaveat(status: string | undefined, assumed: boolean): { short: str
       : { short: "unresolved", long: "The header declares no celestial frame and none was assumed: sky positions have no stated frame." };
   }
   if (status === "inferred") return { short: "inferred from EQUINOX", long: "The header names no frame; it was inferred from EQUINOX." };
+  if (status === "corrected") return { short: "corrected by you", long: "The celestial frame is your correction (RADESYS, EQUINOX or CTYPE), not the file's own; the file is not changed." };
   return null;
 }
 
@@ -199,7 +200,7 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
             <dt>{spec.name}</dt>
             <dd className="mono">{spec.resolved ? spectralText(coord?.spectral?.value ?? plane?.head.spectral_value ?? null, spec.unit) : "unresolved"}{spec.resolved ? provenanceNote(spec.unit_status) : ""}</dd>
             <dt>Spectral frame</dt>
-            <dd className="mono">{spec.specsys ?? "unresolved"}</dd>
+            <dd className="mono">{spec.specsys ?? "unresolved"}{spec.corrected?.includes("SPECSYS") ? " (corrected by you)" : ""}</dd>
             {spec.velocity === "unresolved" ? (
               <>
                 <dt>Velocity</dt>

@@ -168,8 +168,9 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 	rep, err := svc.Do(r.Context(), req)
 	var re *worker.RequestError
 	switch {
-	case err == nil && k.corr != "" && !echoes(rep.Head, []string{k.corr}):
-		// the corrections changed between reading the dataset and asking the worker: never cache or show a mixed answer
+	case err == nil && sentHash(req) != k.corr:
+		// the corrections changed between reading the dataset (the key) and asking the worker (what was sent): never cache or show
+		// an answer under a key that does not describe it
 		fail(w, 409, "the corrections of this dataset changed while it was being read; read it again")
 	case err == nil:
 		s.Cache.put(k, rep)

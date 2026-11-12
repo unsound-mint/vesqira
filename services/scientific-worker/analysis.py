@@ -882,6 +882,13 @@ def main(argv: list[str]) -> int:
         if corr.CURRENT.by_path:
             # the API checks this before it records the result: a program that did not apply the corrections must not pass for one that did
             result["corrections_applied"] = sorted(st["hash"] for st in corr.CURRENT.by_path.values())
+            keys = sorted({k for st in corr.CURRENT.by_path.values() for k in (st.get("wcs") or {})})
+            summary = result.get("summary")
+            if keys and isinstance(summary, dict):
+                # the summary is what travels with a figure to the reviewer; the FITS stamp alone would not reach them
+                prior = str(summary.get("policy") or "").rstrip()
+                summary["policy"] = (prior + ("" if prior.endswith(".") or not prior else ".") + " The WCS of the input was the author's correction ("
+                                     + ", ".join(keys) + "), not the file's own; the file was not changed, and a result file carries the corrected values, marked VESQWCSC.").strip()
         import astropy
         result["software"] = {"astropy": astropy.__version__, "numpy": np.__version__, "python": sys.version.split()[0]}
         if args.op == "align":

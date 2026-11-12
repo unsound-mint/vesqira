@@ -115,6 +115,26 @@ class Corrections(unittest.TestCase):
         self.assertEqual(got["spectral"]["specsys"], "BARYCENT")
         self.assertEqual(got["wcs_corrected"], ["SPECSYS"])
 
+    def test_each_corrected_fact_says_it_is_corrected(self):
+        state = st(None, {"RADESYS": "FK5", "CTYPE3": "VOPT", "CUNIT3": "km/s", "CRVAL3": -32.0, "CDELT3": 1.0, "SPECSYS": "BARYCENT"})
+        v = self.ask(self.cube, state, op="view")
+        self.assertTrue(v["ok"], v)
+        self.assertEqual((v["sky"]["frame"], v["sky"]["frame_status"]), ("FK5", "corrected"))
+        sp = v["spectral"]
+        self.assertEqual((sp["ctype"], sp["velocity"], sp["unit"], sp["unit_status"]), ("VOPT", "corrected", "m/s", "corrected"))  # wcslib reports the axis in SI
+        self.assertEqual(sp["corrected"], ["CDELT3", "CRVAL3", "CTYPE3", "CUNIT3", "SPECSYS"])
+        plain = self.ask(self.cube, op="view")
+        self.assertEqual((plain["sky"]["frame_status"], plain["spectral"]["velocity"], plain["spectral"]["unit_status"]), ("declared", "declared", "declared"))
+        self.assertNotIn("corrected", plain["spectral"])
+        c = self.ask(self.cube, state, op="convert", x=3, y=3, channel=0, spectral="m/s", frame="galactic")
+        self.assertEqual(c["spectral"]["convention_source"], "corrected")
+        self.assertIn("corrected axis", c["spectral"]["basis"])
+        self.assertIn("researcher's correction", c["spectral"]["reference_frame_note"])
+        self.assertEqual(c["sky"]["native"]["frame_status"], "corrected")
+        self.assertIn("researcher's correction", c["sky"]["frame_note"])
+        pc = self.ask(self.cube, op="convert", x=3, y=3, channel=0, spectral="m/s")
+        self.assertEqual(pc["spectral"]["convention_source"], "file")
+
     # ----- unit -----
     def test_unit_correction_replaces_the_files_unit_and_says_what_the_file_says(self):
         state = st("Jy/beam", {})
@@ -199,6 +219,7 @@ class Corrections(unittest.TestCase):
         self.assertEqual(h["VESQBUNS"], "corrected")
         self.assertTrue(h["BUNIT"].startswith("Jy/beam"))
         self.assertIn("correction", res["summary"]["policy"])
+        self.assertIn("The WCS of the input was the author's correction (CRVAL2)", res["summary"]["policy"])
         self.assertIn("CRVAL2", " ".join(str(v) for v in h["HISTORY"]))
 
 

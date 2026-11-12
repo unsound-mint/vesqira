@@ -197,11 +197,13 @@ class Cube:
         declared_unit = self.h.get(f"CUNIT{i}")
         unit = str(self.wcs.wcs.cunit[self.spec]).replace(" ", "") or DEFAULT_UNIT.get(base)
         facts["unit"], facts["unit_status"] = unit, "declared" if declared_unit else ("inferred" if unit else "unresolved")
+        if f"CUNIT{i}" in self.corrected:
+            facts["unit_status"] = "corrected"                 # the researcher's correction (ADR 0061), never the file's
         if legacy:
             facts["velocity"] = "unresolved"
             facts["note"] = f"{ctype} is a legacy spelling: its velocity convention and frame are not declared; the header values are shown as given"
         elif base in VELOCITY:
-            facts["velocity"] = "declared"
+            facts["velocity"] = "corrected" if f"CTYPE{i}" in self.corrected else "declared"
         else:
             # A frequency or wavelength axis becomes a velocity only with a rest frequency AND a declared
             # velocity convention (radio, optical, relativistic). FITS headers do not carry the convention.
@@ -209,6 +211,9 @@ class Cube:
             facts["note"] = "velocity needs a declared convention; none is in the header"
         facts["specsys"] = clean(self.h.get("SPECSYS")) or None
         facts["restfrq"] = clean(self.h.get("RESTFRQ"))
+        corrected = sorted(k for k in self.corrected if k in (f"CTYPE{i}", f"CUNIT{i}", f"CRVAL{i}", f"CRPIX{i}", f"CDELT{i}", "SPECSYS", "RESTFRQ", "RESTFREQ"))
+        if corrected:
+            facts["corrected"] = corrected                     # which of the facts above are the researcher's corrections
         return facts
 
     def spectral_value(self, channel: int):
@@ -238,8 +243,14 @@ class Cube:
         eq = self.h.get("EQUINOX")
         if not frame and lon_t[:2] == "RA" and isinstance(eq, (int, float)) and not isinstance(eq, bool):
             frame, status = ("FK5" if eq >= 1984 else "FK4"), "inferred"   # the FITS standard default for a given EQUINOX
-        return {"kind": "celestial", "lon_name": names[0], "lat_name": names[1], "projection": lon_t[5:] or None,
-                "frame": frame or None, "frame_status": status, "unit": "deg"}
+        corrected = sorted(k for k in self.corrected if k in ("RADESYS", "EQUINOX", f"CTYPE{self.lng + 1}", f"CTYPE{self.lat + 1}"))
+        if frame and any(k in corrected for k in ("RADESYS", "EQUINOX", f"CTYPE{self.lng + 1}")):
+            status = "corrected"                               # the frame comes from the researcher's correction (ADR 0061)
+        out = {"kind": "celestial", "lon_name": names[0], "lat_name": names[1], "projection": lon_t[5:] or None,
+               "frame": frame or None, "frame_status": status, "unit": "deg"}
+        if corrected:
+            out["corrected"] = corrected
+        return out
 
     def coord(self, x: int, y: int, channel: int) -> dict:
         out = {"x": x, "y": y, "channel": channel, "sky": None, "spectral": None}
@@ -1213,7 +1224,7 @@ def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
     world, dv = None, None
     axis = {"kind": "channel", "name": None, "unit": None, "source_unit": None, "unit_status": None,
             "note": "the spectral axis is not a resolved velocity axis, so centres and widths stay in channels"}
-    if facts and facts["resolved"] and facts.get("velocity") == "declared":
+    if facts and facts["resolved"] and facts.get("velocity") in ("declared", "corrected"):
         try:
             factor = float(u.Unit(facts["unit"]).to(u.km / u.s))
         except Exception:
@@ -1239,7 +1250,7 @@ def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
     ax = world(chan) if world is not None else chan
     payload = (np.asarray(ax, dtype="<f8").tobytes() + model.astype("<f8").tobytes() + curves.astype("<f8").tobytes())
     head = {"ok": True, "op": op, "nbytes": len(payload), "x": x, "y": y, "channels": nc, "n_gauss": n, "components": comps,
-            "axis": axis, "bunit": clean(c.h.get("BUNIT")) if "BUNIT" in c.h else None,
+            "axis": axis, "bunit": unit_of(c, None)[0],
             "layout": "float64 axis[channels], float64 model[channels], float64 component[n_gauss][channels], little-endian",
             "conventions": {
                 "file_columns": "i j amp mean sigma; i = zero-based row (FITS axis 2), j = zero-based column (FITS axis 1)",
