@@ -21,7 +21,8 @@ import (
 //     sequence; without the reservation every request of a burst would pass the check before the first failure landed.
 //
 // The counts live in memory: a restart forgets them, which costs an attacker one restart's worth of guesses, not more. The
-// tables are bounded.
+// tables are bounded; when one is full, only entries with no recent failure and nothing in flight are dropped, and a new
+// key that finds no room is refused, so filling the table can never wipe someone's backoff.
 type Limiter struct {
 	Window    time.Duration // default 15 minutes
 	NameFree  int           // failures per name before the backoff starts; default 5
@@ -79,7 +80,8 @@ func recent(ts []time.Time, since time.Time) []time.Time {
 	return ts[i:]
 }
 
-// room makes space for one more key.
+// room makes space for one more key by dropping entries with no recent failure and nothing in flight; it reports whether
+// there is space. Entries still counting (a backoff, an address near its limit) are never dropped.
 func room(m map[string]*limitEntry, since time.Time, max int) bool {
 	if len(m) < max {
 		return true
@@ -89,13 +91,7 @@ func room(m map[string]*limitEntry, since time.Time, max int) bool {
 			delete(m, k)
 		}
 	}
-	for k := range m { // still full of live entries: drop an arbitrary one rather than grow without bound
-		if len(m) < max {
-			break
-		}
-		delete(m, k)
-	}
-	return true
+	return len(m) < max
 }
 
 // Begin reserves an attempt for this name from this client (client "" is not counted per address), or says how long to wait.

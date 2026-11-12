@@ -668,3 +668,32 @@ func TestPasswordHashingRefusesWhenTheQueueIsFull(t *testing.T) {
 		t.Fatalf("busy %d, checked %d", busy, checked)
 	}
 }
+
+// Filling the table with fresh names never wipes a name's backoff: entries still counting are kept, and a new key that finds
+// no room is refused.
+func TestLimiterEvictionKeepsBackoffs(t *testing.T) {
+	c := &clock{t: time.Unix(1_800_000_000, 0)}
+	l := &Limiter{Now: c.now, MaxKeys: 50}
+	for i := 0; i < 5; i++ {
+		fail(t, l, "ada", "")
+	}
+	for i := 0; i < 500; i++ {
+		_, _ = allowed(l, "filler"+strings.Repeat("x", i%7)+string(rune('a'+i%26))+time.Duration(i).String(), "")
+		fail2 := func(name string) {
+			if a, ok, _ := l.Begin(name, ""); ok {
+				a.Fail()
+			}
+		}
+		fail2("spray" + time.Duration(i).String())
+	}
+	if ok, _ := allowed(l, "ada", ""); ok {
+		t.Fatal("filling the table wiped the backoff of a name under attack")
+	}
+	if ok, _ := allowed(l, "newcomer", ""); ok {
+		t.Fatal("a full table took a new key")
+	}
+	c.add(15 * time.Minute) // everything expires: room again
+	if ok, _ := allowed(l, "newcomer", ""); !ok {
+		t.Fatal("the table never makes room")
+	}
+}
