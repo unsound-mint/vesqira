@@ -794,6 +794,31 @@ func TestGroupParallelGuessesAreLimitedLikeSequentialOnes(t *testing.T) {
 	}
 }
 
+// Strangers typing the admin's name at the sign-in page do not block the signed-in admin's re-confirmation: it counts
+// against its own key, tied to the account, and wrong confirmations back off only that.
+func TestGroupConfirmIsNotBlockedByAnonymousFailures(t *testing.T) {
+	g := newGroup(t)
+	full, secret := g.setupAdmin("ada")
+	g.clock.add(30 * time.Second) // a fresh TOTP step for the confirmation
+	for i := 0; i < 5; i++ {
+		g.do(req{method: "POST", path: "/api/auth/sign-in", body: `{"username":"ada","password":"stranger guess"}`})
+	}
+	if w := g.do(req{method: "POST", path: "/api/auth/sign-in", body: `{"username":"ada","password":"stranger guess"}`}); w.Code != 429 {
+		t.Fatalf("the name is not backing off: %d", w.Code)
+	}
+	w := g.do(req{method: "POST", path: "/api/auth/confirm", body: `{"password":"` + adminPass + `","code":"` + accounts.CodeAt(secret, g.clock.now()) + `"}`, cookie: full})
+	if w.Code != 200 {
+		t.Fatalf("the admin's confirmation was blocked by strangers: %d %s", w.Code, w.Body)
+	}
+	fresh := sessionFrom(t, w)
+	for i := 0; i < 5; i++ {
+		g.do(req{method: "POST", path: "/api/auth/confirm", body: `{"password":"wrong","code":"000000"}`, cookie: fresh})
+	}
+	if w := g.do(req{method: "POST", path: "/api/auth/confirm", body: `{"password":"wrong","code":"000000"}`, cookie: fresh}); w.Code != 429 {
+		t.Fatalf("wrong confirmations do not back off: %d", w.Code)
+	}
+}
+
 // Signing out everywhere ends the sessions and keeps the tokens, and says so.
 func TestGroupSignOutEverywhereKeepsTokensAndSaysSo(t *testing.T) {
 	g := newGroup(t)

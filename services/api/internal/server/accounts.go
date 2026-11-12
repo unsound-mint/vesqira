@@ -451,7 +451,8 @@ func (s *Server) confirmSignIn(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, "internal error")
 		return
 	}
-	key, client := limitKey(a.Username), s.clientAddr(r)
+	// its own key, tied to the account: strangers typing this name at the sign-in page cannot block a signed-in confirmation
+	key, client := "confirm:"+a.ID, s.clientAddr(r)
 	att, ok, wait := lim.Begin(key, s.limitAddr(r))
 	if !ok {
 		tooMany(w, wait)
