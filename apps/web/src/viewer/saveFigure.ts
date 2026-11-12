@@ -8,6 +8,7 @@ import type { Scene } from "../scene/scene";
 import { nodataColours } from "./nodata";
 import { composePlaneFigure } from "./planeFigure";
 import { fetchFigureMasks, sceneMaskOf } from "./figureMasks";
+import { figureCompassOf } from "../ui/compassGeometry";
 import { limits } from "./render";
 import { shownMaskIds } from "./useMasks";
 import type { Viewer } from "./useViewer";
@@ -23,7 +24,7 @@ export function defaultFigureTitle(v: Viewer, dataset: Dataset): string {
  * picture is composed in the browser from the drawn canvas, so the viewer must have drawn the full plane. Throws an
  * Error with a sentence for the user when it cannot.
  */
-export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?: string; caption?: string; kind?: "plane" | "spectrum"; datasets?: Dataset[] } = {}): Promise<Figure> {
+export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?: string; caption?: string; kind?: "plane" | "spectrum"; datasets?: Dataset[]; /** Draw north and east arrows when the viewer has them (ADR 0047, amendment); on unless false. */ compass?: boolean } = {}): Promise<Figure> {
   const { view, plane } = v;
   const kind = opts.kind ?? "plane";
   if (!view || !plane) throw new Error("The image is not drawn yet.");
@@ -58,7 +59,7 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
     if (overlaysPending(v.scene, v.geometry).length) throw new Error("Some overlays are still being computed. The figure can be saved once they are drawn.");
     // the masks shown over the plane are part of the picture: hatched with their legend, and recorded in the scene by type, name, tier and fingerprint
     const shownMasks = await fetchFigureMasks(dataset.id, shownMaskIds(dataset.id), plane.head.channel);
-    const drawn = figureScene(v.scene, { plane, axial, scale, bunit: view.bunit, interp: v.interp, reliability: v.reliability, geometry: v.geometry, datasets: opts.datasets, masks: shownMasks.map((m) => sceneMaskOf(m.mask)) });
+    const drawn = figureScene(v.scene, { plane, axial, scale, bunit: view.bunit, interp: v.interp, reliability: v.reliability, geometry: v.geometry, datasets: opts.datasets, masks: shownMasks.map((m) => sceneMaskOf(m.mask)), compass: opts.compass === false ? undefined : figureCompassOf(view.compass) });
     // how the base raster was drawn, so "draw again" can reproduce it: the canvas it was drawn on, the theme's no-value colours
     const render = { canvas: { width: src.width, height: src.height }, nodata: nodataColours().map((c) => [...c]), figureWidth: FIGURE_WIDTH };
     // a canvas too large to draw again is not recorded: the figure keeps its scene and is drawn from its PNG only

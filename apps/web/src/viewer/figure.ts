@@ -2,7 +2,9 @@ import type { Plane, Spectrum, View } from "../api/planes";
 import { spectralText } from "./format";
 import { axisDisplay, segments } from "./SpectrumPlot";
 import type { RegionShape } from "../api/planes";
-import { strokeMarks } from "../scene/overlays";
+import { HALO, strokeMarks } from "../scene/overlays";
+import { compassShapes } from "../ui/compassGeometry";
+import type { FigureCompass } from "../ui/compassGeometry";
 import type { Mark } from "../scene/overlays";
 import { HATCH } from "./maskHatch";
 import type { MaskType } from "../api/masks";
@@ -87,12 +89,74 @@ export type ImageFigure = {
   width?: number;
   /** The masks hatched over the plane (ADR 0055), each with its legend line: the PNG, the SVG and the layout all read this one list. */
   masks?: FigureMask[];
+  /** The north and east arrows (ADR 0047, amendment), standing on the figure's reference pixel; absent draws none. The PNG, the SVG and the viewer's glyph share `compassShapes`. */
+  compass?: FigureCompass;
 };
 
 /** One mask hatched on a figure: its type (which picks the pattern), the legend line (type, name, tier, pixels), and the runs of flagged pixels as an SVG path in figure pixels over the plane, north up. */
 export type FigureMask = { type: MaskType; label: string; d: string };
 
 export const MASK_ROW = 18;
+
+/** Arrow length and head size of the figure's compass, in figure pixels, and the size of its letters. */
+export const COMPASS_LEN = 30;
+export const COMPASS_HEAD = 7;
+export const COMPASS_LETTER_PX = 14;
+export const COMPASS_MARKER_PX = 11;
+
+/** The compass of a figure, laid out around its anchor (figure pixels; y down): both arrows, and where the "corrected" marker stands. */
+export function compassLayout(c: FigureCompass, planeW: number, planeH: number, iw: number, ih: number) {
+  // pixel (x, y) is 0-based with y up and pixel i covers i to i+1; the figure's y runs down
+  return {
+    at: { x: ((c.x + 0.5) * iw) / planeW, y: ih - ((c.y + 0.5) * ih) / planeH },
+    ...compassShapes({ north_deg: c.northDeg, east_deg: c.eastDeg }, COMPASS_LEN, COMPASS_HEAD),
+    corrected: c.corrected && c.corrected.length > 0 ? { x: 0, y: COMPASS_LEN + COMPASS_HEAD * 1.75 + COMPASS_LETTER_PX } : null,
+  };
+}
+
+/** The arrows on the canvas: ink with a dark halo, so they read over bright and dark pixels, and by shape and letter, not colour alone. */
+export function drawCompass(ctx: CanvasRenderingContext2D, c: FigureCompass, g: { pad: number; top: number; iw: number; ih: number; planeW: number; planeH: number }): void {
+  const L = compassLayout(c, g.planeW, g.planeH, g.iw, g.ih);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(g.pad, g.top, g.iw, g.ih);
+  ctx.clip();
+  ctx.translate(g.pad + L.at.x, g.top + L.at.y);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const halo of [true, false]) {
+    for (const a of [L.north, L.east]) {
+      ctx.strokeStyle = ctx.fillStyle = halo ? HALO : INK;
+      ctx.lineWidth = halo ? 5 : 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(a.shaftEnd.x, a.shaftEnd.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(a.head[0].x, a.head[0].y);
+      ctx.lineTo(a.head[1].x, a.head[1].y);
+      ctx.lineTo(a.head[2].x, a.head[2].y);
+      ctx.closePath();
+      if (halo) {
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+      ctx.fill();
+    }
+  }
+  const labels = [{ t: L.north.label, p: L.north.letter, px: COMPASS_LETTER_PX }, { t: L.east.label, p: L.east.letter, px: COMPASS_LETTER_PX }, ...(L.corrected ? [{ t: "WCS corrected", p: L.corrected, px: COMPASS_MARKER_PX }] : [])];
+  for (const l of labels) {
+    ctx.font = `600 ${l.px}px ${MONO}`;
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = HALO;
+    ctx.strokeText(l.t, l.p.x, l.p.y);
+    ctx.fillStyle = INK;
+    ctx.fillText(l.t, l.p.x, l.p.y);
+  }
+  ctx.restore();
+}
 
 export const FIGURE_PAD = 20;
 /** Output pixels per image pixel in a figure of this width: what the overlay registry draws at. */
@@ -134,6 +198,7 @@ export async function composeImageFigure(o: ImageFigure & { source: HTMLCanvasEl
   for (const layer of o.layers) strokeMarks(ctx, layer, iw / o.planeW, ih / o.planeH, INK, { w: o.planeW, h: o.planeH });
   ctx.restore();
   if (o.masks?.length) drawMasks(ctx, o.masks, { pad, top, iw, ih, maskTop });
+  if (o.compass) drawCompass(ctx, o.compass, { pad, top, iw, ih, planeW: o.planeW, planeH: o.planeH });
   // legend bar
   for (let x = 0; x < iw; x++) {
     const i = Math.round((x / (iw - 1)) * 255) * 3;
