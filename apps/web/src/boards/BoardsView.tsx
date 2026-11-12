@@ -10,7 +10,7 @@ import { Threads } from "./Threads";
 // loaded when someone presents: it brings the modal primitives (ADR 0033), which the rest of the app does not need
 const PresentView = lazy(() => import("./PresentView").then((m) => ({ default: m.PresentView })));
 import { markSeen, readSeen } from "./seen";
-import { accessRefusal, ACCESS_NAME } from "../api/access";
+import { accessRefusal } from "../api/access";
 import type { AccessRefusal } from "../api/access";
 import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
 import type { NewerNotice } from "../api/catalog";
@@ -232,7 +232,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
               {f ? (
                 <>
                   <h3 className={s.title}>{f.title}</h3>
-                  {f.access && f.access.label !== "none" ? <p className={s.src}><AccessBadge label={f.access.label} /> {ACCESS_NAME[f.access.label]}, from {(f.access.via ?? []).map((v) => v.name).join(", ")}</p> : null}
+                  {f.access && f.access.label !== "none" ? <p className={s.src}><AccessBadge label={f.access.label} /> Made from {(f.access.via ?? []).map((v) => v.name).join(", ")}</p> : null}
                   <p className={s.src}>{provenanceLine(f.provenance)}</p>
                   <NewerNotices notices={newer?.[String(f.id)]} />
                   {f.caption ? <p className={s.cap}>{f.caption}</p> : null}

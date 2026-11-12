@@ -68,7 +68,7 @@ export function AccessPanel({ id, onChanged }: { id: number; onChanged?: () => v
           </Select>
           <Input label="Why (kept in the history)" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />
           {lowering && !acc.canLower ? <p className={s.note}>Making a dataset less restricted needs the Maintainer role or higher.</p> : null}
-          {blocked ? <p className={s.note}>This workspace&rsquo;s admin has made &ldquo;{ACCESS_NAME[label]}&rdquo; block publishing: boards and reports using this dataset cannot be published or pushed here.</p> : null}
+          {blocked ? <p className={s.note}>This workspace&rsquo;s admin has made &ldquo;{ACCESS_NAME[label]}&rdquo; block publishing: boards using this dataset cannot be published here and work using it cannot be pushed here.</p> : null}
           <div><Button disabled={busy || label === acc.label || (lowering && !acc.canLower)} onClick={() => void save()}>Set label</Button></div>
         </>
       ) : <p className={s.note}>You can read this label but not change it.</p>}

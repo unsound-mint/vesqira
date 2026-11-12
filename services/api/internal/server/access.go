@@ -168,6 +168,12 @@ func (s *Server) setBlockedLabels(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// The permission was checked in the workspace this request acts in, so the path must name that one: an admin of one workspace
+	// cannot set the policy of another.
+	if ws != wsOf(r) {
+		fail(w, 404, "not found")
+		return
+	}
 	var in struct {
 		Labels []string `json:"labels"`
 	}

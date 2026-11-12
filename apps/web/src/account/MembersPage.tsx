@@ -102,7 +102,7 @@ function PublishingPolicy({ workspaceId, onError }: { workspaceId: number; onErr
   return (
     <section className={s.card} aria-labelledby="policy-h">
       <h2 id="policy-h" className={s.h2}>Publishing policy</h2>
-      <p className={s.note}>Datasets can carry an access label. Choose the labels that block publishing: a board or report using such data cannot be published or pushed to this workspace, and its author cannot confirm past it. Other labelled work asks its author to confirm.</p>
+      <p className={s.note}>Datasets can carry an access label. Choose the labels that block publishing: a board using such data cannot be published here, work using it cannot be pushed to this workspace, and its author cannot confirm past it. Other labelled work asks its author to confirm.</p>
       <Checkbox label="Block collaboration-only data" checked={blocked.includes("collaboration")} onChange={(e) => toggle("collaboration", e.target.checked)} />
       <Checkbox label="Block unreleased data" checked={blocked.includes("unreleased")} onChange={(e) => toggle("unreleased", e.target.checked)} />
       <p className={s.note}>Changing this needs a sign-in within the last 15 minutes. Labels are what researchers declare; the server enforces them but cannot check them against the files.</p>

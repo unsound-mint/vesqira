@@ -119,7 +119,7 @@ describe("publishing a board that uses labelled data", () => {
       "/api/boards": () => ({ body: { boards: [board] } }),
     });
     render(<BoardsView />);
-    expect(await screen.findByText(/Unreleased, from lmc.fits/)).toBeInTheDocument();
+    expect(await screen.findByText(/Made from lmc.fits/)).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: "Freeze and create link" }));
     expect(await screen.findByRole("alert", { name: "Labelled data" })).toHaveTextContent("lmc.fits");
     expect(published).toBe(0);

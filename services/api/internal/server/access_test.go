@@ -186,7 +186,7 @@ func TestOnlyAMaintainerCanReleaseWhatAResearcherLabelled(t *testing.T) {
 func (g *group) admin(r *accessRig) string { return r.admin }
 
 // Publishing a labelled board is refused until the author confirms, the confirmation names the datasets, the snapshot states the
-// label, and the reviewer's view of it holds the label's name and nothing of the dataset.
+// label, and the reviewer's view of it holds the label's name and no list of the labelled sources.
 func TestPublishingALabelledBoardNeedsConfirmationAndStatesTheLabel(t *testing.T) {
 	r := newAccessRig(t)
 	if w := r.publish(r.admin, false); w.Code != 201 || r.snapshots(t) != 1 {
@@ -228,7 +228,8 @@ func TestPublishingALabelledBoardNeedsConfirmationAndStatesTheLabel(t *testing.T
 	if !strings.Contains(string(raw), `"access":"unreleased"`) {
 		t.Errorf("the reviewer's copy lacks the label: %s", raw)
 	}
-	for _, banned := range []string{secretCube, "moment0.fits", "datasetId", "/d/"} {
+	// the label brings no source list: its names and ids are the owner's alone (the figures' own provenance is as before)
+	for _, banned := range []string{`"via"`, `"restricted"`, "datasetId", "/d/"} {
 		if strings.Contains(string(raw), banned) {
 			t.Errorf("the reviewer's copy holds %q: %s", banned, raw)
 		}
@@ -306,6 +307,24 @@ func TestAnAdminCanBlockPublishingAndNobodyGoesRoundIt(t *testing.T) {
 	}
 	if w := r.publish(r.admin, true); w.Code != 201 {
 		t.Errorf("policy cleared: %d %s", w.Code, w.Body)
+	}
+}
+
+// The policy route is guarded by the admin permission of the workspace the request acts in, so a path that names another
+// workspace is refused: an admin of one workspace cannot change the policy of another.
+func TestAnAdminCannotSetThePolicyOfAnotherWorkspace(t *testing.T) {
+	r := newAccessRig(t)
+	other, err := r.g.acc.CreateWorkspace("Other lab", r.g.mustAccount("ada").ID, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := r.g.do(req{method: "POST", path: fmt.Sprintf("/api/workspaces/%d/blocked-labels", other.ID), body: `{"labels":["unreleased"]}`, cookie: r.admin})
+	if w.Code != 404 {
+		t.Fatalf("a path naming another workspace: %d %s", w.Code, w.Body)
+	}
+	got, err := r.g.acc.Workspace(other.ID)
+	if err != nil || len(got.BlockedLabels) != 0 {
+		t.Fatalf("the other workspace's policy changed: %+v %v", got.BlockedLabels, err)
 	}
 }
 
