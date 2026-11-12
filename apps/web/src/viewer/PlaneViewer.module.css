@@ -173,3 +173,24 @@
   border-radius: var(--r-md);
   background: var(--canvas);
 }
+
+/* north and east, bottom right, clear of the caption and the zoom bar; the arrows take the canvas inks */
+.compass {
+  position: absolute;
+  right: var(--sp-3);
+  bottom: var(--sp-2);
+
+  --compass-ink: var(--canvas-text);
+  --compass-halo: var(--canvas);
+  pointer-events: none;
+}
+
+.compassWhy {
+  max-width: 22rem;
+  margin: 0;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: var(--canvas-text-2);
+  font-size: var(--text-xs);
+}

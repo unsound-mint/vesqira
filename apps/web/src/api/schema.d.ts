@@ -4103,6 +4103,8 @@ export interface components {
             spectral: components["schemas"]["SpectralFacts"] | null;
             flags: components["schemas"]["Flags"];
             offline?: components["schemas"]["OfflineMark"];
+            /** @description North and east at the map centre; absent from a view kept before it was recorded (an offline copy) */
+            compass?: components["schemas"]["Compass"];
         };
         PlaneStats: {
             finite_count: number;
@@ -5587,7 +5589,7 @@ export interface components {
             parameters: {
                 [key: string]: number | string;
             };
-            /** @description The map's declaration as used (unit, frame, quantity, rotation to B, celestial frame, reliability), its size nx, ny and pixel scale */
+            /** @description The map's declaration as used (unit, frame, quantity, rotation to B, celestial frame, reliability), its size nx, ny and pixel scale, and the compass (see Compass) at the map centre */
             map?: {
                 [key: string]: unknown;
             };
@@ -7806,6 +7808,21 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+        };
+        /** @description Where north (increasing latitude) and east (increasing longitude) of the file's own celestial frame point in the pixel grid at the centre of the map, from the file's WCS (projection, CD/PC matrix, flips). Directions are counter-clockwise from +x with y up (FITS), in [0, 360). Never assumes north is up. When available is false there is no celestial WCS to read them from and reason says why: nothing is drawn. */
+        Compass: {
+            available: boolean;
+            /** @description Why there is no compass (only when available is false) */
+            reason?: string;
+            /** @description 0-based pixel x of the map centre */
+            x?: number;
+            /** @description 0-based pixel y of the map centre */
+            y?: number;
+            north_deg?: number;
+            east_deg?: number;
+            /** @description The astropy name of the celestial frame, when it can be named */
+            frame?: string | null;
+            note?: string;
         };
     };
     responses: never;
