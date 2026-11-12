@@ -2,12 +2,14 @@ package server
 
 import (
 	"encoding/base32"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +24,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
+	"github.com/unsound-mint/vesqira/services/api/internal/offline"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
@@ -69,12 +72,15 @@ func scopedGroup(t *testing.T) (*group, map[string]authz.Permission) {
 	s.Discussion = discussion.Open(db)
 	s.Jobs, err = jobs.Open(db) // local-only, but the runs list asks it for lineages
 	must(err)
+	s.Offline, err = offline.Open(db, "") // planes ask it whether a copy is kept
+	must(err)
 	v := reflect.ValueOf(s).Elem() // the stores of features the group server does not mount, so their routes are declared too
 	for i := 0; i < v.NumField(); i++ {
 		if f := v.Field(i); f.CanSet() && f.Kind() == reflect.Pointer && f.IsNil() {
 			f.Set(reflect.New(f.Type().Elem()))
 		}
 	}
+	s.HostDB, s.Remote = nil, nil // as main starts the group server: no host is reachable
 	declared := map[string]authz.Permission{}
 	s.onRoute = func(p string, perm authz.Permission) { declared[p] = perm }
 	g.s, g.h = s, s.Handler()
@@ -114,6 +120,11 @@ func (g *group) invite(ws workspace.ID, role, username string) string {
 // fixtures writes one row of every kind route can resolve into workspace a, each carrying the leak marker where it has text,
 // and returns the value each kind's path parameter takes.
 func fixtures(t *testing.T, g *group, a workspace.ID, by string) map[string]string {
+	return markedFixtures(t, g, a, by, leak)
+}
+
+// markedFixtures is fixtures with its own marker, for a second workspace whose rows may show in its own answers.
+func markedFixtures(t *testing.T, g *group, a workspace.ID, by, leak string) map[string]string {
 	t.Helper()
 	db := g.cat.DB()
 	ins := func(q string, args ...any) int64 {
@@ -503,5 +514,125 @@ func TestBoardsCannotFollowJobsOnTheGroupServer(t *testing.T) {
 	}
 	if v := g.do(req{path: fmt.Sprintf("/api/boards/%d", board.ID), cookie: bo, hdr: hdr}); strings.Contains(v.Body.String(), leak) {
 		t.Errorf("the board shows workspace 1's job: %s", v.Body)
+	}
+}
+
+// bodyIDRoutes are the routes the group server mounts that take an object's id in the body or the query string, with a request
+// that names workspace A's objects ({kind} placeholders) on the actor's own objects in workspace B ({own:kind} in the path).
+// TestEveryBodyIDRouteIsCrossChecked fails when bodies.json describes such a route that is missing here.
+var bodyIDRoutes = map[string]struct{ path, body string }{
+	"GET /api/compat":                          {"/api/compat?a={datasets/id}&b={own:datasets/id}", ""},
+	"POST /api/analysis":                       {"/api/analysis", `{"op":"moment0","datasetId":{datasets/id},"referenceId":{datasets/id}}`},
+	"POST /api/analysis/relative-orientation":  {"/api/analysis/relative-orientation", `{"datasetId":{own:datasets/id},"otherId":{datasets/id}}`},
+	"POST /api/boards/{id}/items":              {"/api/boards/{own:boards/id}/items", `{"figureId":{figures/id}}`},
+	"POST /api/boards/{id}/items/{pos}/pin":    {"/api/boards/{own:boards/id}/items/0/pin", `{"figureId":{figures/id}}`},
+	"POST /api/datasets/{id}/link":             {"/api/datasets/{own:datasets/id}/link", `{"otherId":{datasets/id}}`},
+	"POST /api/datasets/{id}/masks":            {"/api/datasets/{own:datasets/id}/masks", `{"type":"flag","name":"m","importDatasetId":{datasets/id},"regionIds":[{regions/id}]}`},
+	"POST /api/datasets/{id}/rohsa/index":      {"/api/datasets/{own:datasets/id}/rohsa/index", `{"runId":{runs/id}}`},
+	"POST /api/datasets/{id}/subsets":          {"/api/datasets/{own:datasets/id}/subsets", `{"name":"s","regionId":{regions/id}}`},
+	"POST /api/figures":                        {"/api/figures", `{"datasetId":{datasets/id},"title":"t"}`},
+	"POST /api/figures/runs":                   {"/api/figures/runs", `{"runIds":[{runs/id}],"title":"t"}`},
+	"POST /api/history":                        {"/api/history", `{"parentId":{history/id},"projectId":{projects/id},"datasetId":{datasets/id}}`},
+	"POST /api/snapshots/{id}/comments":        {"/api/snapshots/{own:snapshots/id}/comments", `{"parentId":{comments/id},"body":"b"}`},
+	"POST /api/subsets/{sid}":                  {"/api/subsets/{own:subsets/sid}", `{"regionId":{regions/id}}`},
+	"POST /api/reports":                        {"/api/reports", `{"title":"new","body":"","parent":{reports/id}}`},
+	"POST /api/datasets/{id}/overlay-geometry": {"/api/datasets/{own:datasets/id}/overlay-geometry", `{"overlay":{"id":"o","kind":"contours","datasetId":{datasets/id},"visible":true,"channel":0,"levels":[1],"unit":"","color":"#fff"}}`},
+	// a location on a host: hosts are not on the group server, so any host id is refused
+	"POST /api/datasets/{id}/locations": {"/api/datasets/{own:datasets/id}/locations", `{"hostId":1,"path":"/a/x.fits"}`},
+	"POST /api/reports/{id}/move":       {"/api/reports/{own:reports/id}/move", `{"parent":{reports/id}}`},
+}
+
+// The body and query-string half of guard 3: an Owner of workspace B names workspace A's objects in the body or the query of a
+// request on B's own objects. The answer is a refusal, holds nothing of A, and nothing in A or in B's objects changes to point at A.
+func TestNoBodyIDLeaksAcrossWorkspaces(t *testing.T) {
+	g, declared := scopedGroup(t)
+	g.setupAdmin("ada")
+	ada := g.mustAccount("ada")
+	bws, _ := g.acc.CreateWorkspace("B", ada.ID, ada.ID)
+	bo := g.invite(bws.ID, "owner", "bo")
+	if _, err := g.acc.RemoveMember(bws.ID, ada.ID); err != nil {
+		t.Fatal(err)
+	}
+	theirs := fixtures(t, g, workspace.Local, ada.ID)
+	bAcct := g.mustAccount("bo")
+	ours := markedFixtures(t, g, bws.ID, bAcct.ID, "OURS-b9")
+	before := dumpWorkspace(t, g, workspace.Local)
+	fill := func(x string) string {
+		for k, v := range theirs {
+			x = strings.ReplaceAll(x, "{own:"+k+"}", ours[k])
+			x = strings.ReplaceAll(x, "{"+k+"}", v)
+		}
+		return x
+	}
+	for pattern, r := range bodyIDRoutes {
+		if _, ok := declared[pattern]; !ok {
+			t.Errorf("%s is listed but the group server does not mount it", pattern)
+			continue
+		}
+		method, _, _ := strings.Cut(pattern, " ")
+		w := g.do(req{method: method, path: fill(r.path), body: fill(r.body), cookie: bo, hdr: map[string]string{WorkspaceHeader: bws.ID.String()}})
+		if w.Code < 400 {
+			t.Errorf("%s with A's ids answered %d: %s", pattern, w.Code, w.Body)
+		}
+		if strings.Contains(w.Body.String(), leak) {
+			t.Errorf("%s answered B with A's data: %s", pattern, w.Body)
+		}
+	}
+	if after := dumpWorkspace(t, g, workspace.Local); after != before {
+		t.Errorf("B's requests changed workspace A")
+	}
+	if got := dumpWorkspace(t, g, bws.ID); strings.Contains(got, leak) {
+		t.Errorf("B's objects now name A's: %s", got)
+	}
+}
+
+// Every route bodies.json describes with an id in its body or query string, and the group server mounts, is in bodyIDRoutes.
+func TestEveryBodyIDRouteIsCrossChecked(t *testing.T) {
+	_, declared := scopedGroup(t)
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packages", "contracts", "bodies.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Schemas    map[string]json.RawMessage `json:"schemas"`
+		Operations map[string]struct {
+			Parameters []struct{ Name, In string } `json:"parameters"`
+			Body       *struct {
+				Content map[string]struct{ Schema json.RawMessage } `json:"content"`
+			} `json:"requestBody"`
+		} `json:"operations"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	idName := regexp.MustCompile(`"([a-zA-Z]*(Id|Ids))"\s*:`)
+	var bodyText func(json.RawMessage, int) string
+	bodyText = func(sc json.RawMessage, depth int) string {
+		out := string(sc)
+		for _, m := range regexp.MustCompile(`#/components/schemas/(\w+)`).FindAllStringSubmatch(out, -1) {
+			if depth < 4 {
+				out += bodyText(doc.Schemas[m[1]], depth+1)
+			}
+		}
+		return out
+	}
+	for op, o := range doc.Operations {
+		if _, mounted := declared[op]; !mounted {
+			continue
+		}
+		takes := false
+		for _, p := range o.Parameters {
+			takes = takes || (p.In == "query" && (strings.HasSuffix(p.Name, "Id") || p.Name == "a" || p.Name == "b"))
+		}
+		if o.Body != nil {
+			for _, c := range o.Body.Content {
+				for _, m := range idName.FindAllStringSubmatch(bodyText(c.Schema, 0), -1) {
+					takes = takes || m[1] != ""
+				}
+			}
+		}
+		if _, listed := bodyIDRoutes[op]; takes && !listed {
+			t.Errorf("%s takes an object id in its body or query: add it to bodyIDRoutes so it is requested across workspaces", op)
+		}
 	}
 }
