@@ -39,6 +39,7 @@ var intentional = map[string]string{
 	"jobs.params":                    "a job's JSON params record what was asked at the time; history is not rewritten",
 	"sweeps.params":                  "the swept values as asked, a record of the grid; not a reference to a catalog entry",
 	"runs.params":                    "the run's own recorded settings, not a reference to a catalog entry",
+	"run_requests.params":            "the typed values a member asked for (ADR 0066), never a catalog id; the group server holds no local id",
 	"audit.target":                   "the audit log is append-only history; (kind, target) names an entry that may since have been deleted, and the delete itself is recorded there",
 	"derived.params":                 "the operation's own recorded parameters (provenance), not a reference that must resolve",
 	"notifications.run_id":           "a bounded event feed (notify.Keep) with its own text snapshot; the run link may point at a run deleted since (the UI link goes nowhere), which is history, not a dangling reference to repair",
