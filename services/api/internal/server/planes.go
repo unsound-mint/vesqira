@@ -36,6 +36,7 @@ type cacheKey struct {
 	q       string         // canonical region description for spectra
 	unit    string         // a unit the person declared for a file without BUNIT: it changes what every head says, so it is part of the key
 	corr    string         // the hash of the researcher's corrections in force (ADR 0061): a corrected reading is never served for another
+	win     string         // the window of a virtual subset read through this key (ADR 0063), as the JSON sent to the worker; "" is the file itself
 	off     *offlineSource // set only for a request whose file could not be reached; ask then answers from the offline store, never the cache
 }
 
@@ -125,6 +126,9 @@ func (s *Server) source(w http.ResponseWriter, r *http.Request) (d catalog.Datas
 // sourceWith is source; offlineOK lets the routes that may answer from an offline copy (ADR 0059) fall back to it when the file
 // cannot be reached (offline_serve.go).
 func (s *Server) sourceWith(w http.ResponseWriter, r *http.Request, offlineOK bool) (d catalog.Dataset, real string, k cacheKey, ok bool) {
+	if r.PathValue("sid") != "" { // a virtual subset: its source file, with the window it names (subsets.go)
+		return s.subsetSource(w, r)
+	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		fail(w, 400, "bad id")
@@ -177,6 +181,9 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 	if k.unit != "" {
 		req["declared_bunit"] = k.unit // the worker uses it only for a file with no BUNIT, and labels it as the person's
 	}
+	if k.win != "" {
+		req["window"] = windowOf(k.win) // a virtual subset: the worker reads this window of the file
+	}
 	svc := s.planesOn(k.host)
 	if svc == nil {
 		fail(w, 503, "the scientific worker is not configured")
@@ -189,6 +196,9 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 		// the corrections changed between reading the dataset (the key) and asking the worker (what was sent): never cache or show
 		// an answer under a key that does not describe it
 		fail(w, 409, "the corrections of this dataset changed while it was being read; read it again")
+	case err == nil && k.win != "" && !windowEchoed(rep.Head, k.win):
+		// a worker that ignored the window would answer for the whole file: never shown as the subset
+		fail(w, 502, "the scientific worker did not apply the window of this virtual subset (it may be an older version); nothing is shown rather than values of the whole file")
 	case err == nil:
 		s.Cache.put(k, rep)
 		s.keepOffline(r.Context(), k, rep)

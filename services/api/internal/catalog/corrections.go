@@ -222,13 +222,20 @@ func scanCorrection(row interface{ Scan(...any) error }) (CorrectionRecord, erro
 // staleFor says whether a record was made for other bytes than the dataset's registered file has now: its size or modification
 // time differ, or both sides have a content identity of the same kind and they differ.
 func staleFor(r CorrectionRecord, d Dataset, identity string) bool {
-	if r.SizeBytes != d.SizeBytes || r.ModifiedAt.UnixNano() != d.ModifiedAt.UnixNano() {
+	return Changed(r.SizeBytes, r.ModifiedAt, r.SourceIdentity, d, identity)
+}
+
+// Changed says whether the dataset's registered file differs from the one something was made for (a correction, a subset): its size
+// or modification time differ, or both sides have a content identity of the same kind and they differ. identity is the dataset's
+// own recorded identity now (ContentIdentity of its locations). A missing identity on either side never proves a change.
+func Changed(size int64, modified time.Time, recorded string, d Dataset, identity string) bool {
+	if size != d.SizeBytes || modified.UnixNano() != d.ModifiedAt.UnixNano() {
 		return true
 	}
-	if r.SourceIdentity != "" && identity != "" {
-		a, _, _ := strings.Cut(r.SourceIdentity, ":")
+	if recorded != "" && identity != "" {
+		a, _, _ := strings.Cut(recorded, ":")
 		b, _, _ := strings.Cut(identity, ":")
-		return a == b && r.SourceIdentity != identity
+		return a == b && recorded != identity
 	}
 	return false
 }

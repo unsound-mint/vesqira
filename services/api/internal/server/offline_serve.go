@@ -363,6 +363,9 @@ func (c *offlineCapture) keep(k cacheKey, rep worker.Reply) {
 
 // keepOffline hands a reply to the capture riding on the request, if there is one.
 func (s *Server) keepOffline(ctx context.Context, k cacheKey, rep worker.Reply) {
+	if k.win != "" { // the offline store keys a reply by the file, not by a window onto it (ADR 0063)
+		return
+	}
 	if c, ok := ctx.Value(captureKey{}).(*offlineCapture); ok {
 		c.keep(k, rep)
 	}

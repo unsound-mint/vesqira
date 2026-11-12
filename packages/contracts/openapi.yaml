@@ -2150,6 +2150,40 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/datasets/{id}/subsets:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_createSubset_post_api_datasets_id_subsets
+      x-listener: owner
+      summary: "Create a virtual subset of a dataset, pinned to the file as it is now"
+      description: "Checked against the real file by the worker (every bound inside the source, a world interval resolved to channels, a frame never converted). 422 with the reason when the window does not fit; 409 for a point catalog."
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SubsetInput"
+      responses:
+        "201":
+          description: "created"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SubsetSaved"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/datasets/{id}/unit:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -4083,6 +4117,438 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/subsets:
+    get:
+      operationId: owner_s_listSubsets_get_api_subsets
+      x-listener: owner
+      summary: "Every virtual subset with its current version, marked stale when its source changed"
+      description: "A subset is a saved window onto a dataset, never a file (ADR 0063). The explorer lists it under its source, marked virtual."
+      parameters: []
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SubsetList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/subsets/{sid}:
+    parameters:
+      - {name: sid, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_getSubset_get_api_subsets_sid
+      x-listener: owner
+      summary: "One subset: its current version, the whole history and the datasets written from it"
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SubsetDetail"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: owner_s_editSubset_post_api_subsets_sid
+      x-listener: owner
+      summary: "Edit a subset: a new version with another window, name or reason, pinned to the source as it is now"
+      description: "Earlier versions stay, and a file written from one keeps the version it was written from. 409 when a newer version exists (expectVersion)."
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SubsetInput"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SubsetSaved"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/subsets/{sid}/coord:
+    parameters:
+      - {name: sid, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_coord_get_api_subsets_sid_coord
+      x-listener: owner
+      summary: "World coordinates of a pixel of the subset (its own 0-based pixel frame)"
+      description: "Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+        - name: "x"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+            minimum: 0
+        - name: "y"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+            minimum: 0
+        - name: "channel"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+            minimum: 0
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/subsets/{sid}/delete:
+    parameters:
+      - {name: sid, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_deleteSubset_post_api_subsets_sid_delete
+      x-listener: owner
+      summary: "Forget a subset and its history; the source and any files written from it stay"
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SubsetDeleted"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/subsets/{sid}/header-cards:
+    parameters:
+      - {name: sid, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_headerCards_get_api_subsets_sid_header_cards
+      x-listener: owner
+      summary: "The header the subset would have as a file: shifted WCS, corrections applied, a COMMENT saying it is a window"
+      description: "Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+        - name: "format"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "text"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                additionalProperties: true
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/subsets/{sid}/materialise:
+    parameters:
+      - {name: sid, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_materialiseSubset_post_api_subsets_sid_materialise
+      x-listener: owner
+      summary: "Write the current version as an ordinary FITS file and register it as a derived dataset"
+      description: "The same window the viewer reads through, with the shifted WCS, the corrections in force as HISTORY and BUNIT. A file on another host is refused (409); 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone."
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SubsetMaterialiseInput"
+      responses:
+        "201":
+          description: "written"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SubsetMaterialised"
+        "200":
+          description: "the file already written for this subset, version and source bytes"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SubsetMaterialised"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/subsets/{sid}/plane:
+    parameters:
+      - {name: sid, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_plane_get_api_subsets_sid_plane
+      x-listener: owner
+      summary: "One plane as a binary frame"
+      description: "Frame layout: uint32 little-endian header length n, then n bytes of JSON (a PlaneHeader, padded with spaces so the payload is 8-byte aligned), then width*height little-endian float32 pixels, row-major, row 0 = FITS y=1. Non-finite means no value. Only the transport and the JSON header are described here, not the binary payload. Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+        - name: "channel"
+          in: "query"
+          required: true
+          schema:
+            type: "integer"
+            minimum: 0
+        - name: "step"
+          in: "query"
+          required: false
+          description: "Reduction factor for a display preview; refused for an orientation map"
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 64
+      responses:
+        "200":
+          description: "ok"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+            X-Content-Type-Options:
+              schema:
+                type: "string"
+                enum:
+                  - "nosniff"
+          content:
+            "application/vnd.vesqira.plane":
+              schema:
+                type: "string"
+                format: "binary"
+              x-frame-header:
+                $ref: "#/components/schemas/PlaneHeader"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/subsets/{sid}/repin:
+    parameters:
+      - {name: sid, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_repinSubset_post_api_subsets_sid_repin
+      x-listener: owner
+      summary: "Re-pin a stale subset to the current file: a new version, same window"
+      description: "The window is checked against the changed file first; one that no longer fits is refused with the reason and the subset stays stale. 409 when it is not stale."
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/SubsetRepinInput"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SubsetSaved"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/subsets/{sid}/spectrum:
+    parameters:
+      - {name: sid, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_spectrum_get_api_subsets_sid_spectrum
+      x-listener: owner
+      summary: "Mean spectrum of a region, with masks applied per mask (ADR 0055)"
+      description: "A frame: uint32 little-endian header length n, n bytes of JSON (shape, region, size, axis, mask_policy, bunit and, when masks were applied, masks, no_value and excluded_by_mask), then float64 axis[channels], float64 mean[channels] (NaN: no finite pixel left, never zero) and uint32 count[channels] (pixels that entered the mean), little-endian. Only the transport and the JSON header are described here. Over a subset the region is in the subset's pixels. Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+        - name: "shape"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+            enum:
+              - "rect"
+              - "circle"
+          description: "rect or circle (a line has no area)"
+        - name: "x0"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+          description: "rect: 0-based pixel, y from the bottom"
+        - name: "y0"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+        - name: "x1"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+        - name: "y1"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+        - name: "cx"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+          description: "circle: centre"
+        - name: "cy"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+        - name: "r"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+        - name: "mask"
+          in: "query"
+          required: false
+          schema:
+            type: "array"
+            items:
+              type: "string"
+              pattern: "^[0-9]+:(exclude|keep|weight)$"
+          description: "A mask to apply and its policy, `<id>:<policy>`, repeated (at most 8). A mask not named is not applied; there is no default policy. exclude leaves the flagged pixels out, keep applies nothing and records the mask; the no-value mask (`missing`) is exclude-only; weight is refused with a sentence. The mask must belong to this dataset and be fresh (409 otherwise). Masks are applied to files read on this computer (409 for a host)."
+          style: "form"
+          explode: true
+      responses:
+        "200":
+          description: "a frame"
+          content:
+            "application/vnd.vesqira.plane":
+              schema:
+                type: "string"
+                format: "binary"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/subsets/{sid}/view:
+    parameters:
+      - {name: sid, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_view_get_api_subsets_sid_view
+      x-listener: owner
+      summary: "Axis roles, sky and spectral readouts of the subset, with what its window resolved to"
+      description: "Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
+      parameters:
+        - name: "sid"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/View"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/support/bundle/{id}:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -5669,6 +6135,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/Compass"
           description: "North and east at the map centre; absent from a view kept before it was recorded (an offline copy)"
+        window:
+          allOf:
+            - $ref: "#/components/schemas/SubsetWindow"
+          description: "Present only for a virtual subset"
     PlaneStats:
       type: "object"
       required:
@@ -5761,6 +6231,10 @@ components:
               type: "string"
         offline:
           $ref: "#/components/schemas/OfflineMark"
+        window:
+          allOf:
+            - $ref: "#/components/schemas/SubsetWindow"
+          description: "Present only for a virtual subset"
     UnitDeclaration:
       type: "object"
       description: "The physical unit a person declared for a file whose header has no BUNIT. An overlay: the file and its header facts are never changed, and wherever the unit is shown it is labelled as declared by the person."
@@ -14841,3 +15315,363 @@ components:
           description: "The astropy name of the celestial frame, when it can be named"
         note:
           type: "string"
+    SubsetBox:
+      type: "object"
+      required:
+        - "x0"
+        - "x1"
+        - "y0"
+        - "y1"
+      description: "A rectangle of the source image in whole 0-based pixels, inclusive (the frame regions use)."
+      properties:
+        x0:
+          type: "integer"
+          minimum: 0
+        x1:
+          type: "integer"
+          minimum: 0
+        y0:
+          type: "integer"
+          minimum: 0
+        y1:
+          type: "integer"
+          minimum: 0
+    SubsetChannels:
+      type: "object"
+      required:
+        - "c0"
+        - "c1"
+      description: "A channel range of the source, 0-based and inclusive."
+      properties:
+        c0:
+          type: "integer"
+          minimum: 0
+        c1:
+          type: "integer"
+          minimum: 0
+    SubsetWorld:
+      type: "object"
+      required:
+        - "lo"
+        - "hi"
+        - "unit"
+      description: "A spectral interval in world units, resolved to channels by the worker against the WCS in force (ADR 0063): a channel is in when its centre lies in the closed interval. The unit must convert to the axis unit without a convention, and a frame must be the one the file declares."
+      properties:
+        lo:
+          type: "number"
+        hi:
+          type: "number"
+        unit:
+          type: "string"
+        frame:
+          type: "string"
+          description: "Empty or absent: the file's own"
+    SubsetRegionRef:
+      type: "object"
+      required:
+        - "id"
+        - "name"
+      description: "The saved region a box was taken from (a copy of its bounding box)."
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+    SubsetDefinition:
+      type: "object"
+      required:
+        - "step"
+      description: "What a subset is: a window onto its source. Absent box or spectral interval mean the whole axis; step keeps every step-th pixel of the box (values untouched)."
+      properties:
+        box:
+          $ref: "#/components/schemas/SubsetBox"
+        region:
+          $ref: "#/components/schemas/SubsetRegionRef"
+        step:
+          type: "integer"
+          minimum: 1
+          maximum: 64
+        channels:
+          $ref: "#/components/schemas/SubsetChannels"
+        world:
+          $ref: "#/components/schemas/SubsetWorld"
+    SubsetView:
+      type: "object"
+      required:
+        - "id"
+        - "sourceId"
+        - "sourceName"
+        - "name"
+        - "reason"
+        - "version"
+        - "kind"
+        - "definition"
+        - "author"
+        - "createdAt"
+        - "editedAt"
+        - "virtual"
+        - "stale"
+        - "pinned"
+        - "materialised"
+      description: "A virtual subset (ADR 0063): never a file. Stale: the source file is no longer the one this version was pinned to, so it is read nowhere until re-pinned."
+      properties:
+        id:
+          type: "integer"
+          format: "int64"
+        sourceId:
+          type: "integer"
+          format: "int64"
+        sourceName:
+          type: "string"
+        name:
+          type: "string"
+        reason:
+          type: "string"
+        version:
+          type: "integer"
+        kind:
+          type: "string"
+          enum:
+            - "create"
+            - "edit"
+            - "repin"
+        definition:
+          $ref: "#/components/schemas/SubsetDefinition"
+        author:
+          type: "string"
+        createdAt:
+          type: "string"
+          format: "date-time"
+        editedAt:
+          type: "string"
+          format: "date-time"
+        virtual:
+          type: "boolean"
+          enum:
+            - true
+        stale:
+          type: "boolean"
+        staleReason:
+          type: "string"
+        pinned:
+          type: "object"
+          required:
+            - "size"
+            - "modifiedAt"
+            - "identity"
+          properties:
+            size:
+              type: "integer"
+              format: "int64"
+            modifiedAt:
+              type: "string"
+              format: "date-time"
+            identity:
+              type: "string"
+              description: "sha256:… or sampled:…, empty when none was recorded"
+        materialised:
+          type: "integer"
+          format: "int64"
+          nullable: true
+          description: "The dataset written from this version for the source as it is now, when one exists and is unchanged"
+    SubsetVersion:
+      type: "object"
+      required:
+        - "version"
+        - "kind"
+        - "name"
+        - "reason"
+        - "definition"
+        - "sourceSize"
+        - "sourceModifiedAt"
+        - "sourceIdentity"
+        - "author"
+        - "at"
+      description: "One row of the append-only history."
+      properties:
+        version:
+          type: "integer"
+        kind:
+          type: "string"
+        name:
+          type: "string"
+        reason:
+          type: "string"
+        definition:
+          $ref: "#/components/schemas/SubsetDefinition"
+        sourceSize:
+          type: "integer"
+          format: "int64"
+        sourceModifiedAt:
+          type: "string"
+          format: "date-time"
+        sourceIdentity:
+          type: "string"
+        author:
+          type: "string"
+        at:
+          type: "string"
+          format: "date-time"
+    SubsetList:
+      type: "object"
+      required:
+        - "subsets"
+      properties:
+        subsets:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SubsetView"
+    SubsetMade:
+      type: "object"
+      required:
+        - "datasetId"
+        - "version"
+        - "at"
+      description: "A dataset written from a version of the subset."
+      properties:
+        datasetId:
+          type: "integer"
+          format: "int64"
+        version:
+          type: "integer"
+        at:
+          type: "string"
+          format: "date-time"
+    SubsetDetail:
+      type: "object"
+      required:
+        - "subset"
+        - "versions"
+        - "materialised"
+      properties:
+        subset:
+          $ref: "#/components/schemas/SubsetView"
+        versions:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SubsetVersion"
+        materialised:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SubsetMade"
+    SubsetInput:
+      type: "object"
+      required:
+        - "name"
+        - "reason"
+      description: "Create or edit a subset. The box is given directly or taken from a saved region of the source (regionId: its bounding box, clipped to the image), not both. The worker checks every bound against the real file."
+      properties:
+        name:
+          type: "string"
+          description: "1 to 80 characters of plain text"
+        reason:
+          type: "string"
+          description: "Required, up to 500 characters of plain text"
+        box:
+          $ref: "#/components/schemas/SubsetBox"
+        regionId:
+          type: "integer"
+          format: "int64"
+        step:
+          type: "integer"
+          minimum: 1
+          maximum: 64
+        channels:
+          $ref: "#/components/schemas/SubsetChannels"
+        world:
+          $ref: "#/components/schemas/SubsetWorld"
+        expectVersion:
+          type: "integer"
+          description: "Edit: the version the person was looking at; a newer one is a 409"
+    SubsetRepinInput:
+      type: "object"
+      required:
+        - "reason"
+      properties:
+        reason:
+          type: "string"
+        expectVersion:
+          type: "integer"
+    SubsetMaterialiseInput:
+      type: "object"
+      properties:
+        expectVersion:
+          type: "integer"
+    SubsetWindow:
+      type: "object"
+      description: "What the window resolved to, in the source file's own 0-based pixels and channels, echoed by the worker in every reply that read through it. A reply without it is refused."
+      properties:
+        x0:
+          type: "integer"
+        x1:
+          type: "integer"
+        y0:
+          type: "integer"
+        y1:
+          type: "integer"
+        step:
+          type: "integer"
+        c0:
+          type: "integer"
+        c1:
+          type: "integer"
+        width:
+          type: "integer"
+        height:
+          type: "integer"
+        channels:
+          type: "integer"
+        source:
+          type: "object"
+          properties:
+            width:
+              type: "integer"
+            height:
+              type: "integer"
+            channels:
+              type: "integer"
+        channel_rule:
+          type: "string"
+          nullable: true
+          description: "The rule that chose the channels"
+        world:
+          type: "object"
+          nullable: true
+          additionalProperties: true
+    SubsetSaved:
+      type: "object"
+      required:
+        - "subset"
+      properties:
+        subset:
+          $ref: "#/components/schemas/SubsetView"
+        geometry:
+          type: "object"
+          additionalProperties: true
+          description: "The worker's view of the window: size, channels, window, sky and spectral facts"
+    SubsetMaterialised:
+      type: "object"
+      required:
+        - "dataset"
+        - "reused"
+        - "subset"
+      description: "The file written from a version of a subset, an ordinary dataset with a derived record naming the subset, its version and the source identity. reused: the same subset, version and source bytes (with the same corrections and declared unit) had already been written and the file is unchanged."
+      properties:
+        dataset:
+          $ref: "#/components/schemas/Dataset"
+        reused:
+          type: "boolean"
+        summary:
+          type: "object"
+          additionalProperties: true
+        subset:
+          $ref: "#/components/schemas/SubsetView"
+    SubsetDeleted:
+      type: "object"
+      required:
+        - "deleted"
+      properties:
+        deleted:
+          type: "integer"
+          format: "int64"
