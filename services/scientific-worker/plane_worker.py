@@ -1342,8 +1342,9 @@ def _handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", str(e))
         return {**base, **head}, payload
     if op == "view":
+        import orientation as ori
         fl = c.flags()
-        return {**base, "nbytes": 0, "width": c.shape[c.x], "height": c.shape[c.y], "channels": c.channels,
+        return {**base, "compass": ori.compass_of(c), "nbytes": 0, "width": c.shape[c.x], "height": c.shape[c.y], "channels": c.channels,
                 "fits_axes": {"x": c.x + 1, "y": c.y + 1, "channel": None if c.chan is None else c.chan + 1},
                 "sky": c.sky_facts(), "spectral": c.spectral_facts(), "flags": fl,
                 "provenance_note": "axis roles come from the WCS; values are declared by the file, not verified"}, b""

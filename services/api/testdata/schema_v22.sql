@@ -1,9 +1,6 @@
 -- index audit_target
 CREATE INDEX audit_target ON audit(kind, target);
 
--- index dataset_corrections_dataset
-CREATE INDEX dataset_corrections_dataset ON dataset_corrections(dataset_id, id);
-
 -- index exploration_steps_project
 CREATE INDEX exploration_steps_project ON exploration_steps(project_id, id);
 
@@ -42,9 +39,6 @@ CREATE TABLE catalog_declarations( dataset_id INTEGER PRIMARY KEY REFERENCES dat
 
 -- table comments
 CREATE TABLE comments( id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, figure_revision TEXT NOT NULL, author TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL, parent_id INTEGER NOT NULL DEFAULT 0, anchor TEXT NOT NULL DEFAULT '', from_owner INTEGER NOT NULL DEFAULT 0, resolved_at INTEGER NOT NULL DEFAULT 0);
-
--- table dataset_corrections
-CREATE TABLE dataset_corrections( id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE, action TEXT NOT NULL, state TEXT NOT NULL, changes TEXT NOT NULL, reason TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', author TEXT NOT NULL, tier TEXT NOT NULL DEFAULT 'declared', created_at INTEGER NOT NULL, size_bytes INTEGER NOT NULL, modified_ns INTEGER NOT NULL, source_identity TEXT NOT NULL DEFAULT '', reverts_id INTEGER);
 
 -- table dataset_locations
 CREATE TABLE dataset_locations( id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE, host_id INTEGER NOT NULL DEFAULT 0, path TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'registered', is_primary INTEGER NOT NULL DEFAULT 0, link TEXT NOT NULL DEFAULT 'registered', size_bytes INTEGER NOT NULL, modified_at INTEGER NOT NULL, added_at INTEGER NOT NULL, sampled_fp TEXT NOT NULL DEFAULT '', sampled_at INTEGER NOT NULL DEFAULT 0, sampled_by TEXT NOT NULL DEFAULT '', full_sha256 TEXT NOT NULL DEFAULT '', full_at INTEGER NOT NULL DEFAULT 0, full_by TEXT NOT NULL DEFAULT '', UNIQUE(host_id, path));
@@ -90,6 +84,12 @@ CREATE TABLE masks( id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT
 
 -- table notifications
 CREATE TABLE notifications( id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, job_id INTEGER, run_id INTEGER, read INTEGER NOT NULL DEFAULT 0, dedupe TEXT NOT NULL UNIQUE);
+
+-- table offline_entries
+CREATE TABLE offline_entries( id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER NOT NULL, host_id INTEGER NOT NULL, size INTEGER NOT NULL, mtime INTEGER NOT NULL, identity TEXT NOT NULL DEFAULT '', op TEXT NOT NULL, channel INTEGER NOT NULL, step INTEGER NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, q TEXT NOT NULL DEFAULT '', unit TEXT NOT NULL DEFAULT '', file TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, taken_at INTEGER NOT NULL, seen_size INTEGER NOT NULL DEFAULT 0, seen_mtime INTEGER NOT NULL DEFAULT 0, seen_at INTEGER NOT NULL DEFAULT 0, UNIQUE(dataset_id, host_id, size, mtime, op, channel, step, x, y, q, unit));
+
+-- table offline_settings
+CREATE TABLE offline_settings( id INTEGER PRIMARY KEY CHECK (id = 1), cap_bytes INTEGER NOT NULL CHECK (cap_bytes >= 0));
 
 -- table project_answers
 CREATE TABLE project_answers( project_id INTEGER NOT NULL, need TEXT NOT NULL, answer TEXT NOT NULL, value TEXT NOT NULL, declared_by TEXT NOT NULL, date TEXT NOT NULL, written INTEGER NOT NULL, PRIMARY KEY(project_id, need));
@@ -153,7 +153,4 @@ CREATE TABLE sweeps( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, h
 
 -- table transfers
 CREATE TABLE transfers( id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, direction TEXT NOT NULL, kind TEXT NOT NULL DEFAULT '', source_path TEXT NOT NULL, dest_dir TEXT NOT NULL, name TEXT NOT NULL, final_name TEXT NOT NULL DEFAULT '', policy TEXT NOT NULL, state TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', total_bytes INTEGER NOT NULL DEFAULT 0, done_bytes INTEGER NOT NULL DEFAULT 0, rate_bps INTEGER NOT NULL DEFAULT 0, eta_s INTEGER NOT NULL DEFAULT -1, bwlimit_kbps INTEGER NOT NULL DEFAULT 0, compress INTEGER NOT NULL DEFAULT 1, checksum INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, fails INTEGER NOT NULL DEFAULT 0, next_at INTEGER, warning TEXT NOT NULL DEFAULT '', verif_status TEXT NOT NULL DEFAULT '', verif_method TEXT NOT NULL DEFAULT '', verif_note TEXT NOT NULL DEFAULT '', src_sha TEXT NOT NULL DEFAULT '', dst_sha TEXT NOT NULL DEFAULT '', verif_bytes INTEGER NOT NULL DEFAULT 0, copied INTEGER NOT NULL DEFAULT 0, written_sha TEXT NOT NULL DEFAULT '', replaced TEXT NOT NULL DEFAULT '', dataset_id INTEGER, created_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER);
-
--- trigger dataset_corrections_append_only
-CREATE TRIGGER dataset_corrections_append_only BEFORE UPDATE ON dataset_corrections BEGIN SELECT RAISE(ABORT, 'dataset_corrections is append-only: a revert is a new record'); END;
 

@@ -9,6 +9,8 @@ export { Icon } from "./Icon";
 // Modal is not exported here on purpose: this file is imported by every screen, and Modal brings React Aria with it.
 // Import "../ui/Modal" from code that is itself loaded on demand.
 export { PathField } from "./PathField";
+export { getHostOffer, offerDest, offerHost, subscribeHostOffer } from "./hostOffer";
+export type { HostOffer } from "./hostOffer";
 export { PathText } from "./PathText";
 export { More } from "./More";
 export { Pill } from "./Pill";

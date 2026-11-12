@@ -94,7 +94,8 @@ export function MasksPanel({ dataset, datasets }: { dataset: Dataset; datasets: 
                 {m.channels > 0 ? `, ${m.channels} channels` : ", every channel"}
               </span>
               <span className={s.note}>{ruleText(m)}{m.meaning ? ` Meaning: ${m.meaning}` : ""}</span>
-              {m.stale ? <span role="status" className={s.note}>The file changed since this mask was made from it: it is not applied until you make it again.</span> : null}
+              {m.sourceDataset ? <span className={s.note} data-testid="mask-source">Mask file: {m.sourceDataset.name}, a mask source for {dataset.name}. It stays registered; the explorer keeps it out of its list unless the file is used for anything else.</span> : null}
+              {m.stale ?<span role="status" className={s.note}>The file changed since this mask was made from it: it is not applied until you make it again.</span> : null}
               <div><Button type="button" onClick={() => void forget(m)}>Forget this mask</Button> <span className={s.note}>(its file stays on disk)</span></div>
             </li>
           ))}

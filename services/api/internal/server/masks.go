@@ -34,10 +34,24 @@ func (s *Server) masksOn() bool { return s.Masks != nil && s.analysisDeps() }
 type maskView struct {
 	masks.Mask
 	Stale bool `json:"stale"`
+	// SourceDataset is the registered file an imported mask was made from, when the row records which one (masks made before the
+	// id was recorded name only the file in their rule). It is read from the row, never guessed from file names.
+	SourceDataset *maskSourceRef `json:"sourceDataset,omitempty"`
+}
+
+type maskSourceRef struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 func (s *Server) viewOf(m masks.Mask, d catalog.Dataset) maskView {
-	return maskView{Mask: m, Stale: m.SourceSize != d.SizeBytes || m.SourceMtime != d.ModifiedAt.UnixNano()}
+	v := maskView{Mask: m, Stale: m.SourceSize != d.SizeBytes || m.SourceMtime != d.ModifiedAt.UnixNano()}
+	if id := m.SourceDatasetID(); id != 0 {
+		if src, err := s.Store.Get(id); err == nil {
+			v.SourceDataset = &maskSourceRef{ID: src.ID, Name: src.Name}
+		}
+	}
+	return v
 }
 
 func (s *Server) listMasks(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +164,8 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 		return maskView{}, 422, "this map is declared as an axial orientation map: its values are angles, so a signal-to-noise or saturation threshold on them means nothing"
 	}
 	params := map[string]any{"method": in.Method, "type": mtype}
-	byShapeOnly := false // a second file whose WCS cannot confirm that it shares the grid
+	byShapeOnly := false   // a second file whose WCS cannot confirm that it shares the grid
+	var importedFrom int64 // the registered file an import was made from, kept in the rule so the explorer can tell mask sources apart
 	switch in.Method {
 	case "low_snr":
 		if in.K == nil || in.Sigma == nil {
@@ -234,6 +249,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 			return maskView{}, code, "mask file: " + msg
 		}
 		byShapeOnly = byShapeOnly || shapeOnly
+		importedFrom = src.ID
 		params["path"], params["nonzero"] = p, in.Nonzero
 	}
 	if mtype == masks.Other || in.Meaning != "" {
@@ -261,10 +277,15 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 		_ = os.Remove(out)
 		return maskView{}, 502, "the mask program returned an unreadable summary"
 	}
-	if byShapeOnly { // the rule says so: the match of the two files is by pixel shape, not by a confirmed WCS
+	if byShapeOnly || importedFrom != 0 {
 		var rule map[string]any
 		if json.Unmarshal(sum.Rule, &rule) == nil {
-			rule["grid"] = "matched by pixel shape only: the WCS of one of the files does not say, so it was not confirmed that they share a grid"
+			if byShapeOnly { // the rule says so: the match of the two files is by pixel shape, not by a confirmed WCS
+				rule["grid"] = "matched by pixel shape only: the WCS of one of the files does not say, so it was not confirmed that they share a grid"
+			}
+			if importedFrom != 0 {
+				rule[masks.SourceDatasetKey] = importedFrom
+			}
 			sum.Rule, _ = json.Marshal(rule)
 		}
 	}
@@ -493,6 +514,10 @@ func (s *Server) regionMasks(w http.ResponseWriter, r *http.Request, d catalog.D
 	raw := r.URL.Query()["mask"]
 	if len(raw) == 0 {
 		return nil, "", true
+	}
+	if k.off != nil { // offline copies are unmasked replies (ADR 0059); a masked answer needs the file
+		fail(w, 503, "masks cannot be applied while the file's host is unreachable; offline copies are unmasked")
+		return nil, "", false
 	}
 	if k.host != 0 {
 		fail(w, 409, "masks are applied to files on this computer; this file is read on another host")

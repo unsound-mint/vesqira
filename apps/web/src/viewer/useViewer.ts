@@ -4,6 +4,7 @@ import { usesOf } from "../catalog/MaskPolicies";
 import type { PolicyChoice } from "../catalog/MaskPolicies";
 import { useMasks } from "./useMasks";
 import { expandPreview, getAxial, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
+import { isOfflineMissing, setOfflineMissing } from "../api/offlineState";
 import { newRequestId } from "../api/http";
 import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
 import type { Dataset } from "../api/catalog";
@@ -191,6 +192,7 @@ export function useViewer(dataset: Dataset | null) {
     const shown = (p: Plane) => {
       setPlane(p);
       setPlaneError(null);
+      setOfflineMissing(datasetId, null);
     };
     const failed = (e: unknown) => {
       if (isAbort(e)) return;
@@ -200,6 +202,7 @@ export function useViewer(dataset: Dataset | null) {
     };
     const step = remote && !isAxial ? previewStep(view.width, view.height) : 1; // block means of angles are wrong, so orientation maps load whole
     let settled = false; // the full request has answered, with a plane or an error: a late preview must change nothing
+    let previewShown = false;
     let settle: ReturnType<typeof setTimeout> | undefined;
     const full = () =>
       getPlane(datasetId, channel, ac.signal)
@@ -215,11 +218,18 @@ export function useViewer(dataset: Dataset | null) {
         })
         .catch((e: unknown) => {
           settled = true;
+          // The offline copy kept only the reduced plane (ADR 0059): keep showing it, honestly labelled, and let the banner say
+          // what is missing, rather than wiping the picture for an error.
+          if (previewShown && isOfflineMissing(e)) {
+            setOfflineMissing(datasetId, message(e, ""));
+            setLoading(false);
+            return;
+          }
           failed(e);
         });
     if (step > 1 && view.channels > 1) {
       getPlane(datasetId, channel, ac.signal, step)
-        .then((p) => !settled && shown(expandPreview(p)))
+        .then((p) => { if (!settled) { previewShown = true; shown(expandPreview(p)); } })
         .catch((e: unknown) => !settled && failed(e)); // a preview that fails must not wipe a full plane or replace its error
       settle = setTimeout(full, 150);
     } else {

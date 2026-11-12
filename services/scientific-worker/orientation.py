@@ -16,6 +16,8 @@ the doubled-angle algebra of axial statistics.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 FRAMES = ("pixel", "sky")
@@ -90,6 +92,33 @@ def sky_pa_to_pixel(w, x, y, pa_deg):
     tip = origin.directional_offset_by(np.where(ok, pa, 0.0) * u.deg, STEP_DEG * u.deg)
     tx, ty = w.world_to_pixel(tip)
     return np.where(ok, np.degrees(np.arctan2(ty - y, tx - x)) % 360.0, np.nan)
+
+
+def compass(w, x, y) -> dict:
+    """Where north and east point in the pixel grid at pixel (x, y) (0-based): the pixel-grid direction of position angle 0 and
+    90 degrees, counter-clockwise from +x with y up, [0, 360), by sky_pa_to_pixel (astropy's WCS: projection, CD/PC matrix, flips).
+    North is increasing latitude and east increasing longitude of w's own frame. Never assumes north is up."""
+    try:
+        north, east = (float(sky_pa_to_pixel(w, x, y, pa)) for pa in (0.0, 90.0))
+    except Exception:                            # a position off the projection raises or gives NaN; say so instead of drawing
+        north = east = float("nan")
+    if not (math.isfinite(north) and math.isfinite(east)):
+        return {"available": False, "reason": "the file's WCS does not place north and east at the centre of the map"}
+    try:
+        frame = getattr(sky_frame(w), "name", None)
+    except Undeclared:
+        frame = None
+    return {"available": True, "x": float(x), "y": float(y), "north_deg": north, "east_deg": east, "frame": frame,
+            "note": "pixel-grid directions, counter-clockwise from +x with y up (FITS), from astropy's WCS at the centre of the map"}
+
+
+def compass_of(c) -> dict:
+    """compass() at the centre of a Cube's map, or `{"available": False, "reason": ...}` when it has no usable celestial WCS."""
+    try:
+        w = celestial_wcs(c)
+        return compass(w, (c.shape[c.x] - 1) / 2.0, (c.shape[c.y] - 1) / 2.0)
+    except Undeclared as e:
+        return {"available": False, "reason": str(e)}
 
 
 def rotate_pa_frame(origin, pa_deg, frame_to):

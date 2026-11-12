@@ -33,9 +33,10 @@ type cacheKey struct {
 	channel int
 	step    int // preview reduction (0 or 1 = full resolution)
 	x, y    int
-	q       string // canonical region description for spectra
-	unit    string // a unit the person declared for a file without BUNIT: it changes what every head says, so it is part of the key
-	corr    string // the hash of the researcher's corrections in force (ADR 0061): a corrected reading is never served for another
+	q       string         // canonical region description for spectra
+	unit    string         // a unit the person declared for a file without BUNIT: it changes what every head says, so it is part of the key
+	corr    string         // the hash of the researcher's corrections in force (ADR 0061): a corrected reading is never served for another
+	off     *offlineSource // set only for a request whose file could not be reached; ask then answers from the offline store, never the cache
 }
 
 // PlaneCache is a byte-bounded LRU of worker replies. Misses cost a worker read; hits cost nothing.
@@ -104,6 +105,9 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 	}
 	info, err := statFile(real)
 	if err != nil {
+		if networkErr(err) { // a network mount that is not answering is not a missing file (ADR 0059)
+			return "", k, 502, msgSourceUnreachable
+		}
 		return "", k, 404, "file not found"
 	}
 	if info.Size() != d.SizeBytes || info.ModTime().UnixNano() != d.ModifiedAt.UnixNano() {
@@ -115,6 +119,12 @@ func (s *Server) authorize(ctx context.Context, d catalog.Dataset) (real string,
 
 // source resolves a dataset id to an authorized, unchanged file.
 func (s *Server) source(w http.ResponseWriter, r *http.Request) (d catalog.Dataset, real string, k cacheKey, ok bool) {
+	return s.sourceWith(w, r, false)
+}
+
+// sourceWith is source; offlineOK lets the routes that may answer from an offline copy (ADR 0059) fall back to it when the file
+// cannot be reached (offline_serve.go).
+func (s *Server) sourceWith(w http.ResponseWriter, r *http.Request, offlineOK bool) (d catalog.Dataset, real string, k cacheKey, ok bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		fail(w, 400, "bad id")
@@ -136,6 +146,9 @@ func (s *Server) source(w http.ResponseWriter, r *http.Request) (d catalog.Datas
 	}
 	eff, loc, real, k, status, msg := s.chooseRead(r.Context(), d, true)
 	if status != 0 {
+		if off := s.offlineFor(d); offlineOK && off != nil && unreachable(status, msg) {
+			return d, "", cacheKey{id: d.ID, unit: declaredUnitOf(d), off: off}, true
+		}
 		fail(w, status, msg)
 		return
 	}
@@ -154,7 +167,11 @@ func index(w http.ResponseWriter, r *http.Request, name string) (int, bool) {
 }
 
 func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map[string]any) (worker.Reply, bool) {
+	if k.off != nil {
+		return s.askOffline(w, r, k)
+	}
 	if rep, hit := s.Cache.get(k); hit {
+		s.keepOffline(r.Context(), k, rep)
 		return rep, true
 	}
 	if k.unit != "" {
@@ -174,6 +191,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 		fail(w, 409, "the corrections of this dataset changed while it was being read; read it again")
 	case err == nil:
 		s.Cache.put(k, rep)
+		s.keepOffline(r.Context(), k, rep)
 		return rep, true
 	case errors.Is(err, errCorrectionsIgnored):
 		fail(w, 502, "the scientific worker did not apply the researcher's corrections (it may be an older version); nothing is shown rather than uncorrected values")
@@ -186,8 +204,14 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 	case errors.Is(err, context.Canceled):
 		// client went away (for example a scrub moved on); nothing to answer
 	case errors.Is(err, worker.ErrTimeout):
+		if rep, ok := s.afterFailure(w, r, k); ok { // the host went away between the stat and the read (ADR 0059)
+			return rep, true
+		}
 		fail(w, 504, "the scientific worker timed out")
 	default:
+		if rep, ok := s.afterFailure(w, r, k); ok {
+			return rep, true
+		}
 		log.Printf("worker: %v", err)
 		fail(w, 502, "the scientific worker is unavailable")
 	}
@@ -195,7 +219,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, k cacheKey, req map
 }
 
 func (s *Server) view(w http.ResponseWriter, r *http.Request) {
-	_, real, k, ok := s.source(w, r)
+	_, real, k, ok := s.sourceOffline(w, r)
 	if !ok {
 		return
 	}
@@ -212,7 +236,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request) {
 // headerCards serves the file's own header text, one card per line, for reading in the app or saving as a text file.
 // Nothing in it is interpreted; the viewer's readouts are derived elsewhere and labelled as declared or inferred.
 func (s *Server) headerCards(w http.ResponseWriter, r *http.Request) {
-	d, real, k, ok := s.source(w, r)
+	d, real, k, ok := s.sourceOffline(w, r)
 	if !ok {
 		return
 	}
@@ -277,7 +301,7 @@ func writeFrameAs(w http.ResponseWriter, rep worker.Reply, contentType string) {
 // plane answers with a frame whose payload is float32 pixels, row-major, row 0 = FITS y=1.
 // The browser never receives more than one plane.
 func (s *Server) plane(w http.ResponseWriter, r *http.Request) {
-	_, real, k, ok := s.source(w, r)
+	_, real, k, ok := s.sourceOffline(w, r)
 	if !ok {
 		return
 	}
@@ -325,7 +349,7 @@ func integer(w http.ResponseWriter, r *http.Request, name string) (int, bool) {
 
 // spectrum answers with the mean spectrum of a rectangle or circle (0-based pixel coordinates).
 func (s *Server) spectrum(w http.ResponseWriter, r *http.Request) {
-	d, real, k, ok := s.source(w, r)
+	d, real, k, ok := s.sourceOffline(w, r)
 	if !ok {
 		return
 	}
@@ -443,7 +467,7 @@ func (s *Server) regionHistogram(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) coord(w http.ResponseWriter, r *http.Request) {
-	_, real, k, ok := s.source(w, r)
+	_, real, k, ok := s.sourceOffline(w, r)
 	if !ok {
 		return
 	}

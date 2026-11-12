@@ -23,7 +23,7 @@ func TestCorrectionsMigrationAddsAnAppendOnlyHistory(t *testing.T) {
 	if err := Guard(db, "file:"+p); err != nil {
 		t.Fatal(err)
 	}
-	if version(t, db) != Version || Version < 22 {
+	if version(t, db) != Version || Version < 23 {
 		t.Fatalf("version %d", version(t, db))
 	}
 	var n int

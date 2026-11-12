@@ -567,7 +567,7 @@ def op_catalog(args, params: dict) -> dict:
     seg_idx = np.flatnonzero(inmap)[:MAX_SEGMENTS]
     summary = {
         "label": LABEL, "mode": "map_catalog", "definitions": DEFINITIONS, "parameters": p,
-        "map": {**mfacts, "nx": nx, "ny": ny, "pixel_scale_arcmin": pixel_scale_deg(w2) * 60.0},
+        "map": {**mfacts, "nx": nx, "ny": ny, "pixel_scale_arcmin": pixel_scale_deg(w2) * 60.0, "compass": ori.compass(w2, (nx - 1) / 2, (ny - 1) / 2)},
         "catalog": {"frame": frame_txt, "quantity": q, "rotation_to_b_deg": rot, "rows": n, "uncertainty_column": decl["angle"]["sigmaColumn"]},
         "snr_filter": snr_filter,
         "conversion": f"Both sides as B-field orientation. The catalog position angle (east of north in {frame_txt}) is rotated by {rot:g}° for its quantity, "
@@ -695,7 +695,7 @@ def op_maps(args, params: dict) -> dict:
         "definitions": {**DEFINITIONS, "prs": "projected Rayleigh statistic V = Σ w cos 2Δψ / sqrt(Σ w² / 2) (Jow et al. 2018, MNRAS 474, 1018, eq. 8; "
                                               "eq. 6 when every w is 1; written Z_x there, the V statistic of Durand & Greenwood 1958). Positive means preferentially parallel, negative perpendicular."},
         "parameters": p,
-        "map": {**fa, "nx": nx, "ny": ny, "pixel_scale_arcmin": pixel_scale_deg(wa2) * 60.0}, "other": fb,
+        "map": {**fa, "nx": nx, "ny": ny, "pixel_scale_arcmin": pixel_scale_deg(wa2) * 60.0, "compass": ori.compass(wa2, (nx - 1) / 2, (ny - 1) / 2)}, "other": fb,
         "conversion": "Both maps as B-field orientation in their common pixel frame (each rotated by its quantity; a sky-frame map carried into the "
                       "pixel frame with astropy); per-pixel Δψ = first − second.",
         "weighting": (("w = product of the declared reliabilities (1 for a map without one)" + (" and the factors of the masks applied with the weight policy" if mask_weighted else "")

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import { File, Folder, X } from "lucide-react";
-import { Button, Input, PathField, Select } from "../ui";
+import { Button, Input, PathField, Select, getHostOffer, offerDest, subscribeHostOffer } from "../ui";
 import { browseHostDirs, checkHost, createHost, deleteHost, listRemote, registerRemote, sshConfigHosts, vpnEnabled } from "../api/hosts";
 import type { Host, HostCheck, RemoteEntry, SshAlias } from "../api/hosts";
 import { bytes } from "./format";
@@ -27,11 +27,40 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
   const [vpnOn, setVpnOn] = useState(false);
   const [vpnConnect, setVpnConnect] = useState("");
   const [vpnDisconnect, setVpnDisconnect] = useState("");
+  const [fromMount, setFromMount] = useState<string | null>(null);
+  const aliasesRef = useRef<SshAlias[]>([]);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // A folder chosen in the file manager on a host that is not added yet (ADR 0031): fill the form from the mount's name.
+  // Only the destination and a name are filled; the person checks them, picks a source folder and presses Add host.
+  const offer = useSyncExternalStore(subscribeHostOffer, getHostOffer);
+  const applied = useRef(getHostOffer()?.serial); // an offer made before this panel mounted is not replayed
+  useEffect(() => {
+    if (!offer || offer.serial === applied.current) return;
+    applied.current = offer.serial;
+    const o = offer.offer;
+    // An alias of the person's own ssh config that stands for this host is the better destination: it carries the port,
+    // the jump host and the key that make `ssh` work. Else user@host.
+    const alias = aliasesRef.current.find((a) => a.hostName?.toLowerCase() === o.host.toLowerCase() && (!o.user || !a.user || a.user === o.user));
+    const dest = alias ? alias.alias : offerDest(o);
+    setOther(!alias);
+    setForm({ name: dest ? alias?.alias ?? o.host : "", dest: dest ?? "" });
+    requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>("input")?.focus()); // after the section has opened
+    setRoots([]);
+    setChoosing(false);
+    setErr(null);
+    const who = `${o.user ? `${o.user}@` : ""}${o.host}`;
+    setFromMount(
+      dest
+        ? `Filled in from the file manager's connection to ${who}.${o.port && o.port !== "22" ? ` It used port ${o.port}: ssh takes the port from your ssh config, so set it there if this host needs it.` : ""}`
+        : `The file manager connected to ${who}, which cannot be written as an ssh destination here (for example an IPv6 address). Add an alias for it in your ssh config and choose that.`,
+    );
+  }, [offer]);
 
   // Names that already work with `ssh <name>`, offered while typing the destination. Failing to read them offers none.
   useEffect(() => {
     let live = true;
-    sshConfigHosts().then((a) => live && setAliases(a)).catch(() => undefined);
+    sshConfigHosts().then((a) => { if (live) { setAliases(a); aliasesRef.current = a; } }).catch(() => undefined);
     void vpnEnabled().then((on) => live && setVpnOn(on)); // the server decides (--enable-vpn); any failure means off
     return () => { live = false; };
   }, []);
@@ -53,6 +82,7 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
       setRoots([]);
       setChoosing(false);
       setErr(null);
+      setFromMount(null);
       await onChange();
     } catch (x) {
       setErr(msg(x, "Could not add the host."));
@@ -65,7 +95,7 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
       {hosts.map((h) => <HostRow key={h.id} host={h} vpn={vpnOn} onChange={onChange} onRegistered={onRegistered} />)}
       {hosts.length === 0 ? <p className={s.note}>No hosts yet. Files stay on the host and only planes travel, unless you start a transfer.</p> : null}
       {hosts.length > 0 ? <Transfers hosts={hosts} onRegistered={onRegistered} /> : null}
-      <form className={s.form} onSubmit={add} aria-label="Add a host">
+      <form ref={formRef} className={s.form} onSubmit={add} aria-label="Add a host">
         <Input label="Host name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Cluster login" />
         {aliases.length > 0 && !other ? (
           // A real dropdown of what `ssh <name>` already resolves; "Another destination" falls back to typing.
@@ -92,6 +122,7 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
           )}
         </div>
         {vpnOn ? <VpnFields connect={vpnConnect} disconnect={vpnDisconnect} onConnect={setVpnConnect} onDisconnect={setVpnDisconnect} /> : null}
+        {fromMount ? <p role="status" className={s.note}>{fromMount}</p> : null}
         <Button type="submit" disabled={busy || !form.name.trim() || !form.dest.trim() || roots.length === 0}>Add host</Button>
         {err ? <p role="alert" className={s.err}>{err}</p> : null}
       </form>

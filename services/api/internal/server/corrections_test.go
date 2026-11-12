@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/unsound-mint/vesqira/services/api/internal/offline"
 	"math"
 	"net/http/httptest"
 	"os"
@@ -26,6 +27,7 @@ type corrEnv struct {
 	ts, rv *httptest.Server
 	root   string
 	repo   string
+	off    *offline.Store
 }
 
 func newCorrEnv(t *testing.T) *corrEnv {
@@ -52,7 +54,11 @@ func newCorrEnv(t *testing.T) *corrEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer((&Server{Roots: rs, Store: st, Worker: pw, Planes: pw, Boards: bs, Cache: NewPlaneCache(8 << 20)}).Handler())
+	off, err := offline.Open(st.DB(), filepath.Join(base, "offline"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer((&Server{Roots: rs, Store: st, Worker: pw, Planes: pw, Boards: bs, Cache: NewPlaneCache(8 << 20), Offline: off}).Handler())
 	t.Cleanup(ts.Close)
 	rv := httptest.NewServer((&review.Handler{Store: bs}).Handler())
 	t.Cleanup(rv.Close)
@@ -61,7 +67,7 @@ func newCorrEnv(t *testing.T) *corrEnv {
 	if out, err := gen.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	return &corrEnv{t, ts, rv, root, repo}
+	return &corrEnv{t, ts, rv, root, repo, off}
 }
 
 func (e *corrEnv) call(method, path string, body any) (int, []byte) {
@@ -443,5 +449,25 @@ func TestCorrectionsNeverWriteTheFile(t *testing.T) {
 	st2, _ := os.Stat(p)
 	if sha256.Sum256(mustRead(t, p)) != before || !st2.ModTime().Equal(st.ModTime()) {
 		t.Fatal("the file was changed")
+	}
+}
+
+// Offline copies are keyed by the file's signature, not by the corrections in force: a correction record forgets them, so a copy
+// taken before it can never be served as the corrected file (ADR 0059 with ADR 0061).
+func TestACorrectionForgetsTheDatasetsOfflineCopies(t *testing.T) {
+	e := newCorrEnv(t)
+	d := e.register("hi_cube.fits")
+	k := offline.Key{DatasetID: d.ID, HostID: 1, Size: d.SizeBytes, MTime: d.ModifiedAt.UnixNano(), Op: "view"}
+	if _, err := e.off.Put(k, "", []byte(`{}`), nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if !e.off.Has(d.ID) {
+		t.Fatal("the copy was not kept")
+	}
+	if code, b := e.save(d.ID, map[string]any{"action": "set", "wcs": map[string]any{"CRVAL2": 2.05}, "reason": "pointing correction"}); code != 201 {
+		t.Fatalf("save: %d %s", code, b)
+	}
+	if e.off.Has(d.ID) {
+		t.Fatal("an offline copy made before the correction is still kept")
 	}
 }

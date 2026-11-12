@@ -26,6 +26,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
+	"github.com/unsound-mint/vesqira/services/api/internal/offline"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
@@ -59,7 +60,9 @@ type Server struct {
 	Sweeps     *sweeps.Store    // parameter sweeps (ADR 0048); nil disables their routes
 	Transfers  *transfers.Store // the transfer queue (ADR 0051); nil disables the routes
 	Derived    *derived.Store
-	Masks      *masks.Store // typed masks (ADR 0057); nil disables their routes
+	Masks      *masks.Store   // typed masks (ADR 0057); nil disables their routes
+	Offline    *offline.Store // offline copies of bounded replies (ADR 0059); nil disables them
+	offlineRun offlineRunner  // the one running preparation (offline_prepare.go)
 	ManagedDir string
 	// CacheDir holds rebuildable sidecars (the index of a large ROHSA .dat); never next to the data. Empty disables them.
 	CacheDir  string
@@ -115,7 +118,7 @@ type Server struct {
 	reach      reachability                                                                      // whether each host last answered (vpn.go)
 	pingHook   func(ctx context.Context, h hosts.Host, req map[string]any) (worker.Reply, error) // test stand-in for the host check
 
-	Chooser Chooser // opens the desktop file chooser; nil uses zenity or kdialog
+	Chooser Chooser // opens the desktop file chooser; nil tries the portal, then zenity or kdialog
 
 	records      sync.WaitGroup // background run-record writes in flight (hostwrite.go)
 	recordLocks  sync.Map       // job id -> *sync.Mutex: one record write per job at a time
@@ -332,6 +335,15 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/regions/{id}", s.updateRegion)
 		mux.HandleFunc("POST /api/regions/{id}/delete", s.deleteRegion)
 	}
+	if s.Offline != nil { // owner listener only: the review listener has no route to an offline copy (ADR 0059)
+		mux.HandleFunc("GET /api/offline", s.offlineOverview)
+		mux.HandleFunc("POST /api/offline/plan", s.offlinePlanRoute)
+		mux.HandleFunc("POST /api/offline/prepare", s.offlinePrepareRoute)
+		mux.HandleFunc("GET /api/offline/prepare", s.offlinePrepareStatus)
+		mux.HandleFunc("POST /api/offline/prepare/cancel", s.offlinePrepareCancel)
+		mux.HandleFunc("PUT /api/offline/settings", s.offlineSettings)
+		mux.HandleFunc("POST /api/offline/forget", s.offlineForget)
+	}
 	if s.History != nil {
 		mux.HandleFunc("GET /api/history", s.listHistory)
 		mux.HandleFunc("GET /api/history/{id}", s.getHistoryStep)
@@ -456,7 +468,31 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 			shown = append(shown, d)
 		}
 	}
-	writeJSON(w, 200, map[string]any{"datasets": shown})
+	rows := make([]datasetRow, len(shown))
+	at := map[int64]int{}
+	for i, d := range shown {
+		rows[i] = datasetRow{Dataset: d}
+		at[d.ID] = i
+	}
+	if srcs, err := s.lc().MaskSources(); err != nil {
+		log.Printf("list: mask sources: %v", err) // the list is still right; the explorer just does not group these
+	} else {
+		for _, m := range srcs {
+			if i, ok := at[m.DatasetID]; ok {
+				for _, t := range m.Targets {
+					rows[i].MaskSourceFor = append(rows[i].MaskSourceFor, maskSourceRef{ID: t.ID, Name: t.Label})
+				}
+			}
+		}
+	}
+	writeJSON(w, 200, map[string]any{"datasets": rows})
+}
+
+// datasetRow is a dataset in the list, with the datasets it is only the mask file of (ADR 0055, 0058). The list derives it from the
+// masks' rows on every request: a file that is also used for anything else, or whose masks were forgotten, has none.
+type datasetRow struct {
+	catalog.Dataset
+	MaskSourceFor []maskSourceRef `json:"maskSourceFor,omitempty"`
 }
 
 // availability says, for each registered file on this computer, whether it is still what was registered: available, modified

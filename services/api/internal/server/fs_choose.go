@@ -32,11 +32,20 @@ type Chooser func(ctx context.Context, mode, title string, ext []string) (string
 
 var extRe = regexp.MustCompile(`^\.[A-Za-z0-9.]{1,15}$`)
 
-// systemChooser tries zenity (GTK, shows Nautilus bookmarks and GVFS mounts), then kdialog. xdg-desktop-portal over
-// D-Bus is the later path, needed inside Flatpak.
+// systemChooser tries the xdg-desktop-portal chooser first (the only one that works inside a sandbox), then zenity
+// (GTK, shows Nautilus bookmarks and GVFS mounts), then kdialog.
 func systemChooser(ctx context.Context, mode, title string, ext []string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, chooserTimeout)
 	defer cancel()
+	p, err := chain(ctx, mode, title, ext, portalChooserFrom(connectPortal, readableHere), commandChooser)
+	if errors.Is(err, context.DeadlineExceeded) || ctx.Err() == context.DeadlineExceeded {
+		return "", errTimedOut
+	}
+	return p, err
+}
+
+// commandChooser runs zenity or kdialog, whichever is installed.
+func commandChooser(ctx context.Context, mode, title string, ext []string) (string, error) {
 	var cmd *exec.Cmd
 	if z, err := exec.LookPath("zenity"); err == nil {
 		args := []string{"--file-selection", "--title=" + title}
@@ -64,8 +73,8 @@ func systemChooser(ctx context.Context, mode, title string, ext []string) (strin
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
-	if ctx.Err() == context.DeadlineExceeded {
-		return "", errTimedOut
+	if ctx.Err() != nil {
+		return "", ctx.Err()
 	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) && ee.ExitCode() == 1 { // both tools exit 1 when the dialog is closed without a choice
@@ -112,11 +121,11 @@ func parseGVFS(p string) (info gvfsInfo, rest string, ok bool) {
 		}
 		v, err := url.PathUnescape(v)
 		if err != nil {
-			return info, "", false
+			return gvfsInfo{}, "", false
 		}
 		switch k {
 		case "host":
-			info.Host = v
+			info.Host = strings.TrimSuffix(strings.TrimPrefix(v, "["), "]") // gvfs may write an IPv6 literal as [::1]
 		case "user":
 			info.User = v
 		case "port":
@@ -143,8 +152,8 @@ func matchHost(list []hosts.Host, alias []hosts.SSHHost, g gvfsInfo) (hosts.Host
 	found, exact := false, false
 	for _, h := range list {
 		user, name := "", h.Dest
-		if u, n, ok := strings.Cut(h.Dest, "@"); ok {
-			user, name = u, n
+		if i := strings.LastIndex(h.Dest, "@"); i >= 0 { // ssh splits at the last @: a user name may itself hold one
+			user, name = h.Dest[:i], h.Dest[i+1:]
 		}
 		names := []string{name}
 		for _, a := range alias {
@@ -244,20 +253,32 @@ func (s *Server) choose(w http.ResponseWriter, r *http.Request) {
 		HostID     *int64    `json:"hostId"`
 		RemotePath *string   `json:"remotePath"`
 		GVFS       *gvfsInfo `json:"gvfs"`
-	}{Path: p}
-	if g, rest, ok := parseGVFS(p); ok {
-		out.GVFS = &g
-		if s.HostDB != nil {
-			if list, err := s.HostDB.List(); err == nil {
-				var alias []hosts.SSHHost
-				if s.SSHConfig != "" {
-					alias, _ = hosts.LoadSSHConfig(s.SSHConfig)
-				}
-				if h, ok := matchHost(list, alias, g); ok {
-					out.HostID, out.RemotePath, out.GVFS = &h.ID, &rest, nil
-				}
+		// DocumentPortal: the path is inside the Documents portal's mount (/run/user/<uid>/doc), the only place a
+		// sandboxed app can read what it was handed. It is not the file's real location, and the page says so.
+		DocumentPortal bool `json:"documentPortal,omitempty"`
+	}{Path: p, DocumentPortal: isDocPortalPath(p)}
+	out.HostID, out.RemotePath, out.GVFS = s.gvfsHost(p)
+	writeJSON(w, 200, out)
+}
+
+// gvfsHost says where a path inside a GVFS ssh mount belongs: the registered host and the path on it, or, when no host
+// matches, the mount's host, user and port so the page can offer to add it. All three are nil for any other path.
+// Only the mount folder's name is read; nothing is read through the mount.
+func (s *Server) gvfsHost(p string) (hostID *int64, remote *string, g *gvfsInfo) {
+	info, rest, ok := parseGVFS(p)
+	if !ok {
+		return nil, nil, nil
+	}
+	if s.HostDB != nil {
+		if list, err := s.HostDB.List(); err == nil {
+			var alias []hosts.SSHHost
+			if s.SSHConfig != "" {
+				alias, _ = hosts.LoadSSHConfig(s.SSHConfig)
+			}
+			if h, ok := matchHost(list, alias, info); ok {
+				return &h.ID, &rest, nil
 			}
 		}
 	}
-	writeJSON(w, 200, out)
+	return nil, nil, &info
 }

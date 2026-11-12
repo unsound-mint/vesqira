@@ -588,6 +588,15 @@ func (s *Server) appendCorrection(w http.ResponseWriter, d catalog.Dataset, rec 
 		detail += " " + strings.Join(keys, ", ")
 	}
 	s.audit("correction "+rec.Action, "dataset", d.ID, detail)
+	// Offline copies (ADR 0059) are keyed by the file's signature, not by the corrections in force: a copy taken before this
+	// record would show the old coordinates or unit as current. They are forgotten; preparing again keeps corrected ones.
+	if s.Offline != nil {
+		if n, _, err := s.Offline.Forget(d.ID); err != nil {
+			log.Printf("corrections: forget offline copies of %d: %v", d.ID, err)
+		} else if n > 0 {
+			s.audit("offline copies forgotten", "dataset", d.ID, d.Name+": corrections changed")
+		}
+	}
 	nd, code, msg := s.dataset(d.ID)
 	if code != 0 {
 		fail(w, code, msg)

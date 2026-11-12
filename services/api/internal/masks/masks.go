@@ -102,6 +102,24 @@ type Mask struct {
 	SHA256    string `json:"sha256"`
 }
 
+// SourceDatasetKey is the key in an imported mask's rule that holds the id of the registered file it was made from. It lets the
+// catalog tell a dataset that only serves as a mask file from real data without reading file names.
+const SourceDatasetKey = "sourceDatasetId"
+
+// SourceDatasetID is the registered file an imported mask was made from, or 0 when the row does not say (a mask made before the
+// id was recorded names only the file's base name in its rule, which identifies nothing).
+func (m Mask) SourceDatasetID() int64 {
+	var r map[string]json.RawMessage
+	if m.Method != MethodImport || json.Unmarshal(m.Rule, &r) != nil {
+		return 0
+	}
+	var id int64
+	if json.Unmarshal(r[SourceDatasetKey], &id) != nil || id < 0 {
+		return 0
+	}
+	return id
+}
+
 type Store struct{ db *sql.DB }
 
 func Open(db *sql.DB) (*Store, error) {

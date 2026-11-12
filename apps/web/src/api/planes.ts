@@ -98,7 +98,7 @@ export function parsePlane(buf: ArrayBuffer): Plane {
 export const getPlane = (id: number, channel: number, signal?: AbortSignal, step = 1) =>
   request(`${base(id)}/plane?channel=${channel}${step > 1 ? `&step=${step}` : ""}`, signal).then((r) => r.arrayBuffer()).then(parsePlane);
 
-/** Reduction factor for a first look at a large plane: about a quarter of a megapixel, never below 2. */
+/** Reduction factor for a first look at a large plane: about a quarter of a megapixel, never below 2. Kept in step with previewStepFor in services/api/internal/server/offline_prepare.go, so a prepared preview is the one asked for offline. */
 export function previewStep(width: number, height: number): number {
   return Math.min(64, Math.max(2, Math.ceil(Math.sqrt((width * height) / 262144))));
 }

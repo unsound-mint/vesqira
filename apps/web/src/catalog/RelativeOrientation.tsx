@@ -9,6 +9,8 @@ import type { RelOrientParams, RelOrientSummary } from "../api/analysis";
 import type { Controls } from "../api/runs";
 import { ControlsView } from "../runs/ControlsView";
 import { EM } from "./format";
+import { CompassGlyph, compassNote } from "../ui/Compass";
+import type { CompassFacts } from "../ui/Compass";
 import { MaskPolicies, badWeight, usesOf } from "./MaskPolicies";
 import type { PolicyChoice } from "./MaskPolicies";
 import { useMasks } from "../viewer/useMasks";
@@ -338,13 +340,15 @@ export function niceLength(max: number): number {
 }
 
 /** Map vs catalog: the map's orientation (solid) and the catalog's (dashed, outlined) at each source, in the map's pixel frame, over
-    the map's outline. Not the map raster: the figure is self-contained. North and east depend on the map's WCS, which the result does
-    not carry, so the axes are pixels (a frame with ticks) and the scale bar comes from the map's stated pixel scale. */
+    the map's outline. Not the map raster: the figure is self-contained. The axes are pixels (a frame with ticks), the scale bar comes
+    from the map's stated pixel scale, and the N and E arrows are the worker's reading of the file's own WCS at the map centre (a
+    rotated or mirrored WCS turns them; none is drawn, with the reason, when the result does not carry one). */
 export function SegmentsFigure({ s: r }: { s: RelOrientSummary }) {
   const g = r.segments!;
   const nx = (r.map as { nx?: number }).nx ?? 1;
   const ny = (r.map as { ny?: number }).ny ?? 1;
   const scaleArcmin = (r.map as { pixel_scale_arcmin?: number }).pixel_scale_arcmin;
+  const compass = (r.map as { compass?: CompassFacts }).compass;
   const scale = (SW - SM.l - SM.r) / Math.max(nx, ny);
   const w = SW;
   const h = ny * scale + SM.t + SM.b;
@@ -393,6 +397,7 @@ export function SegmentsFigure({ s: r }: { s: RelOrientSummary }) {
             </g>
           );
         })}
+        <CompassGlyph compass={compass} cx={SM.l + 26} cy={SM.t + 30} />
         {barPx > 0 ? (
           <g>
             <line className={s.scaleBar} x1={bx} x2={bx + barPx} y1={by} y2={by} />
@@ -402,7 +407,7 @@ export function SegmentsFigure({ s: r }: { s: RelOrientSummary }) {
       </svg>
       <figcaption className={s.note}>
         <span className={s.keyMap} aria-hidden="true" /> map, averaged in the disk · <span className={s.keyOther} aria-hidden="true" /> catalog · faded: not used (see the table for the reason).
-        Pixel frame of the map, FITS y up; the bar is the map's pixel scale. North and east are not drawn: they depend on the map's WCS, which this figure does not carry. Segment lengths are fixed (the catalog's is drawn longer so both show).{g.truncated ? " Only the first sources are drawn; the table has all of them." : ""}
+        Pixel frame of the map, FITS y up; the bar is the map's pixel scale. {compassNote(compass)} Segment lengths are fixed (the catalog's is drawn longer so both show).{g.truncated ? " Only the first sources are drawn; the table has all of them." : ""}
       </figcaption>
     </figure>
   );

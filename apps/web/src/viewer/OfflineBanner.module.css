@@ -1,0 +1,43 @@
+/* A strip over the top edge of the pane: narrow, centred, one line until asked. Kept compact so it covers as little of the plane as it can. */
+.banner {
+  position: absolute;
+  top: var(--sp-1);
+  left: 50%;
+  z-index: 2;
+  display: grid;
+  gap: var(--sp-1);
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100% - var(--sp-6));
+  transform: translateX(-50%);
+  padding: var(--sp-1) var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+.banner p {
+  margin: 0;
+}
+
+.line {
+  overflow-wrap: anywhere;
+}
+
+.missing {
+  color: var(--text-2);
+}
+
+.more summary {
+  width: max-content;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.more p {
+  padding-top: var(--sp-1);
+  color: var(--text-2);
+}
