@@ -96,8 +96,9 @@ describe("a run made on another cube", () => {
   it("links to its source, lists the input identity and the other runs of the configuration", async () => {
     const open = vi.fn();
     const record = { sourceRunId: 1, sourceConfigHash: hash, configHash: hash, sameConfiguration: true, previousInput: "/data/old.fits", notes: [], input: { ...summary.input, fullSha256: "d".repeat(64) } };
-    render(<SameConfiguration record={record} sourceName="vgt-ker6" others={[run({ id: 5, name: "third" })]} onOpenRun={open} />);
+    render(<SameConfiguration record={record} sourceName="vgt-ker6" others={[run({ id: 5, name: "third" })]} fullHashObserved onOpenRun={open} />);
     expect(screen.getByText(/The same configuration as/)).toBeInTheDocument();
+    expect(screen.getByText(/The job hashed the input itself when it ran/)).toBeInTheDocument();
     expect(screen.getByText("dddddddddddd")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "vgt-ker6" }));
     expect(open).toHaveBeenCalledWith(1);
@@ -107,7 +108,8 @@ describe("a run made on another cube", () => {
 
   it("does not call a run the same configuration when the hashes disagree", () => {
     const record = { sourceRunId: 1, sourceConfigHash: hash, configHash: "e".repeat(64), sameConfiguration: false, previousInput: "", notes: [], input: summary.input };
-    render(<SameConfiguration record={record} sourceName={null} others={[]} onOpenRun={() => {}} />);
+    render(<SameConfiguration record={record} sourceName={null} others={[]} fullHashObserved={false} onOpenRun={() => {}} />);
+    expect(screen.getByText(/did not report a SHA-256 of the input/)).toBeInTheDocument();
     expect(screen.getByText(/no longer hash to the same configuration/)).toBeInTheDocument();
     expect(screen.queryByText(/The same configuration as/)).not.toBeInTheDocument();
   });

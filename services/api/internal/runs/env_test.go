@@ -155,3 +155,31 @@ func TestControlsAreNotEmptyUntilSomethingIsStated(t *testing.T) {
 		t.Error("a stated block is not empty")
 	}
 }
+
+// A job that hashed its input reports input.full_sha256: a verified 64-hex value is kept, anything else is unresolved, and two
+// runs whose inputs differ show it as a difference a strict rerun would not accept.
+func TestInputFullHashIsAFactTheRunKeeps(t *testing.T) {
+	good, other := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	env := func(status, v string) []EnvFact {
+		b := `{"record":"vesqira-env","version":1,"slurm_job_id":"42","facts":{"input.full_sha256":{"status":"` + status + `","` + map[string]string{"verified": "value", "unresolved": "reason"}[status] + `":"` + v + `"}}}`
+		return ParseEnv([]byte(b), "42")
+	}
+	if v, ok := EnvValue(env("verified", good), "input.full_sha256"); !ok || v != good {
+		t.Errorf("verified hash lost: %q %v", v, ok)
+	}
+	if _, ok := EnvValue(env("verified", "not-a-hash"), "input.full_sha256"); ok {
+		t.Error("a malformed hash was trusted")
+	}
+	if _, ok := EnvValue(env("unresolved", "the input file changed while it was being read"), "input.full_sha256"); ok {
+		t.Error("an unresolved fact has a value")
+	}
+	for _, d := range CompareEnv(env("verified", good), env("verified", other)) {
+		if d.Key == "input.full_sha256" {
+			if d.Result != "differed" || !d.Blocking {
+				t.Errorf("%+v", d)
+			}
+			return
+		}
+	}
+	t.Error("the full hash is not compared between runs")
+}

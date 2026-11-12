@@ -190,6 +190,17 @@ func TestConfigurationRunOnAnotherCube(t *testing.T) {
 		t.Errorf("mode %q", sum.Mode)
 	}
 
+	// the rerun check of the draft names the input as the one change, and carries the draft's notes
+	_, cb := get(t, e.api("/api/jobs/"+itoa(int(j.ID))+"/rerun-check"))
+	var chk struct {
+		Settings []settingChange `json:"settings"`
+		Notes    []string        `json:"notes"`
+	}
+	json.Unmarshal(cb, &chk)
+	if len(chk.Settings) != 1 || chk.Settings[0].Key != "input" || *chk.Settings[0].Parent != "/data/old.fits" || *chk.Settings[0].Now != "/data/new.fits" || !strings.Contains(strings.Join(chk.Notes, " "), "pixel scale differs") {
+		t.Errorf("rerun check of the draft: %s", cb)
+	}
+
 	// the input identity and the link are in the job's request
 	rec := j.InputRerunOf()
 	if rec == nil {
@@ -351,6 +362,10 @@ func TestConfigurationRunOnAnotherCubeForROHSA(t *testing.T) {
 			t.Errorf("script lacks %q:\n%s", want, res.Job.Script)
 		}
 	}
+	_, cb := get(t, e.api("/api/jobs/"+itoa(int(res.Job.ID))+"/rerun-check"))
+	if !strings.Contains(string(cb), `"key":"input"`) || !strings.Contains(string(cb), `"/data/big.fits"`) || strings.Contains(string(cb), `"key":"input.input"`) {
+		t.Errorf("rerun check of a ROHSA draft does not name the input change: %s", cb)
+	}
 	if strings.Contains(res.Job.Script, "/data/old.fits") || res.Summary.SourceConfigHash == "" || res.Summary.SourceConfigHash != res.Summary.ConfigHash {
 		t.Errorf("summary: %+v", res.Summary)
 	}
@@ -359,5 +374,31 @@ func TestConfigurationRunOnAnotherCubeForROHSA(t *testing.T) {
 		"cpus": 16, "mem": "40G", "time": "12:00:00"}}, "off")
 	if code, out := e.post(off.ID, map[string]any{"datasetId": big.ID}); code != 422 || !strings.Contains(out, "crop_x0 = 200") {
 		t.Errorf("crop_x0: %d %s", code, out)
+	}
+}
+
+// The pipelines' own configs name the input relative to the code folder, which is where the script runs; the previous input is
+// looked up (for the unit, pixel scale and same-file checks) as that absolute path.
+func TestConfigurationRunResolvesARelativeRecordedInput(t *testing.T) {
+	t.Parallel()
+	e := newRerunEnv(t)
+	oldDS := e.cube("/data/vgt/data/old.fits", e.host.ID, cubeHeader(256, 256, 40, 0.01, "K"))
+	nw := e.cube("/data/new.fits", e.host.ID, cubeHeader(256, 256, 40, 0.005, "Jy/beam"))
+	cfg := strings.Replace(rerunVGTConfig, "/data/old.fits", "data/old.fits", 1)
+	body := vgtBody(cfg, nil)
+	body["vgt"].(map[string]any)["repoDir"] = "/data/vgt"
+	src, _ := e.recorded("vgt", body, "rel")
+	// the unit of the previous input is found through the resolved path, so the noise level cannot be carried over
+	if code, out := e.post(src.ID, map[string]any{"datasetId": nw.ID}); code != 422 || !strings.Contains(out, "noise = 0.17 is in the data's unit, which was K") {
+		t.Errorf("unit comparison through a relative input: %d %s", code, out)
+	}
+	// the same file is refused although it is written differently
+	if code, out := e.post(src.ID, map[string]any{"datasetId": oldDS.ID}); code != 422 || !strings.Contains(out, "already used") {
+		t.Errorf("same file through a relative input: %d %s", code, out)
+	}
+	ok := e.cube("/data/ok.fits", e.host.ID, cubeHeader(256, 256, 40, 0.005, "K"))
+	code, out := e.post(src.ID, map[string]any{"datasetId": ok.ID})
+	if code != 201 || !strings.Contains(out, "relative path data/old.fits") || !strings.Contains(out, "pixel scale differs") {
+		t.Errorf("%d %s", code, out)
 	}
 }

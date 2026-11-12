@@ -130,7 +130,7 @@ export function RerunOnCube({ run, job, datasets, onDrafted }: { run: Run; job: 
 }
 
 /** On the page of a run that was made this way: which run it repeats, and what its input was when the draft was made. */
-export function SameConfiguration({ record, sourceName, others, onOpenRun }: { record: InputRerunRecord; sourceName: string | null; others: Run[]; onOpenRun: (id: number) => void }) {
+export function SameConfiguration({ record, sourceName, others, fullHashObserved, onOpenRun }: { record: InputRerunRecord; sourceName: string | null; others: Run[]; fullHashObserved: boolean; onOpenRun: (id: number) => void }) {
   return (
     <div className={s.root}>
       <p className={s.lead}>
@@ -140,16 +140,26 @@ export function SameConfiguration({ record, sourceName, others, onOpenRun }: { r
       </p>
       <h4 className={s.h}>The input as the catalog knew it when the draft was made</h4>
       <InputIdentity input={record.input} />
-      <p className={s.note}>The run's own record (Compared with the parent run) lists what the job itself observed of the input when it ran, including the SHA-256 of every byte.</p>
+      <p className={s.note}>
+        {fullHashObserved
+          ? "The job hashed the input itself when it ran: the SHA-256 of every byte is in this run's record (Compared with the parent run)."
+          : "The job did not report a SHA-256 of the input (it may not have run yet, or its record could not be read), so what the file's bytes were when the job read it is not established; the values above are the catalog's, from when the draft was made."}
+      </p>
       {record.previousInput ? <p className={s.note}>The recorded run read <span className="mono">{record.previousInput}</span>.</p> : null}
-      {others.length > 0 ? (
-        <p className={s.note}>
-          Other runs with this configuration:{" "}
-          {others.map((r, i) => (
-            <span key={r.id}>{i > 0 ? ", " : ""}<Button type="button" variant="ghost" onClick={() => onOpenRun(r.id)}>{r.name}</Button></span>
-          ))}
-        </p>
-      ) : null}
+      <SameConfigRuns others={others} onOpenRun={onOpenRun} />
     </div>
+  );
+}
+
+/** The other runs that ran the same configuration (the same configuration hash), whatever their input. Nothing when there are none. */
+export function SameConfigRuns({ others, onOpenRun }: { others: Run[]; onOpenRun: (id: number) => void }) {
+  if (others.length === 0) return null;
+  return (
+    <p className={s.note}>
+      Other runs with this configuration:{" "}
+      {others.map((r, i) => (
+        <span key={r.id}>{i > 0 ? ", " : ""}<Button type="button" variant="ghost" onClick={() => onOpenRun(r.id)}>{r.name}</Button></span>
+      ))}
+    </p>
   );
 }

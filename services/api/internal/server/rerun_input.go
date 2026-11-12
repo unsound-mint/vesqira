@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/sweeps"
 	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
@@ -251,7 +253,14 @@ func (s *Server) planInputRerun(ctx context.Context, ws workspace.ID, runID int6
 		return p, refuse("the chosen cube's path is not an absolute path without spaces or quotes inside the host's source folders, so a job cannot be given it")
 	}
 	prev := jobs.InputPathOf(template, req.BaseConfigText)
-	if prev == ds.Path {
+	// The script runs from the code folder, so a relative input in the recorded config is read from there: looked up and compared
+	// as that absolute path (the pipelines' own configs use relative paths).
+	prevAbs, relNote := prev, ""
+	if prev != "" && !path.IsAbs(prev) && jobs.ValidPath(req.RepoDir) {
+		prevAbs = path.Join(req.RepoDir, prev)
+		relNote = fmt.Sprintf("The recorded input was the relative path %s, which the script reads from the code folder (%s), so it was taken to be %s.", prev, req.RepoDir, prevAbs)
+	}
+	if prevAbs == ds.Path {
 		return p, refuse("the chosen cube is the file the recorded run already used; to repeat the run on the same input use \"run again with...\"")
 	}
 	eff := effectiveSettings(template, req)
@@ -270,8 +279,8 @@ func (s *Server) planInputRerun(ctx context.Context, ws workspace.ID, runID int6
 	var oldCube *compat.Cube
 	var oldUnit string
 	var haveOld bool
-	if prev != "" {
-		if id, found, _ := s.Store.LocationOwner(ws, p.job.HostID, prev); found {
+	if prevAbs != "" && path.IsAbs(prevAbs) {
+		if id, found, _ := s.Store.LocationOwner(ws, p.job.HostID, prevAbs); found {
 			if od, err := s.Store.Get(ws, id); err == nil {
 				if c, why := compat.ReadCube(effectiveHeader(od)); why == "" {
 					oldCube = &c
@@ -282,6 +291,9 @@ func (s *Server) planInputRerun(ctx context.Context, ws workspace.ID, runID int6
 	}
 	newUnit, haveNew := unitOf(ds)
 	refusals, notes := inputCompat(template, eff, cube, newUnit, haveNew, oldCube, oldUnit, haveOld)
+	if relNote != "" {
+		notes = append([]string{relNote}, notes...)
+	}
 	if len(refusals) > 0 {
 		return p, refuse("the recorded settings do not fit the chosen cube (%s): %s", ds.Name, strings.Join(refusals, "; "))
 	}
@@ -357,8 +369,8 @@ func (s *Server) planInputRerun(ctx context.Context, ws workspace.ID, runID int6
 		sum.Carried = append(sum.Carried, summaryValue{"resources.account", req.Account})
 	}
 	if rendered, ok := renderedFromSettings(p.job); ok && rendered != p.job.Script {
-		sum.SourceEditedLines = len(scriptLineDiff(rendered, p.job.Script))
-		sum.Notes = append(sum.Notes, fmt.Sprintf("The source job's script was edited by hand (%d lines differ from what its settings render). The draft is rendered from its recorded settings, so those edits are not carried over.", sum.SourceEditedLines))
+		sum.SourceEditedLines = len(sweeps.Diff(rendered, p.job.Script, nil)) // lines, "-" and "+" together: the count the sweep review gives
+		sum.Notes = append(sum.Notes, fmt.Sprintf("The source job's script differs from what its recorded settings render now by %d lines (edited by hand, or rendered by an earlier template). The draft is rendered from the recorded settings, so those differences are not carried over.", sum.SourceEditedLines))
 	}
 	if ident.SampledFP == "" && ident.FullSHA256 == "" {
 		sum.Notes = append(sum.Notes, "No fingerprint is recorded for this cube in the catalog yet.")
@@ -394,24 +406,6 @@ func inputRerunName(runName, dsName string) string {
 	out := a + "-on-" + b
 	if len(out) > 40 {
 		out = strings.TrimRight(out[:40], "-")
-	}
-	return out
-}
-
-// scriptLineDiff lists the lines that differ between two scripts, as a plain multiset difference ("-" and "+" together).
-func scriptLineDiff(a, b string) []string {
-	count := map[string]int{}
-	for _, l := range strings.Split(a, "\n") {
-		count[l]++
-	}
-	for _, l := range strings.Split(b, "\n") {
-		count[l]--
-	}
-	var out []string
-	for l, n := range count {
-		for i := 0; i < max(n, -n); i++ {
-			out = append(out, l)
-		}
 	}
 	return out
 }

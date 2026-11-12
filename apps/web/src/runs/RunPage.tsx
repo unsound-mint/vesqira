@@ -16,7 +16,7 @@ import { EntryActions } from "../catalog/EntryActions";
 import type { EntryChange } from "../catalog/EntryActions";
 import { ControlsEditor } from "./ControlsEditor";
 import { ParentComparison } from "./ParentComparison";
-import { RerunOnCube, SameConfiguration } from "./RerunOnCube";
+import { RerunOnCube, SameConfigRuns, SameConfiguration } from "./RerunOnCube";
 import s from "./RunPage.module.css";
 
 /** A run as a page of blocks: its result, the numbers it declared, how it was set up, your assessment, and its log. */
@@ -213,7 +213,16 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
 
         {run.inputRerun ? (
           <Section title="Same configuration, different input" meta={run.inputRerun.sameConfiguration ? "same configuration" : "settings differ"}>
-            <SameConfiguration record={run.inputRerun} sourceName={runs.find((r) => r.id === run.inputRerun!.sourceRunId)?.name ?? null} others={sameConfig} onOpenRun={onOpenRun} />
+            <SameConfiguration record={run.inputRerun} sourceName={runs.find((r) => r.id === run.inputRerun!.sourceRunId)?.name ?? null} others={sameConfig} fullHashObserved={(run.environment ?? []).some((f) => f.key === "input.full_sha256" && f.status === "verified")} onOpenRun={onOpenRun} />
+          </Section>
+        ) : null}
+
+        {!run.inputRerun && sameConfig.length > 0 ? (
+          <Section title="Runs with this configuration" meta={`configuration ${run.configHash!.slice(0, 12)}`}>
+            <div className={s.block}>
+              <p>The same settings (the whole config, apart from the input and output paths), whatever the input. Group them in the results table with <span className="mono">config:{run.configHash!.slice(0, 12)}</span>.</p>
+              <SameConfigRuns others={sameConfig} onOpenRun={onOpenRun} />
+            </div>
           </Section>
         ) : null}
 

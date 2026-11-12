@@ -69,3 +69,7 @@ In the plot, a panel that differs from the main one **only by unit** (same state
 ## Rollback/Migration
 
 Schema 24 only adds `run_views`; nothing is rewritten and no existing row changes. To roll back, remove the routes and the page; an older program refuses a catalog of a newer schema (the Guard), so roll back by restoring the pre-upgrade catalog backup, or by leaving the table in place (older code never reads it). Saved views are words; dropping the table loses only them. Its snapshot is `testdata/schema_v24.sql`.
+
+### Amendment: grouping by configuration (issue 121)
+
+The query gains `config:<prefix of a configuration hash>`, judged on the run's `configHash` (ADR 0014 amendment: the SHA-256 of the whole config apart from the input and output paths, computed from the job's kept settings). Runs that share it ran the same configuration on whatever inputs; a run whose job kept no settings is "not recorded", never a match. There is no hash column or group-by control yet: the run page shows a run's configuration and the other runs that share it, and `config:` filters the table to them.
