@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path"
+	"path/filepath"
 	"slices"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
@@ -19,7 +20,10 @@ import (
 // hostRunAnalysis runs one bounded write on h with the analysis program's options and reads its reply like runAnalysisProgramCtx: a refusal
 // is the program's sentence, the corrections in force for the inputs are sent with it and their echo is required. It returns the outcome and
 // the resolved path of the file written on the host.
-func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name string, argv []string) (analysisOutcome, string, int, string) {
+//
+// carry is the masks a subset carries (planCarry): their files are written on the host with the result, all or none, and the plan's paths
+// are replaced by the resolved paths the host reports, so recordCarried registers them as masks of that host. Nil for none.
+func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name string, argv []string, carry *carryPlan) (analysisOutcome, string, int, string) {
 	if s.Remote == nil {
 		return analysisOutcome{}, "", 503, "remote hosts are not configured"
 	}
@@ -35,7 +39,7 @@ func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name str
 		argv = append(argv, corrOpt)
 	}
 	timeout := s.Analysis.Timeout
-	out, err := s.Remote.HostRun(ctx, h, op, name, argv, timeout)
+	out, err := s.Remote.HostRun(ctx, h, op, name, argv, carry.hostOutputs(), timeout)
 	switch {
 	case ctx.Err() != nil:
 		return analysisOutcome{}, "", 499, "request cancelled"
@@ -57,6 +61,8 @@ func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name str
 		Software json.RawMessage `json:"software"`
 		Applied  []string        `json:"corrections_applied"`
 		File     string          `json:"file"`
+		Carried  []string        `json:"carried_files"`
+		Missing  string          `json:"missing_file"`
 	}
 	if json.Unmarshal(out, &res) != nil {
 		return analysisOutcome{}, "", 502, "the host answered unexpectedly"
@@ -69,8 +75,11 @@ func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name str
 	}
 	// the host resolves the derived folder (a root reached through a link resolves elsewhere), so the reply names the resolved file; it
 	// must be the name asked for, and the host's worker will refuse it later if it is not inside the roots
-	if path.Base(res.File) != name || !path.IsAbs(res.File) || path.Clean(res.File) != res.File {
+	if !hostFileNamed(res.File, name) {
 		return analysisOutcome{}, "", 502, "the host answered unexpectedly"
+	}
+	if !carry.adoptHostFiles(res.Carried, res.Missing, path.Dir(res.File)) {
+		return analysisOutcome{}, "", 502, "the host answered unexpectedly about the masks it was asked to carry; no result was recorded"
 	}
 	for _, hh := range corrHashes {
 		if !slices.Contains(res.Applied, hh) {
@@ -78,6 +87,54 @@ func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name str
 		}
 	}
 	return analysisOutcome{res.Summary, res.Software, corrSnap}, res.File, 0, ""
+}
+
+// hostFileNamed reports whether p is the resolved absolute path of a file called name.
+func hostFileNamed(p, name string) bool {
+	return path.Base(p) == name && path.IsAbs(p) && path.Clean(p) == p
+}
+
+// hostOutputs is what a subset written on a host asks the host to write besides the result: the carried masks (read on the host, where
+// they live) and the result's own no-value mask. The names are the final names of the files in the host's derived folder, a fixed shape
+// hostrun.py checks again.
+func (p *carryPlan) hostOutputs() *hosts.HostOutputs {
+	if p == nil || (len(p.carried) == 0 && p.missingOut == "") {
+		return nil
+	}
+	o := &hosts.HostOutputs{}
+	for _, c := range p.carried {
+		o.Carry = append(o.Carry, hosts.HostCarry{Name: filepath.Base(c.out), Path: c.mask.Path, Type: c.mask.Type})
+	}
+	if p.missingOut != "" {
+		o.Missing = filepath.Base(p.missingOut)
+	}
+	return o
+}
+
+// adoptHostFiles replaces the plan's local file names by the resolved paths the host reports for them, once each is the file asked for in the
+// same folder as the result. It is false when the reply does not match what was asked, and the plan is then left as it was.
+func (p *carryPlan) adoptHostFiles(carried []string, missing, folder string) bool {
+	if p == nil {
+		return len(carried) == 0 && missing == ""
+	}
+	if len(carried) != len(p.carried) || (p.missingOut != "") != (missing != "") {
+		return false
+	}
+	for i, c := range p.carried {
+		if !hostFileNamed(carried[i], filepath.Base(c.out)) || path.Dir(carried[i]) != folder {
+			return false
+		}
+	}
+	if missing != "" && (!hostFileNamed(missing, filepath.Base(p.missingOut)) || path.Dir(missing) != folder) {
+		return false
+	}
+	for i := range p.carried {
+		p.carried[i].out = carried[i]
+	}
+	if missing != "" {
+		p.missingOut = missing
+	}
+	return true
 }
 
 // hostFileIdentity reads a file's identity on its host: SHA-256 and size by the host's hashing path (hosts.StatPath), and the size and
