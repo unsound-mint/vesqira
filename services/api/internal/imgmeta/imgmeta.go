@@ -64,6 +64,28 @@ func CleanWithNotes(data []byte) (out []byte, removed, kept []string, err error)
 	return out, r.names, r.kept, nil
 }
 
+// IsClean reports whether data is already as clean as Clean would make it, from its structure alone: it never decodes the
+// picture, so a server can refuse a file with metadata before paying for a decode. An unsupported or malformed file is an error.
+func IsClean(data []byte) (bool, error) {
+	var r remover
+	var out []byte
+	var err error
+	switch {
+	case bytes.HasPrefix(data, pngSig):
+		out, err = cleanPNG(data, &r)
+	case len(data) > 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
+		out, err = cleanJPEG(data, &r)
+	case bytes.HasPrefix(data, []byte("GIF87a")) || bytes.HasPrefix(data, []byte("GIF89a")):
+		out, err = cleanGIF(data, &r)
+	default:
+		return false, ErrUnsupported
+	}
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", ErrUnsupported, err)
+	}
+	return bytes.Equal(out, data), nil
+}
+
 // remover records what was dropped and what was knowingly kept, each name once.
 type remover struct{ names, kept []string }
 

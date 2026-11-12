@@ -98,6 +98,7 @@ type Server struct {
 	GroupKeyFile string
 	GroupHTTP    *http.Client
 	outboxState
+	pushGuard pushGuard // decode slots and refused-upload counts of the push routes (push_group.go)
 
 	syncState
 

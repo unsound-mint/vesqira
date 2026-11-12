@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	_ "image/gif" // pushed pictures are PNG, JPEG or GIF, as published ones
 	_ "image/jpeg"
 	_ "image/png"
@@ -17,6 +18,9 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/authz"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -85,66 +89,96 @@ func (s *Server) pushHave(w http.ResponseWriter, r *http.Request) {
 var pictureMime = map[string]string{"png": "image/png", "jpeg": "image/jpeg", "gif": "image/gif"}
 
 // pushAsset stores one picture under the SHA-256 of its bytes, after checking on arrival what the client already did: the hash,
-// a complete PNG, JPEG or GIF of at most 4096 by 4096, and no metadata left (imgmeta finds nothing to remove). A new picture
-// counts towards the workspace's byte quota.
+// a complete PNG, JPEG or GIF of at most 4096 by 4096, and no metadata left. A file is untrusted and small files can decode to
+// large pictures, so the checks run cheapest first and the one decode comes last: a picture the workspace holds is answered at
+// once; the decoded size is bounded from the header (width x height x bytes per pixel of its colour model); metadata is found
+// from the structure alone (imgmeta.IsClean); then at most two pictures decode at a time server-wide (503 beyond). Refused
+// uploads count against the token (429 past pushRefusalLimit in pushRefusalWindow). A new picture counts towards the daily
+// limit and the workspace's byte quota.
 func (s *Server) pushAsset(w http.ResponseWriter, r *http.Request) {
+	a, _ := authz.From(r.Context())
+	refuse := func(code int, msg, reason string) {
+		s.noteRefusal(a.TokenID)
+		if reason != "" {
+			s.pushRefused(r, "asset", reason)
+		}
+		fail(w, code, msg)
+	}
+	if s.refusedTooOften(a.TokenID) {
+		w.Header().Set("Retry-After", "600")
+		fail(w, 429, "too many refused uploads from this computer; wait ten minutes")
+		return
+	}
 	sha := r.PathValue("sha")
 	if !pushwire.ValidSHA(sha) {
-		fail(w, 422, "the picture's name is the lowercase sha256 of its bytes")
+		refuse(422, "the picture's name is the lowercase sha256 of its bytes", "")
 		return
 	}
 	if r.Header.Get("Content-Type") != "application/octet-stream" {
-		fail(w, 415, "send the picture as application/octet-stream")
+		refuse(415, "send the picture as application/octet-stream", "")
 		return
 	}
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, pushwire.MaxAssetBytes+1))
 	if err != nil || len(b) == 0 || len(b) > pushwire.MaxAssetBytes {
-		s.pushRefused(r, "asset", "larger than 8 MiB")
-		fail(w, 413, "a picture is at most 8 MiB")
+		refuse(413, "a picture is at most 8 MiB", "larger than 8 MiB")
 		return
 	}
 	sum := sha256.Sum256(b)
 	if hex.EncodeToString(sum[:]) != sha {
-		fail(w, 422, "the picture's bytes do not match its sha256")
+		refuse(422, "the picture's bytes do not match its sha256", "")
+		return
+	}
+	ws := wsOf(r)
+	if s.Pushed.HasAsset(ws, sha) { // the same bytes, already checked when they were stored
+		writeJSON(w, 200, map[string]any{"sha": sha, "stored": false})
 		return
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(b))
 	if err != nil || pictureMime[format] == "" {
-		fail(w, 422, "a picture is a PNG, JPEG or GIF")
+		refuse(422, "a picture is a PNG, JPEG or GIF", "")
 		return
 	}
 	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > pushwire.MaxAssetPixels || cfg.Height > pushwire.MaxAssetPixels {
-		s.pushRefused(r, "asset", "larger than 4096 by 4096")
-		fail(w, 413, fmt.Sprintf("a picture is at most %d by %d pixels", pushwire.MaxAssetPixels, pushwire.MaxAssetPixels))
+		refuse(413, fmt.Sprintf("a picture is at most %d by %d pixels", pushwire.MaxAssetPixels, pushwire.MaxAssetPixels), "larger than 4096 by 4096")
 		return
 	}
-	if _, _, err := image.Decode(bytes.NewReader(b)); err != nil {
-		fail(w, 422, "the picture is not complete")
+	if decodedBytes(cfg) > maxDecodedBytes {
+		refuse(413, fmt.Sprintf("a picture decodes to at most %d MiB (4096 by 4096 at 8 bits per channel with alpha)", maxDecodedBytes>>20), "decodes too large")
 		return
 	}
-	if clean, _, err := imgmeta.Clean(b); err != nil || !bytes.Equal(clean, b) {
-		s.pushRefused(r, "asset", "picture carries metadata")
-		fail(w, 422, "the picture still carries metadata (EXIF, text, comments or trailing data); send it as cleaned for publishing")
+	if clean, err := imgmeta.IsClean(b); err != nil || !clean {
+		refuse(422, "the picture still carries metadata (EXIF, text, comments or trailing data); send it as cleaned for publishing", "picture carries metadata")
 		return
 	}
-	ws := wsOf(r)
-	a, _ := authz.From(r.Context())
-	if !s.Pushed.HasAsset(ws, sha) {
-		var limit pushed.LimitError
-		if err := s.Pushed.DailyRefusal(ws, a.ID, int64(len(b))); errors.As(err, &limit) {
-			s.pushRefused(r, "asset", limit.Msg)
-			w.Header().Set("Retry-After", "3600")
-			fail(w, 429, limit.Msg)
-			return
-		} else if err != nil {
-			fail(w, 500, "internal error")
-			return
-		}
-		if msg := s.quotaRefusal(ws, int64(len(b))); msg != "" {
-			s.pushRefused(r, "asset", "over the workspace quota")
-			fail(w, 507, msg)
-			return
-		}
+	slots := s.decodeSlots()
+	select {
+	case slots <- struct{}{}:
+	default:
+		w.Header().Set("Retry-After", "5")
+		fail(w, 503, "the server is checking other pictures; try again in a moment")
+		return
+	}
+	pictureDecodes.Add(1)
+	_, _, err = image.Decode(bytes.NewReader(b))
+	<-slots
+	if err != nil {
+		refuse(422, "the picture is not complete", "")
+		return
+	}
+	var limit pushed.LimitError
+	if err := s.Pushed.DailyRefusal(ws, a.ID, int64(len(b))); errors.As(err, &limit) {
+		s.pushRefused(r, "asset", limit.Msg)
+		w.Header().Set("Retry-After", "3600")
+		fail(w, 429, limit.Msg)
+		return
+	} else if err != nil {
+		fail(w, 500, "internal error")
+		return
+	}
+	if msg := s.quotaRefusal(ws, int64(len(b))); msg != "" {
+		s.pushRefused(r, "asset", "over the workspace quota")
+		fail(w, 507, msg)
+		return
 	}
 	created, err := s.Pushed.PutAsset(ws, a.ID, sha, pictureMime[format], b)
 	if err != nil {
@@ -157,6 +191,87 @@ func (s *Server) pushAsset(w http.ResponseWriter, r *http.Request) {
 		code = 201
 	}
 	writeJSON(w, code, map[string]any{"sha": sha, "stored": created})
+}
+
+// Bounds on checking pictures (ADR 0066 limits; the security review of slice 4).
+const (
+	maxDecodedBytes   = 4096 * 4096 * 4 // 64 MiB: the largest picture at 8 bits per channel with alpha
+	pictureDecodeSlot = 2               // pictures decoded at once, server-wide
+	pushRefusalLimit  = 20              // refused uploads a token may make in pushRefusalWindow
+	pushRefusalWindow = 10 * time.Minute
+)
+
+// pictureDecodes counts picture decodes (tests check that a refusal never decoded).
+var pictureDecodes atomic.Int64
+
+// decodedBytes is what decoding a picture allocates, from its header: width x height x the bytes per pixel of its colour model
+// (an unknown model counts as the widest, 8).
+func decodedBytes(cfg image.Config) int64 {
+	bpp := int64(8)
+	switch cfg.ColorModel {
+	case color.GrayModel, color.AlphaModel:
+		bpp = 1
+	case color.Gray16Model, color.Alpha16Model:
+		bpp = 2
+	case color.YCbCrModel:
+		bpp = 3
+	case color.RGBAModel, color.NRGBAModel, color.CMYKModel:
+		bpp = 4
+	case color.RGBA64Model, color.NRGBA64Model:
+		bpp = 8
+	default:
+		if _, ok := cfg.ColorModel.(color.Palette); ok {
+			bpp = 1
+		}
+	}
+	return int64(cfg.Width) * int64(cfg.Height) * bpp
+}
+
+// pushGuard holds the decode slots and the refused-upload counts of the push routes.
+type pushGuard struct {
+	slotsOnce sync.Once
+	slots     chan struct{}
+	mu        sync.Mutex
+	refusals  map[string][]time.Time // token id -> times of refused uploads within the window
+}
+
+func (s *Server) decodeSlots() chan struct{} {
+	s.pushGuard.slotsOnce.Do(func() { s.pushGuard.slots = make(chan struct{}, pictureDecodeSlot) })
+	return s.pushGuard.slots
+}
+
+func (s *Server) recentRefusals(token string, now time.Time) []time.Time {
+	var keep []time.Time
+	for _, t := range s.pushGuard.refusals[token] {
+		if now.Sub(t) < pushRefusalWindow {
+			keep = append(keep, t)
+		}
+	}
+	return keep
+}
+
+func (s *Server) noteRefusal(token string) {
+	g := &s.pushGuard
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.refusals == nil {
+		g.refusals = map[string][]time.Time{}
+	}
+	if len(g.refusals) > 10000 { // bounded: drop the tokens with nothing recent
+		for k := range g.refusals {
+			if len(s.recentRefusals(k, time.Now())) == 0 {
+				delete(g.refusals, k)
+			}
+		}
+	}
+	g.refusals[token] = append(s.recentRefusals(token, time.Now()), time.Now())
+}
+
+func (s *Server) refusedTooOften(token string) bool {
+	g := &s.pushGuard
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return len(s.recentRefusals(token, time.Now())) >= pushRefusalLimit
 }
 
 // pushItem stores one frozen item in one transaction.
