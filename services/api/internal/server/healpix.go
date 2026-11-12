@@ -164,6 +164,19 @@ func (s *Server) healpixSample(w http.ResponseWriter, r *http.Request) {
 		}
 		companions[c.key] = &cd
 	}
+	// The angle map's own record names its companions, so the inspector can link them whenever the map is opened (the companions' records
+	// point back with companionOf). The record is saved a second time because the companions' ids exist only now.
+	if len(companions) > 0 {
+		ids := map[string]int64{}
+		for k, c := range companions {
+			ids[k] = c.ID
+		}
+		pm["companions"] = ids
+		rec2, _ := json.Marshal(pm)
+		if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: "healpix_sample", Params: rec2, Sources: sources, Summary: res.Summary, Software: res.Software}); err != nil {
+			log.Printf("derived: %v", err)
+		}
+	}
 	// The angle map is declared by the operation that made it: degrees, east of north in the grid's own celestial frame ("sky", no
 	// skyFrame), and the quantity asked for. It is a proposal labelled as the analysis', like every orientation result (analysisAuthor).
 	frame, quantity := "sky", in.Product

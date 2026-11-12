@@ -47,7 +47,8 @@ import { useProject } from "../projects/useProject";
 import { writeProjectFile } from "../api/projects";
 import { editorEnabled } from "../api/editor";
 import { terminalEnabled } from "../api/terminal";
-import { getCompat, isCatalog, isImage, type HealpixDataset } from "../api/catalog";
+import { getCompat, isCatalog, isImage } from "../api/catalog";
+import { HealpixSampleDone, HealpixSamplePanel } from "../catalog/HealpixSample";
 import type { Compat, ImageDataset } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
 import { CompareBar, linkState } from "../viewer/CompareBar";
@@ -585,7 +586,11 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
               <Section title="Region"><RegionPanel v={viewer} /></Section>
               <Section title="Spectrum"><SpectrumPlot v={viewer} /></Section>
             </>
-          ) : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : cat.selectedHealpix ? healpixNote(cat.selectedHealpix) : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
+          ) : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : cat.selectedHealpix ? (
+            <Section title="HEALPix map">
+              <HealpixSamplePanel key={cat.selectedHealpix.id} dataset={cat.selectedHealpix} datasets={cat.allDatasets} onResult={(r) => { void cat.refreshDatasets().then(() => cat.select(r.dataset.id)); }} />
+            </Section>
+          ) : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
           {compareDs && shownImage ? (
             <Section title="Comparison">
               <CompareInspector a={shownImage} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
@@ -609,6 +614,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
               <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} declare={cat.declare} />
             </Section>
           ) : null}
+          {actDs ? <HealpixSampleDone dataset={actDs} datasets={cat.allDatasets} onOpen={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} /> : null}
           {actDs ? <RelativeOrientationResult dataset={actDs} datasets={cat.allDatasets} /> : null}
           {viewer.interp ? (
             <Section title="Orientation">
@@ -753,8 +759,3 @@ function PaneHeader({ name, axial, active, onActivate, note = null }: { name: st
   );
 }
 
-/** What the inspector says about a HEALPix map (ADR 0067): what its header states, and that it is only sampled onto another grid. */
-function healpixNote(d: HealpixDataset): string {
-  const h = d.header;
-  return `A HEALPix map: NSIDE ${h.nside}, ${h.ordering}, ${h.coordsys}, polarization convention ${h.polcconv}, as its header states. It has no pixel grid to view; it is sampled onto a dataset's celestial grid as Q and U (POST /api/analysis/healpix-sample). A screen for sampling is not built yet.`;
-}

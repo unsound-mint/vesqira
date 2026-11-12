@@ -58,7 +58,7 @@ The worker refuses a map that is not Galactic: `C` does not say whether FK5 J200
 ## Consequences
 - The worker module `healpix_pol.py` is in `DEPLOY`. Remote HEALPix maps register on a host, but sampling them is refused (this computer only), as for relative orientation.
 - `Persistent.Header` passes a worker `refused` answer through as the worker's sentence; `fits_header.py` prints the same, so the one-shot and persistent readings stay identical.
-- The web client knows the kind and shows the header facts when a HEALPix map is selected. **Not built:** a screen to sample one (the route is used through the API), remote sampling, harmonic (spin-2) smoothing, writing Q and U themselves as datasets, a σ_ψ map, debiased P, non-Galactic maps, and partial-sky maps.
+- The web client knows the kind and shows the header facts when a HEALPix map is selected. **Screen:** a HEALPix map selected in the explorer shows its header facts and "Sample onto" in the inspector (`catalog/HealpixSample.tsx`, `healpixSample.test.tsx`). **Not built:** remote sampling, harmonic (spin-2) smoothing, writing Q and U themselves as datasets, a σ_ψ map, debiased P, non-Galactic maps, and partial-sky maps.
 
 ## Validation
 - **Worker** (`test_healpix_pol.py`):
