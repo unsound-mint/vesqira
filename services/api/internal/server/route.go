@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 	"net/http"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/audit"
@@ -73,3 +74,22 @@ type signInKey struct{}
 
 // signInRequired is set by the group server's actor middleware: a request there that carries no actor is told to sign in.
 func signInRequired(ctx context.Context) bool { v, _ := ctx.Value(signInKey{}).(bool); return v }
+
+// wsOf is the workspace the request acts in: the actor's (workspace.Local for the local owner). Without an actor it is 0, which
+// no row belongs to, so a store queried with it finds nothing.
+func wsOf(r *http.Request) workspace.ID { return wsCtx(r.Context()) }
+
+func wsCtx(ctx context.Context) workspace.ID {
+	if a, ok := authz.From(ctx); ok {
+		return a.Workspace
+	}
+	return 0
+}
+
+// actorID is the account id the request acts for, recorded as created_by on what it creates ("" without an actor).
+func actorID(ctx context.Context) string {
+	if a, ok := authz.From(ctx); ok {
+		return a.ID
+	}
+	return ""
+}

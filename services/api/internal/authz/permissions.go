@@ -63,6 +63,15 @@ const (
 	AccountAdmin Permission = "account.admin"
 	// LocalOnly is nobody in multi-user mode (not mounted): file chooser, ssh config, text editor, terminal, offline copies.
 	LocalOnly Permission = "local.only"
+
+	// Slice 3: workspaces and their members.
+	CommentWrite Permission = "comment.write" // V: comment on a figure or a report of the workspace, delete one's own comment
+	MemberRead   Permission = "member.read"   // V: the workspace's members and their roles
+	MemberInvite Permission = "member.invite" // M: invite someone (a Maintainer only as Viewer or Researcher), list and revoke invitations
+	// MemberManage is O: change a member's role, remove a member (never the last Owner). A recent sign-in only.
+	MemberManage Permission = "member.manage"
+	// WorkspaceAdmin is A: create a workspace and name its first Owner, declare its data roots, set its quota. A recent sign-in only.
+	WorkspaceAdmin Permission = "workspace.admin"
 )
 
 // All is every permission a route may declare. A test fails for a route that names anything else.
@@ -75,6 +84,7 @@ func All() []Permission {
 		ProjectRead, ProjectWrite, HistoryRead, HistoryWrite, FilesRead, AuditRead, SupportExport,
 		JobRead, JobSubmit, JobAccess, SweepRead, SweepSubmit,
 		ClusterRead, ClusterUse, ClusterAdmin, AccountSelf, AccountCredentials, AccountAdmin, LocalOnly,
+		CommentWrite, MemberRead, MemberInvite, MemberManage, WorkspaceAdmin,
 	}
 }
 
