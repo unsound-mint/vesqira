@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/access"
 	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
 	"github.com/unsound-mint/vesqira/services/api/internal/authz"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
@@ -71,6 +72,8 @@ func scopedGroup(t *testing.T) (*group, map[string]authz.Permission) {
 	s.Projects, err = projects.Open(db)
 	must(err)
 	s.Derived, err = derived.Open(db)
+	must(err)
+	s.Access, err = access.Open(db) // access labels (ADR 0069)
 	must(err)
 	s.Notes, err = notify.Open(db)
 	must(err)

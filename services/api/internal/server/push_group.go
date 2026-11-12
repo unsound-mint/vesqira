@@ -302,6 +302,11 @@ func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, err.Error())
 		return
 	}
+	if err := s.pushedAccessRefusal(wsOf(r), in.Item); err != nil {
+		s.pushRefused(r, in.Item.Kind, err.Error())
+		fail(w, 403, err.Error())
+		return
+	}
 	sent := in.Item.Hash
 	h, err := pushwire.ContentHash(in.Item)
 	if err != nil {
@@ -475,13 +480,17 @@ type pushedFigure struct {
 	Width      int             `json:"width"`
 	Height     int             `json:"height"`
 	Provenance json.RawMessage `json:"provenance"`
+	// Access is the label the pushing instance declared for the figure's data (ADR 0069); omitted when released. The server
+	// cannot check it against the data, only enforce its workspace policy on what is declared.
+	Access string `json:"access,omitempty"`
 }
 
 // pushedBoard is a board snapshot: its title and the ADR 0011 FrozenItem list (a job panel frozen to name and state), each
 // figure's previewSha the hash of the cleaned picture that was uploaded.
 type pushedBoard struct {
-	Title string              `json:"title"`
-	Items []boards.FrozenItem `json:"items"`
+	Title  string              `json:"title"`
+	Items  []boards.FrozenItem `json:"items"`
+	Access string              `json:"access,omitempty"` // the most restrictive label among the figures (ADR 0069)
 }
 
 var reAssetRef = regexp.MustCompile(`asset:([0-9a-f]{64})`)
@@ -596,7 +605,7 @@ func checkPushedDoc(it pushwire.Item) error {
 	if !sameSet(it.Assets, shown) {
 		return fmt.Errorf("the item's pictures are not exactly the ones its document shows")
 	}
-	return nil
+	return checkPushedLabels(it)
 }
 
 // assetList returns the sorted hashes of a set of pictures.

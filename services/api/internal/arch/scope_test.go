@@ -33,7 +33,7 @@ import (
 // scopedTables carry workspace_id and are reached by requests on the group server.
 var scopedTables = set("datasets", "dataset_locations", "figures", "reports", "runs", "run_views", "projects", "attachments",
 	"boards", "snapshots", "saved_regions", "masks", "subsets", "exploration_steps", "notifications", "audit", "member_comments",
-	"invitations", "workspace_roots",
+	"invitations", "workspace_roots", "dataset_access",
 	// slice 4: what linked instances pushed (ADR 0066)
 	"pushed_items", "pushed_assets",
 	// slice 5: relayed run requests and the key holders' inboxes (ADR 0066 section 3)

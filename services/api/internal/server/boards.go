@@ -696,6 +696,9 @@ func (s *Server) createFigure(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
+	if v, err := s.accessView(wsOf(r)); err == nil {
+		f.Access = figureAccess(v, &f)
+	}
 	writeJSON(w, 201, f)
 }
 
@@ -710,6 +713,11 @@ func (s *Server) listFigures(w http.ResponseWriter, r *http.Request) {
 	for _, f := range fs {
 		if keepArchived(mode, f.Archived) {
 			shown = append(shown, f)
+		}
+	}
+	if v, err := s.accessView(wsOf(r)); err == nil {
+		for i := range shown {
+			shown[i].Access = figureAccess(v, &shown[i])
 		}
 	}
 	writeJSON(w, 200, struct {
@@ -995,6 +1003,9 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		Hours      float64 `json:"hours"`
 		Supersedes int64   `json:"supersedes"`
 		Reason     string  `json:"reason"`
+		// ConfirmAccess is the author's explicit yes to publishing a board that uses labelled data (ADR 0069). It never overrides
+		// a label the workspace has made block publishing.
+		ConfirmAccess bool `json:"confirmAccess"`
 	}
 	if !body(w, r, 8<<10, &in, true) {
 		return
@@ -1007,12 +1018,15 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		s.boardErr(w, err)
 		return
 	}
-	sn, tok, err := s.Boards.PublishWith(wsOf(r), actorID(r.Context()), id, boards.PublishOptions{Label: in.Label, Question: in.Question, TTL: time.Duration(in.Hours * float64(time.Hour)), Supersedes: in.Supersedes, Reason: in.Reason, Jobs: s.jobSnapshots(cur)})
+	sn, tok, err := s.Boards.PublishWith(wsOf(r), actorID(r.Context()), id, boards.PublishOptions{Label: in.Label, Question: in.Question, TTL: time.Duration(in.Hours * float64(time.Hour)), Supersedes: in.Supersedes, Reason: in.Reason, Jobs: s.jobSnapshots(cur), Access: s.publishGate(r.Context(), in.ConfirmAccess)})
 	if err != nil {
+		if answerAccess(w, err) {
+			return
+		}
 		s.boardErr(w, err)
 		return
 	}
-	s.Audit.RecordCtx(r.Context(), "review published", "snapshot", sn.ID, "board "+strconv.FormatInt(id, 10)+", label: "+in.Label)
+	s.Audit.RecordCtx(r.Context(), "review published", "snapshot", sn.ID, "board "+strconv.FormatInt(id, 10)+", label: "+in.Label+accessNote(sn.Access))
 	writeJSON(w, 201, publishResponse{Snapshot: sn, Token: tok, ReviewPath: "/#/review/" + tok,
 		Note: "Shown once. Anyone with this link can read the frozen board and comment; revoke it to end access."})
 }
@@ -1118,6 +1132,23 @@ func (s *Server) preflight(w http.ResponseWriter, r *http.Request) {
 	p, err := s.Boards.Preflight(wsOf(r), id, r.URL.Query().Get("question"), s.jobSnapshots(cur))
 	if err != nil {
 		s.boardErr(w, err)
+		return
+	}
+	if v, err := s.accessView(wsOf(r)); err == nil {
+		ba := s.labelsOfBoard(v, cur.Items)
+		a := ba.labels()
+		boards.StampAccess(p.Frozen.Items, cur.Items, a)
+		p.Frozen.Access = a.Board
+		if ba.Label.Restricted() {
+			p.Warnings = append(p.Warnings, "This board uses data labelled "+ba.Label.Name()+": "+ba.sentence()+".")
+		}
+		blocked := s.blockedLabels(wsOf(r))
+		writeJSON(w, 200, struct {
+			boards.Preflight
+			Restricted []restrictedPanel `json:"restricted"`
+			Blocked    []string          `json:"blockedLabels"`
+			Blocks     bool              `json:"blocked"`
+		}{p, nonNilPanels(ba.Restricted), labelStrings(blocked), anyBlocked(blocked, ba)})
 		return
 	}
 	writeJSON(w, 200, p)

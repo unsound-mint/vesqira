@@ -1,3 +1,4 @@
+export { AccessBadge } from "./AccessBadge";
 export { Basis, BasisNote, leadClause } from "./Basis";
 export { Button, IconButton, LinkButton } from "./Button";
 export { ErrorReference } from "./ErrorReference";

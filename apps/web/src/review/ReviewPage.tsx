@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { Button, ErrorReference, Input } from "../ui";
+import { AccessBadge, Button, ErrorReference, Input } from "../ui";
 import { ApiError } from "../api/http";
 import { tierLine } from "../api/tier";
 import { RunLine } from "../boards/RunLine";
@@ -79,6 +79,11 @@ export function ReviewPage({ token }: { token: string }) {
         <p className={s.note}>
           {snap.label ? `${snap.label} · ` : ""}Frozen {new Date(snap.createdAt).toLocaleString()} · link valid until {new Date(snap.expiresAt).toLocaleDateString()}. You see published previews only: not the data, file paths or any credential.
         </p>
+        {snap.access ? (
+          <p role="note" className={s.noteBox}>
+            <AccessBadge label={snap.access} /> The author marked the data behind {snap.access === "unreleased" ? "this board as unreleased" : "this board as for the collaboration only"}. Do not share or cite what you see here outside that agreement.
+          </p>
+        ) : null}
         <Input label="Your name (shown with your comments)" value={author} onChange={(e) => { setAuthor(e.target.value); saveName(e.target.value); }} maxLength={80} />
       </header>
       {since > 0 && rv.comments.some((c) => c.fromOwner && new Date(c.createdAt).getTime() > since) ? <p role="status" className={s.noteBox}><strong>Since your last visit:</strong> the author has replied. New replies are marked.</p> : null}
@@ -96,6 +101,7 @@ export function ReviewPage({ token }: { token: string }) {
       ) : (
         <article key={it.revision} className={s.fig} style={place(rect)}>
           <h2 className={s.h2}>{it.title}</h2>
+          {it.access ? <p className={s.note}><AccessBadge label={it.access} /></p> : null}
           <AnchorImage
             src={reviewPreviewUrl(token, it.previewSha)}
             alt={`${it.title}. ${it.provenance.source.name}`}

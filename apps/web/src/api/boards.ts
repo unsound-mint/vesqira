@@ -59,7 +59,7 @@ export type BoardRect = Schemas["BoardRect"];
 /** Saves every panel's place in one write. `expect` names the panel at each position, `from` the layout being replaced; a mismatch is a 409. A null place clears it. */
 export const setLayout = (boardId: number, layout: (BoardRect | null)[], expect: BoardExpect[], from?: (BoardRect | null)[]) =>
   post<Board>(`/api/boards/${boardId}/layout`, { layout, expect, ...(from ? { from } : {}) });
-export const publish = (boardId: number, label: string, hours: number, extra: { question?: string; supersedes?: number; reason?: string } = {}) =>
+export const publish = (boardId: number, label: string, hours: number, extra: { question?: string; supersedes?: number; reason?: string; confirmAccess?: boolean } = {}) =>
   post<Schemas["PublishResponse"]>(`/api/boards/${boardId}/publish`, { label, hours, ...extra });
 export const preflight = (boardId: number, question: string) => call<Preflight>(`/api/boards/${boardId}/preflight?question=${encodeURIComponent(question)}`);
 export const listSnapshots = (boardId: number) => call<{ snapshots: Snapshot[] }>(`/api/boards/${boardId}/snapshots`).then((r) => r.snapshots);

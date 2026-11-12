@@ -134,6 +134,10 @@ type Figure struct {
 	Identity json.RawMessage `json:"identity,omitempty"`
 	// Archived figures are hidden from the lists but still resolve by id, on boards, in reports and in reviews (ADR 0041).
 	Archived bool `json:"archived"`
+	// Access is the access label the figure carries (ADR 0069), the most restrictive among its source datasets, computed by the
+	// server when it answers and never stored (a label can change after the figure is saved). Nil when the figure is released.
+	// It names datasets, so it is owner-side only: a snapshot holds the label's name in FrozenItem.Access and nothing more.
+	Access any `json:"access,omitempty"`
 }
 
 // Figure kinds.
@@ -779,6 +783,9 @@ type FrozenItem struct {
 	// Layout is the panel's place on the grid as saved when the board was published; absent when the board was never arranged
 	// (and on snapshots made before layouts), in which case the reader derives it from the order.
 	Layout *Rect `json:"layout,omitempty"`
+	// Access is the access label ("collaboration" or "unreleased") the figure carried when the board was published (ADR 0069);
+	// absent for a released figure and on snapshots made before labels. The name of the label only, never a dataset.
+	Access string `json:"access,omitempty"`
 }
 
 func (f FrozenItem) MarshalJSON() ([]byte, error) {
@@ -826,12 +833,14 @@ func freeze(items []Item, jobs map[int64]JobSnapshot, at time.Time) []FrozenItem
 }
 
 type Frozen struct {
-	BoardTitle string       `json:"boardTitle"`
-	Label      string       `json:"label"`
-	Question   string       `json:"question,omitempty"` // what the author asks the reviewer to look at
-	CreatedAt  time.Time    `json:"createdAt"`
-	ExpiresAt  time.Time    `json:"expiresAt"`
-	Items      []FrozenItem `json:"items"`
+	BoardTitle string `json:"boardTitle"`
+	Label      string `json:"label"`
+	Question   string `json:"question,omitempty"` // what the author asks the reviewer to look at
+	// Access is the most restrictive label among the figures (ADR 0069); the review page states it.
+	Access    string       `json:"access,omitempty"`
+	CreatedAt time.Time    `json:"createdAt"`
+	ExpiresAt time.Time    `json:"expiresAt"`
+	Items     []FrozenItem `json:"items"`
 }
 
 type Snapshot struct {
@@ -843,6 +852,7 @@ type Snapshot struct {
 	Revoked   bool      `json:"revoked"`
 	Items     int       `json:"items"`
 	Question  string    `json:"question,omitempty"`
+	Access    string    `json:"access,omitempty"` // the label stated on the review page when it was published (ADR 0069)
 	// Outcome is what the reviewer said about this version; empty means not yet reviewed. It is not a scientific
 	// assessment of any run: that is the author's own, and kept apart.
 	Outcome      string     `json:"outcome"`
@@ -875,6 +885,26 @@ type PublishOptions struct {
 	Reason     string
 	// Jobs describes the jobs that the board's job panels follow, by job id.
 	Jobs map[int64]JobSnapshot
+	// Access, when set, is called with the board as it is about to be frozen, before anything is written. It returns the access
+	// labels to state (ADR 0069), or an error that refuses the publication and is returned unchanged. The server supplies it, so
+	// the check sees exactly the figures that are frozen, and this package imports nothing of the catalog.
+	Access func(items []Item) (AccessLabels, error)
+}
+
+// AccessLabels are the labels a snapshot states: the board's (the most restrictive) and each figure's, by figure id. A figure not
+// listed is released.
+type AccessLabels struct {
+	Board   string
+	Figures map[int64]string
+}
+
+// StampAccess writes the labels onto frozen items made from items by Freeze (same order, one each).
+func StampAccess(frozen []FrozenItem, items []Item, a AccessLabels) {
+	for i, it := range items {
+		if it.Kind != KindJob && it.Figure != nil && i < len(frozen) {
+			frozen[i].Access = a.Figures[it.Figure.ID]
+		}
+	}
 }
 
 func (s *Store) PublishWith(ws workspace.ID, by string, boardID int64, o PublishOptions) (Snapshot, string, error) {
@@ -892,6 +922,14 @@ func (s *Store) PublishWith(ws workspace.ID, by string, boardID int64, o Publish
 	now := time.Now()
 	fr := Frozen{BoardTitle: b.Title, Label: clip(label, 200), Question: clip(o.Question, 1000), CreatedAt: now.UTC(), ExpiresAt: now.Add(ttl).UTC(), Items: []FrozenItem{}}
 	fr.Items = freeze(b.Items, o.Jobs, now)
+	if o.Access != nil {
+		a, err := o.Access(b.Items)
+		if err != nil {
+			return Snapshot{}, "", err
+		}
+		StampAccess(fr.Items, b.Items, a)
+		fr.Access = a.Board
+	}
 	raw, err := json.Marshal(fr)
 	if err != nil {
 		return Snapshot{}, "", err
@@ -916,7 +954,7 @@ func (s *Store) PublishWith(ws workspace.ID, by string, boardID int64, o Publish
 			return Snapshot{}, "", err
 		}
 	}
-	return Snapshot{ID: id, BoardID: boardID, Label: fr.Label, CreatedAt: now.UTC(), ExpiresAt: fr.ExpiresAt, Items: len(fr.Items), Question: fr.Question}, tok, nil
+	return Snapshot{ID: id, BoardID: boardID, Label: fr.Label, CreatedAt: now.UTC(), ExpiresAt: fr.ExpiresAt, Items: len(fr.Items), Question: fr.Question, Access: fr.Access}, tok, nil
 }
 
 func (s *Store) Snapshots(ws workspace.ID, boardID int64) ([]Snapshot, error) {
@@ -935,7 +973,7 @@ func (s *Store) Snapshots(ws workspace.ID, boardID int64) ([]Snapshot, error) {
 		}
 		var fr Frozen
 		_ = json.Unmarshal([]byte(frozen), &fr)
-		sn.CreatedAt, sn.ExpiresAt, sn.Revoked, sn.Items, sn.Question = time.Unix(c, 0).UTC(), time.Unix(e, 0).UTC(), rv != 0, len(fr.Items), fr.Question
+		sn.CreatedAt, sn.ExpiresAt, sn.Revoked, sn.Items, sn.Question, sn.Access = time.Unix(c, 0).UTC(), time.Unix(e, 0).UTC(), rv != 0, len(fr.Items), fr.Question, fr.Access
 		out = append(out, sn)
 	}
 	if err := rows.Err(); err != nil {

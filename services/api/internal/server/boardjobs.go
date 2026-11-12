@@ -102,6 +102,7 @@ func (s *Server) readLogViaHost(ctx context.Context, j jobs.Job) (string, error)
 func (s *Server) boardView(ctx context.Context, b boards.Board, live bool) boards.Board {
 	ctx, cancel := context.WithTimeout(ctx, progressTimeout)
 	defer cancel()
+	s.attachAccess(wsCtx(ctx), &b)
 	now := time.Now()
 	for i := range b.Items {
 		it := &b.Items[i]

@@ -344,6 +344,7 @@ func (s *Server) memberRoutes(mux *http.ServeMux) {
 	s.route(mux, "POST /api/workspaces/{id}/roots", authz.WorkspaceAdmin, s.addWorkspaceRoot)
 	s.route(mux, "POST /api/workspaces/{id}/roots/remove", authz.WorkspaceAdmin, s.removeWorkspaceRoot)
 	s.route(mux, "POST /api/workspaces/{id}/quota", authz.WorkspaceAdmin, s.setWorkspaceQuota)
+	s.route(mux, "POST /api/workspaces/{id}/blocked-labels", authz.WorkspaceAdmin, s.setBlockedLabels)
 }
 
 func actorOf(r *http.Request) authz.Actor { a, _ := authz.From(r.Context()); return a }
