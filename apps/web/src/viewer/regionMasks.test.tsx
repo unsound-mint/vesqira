@@ -13,7 +13,7 @@ import type { Viewer } from "./useViewer";
 import { useMaskedHistogram } from "./useMaskedHistogram";
 
 const mask = (over: Partial<Mask> = {}): Mask => ({
-  id: 7, datasetId: 1, type: "saturated", name: "Saturated ≥ 100", width: 4, height: 3, channels: 0, flagged: 2, total: 12, tier: "declared", mappingVersion: "", method: "computed",
+  id: 7, datasetId: 1, hostId: 0, type: "saturated", name: "Saturated ≥ 100", width: 4, height: 3, channels: 0, flagged: 2, total: 12, tier: "declared", mappingVersion: "", method: "computed",
   rule: {}, meaning: "", author: "user", createdAt: "", sourceIdentity: "", fileSize: 1, sha256: "x", stale: false, ...over,
 });
 

@@ -11,7 +11,7 @@ import { masksChanged } from "../viewer/useMasks";
 const ds = (id: number, name: string, hostId = 0): ImageDataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: {} as Header });
 const cube = ds(1, "cube.fits");
 const mask = (over: Partial<Mask>): Mask => ({
-  id: 1, datasetId: 1, type: "saturated", name: "Bright", width: 4, height: 3, channels: 0, flagged: 2, total: 12, tier: "declared", mappingVersion: "", method: "computed",
+  id: 1, datasetId: 1, hostId: 0, type: "saturated", name: "Bright", width: 4, height: 3, channels: 0, flagged: 2, total: 12, tier: "declared", mappingVersion: "", method: "computed",
   rule: { rule: "value >= 100" }, meaning: "", author: "user", createdAt: "", sourceIdentity: "", fileSize: 1, sha256: "x", stale: false, ...over,
 });
 const sat = mask({ id: 1 });
@@ -98,10 +98,11 @@ describe("carrying masks into a cutout, a slab, an alignment or a convolution", 
     expect(await screen.findByText(/inferred \(mapping 1\)/)).toBeInTheDocument();
   });
 
-  it("offers nothing for a file on a host: masks are made on this computer", async () => {
-    mockFetch([]);
-    render(<AnalysisPanel dataset={ds(7, "remote.fits", 1)} datasets={[]} channels={64} onCreated={() => {}} onJob={() => {}} />);
+  it("offers no carry choice for a job on a host, and says the masks stay with the file (ADR 0064)", async () => {
+    mockFetch([mask({ id: 1, hostId: 1 })]);
+    render(<AnalysisPanel dataset={ds(1, "remote.fits", 1)} datasets={[]} channels={64} onCreated={() => {}} onJob={() => {}} />);
     await userEvent.selectOptions(screen.getByLabelText("Analysis"), "cutout");
+    expect(await screen.findByTestId("no-carry-on-host")).toHaveTextContent(/make them again on the result/i);
     expect(screen.queryByTestId("mask-carry")).toBeNull();
     masksChanged();
   });

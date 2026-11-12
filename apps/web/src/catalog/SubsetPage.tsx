@@ -177,7 +177,7 @@ export function SubsetPage({ id, embedded = false, onChanged, onOpenDataset, onC
         </section>
       ) : null}
 
-      {sourceMasks && sourceMasks.length > 0 && sourceMasks.some((m) => m.hostId !== 0) ? (
+      {sourceMasks && sourceMasks.length > 0 && sourceMasks.some((m) => (m.hostId ?? 0) !== 0) ? (
         <p className={s.note} data-testid="no-carry-on-host">The file is written on the source's host, where carrying masks is not built yet: the source's masks stay with it. Make them again on the new file there.</p>
       ) : sourceMasks && sourceMasks.length > 0 ? <MaskCarry masks={sourceMasks} state={carry} onChange={setCarry} op="subset" required={false} /> : null}
       <div className={s.actions}>

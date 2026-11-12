@@ -45,7 +45,7 @@ describe("relative orientation", () => {
   it("says what must be declared before a comparison, naming each missing piece", () => {
     expect(notReady(map(1, "a", null))).toMatch(/not declared as an orientation map/);
     expect(notReady(map(1, "a", interp({ frame: null, quantity: "unspecified" })))).toBe("the angle's frame and what the angle measures are not declared");
-    expect(notReady(map(1, "a", interp(), 3))).toMatch(/another host/);
+    expect(notReady(map(1, "a", interp(), 3))).toMatch(/lives on a host.*download it with Transfers/);
     expect(notReady(cat(2, "c", null))).toMatch(/columns are not declared/);
     expect(notReady(cat(2, "c", decl({ angle: null })))).toMatch(/no angle column/);
     expect(notReady(cat(2, "c", decl({ stale: true })))).toMatch(/changed/);

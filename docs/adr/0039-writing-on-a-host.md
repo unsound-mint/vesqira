@@ -4,6 +4,8 @@ Status: **proposed; implemented, awaiting owner review.** Decided by the impleme
 
 Amended by ADR 0051: an owner-queued upload may now write a file or folder inside a host source root, through rsync, with its own conflict and verification rules. The two files above remain the only ones Vesqira writes on its own initiative.
 
+Amended by ADR 0064: a mask of a host file, and a virtual subset of one written as a file, are written on the host by `hostrun.py` in the host's derived folder (`<first root>/vesqira_derived`), not by `WriteFile`, whose content would cross the VPN. The rules of this ADR are kept where the bytes are made: a folder fixed by the launcher inside the roots and not a link, a name Vesqira chose, never replacing a file, a complete-or-nothing write (`link()` of a private temporary file), and the identity read independently afterwards (the host's SHA-256).
+
 ## Context
 ADR 0030 left two things open for a project or a job that lives on another machine: a project opened on a host could not get its `.vesqira/project.toml` ("an external write that needs its own authorization"), and a job submitted through Slurm left no record of what it was asked to do next to its outputs, so a rescan of the folder found a result with no settings. Both are writes on the researcher's own account, on a machine Vesqira reaches only through the researcher's own ssh configuration. AGENTS.md requires such a boundary to be documented, authorized, audited, and never to alter what the researcher or another program made.
 

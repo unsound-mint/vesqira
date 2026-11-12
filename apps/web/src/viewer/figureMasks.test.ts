@@ -6,7 +6,7 @@ import { figureMaskLayers, maskLegendLine, sceneMaskOf } from "./figureMasks";
 import { figureSvg } from "./figureSvg";
 
 const mask = (over: Partial<Mask> = {}): Mask => ({
-  id: 7, datasetId: 1, type: "saturated", name: "Bright", width: 4, height: 3, channels: 0, flagged: 2, total: 12, tier: "declared", mappingVersion: "", method: "computed",
+  id: 7, datasetId: 1, hostId: 0, type: "saturated", name: "Bright", width: 4, height: 3, channels: 0, flagged: 2, total: 12, tier: "declared", mappingVersion: "", method: "computed",
   rule: { rule: "value >= 100" }, meaning: "", author: "user", createdAt: "", sourceIdentity: "", fileSize: 1, sha256: "ab".repeat(32), stale: false, ...over,
 });
 const planeOf = (flagged: number[], width = 4, height = 3) => {
