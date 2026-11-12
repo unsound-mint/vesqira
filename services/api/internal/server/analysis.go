@@ -37,7 +37,7 @@ type AnalysisConfig struct {
 	Timeout    time.Duration
 }
 
-var analysisOps = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true, "convolve": true, "scalar_diff": true}
+var analysisOps = map[string]bool{"axial_diff": true, "stats": true, "moment": true, "cutout": true, "slab": true, "align": true, "convolve": true, "scalar_diff": true, "smooth_spectral": true}
 
 // analysisArgs turns the request's options into command-line options, each validated by the same patterns the job
 // template uses, so a value can never become anything but a number or a known word.
@@ -59,7 +59,9 @@ type analysisReq struct {
 
 var optionNames = map[string]string{"order": "order", "chanStart": "chan-start", "chanEnd": "chan-end", "threshold": "threshold", "x0": "x0", "x1": "x1", "y0": "y0", "y1": "y1", "method": "method", "targetBmaj": "target-bmaj", "targetBmin": "target-bmin", "targetBpa": "target-bpa",
 	// the resolution a convolution starts from when the file declares no beam (a VGT map): accepted from the VGT keywords or entered, never read from BMAJ
-	"sourceBmaj": "source-bmaj", "sourceBmin": "source-bmin", "sourceBpa": "source-bpa", "sourceBeamBasis": "source-beam-basis"}
+	"sourceBmaj": "source-bmaj", "sourceBmin": "source-bmin", "sourceBpa": "source-bpa", "sourceBeamBasis": "source-beam-basis",
+	// spectral smoothing (ADR 0069): the kernel, its width in channels, the least share of the kernel that must fall on finite samples, decimation, and the cube's own response
+	"kernel": "kernel", "width": "width", "minValidWeight": "min-valid-weight", "decimate": "decimate", "nativeFwhm": "native-fwhm"}
 
 func (a analysisReq) options() (map[string]string, error) {
 	out := map[string]string{}

@@ -41,6 +41,7 @@ from srcopen import fits_open
 from memcap import limit_memory, over_cap_message
 
 MAX_OUTPUT_ELEMENTS = 1 << 28
+MAX_FAMILY = 12                 # maps in one agreement view
 
 
 def fail(msg: str):
@@ -923,6 +924,253 @@ def op_convolve(args) -> dict:
                        f"convolve to the target beam (kernel half-width {n_pix} pixels)", mk.CONVOLVE_RULE.format(n=n_pix))
 
 
+def spectral_step(c: Cube) -> tuple[float | None, str | None, str | None]:
+    """(channel width in the axis' own unit, that unit, why not) for a uniformly spaced, fully declared spectral axis; (None, None, reason)
+    otherwise. The width is read from the axis' WCS, never assumed."""
+    try:
+        vals, unit, _ = spectral_axis(c)
+    except Refused:
+        return None, None, "the spectral axis is not fully declared in the header, so a channel has no stated width"
+    if not unit:
+        return None, None, "the spectral axis has no declared unit, so a channel has no stated width"
+    d = np.diff(vals)
+    if d.size == 0 or not np.all(np.isfinite(d)) or d[0] == 0 or np.max(np.abs(d - d[0])) > 1e-6 * abs(d[0]):
+        return None, None, "the channels are not evenly spaced in the spectral axis' unit, so one width does not describe them"
+    return float(abs(d[0])), unit, None
+
+
+def simple_spectral_grid(h, i: int) -> bool:
+    """True when FITS axis i is described by CRPIX and CDELT alone: no CD matrix and no PC term linking it to another axis."""
+    if f"CDELT{i}" not in h or f"CRPIX{i}" not in h:
+        return False
+    for k in h.keys():
+        m = re.fullmatch(r"(PC|CD)(\d+)_(\d+)", k)
+        if m and str(i) in (m.group(2), m.group(3)) and not (m.group(1) == "PC" and m.group(2) == m.group(3) == str(i) and float(h[k]) == 1.0):
+            return False
+    return True
+
+
+def op_smooth_spectral(args) -> dict:
+    """Smooth a cube along its spectral axis with a boxcar, Gaussian or Hanning kernel (ADR 0069), as a new file.
+
+    The kernel width is stated in channels and, when the spectral axis is calibrated, in its unit; with an uncalibrated axis the
+    result says channels only. Missing samples stay missing (normalised convolution over the finite samples, with a minimum valid
+    weight, both recorded). The input is read in strips of rows. Decimation (keeping every k-th channel) happens only when asked."""
+    import specsmooth as ss
+    if args.axial_unit:
+        fail("this is declared as an axial orientation map: a spectral smoothing would average its angles, which is not valid "
+             "(0 and 180 degrees are the same orientation)")
+    c = open_cube(args.input)
+    if len(c.shape) != 3 or (c.chan, c.y, c.x) != (2, 1, 0):
+        fail("spectral smoothing supports a cube with axes (x, y, channel) in that order")
+    nch, ny, nx = c.channels, c.shape[c.y], c.shape[c.x]
+    if nch < 3:
+        fail("the cube has fewer than 3 channels")
+    if args.kernel is None or args.width is None:
+        fail("give the kernel (boxcar, gaussian or hanning) and its width in channels")
+    try:
+        kernel = ss.build_kernel(args.kernel, args.width)
+    except ss.Bad as e:
+        fail(str(e))
+    min_valid = 0.5 if args.min_valid_weight is None else args.min_valid_weight
+    if not (0.0 < min_valid <= 1.0):
+        fail("the minimum valid weight is a fraction above 0 and at most 1")
+    step_k = 1 if args.decimate is None else args.decimate
+    if step_k < 1:
+        fail("decimation keeps every k-th channel, k at least 1")
+    if args.native_fwhm is not None and not (args.native_fwhm > 0):
+        fail("the native spectral resolution is a positive FWHM in channels")
+    if 6 * 8 * nch * nx > (1 << 30):
+        fail("one row of this cube is too large to smooth within the worker's memory bounds")
+    keep = np.arange(0, nch, step_k)
+    if step_k > 1 and not simple_spectral_grid(c.h, c.chan + 1):
+        fail("decimation needs a spectral axis described by CRPIX and CDELT alone; this header uses a rotation, a CD matrix or lacks one of them")
+    if keep.size * ny * nx > MAX_OUTPUT_ELEMENTS:
+        fail("the result is too large")
+    step, unit, why = spectral_step(c)
+    out = np.full((keep.size, ny, nx), np.nan, dtype="<f4")
+    dropped = 0
+    rows = ss.rows_per_strip(nch, nx)
+    for y0 in range(0, ny, rows):
+        y1 = min(ny, y0 + rows)
+        block = np.stack([p for _, p in planes(c, 0, nch - 1, slice(y0, y1))])
+        res, d = ss.smooth_block(block, kernel["weights"], min_valid)
+        dropped += d
+        out[:, y0:y1] = res[keep].astype("<f4")
+    h = c.h.copy()
+    h["BITPIX"] = -32
+    for k in ("BSCALE", "BZERO", "BLANK"):
+        if k in h:
+            del h[k]
+    if step_k > 1:
+        i = c.chan + 1
+        h[f"CRPIX{i}"] = (float(h[f"CRPIX{i}"]) - 1.0) / step_k + 1.0
+        h[f"CDELT{i}"] = float(h[f"CDELT{i}"]) * step_k
+    h["VESQOP"] = "smooth_spectral"
+    calibrated = step is not None
+    facts = c.spectral_facts()
+    spectral = {"calibrated": calibrated, "axis": facts.get("name") if facts else None, "channel_width": step, "unit": unit}
+    if calibrated:
+        spectral["fwhm_unit"] = {"value": kernel["fwhm_channels"] * step, "unit": unit}
+    else:
+        spectral["warning"] = f"{why}; the width is given in channels only and no channel width is assumed"
+    res_ = ss.resolution(kernel, args.native_fwhm, step, unit)
+    w = kernel["weights"]
+    summary = {
+        "kernel": {"kind": kernel["kind"], "width_channels": kernel["width_channels"], "fwhm_channels": kernel["fwhm_channels"],
+                   "half_width_channels": kernel["half_width"], "weights": [float(x) for x in w], "definition": kernel["definition"]},
+        "spectral": spectral,
+        "missing_policy": {"method": "normalised convolution over the finite samples", "min_valid_weight": min_valid,
+                           "missing_stays_missing": True, "outside_cube": "missing, not zero", "finite_samples_dropped": dropped},
+        "decimation": {"step": step_k, "channels_in": nch, "channels_out": int(keep.size), "first_channel_kept": 0},
+        "resolution": res_,
+        "white_noise_factor": float(math.sqrt(float((w ** 2).sum()))),
+        "shape": list(out.shape), "pixels_without_data": int(np.isnan(out).sum()),
+    }
+    notes = []
+    if step_k == 1:
+        notes.append("the channels are kept, and neighbouring channels are now correlated")
+    else:
+        notes.append(f"every {step_k}th channel was kept (channels 0, {step_k}, ...), chosen by you")
+        if step_k > kernel["fwhm_channels"]:
+            notes.append(f"decimating by {step_k} channels is more than the kernel's FWHM ({kernel['fwhm_channels']:g}), so the kept channels sample the smoothed spectrum coarsely")
+    summary["policy"] = (
+        f"Smoothed along the spectral axis with a {kernel['definition']}. A sample without a value stays without a value; a sample with a value is the average of the finite "
+        f"samples the kernel reaches, if they carry at least {min_valid:g} of the kernel's weight, and is left without a value otherwise (outside the cube is missing, not zero). "
+        f"For white noise the rms falls by a factor {summary['white_noise_factor']:.4g}; the channels are correlated afterwards, so this is not the noise of independent samples. "
+        + " ".join(n[0].upper() + n[1:] + "." for n in notes) + " " + res_["statement"])
+    if not calibrated:
+        summary["policy"] += " " + spectral["warning"][0].upper() + spectral["warning"][1:] + "."
+    bu, bu_src = unit_of(c, args.declared_unit)
+    if bu_src in OWNED_UNIT:
+        stamp_user_unit(h, bu, source=bu_src)
+    h["HISTORY"] = "Vesqira spectral smoothing: " + json.dumps({"kernel": kernel["kind"], "width_channels": kernel["width_channels"], "min_valid_weight": min_valid, "decimate": step_k})
+    write_fits(args.out, out, h)
+    note_unit(summary, bu_src, bu)
+    return {"ok": True, "op": "smooth_spectral", "summary": summary}
+
+
+def _beam_arcsec(h) -> list | None:
+    try:
+        return [float(h["BMAJ"]) * 3600.0, float(h["BMIN"]) * 3600.0, float(h.get("BPA", 0.0))]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def op_family_agreement(args) -> dict:
+    """Agreement of a family of maps on one grid (ADR 0069): each member against a chosen reference, and the spread across the members.
+
+    --family is a JSON list of {path, label, axial_unit (deg or rad, for orientation maps), declared_unit, channel}. All members are scalar
+    maps or all are declared axial orientation maps; the API has checked that they share a grid, and the shape is checked again here.
+    Scalar maps: member minus reference and the per-pixel spread (std or MAD). Axial maps: the axial difference in [0, 90] degrees, the
+    alignment measure AM = <cos 2 delta>, and the circular spread; never a plain difference. Writes the spread map to --out and the
+    comparison map of member i to <out stem>-m<i>.fits."""
+    import family as fam
+    try:
+        members = json.loads(args.family or "")
+    except ValueError:
+        members = None
+    if not isinstance(members, list) or not 2 <= len(members) <= MAX_FAMILY or not all(isinstance(m, dict) and isinstance(m.get("path"), str) for m in members):
+        fail(f"give between 2 and {MAX_FAMILY} maps")
+    ref = args.reference_index or 0
+    if not 0 <= ref < len(members):
+        fail("the reference is not one of the maps")
+    how = args.spread or "std"
+    if how not in fam.SPREADS:
+        fail("the spread is std or mad")
+    axial = [bool(m.get("axial_unit")) for m in members]
+    if any(axial) and not all(axial):
+        fail("the family mixes orientation maps with scalar maps; a difference of those is not meaningful")
+    axial = axial[0]
+    cubes, planes_, labels = [], [], []
+    for i, m in enumerate(members):
+        c = open_cube(m["path"])
+        ch = m.get("channel")
+        if c.channels > 1 or ch not in (None, 0):
+            if axial:
+                fail("an orientation map is a single plane")
+            if not isinstance(ch, int) or isinstance(ch, bool) or not 0 <= ch < c.channels:
+                fail("a cube in the family needs a channel in its range")
+        else:
+            ch = 0
+        _, p = next(planes(c, ch, ch))
+        if planes_ and p.shape != planes_[0].shape:
+            fail("the maps do not have the same shape; the family view does not resample")
+        cubes.append(c)
+        labels.append(str(m.get("label") or f"map {i + 1}"))
+        if axial:
+            u = m.get("axial_unit")
+            if u not in ("deg", "rad"):
+                fail("an orientation map's unit is deg or rad")
+            p = p * (1.0 if u == "deg" else 180.0 / math.pi)
+            p = np.where(np.isfinite(p), p % 180.0, np.nan)
+        planes_.append(p)
+    stack = np.stack(planes_)
+    ref_c = cubes[ref]
+    warnings_: list[str] = []
+    beams = [_beam_arcsec(c.h) for c in cubes]
+    if any(b is None for b in beams) or any(b is not None and beams[0] is not None and max(abs(x - y) for x, y in zip(b, beams[0])) > 1e-6 * max(1.0, beams[0][0]) for b in beams):
+        warnings_.append("the maps do not all declare the same beam, so their resolutions may differ and a difference mixes resolution with signal")
+    owned, unit = [], None
+    if axial:
+        res = fam.axial_agreement(stack, ref)
+        out_unit, spread_unit = "deg", "deg"
+    else:
+        units = [unit_of(c, m.get("declared_unit")) for c, m in zip(cubes, members)]
+        if any(not u for u, _ in units):
+            fail("every map must have a brightness unit, from its BUNIT or declared by you; none is assumed")
+        if len({u for u, _ in units}) != 1:
+            fail("the maps have different brightness units; convert one first, nothing is converted here")
+        unit = units[0][0]
+        owned = [src for _, src in units if src in OWNED_UNIT]
+        res = fam.scalar_agreement(stack, ref, how)
+        out_unit = spread_unit = unit
+    stem = args.out[:-5] if args.out.endswith(".fits") else args.out
+    written = []
+
+    def header(extra, what):
+        h = image_header(ref_c, {"BUNIT": extra, "VESQOP": "family_agreement"})
+        h["HISTORY"] = what
+        if owned:
+            h["VESQBUNS"] = "corrected" if "corrected" in owned else "user"
+            h["HISTORY"] = unit_history(unit, h["VESQBUNS"], "the maps")
+        return h
+    for i, d in enumerate(res["diffs"]):
+        if d is None:
+            continue
+        what = (f"Vesqira family agreement: axial difference of {labels[i]} from the reference {labels[ref]}, |((a - b + 90) mod 180) - 90| in [0, 90] degrees"
+                if axial else f"Vesqira family agreement: {labels[i]} minus the reference {labels[ref]}")
+        write_fits(f"{stem}-m{i}.fits", d.astype("<f4"), header(out_unit, what))
+        written.append(i)
+    sp_what = ("Vesqira family agreement: circular spread of the doubled angle across the members, sqrt(-2 ln R)/2 in degrees"
+               if axial else f"Vesqira family agreement: per-pixel spread across the members ({'standard deviation, ddof 1' if how == 'std' else 'median absolute deviation about the median'})")
+    write_fits(args.out, res["spread"].astype("<f4"), header(spread_unit, sp_what))
+    rows = []
+    for i, m in enumerate(res["members"]):
+        rows.append({**m, "label": labels[i]})
+    summary = {"axial": axial, "kind": "axial orientation" if axial else "scalar", "labels": labels, "reference": ref, "members": rows,
+               "comparison_maps": written, "spread": "circular" if axial else how, "spread_stats": res["spread_stats"],
+               "unit": spread_unit, "shape": list(res["spread"].shape), "warnings": warnings_}
+    if axial:
+        summary.update(pairwise_am=res["pairwise_am"], orientations_cancel_pixels=res["orientations_cancel_pixels"])
+        summary["policy"] = (
+            "Orientations are axial: 0 and 180 degrees are the same, so no plain difference is taken. Each member map shows its axial difference from the reference, "
+            "|((a - b + 90) mod 180) - 90|, in [0, 90] degrees (1 and 179 degrees differ by 2). AM = <cos 2 delta> over the pixels both maps have: 1 for parallel, "
+            "0 for unrelated, -1 for perpendicular. The spread map is half the circular standard deviation of the doubled angle across the members, "
+            "sqrt(-2 ln R) / 2 with R the resultant length, needing two members with a value; where the orientations cancel (R below 1e-6) it is undefined and NaN. "
+            "Reliability maps are not used: every pixel counts equally. A pixel without a value in a map stays without a value, never 0.")
+    else:
+        summary["pairwise_rms"] = res["pairwise_rms"]
+        summary["policy"] = (
+            "Each member map shows the member minus the reference, in the maps' common brightness unit. The spread map is the per-pixel "
+            + ("standard deviation (ddof 1)" if how == "std" else "median absolute deviation about the median (not rescaled)")
+            + " across all members, needing two members with a value. A pixel without a value in a map stays without a value, never 0; a recorded 0 is a value. "
+            "The maps were checked to share a grid, and nothing is resampled or matched in resolution.")
+        if owned:
+            note_unit(summary, "corrected" if "corrected" in owned else "user", unit, "the maps")
+    return {"ok": True, "op": "family_agreement", "summary": summary}
+
+
 def op_relorient(args) -> dict:
     """Relative orientation (ADR 0047): a declared orientation map against a point catalog or another map. The statistics live in
     relorient.py; this only parses the parameters and turns its refusals into this program's."""
@@ -1071,7 +1319,7 @@ def op_rohsa_classmaps(args) -> dict:
     return {"ok": True, "op": "rohsa_classmaps", "summary": review_common(sc, dat, res)}
 
 
-OPS = {"rohsa_sigmav": op_rohsa_sigmav, "rohsa_cellmask": op_rohsa_cellmask, "rohsa_classmaps": op_rohsa_classmaps, "healpix_sample": op_healpix_sample, "mask": op_mask, "relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "subset": op_subset, "slab": op_slab, "align": op_align}
+OPS = {"rohsa_sigmav": op_rohsa_sigmav, "rohsa_cellmask": op_rohsa_cellmask, "rohsa_classmaps": op_rohsa_classmaps, "healpix_sample": op_healpix_sample, "mask": op_mask, "relorient_catalog": op_relorient, "relorient_maps": op_relorient, "convolve": op_convolve, "smooth_spectral": op_smooth_spectral, "family_agreement": op_family_agreement, "axial_diff": op_axial_diff, "scalar_diff": op_scalar_diff, "stats": op_stats, "moment": op_moment, "cutout": op_cutout, "subset": op_subset, "slab": op_slab, "align": op_align}
 
 
 def log_failure(op: str, what: str) -> None:
@@ -1132,6 +1380,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--sigma-out")            # healpix_sample: where the companion sigma_P map goes
     ap.add_argument("--window")               # subset: the window as a JSON object (subset.py)
     ap.add_argument("--note")                 # subset: one line of provenance for the file's HISTORY
+    ap.add_argument("--kernel", choices=["boxcar", "gaussian", "hanning"])   # smooth_spectral (ADR 0069)
+    ap.add_argument("--width", type=float)                       # the kernel width in channels (boxcar, Hanning: odd; Gaussian: FWHM)
+    ap.add_argument("--min-valid-weight", type=float)            # fraction of the kernel that must fall on finite samples (default 0.5)
+    ap.add_argument("--decimate", type=int)                      # keep every k-th channel, only when chosen
+    ap.add_argument("--native-fwhm", type=float)                 # the cube's own spectral response FWHM in channels, declared by the person
+    ap.add_argument("--family")                                  # family_agreement: JSON list of {path, label, axial_unit, declared_unit, channel}
+    ap.add_argument("--reference-index", type=int)               # family_agreement: which member the others are compared with
+    ap.add_argument("--spread", choices=["std", "mad"])          # family_agreement: the per-pixel spread of scalar maps
     ap.add_argument("--corrections")          # the researcher's corrections, a JSON object {resolved path: {hash, bunit, wcs}} (ADR 0061)
     args = ap.parse_args(argv)
     limit_memory()
