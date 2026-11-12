@@ -6805,6 +6805,10 @@ export interface components {
             snrSigmaColumn?: string;
             /** @description The filter's k (default 3, the threshold the owner's comparison script uses); rows with P/σP below it are excluded and counted, rows with P or σP missing are excluded with their own reason */
             snrMin?: number;
+            /** @description With stratifyId: the number of equal-count bins of the third map (default 5); not with strataEdges. Tied values are never split, so a heavy tie gives fewer bins */
+            strataBins?: number;
+            /** @description With stratifyId: user-set bin edges in the third map's unit, strictly increasing; a bin is [lower, upper) and the last one is closed; pixels outside them are left out and counted */
+            strataEdges?: number[];
         };
         RelativeOrientationRequest: {
             /**
@@ -6822,6 +6826,11 @@ export interface components {
             masks?: components["schemas"]["MaskReference"][];
             /** @description Masks of the second map */
             otherMasks?: components["schemas"]["MaskReference"][];
+            /**
+             * Format: int64
+             * @description Map against map only: a scalar map on the same grid (a column density, a signal-to-noise map). The comparison is repeated inside bins of it and the result carries `stratified`. It needs a brightness unit (BUNIT or declared) and is refused when it is declared as an orientation map, lives on a host or does not share the grid. The comparison without it is unchanged
+             */
+            stratifyId?: number;
         };
         RelativeOrientationHistogram: {
             edges_deg: number[];
@@ -6929,6 +6938,78 @@ export interface components {
             snr_filter?: {
                 [key: string]: unknown;
             } | null;
+            /** @description Map against map with stratifyId: the comparison's statistics inside bins of a third map (ADR 0047, amendment) */
+            stratified?: {
+                binning: {
+                    /** @enum {string} */
+                    mode: "equal_count" | "edges";
+                    asked?: number;
+                    bins: number;
+                    edges: number[];
+                    notes?: string[];
+                    rule?: string;
+                };
+                /** @description The third map's unit and whose it is: its BUNIT, or declared or corrected by the author */
+                third_map: {
+                    unit: string;
+                    /** @enum {string} */
+                    unit_source: "file" | "user" | "corrected";
+                    unit_note?: string;
+                    pixels_without_value?: number;
+                };
+                counts: {
+                    /** @description Pixels the comparison uses */
+                    compared: number;
+                    /** @description Of those, pixels with no value in the third map */
+                    third_map_missing: number;
+                    /** @description Of the rest, pixels outside user-set edges */
+                    outside_edges: number;
+                    in_bins: number;
+                };
+                bins: {
+                    index: number;
+                    /** @description Lower edge, in the third map's unit */
+                    lo: number;
+                    /** @description Upper edge, in the third map's unit (included for the last bin) */
+                    hi: number;
+                    /** @description Middle of the edges, in the third map's unit */
+                    centre: number;
+                    /** @description Median of the third map over the bin's pixels */
+                    median?: number | null;
+                    /** @description Pixels in the bin */
+                    n: number;
+                    /** @description AM = mean of cos 2Δψ over the bin; null for an empty bin, never 0 */
+                    am?: number | null;
+                    am_weighted?: number | null;
+                    /** @description 16th and 84th percentiles of AM over resamples of the bin's pixels (assumes independent pixels, so optimistic) */
+                    bootstrap_am_16_84?: number[] | null;
+                    /** @description Resamples used; fewer for a large bin */
+                    bootstrap_samples?: number | null;
+                    median_abs_dpsi_deg?: number | null;
+                    /** @description Projected Rayleigh statistic of the bin (no p-value: pixels are correlated) */
+                    prs?: {
+                        V?: number | null;
+                        V_weighted?: number | null;
+                    };
+                    /** @description Approximate number of independent beams in the bin; null when a map declares no beam */
+                    independent_beams?: number | null;
+                    independent_beams_reason?: string | null;
+                    /** @description The statistic's value and spread for uniform angles, for the bin's pixel and beam counts */
+                    uniform_reference?: {
+                        /** @description AM expected for independent uniform angles: 0 */
+                        am?: number;
+                        /** @description 1/sqrt(2 n) for n pixels */
+                        sigma_pixels?: number | null;
+                        sigma_weighted_pixels?: number | null;
+                        /** @description 1/sqrt(2 n) for n independent beams */
+                        sigma_beams?: number | null;
+                    } | null;
+                }[];
+                definitions?: {
+                    [key: string]: string;
+                };
+                policy: string;
+            };
         };
         RelativeOrientationResult: {
             dataset: components["schemas"]["Dataset"];

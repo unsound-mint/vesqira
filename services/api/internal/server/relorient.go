@@ -36,6 +36,9 @@ type relOrientParams struct {
 	KeepFraction *float64 `json:"keepFraction"`
 	Seed         *int64   `json:"seed"`
 	Bins         *int     `json:"bins"`
+	// Bins of the third map (StratifyID of the request): StrataBins equal-count bins (default 5) or StrataEdges, not both.
+	StrataBins  *int      `json:"strataBins"`
+	StrataEdges []float64 `json:"strataEdges"`
 	// Optional catalog row filter P/σP >= SnrMin, off unless both columns (declared value columns of the catalog) are named.
 	SnrColumn      *string  `json:"snrColumn"`
 	SnrSigmaColumn *string  `json:"snrSigmaColumn"`
@@ -50,10 +53,12 @@ type relOrientReq struct {
 	// the statistic already has weights.
 	Masks      []maskUse `json:"masks"`
 	OtherMasks []maskUse `json:"otherMasks"`
+	// StratifyID is an optional scalar map on the same grid (map against map only): the comparison is repeated inside bins of it.
+	StratifyID int64 `json:"stratifyId"`
 }
 
 // worker turns the parameters into the worker's names, refusing values outside the ranges the worker accepts (it checks again).
-func (p relOrientParams) worker(catalogMode bool) (map[string]any, string) {
+func (p relOrientParams) worker(catalogMode, stratified bool) (map[string]any, string) {
 	out := map[string]any{}
 	num := func(name string, v *float64, lo, hi float64) string {
 		if v == nil {
@@ -112,6 +117,29 @@ func (p relOrientParams) worker(catalogMode bool) (map[string]any, string) {
 		}
 	} else if p.RadiusArcmin != nil || p.MinPixels != nil || p.SnrColumn != nil || p.SnrSigmaColumn != nil || p.SnrMin != nil {
 		return nil, "radiusArcmin, minPixels and the P/σP filter apply to a comparison with a catalog only"
+	}
+	if p.StrataBins != nil || p.StrataEdges != nil {
+		switch {
+		case !stratified:
+			return nil, "strataBins and strataEdges apply only with a third map to bin by (stratifyId)"
+		case p.StrataBins != nil && p.StrataEdges != nil:
+			return nil, "give the bin edges or the number of equal-count bins, not both"
+		case p.StrataBins != nil:
+			if msg := whole("strataBins", p.StrataBins, 1, 50); msg != "" {
+				return nil, msg
+			}
+			out["strata_bins"] = *p.StrataBins
+		default:
+			if n := len(p.StrataEdges); n < 2 || n > 51 {
+				return nil, "strataEdges must hold 2 to 51 numbers"
+			}
+			for i, e := range p.StrataEdges {
+				if math.IsNaN(e) || math.IsInf(e, 0) || (i > 0 && e <= p.StrataEdges[i-1]) {
+					return nil, "strataEdges must be finite and strictly increasing"
+				}
+			}
+			out["strata_edges"] = p.StrataEdges
+		}
 	}
 	if p.NShifts != nil {
 		out["n_shifts"] = *p.NShifts
@@ -182,6 +210,47 @@ func (s *Server) orientationSide(r *http.Request, d catalog.Dataset, prefix, whi
 	return args, 0, ""
 }
 
+// stratifyThird checks that a dataset can be the third map of a stratified comparison and returns the worker options for it; on a
+// refusal it has written the reply. The third map is a scalar plane (not an orientation map) on the comparison's grid, on this
+// computer, with a brightness unit from its file or declared by the author: bins are stated in that unit, and none is assumed.
+func (s *Server) stratifyThird(w http.ResponseWriter, r *http.Request, d, other catalog.Dataset, id int64) ([]string, catalog.Dataset, bool) {
+	third, code, msg := s.imageDataset(wsOf(r), id)
+	if code != 0 {
+		fail(w, code, "the third map: "+msg)
+		return nil, third, false
+	}
+	if third.ID == d.ID || third.ID == other.ID {
+		fail(w, 422, "the third map must be another dataset than the two being compared")
+		return nil, third, false
+	}
+	if in := third.Interpretation; in != nil && in.Kind == "axial_orientation" {
+		fail(w, 422, "the third map is declared as an axial orientation map; bins need a scalar map such as a column density or a signal-to-noise map")
+		return nil, third, false
+	}
+	if third.HostID != 0 {
+		fail(w, 409, "the third map lives on a host; relative orientation is computed on this computer only: download it with Transfers and use the copy")
+		return nil, third, false
+	}
+	if n := nonDegenerateAxes(third.Header); n != 2 {
+		fail(w, 422, "the third map is not a single plane")
+		return nil, third, false
+	}
+	if why, err := compat.Grids(effectiveHeader(d), effectiveHeader(third)); err != nil || len(why) > 0 {
+		writeJSON(w, 409, map[string]any{"error": "the third map is not known to share a grid with the orientation maps, so its pixels cannot be matched one to one: align it onto them first", "reasons": why})
+		return nil, third, false
+	}
+	real, _, status, msg := s.authorize(r.Context(), third)
+	if status != 0 {
+		fail(w, status, "the third map: "+msg)
+		return nil, third, false
+	}
+	args := []string{"--third", real}
+	if u := declaredUnitOf(third); u != "" {
+		args = append(args, "--declared-unit-third="+u) // used by the worker only when the file has no BUNIT of its own
+	}
+	return args, third, true
+}
+
 // relativeOrientation is POST /api/analysis/relative-orientation.
 func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 	var in relOrientReq
@@ -207,7 +276,11 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	catalogMode := other.Kind == catalog.KindCatalog
-	params, bad := in.Params.worker(catalogMode)
+	if in.StratifyID != 0 && catalogMode {
+		fail(w, 422, "binning by a third map is available for a comparison of two maps; a comparison with a catalog does not take it")
+		return
+	}
+	params, bad := in.Params.worker(catalogMode, in.StratifyID != 0)
 	if bad != "" {
 		fail(w, 400, bad)
 		return
@@ -255,6 +328,16 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 		}
 		args = append(args, ra...)
 		args = append(args, "--table-out", tablePath)
+	}
+	var thirdID int64
+	var thirdUnit string
+	if in.StratifyID != 0 {
+		ta, third, ok := s.stratifyThird(w, r, d, other, in.StratifyID)
+		if !ok {
+			return
+		}
+		args = append(args, ta...)
+		thirdID, thirdUnit = third.ID, declaredUnitOf(third)
 	}
 	var maskSafe, otherSafe []map[string]any
 	if len(in.Masks) > 0 || len(in.OtherMasks) > 0 {
@@ -312,8 +395,13 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 	if res.Corrections != nil {
 		recParams["corrections"] = res.Corrections // the correction state the maps were read with (ADR 0061)
 	}
+	sources := []int64{d.ID, other.ID}
+	if thirdID != 0 {
+		sources = append(sources, thirdID) // after the two maps, so a reader keeps names[0] and names[1]
+		recParams["stratifiedBy"] = map[string]any{"datasetId": thirdID, "declaredUnit": thirdUnit}
+	}
 	rec, _ := json.Marshal(recParams)
-	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: op, Params: rec, Sources: []int64{d.ID, other.ID}, Summary: res.Summary, Software: res.Software}); err != nil {
+	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: op, Params: rec, Sources: sources, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
 	s.Audit.RecordCtx(r.Context(), "relative orientation", "dataset", nd.ID, d.Name+" with "+other.Name)

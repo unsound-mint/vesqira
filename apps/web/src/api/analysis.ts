@@ -48,7 +48,7 @@ type Schemas = components["schemas"];
 export type RelOrientParams = Schemas["RelativeOrientationParams"];
 export type RelOrientSummary = Schemas["RelativeOrientationSummary"];
 /** Aborting the request stops the computation: the server kills the program when its request ends. */
-export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams; masks?: MaskUse[]; otherMasks?: MaskUse[] }, signal?: AbortSignal, requestId?: string) =>
+export const runRelativeOrientation = (r: { datasetId: number; otherId: number; params: RelOrientParams; masks?: MaskUse[]; otherMasks?: MaskUse[]; stratifyId?: number }, signal?: AbortSignal, requestId?: string) =>
   post<{ dataset: Dataset; summary: RelOrientSummary }>("/api/analysis/relative-orientation", r, signal, requestId);
 export const relativeOrientationTableUrl = (id: number) => `/api/datasets/${id}/relative-orientation.csv`;
 /** Sample a HEALPix polarization map onto a dataset's celestial grid as Q and U (ADR 0067). The request runs on this computer and stops with its request. */
