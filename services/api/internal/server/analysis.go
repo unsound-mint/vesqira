@@ -355,10 +355,6 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	if len(in.CarryMasks) > 0 {
-		fail(w, 422, "a job on a host does not carry masks into its result yet: run it without carrying them, then make the masks again on the result (its Masks section works on the host)")
-		return
-	}
 	if in.Op == "scalar_diff" {
 		fail(w, 409, "a difference is computed on this computer, from two maps registered here")
 		return
@@ -369,6 +365,13 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if d.HostID == 0 {
 		fail(w, 409, "this file is on this computer: run the analysis directly")
+		return
+	}
+	// masks carried into the result (ADR 0055, ADR 0064 addendum): the same plan as a run here, which refuses a mask the file does not have,
+	// a stale one and an undecided one; the files are written by the job into its own output folder (below)
+	carry, code, msg := s.planCarry(d, in.Op, in.CarryMasks)
+	if code != 0 {
+		fail(w, code, msg)
 		return
 	}
 	// masks are applied in the job as in a run here (ADR 0064): the masks live next to the file on the host, and the script names them by
@@ -410,6 +413,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	}
 	sources := []int64{d.ID}
 	refPath := ""
+	carryExtra := ""
 	var refDS *catalog.Dataset
 	if in.Op == "align" {
 		ref, code, msg := s.imageDataset(in.ReferenceID)
@@ -422,6 +426,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		refPath = ref.Path
+		carryExtra = " (reference: " + ref.Name + ")"
 		refDS = &ref
 		sources = append(sources, ref.ID)
 	}
@@ -453,9 +458,14 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	_, _ = rand.Read(b[:])
 	name := fmt.Sprintf("%s-%d", in.Op, d.ID)
 	out := path.Join(h.Roots[0], "vesqira_derived", name+"-"+hex.EncodeToString(b[:]))
+	carry.intoFolder(out) // the job writes its mask files in its own output folder, under names fixed here
 	set := jobs.AnalysisSettings{Name: name, Python: h.Python, ScriptDir: s.Remote.RemoteDir(), Op: in.Op, Input: d.Path, Reference: refPath,
-		OutDir: out, Args: opts, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Masks: maskText, Corrections: corrText}
+		OutDir: out, Args: opts, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Masks: maskText, Corrections: corrText,
+		Carry: carry.specsJSON(), MissingOut: carry.missingFile()}
 	pm := map[string]any{"op": in.Op, "options": opts, "sources": sources}
+	if cp := carry.jobPlan(carryExtra); cp != nil {
+		pm["carryPlan"] = cp // what registering the result will check and record; ids and fingerprints of the source masks, never free text
+	}
 	if len(maskSafe) > 0 {
 		pm["masks"] = maskSafe // id-free and path-free, as a run here records them
 	}
@@ -481,10 +491,12 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // registerAnalysisJob brings a finished analysis job's result.fits (and its result.json) in as a derived dataset.
-func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef) (catalog.Dataset, int, string) {
+//
+// The second result is a sentence for the person when the result registered but its carried masks did not (jobcarry.go).
+func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef) (catalog.Dataset, string, int, string) {
 	text, code, msg := s.remoteText(ctx, h.Host, path.Join(j.OutputDir, "result.json"))
 	if code != 0 {
-		return catalog.Dataset{}, code, "result.json: " + msg
+		return catalog.Dataset{}, "", code, "result.json: " + msg
 	}
 	var res struct {
 		OK       bool            `json:"ok"`
@@ -494,21 +506,32 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 		Applied  []string        `json:"corrections_applied"`
 	}
 	if json.Unmarshal([]byte(text), &res) != nil || !res.OK {
-		return catalog.Dataset{}, 422, "the analysis did not finish successfully on the host"
+		return catalog.Dataset{}, "", 422, "the analysis did not finish successfully on the host"
 	}
 	var p analysisJobParams
 	_ = json.Unmarshal([]byte(j.Params), &p)
 	if !p.applied(res.Applied) {
-		return catalog.Dataset{}, 502, jobIgnoredCorrections
+		return catalog.Dataset{}, "", 502, jobIgnoredCorrections
 	}
 	if p.Op == "stats" {
-		return catalog.Dataset{}, 409, "a statistics job has no file to register: read its result"
+		return catalog.Dataset{}, "", 409, "a statistics job has no file to register: read its result"
 	}
 	d, code, msg := s.registerRemoteFile(ctx, h.Host, path.Join(j.OutputDir, "result.fits"))
 	if code != 0 {
-		return catalog.Dataset{}, code, msg
+		return catalog.Dataset{}, "", code, msg
+	}
+	var carried map[string]any
+	var note string
+	if p.CarryPlan != nil {
+		var code int
+		if carried, note, code, msg = s.registerJobCarry(ctx, h.Host, j, p, res.Summary, d); code != 0 {
+			return catalog.Dataset{}, "", code, msg
+		}
 	}
 	pm := map[string]any{"options": p.Options}
+	if carried != nil {
+		pm["maskCarry"] = carried // masks carried or left behind, and the recomputed no-value mask: no ids, no paths
+	}
 	if len(p.Masks) > 0 {
 		pm["masks"] = p.Masks
 	}
@@ -524,7 +547,7 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 		reg := func(fp string) (catalog.Dataset, int, string) { return s.registerRemoteFile(ctx, h.Host, fp) }
 		d = s.finishAxialResult(analysisOutcome{Summary: res.Summary, Software: res.Software}, d, &axialRun{interp: in}, remoteRelPath(j.OutputDir), reg, p.Op, p.Sources, params)
 	}
-	return d, 0, ""
+	return d, note, 0, ""
 }
 
 // derivedSummary is the reviewer-safe description of how a dataset was made, or nil.
@@ -603,6 +626,7 @@ type analysisJobParams struct {
 	Masks            []map[string]any  `json:"masks"`
 	Corrections      []map[string]any  `json:"corrections"`
 	CorrectionHashes []string          `json:"correctionHashes"`
+	CarryPlan        *jobCarryPlan     `json:"carryPlan"`
 }
 
 // applied reports whether a job's result echoes every correction state the job was drafted with (ADR 0064).

@@ -98,12 +98,21 @@ describe("carrying masks into a cutout, a slab, an alignment or a convolution", 
     expect(await screen.findByText(/inferred \(mapping 1\)/)).toBeInTheDocument();
   });
 
-  it("offers no carry choice for a job on a host, and says the masks stay with the file (ADR 0064)", async () => {
-    mockFetch([mask({ id: 1, hostId: 1 })]);
-    render(<AnalysisPanel dataset={ds(1, "remote.fits", 1)} datasets={[]} channels={64} onCreated={() => {}} onJob={() => {}} />);
+  it("offers the carry choice for a job on a host and sends it (ADR 0064)", async () => {
+    const calls = mockFetch([mask({ id: 1, hostId: 1 })], { "/api/analysis/job": () => ({ status: 201, body: { id: 9 } }) });
+    const onJob = vi.fn();
+    render(<AnalysisPanel dataset={ds(1, "remote.fits", 1)} datasets={[]} channels={64} onCreated={() => {}} onJob={onJob} />);
     await userEvent.selectOptions(screen.getByLabelText("Analysis"), "cutout");
-    expect(await screen.findByTestId("no-carry-on-host")).toHaveTextContent(/make them again on the result/i);
-    expect(screen.queryByTestId("mask-carry")).toBeNull();
+    const group = await screen.findByTestId("mask-carry");
+    expect(screen.queryByTestId("no-carry-on-host")).toBeNull();
+    await userEvent.selectOptions(within(group).getByLabelText("Saturated: Bright"), "carry");
+    await userEvent.type(screen.getByLabelText("x from"), "1");
+    await userEvent.type(screen.getByLabelText("x to"), "4");
+    await userEvent.type(screen.getByLabelText("y from"), "1");
+    await userEvent.type(screen.getByLabelText("y to"), "4");
+    await userEvent.click(screen.getByRole("button", { name: "Create a job on the host" }));
+    await waitFor(() => expect(onJob).toHaveBeenCalled());
+    expect(JSON.parse(String(calls.find((c) => c.url === "/api/analysis/job")!.init!.body)).carryMasks).toEqual([{ id: 1, carry: true }]);
     masksChanged();
   });
 

@@ -422,11 +422,7 @@ func TestMasksOnAHostMatchTheSameMasksHere(t *testing.T) {
 			t.Errorf("%s: %d %s", name, code, b)
 		}
 	}
-	code, jb = e.call("POST", "/api/analysis/job", map[string]any{"op": "cutout", "datasetId": rem.ID, "params": map[string]string{"x0": "0", "x1": "5", "y0": "0", "y1": "5"},
-		"carryMasks": []map[string]any{{"id": made["saturated"][1].ID, "carry": true}}})
-	if code != 422 || !strings.Contains(string(jb), "make the masks again on the result") {
-		t.Errorf("carrying in a host job: %d %s", code, jb)
-	}
+	// carrying masks in a host job is covered by hostjobcarry_test.go (ADR 0064 addendum)
 
 	// a mask file that changed on the host is refused everywhere it would be applied or drawn, and says what to do
 	sat := made["saturated"][1]
