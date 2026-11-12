@@ -73,11 +73,13 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!path.trim()) return;
+    const submitted = path;
     setBusy(true);
-    const err = await onRegister(path.trim());
+    const err = await onRegister(submitted.trim());
     setBusy(false);
     setFormError(err);
-    if (!err) setPath("");
+    // Clear the field only if it still holds what was registered: the reply can arrive after the person has typed the next path
+    if (!err) setPath((cur) => (cur === submitted ? "" : cur));
   }
 
   return (
