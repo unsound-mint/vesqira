@@ -368,9 +368,19 @@ func (s *Store) StartEnrolment(accountID string) ([]byte, error) {
 	return secret, err
 }
 
-// ConfirmEnrolment checks a code against the pending secret; on a match the pending secret becomes the enrolled one, the
+// ConfirmEnrolment checks a code against the pending secret (replacing an enrolled one: a new phone); on a match the pending secret becomes the enrolled one, the
 // step is spent, and a fresh set of recovery codes replaces any earlier set. It returns those codes, once.
 func (s *Store) ConfirmEnrolment(accountID, code string) ([]string, bool, error) {
+	return s.confirmEnrolment(accountID, code, false)
+}
+
+// ConfirmFirstEnrolment is ConfirmEnrolment for an account with no second factor yet: it succeeds only while no secret is
+// enrolled, so a session that signed in with the password alone can never replace one, even racing another sign-in.
+func (s *Store) ConfirmFirstEnrolment(accountID, code string) ([]string, bool, error) {
+	return s.confirmEnrolment(accountID, code, true)
+}
+
+func (s *Store) confirmEnrolment(accountID, code string, first bool) ([]string, bool, error) {
 	var pending []byte
 	err := s.db.QueryRow(`SELECT pending FROM totp_credentials WHERE account_id=?`, accountID).Scan(&pending)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && pending == nil) {
@@ -392,7 +402,11 @@ func (s *Store) ConfirmEnrolment(accountID, code string) ([]string, bool, error)
 		return nil, false, err
 	}
 	defer tx.Rollback()
-	res, err := tx.Exec(`UPDATE totp_credentials SET secret=pending, pending=NULL, last_step=?, confirmed_at=? WHERE account_id=? AND pending=?`, step, s.now().Unix(), accountID, pending)
+	q := `UPDATE totp_credentials SET secret=pending, pending=NULL, last_step=?, confirmed_at=? WHERE account_id=? AND pending=?`
+	if first {
+		q += ` AND secret IS NULL`
+	}
+	res, err := tx.Exec(q, step, s.now().Unix(), accountID, pending)
 	if err != nil {
 		return nil, false, err
 	}

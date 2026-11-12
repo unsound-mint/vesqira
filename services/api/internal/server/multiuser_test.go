@@ -632,6 +632,42 @@ func TestGroupServerReadsOfAHostDatasetFailCleanly(t *testing.T) {
 	}
 }
 
+// Two password-only sign-ins of an account without a second factor: once one enrols, the other cannot enrol a secret of its
+// own and be let in on the password alone; it owes a code from the enrolled secret.
+func TestGroupPendingEnrolmentCannotReplaceAnEnrolledSecret(t *testing.T) {
+	g := newGroup(t)
+	tok, _, _ := g.acc.CreateSetupToken()
+	w := g.do(req{method: "POST", path: "/api/auth/setup", body: `{"token":"` + tok + `","name":"Ada","username":"ada","password":"` + adminPass + `"}`})
+	first := sessionFrom(t, w)
+	w = g.do(req{method: "POST", path: "/api/auth/sign-in", body: `{"username":"ada","password":"` + adminPass + `"}`})
+	second := sessionFrom(t, w)
+	if decode[authStateBody](t, w).Stage != "enrol" {
+		t.Fatal("the second sign-in is not at enrolment")
+	}
+	// the second session starts an enrolment of its own before the first one finishes
+	other := decode[enrolmentBody](t, g.do(req{method: "POST", path: "/api/auth/enrolment", body: `{}`, cookie: second}))
+	en := decode[enrolmentBody](t, g.do(req{method: "POST", path: "/api/auth/enrolment", body: `{}`, cookie: first}))
+	secret, _ := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(en.Secret)
+	if w := g.do(req{method: "POST", path: "/api/auth/enrolment/confirm", body: `{"code":"` + accounts.CodeAt(secret, g.clock.now()) + `"}`, cookie: first}); w.Code != 200 {
+		t.Fatalf("first enrolment: %d %s", w.Code, w.Body)
+	}
+	otherSecret, _ := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(other.Secret)
+	g.clock.add(30 * time.Second)
+	if w := g.do(req{method: "POST", path: "/api/auth/enrolment/confirm", body: `{"code":"` + accounts.CodeAt(otherSecret, g.clock.now()) + `"}`, cookie: second}); w.Code != 409 {
+		t.Fatalf("a pending session replaced the enrolled secret: %d %s", w.Code, w.Body)
+	}
+	if w := g.do(req{method: "POST", path: "/api/auth/enrolment", body: `{}`, cookie: second}); w.Code == 200 { // 401: it is no longer at enrolment
+		t.Fatalf("a pending session started a new enrolment over an enrolled one: %d", w.Code)
+	}
+	// that session now owes a code from the enrolled secret, and the enrolled secret still works
+	if st := decode[authStateBody](t, g.do(req{path: "/api/auth/state", cookie: second})); st.Stage != "second_factor" {
+		t.Fatalf("stage %q", st.Stage)
+	}
+	if w := g.do(req{method: "POST", path: "/api/auth/second-factor", body: `{"code":"` + accounts.CodeAt(secret, g.clock.now()) + `"}`, cookie: second}); w.Code != 200 {
+		t.Fatalf("the enrolled secret no longer works: %d %s", w.Code, w.Body)
+	}
+}
+
 // The account routes answer what packages/contracts says they do.
 func TestGroupAccountRepliesMatchTheSpec(t *testing.T) {
 	g := newGroup(t)

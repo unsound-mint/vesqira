@@ -268,6 +268,21 @@ func TestTOTPReplayIsRefused(t *testing.T) {
 	}
 }
 
+// A first enrolment never replaces an enrolled secret; a replacement (a new phone, through a full session) does.
+func TestFirstEnrolmentDoesNotReplaceAnEnrolledSecret(t *testing.T) {
+	s, c := newStore(t)
+	a := admin(t, s, "ada")
+	enrol(t, s, c, a.ID)
+	next, _ := s.StartEnrolment(a.ID)
+	c.add(30 * time.Second)
+	if _, ok, _ := s.ConfirmFirstEnrolment(a.ID, totpAt(next, c.now(), 6, sha1.New)); ok {
+		t.Fatal("a first enrolment replaced the enrolled secret")
+	}
+	if _, ok, _ := s.ConfirmEnrolment(a.ID, totpAt(next, c.now(), 6, sha1.New)); !ok {
+		t.Fatal("the replacement was refused")
+	}
+}
+
 // Two requests carrying the same code at once: exactly one wins.
 func TestTOTPReplayRace(t *testing.T) {
 	s, c := newStore(t)

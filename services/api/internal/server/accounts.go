@@ -296,7 +296,7 @@ func (s *Server) startEnrolment(w http.ResponseWriter, a accounts.Account) {
 }
 
 // confirmEnrolment checks the first code from the new secret and returns the recovery codes, once. ok reports success.
-func (s *Server) confirmEnrolment(w http.ResponseWriter, r *http.Request, a accounts.Account) ([]string, bool) {
+func (s *Server) confirmEnrolment(w http.ResponseWriter, r *http.Request, a accounts.Account, first bool) ([]string, bool) {
 	var in struct {
 		Code string `json:"code"`
 	}
@@ -309,7 +309,11 @@ func (s *Server) confirmEnrolment(w http.ResponseWriter, r *http.Request, a acco
 		tooMany(w, wait)
 		return nil, false
 	}
-	codes, ok, err := st.ConfirmEnrolment(a.ID, strings.TrimSpace(in.Code))
+	confirm := st.ConfirmEnrolment
+	if first {
+		confirm = st.ConfirmFirstEnrolment
+	}
+	codes, ok, err := confirm(a.ID, strings.TrimSpace(in.Code))
 	switch {
 	case errors.Is(err, accounts.ErrNoEnrolment):
 		fail(w, 409, "start the enrolment first")
@@ -339,6 +343,11 @@ func (s *Server) pendingEnrolAccount(w http.ResponseWriter, r *http.Request) (ac
 		fail(w, 500, "internal error")
 		return se, a, false
 	}
+	if a.SecondFactor { // enrolled meanwhile (another sign-in): this session owes a code now, never a new secret
+		_ = s.MultiUser.Accounts.SetStage(se, accounts.StageSecondFactor)
+		failCode(w, http.StatusConflict, "second_factor_owed", "the second factor is already set up: enter a code from the app", nil)
+		return se, a, false
+	}
 	return se, a, true
 }
 
@@ -354,7 +363,7 @@ func (s *Server) pendingEnrolmentConfirm(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	codes, ok := s.confirmEnrolment(w, r, a)
+	codes, ok := s.confirmEnrolment(w, r, a, true)
 	if !ok {
 		return
 	}
@@ -474,7 +483,7 @@ func (s *Server) reenrolConfirm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if codes, ok := s.confirmEnrolment(w, r, a); ok {
+	if codes, ok := s.confirmEnrolment(w, r, a, false); ok {
 		writeJSON(w, 200, map[string]any{"recoveryCodes": codes})
 	}
 }
