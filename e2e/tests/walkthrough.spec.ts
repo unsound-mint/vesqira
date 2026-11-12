@@ -392,11 +392,16 @@ test("a VGT run is imported with its parameters, linked to its outputs and carri
   await expect(runPage.getByText("input_file")).toHaveCount(0); // locations are not kept
   await runPage.getByRole("button", { name: "Back" }).click();
 
-  // the adapter proposed the orientation: shown as the run import's, not the file's and not the user's
-  await expect(insp.getByText(/^Proposed by the run import as axial orientation in (degrees|radians); not from the file\.$/)).toBeVisible();
-  // the adapter's identity is in the Basis disclosure, one click away
-  await insp.locator("details", { hasText: /vgt-run-adapter/ }).getByText("Basis", { exact: true }).click();
-  await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
+  // this run's psi file carries none of VGT.jl's cards, so its convention is unresolved: nothing is proposed, the map still displays,
+  // and the run panel and the orientation panel both say it must be declared (ADR 0068 slice 2)
+  await expect(insp.getByText(/This orientation map has no declared frame, quantity or unit/)).toBeVisible();
+  await expect(insp.getByText(/Proposed by the run import/)).toHaveCount(0);
+  await insp.getByLabel("Treat this map as").selectOption("axial");
+  await insp.getByLabel("Angle unit (required)").selectOption("rad");
+  await insp.getByLabel("Angle frame").selectOption("pixel");
+  await insp.getByLabel("What the angle is").selectOption("b_field");
+  await insp.getByRole("button", { name: "Declare axial" }).click();
+  await expect(insp.getByText(/Declared by you as axial orientation in radians/)).toBeVisible();
   await expect(insp.getByText("Mean orientation")).toBeVisible();
 
   // figure -> board -> reviewer sees the run's parameters and the dirty commit, never a path
@@ -530,10 +535,10 @@ test("a Slurm job: render, read, submit exactly that text, follow it, import its
   await runPage.getByRole("button", { name: "Open in the viewer" }).first().click();
   const insp = inspector(page);
   await expect(insp.getByText(/vgt-ker8 · 4242 · completed/)).toBeVisible();
-  await expect(insp.getByText(/^Proposed by the run import as axial orientation in (degrees|radians); not from the file\.$/)).toBeVisible();
-  // the adapter's identity is in the Basis disclosure, one click away
-  await insp.locator("details", { hasText: /vgt-run-adapter/ }).getByText("Basis", { exact: true }).click();
-  await expect(insp.getByText(/Proposed by the run import \(vgt-run-adapter\)/)).toBeVisible();
+  // the remote psi file carries none of VGT.jl's cards: its convention is unresolved, nothing is proposed, and the panel says to declare it
+  await expect(insp.getByText(/This orientation map has no declared frame, quantity or unit/)).toBeVisible();
+  await expect(insp.getByText(/Not declared: shown as an ordinary scalar map/)).toBeVisible();
+  await expect(insp.getByText(/Proposed by the run import/)).toHaveCount(0);
 });
 
 test("analysis makes new files with their provenance, and keeps missing data missing", async ({ page }) => {

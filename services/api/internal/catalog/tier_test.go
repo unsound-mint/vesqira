@@ -17,7 +17,9 @@ func TestEveryInterpretationIsWrittenWithATier(t *testing.T) {
 		{"vgt-run-adapter", TierInferred, "1"},
 		{"vesqira-analysis", TierInferred, "1"},
 		{"some-future-rule", TierInferred, "1"},
-		{"rule:psi maps", TierDeclared, ""}, // the researcher's own import rule: declared, the author keeps the rule's name
+		{"rule:psi maps", TierDeclared, ""},     // the researcher's own import rule: declared, the author keeps the rule's name
+		{"profile:VGT.jl@1", TierDeclared, "1"}, // the file's own statement read by a profile: declared by the file, never verified
+		{"vgt-file-header", TierDeclared, "1"},  // the same reading before profiles were versioned
 	} {
 		if err := s.SetInterpretation(d, Interpretation{Kind: "axial_orientation", Unit: "deg", DeclaredBy: c.by}); err != nil {
 			t.Fatal(err)

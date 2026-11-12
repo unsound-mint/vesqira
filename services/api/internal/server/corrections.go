@@ -298,7 +298,7 @@ func (s *Server) listCorrections(w http.ResponseWriter, r *http.Request) {
 	if has {
 		fileBunit = &fu
 	}
-	noBright, _ := s.Store.NoBrightnessIDs(wsOf(r))
+	noBright, _ := s.noBrightness(wsOf(r))
 	writeJSON(w, 200, map[string]any{"datasetId": d.ID, "current": d.Corrections, "history": hist, "last": lastRecordID(hist),
 		"fileBunit": fileBunit, "unitCorrectable": has && !noBright[d.ID]})
 }
@@ -367,7 +367,7 @@ func (s *Server) proposal(ws workspace.ID, d catalog.Dataset, in corrInput) (nex
 			if !has {
 				return next, base, 409, "the file has no BUNIT: declare its unit instead (a declaration fills a missing unit; a correction replaces one the file states)"
 			}
-			if bad, _ := s.Store.NoBrightnessIDs(ws); bad[d.ID] {
+			if bad, _ := s.noBrightness(ws); bad[d.ID] {
 				return next, base, 409, catalog.ErrNotBrightness.Error()
 			}
 			if u == fu {

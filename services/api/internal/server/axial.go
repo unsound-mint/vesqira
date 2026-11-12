@@ -55,7 +55,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 		ReliabilityID *int64  `json:"reliabilityId"`
 		Frame         *string `json:"frame"`
 		Quantity      *string `json:"quantity"`
-		// FromFile adopts the declaration the file's own header makes (PSIFRAME, PSIANGLE, BUNIT), labelled as declared by the file;
+		// FromFile adopts the declaration the file's own header makes (read through its orientation profile), labelled as declared by profile:<name>@<version>;
 		// unit, frame and quantity are then taken from the header, and sending any of them is refused.
 		FromFile bool `json:"fromFile"`
 	}
@@ -95,11 +95,11 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if d.VGT == nil || d.VGT.Orientation == nil {
-				fail(w, 422, "the file's header does not declare an angle frame (PSIFRAME), so there is nothing to adopt from it; declare it yourself")
+				fail(w, 422, "the file's header does not declare an angle frame and unit that an orientation profile places, so there is nothing to adopt from it; declare it yourself")
 				return
 			}
 			o := d.VGT.Orientation
-			in.Unit, in.Frame, in.Quantity, author = o.Unit, &o.Frame, o.Quantity, catalog.FileHeaderAuthor
+			in.Unit, in.Frame, in.Quantity, author = o.Unit, &o.Frame, o.Quantity, o.Profile
 			if in.ReliabilityID == nil && d.Interpretation != nil {
 				in.ReliabilityID = d.Interpretation.ReliabilityID // adopting the frame must not unpair the reliability map
 			}

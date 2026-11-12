@@ -15,6 +15,7 @@ from astropy.io import fits
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -P does not add the script dir
 from memcap import limit_memory, over_cap_message
+import orientation_profiles as op
 from srcopen import Refused, source_file
 
 BLOCK = 2880
@@ -65,7 +66,7 @@ def declared(header: fits.Header, key: str):
     return None, "unresolved"
 
 
-VGT_KEYS = re.compile(r"PSIFRAME|PSIANGLE|INB(MAJ|MIN|PA)|VGT[A-Z0-9]{1,5}")
+VGT_KEYS = op.producer_cards([p for p in op.shipped() if p["name"] == "VGT.jl"])   # the cards of VGT.jl's own view below, from the profile table
 ARC_UNITS = (("arcsec", 1.0), ("arcmin", 60.0), ("deg", 3600.0))   # token in the card comment -> arcseconds per unit
 
 
@@ -149,7 +150,8 @@ def vgt_resolution(h: fits.Header, params: dict) -> dict:
 def vgt_keywords(h: fits.Header):
     """The keywords VGT.jl writes into its products, as the file states them (None when there are none): the angle's frame
     (PSIFRAME) and meaning (PSIANGLE), the product role (VGTPROD), the run parameters (VGT*) and the input cube's beam (INB*).
-    Nothing is interpreted here; the API maps them onto Vesqira's declarations. Values are cleaned like every header value."""
+    Nothing is interpreted here: what the cards mean for an orientation declaration is read through orientation_profiles (the
+    `orientation` key of the report). Values are cleaned like every header value."""
     keys = [k for k in h.keys() if VGT_KEYS.fullmatch(k)]
     if not keys:
         return None
@@ -162,6 +164,13 @@ def vgt_keywords(h: fits.Header):
         "params": params,
         "resolution": vgt_resolution(h, params),
     }
+
+
+def orientation_declared(h: fits.Header):
+    """What the header declares of an orientation map by a known tool's profile (orientation_profiles), or None when it carries no
+    profile's cards. A field the profile cannot place is unresolved in the result: nothing is assumed or taken from the WCS."""
+    cards = {k: clean(h[k]) for k in h.keys() if k not in ("COMMENT", "HISTORY", "")}
+    return op.read(cards)
 
 
 def axes_shape(h: fits.Header) -> list[int]:
@@ -224,6 +233,7 @@ def describe(path: str) -> dict:
         "bunit": bunit,
         "bunit_status": bunit_status,
         "vgt": vgt_keywords(h),
+        "orientation": orientation_declared(h),
         "specsys": declared(h, "SPECSYS")[0],
         "radesys": declared(h, "RADESYS")[0],
         "provenance_note": "values are declared by the file header; nothing here is verified",
