@@ -488,7 +488,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
           <JobsView focusJob={focusJob} hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => openRun(r.id)} />
         ) : mode === "run" ? (
           pageRun ? (
-            <RunPage key={pageRun.id} run={pageRun} runs={cat.runs} datasets={cat.allDatasets} onEntryChanged={(c) => { void cat.refreshRuns(); void cat.refreshDatasets(); if (c === "deleted") setMode(runFrom); }} job={(pageRun.jobId != null ? cat.jobs.find((j) => j.id === pageRun.jobId) : undefined) ?? jobFor(cat.jobs, pageRun.id)} onBack={() => setMode(runFrom)} onOpenRun={openRun} onOpenInViewer={(id) => { cat.select(id); setMode("viewer"); }} onCompareInViewer={compareInViewer} onRunAgain={runAgain} />
+            <RunPage key={pageRun.id} run={pageRun} runs={cat.runs} datasets={cat.allDatasets} onEntryChanged={(c) => { void cat.refreshRuns(); void cat.refreshDatasets(); if (c === "deleted") setMode(runFrom); }} job={(pageRun.jobId != null ? cat.jobs.find((j) => j.id === pageRun.jobId) : undefined) ?? jobFor(cat.jobs, pageRun.id)} onBack={() => setMode(runFrom)} onOpenRun={openRun} onOpenInViewer={(id) => { cat.select(id); setMode("viewer"); }} onCompareInViewer={compareInViewer} onRunAgain={runAgain} onDraftedOnCube={(j) => { setFocusJob(j.id); setMode("jobs"); }} />
           ) : (
             <div className={s.stage}>
               <p className={s.stageTitle}>Run not found</p>

@@ -11,7 +11,7 @@ import (
 // localJobs, which is nil on the group server, because the jobs table is not scoped by workspace (scope_test.go, localOnlyTables)
 // and an adopted catalog brings workspace 1's jobs in.
 var jobFiles = set("jobs.go", "jobwatch.go", "sweeps.go", "hostwrite.go", "hoststorage.go", "runenv.go", "analysis.go",
-	"capabilities.go", "server.go", "route.go")
+	"capabilities.go", "server.go", "route.go", "rerun_input.go")
 
 func TestMountedCodeReadsJobsThroughLocalJobs(t *testing.T) {
 	var bad []string

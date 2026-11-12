@@ -36,3 +36,7 @@ Go: `jobs/env_test.go` (read-only text and effect on a real checkout, facts and 
 
 ## Rollback / Migration
 Remove `EnvPreamble` from the two renderers and the `linkJobRun` read to stop capturing; the columns and files already written stay and are inert. A catalog at schema 16 is refused by an older build (restore the copy the upgrade made, ADR 0020). Delete `vesqira-env.json` on a host at any time; the run then shows the facts as unresolved.
+
+## Amendment: the input's full SHA-256 and ROHSA input facts (issue 121)
+
+A job drafted by "run this configuration on another cube" (ADR 0014 amendment) hashes its input itself: the preamble reads every byte of the input file once, before the program starts, with the file's size and modification time read before and after, and writes `input.full_sha256` (verified, or unresolved with a reason such as "the input file changed while it was being read"). It is a strict fact, compared between runs like the sampled fingerprint, and it is taken only for those jobs because it costs a pass over the file on the compute node. ROHSA jobs now report their input's size and time as well: the reader looked for a VGT config's `input_file`, and a ROHSA config names it `input`.

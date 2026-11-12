@@ -171,10 +171,10 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 		var aerr *apiErr
 		if rohsa {
 			b, aerr = s.buildROHSA(ctx, p.host, name, rohsaInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
-				CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account})
+				CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
 		} else {
 			b, aerr = s.buildVGT(ctx, p.host, name, vgtInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
-				CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account})
+				CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput})
 		}
 		if aerr != nil {
 			return p, &apiErr{aerr.Code, name + ": " + aerr.Msg}
@@ -504,7 +504,7 @@ func renderedFromSettings(base jobs.Job) (string, bool) {
 		if err != nil {
 			return "", false
 		}
-		script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: base.Name, RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, ExpectCommit: req.ExpectCommit})
+		script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: base.Name, RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, ExpectCommit: req.ExpectCommit, HashInput: req.HashInput})
 		return script, err == nil
 	}
 	req, ok := base.VGTRequest()
@@ -520,7 +520,7 @@ func renderedFromSettings(base jobs.Job) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: base.Name, RepoDir: req.RepoDir, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, ExpectCommit: req.ExpectCommit})
+	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: base.Name, RepoDir: req.RepoDir, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, ExpectCommit: req.ExpectCommit, HashInput: req.HashInput})
 	return script, err == nil
 }
 

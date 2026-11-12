@@ -98,8 +98,8 @@ func RunRecordWithEnvironment(j Job, hostName string, inputs []RunInput, ev Stat
 		if _, err := toml.Decode(m[1], &cfg); err == nil {
 			for _, f := range flatten(cfg) {
 				add(f[0], f[1])
-				if f[0] == "input.input_file" && f[1] != "" {
-					input = append(input, RunInput{Path: f[1], Source: "the config the job was submitted with (input.input_file), not checked"})
+				if f[0] == "input."+InputKey(j.Template) && f[1] != "" {
+					input = append(input, RunInput{Path: f[1], Source: "the config the job was submitted with (input." + InputKey(j.Template) + "), not checked"})
 				}
 			}
 		}
@@ -156,7 +156,7 @@ func RunRecordWithEnvironment(j Job, hostName string, inputs []RunInput, ev Stat
 				"script_sha256": "verified: computed over the exact script text sent to the host",
 				"slurm_id":      "verified: returned by sbatch",
 				"state":         ev.Label,
-				"inputs":        "declared: paths named in the job; the files were not hashed and may have changed",
+				"inputs":        inputsProvenance(env),
 				"code":          "unresolved: the commit of the code on the host was not read",
 			},
 		},
@@ -264,4 +264,22 @@ func flatten(m map[string]any) [][2]string {
 	}
 	walk("", m, 0)
 	return out
+}
+
+// inputsProvenance says how far the input paths are known. A job that hashed its input (a configuration run on another cube)
+// has the file's SHA-256 among the facts it observed; every other file named here was not hashed.
+func inputsProvenance(env json.RawMessage) string {
+	const base = "declared: paths named in the job; the files were not hashed and may have changed"
+	var facts []struct {
+		Key    string `json:"key"`
+		Status string `json:"status"`
+	}
+	if len(env) > 0 && json.Unmarshal(env, &facts) == nil {
+		for _, f := range facts {
+			if f.Key == "input.full_sha256" && f.Status == "verified" {
+				return "declared: paths named in the job. The input file's SHA-256 was computed by the job itself before it started (environment, input.full_sha256); any other file was not hashed and may have changed"
+			}
+		}
+	}
+	return base
 }

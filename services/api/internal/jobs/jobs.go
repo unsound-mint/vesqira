@@ -26,9 +26,10 @@ import (
 
 // envSpecFor reads the output folder and the input file out of the config text the job embeds ([input] output_dir and
 // input_file), so the preamble describes the files this very script will use.
-func envSpecFor(repoDir, config, expect string) EnvSpec {
-	in, out := ConfigPaths(config)
-	return EnvSpec{RepoDir: repoDir, OutputDir: out, InputFile: in, ExpectCommit: expect}
+func envSpecFor(template, repoDir, config, expect string, hashInput bool) EnvSpec {
+	_, out := ConfigPaths(config)
+	in := InputPathOf(template, config) // a VGT config's input_file, a ROHSA config's input
+	return EnvSpec{RepoDir: repoDir, OutputDir: out, InputFile: in, ExpectCommit: expect, HashInput: hashInput}
 }
 
 // ConfigPaths returns [input] input_file and output_dir from a config text, or "" for one that is missing or not a string.
@@ -116,6 +117,12 @@ type VGTRequest struct {
 	// (ADR 0054). ExpectCommit is the parent's revision a strict draft was rendered to insist on.
 	RerunMode    string `json:"rerunMode,omitempty"`
 	ExpectCommit string `json:"expectCommit,omitempty"`
+	// InputRerun is set when the draft runs another run's configuration on a different input cube; BaseConfigText then already
+	// names the new input (see inputrerun.go).
+	InputRerun *InputRerun `json:"inputRerun,omitempty"`
+	// HashInput: the script hashes every byte of the input file before the program starts (set for a configuration run on
+	// another cube, and kept by sweeps drafted from one, so their script is what their settings render).
+	HashInput bool `json:"hashInput,omitempty"`
 }
 
 // VGTRequest returns the stored request, or false for a job that has none (not VGT, or made before it was recorded).
@@ -155,6 +162,10 @@ func (j Job) configRequest(template string) (VGTRequest, bool) {
 type Lineage struct {
 	JobID       int64
 	ParentRunID *int64
+	// ConfigHash is the configuration hash of the job's request ("" when it kept none); InputRerun is set for a job drafted
+	// with "run this configuration on another cube".
+	ConfigHash string
+	InputRerun *InputRerun
 }
 
 func Hash(script string) string { h := sha256.Sum256([]byte(script)); return hex.EncodeToString(h[:]) }
@@ -194,6 +205,9 @@ type VGTSettings struct {
 	// ExpectCommit makes the job stop before the program starts unless the code folder is at this revision with no changed
 	// tracked file (a strict rerun, ADR 0054).
 	ExpectCommit string
+	// HashInput makes the job hash every byte of its input file before the program starts (a configuration run on another
+	// cube; the run then records input.full_sha256 as the job's own observation).
+	HashInput bool
 }
 
 const configEnd = "VESQIRA_CONFIG_END"
@@ -236,7 +250,7 @@ func RenderVGT(p VGTSettings) (string, error) {
 	b.WriteString("threads=\"${SLURM_CPUS_PER_TASK:-1}\"\nexport JULIA_NUM_THREADS=\"$threads\"\n")
 	b.WriteString("echo \"job_id=$SLURM_JOB_ID host=$(hostname) threads=$threads\"\ndate --iso-8601=seconds\n")
 	b.WriteString("command -v julia >/dev/null || { echo \"Julia is not on PATH\" >&2; exit 2; }\n")
-	b.WriteString(EnvPreamble(envSpecFor(p.RepoDir, p.Config, p.ExpectCommit)))
+	b.WriteString(EnvPreamble(envSpecFor("vgt", p.RepoDir, p.Config, p.ExpectCommit, p.HashInput)))
 	b.WriteString("srun --ntasks=1 julia --project=. --threads=\"$threads\" main.jl \"$cfg\"\ndate --iso-8601=seconds\n")
 	return b.String(), nil
 }
@@ -252,8 +266,9 @@ type ROHSASettings struct {
 	Time       string
 	Partition  string
 	Account    string
-	// ExpectCommit: as for VGTSettings.
+	// ExpectCommit and HashInput: as for VGTSettings.
 	ExpectCommit string
+	HashInput    bool
 }
 
 // RenderROHSA renders the batch script for one ROHSA run, following the pipeline's own ROHSA cluster script: write the
@@ -305,7 +320,7 @@ func RenderROHSA(p ROHSASettings) (string, error) {
 	b.WriteString("# the optimiser loop is OpenMP-parallel: match threads to the allocation\n")
 	b.WriteString("export OMP_NUM_THREADS=\"${SLURM_CPUS_PER_TASK:-1}\"\nulimit -s unlimited\nexport OMP_STACKSIZE=256M\n")
 	// after the module and build lines above: the environment recorded is the one the program starts in
-	b.WriteString(EnvPreamble(envSpecFor(p.RepoDir, p.Config, p.ExpectCommit)))
+	b.WriteString(EnvPreamble(envSpecFor("rohsa", p.RepoDir, p.Config, p.ExpectCommit, p.HashInput)))
 	b.WriteString("srun --ntasks=1 julia --project=. rohsa/cli/preprocess.jl --config \"$config\"\ndate --iso-8601=seconds\n")
 	return b.String(), nil
 }
@@ -1007,7 +1022,7 @@ func (s *Store) LinkRun(id, runID int64) error {
 // Lineages maps every run that a job's outputs became to that job (the latest one, if a run was registered twice).
 // One query for the whole run list.
 func (s *Store) Lineages() (map[int64]Lineage, error) {
-	rows, err := s.db.Query(`SELECT run_id, id, parent_run_id FROM jobs WHERE run_id IS NOT NULL ORDER BY id`)
+	rows, err := s.db.Query(`SELECT run_id, id, parent_run_id, template, request FROM jobs WHERE run_id IS NOT NULL ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -1016,10 +1031,17 @@ func (s *Store) Lineages() (map[int64]Lineage, error) {
 	for rows.Next() {
 		var run, id int64
 		var parent sql.NullInt64
-		if err := rows.Scan(&run, &id, &parent); err != nil {
+		var template, request string
+		if err := rows.Scan(&run, &id, &parent, &template, &request); err != nil {
 			return nil, err
 		}
 		l := Lineage{JobID: id}
+		if (template == "vgt" || template == "rohsa") && request != "" {
+			if req, ok := (Job{Template: template, Request: request}).ConfigRequest(); ok {
+				l.ConfigHash, _ = ConfigHash(template, req)
+				l.InputRerun = req.InputRerun
+			}
+		}
 		if parent.Valid {
 			l.ParentRunID = &parent.Int64
 		}
