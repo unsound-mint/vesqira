@@ -1,7 +1,7 @@
 """Relative orientation (ADR 0047): golden cases computed independently in the tests.
 
-Independence: expected numbers come from astropy and plain loops written here (SkyCoord.separation per pixel, the owner's
-script transcribed line by line), never from relorient's own helpers.
+Independence: expected numbers come from astropy and plain loops written here (SkyCoord.separation per pixel, and a plain-loop
+reference computation of the star comparison written out step by step), never from relorient's own helpers.
 """
 import json
 import math
@@ -96,15 +96,17 @@ def axial_dist(a, b):
     return np.minimum(d, 180.0 - d)
 
 
-# ---------------------------------------------------------------------------------------------------- the owner's procedure
-# Transcribed from ~/Projects/VGT/scripts/vgt_phase_vs_stars.py (disk_axial_mean lines 55-66, compare lines 83-117) and
-# compare_vgt_polarization.py (headless 44-45, galactic_angle_to_pixel 55-64). Angles in radians, as there.
+# ------------------------------------------------------------------------------------------------ the reference computation
+# A plain-loop reference for the star comparison, written here from its description: the map's orientation at a star is the
+# doubled-angle mean over a disk of pixels around the pixel nearest the star (a disk that leaves the map, or has fewer than 5
+# usable pixels, is not used); the null moves the whole star pattern by a random offset with wrap and keeps each star's angle.
+# Angles in radians; the position angle in pixels is found by a one-arcsecond step on the sky.
 
-def owner_headless(d):
+def ref_headless(d):
     return (d + np.pi / 2) % np.pi - np.pi / 2
 
 
-def owner_angle_to_pixel(wcs, l, b, theta, frame):
+def ref_angle_to_pixel(wcs, l, b, theta, frame):
     step = 1.0 / 3600.0
     l2 = l + step * np.sin(theta) / np.cos(np.radians(b))
     b2 = b + step * np.cos(theta)
@@ -113,7 +115,7 @@ def owner_angle_to_pixel(wcs, l, b, theta, frame):
     return np.arctan2(y2 - y1, x2 - x1)
 
 
-def owner_disk_axial_mean(psi, x, y, r):
+def ref_disk_axial_mean(psi, x, y, r):
     ny, nx = psi.shape
     xi, yi = int(round(x)), int(round(y))
     ri = int(np.ceil(r))
@@ -127,11 +129,11 @@ def owner_disk_axial_mean(psi, x, y, r):
     return 0.5 * np.arctan2(np.sin(2 * v).sum(), np.cos(2 * v).sum())
 
 
-def owner_compare(psi, wcs, lon, lat, pa, r_px, nshift, rng, deg_px):
+def ref_compare(psi, wcs, lon, lat, pa, r_px, nshift, rng, deg_px):
     x, y = wcs.world_to_pixel(SkyCoord(lon * u.deg, lat * u.deg, frame="icrs"))
-    phi = owner_angle_to_pixel(wcs, lon, lat, pa, frame="icrs")
-    v = np.array([owner_disk_axial_mean(psi, xi, yi, r_px) for xi, yi in zip(x, y)])
-    d = owner_headless(v - phi)
+    phi = ref_angle_to_pixel(wcs, lon, lat, pa, frame="icrs")
+    v = np.array([ref_disk_axial_mean(psi, xi, yi, r_px) for xi, yi in zip(x, y)])
+    d = ref_headless(v - phi)
     ok = np.isfinite(d)
     am = float(np.mean(np.cos(2 * d[ok])))
     n_real = int(ok.sum())
@@ -144,8 +146,8 @@ def owner_compare(psi, wcs, lon, lat, pa, r_px, nshift, rng, deg_px):
             if np.hypot(dx, dy) >= deg_px:
                 break
         xs, ys = (x + dx) % nx, (y + dy) % ny
-        vs = np.array([owner_disk_axial_mean(psi, a, b, r_px) for a, b in zip(xs, ys)])
-        ds = owner_headless(vs - phi)
+        vs = np.array([ref_disk_axial_mean(psi, a, b, r_px) for a, b in zip(xs, ys)])
+        ds = ref_headless(vs - phi)
         oks = np.isfinite(ds)
         if oks.sum() >= n_sub:
             pick = rng.choice(np.where(oks)[0], n_sub, replace=False)
@@ -226,7 +228,7 @@ class Disk(Base):
             self.assertEqual(npx[i], int(m.sum()))
             self.assertLess(axial_dist(theta[i], expect), 1e-9)
             self.assertAlmostEqual(R[i], math.hypot((ww * np.sin(t)).sum(), (ww * np.cos(t)).sum()) / ww.sum(), places=12)
-        self.assertEqual(st[3], "edge")                 # its search box (ri = 5) leaves the map, as in the owner's script
+        self.assertEqual(st[3], "edge")                 # its search box (ri = 5) leaves the map, by the disk rule
 
 
 class CatalogMode(Base):
@@ -351,7 +353,7 @@ class CatalogMode(Base):
         lines = Path(self.p("out.csv")).read_text().splitlines()
         self.assertEqual(len(lines), n + 1)                           # every row stays in the table
         self.assertEqual(sum(1 for ln in lines[1:] if ln.endswith("P/σP below 3")), int(low.sum()))
-        # a ratio exactly at k is kept (>=, as the script)
+        # a ratio exactly at k is kept (>=)
         p2, sp2 = np.full(n, 3.0), np.full(n, 1.0)
         m, c, d = self.snr_catalog(p2, sp2)
         self.assertNotIn("P/σP below 3", self.run_snr(m, c, d, {"snr_column": "P", "snr_sigma_column": "sP", "snr_min": 3.0})["counts"]["excluded"])
@@ -364,7 +366,7 @@ class CatalogMode(Base):
         p, sp = r.uniform(0.1, 2.0, n), r.uniform(0.1, 0.5, n)
         m, c, d = self.snr_catalog(p, sp)
         off = self.run_snr(m, c, d, {})
-        on = self.run_snr(m, c, d, {"snr_column": "P", "snr_sigma_column": "sP"})            # default threshold: the script's 3
+        on = self.run_snr(m, c, d, {"snr_column": "P", "snr_sigma_column": "sP"})            # default threshold: 3
         m0, c0, w, phi = self.build(lambda w, xs, ys, phi, rr: self.b_at(w, xs, ys, phi), nstar=n)
         plain = self.run_op(m0, c0)
         self.assertEqual((off["am"], off["counts"], off["parameters"]), (plain["am"], plain["counts"], plain["parameters"]))
@@ -381,7 +383,7 @@ class CatalogMode(Base):
             m, c, d = self.snr_catalog(np.ones(10), np.ones(10))
             self.run_snr(m, c, {**d, "values": ["P"]}, {"snr_column": "P", "snr_sigma_column": "sP"})      # sP is not a declared value column
 
-    def test_sigma_weights_follow_the_owners_floor(self):
+    def test_sigma_weights_follow_the_one_degree_floor(self):
         m, c, w, phi = self.build(lambda w, xs, ys, phi, r: self.b_at(w, xs, ys, phi), sigma=np.full(80, 0.5))
         s = self.run_op(m, c, sigma=True)
         self.assertIsNotNone(s["am_weighted"])
@@ -411,9 +413,9 @@ class CatalogMode(Base):
 
 
 class OwnerNull(Base):
-    def test_the_shifted_pattern_null_reproduces_the_owners_script_with_the_same_seed(self):
+    def test_the_shifted_pattern_null_matches_an_independent_reference_with_the_same_seed(self):
         # A rotated grid (north turns across the map), a structured field with holes, stars inside and outside the map.
-        # r = 2.5 pixels: no pixel centre lies near the disk edge (squared offsets 5 and 8 bracket 6.25), so the owner's
+        # r = 2.5 pixels: no pixel centre lies near the disk edge (squared offsets 5 and 8 bracket 6.25), so the reference's
         # pixel-distance disk around the rounded pixel and the sky-distance disk select the same pixels.
         nx, ny, scale = 40, 30, 3.0 / 60.0
         h = header(nx, ny, scale, rot_deg=30.0)
@@ -432,7 +434,7 @@ class OwnerNull(Base):
         s = ro.op_catalog(a, {"radius_arcmin": 2.5 * scale * 60.0, "n_shifts": nshift, "min_shift_deg": min_deg, "seed": seed})["summary"]
         from astropy.wcs.utils import proj_plane_pixel_scales
         deg_px = min_deg / float(np.mean(proj_plane_pixel_scales(w)))
-        am, chance, n_real, n_null, pval = owner_compare(np.radians(psi_deg), w, sky.ra.deg, sky.dec.deg, np.radians(pa), 2.5, nshift,
+        am, chance, n_real, n_null, pval = ref_compare(np.radians(psi_deg), w, sky.ra.deg, sky.dec.deg, np.radians(pa), 2.5, nshift,
                                                          np.random.default_rng(seed), deg_px)
         self.assertEqual(s["counts"]["used"], n_real)
         self.assertAlmostEqual(s["am"], am, places=6)
@@ -515,7 +517,7 @@ class MapMode(Base):
         out = fits.getdata(self.p("d.fits")).astype(float)
         np.testing.assert_allclose(out[ok], np.abs(d[ok]), atol=1e-4)
         self.assertTrue(np.isnan(out[~ok]).all())
-        # beams: n × pixel area / (π/(4 ln 2) × BMAJ × BMIN), the owner's 1.1331 FWHM² approximation
+        # beams: n × pixel area / (π/(4 ln 2) × BMAJ × BMIN), the 1.1331 FWHM² approximation
         expect = ok.sum() * (1.0 / 60.0) ** 2 / (1.1331 * (3.0 / 60.0) * (2.0 / 60.0))
         self.assertAlmostEqual(s["independent_samples"]["value"], expect, delta=expect * 1e-3)
         self.assertEqual(len(Path(self.p("t.csv")).read_text().splitlines()), ok.sum() + 1)
@@ -745,6 +747,89 @@ class Strata(Base):
         self.assertEqual((s1["binning"]["mode"], s1["binning"]["bins"]), ("equal_count", 5))
         other = self.run_op(pa, pb, pc, {"seed": 10})["stratified"]
         self.assertNotEqual(s1["bins"][0]["bootstrap_am_16_84"], other["bins"][0]["bootstrap_am_16_84"])
+
+
+class Presets(CatalogMode):
+    """Analysis presets (ADR 0068 slice 1): named defaults from relorient_presets.json, explicit parameters win."""
+
+    # The literal values the analysis used before presets existed. If these change, results of the same inputs change.
+    BEFORE = {"radius_arcmin": 10.0, "min_pixels": 5, "snr_min": 3.0, "sigma_floor_deg": 1.0, "boot_samples": 2000,
+              "n_shifts_catalog": 3000, "n_shifts_maps": 1000, "min_shift_deg": 1.0, "keep_fraction": 0.9, "seed": 20261020,
+              "bins": 9, "strata_bins": 5}
+
+    def test_the_standard_preset_holds_the_values_used_before_presets(self):
+        std = ro.resolve_preset(None)
+        self.assertEqual((std.name, std.version), ("standard", 1))
+        self.assertEqual(std.values, self.BEFORE)
+        self.assertEqual(ro.resolve_preset("standard").values, self.BEFORE)
+        self.assertEqual((ro.BOOT_SAMPLES, ro.SNR_DEFAULT, ro.SIGMA_FLOOR_DEG, ro.STRATA_DEFAULT_BINS), (2000, 3.0, 1.0, 5))
+
+    def test_every_value_of_every_preset_has_a_reason_and_the_lmc_preset_says_it_is_the_same(self):
+        raw = ro.load_presets()["raw"]
+        self.assertEqual(raw["default"], "standard")
+        for pr in raw["presets"]:
+            self.assertEqual(set(pr["values"]), set(ro.PRESET_KEYS), pr["name"])
+            for k, v in pr["values"].items():
+                self.assertGreater(len(v["reason"]), 10, (pr["name"], k))
+                self.assertNotRegex(v["reason"], r"\.py|line \d|/home/|~/", (pr["name"], k))
+        lmc = ro.resolve_preset("lmc-star-comparison")
+        self.assertEqual(lmc.values, self.BEFORE)
+        self.assertIn("same as in the standard preset", lmc.description)
+
+    def test_an_unknown_preset_is_refused_and_the_known_ones_are_named(self):
+        for bad in ("nope", 5, ["standard"]):
+            with self.assertRaises(ro.Refusal) as e:
+                ro.check_params({"preset": bad}, "catalog")
+            self.assertIn("standard", str(e.exception))
+            self.assertIn("lmc-star-comparison", str(e.exception))
+
+    def test_defaults_come_from_the_preset_and_an_explicit_parameter_wins(self):
+        p = ro.check_params({"preset": "lmc-star-comparison"}, "maps")
+        self.assertEqual((p["n_shifts"], p["bins"], p["seed"]), (1000, 9, 20261020))
+        p = ro.check_params({"n_shifts": 7, "bins": 4}, "catalog")
+        self.assertEqual((p["n_shifts"], p["bins"], p["min_shift_deg"]), (7, 4, 1.0))
+        std = ro.resolve_preset(None)
+        rec = std.record({"n_shifts": 7, "bins": 9, "seed": 5}, "catalog")
+        self.assertEqual(rec["overridden"], {"n_shifts": {"preset": 3000, "used": 7}, "seed": {"preset": 20261020, "used": 5}})
+
+    def test_a_catalog_result_names_its_preset_and_the_numbers_do_not_depend_on_naming_it(self):
+        m, c, w, phi = self.build(lambda w, xs, ys, phi, r: self.b_at(w, xs, ys, phi) + np.random.default_rng(3).normal(0, 20, xs.size))
+        base = self.run_op(m, c, params={"n_shifts": 30})
+        explicit = self.run_op(m, c, params={"n_shifts": 30, "preset": "standard", **{k: v for k, v in self.BEFORE.items() if k in ("min_shift_deg", "keep_fraction", "seed", "bins", "min_pixels")}})
+        lmc = self.run_op(m, c, params={"n_shifts": 30, "preset": "lmc-star-comparison"})
+        for s in (base, explicit, lmc):
+            self.assertEqual(s["preset"]["values"], self.BEFORE)
+        self.assertEqual((base["preset"]["name"], base["preset"]["version"]), ("standard", 1))
+        self.assertEqual(base["preset"]["overridden"], {"radius_arcmin": {"preset": 10.0, "used": 2.0}, "n_shifts": {"preset": 3000, "used": 30}})
+        self.assertEqual(lmc["preset"]["name"], "lmc-star-comparison")
+        for k in ("am", "am_weighted", "bootstrap_am_16_84", "null", "histogram", "parameters"):
+            self.assertEqual(base[k], explicit[k], k)
+            self.assertEqual(base[k], lmc[k], k)
+        self.assertEqual(base["bootstrap_resamples"], 2000)
+        self.assertIn("2000 resamples", base["bootstrap_note"])
+
+    def test_no_user_visible_text_cites_a_file_or_line_a_reader_cannot_open(self):
+        m, c, w, phi = self.build(lambda w, xs, ys, phi, r: self.b_at(w, xs, ys, phi), sigma=np.full(80, 2.0))
+        s = self.run_op(m, c, sigma=True, params={"n_shifts": 5})
+        text = json.dumps(s)
+        self.assertNotRegex(text, r"vgt_phase|star_vgt|compare_vgt|\.py|line \d+|/home/|Projects/")
+
+    def test_a_preset_can_change_the_bootstrap_count_and_the_sigma_floor(self):
+        # a preset that differs from standard: the values it supplies are used and recorded (the file on disk is not changed)
+        raw = json.loads(json.dumps(ro.load_presets()["raw"]))
+        raw["presets"][1]["values"]["boot_samples"]["value"] = 50
+        raw["presets"][1]["values"]["sigma_floor_deg"]["value"] = 5.0
+        other = ro.Preset(raw["presets"][1])
+        m, c, w, phi = self.build(lambda w, xs, ys, phi, r: self.b_at(w, xs, ys, phi), sigma=np.full(80, 2.0))
+        old = dict(ro.load_presets()["presets"])
+        try:
+            ro.load_presets()["presets"]["lmc-star-comparison"] = other
+            s = self.run_op(m, c, sigma=True, params={"preset": "lmc-star-comparison", "n_shifts": 0})
+        finally:
+            ro.load_presets()["presets"].update(old)
+        self.assertEqual(s["bootstrap_resamples"], 50)
+        self.assertEqual(s["preset"]["values"]["sigma_floor_deg"], 5.0)
+        self.assertIn("max(σ, 5°)", s["weighting"]["sources"])
 
 
 class Program(Base):

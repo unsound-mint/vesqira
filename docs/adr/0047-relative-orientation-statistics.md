@@ -5,18 +5,18 @@
 - Related: ADR 0042 (declared angle frame and quantity, axial resampling), 0044 (point catalogs), roadmap Stage S
 
 ## Context
-The owner compares VGT orientation maps with starlight polarization and with Planck dust polarization using his own scripts in the VGT repository. Three of them define the method this ADR follows. Paths below are relative to `scripts/` in that repository, read at the date above:
-- `compare_vgt_polarization.py`:
-  - the alignment measure AM = ⟨cos 2Δψ⟩ with headless angles (lines 23-24, 44-45, 73-77);
-  - star angles carried into the map's pixel frame (55-64);
-  - Planck handling: it asserts `POLCCONV = COSMO` (96), flips U to IAU (88), takes θ_B = ½ atan2(U, Q) + 90° (170), averages Q and U over blocks rather than angles (159-160, 176-178), and cuts on P/σP (163-167).
-- `vgt_phase_vs_stars.py`:
-  - VGT averaged axially in a disk around each star (55-66);
-  - the shifted-pattern null (97-117);
-  - defaults: a 10 arcmin radius and 3000 shifts (123-124), seed 20261020 (34).
-- `star_vgt_scale_analysis.py`: weighted AM (63-69), a permutation null (72-79), a bootstrap 16-84% range (82-87), and weights 1/max(σ_PA, 1°)² (269).
+The owner compares VGT orientation maps with starlight polarization and with Planck dust polarization using the group's own scripts. This ADR follows the method of three of them, described here so a reader does not need the scripts:
+- A map-against-map comparison script:
+  - the alignment measure AM = ⟨cos 2Δψ⟩ with headless angles;
+  - star angles carried into the map's pixel frame;
+  - Planck handling: it asserts `POLCCONV = COSMO`, flips U to IAU, takes θ_B = ½ atan2(U, Q) + 90°, averages Q and U over blocks rather than angles, and cuts on P/σP.
+- A star-comparison script:
+  - VGT averaged axially in a disk around each star;
+  - a shifted-pattern null, where the whole star pattern moves across the map and the angles stay;
+  - defaults: a 10 arcmin radius, 3000 shifts and seed 20261020.
+- A scale-analysis script: weighted AM, a permutation null, a bootstrap 16-84% range, and weights 1/max(σ_PA, 1°)².
 
-ADR 0042 made the angle's frame and quantity declared facts, and ADR 0044 made catalogs datasets with a declared frame and angle. What is still missing is the comparison itself, with the owner's chance level and numbers that come out the same on every run.
+ADR 0042 made the angle's frame and quantity declared facts, and ADR 0044 made catalogs datasets with a declared frame and angle. What is still missing is the comparison itself, with the group's chance level and numbers that come out the same on every run.
 
 ## Decision
 
@@ -45,34 +45,34 @@ The ADR 0042 rules apply: a gradient or dust polarization is rotated by +90°; s
 ### Definitions
 | Quantity | Definition |
 |---|---|
-| Δψ | ψ_map − ψ_other folded into [−90°, 90°) (`compare_vgt_polarization.py:44-45`). The relative orientation is \|Δψ\| ∈ [0°, 90°], so 1° and 179° are 2° apart |
+| Δψ | ψ_map − ψ_other folded into [−90°, 90°). The relative orientation is \|Δψ\| ∈ [0°, 90°], so 1° and 179° are 2° apart |
 | AM | mean of cos 2Δψ: 1 parallel, 0 no preferred relative orientation, −1 perpendicular |
-| Weighted AM | Σ w cos 2Δψ / Σ w (`star_vgt_scale_analysis.py:63-69`). Mode A uses w = 1/max(σ, 1°)², σ in radians, from the catalog's declared uncertainty column (line 269). Mode B uses w = the product of the two declared reliabilities, 1 for a map without one |
+| Weighted AM | Σ w cos 2Δψ / Σ w. Mode A uses w = 1/max(σ, 1°)², σ in radians, from the catalog's declared uncertainty column; the 1° floor keeps a very precise source from dominating. Mode B uses w = the product of the two declared reliabilities, 1 for a map without one |
 | Projected Rayleigh statistic (mode B) | V = Σ w cos θ / sqrt(Σ w² / 2) with θ = 2Δψ. This is Jow et al. 2018 (MNRAS 474, 1018; arXiv:1708.04063), eq. 8, and eq. 6 when every w is 1; eq. 2 defines the relative angle in [−90°, 90°] and the doubling. The paper writes Z_x (eq. 6) and Z*_x (eq. 8) and introduces it as the V statistic of Durand & Greenwood (1958), renamed the projected Rayleigh statistic; V here follows that origin. Positive means preferentially parallel. It is asymptotically N(0, 1) only for independent angles |
 | Histogram | \|Δψ\| in equal-width bins over [0°, 90°]: 9 bins of 10° by default, 2 to 90 bins as a parameter. Every bin is the same width, so no split needs a separate reason |
-| Bootstrap (mode A) | 16th to 84th percentile of AM over 2000 resamples with replacement (`star_vgt_scale_analysis.py:82-87`) |
+| Bootstrap (mode A) | 16th to 84th percentile of AM over 2000 resamples with replacement |
 
 ### Mode A sampling (map at each source)
 - The map is averaged with the doubled angle over a disk:
-  - The disk is centred on the pixel nearest the source (`vgt_phase_vs_stars.py:57`).
-  - Pixels count when their centres lie within the radius, measured as angular distance between pixel-centre unit vectors from astropy `pixel_to_world`. The owner's script measures pixel distance instead (63), with r_px taken from the mean pixel scale (140).
+  - The disk is centred on the pixel nearest the source.
+  - Pixels count when their centres lie within the radius, measured as angular distance between pixel-centre unit vectors from astropy `pixel_to_world`. The group's star-comparison script measures pixel distance instead, with the radius in pixels taken from the mean pixel scale.
   - NaN pixels are left out.
   - Each pixel is weighted by the map's declared reliability. Without one the mean is unweighted, and the result says which.
 - Kept from the script:
-  - the search box half-width ri = ceil(r / mean pixel scale) (50-52, 58);
-  - a box that leaves the map excludes the source (58-60);
-  - fewer than 5 usable pixels excludes the source (64). The minimum is a parameter.
+  - the search box half-width ri = ceil(r / mean pixel scale);
+  - a box that leaves the map excludes the source;
+  - fewer than 5 usable pixels excludes the source. The minimum is a parameter.
 - Added:
   - A disk whose doubled-angle resultant is below 1e-6 has no mean and is excluded. The script would take atan2(0, 0) = 0.
   - The summary counts disks that reach the edge of the search box, which happens where the local pixel scale is smaller than the mean.
 - Every catalog row is accounted for. Each excluded row is counted with its reason (position, angle, no pixel, outside the map, disk at the edge, too few pixels, zero weights, cancelling orientations) and listed in the table.
 
-### Mode A null: the owner's shifted pattern, ported line by line (`vgt_phase_vs_stars.py:97-117`)
+### Mode A null: the group's shifted pattern, ported step by step
 1. n_real is the number of sources used. n_sub = int(keep · n_real), with keep = 0.9 by default.
-2. For each of the N shifts (3000 by default), draw dx = uniform(−nx, nx), then dy = uniform(−ny, ny). Redraw until hypot(dx, dy) ≥ the minimum shift in pixels, which is 1° divided by the mean pixel scale (100, 104-107).
-3. Wrap positions as (x + dx) % nx and (y + dy) % ny (108). Each source keeps the pixel-frame angle it had at its true position (92, 110).
+2. For each of the N shifts (3000 by default), draw dx = uniform(−nx, nx), then dy = uniform(−ny, ny). Redraw until hypot(dx, dy) ≥ the minimum shift in pixels, which is 1° divided by the mean pixel scale.
+3. Wrap positions as (x + dx) % nx and (y + dy) % ny. Each source keeps the pixel-frame angle it had at its true position.
 4. Every source with a pixel position and an angle takes part, including sources outside the map, which the wrap brings in.
-5. A shift is kept when at least n_sub shifted sources have a usable disk. It is then scored on exactly n_sub of them, drawn with `choice(..., replace=False)` (112-114). A rejected shift is not redrawn.
+5. A shift is kept when at least n_sub shifted sources have a usable disk. It is then scored on exactly n_sub of them, drawn without replacement. A rejected shift is not redrawn.
 6. chance95 = the 95th percentile of the kept AMs (117). The one-sided p = (#kept AM ≥ observed AM + 1)/(kept + 1) (116).
 
 The random stream is `numpy.random.Generator(PCG64(seed))`, which is the same as the script's `default_rng(seed)`. Draws are consumed in the script's order, so the same seed gives the same null; the test checks this. The bootstrap uses its own stream (`SeedSequence(seed, spawn_key=(1,))`) so that it never shifts the null's sequence.
@@ -146,7 +146,7 @@ A map-against-map comparison takes an optional `stratifyId`: a scalar map on the
 ## Alternatives
 - **Average the map with a fixed pixel disk, as the script does.** Rejected for membership because the requested radius is on the sky. The centre rounding, the box and the edge rule are kept, so on a regular grid the two give the same disk; the reproduction test relies on this.
 - **Compare in the sky frame and keep each source's sky angle in the null.** Holding the sky angle instead of the pixel angle gives a different null wherever north turns across the grid. The script holds the pixel angle, so this does too.
-- **A permutation null (`star_vgt_scale_analysis.py:72-79`).** It ignores spatial structure in the map. The shifted pattern keeps it and is what the owner reports for stars.
+- **A permutation null.** It ignores spatial structure in the map. The shifted pattern keeps it and is what the group reports for stars.
 - **Convert V into a p-value with an effective N.** No validated method gives N for VGT's window correlation, so none is offered.
 - **Register no file, only a record.** The derived store is keyed by a dataset, and a table people can open and export is the useful artefact.
 
@@ -165,16 +165,16 @@ A map-against-map comparison takes an optional `stratifyId`: a scalar map on the
 - No significance is stated from a raw pixel count.
 
 ### Deferred
-- **Source selection by P/σP** (`vgt_phase_vs_stars.py:87`): the catalog declaration names no P columns. Filter the catalog before registering it.
-- **Block (Stokes) averaging before comparison** (`compare_vgt_polarization.py:67-70, 159-178`): use convolve or align first.
-- ~~**Planck HEALPix ingestion and the COSMO→IAU U flip** (88, 96).~~ Implemented by [ADR 0067](0067-planck-healpix-polarization-maps.md):
+- **Source selection by P/σP**: the catalog declaration names no P columns. Filter the catalog before registering it. (Done later: an optional P/σP filter, see the row filter note at the end.)
+- **Block (Stokes) averaging before comparison**: use convolve or align first.
+- ~~**Planck HEALPix ingestion and the COSMO→IAU U flip**.~~ Implemented by [ADR 0067](0067-planck-healpix-polarization-maps.md):
   - a HEALPix map is registered only when it states POLCCONV and COORDSYS;
   - it is sampled onto the map's grid as Q and U, with the flip and the per-pixel turn from Galactic north;
   - the result is a `dust_polarization` or `b_field` map declared by the operation, which this comparison takes like any other, and its P/σP threshold restricts the comparison.
   An angle map made outside Vesqira still carries no POLCCONV, so for such a map the convention remains unchecked.
 - **Remote data.** Both inputs must be on this computer, as for the axial difference and for catalogs (ADR 0044). There is no host job for this analysis yet.
 - **Drawing the segments through the scene's catalog overlay.** That overlay is not drawn yet (ADR 0042), so the figure is self-contained and has no raster underlay.
-- **A cell or friends-of-friends grouping and a half-split ceiling** (`star_vgt_scale_analysis.py:123-156`).
+- **A cell or friends-of-friends grouping and a half-split ceiling.**
 - **The design gate.** This means three directions and human approval; the owner reviews afterwards, per Stage S.
 
 ## Validation
@@ -200,3 +200,13 @@ A map-against-map comparison takes an optional `stratifyId`: a scalar map on the
 Nothing is migrated. Removing the feature leaves the registered result files and their derived records, which read as an ordinary catalog or map with a record whose operation is `relorient_*`.
 
 - **Shared row filter.** The optional P/σP filter on catalog runs (`snr_column`, `snr_sigma_column`, `snr_min`) calls `catalog_table.snr_filter(value, sigma, k)`, the same function the catalog overlay's row filter uses (ADR 0042, fourth slice; its wire names are `filter.column`, `filter.sigmaColumn`, `filter.min`). Rule: keep when `P/σP >= k`; a missing or unreadable P or σP, or σP <= 0, has no ratio and is excluded with its own reason (`snr_missing`), a known ratio under k with `snr`. Tests: `test_snr_filter.py`.
+
+## Amendment: presets (ADR 0068, slice 1)
+The analysis defaults (disk radius 10 arcmin, at least 5 pixels, P/σP ≥ 3, the 1° weight floor, 2000 bootstrap resamples, 3000 catalog shifts and 1000 map shifts, a 1° minimum shift, keep fraction 0.9, seed 20261020, 9 histogram bins, 5 third-map bins) came from one researcher's scripts. They are now named, versioned presets in `services/scientific-worker/relorient_presets.json`, each value with a one-sentence reason.
+- `standard` is the default and holds exactly the values above, so no result changes. `lmc-star-comparison` is the group's LMC starlight comparison; every value equals `standard` and its description says so. P/σP ≥ 3 is the usual detection threshold for a polarization angle (angle error at most about 9.5°); it applies only when the P and σP columns are chosen.
+- A request may name `preset`. A parameter set explicitly replaces the preset's value. The result and its derived record store `preset: {name, version, values, overridden}`: every value the preset supplied (including the bootstrap count and the weight floor, which are not request parameters) and the parameters that replaced one. A result made before this amendment has no `preset`; its parameters are as stated.
+- An unknown name is refused (422) and the known ones are listed. `GET /api/analysis/relative-orientation/presets` serves the file for the form, which fills its fields from the chosen preset.
+- The file is flat in the worker folder and listed in `DEPLOY` so the RPM and remote hosts carry it. Relative orientation itself still runs on this computer only.
+- Results and definitions no longer cite script files or line numbers. A code comment may say a step was ported from the group's star-comparison script.
+- Validation: `test_relorient.py` (the standard preset equals the previous literals, an unknown preset is refused, an explicit value wins, the numbers are the same with or without naming the preset, and the independent reference computation still matches), the Go test (preset recorded in the derived record, the presets route, an unknown name), and the web test (fields fill from a chosen preset).
+- Rollback: drop the `preset` request field and the route. The worker's defaults equal the old literals, so nothing else changes; stored records keep an unused `preset` object.

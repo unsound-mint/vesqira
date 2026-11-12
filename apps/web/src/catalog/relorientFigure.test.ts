@@ -2,7 +2,8 @@ import { bootstrapNote, niceLength } from "./RelativeOrientation";
 
 describe("bootstrap interval wording", () => {
   it("explains an interval with no width instead of showing 1.000 to 1.000 bare", () => {
-    expect(bootstrapNote([1, 1], 4)).toMatch(/No spread: all 2000 resamples of the 4 used sources gave the same value/);
+    expect(bootstrapNote([1, 1], 4, 2000)).toMatch(/No spread: all 2000 resamples of the 4 used sources gave the same value/);
+    expect(bootstrapNote([1, 1], 4)).toMatch(/No spread: all resamples of the 4 used/);   // a result made before the count was recorded
     expect(bootstrapNote([1, 1], 1)).toMatch(/the 1 used source gave/);
   });
   it("says nothing when the interval has a width", () => {

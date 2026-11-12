@@ -1306,7 +1306,7 @@ def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
                 "model": "sum of the valid components, each amp * exp(-(channel - mean_channel)^2 / (2 sigma^2)) at every channel",
                 "invalid": "a component whose sigma is not positive and finite is listed as invalid and is not drawn; no floor is applied; amplitude 0 is a real value",
                 "fwhm": "2 sqrt(2 ln 2) sigma",
-                "t_doppler": f"T_D = {rohsa.DOPPLER_K_PER_KMS2} K (km/s)^-2 x sigma^2: the pipeline's constant, m_H sigma^2 / k_B for atomic hydrogen; an upper limit on the kinetic temperature (thermal broadening only)"}}
+                "t_doppler": f"T_D = {rohsa.DOPPLER_K_PER_KMS2} K (km/s)^-2 x sigma^2: m_H sigma^2 / k_B for atomic hydrogen, with m_H = 1.6735e-27 kg and k_B = 1.380649e-23 J/K; an upper limit on the kinetic temperature (thermal broadening only)"}}
     return head, payload
 
 
