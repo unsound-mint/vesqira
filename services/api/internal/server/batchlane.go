@@ -100,6 +100,19 @@ func (s *Server) quotaRefusal(ws workspace.ID, size int64) string {
 	if err != nil {
 		return "this workspace is not available"
 	}
+	used := s.managedUse(ws)
+	if s.Pushed != nil {
+		used += s.Pushed.AssetBytes(ws) + s.Pushed.DocBytes(ws) // what linked instances pushed counts too (ADR 0066 limits)
+	}
+	if used+size <= wsp.QuotaBytes {
+		return ""
+	}
+	return fmt.Sprintf("this workspace keeps %s of managed copies and may keep %s; this copy needs %s more: delete copies it no longer needs, or ask the admin to raise the quota",
+		humanBytes(used), humanBytes(wsp.QuotaBytes), humanBytes(size))
+}
+
+// managedUse is what the workspace's managed folder holds on disk.
+func (s *Server) managedUse(ws workspace.ID) int64 {
 	var used int64
 	_ = filepath.WalkDir(s.managedDirOf(ws), func(_ string, d fs.DirEntry, err error) error {
 		if err == nil && d.Type().IsRegular() {
@@ -109,11 +122,7 @@ func (s *Server) quotaRefusal(ws workspace.ID, size int64) string {
 		}
 		return nil
 	})
-	if used+size <= wsp.QuotaBytes {
-		return ""
-	}
-	return fmt.Sprintf("this workspace keeps %s of managed copies and may keep %s; this copy needs %s more: delete copies it no longer needs, or ask the admin to raise the quota",
-		humanBytes(used), humanBytes(wsp.QuotaBytes), humanBytes(size))
+	return used
 }
 
 func humanBytes(n int64) string {

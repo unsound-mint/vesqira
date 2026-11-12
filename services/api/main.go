@@ -28,7 +28,9 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/offline"
+	"github.com/unsound-mint/vesqira/services/api/internal/outbox"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
+	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/review"
@@ -47,7 +49,7 @@ func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
 func main() {
-	if archiveCommand(os.Args[1:]) || publishServerCommand(os.Args[1:]) || agentCommand(os.Args[1:]) || supportCommand(os.Args[1:]) || adminCommand(os.Args[1:]) {
+	if archiveCommand(os.Args[1:]) || publishServerCommand(os.Args[1:]) || agentCommand(os.Args[1:]) || supportCommand(os.Args[1:]) || adminCommand(os.Args[1:]) || multiuserCommand(os.Args[1:]) {
 		return
 	}
 	var roots, trustedProxies multi
@@ -235,6 +237,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// push to a group server (ADR 0066): the server keeps what linked instances push; a local instance keeps its link and queue
+	pushedStore, err := pushed.Open(store.DB(), filepath.Join(dir, "pushed"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	outboxStore, err := outbox.Open(store.DB(), filepath.Join(dir, "outbox"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	remote := hosts.NewManager(*sshBin, files)
 	defer remote.Close()
 	var servers []*http.Server
@@ -263,6 +274,11 @@ func main() {
 	}
 	srv := &server.Server{MultiUser: group, Roots: rs, Store: store, Worker: planes, Planes: planes, Load: load, Boards: bs, Runs: rn, HostDB: hostStore, Remote: remote, Jobs: jobStore, Sweeps: sweepStore, Transfers: transferStore, Derived: derivedStore, Masks: maskStore, Offline: offlineStore, ManagedDir: managedDir, CacheDir: filepath.Join(dir, "cache", "rohsa"), Audit: auditStore, Notes: noteStore, Regions: regionStore, Subsets: subsetStore, History: historyStore, Discussion: discussion.Open(store.DB()), Projects: projectStore, WebDist: *webDist, EditorEnabled: *enableEditor, TerminalEnabled: *enableTerminal, VPNEnabled: *enableVPN, VPNLogDir: filepath.Join(dir, "vpn"), Reports: reportStore, PublishKeyFile: filepath.Join(dir, "publish.key"),
 		Analysis: &server.AnalysisConfig{Python: *python, Script: filepath.Join(filepath.Dir(*planeScript), "analysis.py"), DerivedDir: derivedDir, Timeout: 30 * time.Minute}}
+	if *multiUser {
+		srv.Pushed = pushedStore
+	} else {
+		srv.Outbox, srv.GroupKeyFile = outboxStore, filepath.Join(dir, "group.key")
+	}
 	if *cacheMiB > 0 {
 		srv.Cache = server.NewPlaneCache(*cacheMiB << 20)
 	}
@@ -315,6 +331,9 @@ func main() {
 	defer cancel()
 	if *jobWatch > 0 && !*multiUser { // follow queued and running jobs on the hosts while the app runs (ADR 0043)
 		go srv.WatchJobs(stop, *jobWatch)
+	}
+	if !*multiUser { // send the push queue to the linked group server, if any, without ever blocking a request (ADR 0066)
+		go srv.RunOutbox(stop)
 	}
 	transfersStopped := make(chan struct{}) // the transfer queue (ADR 0051); on shutdown rsync gets SIGTERM and keeps its partial files
 	go func() {

@@ -125,8 +125,11 @@ func (s *Server) supportInput(ctx context.Context, ws workspace.ID, names bool) 
 		APILog: apiLogTail.Lines(), WorkerLog: worker.StderrTail.Lines(), Home: home, IncludeDatasetNames: names,
 		TableCounts: map[string]int64{}, JobStates: map[string]int64{},
 	}
-	if s.PublishKeyFile != "" {
-		if k, err := readKey(s.PublishKeyFile); err == nil {
+	for _, f := range []string{s.PublishKeyFile, s.GroupKeyFile} { // the publisher key and the group server's push token
+		if f == "" {
+			continue
+		}
+		if k, err := readKey(f); err == nil {
 			in.Secrets = append(in.Secrets, k)
 		}
 	}

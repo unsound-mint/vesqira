@@ -8,8 +8,9 @@ type Scope string
 const (
 	ScopeRead  Scope = "read"  // every read-class permission
 	ScopeWrite Scope = "write" // the read class and the write class
-	// ScopePush and ScopeRelay are ADR 0066's narrow scopes for a linked local instance. Neither implies read or write; their
-	// routes come with slices 4 and 5, so today they allow nothing.
+	// ScopePush and ScopeRelay are ADR 0066's narrow scopes for a linked local instance. Neither implies read or write, and a
+	// token carrying one is bound to one workspace and carries no other scope (accounts.CreateToken). Push allows the push
+	// routes of slice 4 (push.upload); relay comes with slice 5 and allows nothing yet.
 	ScopePush  Scope = "push"
 	ScopeRelay Scope = "relay"
 )
@@ -33,6 +34,7 @@ const (
 	sessionOnly class = iota // never through a token
 	readClass
 	writeClass
+	pushClass // a linked instance's push token only, never a session (ADR 0066: "a token route refuses a session")
 )
 
 // classes assigns every permission to the token class that may use it. A test fails for a permission missing from it, so a
@@ -52,7 +54,17 @@ var classes = map[Permission]class{
 	ClusterAdmin: sessionOnly, AccountSelf: sessionOnly, AccountCredentials: sessionOnly, AccountAdmin: sessionOnly,
 	LocalOnly: sessionOnly, Anonymous: sessionOnly,
 	MemberInvite: sessionOnly, MemberManage: sessionOnly, WorkspaceAdmin: sessionOnly,
+
+	// slice 4: the push routes take only a push token; what was pushed is read and archived by members at a browser (ADR 0066
+	// section 4: "S"), so a read or write token cannot reach it either
+	PushUpload: pushClass, PushedRead: sessionOnly, PushedArchive: sessionOnly,
 }
+
+// TokenOnly reports whether p is reached only through a token, never by a session.
+func (p Permission) TokenOnly() bool { return classes[p] == pushClass }
+
+// Bound reports whether a token with this scope must be bound to one workspace and carry no other scope (ADR 0066 section 1).
+func (s Scope) Bound() bool { return s == ScopePush || s == ScopeRelay }
 
 // Allows reports whether a token carrying this scope may use p.
 func (s Scope) Allows(p Permission) bool {
@@ -65,8 +77,10 @@ func (s Scope) Allows(p Permission) bool {
 		return c == readClass
 	case ScopeWrite:
 		return c == readClass || c == writeClass
+	case ScopePush:
+		return c == pushClass
 	}
-	return false // push and relay: no route yet
+	return false // relay: no route until slice 5
 }
 
 // recent are the permissions a session may use only within the recent sign-in window (ADR 0050 section 2: creating an access

@@ -27,6 +27,7 @@ import { RunLine } from "./RunLine";
 import { BoardCompare } from "./BoardCompare";
 import { BoardGrid } from "./BoardGrid";
 import s from "./BoardsView.module.css";
+import { PushButton } from "../push/PushButton";
 
 const BASE_KEY = "vesqira.reviewBase";
 const readBase = () => {
@@ -194,6 +195,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
       {board && board.items.length > 0 ? (
         <div className={s.row}>
           <Button onClick={() => setPresenting(true)}>Present</Button>
+          <PushButton kind="board" id={board.id} />
           <LinkButton icon={Printer} href={`#/print/${board.id}`} target="_blank" rel="noopener noreferrer">Print or save as PDF</LinkButton>
         </div>
       ) : null}
@@ -252,6 +254,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
                 {board.items.some((x) => x.layout) ? null : <><IconButton icon={ArrowUp} label="Move up" disabled={i === 0} onClick={() => run(() => moveItem(board.id, board, it.position, -1))} />
                 <IconButton icon={ArrowDown} label="Move down" disabled={i === board.items.length - 1} onClick={() => run(() => moveItem(board.id, board, it.position, 1))} /></>}
                 {f ? <LinkButton icon={Download} href={`/api/figures/${f.id}/download`} download>Download PNG</LinkButton> : null}
+                {f ? <PushButton kind="figure" id={f.id} /> : null}
                 <IconButton icon={Trash2} label="Remove from board" onClick={() => run(() => removeItem(board.id, board, it.position))} />
               </div>
               {f ? <FigureRedraw figure={f} addTo={(figureId) => run(() => addToBoard(board.id, figureId))} /> : null}

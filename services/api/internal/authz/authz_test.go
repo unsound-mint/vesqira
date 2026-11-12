@@ -143,12 +143,34 @@ func TestTokenScopesAreExhaustiveAndNarrow(t *testing.T) {
 	if !read.Can(DatasetRead) || read.Can(DatasetWrite) || !write.Can(DatasetRead) || !write.Can(DatasetWrite) {
 		t.Error("read and write scopes do not split as stated")
 	}
+	// ADR 0066: a push token, bound to its workspace, holds push.upload and nothing else, from Researcher up; a relay token holds
+	// nothing until slice 5; an unbound one (minted before binding) and one used in another workspace hold nothing; a session
+	// never holds a token-only permission.
 	for _, s := range []Scope{ScopePush, ScopeRelay} {
-		tok := Actor{ID: "a", Via: ViaToken, Admin: true, Workspace: 1, Role: RoleOwner, Scopes: []Scope{s}}
+		tok := Actor{ID: "a", Via: ViaToken, Admin: true, Workspace: 1, Role: RoleOwner, Scopes: []Scope{s}, TokenWorkspace: 1}
+		unbound := tok
+		unbound.TokenWorkspace = 0
+		elsewhere := tok
+		elsewhere.Workspace = 2
 		for _, p := range All() {
-			if p != Anonymous && tok.Can(p) {
-				t.Errorf("a %s token holds %s; its routes do not exist yet", s, p)
+			want := s == ScopePush && p == PushUpload
+			if p != Anonymous && tok.Can(p) != want {
+				t.Errorf("a %s token: Can(%s) = %v, want %v", s, p, !want, want)
 			}
+			if p != Anonymous && (unbound.Can(p) || elsewhere.Can(p)) {
+				t.Errorf("an unbound %s token, or one outside its workspace, holds %s", s, p)
+			}
+		}
+	}
+	if (Actor{ID: "a", Via: ViaToken, Workspace: 1, Role: RoleViewer, Scopes: []Scope{ScopePush}, TokenWorkspace: 1}).Can(PushUpload) {
+		t.Error("a Viewer's push token pushes")
+	}
+	if (Actor{ID: "a", Via: ViaSession, Workspace: 1, Role: RoleOwner, Recent: true}).Can(PushUpload) {
+		t.Error("a session holds a token-only permission")
+	}
+	for _, p := range []Permission{PushedRead, PushedArchive} {
+		if (Actor{ID: "a", Via: ViaToken, Workspace: 1, Role: RoleOwner, Scopes: []Scope{ScopeWrite}}).Can(p) {
+			t.Errorf("a write token holds %s, which the ADR gives to sessions only", p)
 		}
 	}
 	if (Actor{ID: "a", Via: ViaToken, Workspace: 1, Role: RoleViewer, Scopes: []Scope{ScopeWrite}}).Can(DatasetWrite) {

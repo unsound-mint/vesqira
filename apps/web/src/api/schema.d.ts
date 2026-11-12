@@ -2019,6 +2019,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/group-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The group server this computer is linked to (local only) */
+        get: operations["owner_s_groupLinkState_get_api_group_link"];
+        put?: never;
+        /** Link this computer to a group server with a push token (https only; the token goes to a 0600 file, never the catalog; local only) */
+        post: operations["owner_s_linkGroup_post_api_group_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/group-link/unlink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unlink: delete the token file and empty the queue; local work is untouched (local only) */
+        post: operations["owner_s_unlinkGroup_post_api_group_link_unlink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history": {
         parameters: {
             query?: never;
@@ -2814,6 +2849,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/outbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The push queue with each item's status (local only) */
+        get: operations["owner_s_listOutbox_get_api_outbox"];
+        put?: never;
+        /** Freeze a board, figure, run or report and queue it for the linked workspace, if it is still what the preflight showed (409 otherwise); answers at once (local only) */
+        post: operations["owner_s_enqueuePush_post_api_outbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/outbox/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What pushing this would send: pictures, warnings and dataset references (local only) */
+        post: operations["owner_s_pushPreflight_post_api_outbox_preflight"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/outbox/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Try every waiting item now (local only) */
+        post: operations["owner_s_retryOutbox_post_api_outbox_retry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/preview": {
         parameters: {
             query?: never;
@@ -3141,6 +3228,151 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_publishSyncNow_post_api_publish_sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/assets/{sha}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload one cleaned picture (PNG, JPEG or GIF, at most 8 MiB and 4096 x 4096, no metadata), named by its sha256 (push token only) */
+        put: operations["owner_s_pushAsset_put_api_push_assets_sha"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/have": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Which item and picture hashes the token's workspace does not hold (push token only) */
+        post: operations["owner_s_pushHave_post_api_push_have"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/heads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This instance's lineage heads in the token's workspace, to reconcile after a lost answer (push token only) */
+        get: operations["owner_s_pushHeads_get_api_push_heads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Store one frozen item; idempotent by content hash; 409 lists missing pictures; supersedes this instance's own lineage only (push token only) */
+        post: operations["owner_s_pushItem_post_api_push_items"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pushed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspace's pushed items: the head of each lineage (session only) */
+        get: operations["owner_s_listPushed_get_api_pushed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pushed/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One pushed item with its superseded chain and its dataset references, matched again (session only) */
+        get: operations["owner_s_getPushed_get_api_pushed_id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pushed/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hide a pushed item (own as Researcher, any as Maintainer or Owner; session only) */
+        post: operations["owner_s_archivePushed_post_api_pushed_id_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pushed/{id}/assets/{sha}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sha: string;
+            };
+            cookie?: never;
+        };
+        /** A picture the pushed item shows (session only) */
+        get: operations["owner_s_pushedAsset_get_api_pushed_id_assets_sha"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9578,6 +9810,8 @@ export interface components {
             lastUsedAt: string | null;
             /** Format: date-time */
             revokedAt: string | null;
+            /** @description The one workspace a push or relay token acts in (ADR 0066); absent for an account-wide token. */
+            workspace?: number;
         };
         AccessTokenList: {
             tokens: components["schemas"]["AccessToken"][];
@@ -9920,6 +10154,208 @@ export interface components {
                 [key: string]: unknown;
             };
             summary: components["schemas"]["RerunOnInputSummary"];
+        };
+        /** @description Which of these item or picture hashes the workspace does not hold (at most 1000). */
+        PushHave: {
+            instance: string;
+            hashes: string[];
+        };
+        PushMissing: {
+            missing: string[];
+        };
+        /** @description A dataset a figure or run was made from: file name and size only. */
+        PushReference: {
+            /** @enum {string} */
+            role: "source" | "overlay" | "reliability" | "output";
+            name: string;
+            sizeBytes: number;
+        };
+        /** @description Push-only evidence about a reference's bytes (ADR 0053). Kept on the server for matching; never in the document, a review link or the publish server. */
+        PushIdentity: {
+            algorithm?: string;
+            sampled?: string;
+            fullSha256?: string;
+        };
+        /** @description One frozen item. hash is the SHA-256 of the item's JSON with hash empty; the server recomputes it. */
+        PushItem: {
+            hash: string;
+            /** @enum {string} */
+            kind: "figure" | "run" | "board" | "report";
+            origin: string;
+            title: string;
+            /** @description The frozen document of the kind: a figure, the run line, a board snapshot or a report revision. */
+            doc: Record<string, never>;
+            assets: string[];
+            references: components["schemas"]["PushReference"][];
+            /** @description Run settings left out on the pusher's computer because they name a machine, an account or an address. */
+            omitted?: number;
+        };
+        PushRequest: {
+            instance: string;
+            item: components["schemas"]["PushItem"];
+            identity: components["schemas"]["PushIdentity"][];
+        };
+        PushResult: {
+            id: number;
+            hash: string;
+            stored: boolean;
+            superseded?: string;
+            supersededBy?: string;
+        };
+        PushAssetResult: {
+            sha: string;
+            stored: boolean;
+        };
+        PushHead: {
+            kind: string;
+            origin: string;
+            hash: string;
+            id: number;
+        };
+        PushHeads: {
+            workspace: string;
+            heads: components["schemas"]["PushHead"][];
+        };
+        /** @description A pushed item as listed: the heads of the lineages. */
+        PushedSummary: {
+            id: number;
+            /** @enum {string} */
+            kind: "figure" | "run" | "board" | "report";
+            title: string;
+            hash: string;
+            pushedBy: string;
+            /** Format: date-time */
+            pushedAt: string;
+            supersededBy?: number;
+            /** Format: date-time */
+            supersededAt?: string;
+            archived: boolean;
+            pushedByName?: string;
+        };
+        PushedList: {
+            items: components["schemas"]["PushedSummary"][];
+        };
+        /** @description verified: equal full SHA-256 with a dataset of this workspace; probable: equal size and sampled fingerprint, not verified and never read; none: not on this server. A name never links. */
+        PushedReference: {
+            n: number;
+            role: string;
+            name: string;
+            sizeBytes: number;
+            /** @enum {string} */
+            match: "verified" | "probable" | "none";
+            datasetId?: number;
+            datasetName?: string;
+        };
+        PushedSummaryPlain: {
+            id: number;
+            /** @enum {string} */
+            kind: "figure" | "run" | "board" | "report";
+            title: string;
+            hash: string;
+            pushedBy: string;
+            /** Format: date-time */
+            pushedAt: string;
+            supersededBy?: number;
+            /** Format: date-time */
+            supersededAt?: string;
+            archived: boolean;
+        };
+        PushedDetail: {
+            id: number;
+            /** @enum {string} */
+            kind: "figure" | "run" | "board" | "report";
+            title: string;
+            hash: string;
+            pushedBy: string;
+            /** Format: date-time */
+            pushedAt: string;
+            supersededBy?: number;
+            /** Format: date-time */
+            supersededAt?: string;
+            archived: boolean;
+            item: components["schemas"]["PushItem"];
+            lineage: components["schemas"]["PushedSummaryPlain"][];
+            references: components["schemas"]["PushedReference"][];
+            /** @description How many pushes the lineage has; lineage lists the newest 50, oldest first. */
+            lineageTotal: number;
+        };
+        PushedItem: {
+            item: components["schemas"]["PushedDetail"];
+            pushedByName: string;
+        };
+        PushedArchived: {
+            id: number;
+            archived: boolean;
+        };
+        /** @description The group server this computer is linked to. The token is never returned. */
+        GroupLink: {
+            linked: boolean;
+            origin?: string;
+            workspace?: string;
+            /** Format: date-time */
+            linkedAt?: string;
+        };
+        GroupLinkRequest: {
+            /** @description https only */
+            origin: string;
+            /** @description the vsq_ token from Link a computer; kept in a 0600 file beside the catalog */
+            token: string;
+        };
+        PushTarget: {
+            /** @enum {string} */
+            kind: "figure" | "run" | "board" | "report";
+            id: number;
+        };
+        OutboxEntry: {
+            id: number;
+            kind: string;
+            localId: number;
+            title: string;
+            hash: string;
+            /** @enum {string} */
+            state: "waiting" | "sent" | "refused";
+            message: string;
+            attempts: number;
+            /** Format: date-time */
+            nextAt?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            sentAt?: string;
+            /** @description pushed | waiting: <why> | refused: <sentence> */
+            status: string;
+        };
+        Outbox: {
+            link: components["schemas"]["GroupLink"];
+            entries: components["schemas"]["OutboxEntry"][];
+        };
+        PushPreflight: {
+            kind: string;
+            title: string;
+            workspace: string;
+            origin: string;
+            pictures: number;
+            bytes: number;
+            warnings: string[];
+            references: {
+                role: string;
+                name: string;
+                sizeBytes: number;
+                /** @enum {string} */
+                fingerprint: "full" | "sampled" | "none";
+            }[];
+            /** @description The item's content hash; queueing names it, so only what was previewed is pushed. */
+            hash: string;
+        };
+        Accepted: {
+            ok?: boolean;
+        };
+        PushQueueRequest: {
+            /** @enum {string} */
+            kind: "figure" | "run" | "board" | "report";
+            id: number;
+            /** @description the hash the preflight answered */
+            hash: string;
         };
     };
     responses: never;
@@ -13799,6 +14235,97 @@ export interface operations {
             };
         };
     };
+    owner_s_groupLinkState_get_api_group_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupLink"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_linkGroup_post_api_group_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupLink"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_unlinkGroup_post_api_group_link_unlink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupLink"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listHistory_get_api_history: {
         parameters: {
             query?: {
@@ -15265,6 +15792,130 @@ export interface operations {
             };
         };
     };
+    owner_s_listOutbox_get_api_outbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Outbox"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_enqueuePush_post_api_outbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushQueueRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboxEntry"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_pushPreflight_post_api_outbox_preflight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushTarget"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushPreflight"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_retryOutbox_post_api_outbox_retry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Accepted"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_previewFile_get_api_preview: {
         parameters: {
             query?: never;
@@ -15845,6 +16496,261 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_pushAsset_put_api_push_assets_sha: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description ok */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushAssetResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_pushHave_post_api_push_have: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushHave"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushMissing"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_pushHeads_get_api_push_heads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushHeads"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_pushItem_post_api_push_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listPushed_get_api_pushed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_getPushed_get_api_pushed_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_archivePushed_post_api_pushed_id_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushedArchived"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_pushedAsset_get_api_pushed_id_assets_sha: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sha: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/gif": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

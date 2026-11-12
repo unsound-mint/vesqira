@@ -17,11 +17,13 @@ const workbench = (account: React.ReactNode) => <div data-testid="workbench">{ac
 const lab = { id: 1, name: "Lab", role: "owner", permissions: ["board.read", "member.read"], workspaces: [{ workspaceId: 1, workspaceName: "Lab", accountId: "acct-1", name: "Ada", username: "ada", role: "owner", since: "2026-11-12T00:00:00Z" }] };
 
 describe("the account gate", () => {
-  it("renders the workbench unchanged in local mode, with no account control", async () => {
+  it("renders the workbench in local mode with no account control, only the link to a group server", async () => {
     const fetch = vi.fn(async () => json(200, { features: { planes: true } }));
     vi.stubGlobal("fetch", fetch);
     render(<AccountGate>{workbench}</AccountGate>);
-    expect(await screen.findByTestId("workbench")).toBeEmptyDOMElement();
+    const wb = await screen.findByTestId("workbench");
+    expect(wb.querySelectorAll("a, button")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Group server" })).toHaveAttribute("href", "#/group");
     expect(fetch).toHaveBeenCalledTimes(1); // only the capabilities call; nothing account-related is asked of a local server
   });
 

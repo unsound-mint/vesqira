@@ -72,6 +72,15 @@ const (
 	MemberManage Permission = "member.manage"
 	// WorkspaceAdmin is A: create a workspace and name its first Owner, declare its data roots, set its quota. A recent sign-in only.
 	WorkspaceAdmin Permission = "workspace.admin"
+
+	// Slice 4 (ADR 0066 section 2): work brought in from a linked local instance.
+	// PushUpload is R, through a workspace-bound token with the push scope only, never a session: upload frozen items and assets,
+	// ask which hashes the server holds, read this instance's lineage heads. It reads no other workspace content.
+	PushUpload Permission = "push.upload"
+	// PushedRead is V, a browser session only: the pushed items of the workspace, their superseded chains and pictures.
+	PushedRead Permission = "pushed.read"
+	// PushedArchive is R (own; any as Maintainer or Owner), a browser session only: hide a pushed item.
+	PushedArchive Permission = "pushed.archive"
 )
 
 // All is every permission a route may declare. A test fails for a route that names anything else.
@@ -85,6 +94,7 @@ func All() []Permission {
 		JobRead, JobSubmit, JobAccess, SweepRead, SweepSubmit,
 		ClusterRead, ClusterUse, ClusterAdmin, AccountSelf, AccountCredentials, AccountAdmin, LocalOnly,
 		CommentWrite, MemberRead, MemberInvite, MemberManage, WorkspaceAdmin,
+		PushUpload, PushedRead, PushedArchive,
 	}
 }
 

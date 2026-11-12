@@ -54,7 +54,10 @@ import (
 // user data (existing rows: workspace 1, local-owner), uniqueness per workspace (datasets, dataset_locations, figures, reports,
 // runs, run_views, projects and attachments rebuilt), per-account read state (report_seen, notification_reads) and comments by
 // members (member_comments; ADR 0050 sections 3 and 6, slice 3).
-const Version = 31
+// Version 32: work pushed to the group server (pushed_items, pushed_history, pushed_assets, pushed_item_assets, pushed_references), the local
+// outbox (group_link, push_queue, push_lineage) and the workspace a push token is bound to (access_tokens.workspace_id; ADR 0066,
+// ADR 0050 slice 4).
+const Version = 32
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -99,6 +102,7 @@ var migrations = []Migration{
 	{To: 29, Name: "audit actor", Up: auditActor},
 	{To: 30, Name: "accounts and sessions", Up: accountsTables},
 	{To: 31, Name: "workspaces", Up: workspacesMigration, NoForeignKeys: true},
+	{To: 32, Name: "push to the group server", Up: pushTables},
 }
 
 // AccountsTables are the group server's accounts (ADR 0050 section 2, slice 2). An account carries no credential itself: a way to
@@ -155,7 +159,8 @@ CREATE TABLE IF NOT EXISTS access_tokens(
 	created_at INTEGER NOT NULL,
 	expires_at INTEGER NOT NULL,
 	last_used_at INTEGER,
-	revoked_at INTEGER);
+	revoked_at INTEGER,
+	workspace_id INTEGER);
 CREATE INDEX IF NOT EXISTS access_tokens_account ON access_tokens(account_id);
 CREATE TABLE IF NOT EXISTS setup_tokens(
 	token_hash TEXT PRIMARY KEY,

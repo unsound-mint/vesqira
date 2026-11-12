@@ -45,6 +45,11 @@ type Actor struct {
 	// holds no workspace permission, and a store queried with workspace 0 finds nothing.
 	Workspace workspace.ID
 	Role      Role
+	// TokenID is the access token the actor came through ("" for a session), recorded with what it pushes. TokenWorkspace is
+	// the workspace a push or relay token is bound to (ADR 0066 section 1): such an actor acts there and nowhere else, whatever
+	// the request names. Zero for an account-wide token and for a session.
+	TokenID        string
+	TokenWorkspace workspace.ID
 }
 
 // LocalOwner is the one principal of local mode: it needs no login and holds every permission in the single implicit
@@ -79,11 +84,17 @@ func (a Actor) Can(p Permission) bool {
 	} else if min := matrix[p]; min == RoleNone || a.Workspace <= 0 || !a.Role.AtLeast(min) {
 		return false
 	}
+	if a.TokenWorkspace != 0 && a.Workspace != a.TokenWorkspace && !accountLevelOK(p) {
+		return false
+	}
 	switch a.Via {
 	case ViaSession:
-		return true
+		return !p.TokenOnly()
 	case ViaToken:
 		for _, s := range a.Scopes {
+			if s.Bound() && a.TokenWorkspace == 0 {
+				continue // a push or relay token minted before tokens were bound to a workspace allows nothing
+			}
 			if s.Allows(p) {
 				return true
 			}
@@ -91,6 +102,9 @@ func (a Actor) Can(p Permission) bool {
 	}
 	return false
 }
+
+// accountLevelOK reports whether p does not depend on a workspace.
+func accountLevelOK(p Permission) bool { _, ok := accountLevel[p]; return ok }
 
 type ctxKey struct{}
 

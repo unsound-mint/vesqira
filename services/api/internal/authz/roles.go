@@ -42,6 +42,7 @@ var matrix = map[Permission]Role{
 	DatasetWrite: RoleResearcher, AnalysisRun: RoleResearcher, RunWrite: RoleResearcher, FigureWrite: RoleResearcher,
 	BoardWrite: RoleResearcher, LifecycleArchive: RoleResearcher, ReviewPublish: RoleResearcher, ReportWrite: RoleResearcher,
 	ProjectWrite: RoleResearcher, HistoryWrite: RoleResearcher, FilesRead: RoleResearcher,
+	PushUpload: RoleResearcher, PushedArchive: RoleResearcher, PushedRead: RoleViewer,
 
 	LifecycleDelete: RoleMaintainer, PublishManage: RoleMaintainer, AuditRead: RoleMaintainer, MemberInvite: RoleMaintainer,
 
@@ -62,7 +63,7 @@ func MinRole(p Permission) Role { return matrix[p] }
 // ownership are the permissions the ownership rule applies to: below Maintainer, the actor must have created the object the
 // route's {id} names (ADR 0050 section 3: "Researchers edit, archive and publish what they created").
 var ownership = map[Permission]bool{
-	FigureWrite: true, BoardWrite: true, ReportWrite: true, LifecycleArchive: true, ReviewPublish: true,
+	FigureWrite: true, BoardWrite: true, ReportWrite: true, LifecycleArchive: true, ReviewPublish: true, PushedArchive: true,
 }
 
 // OwnershipApplies reports whether p is limited to the actor's own objects below Maintainer.

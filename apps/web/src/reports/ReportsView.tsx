@@ -19,6 +19,7 @@ import { listTitle, longDate, shortDay, reportDate, reportSummary, setFrontValue
 import { ancestors, firstPage, visibleRows } from "./tree";
 import { PageMenu } from "./PageMenu";
 import s from "./ReportsView.module.css";
+import { PushButton } from "../push/PushButton";
 
 const OPEN_KEY = "vesqira.reports.open";
 
@@ -330,6 +331,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
               <button type="button" className={s.ghost} aria-pressed={mode === "source"} onClick={() => { if (mode === "source") { void save(source); setMode("page"); } else { setSource(view.body); setMode("source"); } }}>{mode === "source" ? "Done" : "Markdown"}</button>
               <button type="button" className={s.ghost} aria-pressed={panel === "comments"} onClick={() => setPanel(panel === "comments" ? null : "comments")}><Icon icon={MessageSquare} />Comments{openThreads ? <span className={s.badge}>{openThreads}</span> : null}</button>
               <button type="button" className={s.ghost} aria-pressed={panel === "share"} onClick={() => setPanel(panel === "share" ? null : "share")}><Icon icon={Share2} />Share</button>
+              <PushButton kind="report" id={view.id} />
               <Button variant="primary" icon={Upload} onClick={() => { if (editIndex !== null) commitEdit(); void queue.current.then(() => setPublishing(true)); }}>Publish…</Button>
               <PageMenu
                 view={view}

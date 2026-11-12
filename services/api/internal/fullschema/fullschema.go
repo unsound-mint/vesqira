@@ -19,7 +19,9 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
 	"github.com/unsound-mint/vesqira/services/api/internal/notify"
 	"github.com/unsound-mint/vesqira/services/api/internal/offline"
+	"github.com/unsound-mint/vesqira/services/api/internal/outbox"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
+	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/regions"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
@@ -53,6 +55,8 @@ func Open(db *sql.DB, dir string) error {
 		{"transfers", func() error { _, e := transfers.Open(db); return e }},
 		{"subsets", func() error { _, e := subsets.Open(db); return e }},
 		{"offline", func() error { _, e := offline.Open(db, filepath.Join(dir, "offline")); return e }},
+		{"pushed", func() error { _, e := pushed.Open(db, filepath.Join(dir, "pushed")); return e }},
+		{"outbox", func() error { _, e := outbox.Open(db, filepath.Join(dir, "outbox")); return e }},
 	} {
 		if err := s.open(); err != nil {
 			return fmt.Errorf("opening %s: %w", s.name, err)
