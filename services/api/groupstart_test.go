@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"net/netip"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -59,6 +60,28 @@ func TestProxyWarningAtStart(t *testing.T) {
 	} {
 		if got := proxyWarning(c.origin, c.header, c.addr); (got != "") != c.warn || (c.warn && !strings.Contains(got, "--client-ip-header")) {
 			t.Errorf("%+v: %q", c, got)
+		}
+	}
+}
+
+// A client-address header on a server beyond loopback with no --trusted-proxy warns; ranges and single addresses parse.
+func TestTrustedProxyFlagAndWarning(t *testing.T) {
+	ps, err := parseTrustedProxies([]string{"203.0.113.0/24", "198.51.100.7"})
+	if err != nil || len(ps) != 2 || ps[1].Bits() != 32 {
+		t.Fatalf("%v %v", ps, err)
+	}
+	if _, err := parseTrustedProxies([]string{"proxy.example"}); err == nil {
+		t.Fatal("a name was taken as a proxy range")
+	}
+	if headerTrustWarning("X-Forwarded-For", "0.0.0.0:8787", nil) == "" {
+		t.Error("no warning for a public listener without --trusted-proxy")
+	}
+	for _, c := range []struct {
+		header, addr string
+		trusted      []netip.Prefix
+	}{{"", "0.0.0.0:8787", nil}, {"X-Forwarded-For", "127.0.0.1:8787", nil}, {"X-Forwarded-For", "0.0.0.0:8787", ps}} {
+		if w := headerTrustWarning(c.header, c.addr, c.trusted); w != "" {
+			t.Errorf("%+v warned: %s", c, w)
 		}
 	}
 }

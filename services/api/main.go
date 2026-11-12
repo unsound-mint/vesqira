@@ -49,7 +49,7 @@ func main() {
 	if archiveCommand(os.Args[1:]) || publishServerCommand(os.Args[1:]) || agentCommand(os.Args[1:]) || supportCommand(os.Args[1:]) || adminCommand(os.Args[1:]) {
 		return
 	}
-	var roots multi
+	var roots, trustedProxies multi
 	addr := flag.String("addr", "127.0.0.1:8787", "listen address (must be a loopback address)")
 	db := flag.String("db", "vesqira.db", "SQLite database path")
 	python := flag.String("python", "python3", "interpreter for the worker")
@@ -75,12 +75,17 @@ func main() {
 	clientIPHeader := flag.String("client-ip-header", "", "with --multi-user: header a trusted reverse proxy sets to the client address (for example X-Forwarded-For), for the per-address sign-in limit")
 	adopt := flag.Bool("adopt-existing-catalog", false, "with --multi-user: start on a catalog that already holds local work (datasets, boards, runs...); every account will see all of it")
 	secretKey := flag.String("secret-key", "", "with --multi-user: the server key file that seals TOTP secrets (default: secrets/server.key beside the database, created 0600); back it up separately, it is not in exports")
+	flag.Var(&trustedProxies, "trusted-proxy", "with --multi-user: an address or CIDR range whose --client-ip-header is believed, besides loopback and private addresses (repeatable)")
 	flag.Var(&roots, "root", "source root directory (repeatable, required)")
 	flag.Parse()
-	if !*multiUser && (*publicOrigin != "" || *insecureDev || *clientIPHeader != "" || *secretKey != "" || *adopt) {
-		log.Fatalf("--public-origin, --insecure-dev, --client-ip-header, --secret-key and --adopt-existing-catalog belong to --multi-user")
+	if !*multiUser && (*publicOrigin != "" || *insecureDev || *clientIPHeader != "" || *secretKey != "" || *adopt || len(trustedProxies) > 0) {
+		log.Fatalf("--public-origin, --insecure-dev, --client-ip-header, --trusted-proxy, --secret-key and --adopt-existing-catalog belong to --multi-user")
 	}
 	origin := ""
+	trusted, err := parseTrustedProxies(trustedProxies)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if *multiUser {
 		var err error
 		origin, err = groupStart{origin: *publicOrigin, insecureDev: *insecureDev, editor: *enableEditor, terminal: *enableTerminal, vpn: *enableVPN,
@@ -243,7 +248,7 @@ func main() {
 	var group server.MultiUser
 	if *multiUser {
 		var closeGroup func()
-		group, closeGroup = openGroup(store, *db, dir, *secretKey, origin, *clientIPHeader, *addr, *adopt)
+		group, closeGroup = openGroup(store, *db, dir, *secretKey, origin, *clientIPHeader, *addr, trusted, *adopt)
 		defer closeGroup()
 		auditStore.Default = audit.System // background work on the group server acts for no account; requests record their own actor
 		hostStore, remote = nil, nil      // no ssh credential on the group server (ADR 0050 section 5): no host is reachable

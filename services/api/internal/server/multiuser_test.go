@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -816,6 +817,41 @@ func TestGroupConfirmIsNotBlockedByAnonymousFailures(t *testing.T) {
 	}
 	if w := g.do(req{method: "POST", path: "/api/auth/confirm", body: `{"password":"wrong","code":"000000"}`, cookie: fresh}); w.Code != 429 {
 		t.Fatalf("wrong confirmations do not back off: %d", w.Code)
+	}
+}
+
+// The client-address header is honoured only from a peer that may set it (loopback, private, or a --trusted-proxy range):
+// a client on a public address cannot escape the per-address limit by writing its own X-Forwarded-For.
+func TestGroupClientHeaderIsTrustedOnlyFromProxies(t *testing.T) {
+	g := newGroup(t)
+	g.setupAdmin("ada")
+	g.s.MultiUser.ClientIPHeader = "X-Forwarded-For"
+	g.h = g.s.Handler()
+	from := func(peer, xff, name string) int {
+		q := httptest.NewRequest("POST", "/api/auth/sign-in", strings.NewReader(`{"username":"`+name+`","password":"wrong password"}`))
+		q.Host, q.RemoteAddr = groupHost, peer
+		q.Header.Set("Origin", groupOrigin)
+		q.Header.Set("Content-Type", "application/json")
+		q.Header.Set("X-Forwarded-For", xff)
+		w := httptest.NewRecorder()
+		g.h.ServeHTTP(w, q)
+		return w.Code
+	}
+	for i := 0; i < 30; i++ {
+		from("203.0.113.7:4000", "198.51.100."+itoa(i), "n"+itoa(i))
+	}
+	if c := from("203.0.113.7:4000", "198.51.100.200", "fresh"); c != 429 {
+		t.Fatalf("a public client forging the header escaped the per-address limit: %d", c)
+	}
+	// a configured proxy range is trusted
+	g.s.MultiUser.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}
+	g.s.MultiUser.Limiter = &accounts.Limiter{Now: g.clock.now}
+	g.h = g.s.Handler()
+	for i := 0; i < 30; i++ {
+		from("203.0.113.9:4000", "198.51.100."+itoa(i), "m"+itoa(i))
+	}
+	if c := from("203.0.113.9:4000", "198.51.100.201", "fresh"); c != 401 {
+		t.Fatalf("clients behind a trusted proxy were counted as one: %d", c)
 	}
 }
 

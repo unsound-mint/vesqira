@@ -88,6 +88,40 @@ func proxyWarning(origin, clientIPHeader, addr string) string {
 	return "WARNING: the group server listens on " + addr + " behind a proxy but --client-ip-header is not set: every client shares the proxy's address, so sign-in failures are limited per name only, not per client address; set --client-ip-header to the header your proxy fills (for example X-Forwarded-For)"
 }
 
+// headerTrustWarning is the start-up warning for a client-address header on a server reachable beyond loopback with no
+// --trusted-proxy: the header is then believed only from loopback and private peers, so a proxy on a public address is
+// counted as one client.
+func headerTrustWarning(clientIPHeader, addr string, trusted []netip.Prefix) string {
+	if clientIPHeader == "" || len(trusted) > 0 {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "localhost" {
+		return ""
+	}
+	if ip, err := netip.ParseAddr(host); err == nil && ip.IsLoopback() {
+		return ""
+	}
+	return "WARNING: --client-ip-header is set and the group server listens on " + addr + ", beyond loopback, with no --trusted-proxy: the header is believed only from loopback and private peers; name your proxy's address range with --trusted-proxy if it is elsewhere"
+}
+
+// parseTrustedProxies reads --trusted-proxy values: CIDR ranges, or single addresses.
+func parseTrustedProxies(vals []string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, v := range vals {
+		if p, err := netip.ParsePrefix(v); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		ip, err := netip.ParseAddr(v)
+		if err != nil {
+			return nil, fmt.Errorf("--trusted-proxy %q is not an address or a CIDR range", v)
+		}
+		out = append(out, netip.PrefixFrom(ip, ip.BitLen()))
+	}
+	return out, nil
+}
+
 // dataTables are the tables whose rows are someone's work. A catalog with rows in any of them and no account has been used in
 // local mode; turning it into a group server shows all of it to every account, which needs the operator to say so.
 var dataTables = []string{"datasets", "figures", "boards", "snapshots", "reports", "attachments", "runs", "jobs", "sweeps", "hosts",
@@ -143,7 +177,7 @@ func sameAddr(a, b string) bool {
 
 // openGroup opens what the group server needs beside the catalog: the account store with its server key, a read-only pool
 // for the per-request session and token lookups, and the writer lock-wait log (ADR 0050 section 6). Any failure stops the start.
-func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHeader, addr string, adopt bool) (server.MultiUser, func()) {
+func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHeader, addr string, trusted []netip.Prefix, adopt bool) (server.MultiUser, func()) {
 	acc, err := accounts.Open(store.DB())
 	if err != nil {
 		log.Fatal(err)
@@ -181,7 +215,10 @@ func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHead
 	if w := proxyWarning(origin, clientIPHeader, addr); w != "" {
 		log.Print(w)
 	}
-	return server.NewMultiUser(origin, acc, clientIPHeader), func() {
+	if w := headerTrustWarning(clientIPHeader, addr, trusted); w != "" {
+		log.Print(w)
+	}
+	return server.NewMultiUser(origin, acc, clientIPHeader, trusted), func() {
 		stop()
 		ro.Close()
 	}

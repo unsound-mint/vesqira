@@ -26,6 +26,9 @@ type MultiUser struct {
 	// ClientIPHeader names the header a trusted reverse proxy fills with the client address (--client-ip-header); without it
 	// every client behind the proxy shares the proxy's address for the per-address limit.
 	ClientIPHeader string
+	// TrustedProxies are the address ranges, besides loopback and private ones, whose ClientIPHeader is believed
+	// (--trusted-proxy). A peer outside them is counted by its own address, whatever header it sends.
+	TrustedProxies []netip.Prefix
 
 	proxyWarned *sync.Once // the warning that the per-address limit is off, logged at the first sign-in failure
 }
@@ -175,13 +178,36 @@ func (s *Server) withAccount(next http.Handler) http.Handler {
 // header and a peer on a loopback or private address, the peer is almost certainly the reverse proxy, shared by every client,
 // and counting it would let 30 failures from anyone stop every sign-in. The per-name backoff still applies then.
 func (s *Server) limitAddr(r *http.Request) string {
-	if s.MultiUser.ClientIPHeader != "" {
+	if s.MultiUser.ClientIPHeader != "" && s.trustedPeer(r.RemoteAddr) {
 		return s.clientAddr(r)
 	}
 	if behindProxy(r.RemoteAddr) {
 		return ""
 	}
 	return s.clientAddr(r)
+}
+
+// trustedPeer reports whether a peer may set the client-address header: a loopback or private address (where the reverse
+// proxy runs), or one inside --trusted-proxy.
+func (s *Server) trustedPeer(remote string) bool {
+	if behindProxy(remote) {
+		return true
+	}
+	host := remote
+	if h, _, err := net.SplitHostPort(remote); err == nil {
+		host = h
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	ip = ip.Unmap()
+	for _, p := range s.MultiUser.TrustedProxies {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // behindProxy reports whether a peer address is loopback or private (where a reverse proxy usually is).
@@ -205,19 +231,19 @@ func (s *Server) warnNoClientHeader(r *http.Request) {
 }
 
 // NewMultiUser builds the group server's configuration.
-func NewMultiUser(origin string, st *accounts.Store, clientIPHeader string) MultiUser {
-	return MultiUser{PublicOrigin: origin, Accounts: st, Limiter: &accounts.Limiter{}, ClientIPHeader: clientIPHeader, proxyWarned: &sync.Once{}}
+func NewMultiUser(origin string, st *accounts.Store, clientIPHeader string, trusted []netip.Prefix) MultiUser {
+	return MultiUser{PublicOrigin: origin, Accounts: st, Limiter: &accounts.Limiter{}, ClientIPHeader: clientIPHeader, TrustedProxies: trusted, proxyWarned: &sync.Once{}}
 }
 
-// clientAddr is the address failures are counted against: the connection's peer, or the last entry of the trusted proxy's
-// header when one is configured; IPv6 is grouped by /64 so rotating addresses inside one allocation does not reset the count.
+// clientAddr is the address failures are counted against: the connection's peer, or the last entry of the client-address
+// header when one is configured and the peer is a trusted proxy (trustedPeer; any other peer could write the header itself); IPv6 is grouped by /64 so rotating addresses inside one allocation does not reset the count.
 // The same rule as the review listener's.
 func (s *Server) clientAddr(r *http.Request) string {
 	addr := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(addr); err == nil {
 		addr = host
 	}
-	if h := s.MultiUser.ClientIPHeader; h != "" {
+	if h := s.MultiUser.ClientIPHeader; h != "" && s.trustedPeer(r.RemoteAddr) {
 		if v := r.Header.Get(h); v != "" {
 			parts := strings.Split(v, ",")
 			addr = strings.TrimSpace(parts[len(parts)-1])
