@@ -237,7 +237,7 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 		dj, _ := json.Marshal(decl)
 		args = append(args, "--catalog", creal, "--declaration", string(dj))
 	} else {
-		if why, err := compat.Grids(d.Header, other.Header); err != nil || len(why) > 0 {
+		if why, err := compat.Grids(effectiveHeader(d), effectiveHeader(other)); err != nil || len(why) > 0 {
 			writeJSON(w, 409, map[string]any{"error": "the maps are not known to share a grid, so pixels cannot be compared one to one: align one onto the other first (align resamples orientation maps as angles)", "reasons": why})
 			return
 		}
@@ -301,6 +301,9 @@ func (s *Server) relativeOrientation(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(maskSafe) > 0 || len(otherSafe) > 0 {
 		recParams["masks"] = map[string]any{"map": maskSafe, "other": otherSafe}
+	}
+	if res.Corrections != nil {
+		recParams["corrections"] = res.Corrections // the correction state the maps were read with (ADR 0061)
 	}
 	rec, _ := json.Marshal(recParams)
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: op, Params: rec, Sources: []int64{d.ID, other.ID}, Summary: res.Summary, Software: res.Software}); err != nil {

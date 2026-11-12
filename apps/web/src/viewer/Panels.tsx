@@ -101,7 +101,7 @@ function ConvertedRows({ v }: { v: Viewer }) {
           <dt>{`As ${conv.spectral}`}</dt>
           <dd className="mono">
             {sp.converted ? `${sig(sp.converted.value)} ${sp.converted.unit}` : EM}
-            {sp.converted && sp.convention ? ` (${sp.convention} convention, ${sp.convention_source === "user" ? "chosen by you" : "the file's"})` : ""}
+            {sp.converted && sp.convention ? ` (${sp.convention} convention, ${sp.convention_source === "user" ? "chosen by you" : sp.convention_source === "corrected" ? "from your corrected CTYPE" : "the file's"})` : ""}
             {sp.refused ? <span className={s.refused}>not converted: {sp.refused}</span> : null}
           </dd>
         </>
@@ -146,6 +146,7 @@ function frameCaveat(status: string | undefined, assumed: boolean): { short: str
       : { short: "unresolved", long: "The header declares no celestial frame and none was assumed: sky positions have no stated frame." };
   }
   if (status === "inferred") return { short: "inferred from EQUINOX", long: "The header names no frame; it was inferred from EQUINOX." };
+  if (status === "corrected") return { short: "corrected by you", long: "The celestial frame is your correction (RADESYS, EQUINOX or CTYPE), not the file's own; the file is not changed." };
   return null;
 }
 
@@ -199,7 +200,7 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
             <dt>{spec.name}</dt>
             <dd className="mono">{spec.resolved ? spectralText(coord?.spectral?.value ?? plane?.head.spectral_value ?? null, spec.unit) : "unresolved"}{spec.resolved ? provenanceNote(spec.unit_status) : ""}</dd>
             <dt>Spectral frame</dt>
-            <dd className="mono">{spec.specsys ?? "unresolved"}</dd>
+            <dd className="mono">{spec.specsys ?? "unresolved"}{spec.corrected?.includes("SPECSYS") ? " (corrected by you)" : ""}</dd>
             {spec.velocity === "unresolved" ? (
               <>
                 <dt>Velocity</dt>
@@ -211,10 +212,12 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
         <ConvertedRows v={v} />
       </dl>
       <ConversionControls v={v} />
-      {view.bunit_status === "unresolved" || view.bunit_status === "user" || v.coordError ? (
+      {view.bunit_status === "unresolved" || view.bunit_status === "user" || view.bunit_status === "corrected" || (view.wcs_corrected?.length ?? 0) > 0 || v.coordError ? (
         <p className={s.note}>
           {view.bunit_status === "unresolved" ? "Brightness unit unresolved: the header has no BUNIT. " : ""}
           {view.bunit_status === "user" ? `Brightness unit (${view.bunit}) declared by you: the header has no BUNIT. ` : ""}
+          {view.bunit_status === "corrected" ? `Brightness unit (${view.bunit}) is your correction: the file says ${view.file_bunit ?? "nothing"}. ` : ""}
+          {(view.wcs_corrected?.length ?? 0) > 0 ? `Coordinates use your correction of ${view.wcs_corrected!.join(", ")}; the file says otherwise and is not changed. ` : ""}
           {v.coordError ?? ""}
         </p>
       ) : null}
@@ -326,6 +329,7 @@ export function DisplayControls({ v }: { v: Viewer }) {
         </div>
       </div>
       {v.view?.bunit_status === "user" ? <p className={s.note}>The unit ({v.view.bunit}) is the one you declared; the file has no BUNIT.</p> : null}
+      {v.view?.bunit_status === "corrected" ? <p className={s.note}>The unit ({v.view.bunit}) is your correction; the file says {v.view.file_bunit ?? "nothing"}.</p> : null}
       <p className={s.note}>{v.range === "custom" ? "Limits set by hand; values outside them are drawn at the ends of the colour bar." : "Limits come from the plane’s finite pixels only."}{v.plane?.head.scaled ? " BSCALE/BZERO applied." : ""}{precisionNote(v.plane?.head.source_bitpix ?? null)}</p>
     </div>
   );

@@ -755,6 +755,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** The WCS and unit corrections of a dataset: in force, what the file says, and the whole history */
+        get: operations["owner_s_listCorrections_get_api_datasets_id_corrections"];
+        put?: never;
+        /**
+         * Append a correction record: set, revert, confirm or withdraw
+         * @description Validated by the worker as it would be applied (astropy must accept the WCS; axes keep their kind and roles). A revert is a new record. 409 when the history moved on (expect), when the state is stale (only confirm or withdraw), or for a unit correction on a file with no BUNIT. The file is never written.
+         */
+        post: operations["owner_s_saveCorrection_post_api_datasets_id_corrections"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/corrections/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What a correction would do, before it is saved: keyword by keyword, the coordinates at the centre and corners before and after, and what depends on the dataset */
+        post: operations["owner_s_previewCorrection_post_api_datasets_id_corrections_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/corrections/sidecar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Export the corrections and their history as a versioned JSON sidecar (no path, no id) */
+        get: operations["owner_s_exportSidecar_get_api_datasets_id_corrections_sidecar"];
+        put?: never;
+        /**
+         * Apply a sidecar as one new record, after confirmation
+         * @description Only when it was made for this file (verified or probable), or with a sentence saying why it applies to this different one (409 otherwise).
+         */
+        post: operations["owner_s_importSidecar_post_api_datasets_id_corrections_sidecar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/corrections/sidecar/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Whether a sidecar was made for this file, what it would change and its effect */
+        post: operations["owner_s_previewSidecar_post_api_datasets_id_corrections_sidecar_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/delete": {
         parameters: {
             query?: never;
@@ -4032,6 +4116,8 @@ export interface components {
             catalogDeclaration: components["schemas"]["CatalogDeclaration"] | null;
             /** @description The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053). */
             locations: components["schemas"]["DatasetLocation"][];
+            /** @description The researcher's WCS and unit corrections in force or stale (ADR 0061); null when nothing is corrected. header stays what the file said. */
+            corrections?: components["schemas"]["Corrections"] | null;
             /** @description Only on the dataset list: the datasets this file is the imported mask file of, when that is its only role (a file also used for a figure, region, analysis, run, or opened in the viewer has none). Derived from the masks' rows; nothing is hidden or unregistered by it (ADR 0058, mask files). */
             maskSourceFor?: components["schemas"]["MaskSourceRef"][];
         };
@@ -4057,9 +4143,11 @@ export interface components {
             projection: string | null;
             frame: string | null;
             /** @enum {string} */
-            frame_status: "declared" | "inferred" | "unresolved";
+            frame_status: "declared" | "corrected" | "inferred" | "unresolved";
             /** @enum {string} */
             unit: "deg";
+            /** @description Present when some of these facts come from the researcher's corrections (ADR 0061): the keywords */
+            corrected?: string[];
         };
         SpectralFacts: {
             fits_axis: number;
@@ -4069,12 +4157,14 @@ export interface components {
             resolved: boolean;
             unit: string | null;
             /** @enum {string} */
-            unit_status: "declared" | "inferred" | "unresolved";
+            unit_status: "declared" | "corrected" | "inferred" | "unresolved";
             /** @enum {string} */
-            velocity: "declared" | "unresolved";
+            velocity: "declared" | "corrected" | "unresolved";
             note?: string;
             specsys?: string | null;
             restfrq?: number | null;
+            /** @description Present when some of these facts come from the researcher's corrections (ADR 0061): the keywords */
+            corrected?: string[];
         };
         /** @description Data-provider channel flags. Flagged channels keep their data; declared false means the file states no flags at all. */
         Flags: {
@@ -4090,10 +4180,10 @@ export interface components {
             channels: number;
             bunit: string | null;
             /**
-             * @description declared: the file's BUNIT; user: a unit the person declared for a file with none (never the file's); unresolved: neither
+             * @description declared: the file's BUNIT; user: a unit the person declared for a file with none (never the file's); unresolved: neither; corrected: a unit the researcher corrected over the file's own BUNIT (ADR 0061; file_bunit says the file's)
              * @enum {string}
              */
-            bunit_status: "declared" | "user" | "unresolved";
+            bunit_status: "declared" | "user" | "corrected" | "unresolved";
             fits_axes: {
                 x: number;
                 y: number;
@@ -4102,6 +4192,12 @@ export interface components {
             sky: components["schemas"]["SkyPixel"] | components["schemas"]["SkyCelestial"];
             spectral: components["schemas"]["SpectralFacts"] | null;
             flags: components["schemas"]["Flags"];
+            /** @description Present when corrections are applied: the BUNIT the file states */
+            file_bunit?: string | null;
+            /** @description Present when corrections are applied: the WCS keywords the researcher corrected */
+            wcs_corrected?: string[];
+            /** @description The hashes of the correction states the worker applied */
+            corrections_applied?: string[];
             offline?: components["schemas"]["OfflineMark"];
             /** @description North and east at the map centre; absent from a view kept before it was recorded (an offline copy) */
             compass?: components["schemas"]["Compass"];
@@ -4365,6 +4461,8 @@ export interface components {
             statements: string[];
             /** @description Absent on a figure saved before tiers existed */
             tiers?: components["schemas"]["FigureTier"][];
+            /** @description Present when the figure was drawn under corrections (ADR 0061) */
+            corrections?: components["schemas"]["FigureCorrection"][];
         };
         /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. */
         Figure: {
@@ -7701,6 +7799,250 @@ export interface components {
             expect: components["schemas"]["BoardExpect"][];
             from?: (components["schemas"]["BoardRect"] | null)[];
         };
+        /** @description One corrected value (ADR 0061): what is in force, what the file says, and the researcher's reason. */
+        CorrectionEntry: {
+            /** @description A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS) */
+            value: number | string;
+            /** @description What the file says; null when it has no such card */
+            file: (number | string) | null;
+            reason: string;
+            /** @description Optional; empty when not given */
+            source: string;
+            /** Format: date-time */
+            at: string;
+        };
+        /** @description Every correction in force: the brightness unit (only for a file that states one) and WCS keywords. */
+        CorrectionState: {
+            unit?: components["schemas"]["CorrectionEntry"];
+            /** @description By keyword: CRVALi, CRPIXi, CDELTi, CDi_j, PCi_j, CTYPEi, CUNITi, RESTFRQ, RESTFREQ, SPECSYS, EQUINOX, RADESYS */
+            wcs?: {
+                [key: string]: components["schemas"]["CorrectionEntry"];
+            };
+        };
+        /** @description The researcher's WCS and unit corrections in force on a dataset, from the latest record of their history (ADR 0061). The file and the header facts are never changed. Stale: made for other bytes than the file has now, so applied nowhere until confirmed. */
+        Corrections: {
+            state: components["schemas"]["CorrectionState"];
+            /** @description SHA-256 of the values (not the reasons) */
+            hash: string;
+            /** @enum {string} */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** Format: int64 */
+            recordId: number;
+            /** Format: date-time */
+            at: string;
+            stale: boolean;
+        };
+        /** @description What a record changed for one keyword (BUNIT for the unit). null after: not corrected, the file's value applies. */
+        CorrectionChange: {
+            what: string;
+            /** @description A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS) */
+            file: (number | string) | null;
+            /** @description A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS) */
+            before: (number | string) | null;
+            /** @description A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS) */
+            after: (number | string) | null;
+        };
+        /** @description One append-only record of the corrections history. A revert is a new record; nothing is edited or deleted. */
+        CorrectionRecord: {
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            action: "set" | "revert" | "confirm" | "import" | "withdraw";
+            state: components["schemas"]["CorrectionState"];
+            changes: components["schemas"]["CorrectionChange"][];
+            reason: string;
+            source: string;
+            author: string;
+            /** @enum {string} */
+            tier: "verified" | "declared" | "inferred" | "unresolved";
+            /** Format: date-time */
+            at: string;
+            /** Format: int64 */
+            revertsId: number | null;
+            /**
+             * Format: int64
+             * @description The registered size of the file it was made for
+             */
+            sizeBytes: number;
+            /** Format: date-time */
+            modifiedAt: string;
+            /** @description sha256:<hex>, sampled:<fingerprint>, or empty when none was recorded */
+            sourceIdentity: string;
+            /** @description Made for other bytes than the file has now */
+            stale: boolean;
+        };
+        CorrectionList: {
+            /** Format: int64 */
+            datasetId: number;
+            current: components["schemas"]["Corrections"] | null;
+            history: components["schemas"]["CorrectionRecord"][];
+            /**
+             * Format: int64
+             * @description The latest record id (0 for none): send it back as expect
+             */
+            last: number;
+            /** @description The BUNIT the file states */
+            fileBunit: string | null;
+            /** @description The file states a BUNIT and is not an orientation or reliability map */
+            unitCorrectable: boolean;
+        };
+        CorrectionInput: {
+            /** @enum {string} */
+            action: "set" | "revert" | "confirm" | "withdraw";
+            /** @description Absent: unchanged; null: withdraw the unit correction; text: the corrected unit */
+            unit?: string | null;
+            /** @description Keyword: a value, or null to withdraw that keyword's correction */
+            wcs?: {
+                [key: string]: (number | string) | null;
+            };
+            /** @description Required, 3 to 500 characters of plain text */
+            reason: string;
+            /** @description Optional, up to 300 characters */
+            source?: string;
+            /**
+             * Format: int64
+             * @description For revert: the record to undo (the state goes back to what it was before it)
+             */
+            reverts?: number;
+            /**
+             * Format: int64
+             * @description Required to save: the latest record id the client looked at (0 for none); a different one is 409
+             */
+            expect?: number;
+        };
+        CorrectionPoint: {
+            name: string;
+            x: number;
+            y: number;
+            lon: number | null;
+            lat: number | null;
+        };
+        /** @description World coordinates by astropy at the image centre and corners, and of the first, middle and last channel. */
+        CorrectionCoords: {
+            sky: Record<string, never>;
+            points: components["schemas"]["CorrectionPoint"][];
+            spectral: {
+                facts?: Record<string, never>;
+                channels?: {
+                    channel: number;
+                    value: number | null;
+                }[];
+            } | null;
+        };
+        /** @description The worker's validation of a proposed state, as it would be applied; refused carries astropy's or the axis check's reason. */
+        CorrectionWorkerPreview: {
+            before: components["schemas"]["CorrectionCoords"];
+            after: components["schemas"]["CorrectionCoords"] | null;
+            refused: string | null;
+            file_bunit?: string | null;
+            bunit_after?: string | null;
+            changes: {
+                keyword: string;
+                /** @description A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS) */
+                file: (number | string) | null;
+                in_file: boolean;
+                /** @description A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS) */
+                before: (number | string) | null;
+                /** @description A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS) */
+                after: (number | string) | null;
+            }[];
+            note: string;
+        };
+        CorrectionImpactGroup: {
+            key: string;
+            /**
+             * @description live: read again with the new values; pinned: keeps the values it was made with
+             * @enum {string}
+             */
+            effect: "live" | "pinned";
+            text: string;
+            count: number;
+            items: {
+                /** Format: int64 */
+                id: number;
+                label: string;
+            }[];
+        };
+        /** @description What depends on the dataset's coordinates or unit. Pinned evidence is never changed. */
+        CorrectionImpact: {
+            groups: components["schemas"]["CorrectionImpactGroup"][];
+            live: string[];
+            notes: string[];
+        };
+        CorrectionPreview: {
+            action: string;
+            changes: components["schemas"]["CorrectionChange"][];
+            state: components["schemas"]["CorrectionState"];
+            preview: components["schemas"]["CorrectionWorkerPreview"];
+            impact: components["schemas"]["CorrectionImpact"];
+        };
+        CorrectionSaved: {
+            record: components["schemas"]["CorrectionRecord"];
+            dataset: components["schemas"]["Dataset"];
+        };
+        CorrectionSidecarInput: {
+            /** @description A vesqira-corrections version 1 document, as exported */
+            sidecar: Record<string, never>;
+            /** @description Required to apply: the researcher looked at the preview */
+            confirm?: boolean;
+            /** @description Required to apply to a file the sidecar was not made for: why it applies, 10 to 500 characters */
+            differentFile?: string;
+            /** Format: int64 */
+            expect?: number;
+        };
+        CorrectionSidecarPreview: {
+            /** @enum {string} */
+            match: "verified" | "probable" | "different" | "unknown";
+            matchText: string;
+            /** @description The file name in the sidecar */
+            madeFor: string;
+            /** @description Made for this file (verified or probable): it can be applied without a sentence */
+            applies: boolean;
+            changes: components["schemas"]["CorrectionChange"][];
+            state: components["schemas"]["CorrectionState"];
+            history: number;
+            preview: components["schemas"]["CorrectionWorkerPreview"];
+            impact: components["schemas"]["CorrectionImpact"];
+        };
+        /** @description The sidecar file (docs/adr/0061): the corrections of one FITS file with the identity of the file they were made for (no path, no catalog id) and their history. */
+        CorrectionSidecar: {
+            /** @enum {string} */
+            format: "vesqira-corrections";
+            /** @enum {integer} */
+            version: 1;
+            about: string;
+            file: {
+                name: string;
+                /** Format: int64 */
+                sizeBytes: number;
+                sha256: string | null;
+                sampledFingerprint: string | null;
+                sampledAlgorithm?: string;
+            };
+            /** Format: date-time */
+            exportedAt: string;
+            corrections: components["schemas"]["CorrectionState"];
+            history: {
+                action: string;
+                /** Format: date-time */
+                at: string;
+                author: string;
+                reason: string;
+                source: string;
+                changes: components["schemas"]["CorrectionChange"][];
+            }[];
+        };
+        /** @description A correction the figure was drawn under, as the reviewer sees it: no id, no path. */
+        FigureCorrection: {
+            what: string;
+            /** @description A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS) */
+            file: (number | string) | null;
+            /** @description A number or text (the unit, CTYPE, CUNIT, SPECSYS, RADESYS) */
+            value: number | string;
+            tier: string;
+            reason: string;
+            source?: string;
+        };
         /** @description Present on every answer served from the offline store (ADR 0059), as the `offline` field of the JSON head and, serialised, in the X-Vesqira-Offline response header. It says the answer is a copy, when the copy was taken and the file signature it was taken from. A live answer never has it. */
         OfflineMark: {
             /** @enum {boolean} */
@@ -9180,6 +9522,208 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_listCorrections_get_api_datasets_id_corrections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_saveCorrection_post_api_datasets_id_corrections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionInput"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionSaved"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_previewCorrection_post_api_datasets_id_corrections_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionInput"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionPreview"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_exportSidecar_get_api_datasets_id_corrections_sidecar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionSidecar"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_importSidecar_post_api_datasets_id_corrections_sidecar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionSidecarInput"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionSaved"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_previewSidecar_post_api_datasets_id_corrections_sidecar_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionSidecarInput"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionSidecarPreview"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

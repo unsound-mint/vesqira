@@ -15,7 +15,7 @@ export function spectralText(value: number | null, unit: string | null): string 
 /** The brightness unit as it should be read: the file's, the one you declared (said so), or unresolved. Never the second as the first. */
 export function unitLabel(bunit: string | null | undefined, status: string | undefined): string {
   if (!bunit) return "brightness unit unresolved";
-  return status === "user" ? `${bunit} (declared by you)` : bunit;
+  return status === "user" ? `${bunit} (declared by you)` : status === "corrected" ? `${bunit} (corrected by you)` : bunit;
 }
 
 /** A brightness value. NaN and infinities are "no value", zero is a number. */
@@ -42,7 +42,7 @@ export function limitText(v: number, unit: string | null): string {
 export const degrees = (v: number) => `${v.toFixed(5)}°`;
 
 export function provenanceNote(p: Provenance): string {
-  return p === "declared" ? "" : p === "inferred" ? " (unit inferred from the CTYPE standard)" : " (unresolved)";
+  return p === "declared" ? "" : p === "corrected" ? " (axis corrected by you)" : p === "inferred" ? " (unit inferred from the CTYPE standard)" : " (unresolved)";
 }
 
 export type FlagState = { tone: "neutral" | "warn"; text: string };

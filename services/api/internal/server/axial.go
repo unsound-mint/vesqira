@@ -102,7 +102,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 				fail(w, 422, "reliability dataset: "+msg)
 				return
 			}
-			why, err := compat.Grids(d.Header, rel.Header)
+			why, err := compat.Grids(effectiveHeader(d), effectiveHeader(rel))
 			if err != nil {
 				fail(w, 500, "internal error")
 				return
@@ -161,7 +161,7 @@ func (s *Server) axial(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "the declared reliability dataset is itself declared as angles")
 			return
 		}
-		why, gerr := compat.Grids(d.Header, rel.Header)
+		why, gerr := compat.Grids(effectiveHeader(d), effectiveHeader(rel))
 		if gerr != nil || len(why) > 0 {
 			writeJSON(w, 409, map[string]any{"error": "the reliability map no longer shares this map's grid", "reasons": why})
 			return
@@ -172,7 +172,7 @@ func (s *Server) axial(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req["weights_path"] = wreal
-		k.q += "|w" + strconv.FormatInt(wk.id, 10) + "," + strconv.FormatInt(wk.size, 10) + "," + strconv.FormatInt(wk.mtime, 10)
+		k.q += "|w" + identity(wk)
 	}
 	if shape := r.URL.Query().Get("shape"); shape != "" {
 		names := map[string][]string{"rect": {"x0", "y0", "x1", "y1"}, "circle": {"cx", "cy", "r"}}[shape]
@@ -238,7 +238,7 @@ func (s *Server) compatibility(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	why, err := compat.Grids(da.Header, db.Header)
+	why, err := compat.Grids(effectiveHeader(da), effectiveHeader(db))
 	if err != nil {
 		fail(w, 500, "internal error")
 		return
@@ -248,6 +248,6 @@ func (s *Server) compatibility(w http.ResponseWriter, r *http.Request) {
 	}
 	// The channel link is its own question: SPECSYS is not a grid reason, but channels are linked by index only when the
 	// spectral frames are known to be the same.
-	chOK, chWhy := compat.SpectralFrames(da.Header, db.Header)
+	chOK, chWhy := compat.SpectralFrames(effectiveHeader(da), effectiveHeader(db))
 	writeJSON(w, 200, map[string]any{"compatible": len(why) == 0, "reasons": why, "channelLink": map[string]any{"ok": chOK, "reason": chWhy}})
 }

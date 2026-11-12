@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -147,7 +148,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 				fail(w, 422, "both maps must be declared as axial orientation maps (with a unit) before they can be differenced")
 				return
 			}
-			if why, err := compat.Grids(d.Header, ref.Header); err != nil || len(why) > 0 {
+			if why, err := compat.Grids(effectiveHeader(d), effectiveHeader(ref)); err != nil || len(why) > 0 {
 				writeJSON(w, 409, map[string]any{"error": "the maps are not known to share a grid, so a pixel-by-pixel difference is not meaningful", "reasons": why})
 				return
 			}
@@ -159,7 +160,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 				fail(w, 422, "a map declared as an axial orientation map needs the axial difference, which is taken modulo 180 degrees")
 				return
 			}
-			if why, err := compat.Grids(d.Header, ref.Header); err != nil || len(why) > 0 {
+			if why, err := compat.Grids(effectiveHeader(d), effectiveHeader(ref)); err != nil || len(why) > 0 {
 				writeJSON(w, 409, map[string]any{"error": "the maps are not known to share a grid, so a pixel-by-pixel difference is not meaningful", "reasons": why})
 				return
 			}
@@ -222,11 +223,14 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	if len(declared) > 0 {
 		pm["declaredUnits"] = declared // offered to the worker; whether it was used (the file may state its own unit) is in the summary's unit_source
 	}
+	if res.Corrections != nil {
+		pm["corrections"] = res.Corrections // the correction state the inputs were read with (ADR 0061): pinned with the result, no ids
+	}
 	params, _ := json.Marshal(pm)
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: in.Op, Params: params, Sources: sources, Summary: res.Summary, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
-	nd = s.finishAxialResult(analysisOutcome{res.Summary, res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(waiting(r.Context()), p) }, in.Op, sources, params)
+	nd = s.finishAxialResult(analysisOutcome{Summary: res.Summary, Software: res.Software}, nd, ax, relPath, func(p string) (catalog.Dataset, int, string) { return s.registerPath(waiting(r.Context()), p) }, in.Op, sources, params)
 	writeJSON(w, 201, map[string]any{"dataset": nd, "summary": res.Summary})
 }
 
@@ -249,6 +253,10 @@ func (s *Server) runAnalysisProgramCtx(parent context.Context, args []string) (a
 			return analysisOutcome{}, 499, "request cancelled"
 		}
 		defer release()
+	}
+	corrOpt, corrHashes, corrSnap := s.corrArgs(args)
+	if corrOpt != "" {
+		args = append(args, corrOpt)
 	}
 	ctx, cancel := context.WithTimeout(parent, s.Analysis.Timeout)
 	defer cancel()
@@ -275,6 +283,7 @@ func (s *Server) runAnalysisProgramCtx(parent context.Context, args []string) (a
 		Error    string          `json:"error"`
 		Summary  json.RawMessage `json:"summary"`
 		Software json.RawMessage `json:"software"`
+		Applied  []string        `json:"corrections_applied"`
 	}
 	if json.Unmarshal(out.Bytes(), &res) != nil || runErr != nil || !res.OK {
 		if res.Error != "" {
@@ -282,7 +291,12 @@ func (s *Server) runAnalysisProgramCtx(parent context.Context, args []string) (a
 		}
 		return analysisOutcome{}, 422, "the analysis could not be run on this file"
 	}
-	return analysisOutcome{res.Summary, res.Software}, 0, ""
+	for _, h := range corrHashes {
+		if !slices.Contains(res.Applied, h) { // a program that ignored the corrections must not pass for one that applied them
+			return analysisOutcome{}, 502, "the analysis program did not apply the researcher's corrections; no result was recorded"
+		}
+	}
+	return analysisOutcome{res.Summary, res.Software, corrSnap}, 0, ""
 }
 
 type limited struct {
@@ -324,6 +338,11 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Op == "axial_diff" {
 		fail(w, 409, "an axial difference is computed on this computer, from two maps registered here")
+		return
+	}
+	if d.Corrections.InForce() != nil {
+		// a job on the host reads the file's own header: its result would silently carry the uncorrected WCS or unit
+		fail(w, 409, "this dataset has WCS or unit corrections in force, which an analysis run as a job on the host does not apply; withdraw them for this run or analyse a copy on this computer")
 		return
 	}
 	if d.HostID == 0 {
@@ -429,7 +448,7 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 	if p.Axial != nil {
 		in := catalog.Interpretation{Kind: "axial_orientation", Unit: p.Axial.Unit, Frame: p.Axial.Frame, Quantity: p.Axial.Quantity}
 		reg := func(fp string) (catalog.Dataset, int, string) { return s.registerRemoteFile(ctx, h.Host, fp) }
-		d = s.finishAxialResult(analysisOutcome{res.Summary, res.Software}, d, &axialRun{interp: in}, remoteRelPath(j.OutputDir), reg, p.Op, p.Sources, params)
+		d = s.finishAxialResult(analysisOutcome{Summary: res.Summary, Software: res.Software}, d, &axialRun{interp: in}, remoteRelPath(j.OutputDir), reg, p.Op, p.Sources, params)
 	}
 	return d, 0, ""
 }

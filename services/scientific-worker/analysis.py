@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from astropy.io import fits
 
+import corrections as corr
 from plane_worker import Cube, Refused, authorize, declared_unit as checked_declared_unit, fits_array
 import orientation as ori
 from memcap import limit_memory, over_cap_message
@@ -43,8 +44,12 @@ def fail(msg: str):
 
 
 def open_cube(path: str) -> Cube:
+    """The file as a Cube, with the researcher's corrections for it when the API sent any (--corrections, ADR 0061)."""
     real = authorize(path)
-    return Cube(real)
+    return Cube(real, corr.CURRENT.get(real))
+
+
+OWNED_UNIT = ("user", "corrected")     # a unit that is the researcher's, not the input file's: declared for a gap, or corrected
 
 
 def planes(c: Cube, c0: int, c1: int, ys=slice(None), xs=slice(None)):
@@ -101,14 +106,19 @@ def image_header(c: Cube, extra: dict) -> fits.Header:
 def unit_of(c: Cube, declared: str | None) -> tuple[str | None, str]:
     """The brightness unit of a file and where it comes from: ("file"), a unit its author declared for a file without one
     ("user"), or none ("unresolved"). What the file says always wins; a declared unit only fills a gap. It is text, carried
-    as typed: nothing here parses or converts it."""
+    as typed: nothing here parses or converts it. A unit the researcher corrected (ADR 0061) is "corrected"."""
+    if c.unit_override is not None:
+        if not c.unit_override.isascii():
+            fail("the corrected brightness unit has characters a FITS header cannot hold (such as µ or °); "
+                 "correct it in plain ASCII (for example uJy/beam), which a result file can carry")
+        return c.unit_override, "corrected"
     if "BUNIT" in c.h:
         v = c.h.get("BUNIT")
         text = v.strip() if isinstance(v, str) else ""
         if not text:
             return None, "unresolved"                 # a blank card says nothing; it is not a unit, and a declaration does not replace it
         # A file made by an earlier analysis of a declared unit keeps saying whose the unit is, however many steps follow.
-        return text, "user" if c.h.get("VESQBUNS") == "user" else "file"
+        return text, c.h.get("VESQBUNS") if c.h.get("VESQBUNS") in OWNED_UNIT else "file"
     if declared is not None:
         text = checked_declared_unit({"declared_bunit": declared})
         if not text.isascii():
@@ -119,28 +129,50 @@ def unit_of(c: Cube, declared: str | None) -> tuple[str | None, str]:
     return None, "unresolved"
 
 
-def stamp_user_unit(h: fits.Header, unit: str, what: str = "the input"):
-    """Give a result the unit its author declared for the input, marked as theirs (VESQBUNS) so it is never mistaken for a
-    unit the input file stated."""
-    if h.get("VESQBUNS") == "user" and h.get("BUNIT") == unit:
+def unit_history(unit: str, source: str, what: str = "the input") -> str:
+    if source == "corrected":
+        return f"Vesqira: brightness unit {unit} is the author's correction for {what}; that file states another BUNIT"
+    return f"Vesqira: brightness unit {unit} was declared by the author for {what}; the file has no BUNIT"
+
+
+def stamp_user_unit(h: fits.Header, unit: str, what: str = "the input", source: str = "user"):
+    """Give a result the unit its author declared (or corrected) for the input, marked as theirs (VESQBUNS) so it is never
+    mistaken for a unit the input file stated."""
+    if h.get("VESQBUNS") == source and h.get("BUNIT") == unit:
         return                                         # already marked by an earlier step, with its history
     h["BUNIT"] = unit
-    h["VESQBUNS"] = "user"
-    h["HISTORY"] = f"Vesqira: brightness unit {unit} was declared by the author for {what}; the file has no BUNIT"
+    h["VESQBUNS"] = source
+    h["HISTORY"] = unit_history(unit, source, what)
 
 
 def note_unit(summary: dict, source: str, unit: str | None, what: str = "the input"):
     """Say in the result's summary (which travels with figures and reviews) whose unit it is."""
     summary["unit_source"] = source
+    if source == "corrected":
+        prior = summary.get("policy", "").rstrip()
+        summary["policy"] = (prior + ("" if prior.endswith(".") or not prior else ".") + f" The brightness unit ({unit}) is the author's correction for {what}; "
+                             "the file states another BUNIT. It is carried as typed and was not checked against the data.").strip()
     if source == "user":
         prior = summary.get("policy", "").rstrip()
         summary["policy"] = (prior + ("" if prior.endswith(".") or not prior else ".") + f" The brightness unit ({unit}) was declared by the author for {what}; the file it comes from has no BUNIT. "
                              "It is carried as typed and was not checked against the data.").strip()
 
 
+def stamp_corrections(header: fits.Header):
+    """A result made from a file with corrected WCS keywords (ADR 0061) carries the corrected values as its own header: say so,
+    so the result is never mistaken for one made from the file's own WCS."""
+    keys = sorted({k for st in corr.CURRENT.by_path.values() for k in (st.get("wcs") or {})})
+    if keys:
+        header["VESQWCSC"] = ("corrected", "WCS of the input corrected by the author")
+        header["HISTORY"] = "Vesqira: made with the author's WCS correction of the input, not the file's own WCS:"
+        for i in range(0, len(keys), 6):
+            header["HISTORY"] = "  corrected keywords: " + ", ".join(keys[i:i + 6])
+
+
 def write_fits(path: str, data: np.ndarray, header: fits.Header):
     if data.size > MAX_OUTPUT_ELEMENTS:
         fail("the result is too large")
+    stamp_corrections(header)
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
@@ -334,9 +366,9 @@ def op_moment(args) -> dict:
                "axis": name, "pixels_without_data": int(np.isnan(out).sum()),
                "policy": "NaN, BLANK and values below the threshold are excluded; a pixel with no selected value is NaN, never 0; moments 1 and 2 need a positive total"}
     if order == 0:                                    # moments 1 and 2 are velocities: the brightness unit is not in them
-        if bu_src == "user":
-            h["VESQBUNS"] = "user"                              # the BUNIT written above is that brightness unit times the spectral one
-            h["HISTORY"] = f"Vesqira: brightness unit {bu} was declared by the author for the input; the file has no BUNIT"
+        if bu_src in OWNED_UNIT:
+            h["VESQBUNS"] = bu_src                              # the BUNIT written above is that brightness unit times the spectral one
+            h["HISTORY"] = unit_history(bu, bu_src)
         note_unit(summary, bu_src, bu)
     if ap is not None:
         import masks as mk
@@ -397,8 +429,8 @@ def _write_cube(c: Cube, data: np.ndarray, h: fits.Header, op: str, summary: dic
     h["VESQOP"] = op
     h["HISTORY"] = f"Vesqira {op} {json.dumps(summary)}"
     bu, bu_src = unit_of(c, args.declared_unit)
-    if bu_src == "user":
-        stamp_user_unit(h, bu)
+    if bu_src in OWNED_UNIT:
+        stamp_user_unit(h, bu, source=bu_src)
     write_fits(args.out, arr, h)
     out = {**summary, "shape": list(arr.shape),
            "policy": "values are copied unchanged; the WCS reference pixel is shifted so coordinates stay exact"}
@@ -526,8 +558,8 @@ def op_align(args) -> dict:
     h["VESQOP"] = "align"
     h["HISTORY"] = f"Vesqira align: {method} reprojection onto the grid of the reference; resolution is NOT matched"
     bu, bu_src = unit_of(src, args.declared_unit)
-    if bu_src == "user":
-        stamp_user_unit(h, bu)
+    if bu_src in OWNED_UNIT:
+        stamp_user_unit(h, bu, source=bu_src)
     write_fits(args.out, data, h)
     summary = {"method": method, "shape": list(data.shape),
                "source_frame": src.sky_facts().get("frame"), "reference_frame": ref.sky_facts().get("frame"),
@@ -608,15 +640,16 @@ def op_scalar_diff(args) -> dict:
         summary.update(mean=float(v.mean()), median=float(np.median(v)), rms=float(np.sqrt((v ** 2).mean())), min=float(v.min()), max=float(v.max()))
     h = image_header(a, {"BUNIT": ua, "VESQOP": "scalar_diff"})
     h["HISTORY"] = "Vesqira scalar difference (input minus reference), same grid, same declared unit"
-    by = [w for w, sr in (("the input", sa), ("the reference", sb)) if sr == "user"]
+    by = [w for w, sr in (("the input", sa), ("the reference", sb)) if sr in OWNED_UNIT]
+    src = "corrected" if "corrected" in (sa, sb) else "user"
     if by:
-        h["VESQBUNS"] = "user"
-        h["HISTORY"] = f"Vesqira: brightness unit {ua} was declared by the author for {' and '.join(by)}; that file has no BUNIT"
+        h["VESQBUNS"] = src
+        h["HISTORY"] = unit_history(ua, src, " and ".join(by))
     write_fits(args.out, d.astype("<f4"), h)
     summary["policy"] = ("Input minus reference. A pixel without a value in either map is NaN, never 0; a recorded 0 is a value. The grids were checked "
                          "for agreement before this ran, but different resolution (beam) between the maps is not corrected: a difference of maps with "
                          "different beams mixes resolution with signal. The mean is a plain arithmetic mean of the finite differences.")
-    note_unit(summary, "user" if by else "file", ua, " and ".join(by))
+    note_unit(summary, src if by else "file", ua, " and ".join(by))
     return {"ok": True, "op": "scalar_diff", "summary": summary}
 
 
@@ -745,8 +778,8 @@ def op_convolve(args) -> dict:
     summary = {"from_beam_arcsec": [smaj, smin, spa], "to_beam_arcsec": [tmaj, tmin, tpa], "kernel_half_width_pixels": n_pix,
                "rescaled_by_beam_area": per_beam, "area_ratio": area}
     nh["HISTORY"] = f"Vesqira convolve {json.dumps(summary)}"
-    if bu_src == "user":
-        stamp_user_unit(nh, bunit)
+    if bu_src in OWNED_UNIT:
+        stamp_user_unit(nh, bunit, source=bu_src)
     write_fits(args.out, data, nh)
     out = {**summary, "shape": list(data.shape),
            "pixels_without_data": int(np.isnan(data).sum()),
@@ -758,7 +791,7 @@ def op_convolve(args) -> dict:
         out["policy"] += (" The file has no BUNIT and none was declared, so the values were smoothed as they are, as if in a surface-brightness unit; "
                           "if they are per beam, they need rescaling by the beam-area ratio.")
     note_unit(out, bu_src, bunit)
-    if bu_src == "user":
+    if bu_src in OWNED_UNIT:
         out["policy"] += (" Whether the values are per beam was read from that text (a unit containing \"beam\" is rescaled by the beam-area ratio): "
                           f"{'rescaled' if per_beam else 'not rescaled'}.")
     return {"ok": True, "op": "convolve", "summary": out}
@@ -832,14 +865,30 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--masks")                # masks to apply, a JSON list of {path, type, policy[, weight, id, name, tier, rule, fingerprint]} (ADR 0055)
     ap.add_argument("--ref-masks")            # the same for the reference of relorient_maps
     ap.add_argument("--table-out")            # relorient_maps: where the per-pixel CSV goes
+    ap.add_argument("--corrections")          # the researcher's corrections, a JSON object {resolved path: {hash, bunit, wcs}} (ADR 0061)
     args = ap.parse_args(argv)
     limit_memory()
     try:
+        if args.corrections:
+            try:
+                corr.CURRENT.by_path = corr.parse_mapping(json.loads(args.corrections))
+            except (corr.Bad, ValueError):
+                fail("the corrections sent with this analysis are malformed")
         if args.op != "stats" and not args.out:
             fail("--out is required")
         if args.op in ("align", "axial_diff", "scalar_diff", "relorient_maps") and not args.reference:
             fail("--reference is required")
         result = OPS[args.op](args)
+        if corr.CURRENT.by_path:
+            # the API checks this before it records the result: a program that did not apply the corrections must not pass for one that did
+            result["corrections_applied"] = sorted(st["hash"] for st in corr.CURRENT.by_path.values())
+            keys = sorted({k for st in corr.CURRENT.by_path.values() for k in (st.get("wcs") or {})})
+            summary = result.get("summary")
+            if keys and isinstance(summary, dict):
+                # the summary is what travels with a figure to the reviewer; the FITS stamp alone would not reach them
+                prior = str(summary.get("policy") or "").rstrip()
+                summary["policy"] = (prior + ("" if prior.endswith(".") or not prior else ".") + " The WCS of the input was the author's correction ("
+                                     + ", ".join(keys) + "), not the file's own; the file was not changed, and a result file carries the corrected values, marked VESQWCSC.").strip()
         import astropy
         result["software"] = {"astropy": astropy.__version__, "numpy": np.__version__, "python": sys.version.split()[0]}
         if args.op == "align":

@@ -382,7 +382,8 @@ func (s *Server) chooseRead(ctx context.Context, d catalog.Dataset, probeRemote 
 		cand := d
 		cand.Path, cand.HostID, cand.SizeBytes, cand.ModifiedAt = l.Path, l.HostID, l.SizeBytes, l.ModifiedAt
 		if l.HostID != 0 && !probeRemote {
-			return cand, l, l.Path, cacheKey{id: d.ID, host: l.HostID, size: l.SizeBytes, mtime: l.ModifiedAt.UnixNano(), unit: declaredUnitOf(d)}, 0, ""
+			s.notePath(l.HostID, l.Path, d.ID)
+			return cand, l, l.Path, cacheKey{id: d.ID, host: l.HostID, size: l.SizeBytes, mtime: l.ModifiedAt.UnixNano(), unit: declaredUnitOf(d), corr: corrHash(d)}, 0, ""
 		}
 		r, key, st, m := s.authorize(ctx, cand)
 		if st == 0 {

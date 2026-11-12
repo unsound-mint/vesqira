@@ -35,6 +35,8 @@ CONVENTIONS = {"radio": u.doppler_radio, "optical": u.doppler_optical, "relativi
 FRAMES = {"icrs": "ICRS", "fk5": "FK5 (J2000)", "galactic": "Galactic"}
 BRIGHTNESS_FAMILIES = {"temperature": ["K", "mK", "uK"], "flux": ["Jy/beam", "mJy/beam", "uJy/beam"]}
 SPECSYS_NOTE = "The reference frame of the axis is the file's and is not changed; a frame change such as TOPOCENT to LSRK is not offered."
+SPECSYS_CORRECTED_NOTE = ("The reference frame of the axis (SPECSYS) is the researcher's correction, a declaration of what the axis is; no values were "
+                          "transformed between frames, and a frame change such as TOPOCENT to LSRK is not offered.")
 
 
 class Bad(ValueError):
@@ -73,6 +75,20 @@ def rest_of(h):
     return None, None
 
 
+def rest_of_cube(c):
+    """rest_of for a cube, saying when the rest frequency is one the researcher corrected (ADR 0061), so a velocity readout never
+    presents a corrected value as the file's."""
+    rest, src = rest_of(c.h)
+    if src is not None and src in getattr(c, "corrected", ()):
+        src = f"{src} (corrected by the researcher)"
+    return rest, src
+
+
+def _rest_words(src):
+    """'the file's RESTFRQ', or 'the RESTFRQ (corrected by the researcher)'."""
+    return f"the {src}" if "corrected" in src else f"the file's {src}"
+
+
 def _axis(c):
     """What kind of spectral axis the cube has and what stands in the way of converting it: (info, refusal)."""
     f = c.spectral_facts()
@@ -90,6 +106,7 @@ def _axis(c):
     if base == "AWAV":
         return None, "the axis is in air wavelength: converting it needs a refractive index, which is not applied"
     kind = "vel" if legacy else AXIS_KIND.get(base)
+    corrected = set(f.get("corrected") or ())
     unit = parse_unit(f.get("unit") or "")
     if kind is None or unit is None:
         return None, f"axis type {ctype or 'unknown'} is not frequency, wavelength or a velocity (FREQ, WAVE, VRAD, VOPT, VELO)"
@@ -97,6 +114,7 @@ def _axis(c):
         return None, f"the axis unit {f.get('unit')} does not fit a {kind} axis"
     return {"kind": kind, "ctype": ctype, "unit": unit, "unit_text": f["unit"], "unit_status": f["unit_status"],
             "convention": None if legacy else FILE_CONVENTION.get(base), "legacy": legacy,
+            "who": "corrected" if f"CTYPE{f['fits_axis']}" in corrected else "file", "specsys_corrected": "SPECSYS" in corrected,
             "specsys": f.get("specsys") or ({"-LSR": "LSR (legacy CTYPE suffix)", "-HEL": "heliocentric (legacy CTYPE suffix)",
                                              "-OBS": "observer (legacy CTYPE suffix)"}[ctype[4:8]] if legacy else None)}, None
 
@@ -128,11 +146,11 @@ def spectral_offers(c) -> dict | None:
     if f is None:
         return None
     axis, why = _axis(c)
-    rest, src = rest_of(c.h)
+    rest, src = rest_of_cube(c)
     out = {"native_unit": f.get("unit"), "native_kind": None if axis is None else axis["kind"], "ctype": f.get("ctype"),
            "file_convention": None if axis is None else axis["convention"], "specsys": f.get("specsys"),
            "rest": None if rest is None else {"value": float(rest.value), "unit": "Hz", "source": src},
-           "reference_frame_note": SPECSYS_NOTE, "targets": []}
+           "reference_frame_note": SPECSYS_CORRECTED_NOTE if axis is not None and axis.get("specsys_corrected") else SPECSYS_NOTE, "targets": []}
     for text, (kind, _) in SPECTRAL_TARGETS.items():
         enabled, reason = True, None
         if axis is None:
@@ -165,8 +183,9 @@ def spectral_plan(c, unit_text, convention):
         return None, why, None, None
     native = {"unit": axis["unit_text"], "unit_status": axis["unit_status"]}
     base = {"native": native, "converted": None, "refused": None, "basis": None, "convention": None,
-            "convention_source": None, "rest": None, "specsys": axis["specsys"], "reference_frame_note": SPECSYS_NOTE}
-    rest, src = rest_of(c.h)
+            "convention_source": None, "rest": None, "specsys": axis["specsys"],
+            "reference_frame_note": SPECSYS_CORRECTED_NOTE if axis.get("specsys_corrected") else SPECSYS_NOTE}
+    rest, src = rest_of_cube(c)
     if rest is not None:
         base["rest"] = {"value": float(rest.value), "unit": "Hz", "source": src}
 
@@ -178,8 +197,8 @@ def spectral_plan(c, unit_text, convention):
                 return refuse(f"the axis is {axis['ctype']}, a legacy spelling that does not declare its velocity convention: it is not converted to frequency or wavelength")
             if rest is None:
                 return refuse("no rest frequency or wavelength in the file (RESTFRQ, RESTFREQ, RESTWAV)")
-            base["convention"], base["convention_source"] = axis["convention"], "file"
-            basis = (f"astropy.units doppler_{axis['convention']} with the file's {src} = {rest.value:.12g} Hz (CTYPE {axis['ctype']} declares the "
+            base["convention"], base["convention_source"] = axis["convention"], axis["who"]
+            basis = (f"astropy.units doppler_{axis['convention']} with {_rest_words(src)} = {rest.value:.12g} Hz (CTYPE {axis['ctype']}{' (corrected by the researcher)' if axis['who'] == 'corrected' else ''} declares the "
                      f"{axis['convention']} convention), then spectral()")
             return base, None, (lambda q: q.to(u.Hz, CONVENTIONS[axis["convention"]](rest)).to(target, u.spectral())), basis
         basis = "astropy.units.spectral(): c = 299792458 m/s, vacuum wavelength; no rest frequency or convention involved"
@@ -192,14 +211,15 @@ def spectral_plan(c, unit_text, convention):
     if axis["kind"] == "vel":
         if convention is not None and convention != axis["convention"]:
             return refuse(f"the file declares the {axis['convention']} convention ({axis['ctype']}); another convention is not applied to a velocity axis")
-        base["convention"], base["convention_source"] = axis["convention"], "file"
-        return base, None, (lambda q: q.to(target)), f"unit change only (astropy.units); the velocity is the file's {axis['convention']} velocity ({axis['ctype']})"
+        base["convention"], base["convention_source"] = axis["convention"], axis["who"]
+        whose = "the file's" if axis["who"] == "file" else "the corrected axis'"
+        return base, None, (lambda q: q.to(target)), f"unit change only (astropy.units); the velocity is {whose} {axis['convention']} velocity ({axis['ctype']})"
     if rest is None:
         return refuse("velocity needs a rest frequency or wavelength from the file (RESTFRQ, RESTFREQ, RESTWAV); there is none")
     if convention is None:
         return refuse(f"the axis is {axis['ctype']} and the file declares no velocity convention: choose radio, optical or relativistic")
     base["convention"], base["convention_source"] = convention, "user"
-    basis = (f"astropy.units doppler_{convention} with the file's {src} = {rest.value:.12g} Hz; the {convention} convention was chosen by "
+    basis = (f"astropy.units doppler_{convention} with {_rest_words(src)} = {rest.value:.12g} Hz; the {convention} convention was chosen by "
              f"you, the file ({axis['ctype']}) declares none")
     return base, None, (lambda q: q.to(u.Hz, u.spectral()).to(target, CONVENTIONS[convention](rest))), basis
 
@@ -279,7 +299,7 @@ def sky_offers(c) -> dict | None:
 
 def _frame_status(sky: dict) -> str:
     # unresolved = no RADESYS and no EQUINOX on an RA/Dec pair: wcslib (and so astropy) then take ICRS, per the FITS standard
-    return {"declared": "declared", "inferred": "inferred", "unresolved": "assumed"}.get(sky.get("frame_status"), "assumed")
+    return {"declared": "declared", "corrected": "corrected", "inferred": "inferred", "unresolved": "assumed"}.get(sky.get("frame_status"), "assumed")
 
 
 def _sky_source(c):
@@ -311,7 +331,8 @@ def convert_sky(c, x: int, y: int, channel: int, target_id) -> dict:
     out = {"native": {"lon": lon, "lat": lat, "frame": label, "frame_status": status, "lon_name": sky["lon_name"], "lat_name": sky["lat_name"]},
            "converted": None, "refused": None, "basis": None,
            "frame_note": None if status == "declared" else (
-               "the header declares no RADESYS or EQUINOX: ICRS is assumed, the FITS standard default (what WCS does)" if status == "assumed"
+               "the celestial frame is the researcher's correction (RADESYS, EQUINOX or CTYPE), not the file's own" if status == "corrected"
+               else "the header declares no RADESYS or EQUINOX: ICRS is assumed, the FITS standard default (what WCS does)" if status == "assumed"
                else "no RADESYS: the frame is taken from EQUINOX by the FITS standard default")}
     if not (math.isfinite(lon) and math.isfinite(lat)):
         return {**out, "refused": "the position is not finite"}
@@ -373,8 +394,8 @@ def link_channels(a, b) -> dict:
     if a.channels > MAX_LINK_CHANNELS or b.channels > MAX_LINK_CHANNELS:
         return refuse(f"more than {MAX_LINK_CHANNELS} channels: not linked")
     ka, kb = ax["kind"], bx["kind"]
-    ra, srca = rest_of(a.h)
-    rb, srcb = rest_of(b.h)
+    ra, srca = rest_of_cube(a)
+    rb, srcb = rest_of_cube(b)
     if ka == "vel" and kb == "vel":
         if ax["legacy"] != bx["legacy"]:
             return refuse(f"{ax['ctype'] if ax['legacy'] else bx['ctype']} is a legacy spelling that does not declare its velocity convention: it links only to another legacy velocity axis")
@@ -467,7 +488,7 @@ def plane_frequency(c, channel: int):
     v = float(c._world(0, 0, channel)[c.spec])
     if not math.isfinite(v):
         return None, "the spectral value of this channel is not finite"
-    rest, _ = rest_of(c.h)
+    rest, _ = rest_of_cube(c)
     freq, why = _frequency(v * axis["unit"], axis, rest)
     return freq, why
 

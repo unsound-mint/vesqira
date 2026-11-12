@@ -22,7 +22,7 @@ const commit = (r: Run | undefined) => (r ? (r.gitCommit ? r.gitCommit.slice(0, 
 /** The unit as the file gave it, or as you declared it (said so), or unresolved. */
 function unitCell(view: { bunit: string | null; bunit_status: string } | null | undefined): string {
   if (!view?.bunit) return "unresolved";
-  return view.bunit_status === "user" ? `${view.bunit} (declared by you)` : view.bunit;
+  return view.bunit_status === "user" ? `${view.bunit} (declared by you)` : view.bunit_status === "corrected" ? `${view.bunit} (corrected by you)` : view.bunit;
 }
 
 export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a: Dataset; b: Dataset; va: Viewer; vb: Viewer; runs: Run[]; compat: Compat | null; onCreated: (d: Dataset) => void }) {

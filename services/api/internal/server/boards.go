@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -184,11 +185,14 @@ type Provenance struct {
 	// UnitDeclaration is set when the brightness unit of the figure is one the author declared because the file has no BUNIT
 	// (headerDeclaredByFile.bunit stays null: the header is only what the file said).
 	UnitDeclaration *safeUnitDeclaration `json:"unitDeclaration,omitempty"`
-	Nature          string               `json:"nature,omitempty"` // observed | simulated | constructed_control, as declared by the author
-	Run             *runs.Summary        `json:"run,omitempty"`
-	Derived         *derived.Summary     `json:"derived,omitempty"`
-	View            ViewParams           `json:"view"`
-	Statements      []string             `json:"statements"`
+	// Corrections are the researcher's WCS and unit corrections the figure was drawn under (ADR 0061): keyword, what the file says,
+	// the value used, the tier and the reason. headerDeclaredByFile stays what the file said.
+	Corrections []safeCorrection `json:"corrections,omitempty"`
+	Nature      string           `json:"nature,omitempty"` // observed | simulated | constructed_control, as declared by the author
+	Run         *runs.Summary    `json:"run,omitempty"`
+	Derived     *derived.Summary `json:"derived,omitempty"`
+	View        ViewParams       `json:"view"`
+	Statements  []string         `json:"statements"`
 }
 
 // checkAgainst validates the view against what the catalog knows about the file: a channel beyond every axis, a
@@ -255,7 +259,14 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 	if d.UnitDeclaration != nil && !d.UnitDeclaration.Stale && pr.Source.Header.BUnit == nil {
 		declaredUnit = d.UnitDeclaration.Unit
 	}
-	if !p.checkAgainst(pr.Source.Header, declaredUnit) {
+	// the view is checked against the header as it was read, with the researcher's corrections applied (a corrected unit is the
+	// unit of the limits; the file's own is not, then)
+	var eff safeHeader
+	if err := json.Unmarshal(effectiveHeader(d), &eff); err != nil {
+		return nil, err
+	}
+	corr := d.Corrections.InForce()
+	if !p.checkAgainst(eff, declaredUnit) {
 		return nil, errBadView
 	}
 	pr.View = p
@@ -269,6 +280,9 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 	}
 	pr.Tiers = []safeTier{}
 	switch {
+	case corr != nil && corr.Unit != nil:
+		pr.Tiers = append(pr.Tiers, safeTier{What: "brightness unit", Tier: catalog.TierDeclared,
+			Note: "the file says " + valueText(corr.Unit.File) + "; corrected by the researcher: " + corr.Unit.Reason})
 	case pr.Source.Header.BUnit != nil:
 		pr.Tiers = append(pr.Tiers, safeTier{What: "brightness unit", Tier: catalog.TierVerified, Note: "BUNIT is in the file and was read; it was not checked against the data"})
 	case declaredUnit != "":
@@ -290,6 +304,23 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		pr.Tiers = append(pr.Tiers, safeTier{What: "orientation (axial angle, its unit and meaning)", Tier: it, MappingVersion: imv, Rule: ruleOf(it, d.Interpretation.DeclaredBy),
 			Note: "not from the file; " + map[string]string{catalog.TierDeclared: declaredNote(d.Interpretation.DeclaredBy, "declared by the author"), catalog.TierInferred: "proposed by a rule and not confirmed"}[it]})
 		pr.Statements = append(pr.Statements, "The orientation unit and meaning were declared by "+by+", not by the file. Angles are axial (0° and 180° are the same orientation) and statistics use the doubled-angle method.")
+	}
+	if corr != nil {
+		if keys := corr.Keys(); len(keys) > 0 && keys[len(keys)-1] != "BUNIT" {
+			var wk, why []string
+			for _, k := range keys {
+				if k != "BUNIT" {
+					wk = append(wk, k)
+					if r := corr.WCS[k].Reason; !slices.Contains(why, r) {
+						why = append(why, r)
+					}
+				}
+			}
+			pr.Tiers = append(pr.Tiers, safeTier{What: "WCS (" + strings.Join(wk, ", ") + ")", Tier: catalog.TierDeclared,
+				Note: "corrected by the researcher: " + strings.Join(why, "; ") + "; the file's own values are in headerDeclaredByFile and the file was not changed"})
+		}
+		pr.Corrections = safeCorrections(*corr)
+		pr.Statements = append(pr.Statements, correctionStatements(*corr, "this file")...)
 	}
 	pr.Tiers = append(pr.Tiers, masksTiers(der)...)
 	switch d.Nature {
@@ -313,6 +344,9 @@ func buildProvenance(d catalog.Dataset, p ViewParams, run *runs.Summary, der *de
 		}
 		pr.Statements = append(pr.Statements, fmt.Sprintf("Overlay drawn from another file, %s (%d bytes, modified %s; %s), placed on this map by WCS geometry, never resampled onto its grid. The caption states how.",
 			o.Name, o.SizeBytes, o.ModifiedAt.UTC().Format(time.RFC3339), identityNote(o)))
+		if oc := o.Corrections.InForce(); oc != nil {
+			pr.Statements = append(pr.Statements, correctionStatements(*oc, "the overlay file "+o.Name)...)
+		}
 	}
 	return json.Marshal(pr)
 }

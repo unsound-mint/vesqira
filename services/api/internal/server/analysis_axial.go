@@ -79,7 +79,7 @@ func (s *Server) reliabilityPath(ctx context.Context, d catalog.Dataset, remote 
 	if rel.Interpretation != nil && rel.Interpretation.Kind == "axial_orientation" {
 		return "", 409, "the declared reliability dataset is itself declared as angles"
 	}
-	if why, err := compat.Grids(d.Header, rel.Header); err != nil || len(why) > 0 {
+	if why, err := compat.Grids(effectiveHeader(d), effectiveHeader(rel)); err != nil || len(why) > 0 {
 		return "", 409, "the reliability map no longer shares this map's grid: " + strings.Join(why, "; ")
 	}
 	if remote {
@@ -132,6 +132,9 @@ func (s *Server) finishAxialResult(res analysisOutcome, nd catalog.Dataset, a *a
 type analysisOutcome struct {
 	Summary  json.RawMessage
 	Software json.RawMessage
+	// Corrections is the id-free record of the researcher's corrections the program applied to its inputs (ADR 0061), nil for
+	// none: what a derived record keeps, so the result says which correction state it was made with.
+	Corrections []map[string]any
 }
 
 // axialParams is what an analysis job's record keeps of the declaration it ran under, so the result can be registered with it.
