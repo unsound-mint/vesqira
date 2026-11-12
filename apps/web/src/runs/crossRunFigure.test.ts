@@ -10,7 +10,7 @@ vi.mock("../api/boards", async (orig) => ({ ...(await orig<typeof import("../api
 vi.mock("../api/runs", async (orig) => ({ ...(await orig<typeof import("../api/runs")>()), listRuns: api.listRuns }));
 vi.mock("../api/jobs", async (orig) => ({ ...(await orig<typeof import("../api/jobs")>()), listJobs: api.listJobs }));
 vi.mock("../api/hosts", async (orig) => ({ ...(await orig<typeof import("../api/hosts")>()), listHosts: api.listHosts }));
-vi.mock("../api/runConvert", () => ({ convertRunValues: api.convertRunValues }));
+vi.mock("../api/runConvert", () => ({ convertRunValues: api.convertRunValues, probeRunConversions: vi.fn() }));
 vi.mock("./runPicture", () => ({ plotPng: api.plotPng }));
 const { diffLines, diffPlot, drawnRunIds, figureRequest, footerOf, redrawCrossRun, saveRunFigure } = await import("./crossRunFigure");
 
