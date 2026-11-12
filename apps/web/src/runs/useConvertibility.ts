@@ -35,6 +35,7 @@ export function useConvertibility(offers: Pair[]): (o: Pair) => Convertibility {
       const p = probeRunConversions(missing.map((k) => { const [from = "", to = ""] = k.split(SEP); return { from, to }; }))
         .then((got) => {
           for (const g of got) answers.set(keyOf(g.from, g.to), g.refused ? { ok: false, reason: g.reason ?? "the worker refused it" } : { ok: true });
+          missing.forEach((k) => { if (!answers.has(k)) failed.add(k); }); // a pair the reply left out is "could not be checked", never pending forever
         })
         .catch(() => { missing.forEach((k) => failed.add(k)); })
         .finally(() => missing.forEach((k) => asking.delete(k)));
