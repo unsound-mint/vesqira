@@ -10,6 +10,8 @@ What is computed, and nothing more:
 - The projected Rayleigh statistic (Jow et al. 2018, MNRAS 474, 1018, eqs. 6 and 8): V = Σ w cos 2Δψ / sqrt(Σ w² / 2), which
   is standard normal under uniform independent angles. Map pixels are not independent, so V is never turned into a p-value.
 - A chance level from a shifted-pattern null, values kept and positions moved (see null_catalog and null_maps).
+- Optionally (map against map), the same statistics inside bins of a third scalar map (stratify): the per-pixel Δψ is the one
+  computed for the whole comparison, so frames, masks and reliabilities are handled once and bins only choose which pixels count.
 
 These are agreement statistics between two tracers. Neither side is a reference truth, and no number here says a method is
 right, validated or successful (AGENTS.md invariant 9).
@@ -37,6 +39,10 @@ BOOT_SAMPLES = 2000                   # bootstrap resamples (star_vgt_scale_anal
 SNR_DEFAULT = 3.0                     # P/σP >= 3: `keep = p / sp >= min_snr`, min_snr=3.0 (vgt_phase_vs_stars.py:83,87; main passes 3.0 for LMC, 0.0 otherwise, :141)
 SIGMA_FLOOR_DEG = 1.0                 # catalog weights 1/max(σ, 1°)² (star_vgt_scale_analysis.py:269)
 GAUSS_BEAM = math.pi / (4.0 * math.log(2.0))   # area of a Gaussian beam = GAUSS_BEAM * BMAJ * BMIN (1.1331)
+
+STRATA_DEFAULT_BINS = 5
+MAX_STRATA_BINS = 50
+STRATA_BOOT_BUDGET = 40_000_000       # resampled values per bin: the bootstrap's cost is resamples x pixels, so a big bin gets fewer resamples
 
 LABEL = "agreement statistic"
 
@@ -306,6 +312,120 @@ def null_maps(ca, sa, cb, sb, valid_a, valid_b, am_real: float, n_real: int, *, 
     out = summarize_null(np.asarray(null), am_real, hists, bins)
     out.update(attempted=attempts, n_sub=n_sub, scored_on="every pixel of the overlap (at least n_sub)")
     return out
+
+
+# ------------------------------------------------------------------------------------------------------- strata
+
+def check_strata(p: dict) -> dict | None:
+    """The binning of a third map as asked: {"edges": [...]} (user-set, strictly increasing) or {"bins": n} (equal count). None when
+    neither is given. Giving both is refused, since one would silently win."""
+    edges, bins = p.get("strata_edges"), p.get("strata_bins")
+    if edges is None and bins is None:
+        return None
+    if edges is not None and bins is not None:
+        raise Refusal("give the bin edges or the number of equal-count bins, not both")
+    if edges is not None:
+        if not isinstance(edges, list) or len(edges) < 2 or len(edges) > MAX_STRATA_BINS + 1:
+            raise Refusal(f"the bin edges must be a list of 2 to {MAX_STRATA_BINS + 1} numbers")
+        if any(isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) for x in edges):
+            raise Refusal("the bin edges must be finite numbers")
+        e = [float(x) for x in edges]
+        if any(b <= a for a, b in zip(e, e[1:])):
+            raise Refusal("the bin edges must be strictly increasing")
+        return {"edges": e}
+    if isinstance(bins, bool) or not isinstance(bins, int) or not 1 <= bins <= MAX_STRATA_BINS:
+        raise Refusal(f"the number of bins must be a whole number from 1 to {MAX_STRATA_BINS}")
+    return {"bins": bins}
+
+
+def equal_count_edges(values, n_bins: int):
+    """Edges of `n_bins` bins holding (nearly) equal numbers of `values`: the inner edges are the sorted values at ranks i n / N, a
+    bin is [lo, hi) and the last one is closed. Nothing is interpolated, so every edge is a value the map has. Tied values are never
+    split (equal values fall in the same bin), so a heavy tie makes bins of unequal size or fewer bins than asked."""
+    s = np.sort(np.asarray(values, dtype=float))
+    n = s.size
+    inner = np.unique([s[(i * n) // n_bins] for i in range(1, n_bins)])
+    inner = inner[inner > s[0]]
+    return [float(s[0]), *[float(x) for x in inner], float(s[-1])]
+
+
+def uniform_sigma(n: float, w=None):
+    """Standard deviation of AM for independent uniform angles: cos 2Δψ has variance 1/2, so 1/sqrt(2 n); weighted, sqrt(Σ w²/2)/Σ w."""
+    if w is not None:
+        sw = float(np.sum(w))
+        return math.sqrt(float(np.sum(np.square(w))) / 2.0) / sw if sw > 0 else None
+    return 1.0 / math.sqrt(2.0 * n) if n > 0 else None
+
+
+def stratify(d, third, used, wgt, weighted: bool, ask: dict, *, seed: int, pix_area_deg2: float, beam_cubes, third_unit: dict) -> dict:
+    """The statistics of the whole comparison inside bins of a third scalar map on the same grid.
+
+    d is the folded Δψ per pixel (degrees) already computed for the comparison, used the pixels it uses (both maps present,
+    unmasked, weights known), wgt their weights. A bin takes the used pixels whose third-map value lies in [lo, hi) (the last bin is
+    closed). Each bin reuses the comparison's own functions: alignment_measure, projected_rayleigh, bootstrap_am and beam_count.
+    A pixel with no value in the third map is left out and counted; with user edges, so is a pixel outside them."""
+    finite3 = np.isfinite(third)
+    pool = used & finite3
+    missing3 = int((used & ~finite3).sum())
+    if not pool.any():
+        raise Refusal("the third map has no value at any pixel the comparison uses")
+    v3 = third[pool]
+    if "edges" in ask:
+        edges, mode, asked = ask["edges"], "edges", len(ask["edges"]) - 1
+        inside = (v3 >= edges[0]) & (v3 <= edges[-1])
+    else:
+        asked = ask["bins"]
+        edges, mode = equal_count_edges(v3, asked), "equal_count"
+        inside = np.ones(v3.size, dtype=bool)
+    idx = np.searchsorted(np.asarray(edges[1:-1]), v3, side="right")
+    dd, ww, idx, v3 = d[pool][inside], wgt[pool][inside], idx[inside], v3[inside]
+    bins = []
+    for j in range(len(edges) - 1):
+        sel = idx == j
+        n = int(sel.sum())
+        lo, hi = edges[j], edges[j + 1]
+        row = {"index": j, "lo": lo, "hi": hi, "centre": 0.5 * (lo + hi), "median": float(np.median(v3[sel])) if n else None,
+               "n": n, "am": None, "am_weighted": None, "bootstrap_am_16_84": None, "bootstrap_samples": None, "median_abs_dpsi_deg": None,
+               "prs": {"V": None, "V_weighted": None}, "independent_beams": None, "independent_beams_reason": None, "uniform_reference": None}
+        if n:
+            dj, wj = dd[sel], ww[sel]
+            row["am"] = alignment_measure(dj)
+            row["am_weighted"] = alignment_measure(dj, wj) if weighted else None
+            row["median_abs_dpsi_deg"] = float(np.median(np.abs(dj)))
+            row["prs"] = {"V": projected_rayleigh(dj), "V_weighted": projected_rayleigh(dj, wj) if weighted else None}
+            nb = int(max(100, min(BOOT_SAMPLES, STRATA_BOOT_BUDGET // n)))
+            row["bootstrap_am_16_84"] = bootstrap_am(dj, side_rng(seed, 10 + j), nb)
+            row["bootstrap_samples"] = nb if row["bootstrap_am_16_84"] else None
+            beams = beam_count(beam_cubes, n, pix_area_deg2)
+            row["independent_beams"] = beams["value"]
+            row["independent_beams_reason"] = beams.get("reason")
+            row["uniform_reference"] = {
+                "am": 0.0,
+                "sigma_pixels": uniform_sigma(n),
+                "sigma_weighted_pixels": uniform_sigma(n, wj) if weighted else None,
+                "sigma_beams": uniform_sigma(beams["value"]) if beams["value"] else None}
+        bins.append(row)
+    notes = []
+    if mode == "equal_count" and len(bins) < asked:
+        notes.append(f"{asked} equal-count bins were asked, but tied values in the third map cannot be split: {len(bins)} bin{'s' if len(bins) != 1 else ''} hold them, so their sizes differ")
+    elif mode == "equal_count" and len({b["n"] for b in bins}) > 1:
+        notes.append("equal-count bins differ in size by the pixels tied at an edge value (equal values are never split)")
+    return {
+        "binning": {"mode": mode, "asked": asked, "bins": len(bins), "edges": edges, "notes": notes,
+                    "rule": "a pixel is in the bin whose [lower, upper) range holds its third-map value; the last bin includes its upper edge. "
+                            + ("Edges are the sorted third-map values at equal ranks among the pixels the comparison uses." if mode == "equal_count"
+                               else "Edges were set by the user; pixels outside them are left out and counted.")},
+        "third_map": third_unit,
+        "counts": {"compared": int(used.sum()), "third_map_missing": missing3, "outside_edges": int((~inside).sum()), "in_bins": int(inside.sum())},
+        "bins": bins,
+        "definitions": {
+            "strata": "the comparison's own Δψ, split by the value of a third scalar map at the same pixel; each bin's AM, projected Rayleigh V and bootstrap use the whole comparison's definitions on that bin's pixels",
+            "uniform_reference": "AM expected for independent uniform angles is 0 with standard deviation 1/sqrt(2 n) (cos 2Δψ has variance 1/2); given for n pixels, and for n independent beams when both maps declare a beam",
+            "bootstrap": "16th to 84th percentile of AM over resamples of the bin's pixels with replacement; pixels are correlated over the beam, so it is optimistic. The number of resamples is lowered for a large bin (cost = resamples x pixels)"},
+        "policy": ("Agreement statistics inside bins of a third map, not a validation of either tracer and not a causal statement about the third map. "
+                   "Bins are cuts of the same pixels, so their statistics are not independent of each other, and neighbouring pixels are correlated over the beam. "
+                   "No null was run per bin: the whole comparison's null does not apply to a subset."),
+    }
 
 
 # ------------------------------------------------------------------------------------------------------- output helpers
@@ -619,10 +739,33 @@ def beam_count(cubes, n_used: int, pix_area_deg2: float) -> dict:
                       "than the beam, so it overstates the number of independent samples."}
 
 
+def _strata_of_third(args, third_path, a, b, d, used, wgt, weighted, ask, seed, pix_area, nx, ny) -> dict:
+    """Open the third map, check that it can be binned against this comparison, and stratify. It must be one scalar plane on the
+    comparison's grid with a brightness unit from its file or declared by the author; the unit is stated, never assumed."""
+    from analysis import open_cube, planes, unit_of
+    t = open_cube(third_path)
+    if t.channels != 1 or (t.shape[t.y], t.shape[t.x]) != (ny, nx):
+        raise Refusal("the third map must be a single plane on the same grid as the two orientation maps; align it onto them first")
+    unit, src = unit_of(t, getattr(args, "declared_unit_third", None))
+    if not unit:
+        raise Refusal("the third map has no brightness unit, from its BUNIT or declared by you; bins are stated in its unit and none is assumed")
+    _, vals = next(planes(t, 0, 0))
+    vals = np.asarray(vals, dtype=float)
+    facts = {"unit": unit, "unit_source": src, "pixels_without_value": int((~np.isfinite(vals)).sum()),
+             "unit_note": {"file": "the unit is the file's BUNIT", "user": "the unit was declared by the author; the file has no BUNIT",
+                           "corrected": "the unit is the author's correction; the file states another BUNIT"}.get(src, "")}
+    return stratify(d, vals, used, wgt, weighted, ask, seed=seed, pix_area_deg2=pix_area,
+                    beam_cubes=[(a, "the first map"), (b, "the second map")], third_unit=facts)
+
+
 def op_maps(args, params: dict) -> dict:
     """Map against map on a common grid (mode B)."""
     from analysis import open_cube, image_header, write_fits, mask_policy
     p = check_params(params, "maps")
+    ask = check_strata(params)
+    third_path = getattr(args, "third", None)
+    if ask and not third_path:
+        raise Refusal("bins of a third map were asked for, but no third map was given")
     a = open_cube(args.input)
     b = open_cube(args.reference)
     if a.channels != 1 or b.channels != 1 or (a.shape[a.y], a.shape[a.x]) != (b.shape[b.y], b.shape[b.x]):
@@ -693,6 +836,9 @@ def op_maps(args, params: dict) -> dict:
                                                 _f(au[i], 3), _f(wu[i], 4)] for i in range(n_real)))
             table.update(file=os.path.basename(args.table_out), columns=header,
                          note="1-based FITS pixels; lon, lat in the map's celestial frame; both angles are B-field orientations east of north there; dpsi_deg is first minus second")
+    strata = None
+    if third_path:
+        strata = _strata_of_third(args, third_path, a, b, d, used, wgt, weighted, ask or {"bins": STRATA_DEFAULT_BINS}, p["seed"], pix_area, nx, ny)
     summary = {
         "label": LABEL, "mode": "map_map",
         "definitions": {**DEFINITIONS, "prs": "projected Rayleigh statistic V = Σ w cos 2Δψ / sqrt(Σ w² / 2) (Jow et al. 2018, MNRAS 474, 1018, eq. 8; "
@@ -718,4 +864,6 @@ def op_maps(args, params: dict) -> dict:
         "policy": ("Agreement statistic between two tracers, not a validation of either. The maps share a grid; their resolutions are not matched "
                    "here (convolve first if they differ). The FITS result holds |Δψ| in degrees, NaN where a pixel was not used."),
     }
+    if strata is not None:
+        summary["stratified"] = strata
     return {"ok": True, "op": "relorient_maps", "summary": summary}
