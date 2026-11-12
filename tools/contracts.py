@@ -4,8 +4,9 @@
   tools/contracts.py            rewrite packages/contracts/openapi.yaml from the Go routes
   tools/contracts.py --check    fail if the file is out of date, or if the web client calls a route that does not exist
 
-The routes are read from the mux registrations in services/api (the single source of truth for what exists). The
-file lists every path and method with its handler and which listener serves it. Request and response bodies are
+The routes are read from the registrations in services/api (the single source of truth for what exists): s.route(mux, "METHOD /path",
+authz.Permission, handler) on the owner listener, mux.Handle on the capability-token listeners. The file lists every path and method
+with its handler, which listener serves it and the permission it needs (x-vesqira-permission, ADR 0050). Request and response bodies are
 described one route group at a time in packages/contracts/bodies.json (ADR 0032); the generator merges them in.
 Operations without a description are listed in packages/contracts/undescribed.txt, a ratchet: --check fails for an
 undescribed operation that is not listed (a new route needs a description) and for a listed one that is now described
@@ -26,10 +27,33 @@ LISTENERS = [
 ]
 BODIES = ROOT / "packages" / "contracts" / "bodies.json"
 UNDESCRIBED = ROOT / "packages" / "contracts" / "undescribed.txt"
-ROUTE = re.compile(r'mux\.Handle(?:Func)?\("([A-Z]+) (/[^"]*)"(?:,\s*([A-Za-z_.()]+))?')
+# The owner listener declares a permission per route (internal/server/route.go); the other two register bare, because their
+# routes are capabilities held in the URL (a review link, a reader link) or a publisher key, and they may not import authz.
+OWNER_ROUTE = re.compile(r'\bs\.route\(mux,\s*"([A-Z]+) (/[^"]*)",\s*authz\.(\w+),\s*([A-Za-z_.()]+)')
+OTHER_ROUTE = re.compile(r'mux\.Handle(?:Func)?\("([A-Z]+) (/[^"]*)"(?:,\s*([A-Za-z_.()]+))?')
+OWNER_REGISTRATION = re.compile(r"\bs\.route\(")
+OTHER_REGISTRATION = re.compile(r"\bmux\.Handle(?:Func)?\(")
+AUTHZ = ROOT / "services/api/internal/authz/permissions.go"
+# The permission of the routes that are not the owner's, by path prefix. A new prefix needs a decision here.
+CAPABILITY_PERMISSIONS = [
+    ("/review-api/", "capability.review-link"),
+    ("/read-api/", "capability.reader-link"),
+    ("/publish-api/", "capability.publisher-key"),
+]
 
 
-REGISTRATION = re.compile(r"\bmux\.Handle(?:Func)?\(")
+def permission_names():
+    """Go constant name -> permission string, read from internal/authz."""
+    return dict(re.findall(r'^\s*(\w+)\s+Permission\s*=\s*"([^"]+)"', AUTHZ.read_text(), re.M))
+
+
+def other_permission(listener, url):
+    if url == "/":
+        return "anonymous"
+    for prefix, perm in CAPABILITY_PERMISSIONS:
+        if url.startswith(prefix):
+            return perm
+    raise SystemExit(f"contracts: {listener} serves {url}, which has no capability permission: add its prefix to CAPABILITY_PERMISSIONS")
 
 
 def sources():
@@ -41,10 +65,18 @@ def sources():
 
 def routes():
     found = []
+    names = permission_names()
     for listener, path in sources():
-        for m in ROUTE.finditer(path.read_text()):
-            method, url, handler = m.group(1), m.group(2), (m.group(3) or "inline").strip("()")
-            found.append((url, method.lower(), listener, handler))
+        text = path.read_text()
+        if listener == "owner":
+            for m in OWNER_ROUTE.finditer(text):
+                if m.group(3) not in names:
+                    raise SystemExit(f"contracts: {path.name} declares authz.{m.group(3)} for {m.group(1)} {m.group(2)}, which internal/authz does not define")
+                found.append((m.group(2), m.group(1).lower(), listener, m.group(4).strip("()"), names[m.group(3)]))
+        else:
+            for m in OTHER_ROUTE.finditer(text):
+                method, url, handler = m.group(1), m.group(2), (m.group(3) or "inline").strip("()")
+                found.append((url, method.lower(), listener, handler, other_permission(listener, url)))
     return sorted(set(found))
 
 
@@ -52,19 +84,28 @@ def unread_registrations():
     """Registrations the route pattern cannot read (a computed path, a helper), and any outside LISTENERS.
 
     A route the contract does not know about is invisible to every check built on it, so this is an error, not a gap."""
-    known = {f for _, f in sources()}
+    known = {f: listener for listener, f in sources()}
     bad = []
     for f in sorted((ROOT / "services/api").rglob("*.go")):
         if f.name.endswith("_test.go"):
             continue
         text = f.read_text()
-        total = len(REGISTRATION.findall(text))
-        if not total:
-            continue
         if f not in known:
-            bad.append(f"{f.relative_to(ROOT)} registers routes but is not under a directory listed in LISTENERS")
-        elif len(ROUTE.findall(text)) != total:
-            bad.append(f"{f.relative_to(ROOT)} has a mux registration the route pattern cannot read; register it as mux.Handle(\"METHOD /path\", handler)")
+            if OWNER_REGISTRATION.search(text) or OTHER_REGISTRATION.search(text):
+                bad.append(f"{f.relative_to(ROOT)} registers routes but is not under a directory listed in LISTENERS")
+            continue
+        rel = f.relative_to(ROOT)
+        if known[f] == "owner":
+            # route.go holds the one bare registration, inside s.route; anywhere else a bare Handle skips the permission
+            bare = re.findall(r"\.Handle(?:Func)?\(", text)
+            if f.name != "route.go" and bare:
+                bad.append(f"{rel} registers a route without declaring a permission; use s.route(mux, \"METHOD /path\", authz.<Permission>, handler)")
+            if len(OWNER_REGISTRATION.findall(text)) != len(OWNER_ROUTE.findall(text)) and f.name != "route.go":
+                bad.append(f"{rel} has an s.route call the route pattern cannot read; write it as s.route(mux, \"METHOD /path\", authz.<Permission>, handler)")
+        else:
+            total = len(OTHER_REGISTRATION.findall(text))
+            if total != len(OTHER_ROUTE.findall(text)):
+                bad.append(f"{rel} has a mux registration the route pattern cannot read; register it as mux.Handle(\"METHOD /path\", handler)")
     return bad
 
 
@@ -121,8 +162,8 @@ def render(rs):
         "paths:",
     ]
     by_path = {}
-    for url, method, listener, handler in rs:
-        by_path.setdefault(url, []).append((method, listener, handler))
+    for url, method, listener, handler, perm in rs:
+        by_path.setdefault(url, []).append((method, listener, handler, perm))
     for url in sorted(by_path):
         lines.append(f"  {url}:")
         params = re.findall(r"\{(\w+)\}", url)
@@ -132,13 +173,14 @@ def render(rs):
                 lines.append(f"      - {{name: {p}, in: path, required: true, schema: {{type: string}}}}")
         # the same method and path can be served by both listeners (the static app); a YAML key may appear only once
         merged = {}
-        for method, listener, handler in sorted(by_path[url]):
-            merged.setdefault(method, []).append((listener, handler))
+        for method, listener, handler, perm in sorted(by_path[url]):
+            merged.setdefault(method, []).append((listener, handler, perm))
         for method, served in merged.items():
-            listener, handler = served[0]
+            listener, handler, perm = served[0]
             lines.append(f"    {method}:")
             lines.append(f"      operationId: {listener}_{re.sub(r'[^A-Za-z0-9]+', '_', handler).strip('_')}_{method}_{re.sub(r'[^A-Za-z0-9]+', '_', url).strip('_')}")
-            lines.append(f"      x-listener: {', '.join(l for l, _ in served)}")
+            lines.append(f"      x-listener: {', '.join(l for l, *_ in served)}")
+            lines.append(f"      x-vesqira-permission: {perm}")
             d = ops.get(f"{method.upper()} {url}")
             if d is None:
                 lines.append("      responses: {'200': {description: ok}}")

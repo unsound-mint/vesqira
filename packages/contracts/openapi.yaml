@@ -10,21 +10,25 @@ paths:
     get:
       operationId: owner_staticApp_s_WebDist_get_
       x-listener: owner, publish, review
+      x-vesqira-permission: anonymous
       responses: {'200': {description: ok}}
   /api/analysis:
     post:
       operationId: owner_s_analyze_post_api_analysis
       x-listener: owner
+      x-vesqira-permission: analysis.run
       responses: {'200': {description: ok}}
   /api/analysis/job:
     post:
       operationId: owner_s_analysisJob_post_api_analysis_job
       x-listener: owner
+      x-vesqira-permission: job.submit
       responses: {'200': {description: ok}}
   /api/analysis/relative-orientation:
     post:
       operationId: owner_s_relativeOrientation_post_api_analysis_relative_orientation
       x-listener: owner
+      x-vesqira-permission: analysis.run
       summary: "Relative orientation of a declared orientation map against a catalog or a second map: alignment measure, projected Rayleigh statistic, histogram and a shifted null; the result is registered with its provenance"
       requestBody:
         required: true
@@ -67,6 +71,7 @@ paths:
     post:
       operationId: owner_s_addAttachment_post_api_attachments
       x-listener: owner
+      x-vesqira-permission: report.write
       responses: {'200': {description: ok}}
   /api/attachments/{sha}:
     parameters:
@@ -74,16 +79,19 @@ paths:
     get:
       operationId: owner_s_getAttachment_get_api_attachments_sha
       x-listener: owner
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
   /api/audit:
     get:
       operationId: owner_s_listAudit_get_api_audit
       x-listener: owner
+      x-vesqira-permission: audit.read
       responses: {'200': {description: ok}}
   /api/boards:
     get:
       operationId: owner_s_listBoards_get_api_boards
       x-listener: owner
+      x-vesqira-permission: board.read
       summary: "List boards, most recently updated first (job panels use cached state)"
       responses:
         "200":
@@ -101,6 +109,7 @@ paths:
     post:
       operationId: owner_s_createBoard_post_api_boards
       x-listener: owner
+      x-vesqira-permission: board.write
       summary: "Create a board"
       requestBody:
         required: true
@@ -127,6 +136,7 @@ paths:
     get:
       operationId: owner_s_getBoard_get_api_boards_id
       x-listener: owner
+      x-vesqira-permission: board.read
       summary: "One board with the live state of its job panels (reads their logs; the list does not)"
       parameters:
         - name: "id"
@@ -154,6 +164,7 @@ paths:
     post:
       operationId: owner_s_lifecycleArchive_post_api_boards_id_archive
       x-listener: owner
+      x-vesqira-permission: lifecycle.archive
       responses: {'200': {description: ok}}
   /api/boards/{id}/delete:
     parameters:
@@ -161,6 +172,7 @@ paths:
     post:
       operationId: owner_s_lifecycleDelete_post_api_boards_id_delete
       x-listener: owner
+      x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
   /api/boards/{id}/impact:
     parameters:
@@ -168,6 +180,7 @@ paths:
     get:
       operationId: owner_s_lifecycleImpact_get_api_boards_id_impact
       x-listener: owner
+      x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
   /api/boards/{id}/items:
     parameters:
@@ -175,6 +188,7 @@ paths:
     post:
       operationId: owner_s_boardAdd_post_api_boards_id_items
       x-listener: owner
+      x-vesqira-permission: board.write
       summary: "Add a figure, or a panel that follows a job, to a board"
       parameters:
         - name: "id"
@@ -209,6 +223,7 @@ paths:
     post:
       operationId: owner_s_boardItem_post_api_boards_id_items_pos_move
       x-listener: owner
+      x-vesqira-permission: board.write
       summary: "Move a panel one place up or down"
       parameters:
         - name: "id"
@@ -255,6 +270,7 @@ paths:
     post:
       operationId: owner_s_boardItem_post_api_boards_id_items_pos_note
       x-listener: owner
+      x-vesqira-permission: board.write
       summary: "Set a panel's note"
       parameters:
         - name: "id"
@@ -301,6 +317,7 @@ paths:
     post:
       operationId: owner_s_boardPin_post_api_boards_id_items_pos_pin
       x-listener: owner
+      x-vesqira-permission: board.write
       summary: "Replace a job panel with the figure made from its result"
       parameters:
         - name: "id"
@@ -341,6 +358,7 @@ paths:
     post:
       operationId: owner_s_boardItem_post_api_boards_id_items_pos_remove
       x-listener: owner
+      x-vesqira-permission: board.write
       summary: "Remove a panel"
       parameters:
         - name: "id"
@@ -387,6 +405,7 @@ paths:
     post:
       operationId: owner_s_boardLayout_post_api_boards_id_layout
       x-listener: owner
+      x-vesqira-permission: board.write
       summary: "Save the places of all panels on the board's grid"
       parameters:
         - name: "id"
@@ -426,6 +445,7 @@ paths:
     get:
       operationId: owner_s_preflight_get_api_boards_id_preflight
       x-listener: owner
+      x-vesqira-permission: review.publish
       summary: "Show what publishing would expose, without publishing"
       parameters:
         - name: "id"
@@ -458,6 +478,7 @@ paths:
     post:
       operationId: owner_s_publish_post_api_boards_id_publish
       x-listener: owner
+      x-vesqira-permission: review.publish
       summary: "Freeze the board and return the review token once"
       parameters:
         - name: "id"
@@ -491,6 +512,7 @@ paths:
     post:
       operationId: owner_s_lifecycleArchive_post_api_boards_id_restore
       x-listener: owner
+      x-vesqira-permission: lifecycle.archive
       responses: {'200': {description: ok}}
   /api/boards/{id}/snapshots:
     parameters:
@@ -498,6 +520,7 @@ paths:
     get:
       operationId: owner_s_snapshots_get_api_boards_id_snapshots
       x-listener: owner
+      x-vesqira-permission: review.read
       summary: "Published versions of a board, newest first"
       parameters:
         - name: "id"
@@ -523,6 +546,7 @@ paths:
     get:
       operationId: owner_s_capabilities_get_api_capabilities
       x-listener: owner
+      x-vesqira-permission: capabilities.read
       summary: "What this server can do"
       responses:
         "200":
@@ -541,6 +565,7 @@ paths:
     post:
       operationId: owner_s_registerCatalog_post_api_catalogs
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Register a file as a point catalog (a table of sources); the path is authorised like a FITS registration"
       requestBody:
         required: true
@@ -579,6 +604,7 @@ paths:
     post:
       operationId: owner_s_resolveComment_post_api_comments_id_resolve
       x-listener: owner
+      x-vesqira-permission: review.publish
       summary: "Close or reopen a thread (author only; the id is a thread's first comment)"
       parameters:
         - name: "id"
@@ -610,6 +636,7 @@ paths:
     get:
       operationId: owner_s_compatibility_get_api_compat
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Whether two maps are known to share a grid, and whether their channels may be linked by index"
       description: "Query `a` and `b` are dataset ids. Nothing is resampled. `channelLink` is about the spectral axis only and is not a grid reason."
       parameters:
@@ -642,6 +669,7 @@ paths:
     get:
       operationId: owner_s_list_get_api_datasets
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "List registered datasets"
       responses:
         "200":
@@ -659,16 +687,19 @@ paths:
     post:
       operationId: owner_s_register_post_api_datasets
       x-listener: owner
+      x-vesqira-permission: dataset.write
       responses: {'200': {description: ok}}
   /api/datasets/availability:
     get:
       operationId: owner_s_availability_get_api_datasets_availability
       x-listener: owner
+      x-vesqira-permission: dataset.read
       responses: {'200': {description: ok}}
   /api/datasets/newer:
     get:
       operationId: owner_s_newerResults_get_api_datasets_newer
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Notices that a newer result exists, or that a file or the data behind a figure changed"
       description: "Datasets and figures keyed by id. Only files on this computer are looked at. Never swaps or redraws anything."
       responses:
@@ -690,6 +721,7 @@ paths:
     get:
       operationId: owner_s_get_get_api_datasets_id
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "One registered dataset"
       parameters:
         - name: "id"
@@ -717,6 +749,7 @@ paths:
     post:
       operationId: owner_s_lifecycleArchive_post_api_datasets_id_archive
       x-listener: owner
+      x-vesqira-permission: lifecycle.archive
       responses: {'200': {description: ok}}
   /api/datasets/{id}/axial:
     parameters:
@@ -724,6 +757,7 @@ paths:
     get:
       operationId: owner_s_axial_get_api_datasets_id_axial
       x-listener: owner
+      x-vesqira-permission: dataset.read
       responses: {'200': {description: ok}}
   /api/datasets/{id}/catalog/declaration:
     parameters:
@@ -731,6 +765,7 @@ paths:
     delete:
       operationId: owner_s_deleteCatalogDeclaration_delete_api_datasets_id_catalog_declaration
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Withdraw a catalog's declaration"
       parameters:
         - name: "id"
@@ -755,6 +790,7 @@ paths:
     put:
       operationId: owner_s_putCatalogDeclaration_put_api_datasets_id_catalog_declaration
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Declare a catalog's columns (positions, format, frame, optional angle and values); validated, never inferred"
       parameters:
         - name: "id"
@@ -800,6 +836,7 @@ paths:
     get:
       operationId: owner_s_catalogPositions_get_api_datasets_id_catalog_positions
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Sky positions of a catalog's rows from its declaration, optionally transformed to another frame"
       parameters:
         - name: "id"
@@ -866,6 +903,7 @@ paths:
     get:
       operationId: owner_s_catalogReport_get_api_datasets_id_catalog_report
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "How a catalog was read, what its column names suggest, and how its declaration reads every row"
       parameters:
         - name: "id"
@@ -899,6 +937,7 @@ paths:
     get:
       operationId: owner_s_catalogRows_get_api_datasets_id_catalog_rows
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "A page of a catalog's rows (at most 500)"
       parameters:
         - name: "id"
@@ -948,6 +987,7 @@ paths:
     get:
       operationId: owner_s_channelGrid_get_api_datasets_id_channel_grid
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "The plan of a channel-map grid"
       description: "Panels of consecutive (or every stride-th) channels over a range, each a single channel or the mean of `average` channels; each labelled with its spectral coordinate in the file's unit or a converted one with the convention used (ADR 0040); and the one colour scale all panels share. A refused conversion leaves the native labels and says why. Refused with 409 for a dataset declared as an orientation map, and with 422 for more panels or pixels than the caps allow."
       parameters:
@@ -1038,6 +1078,7 @@ paths:
     get:
       operationId: owner_s_conversions_get_api_datasets_id_conversions
       x-listener: owner
+      x-vesqira-permission: dataset.read
       responses: {'200': {description: ok}}
   /api/datasets/{id}/convert:
     parameters:
@@ -1045,6 +1086,7 @@ paths:
     get:
       operationId: owner_s_convert_get_api_datasets_id_convert
       x-listener: owner
+      x-vesqira-permission: dataset.read
       responses: {'200': {description: ok}}
   /api/datasets/{id}/coord:
     parameters:
@@ -1052,6 +1094,7 @@ paths:
     get:
       operationId: owner_s_coord_get_api_datasets_id_coord
       x-listener: owner
+      x-vesqira-permission: dataset.read
       responses: {'200': {description: ok}}
   /api/datasets/{id}/copy:
     parameters:
@@ -1059,6 +1102,7 @@ paths:
     post:
       operationId: owner_s_copyDataset_post_api_datasets_id_copy
       x-listener: owner
+      x-vesqira-permission: analysis.run
       responses: {'200': {description: ok}}
   /api/datasets/{id}/corrections:
     parameters:
@@ -1066,6 +1110,7 @@ paths:
     get:
       operationId: owner_s_listCorrections_get_api_datasets_id_corrections
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "The WCS and unit corrections of a dataset: in force, what the file says, and the whole history"
       parameters:
         - name: "id"
@@ -1090,6 +1135,7 @@ paths:
     post:
       operationId: owner_s_saveCorrection_post_api_datasets_id_corrections
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Append a correction record: set, revert, confirm or withdraw"
       description: "Validated by the worker as it would be applied (astropy must accept the WCS; axes keep their kind and roles). A revert is a new record. 409 when the history moved on (expect), when the state is stale (only confirm or withdraw), or for a unit correction on a file with no BUNIT. The file is never written."
       parameters:
@@ -1124,6 +1170,7 @@ paths:
     post:
       operationId: owner_s_previewCorrection_post_api_datasets_id_corrections_preview
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "What a correction would do, before it is saved: keyword by keyword, the coordinates at the centre and corners before and after, and what depends on the dataset"
       parameters:
         - name: "id"
@@ -1157,6 +1204,7 @@ paths:
     get:
       operationId: owner_s_exportSidecar_get_api_datasets_id_corrections_sidecar
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Export the corrections and their history as a versioned JSON sidecar (no path, no id)"
       parameters:
         - name: "id"
@@ -1181,6 +1229,7 @@ paths:
     post:
       operationId: owner_s_importSidecar_post_api_datasets_id_corrections_sidecar
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Apply a sidecar as one new record, after confirmation"
       description: "Only when it was made for this file (verified or probable), or with a sentence saying why it applies to this different one (409 otherwise)."
       parameters:
@@ -1215,6 +1264,7 @@ paths:
     post:
       operationId: owner_s_previewSidecar_post_api_datasets_id_corrections_sidecar_preview
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Whether a sidecar was made for this file, what it would change and its effect"
       parameters:
         - name: "id"
@@ -1248,6 +1298,7 @@ paths:
     post:
       operationId: owner_s_lifecycleDelete_post_api_datasets_id_delete
       x-listener: owner
+      x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
   /api/datasets/{id}/derived:
     parameters:
@@ -1255,6 +1306,7 @@ paths:
     get:
       operationId: owner_s_getDerived_get_api_datasets_id_derived
       x-listener: owner
+      x-vesqira-permission: dataset.read
       responses: {'200': {description: ok}}
   /api/datasets/{id}/header-cards:
     parameters:
@@ -1262,6 +1314,7 @@ paths:
     get:
       operationId: owner_s_headerCards_get_api_datasets_id_header_cards
       x-listener: owner
+      x-vesqira-permission: dataset.read
       responses: {'200': {description: ok}}
   /api/datasets/{id}/impact:
     parameters:
@@ -1269,6 +1322,7 @@ paths:
     get:
       operationId: owner_s_lifecycleImpact_get_api_datasets_id_impact
       x-listener: owner
+      x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
   /api/datasets/{id}/interpretation:
     parameters:
@@ -1276,6 +1330,7 @@ paths:
     post:
       operationId: owner_s_interpret_post_api_datasets_id_interpretation
       x-listener: owner
+      x-vesqira-permission: dataset.write
       responses: {'200': {description: ok}}
   /api/datasets/{id}/link:
     parameters:
@@ -1283,6 +1338,7 @@ paths:
     post:
       operationId: owner_s_link_post_api_datasets_id_link
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "What linking this map to another needs: the sky transform over a region and the channel correspondence"
       description: "Both datasets must be readable, unchanged and on the same machine; a point catalog is refused (409). The worker computes everything with astropy. `sky` is an affine approximation of this map's pixels to the other's over the region with its measured error in the other map's pixels, plus exact positions of `points`; `spectral` maps every channel to the other map's nearest channel by spectral world value, or refuses with the reason (spectral frames differ or are not stated, a velocity convention or rest frequency that does not allow it). A pair that cannot be related is a 200 with `refused` set, not an error."
       parameters:
@@ -1328,6 +1384,7 @@ paths:
     get:
       operationId: owner_s_listLocations_get_api_datasets_id_locations
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Where a dataset's bytes are, what is known about them, and where the viewer reads from"
       parameters:
         - name: "id"
@@ -1352,6 +1409,7 @@ paths:
     post:
       operationId: owner_s_addLocation_post_api_datasets_id_locations
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Add another file as a location of a dataset, on evidence"
       description: "Linked as verified (equal full SHA-256), probable (equal size and sampled fingerprint; said to be so and never read from) or, with declare, declared when nothing computed can tell. A file whose bytes are proven different is refused (409 bytes_differ) whatever is declared; a file that is already a location is refused (409 already_location). The file is never copied or touched."
       parameters:
@@ -1393,6 +1451,7 @@ paths:
     post:
       operationId: owner_s_removeLocation_post_api_datasets_id_locations_lid_delete
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Forget a location (the file is never deleted)"
       parameters:
         - name: "id"
@@ -1433,6 +1492,7 @@ paths:
     post:
       operationId: owner_s_fingerprintLocation_post_api_datasets_id_locations_lid_fingerprint
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Compute the sampled fingerprint now, queue the full SHA-256, or cancel it"
       description: "A full hash reads the whole file, so it runs in the background on one worker at a time, only up to a cap (422 above it), and can be cancelled. On a host it is computed by that host's worker, bounded there as well."
       parameters:
@@ -1479,6 +1539,7 @@ paths:
     get:
       operationId: owner_s_listMasks_get_api_datasets_id_masks
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "The masks of a dataset"
       parameters:
         - name: "id"
@@ -1503,6 +1564,7 @@ paths:
     post:
       operationId: owner_s_createMask_post_api_datasets_id_masks
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Make a typed mask of a dataset as a derived file"
       description: "The dataset's file is never changed. A file on a host gets its mask on that host, written in the host's derived folder by the host's copy of the program (ADR 0064); a noise map or mask file must be on the same machine as the dataset (409). A mask of type other needs a description; the type missing is computed from the data and cannot be declared."
       parameters:
@@ -1537,6 +1599,7 @@ paths:
     post:
       operationId: owner_s_setNature_post_api_datasets_id_nature
       x-listener: owner
+      x-vesqira-permission: dataset.write
       responses: {'200': {description: ok}}
   /api/datasets/{id}/overlay-geometry:
     parameters:
@@ -1544,6 +1607,7 @@ paths:
     post:
       operationId: owner_s_overlayGeometry_post_api_datasets_id_overlay_geometry
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Geometry of one overlay on this dataset as base, as a binary frame"
       description: "Both datasets must be readable and unchanged, and on the same machine. Frame layout as for a plane: uint32 little-endian header length n, n bytes of JSON (an OverlayGeometryHeader, padded so the payload is 8-byte aligned), then little-endian float32 numbers laid out as the header says. A refusal (frames that cannot be related, footprints that do not overlap, an undeclared angle convention, no beam in the header) is a 422 with the reason."
       parameters:
@@ -1592,6 +1656,7 @@ paths:
     get:
       operationId: owner_s_plane_get_api_datasets_id_plane
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "One plane as a binary frame"
       description: "Frame layout: uint32 little-endian header length n, then n bytes of JSON (a PlaneHeader, padded with spaces so the payload is 8-byte aligned), then width*height little-endian float32 pixels, row-major, row 0 = FITS y=1. Non-finite means no value. Only the transport and the JSON header are described here, not the binary payload."
       parameters:
@@ -1648,6 +1713,7 @@ paths:
     post:
       operationId: owner_s_pv_post_api_datasets_id_pv
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "A position-velocity diagram along a path, as a binary frame"
       description: "Heavy lane, cancellable. Frame layout as for a plane: uint32 little-endian header length n, n bytes of JSON (a PvHeader, padded so the payload is 8-byte aligned), then the payload the header describes. Offsets are the cumulative great-circle separation of the samples' sky positions (astropy), in arcsec; a file with no celestial WCS gives pixels and refuses an angular width. Refused with 409 for an orientation map and with 422 when the path, width or channel range exceed the caps."
       parameters:
@@ -1696,6 +1762,7 @@ paths:
     get:
       operationId: owner_s_regionHistogram_get_api_datasets_id_region_histogram
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Histogram of a region of one channel, with masks applied per mask (ADR 0055)"
       description: "Counted by the scientific worker, which is the only side that has the mask bytes. Without a `mask` parameter the answer is the unmasked count (the browser does the same from the plane it holds, and does not call this)."
       parameters:
@@ -1805,10 +1872,12 @@ paths:
     get:
       operationId: owner_s_listRegions_get_api_datasets_id_regions
       x-listener: owner
+      x-vesqira-permission: dataset.read
       responses: {'200': {description: ok}}
     post:
       operationId: owner_s_createRegion_post_api_datasets_id_regions
       x-listener: owner
+      x-vesqira-permission: dataset.write
       responses: {'200': {description: ok}}
   /api/datasets/{id}/regions.reg:
     parameters:
@@ -1816,6 +1885,7 @@ paths:
     get:
       operationId: owner_s_regionsDS_get_api_datasets_id_regions_reg
       x-listener: owner
+      x-vesqira-permission: dataset.read
       responses: {'200': {description: ok}}
   /api/datasets/{id}/regions/import:
     parameters:
@@ -1823,6 +1893,7 @@ paths:
     post:
       operationId: owner_s_importRegions_post_api_datasets_id_regions_import
       x-listener: owner
+      x-vesqira-permission: dataset.write
       responses: {'200': {description: ok}}
   /api/datasets/{id}/relative-orientation.csv:
     parameters:
@@ -1830,6 +1901,7 @@ paths:
     get:
       operationId: owner_s_relativeOrientationTable_get_api_datasets_id_relative_orientation_csv
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "The per-sample table of a relative-orientation result as CSV (missing values are empty cells)"
       parameters:
         - name: "id"
@@ -1872,6 +1944,7 @@ paths:
     post:
       operationId: owner_s_lifecycleArchive_post_api_datasets_id_restore
       x-listener: owner
+      x-vesqira-permission: lifecycle.archive
       responses: {'200': {description: ok}}
   /api/datasets/{id}/rohsa:
     parameters:
@@ -1879,6 +1952,7 @@ paths:
     get:
       operationId: owner_s_rohsaRuns_get_api_datasets_id_rohsa
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "ROHSA decomposition runs whose Gaussian components can be drawn over this dataset"
       parameters:
         - name: "id"
@@ -1906,6 +1980,7 @@ paths:
     get:
       operationId: owner_s_rohsaComponents_get_api_datasets_id_rohsa_components
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "The Gaussian components of one pixel as a binary frame"
       description: "Frame layout as for a plane: uint32 little-endian header length n, then n bytes of JSON (a RohsaComponentsHeader, padded with spaces), then little-endian float64 axis[channels] (km/s, or channel numbers when the spectral axis is not a resolved velocity), model[channels] (the sum of the valid components) and component[n_gauss][channels]. 409 until the .dat is indexed (see the index route) or when the dataset is not on the run's grid."
       parameters:
@@ -1967,6 +2042,7 @@ paths:
     post:
       operationId: owner_s_rohsaIndex_post_api_datasets_id_rohsa_index
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Advance (or confirm) the index of a run's .dat; each call works for a bounded time"
       parameters:
         - name: "id"
@@ -2006,6 +2082,7 @@ paths:
     get:
       operationId: owner_s_slab_get_api_datasets_id_slab
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "The mean of several channels as a plane frame"
       description: "Per-pixel mean of the finite values of channels first..last, as a plane frame (uint32 little-endian header length, a SlabHeader, then float32 pixels, row 0 = FITS y=1). Non-finite values are excluded and counted; a pixel with none is NaN. With step above 1 the block mean of the slab mean is returned (a display preview, labelled). Refused with 409 for an orientation map."
       parameters:
@@ -2070,6 +2147,7 @@ paths:
     get:
       operationId: owner_s_spectrum_get_api_datasets_id_spectrum
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Mean spectrum of a region, with masks applied per mask (ADR 0055)"
       description: "A frame: uint32 little-endian header length n, n bytes of JSON (shape, region, size, axis, mask_policy, bunit and, when masks were applied, masks, no_value and excluded_by_mask), then float64 axis[channels], float64 mean[channels] (NaN: no finite pixel left, never zero) and uint32 count[channels] (pixels that entered the mean), little-endian. Only the transport and the JSON header are described here."
       parameters:
@@ -2156,6 +2234,7 @@ paths:
     post:
       operationId: owner_s_createSubset_post_api_datasets_id_subsets
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Create a virtual subset of a dataset, pinned to the file as it is now"
       description: "Checked against the real file by the worker (every bound inside the source, a world interval resolved to channels, a frame never converted). 422 with the reason when the window does not fit; 409 for a point catalog."
       parameters:
@@ -2190,6 +2269,7 @@ paths:
     post:
       operationId: owner_s_declareUnit_post_api_datasets_id_unit
       x-listener: owner
+      x-vesqira-permission: dataset.write
       responses: {'200': {description: ok}}
   /api/datasets/{id}/view:
     parameters:
@@ -2197,6 +2277,7 @@ paths:
     get:
       operationId: owner_s_view_get_api_datasets_id_view
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Axis roles, sky and spectral readouts for the viewer"
       parameters:
         - name: "id"
@@ -2228,6 +2309,7 @@ paths:
     get:
       operationId: owner_s_listFigures_get_api_figures
       x-listener: owner
+      x-vesqira-permission: figure.read
       summary: "List figures, newest first"
       responses:
         "200":
@@ -2245,6 +2327,7 @@ paths:
     post:
       operationId: owner_s_createFigure_post_api_figures
       x-listener: owner
+      x-vesqira-permission: figure.write
       summary: "Save a figure from a view and the picture the browser drew"
       requestBody:
         required: true
@@ -2269,6 +2352,7 @@ paths:
     post:
       operationId: owner_s_createRunFigure_post_api_figures_runs
       x-listener: owner
+      x-vesqira-permission: figure.write
       summary: "Save a cross-run plot as a figure that draws no dataset (owner listener only)"
       requestBody:
         required: true
@@ -2295,6 +2379,7 @@ paths:
     post:
       operationId: owner_s_lifecycleArchive_post_api_figures_id_archive
       x-listener: owner
+      x-vesqira-permission: lifecycle.archive
       responses: {'200': {description: ok}}
   /api/figures/{id}/delete:
     parameters:
@@ -2302,6 +2387,7 @@ paths:
     post:
       operationId: owner_s_lifecycleDelete_post_api_figures_id_delete
       x-listener: owner
+      x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
   /api/figures/{id}/download:
     parameters:
@@ -2309,6 +2395,7 @@ paths:
     get:
       operationId: owner_s_figureDownload_get_api_figures_id_download
       x-listener: owner
+      x-vesqira-permission: figure.read
       summary: "The figure's picture as a PNG that carries its title and provenance inside the file"
       parameters:
         - name: "id"
@@ -2346,6 +2433,7 @@ paths:
     get:
       operationId: owner_s_lifecycleImpact_get_api_figures_id_impact
       x-listener: owner
+      x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
   /api/figures/{id}/preview:
     parameters:
@@ -2353,6 +2441,7 @@ paths:
     get:
       operationId: owner_s_figurePreview_get_api_figures_id_preview
       x-listener: owner
+      x-vesqira-permission: figure.read
       summary: "The figure's picture"
       parameters:
         - name: "id"
@@ -2387,6 +2476,7 @@ paths:
     get:
       operationId: owner_s_redrawCheck_get_api_figures_id_redraw_check
       x-listener: owner
+      x-vesqira-permission: figure.read
       summary: "Compare what a figure recorded about each file it was drawn from with the files now, before it is drawn again"
       description: "Only files on this computer are looked at; a file on a host is never better than probable. Never draws, swaps or changes anything."
       parameters:
@@ -2415,6 +2505,7 @@ paths:
     post:
       operationId: owner_s_lifecycleArchive_post_api_figures_id_restore
       x-listener: owner
+      x-vesqira-permission: lifecycle.archive
       responses: {'200': {description: ok}}
   /api/figures/{id}/text:
     parameters:
@@ -2422,6 +2513,7 @@ paths:
     post:
       operationId: owner_s_figureText_post_api_figures_id_text
       x-listener: owner
+      x-vesqira-permission: figure.write
       summary: "Edit a figure's title and caption; the evidence is unchanged"
       parameters:
         - name: "id"
@@ -2453,6 +2545,7 @@ paths:
     get:
       operationId: owner_s_getText_get_api_files_text
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Open a text file for editing (only with --enable-editor)"
       parameters:
         - name: "path"
@@ -2525,6 +2618,7 @@ paths:
     put:
       operationId: owner_s_putText_put_api_files_text
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Save a text file atomically, only if it is unchanged since it was opened (only with --enable-editor)"
       requestBody:
         required: true
@@ -2597,21 +2691,25 @@ paths:
     get:
       operationId: owner_s_fileTree_get_api_files_tree
       x-listener: owner
+      x-vesqira-permission: files.read
       responses: {'200': {description: ok}}
   /api/fs/choose:
     post:
       operationId: owner_s_choose_post_api_fs_choose
       x-listener: owner
+      x-vesqira-permission: local.only
       responses: {'200': {description: ok}}
   /api/fs/complete:
     get:
       operationId: owner_s_completeLocal_get_api_fs_complete
       x-listener: owner
+      x-vesqira-permission: files.read
       responses: {'200': {description: ok}}
   /api/history:
     get:
       operationId: owner_s_listHistory_get_api_history
       x-listener: owner
+      x-vesqira-permission: history.read
       summary: "The viewer's exploration history for a project, oldest first, without scenes (owner listener only)"
       parameters:
         - name: "project"
@@ -2637,6 +2735,7 @@ paths:
     post:
       operationId: owner_s_addHistoryStep_post_api_history
       x-listener: owner
+      x-vesqira-permission: history.write
       summary: "Record a step of the exploration history; the oldest steps beyond the cap are dropped (owner listener only)"
       requestBody:
         required: true
@@ -2663,6 +2762,7 @@ paths:
     get:
       operationId: owner_s_getHistoryStep_get_api_history_id
       x-listener: owner
+      x-vesqira-permission: history.read
       summary: "One step with the scene to restore (owner listener only)"
       responses:
         "200":
@@ -2681,6 +2781,7 @@ paths:
     get:
       operationId: owner_s_listHosts_get_api_hosts
       x-listener: owner
+      x-vesqira-permission: cluster.read
       summary: "Hosts, each with what this session last learned about reaching it (owner listener only)"
       responses:
         "200":
@@ -2705,6 +2806,7 @@ paths:
     post:
       operationId: owner_s_createHost_post_api_hosts
       x-listener: owner
+      x-vesqira-permission: cluster.admin
       summary: "Add a host (owner listener only); a VPN command needs --enable-vpn"
       requestBody:
         required: true
@@ -2747,11 +2849,13 @@ paths:
     get:
       operationId: owner_s_browseHost_get_api_hosts_browse
       x-listener: owner
+      x-vesqira-permission: cluster.read
       responses: {'200': {description: ok}}
   /api/hosts/ssh-config:
     get:
       operationId: owner_s_sshConfigHosts_get_api_hosts_ssh_config
       x-listener: owner
+      x-vesqira-permission: local.only
       responses: {'200': {description: ok}}
   /api/hosts/{id}/check:
     parameters:
@@ -2759,6 +2863,7 @@ paths:
     post:
       operationId: owner_s_checkHost_post_api_hosts_id_check
       x-listener: owner
+      x-vesqira-permission: cluster.read
       responses: {'200': {description: ok}}
   /api/hosts/{id}/complete:
     parameters:
@@ -2766,6 +2871,7 @@ paths:
     get:
       operationId: owner_s_completeRemote_get_api_hosts_id_complete
       x-listener: owner
+      x-vesqira-permission: cluster.read
       responses: {'200': {description: ok}}
   /api/hosts/{id}/delete:
     parameters:
@@ -2773,6 +2879,7 @@ paths:
     post:
       operationId: owner_s_deleteHost_post_api_hosts_id_delete
       x-listener: owner
+      x-vesqira-permission: cluster.admin
       responses: {'200': {description: ok}}
   /api/hosts/{id}/folders:
     parameters:
@@ -2780,6 +2887,7 @@ paths:
     get:
       operationId: owner_s_hostFolders_get_api_hosts_id_folders
       x-listener: owner
+      x-vesqira-permission: cluster.read
       summary: "Run folders on a host (job outputs, scanned runs) with the sizes measured so far; no call to the host"
       parameters:
         - name: "id"
@@ -2813,6 +2921,7 @@ paths:
     post:
       operationId: owner_s_measureFolder_post_api_hosts_id_folders_size
       x-listener: owner
+      x-vesqira-permission: cluster.read
       summary: "Measure one folder with du -sk (read-only; one at a time per host; 90 s limit)"
       parameters:
         - name: "id"
@@ -2858,6 +2967,7 @@ paths:
     get:
       operationId: owner_s_listRemote_get_api_hosts_id_list
       x-listener: owner
+      x-vesqira-permission: cluster.read
       responses: {'200': {description: ok}}
   /api/hosts/{id}/register:
     parameters:
@@ -2865,6 +2975,7 @@ paths:
     post:
       operationId: owner_s_registerRemote_post_api_hosts_id_register
       x-listener: owner
+      x-vesqira-permission: cluster.use
       responses: {'200': {description: ok}}
   /api/hosts/{id}/storage:
     parameters:
@@ -2872,6 +2983,7 @@ paths:
     get:
       operationId: owner_s_hostStorage_false_get_api_hosts_id_storage
       x-listener: owner
+      x-vesqira-permission: cluster.read
       summary: "Quota and disk usage of a host, from a cache of at most 10 minutes (owner listener only)"
       parameters:
         - name: "id"
@@ -2905,6 +3017,7 @@ paths:
     post:
       operationId: owner_s_hostStorage_true_post_api_hosts_id_storage_refresh
       x-listener: owner
+      x-vesqira-permission: cluster.read
       summary: "Look at the host's storage again now (at most once per 15 seconds per host)"
       parameters:
         - name: "id"
@@ -2938,6 +3051,7 @@ paths:
     get:
       operationId: owner_s_hostText_get_api_hosts_id_text
       x-listener: owner
+      x-vesqira-permission: cluster.read
       responses: {'200': {description: ok}}
   /api/hosts/{id}/vpn:
     parameters:
@@ -2945,6 +3059,7 @@ paths:
     post:
       operationId: owner_s_hostVPN_post_api_hosts_id_vpn
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Run the host's stored VPN connect or disconnect command, then check whether the host is reachable (owner listener only, --enable-vpn)"
       description: "Runs the stored argv with exec, no shell, as the user, with a time limit; one run at a time per host. Audited with host, action, exit status and duration, never the output. The body carries only the action."
       parameters:
@@ -3003,6 +3118,7 @@ paths:
     post:
       operationId: owner_s_setHostVPN_post_api_hosts_id_vpn_config
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Replace a host's VPN commands (owner listener only, --enable-vpn)"
       parameters:
         - name: "id"
@@ -3052,10 +3168,12 @@ paths:
     get:
       operationId: owner_s_listJobs_get_api_jobs
       x-listener: owner
+      x-vesqira-permission: job.read
       responses: {'200': {description: ok}}
     post:
       operationId: owner_s_createJob_post_api_jobs
       x-listener: owner
+      x-vesqira-permission: job.submit
       responses: {'200': {description: ok}}
   /api/jobs/{id}:
     parameters:
@@ -3063,6 +3181,7 @@ paths:
     get:
       operationId: owner_s_getJob_get_api_jobs_id
       x-listener: owner
+      x-vesqira-permission: job.read
       responses: {'200': {description: ok}}
   /api/jobs/{id}/cancel:
     parameters:
@@ -3070,6 +3189,7 @@ paths:
     post:
       operationId: owner_s_cancelJob_post_api_jobs_id_cancel
       x-listener: owner
+      x-vesqira-permission: job.submit
       responses: {'200': {description: ok}}
   /api/jobs/{id}/log:
     parameters:
@@ -3077,6 +3197,7 @@ paths:
     get:
       operationId: owner_s_jobLog_get_api_jobs_id_log
       x-listener: owner
+      x-vesqira-permission: job.access
       responses: {'200': {description: ok}}
   /api/jobs/{id}/refresh:
     parameters:
@@ -3084,6 +3205,7 @@ paths:
     post:
       operationId: owner_s_refreshJob_post_api_jobs_id_refresh
       x-listener: owner
+      x-vesqira-permission: job.access
       responses: {'200': {description: ok}}
   /api/jobs/{id}/register:
     parameters:
@@ -3091,6 +3213,7 @@ paths:
     post:
       operationId: owner_s_registerJobOutputs_post_api_jobs_id_register
       x-listener: owner
+      x-vesqira-permission: job.access
       responses: {'200': {description: ok}}
   /api/jobs/{id}/reopen:
     parameters:
@@ -3098,6 +3221,7 @@ paths:
     post:
       operationId: owner_s_reopenJob_post_api_jobs_id_reopen
       x-listener: owner
+      x-vesqira-permission: job.submit
       responses: {'200': {description: ok}}
   /api/jobs/{id}/rerun-check:
     parameters:
@@ -3105,6 +3229,7 @@ paths:
     get:
       operationId: owner_s_getRerunCheck_get_api_jobs_id_rerun_check
       x-listener: owner
+      x-vesqira-permission: job.read
       summary: "Check a rerun draft before submitting: strict reads the code folder on the host (read-only) and compares it with the parent run's observed code; best effort lists each difference; adapted marks the settings that changed"
       parameters:
         - name: "id"
@@ -3143,6 +3268,7 @@ paths:
     get:
       operationId: owner_s_jobResult_get_api_jobs_id_result
       x-listener: owner
+      x-vesqira-permission: job.access
       responses: {'200': {description: ok}}
   /api/jobs/{id}/script:
     parameters:
@@ -3150,6 +3276,7 @@ paths:
     post:
       operationId: owner_s_editJobScript_post_api_jobs_id_script
       x-listener: owner
+      x-vesqira-permission: job.submit
       responses: {'200': {description: ok}}
   /api/jobs/{id}/submit:
     parameters:
@@ -3157,6 +3284,7 @@ paths:
     post:
       operationId: owner_s_submitJob_post_api_jobs_id_submit
       x-listener: owner
+      x-vesqira-permission: job.submit
       responses: {'200': {description: ok}}
   /api/masks/{id}/delete:
     parameters:
@@ -3164,6 +3292,7 @@ paths:
     post:
       operationId: owner_s_deleteMask_post_api_masks_id_delete
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Forget a mask (its file is kept)"
       parameters:
         - name: "id"
@@ -3197,6 +3326,7 @@ paths:
     get:
       operationId: owner_s_maskPlane_get_api_masks_id_plane
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "One plane of a mask, for the viewer's hatch overlay"
       description: "The same frame as a data plane (uint32 header length, JSON header, payload) with a uint8 payload, row 0 = FITS y 1, 1 = flagged. A mask of one plane answers the same for every channel. A mask on a host is read there by the host's worker; only this plane crosses (ADR 0064)."
       parameters:
@@ -3230,6 +3360,7 @@ paths:
     get:
       operationId: owner_s_listNotifications_get_api_notifications
       x-listener: owner
+      x-vesqira-permission: notification.self
       summary: "List notifications: jobs that ended, results imported or not (owner listener only)"
       parameters:
         - name: "limit"
@@ -3257,6 +3388,7 @@ paths:
     post:
       operationId: owner_s_readNotifications_post_api_notifications_read
       x-listener: owner
+      x-vesqira-permission: notification.self
       summary: "Mark notifications read; answers with the new list"
       requestBody:
         required: true
@@ -3281,6 +3413,7 @@ paths:
     get:
       operationId: owner_s_offlineOverview_get_api_offline
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "What is kept offline, per dataset, and the store's limit and use (owner listener only)"
       responses:
         "200":
@@ -3299,6 +3432,7 @@ paths:
     post:
       operationId: owner_s_offlineForget_post_api_offline_forget
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Forget a dataset's offline copy, files included (owner listener only)"
       requestBody:
         required: true
@@ -3323,6 +3457,7 @@ paths:
     post:
       operationId: owner_s_offlinePlanRoute_post_api_offline_plan
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Plan a preparation for offline without copying anything: each item as works offline, works partially or needs the remote, with the reason, and the byte estimate against the budget (owner listener only)"
       requestBody:
         required: true
@@ -3347,6 +3482,7 @@ paths:
     get:
       operationId: owner_s_offlinePrepareStatus_get_api_offline_prepare
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Progress and result of the latest preparation (owner listener only)"
       responses:
         "200":
@@ -3364,6 +3500,7 @@ paths:
     post:
       operationId: owner_s_offlinePrepareRoute_post_api_offline_prepare
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Start preparing for offline: copies only the bounded, derived replies the plan listed. One at a time; refused when it does not fit (owner listener only)"
       requestBody:
         required: true
@@ -3388,6 +3525,7 @@ paths:
     post:
       operationId: owner_s_offlinePrepareCancel_post_api_offline_prepare_cancel
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Stop the running preparation; what was kept stays (owner listener only)"
       responses:
         "200":
@@ -3406,6 +3544,7 @@ paths:
     put:
       operationId: owner_s_offlineSettings_put_api_offline_settings
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Set the most the offline store may keep; lowering it deletes nothing (owner listener only)"
       requestBody:
         required: true
@@ -3430,16 +3569,19 @@ paths:
     get:
       operationId: owner_s_previewFile_get_api_preview
       x-listener: owner
+      x-vesqira-permission: files.read
       responses: {'200': {description: ok}}
   /api/projects:
     get:
       operationId: owner_s_listProjects_get_api_projects
       x-listener: owner
+      x-vesqira-permission: project.read
       responses: {'200': {description: ok}}
   /api/projects/open:
     post:
       operationId: owner_s_openProject_post_api_projects_open
       x-listener: owner
+      x-vesqira-permission: project.write
       responses: {'200': {description: ok}}
   /api/projects/{id}:
     parameters:
@@ -3447,6 +3589,7 @@ paths:
     get:
       operationId: owner_s_getProject_get_api_projects_id
       x-listener: owner
+      x-vesqira-permission: project.read
       responses: {'200': {description: ok}}
   /api/projects/{id}/answers:
     parameters:
@@ -3454,6 +3597,7 @@ paths:
     post:
       operationId: owner_s_answerProject_post_api_projects_id_answers
       x-listener: owner
+      x-vesqira-permission: project.write
       responses: {'200': {description: ok}}
   /api/projects/{id}/import/apply:
     parameters:
@@ -3461,6 +3605,7 @@ paths:
     post:
       operationId: owner_s_importApplyRoute_post_api_projects_id_import_apply
       x-listener: owner
+      x-vesqira-permission: project.write
       summary: "Register the files the saved rules select through the existing registration paths and apply their declarations as declared by the rule; duplicates are offered, not registered"
       parameters:
         - name: "id"
@@ -3518,6 +3663,7 @@ paths:
     post:
       operationId: owner_s_importPreviewRoute_post_api_projects_id_import_preview
       x-listener: owner
+      x-vesqira-permission: project.write
       summary: "Scan preview: every file of a folder with its built-in role and why, grouped by role and extension, and what a list of rules (draft or saved) does to them. Read-only"
       parameters:
         - name: "id"
@@ -3563,6 +3709,7 @@ paths:
     get:
       operationId: owner_s_importRulesGet_get_api_projects_id_import_rules
       x-listener: owner
+      x-vesqira-permission: project.read
       summary: "The project's saved import rules in priority order, whether project.toml holds them, and what the last scan counted"
       parameters:
         - name: "id"
@@ -3593,6 +3740,7 @@ paths:
     put:
       operationId: owner_s_importRulesPut_put_api_projects_id_import_rules
       x-listener: owner
+      x-vesqira-permission: project.write
       summary: "Replace the saved import rules (the order is the priority). Saved in the catalog only; project.toml changes only through the write route"
       parameters:
         - name: "id"
@@ -3638,6 +3786,7 @@ paths:
     post:
       operationId: owner_s_importRulesWrite_post_api_projects_id_import_rules_write
       x-listener: owner
+      x-vesqira-permission: project.write
       summary: "Write the saved rules into .vesqira/project.toml as a section Vesqira marks as its own, on explicit confirmation; the rest of the file is kept byte for byte"
       parameters:
         - name: "id"
@@ -3689,6 +3838,7 @@ paths:
     get:
       operationId: owner_s_projectNeeds_get_api_projects_id_needs
       x-listener: owner
+      x-vesqira-permission: project.read
       responses: {'200': {description: ok}}
   /api/projects/{id}/project-file:
     parameters:
@@ -3696,6 +3846,7 @@ paths:
     post:
       operationId: owner_s_writeProject_post_api_projects_id_project_file
       x-listener: owner
+      x-vesqira-permission: project.write
       responses: {'200': {description: ok}}
   /api/projects/{id}/scan:
     parameters:
@@ -3703,6 +3854,7 @@ paths:
     post:
       operationId: owner_s_scanProject_post_api_projects_id_scan
       x-listener: owner
+      x-vesqira-permission: project.write
       responses: {'200': {description: ok}}
   /api/projects/{id}/scan/cancel:
     parameters:
@@ -3710,6 +3862,7 @@ paths:
     post:
       operationId: owner_s_cancelScan_post_api_projects_id_scan_cancel
       x-listener: owner
+      x-vesqira-permission: project.write
       responses: {'200': {description: ok}}
   /api/projects/{id}/tree:
     parameters:
@@ -3717,20 +3870,24 @@ paths:
     get:
       operationId: owner_s_projectTree_get_api_projects_id_tree
       x-listener: owner
+      x-vesqira-permission: project.read
       responses: {'200': {description: ok}}
   /api/publish:
     get:
       operationId: owner_s_publishStatus_get_api_publish
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/publish/readers:
     get:
       operationId: owner_s_listReaders_get_api_publish_readers
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
     post:
       operationId: owner_s_createReader_post_api_publish_readers
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/publish/readers/{id}/revoke:
     parameters:
@@ -3738,16 +3895,19 @@ paths:
     post:
       operationId: owner_s_revokeReader_post_api_publish_readers_id_revoke
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/publish/settings:
     post:
       operationId: owner_s_publishSettings_post_api_publish_settings
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/publish/sync:
     post:
       operationId: owner_s_publishSyncNow_post_api_publish_sync
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/regions/{id}:
     parameters:
@@ -3755,6 +3915,7 @@ paths:
     post:
       operationId: owner_s_updateRegion_post_api_regions_id
       x-listener: owner
+      x-vesqira-permission: dataset.write
       responses: {'200': {description: ok}}
   /api/regions/{id}/delete:
     parameters:
@@ -3762,6 +3923,7 @@ paths:
     post:
       operationId: owner_s_deleteRegion_post_api_regions_id_delete
       x-listener: owner
+      x-vesqira-permission: dataset.write
       responses: {'200': {description: ok}}
   /api/reply-drafts/{id}/discard:
     parameters:
@@ -3769,6 +3931,7 @@ paths:
     post:
       operationId: owner_s_discardReplyDraft_post_api_reply_drafts_id_discard
       x-listener: owner
+      x-vesqira-permission: report.write
       responses: {'200': {description: ok}}
   /api/reply-drafts/{id}/send:
     parameters:
@@ -3776,11 +3939,13 @@ paths:
     post:
       operationId: owner_s_sendReplyDraft_post_api_reply_drafts_id_send
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/report-comments:
     get:
       operationId: owner_s_reportComments_get_api_report_comments
       x-listener: owner
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
   /api/report-comments/{id}/delete:
     parameters:
@@ -3788,6 +3953,7 @@ paths:
     post:
       operationId: owner_s_deleteReportComment_post_api_report_comments_id_delete
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/report-comments/{id}/draft:
     parameters:
@@ -3795,6 +3961,7 @@ paths:
     post:
       operationId: owner_s_draftReportReply_post_api_report_comments_id_draft
       x-listener: owner
+      x-vesqira-permission: report.write
       responses: {'200': {description: ok}}
   /api/report-comments/{id}/reply:
     parameters:
@@ -3802,6 +3969,7 @@ paths:
     post:
       operationId: owner_s_replyReportComment_post_api_report_comments_id_reply
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/report-comments/{id}/resolve:
     parameters:
@@ -3809,20 +3977,24 @@ paths:
     post:
       operationId: owner_s_resolveReportComment_post_api_report_comments_id_resolve
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/reports:
     get:
       operationId: owner_s_listReports_get_api_reports
       x-listener: owner
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
     post:
       operationId: owner_s_createReport_post_api_reports
       x-listener: owner
+      x-vesqira-permission: report.write
       responses: {'200': {description: ok}}
   /api/reports/graph:
     get:
       operationId: owner_s_reportGraph_get_api_reports_graph
       x-listener: owner
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
   /api/reports/{id}:
     parameters:
@@ -3830,10 +4002,12 @@ paths:
     get:
       operationId: owner_s_getReport_get_api_reports_id
       x-listener: owner
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
     post:
       operationId: owner_s_updateReport_post_api_reports_id
       x-listener: owner
+      x-vesqira-permission: report.write
       responses: {'200': {description: ok}}
   /api/reports/{id}/changes:
     parameters:
@@ -3841,6 +4015,7 @@ paths:
     get:
       operationId: owner_s_reportChanges_get_api_reports_id_changes
       x-listener: owner
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
   /api/reports/{id}/delete:
     parameters:
@@ -3848,6 +4023,7 @@ paths:
     post:
       operationId: owner_s_deleteReport_post_api_reports_id_delete
       x-listener: owner
+      x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
   /api/reports/{id}/history:
     parameters:
@@ -3855,6 +4031,7 @@ paths:
     get:
       operationId: owner_s_reportHistory_get_api_reports_id_history
       x-listener: owner
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
   /api/reports/{id}/history/{rev}:
     parameters:
@@ -3863,6 +4040,7 @@ paths:
     get:
       operationId: owner_s_reportRevision_get_api_reports_id_history_rev
       x-listener: owner
+      x-vesqira-permission: report.read
       responses: {'200': {description: ok}}
   /api/reports/{id}/move:
     parameters:
@@ -3870,6 +4048,7 @@ paths:
     post:
       operationId: owner_s_moveReport_post_api_reports_id_move
       x-listener: owner
+      x-vesqira-permission: report.write
       responses: {'200': {description: ok}}
   /api/reports/{id}/preflight:
     parameters:
@@ -3877,6 +4056,7 @@ paths:
     get:
       operationId: owner_s_reportPreflight_get_api_reports_id_preflight
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/reports/{id}/publish:
     parameters:
@@ -3884,6 +4064,7 @@ paths:
     post:
       operationId: owner_s_publishReport_post_api_reports_id_publish
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/reports/{id}/seen:
     parameters:
@@ -3891,6 +4072,7 @@ paths:
     post:
       operationId: owner_s_reportSeen_post_api_reports_id_seen
       x-listener: owner
+      x-vesqira-permission: report.write
       responses: {'200': {description: ok}}
   /api/reports/{id}/withdraw:
     parameters:
@@ -3898,11 +4080,13 @@ paths:
     post:
       operationId: owner_s_withdrawReport_post_api_reports_id_withdraw
       x-listener: owner
+      x-vesqira-permission: publish.manage
       responses: {'200': {description: ok}}
   /api/rohsa/sizing:
     get:
       operationId: owner_s_rohsaSizing_get_api_rohsa_sizing
       x-listener: owner
+      x-vesqira-permission: job.read
       summary: "The owner's ROHSA sizing table applied to a crop size and a Gaussian count"
       parameters:
         - name: "cropSize"
@@ -3936,11 +4120,13 @@ paths:
     get:
       operationId: owner_func_w_get_api_roots
       x-listener: owner
+      x-vesqira-permission: files.read
       responses: {'200': {description: ok}}
   /api/run-views:
     get:
       operationId: owner_s_listRunViews_get_api_run_views
       x-listener: owner
+      x-vesqira-permission: run.read
       summary: "The saved views of the runs table (owner listener only)"
       responses:
         "200":
@@ -3958,6 +4144,7 @@ paths:
     post:
       operationId: owner_s_saveRunView_post_api_run_views
       x-listener: owner
+      x-vesqira-permission: run.write
       summary: "Save a view of the runs table under a name, replacing a view of that name (owner listener only)"
       requestBody:
         required: true
@@ -3984,6 +4171,7 @@ paths:
     post:
       operationId: owner_s_deleteRunView_post_api_run_views_id_delete
       x-listener: owner
+      x-vesqira-permission: run.write
       summary: "Delete a saved view; the runs it filtered are untouched (owner listener only)"
       responses:
         "200":
@@ -4002,11 +4190,13 @@ paths:
     get:
       operationId: owner_s_listRuns_get_api_runs
       x-listener: owner
+      x-vesqira-permission: run.read
       responses: {'200': {description: ok}}
   /api/runs/convert-values:
     post:
       operationId: owner_s_convertRunValues_post_api_runs_convert_values
       x-listener: owner
+      x-vesqira-permission: run.read
       summary: "Convert declared run numbers between plain-dimension units for the cross-run plot, or dry-run which unit pairs would convert; a conversion needing an equivalency is refused (owner listener only)"
       requestBody:
         required: true
@@ -4031,6 +4221,7 @@ paths:
     post:
       operationId: owner_s_importRun_post_api_runs_import
       x-listener: owner
+      x-vesqira-permission: run.write
       responses: {'200': {description: ok}}
   /api/runs/{id}:
     parameters:
@@ -4038,6 +4229,7 @@ paths:
     get:
       operationId: owner_s_getRun_get_api_runs_id
       x-listener: owner
+      x-vesqira-permission: run.read
       responses: {'200': {description: ok}}
   /api/runs/{id}/archive:
     parameters:
@@ -4045,6 +4237,7 @@ paths:
     post:
       operationId: owner_s_lifecycleArchive_post_api_runs_id_archive
       x-listener: owner
+      x-vesqira-permission: lifecycle.archive
       responses: {'200': {description: ok}}
   /api/runs/{id}/controls:
     parameters:
@@ -4052,6 +4245,7 @@ paths:
     put:
       operationId: owner_s_setRunControls_put_api_runs_id_controls
       x-listener: owner
+      x-vesqira-permission: run.write
       summary: "State how the run was smoothed, how its noise was modelled and how a control was built; stored as declared by the researcher"
       parameters:
         - name: "id"
@@ -4106,6 +4300,7 @@ paths:
     post:
       operationId: owner_s_lifecycleDelete_post_api_runs_id_delete
       x-listener: owner
+      x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
   /api/runs/{id}/history:
     parameters:
@@ -4113,6 +4308,7 @@ paths:
     get:
       operationId: owner_s_runHistory_get_api_runs_id_history
       x-listener: owner
+      x-vesqira-permission: run.read
       responses: {'200': {description: ok}}
   /api/runs/{id}/impact:
     parameters:
@@ -4120,6 +4316,7 @@ paths:
     get:
       operationId: owner_s_lifecycleImpact_get_api_runs_id_impact
       x-listener: owner
+      x-vesqira-permission: lifecycle.delete
       responses: {'200': {description: ok}}
   /api/runs/{id}/rerun:
     parameters:
@@ -4127,6 +4324,7 @@ paths:
     get:
       operationId: owner_s_rerunRun_get_api_runs_id_rerun
       x-listener: owner
+      x-vesqira-permission: run.read
       responses: {'200': {description: ok}}
   /api/runs/{id}/restore:
     parameters:
@@ -4134,6 +4332,7 @@ paths:
     post:
       operationId: owner_s_lifecycleArchive_post_api_runs_id_restore
       x-listener: owner
+      x-vesqira-permission: lifecycle.archive
       responses: {'200': {description: ok}}
   /api/runs/{id}/review:
     parameters:
@@ -4141,6 +4340,7 @@ paths:
     post:
       operationId: owner_s_setRunReview_post_api_runs_id_review
       x-listener: owner
+      x-vesqira-permission: run.write
       responses: {'200': {description: ok}}
   /api/snapshots/{id}/comments:
     parameters:
@@ -4148,6 +4348,7 @@ paths:
     get:
       operationId: owner_s_snapshotComments_get_api_snapshots_id_comments
       x-listener: owner
+      x-vesqira-permission: review.read
       summary: "Comments on a published snapshot, for its author"
       parameters:
         - name: "id"
@@ -4172,6 +4373,7 @@ paths:
     post:
       operationId: owner_s_ownerReply_post_api_snapshots_id_comments
       x-listener: owner
+      x-vesqira-permission: review.publish
       summary: "The author replies inside a reviewer's thread"
       parameters:
         - name: "id"
@@ -4205,6 +4407,7 @@ paths:
     post:
       operationId: owner_s_revoke_post_api_snapshots_id_revoke
       x-listener: owner
+      x-vesqira-permission: review.publish
       summary: "End a review link; the snapshot and its comments stay readable to the author"
       parameters:
         - name: "id"
@@ -4230,6 +4433,7 @@ paths:
     get:
       operationId: owner_s_listSubsets_get_api_subsets
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Every virtual subset with its current version, marked stale when its source changed"
       description: "A subset is a saved window onto a dataset, never a file (ADR 0063). The explorer lists it under its source, marked virtual."
       parameters: []
@@ -4252,6 +4456,7 @@ paths:
     get:
       operationId: owner_s_getSubset_get_api_subsets_sid
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "One subset: its current version, the whole history and the datasets written from it"
       parameters:
         - name: "sid"
@@ -4276,6 +4481,7 @@ paths:
     post:
       operationId: owner_s_editSubset_post_api_subsets_sid
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Edit a subset: a new version with another window, name or reason, pinned to the source as it is now"
       description: "Earlier versions stay, and a file written from one keeps the version it was written from. 409 when a newer version exists (expectVersion)."
       parameters:
@@ -4310,6 +4516,7 @@ paths:
     get:
       operationId: owner_s_coord_get_api_subsets_sid_coord
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "World coordinates of a pixel of the subset (its own 0-based pixel frame)"
       description: "Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
       parameters:
@@ -4357,6 +4564,7 @@ paths:
     post:
       operationId: owner_s_deleteSubset_post_api_subsets_sid_delete
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Forget a subset and its history; the source and any files written from it stay"
       parameters:
         - name: "sid"
@@ -4384,6 +4592,7 @@ paths:
     get:
       operationId: owner_s_headerCards_get_api_subsets_sid_header_cards
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "The header the subset would have as a file: shifted WCS, corrections applied, a COMMENT saying it is a window"
       description: "Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
       parameters:
@@ -4420,6 +4629,7 @@ paths:
     post:
       operationId: owner_s_materialiseSubset_post_api_subsets_sid_materialise
       x-listener: owner
+      x-vesqira-permission: analysis.run
       summary: "Write the current version as an ordinary FITS file and register it as a derived dataset"
       description: "The same window the viewer reads through, with the shifted WCS, the corrections in force as HISTORY and BUNIT. A subset of a file on a host is written on that host, in its derived folder, and registered there (ADR 0064); carrying masks into it is refused there (409); 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone."
       parameters:
@@ -4460,6 +4670,7 @@ paths:
     get:
       operationId: owner_s_plane_get_api_subsets_sid_plane
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "One plane as a binary frame"
       description: "Frame layout: uint32 little-endian header length n, then n bytes of JSON (a PlaneHeader, padded with spaces so the payload is 8-byte aligned), then width*height little-endian float32 pixels, row-major, row 0 = FITS y=1. Non-finite means no value. Only the transport and the JSON header are described here, not the binary payload. Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
       parameters:
@@ -4516,6 +4727,7 @@ paths:
     post:
       operationId: owner_s_repinSubset_post_api_subsets_sid_repin
       x-listener: owner
+      x-vesqira-permission: dataset.write
       summary: "Re-pin a stale subset to the current file: a new version, same window"
       description: "The window is checked against the changed file first; one that no longer fits is refused with the reason and the subset stays stale. 409 when it is not stale."
       parameters:
@@ -4550,6 +4762,7 @@ paths:
     get:
       operationId: owner_s_spectrum_get_api_subsets_sid_spectrum
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Mean spectrum of a region, with masks applied per mask (ADR 0055)"
       description: "A frame: uint32 little-endian header length n, n bytes of JSON (shape, region, size, axis, mask_policy, bunit and, when masks were applied, masks, no_value and excluded_by_mask), then float64 axis[channels], float64 mean[channels] (NaN: no finite pixel left, never zero) and uint32 count[channels] (pixels that entered the mean), little-endian. Only the transport and the JSON header are described here. Over a subset the region is in the subset's pixels. Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
       parameters:
@@ -4636,6 +4849,7 @@ paths:
     get:
       operationId: owner_s_view_get_api_subsets_sid_view
       x-listener: owner
+      x-vesqira-permission: dataset.read
       summary: "Axis roles, sky and spectral readouts of the subset, with what its window resolved to"
       description: "Read through the subset's window from the source file: no file is written. 409 with code subset_stale when the source file changed since the version was pinned (re-pin it); 404 when the subset or its source is gone. Masks are not applied (409)."
       parameters:
@@ -4664,6 +4878,7 @@ paths:
     get:
       operationId: owner_s_supportDownload_get_api_support_bundle_id
       x-listener: owner
+      x-vesqira-permission: support.export
       summary: "The previewed bundle as a zip (owner listener only; the preview expires after ten minutes)"
       parameters:
         - name: "id"
@@ -4695,6 +4910,7 @@ paths:
     post:
       operationId: owner_s_supportPreview_post_api_support_preview
       x-listener: owner
+      x-vesqira-permission: support.export
       summary: "Build a support bundle and return every file's text for review before saving (owner listener only)"
       requestBody:
         required: false
@@ -4725,6 +4941,7 @@ paths:
     get:
       operationId: owner_s_listSweeps_get_api_sweeps
       x-listener: owner
+      x-vesqira-permission: sweep.read
       summary: "List sweeps"
       responses:
         "200":
@@ -4742,6 +4959,7 @@ paths:
     post:
       operationId: owner_s_createSweep_post_api_sweeps
       x-listener: owner
+      x-vesqira-permission: sweep.submit
       summary: "Create a sweep: one draft job per grid combination, linked to it; nothing is submitted"
       requestBody:
         required: true
@@ -4766,6 +4984,7 @@ paths:
     post:
       operationId: owner_s_previewSweep_post_api_sweeps_preview
       x-listener: owner
+      x-vesqira-permission: sweep.submit
       summary: "How many jobs a sweep would make and what they request; stores and submits nothing"
       requestBody:
         required: true
@@ -4792,6 +5011,7 @@ paths:
     get:
       operationId: owner_s_getSweep_get_api_sweeps_id
       x-listener: owner
+      x-vesqira-permission: sweep.read
       summary: "One sweep with its jobs and where each stands"
       responses:
         "200":
@@ -4812,6 +5032,7 @@ paths:
     post:
       operationId: owner_s_boardFromSweep_post_api_sweeps_id_board
       x-listener: owner
+      x-vesqira-permission: sweep.submit
       summary: "Make a board whose panels follow each job in parameter order; 409 with boardId when one exists"
       responses:
         "201":
@@ -4832,6 +5053,7 @@ paths:
     post:
       operationId: owner_s_cancelSweep_post_api_sweeps_id_cancel
       x-listener: owner
+      x-vesqira-permission: sweep.submit
       summary: "Stop scheduling; drafts not yet submitted stay drafts"
       requestBody:
         required: true
@@ -4858,6 +5080,7 @@ paths:
     get:
       operationId: owner_s_sweepGrid_get_api_sweeps_id_grid
       x-listener: owner
+      x-vesqira-permission: sweep.read
       summary: "The grid as a table of declared run metrics, and a metric against one parameter"
       parameters:
         - name: "metric"
@@ -4890,6 +5113,7 @@ paths:
     get:
       operationId: owner_s_reviewSweep_get_api_sweeps_id_review
       x-listener: owner
+      x-vesqira-permission: sweep.read
       summary: "The scripts approving would send, their difference from the base, and the total request"
       responses:
         "200":
@@ -4910,6 +5134,7 @@ paths:
     post:
       operationId: owner_s_submitSweep_post_api_sweeps_id_submit
       x-listener: owner
+      x-vesqira-permission: sweep.submit
       summary: "Approve the sweep: quote the hash of the scripts shown, set the concurrency limit; jobs are then submitted one at a time as slots free"
       requestBody:
         required: true
@@ -4934,6 +5159,7 @@ paths:
     get:
       operationId: owner_s_terminalSocket_get_api_terminal
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Terminal WebSocket (only with --enable-terminal)"
       description: "WebSocket (only with --enable-terminal, ADR 0029). The request must be a WebSocket upgrade from the page's own origin (Origin equal to Host, same Host and Sec-Fetch-Site rules as every route) with no query string, offering two subprotocols: vesqira.terminal.v1 and vesqira-token.<token> (the token from POST /api/terminal/sessions; single use, valid for expiresInSeconds). The server selects vesqira.terminal.v1 and never echoes the token. Binary frames are terminal bytes: input from the page (at most 65536 bytes per frame), output from the shell. Text frames are JSON control messages: {\"type\":\"resize\",\"cols\":1..500,\"rows\":1..200} from the page (anything else closes the session), and {\"type\":\"exit\",\"reason\":string,\"code\":int|null} from the server once, just before it closes. The session ends when the shell exits, after idleSeconds without input, after lifetimeSeconds, when the page closes the socket, or when a newer session is opened for the same tab. Opening and closing are audited (kind terminal); input and output never are."
       responses:
@@ -4979,6 +5205,7 @@ paths:
     post:
       operationId: owner_s_openTerminalSession_post_api_terminal_sessions
       x-listener: owner
+      x-vesqira-permission: local.only
       summary: "Ask for a terminal session; answers with a single-use token (only with --enable-terminal)"
       requestBody:
         required: true
@@ -5027,6 +5254,7 @@ paths:
     get:
       operationId: owner_s_listTransfers_get_api_transfers
       x-listener: owner
+      x-vesqira-permission: cluster.read
       summary: "The transfer queue, newest first (at most 200)"
       responses:
         "200":
@@ -5044,6 +5272,7 @@ paths:
     post:
       operationId: owner_s_createTransfer_post_api_transfers
       x-listener: owner
+      x-vesqira-permission: cluster.use
       summary: "Queue a transfer between this computer and a host. Only paths inside the source roots on both sides are accepted; nothing is sent to the host until the queue runs it"
       requestBody:
         required: true
@@ -5094,6 +5323,7 @@ paths:
     post:
       operationId: owner_s_cancelTransfer_post_api_transfers_id_cancel
       x-listener: owner
+      x-vesqira-permission: cluster.use
       summary: "Cancel a transfer. A running one is stopped with SIGTERM (202; its record becomes cancelled when rsync has stopped) and its partial file is kept unless discardPartial is set"
       parameters:
         - name: "id"
@@ -5145,6 +5375,7 @@ paths:
     post:
       operationId: owner_s_registerTransfer_post_api_transfers_id_register
       x-listener: owner
+      x-vesqira-permission: cluster.use
       summary: "Register a verified downloaded file as a dataset with an external-reference provenance (host, path, hash); the file must still match the verified hash"
       parameters:
         - name: "id"
@@ -5208,6 +5439,7 @@ paths:
     post:
       operationId: owner_s_removeTransfer_post_api_transfers_id_remove
       x-listener: owner
+      x-vesqira-permission: cluster.use
       summary: "Forget a finished transfer's record; no file is touched"
       parameters:
         - name: "id"
@@ -5252,6 +5484,7 @@ paths:
     post:
       operationId: owner_s_resolveTransfer_post_api_transfers_id_resolve
       x-listener: owner
+      x-vesqira-permission: cluster.use
       summary: "Decide a conflict: skip, keep both under a new name, or replace. Only replace overwrites"
       parameters:
         - name: "id"
@@ -5303,6 +5536,7 @@ paths:
     post:
       operationId: owner_s_retryTransfer_post_api_transfers_id_retry
       x-listener: owner
+      x-vesqira-permission: cluster.use
       summary: "Put a failed or cancelled transfer back in the queue (the partial file is resumed), or copy again a transfer that arrived unverified (contents are compared and the copy this transfer made may be replaced)"
       parameters:
         - name: "id"
@@ -5340,6 +5574,7 @@ paths:
     get:
       operationId: owner_s_workload_get_api_workload
       x-listener: owner
+      x-vesqira-permission: capabilities.read
       summary: "Budget, running and waiting tasks per workload class; with ?request=<X-Request-Id> whether that request waits and why"
       parameters:
         - name: "request"
@@ -5367,20 +5602,24 @@ paths:
     put:
       operationId: publish_h_pub_h_putAsset_put_publish_api_assets_sha
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/comments:
     get:
       operationId: publish_h_pub_h_feed_get_publish_api_comments
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
     post:
       operationId: publish_h_pub_h_ownerComment_post_publish_api_comments
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/comments/deleted:
     get:
       operationId: publish_h_pub_h_deletedFeed_get_publish_api_comments_deleted
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/comments/{id}:
     parameters:
@@ -5388,6 +5627,7 @@ paths:
     delete:
       operationId: publish_h_pub_h_deleteComment_delete_publish_api_comments_id
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/comments/{id}/resolve:
     parameters:
@@ -5395,16 +5635,19 @@ paths:
     post:
       operationId: publish_h_pub_h_resolve_post_publish_api_comments_id_resolve
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/ping:
     get:
       operationId: publish_h_pub_h_ping_get_publish_api_ping
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/readers:
     get:
       operationId: publish_h_pub_h_listReaders_get_publish_api_readers
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/readers/{id}/revoke:
     parameters:
@@ -5412,6 +5655,7 @@ paths:
     post:
       operationId: publish_h_pub_h_revokeReader_post_publish_api_readers_id_revoke
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/reports/{key}:
     parameters:
@@ -5419,11 +5663,13 @@ paths:
     delete:
       operationId: publish_h_pub_h_withdraw_delete_publish_api_reports_key
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/revisions:
     post:
       operationId: publish_h_pub_h_pushRevision_post_publish_api_revisions
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/spaces/{slug}:
     parameters:
@@ -5431,6 +5677,7 @@ paths:
     put:
       operationId: publish_h_pub_h_putSpace_put_publish_api_spaces_slug
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /publish-api/spaces/{slug}/readers:
     parameters:
@@ -5438,6 +5685,7 @@ paths:
     post:
       operationId: publish_h_pub_h_createReader_post_publish_api_spaces_slug_readers
       x-listener: publish
+      x-vesqira-permission: capability.publisher-key
       responses: {'200': {description: ok}}
   /read-api/{token}:
     parameters:
@@ -5445,6 +5693,7 @@ paths:
     get:
       operationId: publish_h_readSpace_get_read_api_token
       x-listener: publish
+      x-vesqira-permission: capability.reader-link
       responses: {'200': {description: ok}}
   /read-api/{token}/assets/{sha}:
     parameters:
@@ -5453,6 +5702,7 @@ paths:
     get:
       operationId: publish_h_readAsset_get_read_api_token_assets_sha
       x-listener: publish
+      x-vesqira-permission: capability.reader-link
       responses: {'200': {description: ok}}
   /read-api/{token}/comments:
     parameters:
@@ -5460,6 +5710,7 @@ paths:
     post:
       operationId: publish_h_readComment_post_read_api_token_comments
       x-listener: publish
+      x-vesqira-permission: capability.reader-link
       responses: {'200': {description: ok}}
   /read-api/{token}/comments/{id}:
     parameters:
@@ -5468,6 +5719,7 @@ paths:
     delete:
       operationId: publish_h_readDeleteComment_delete_read_api_token_comments_id
       x-listener: publish
+      x-vesqira-permission: capability.reader-link
       responses: {'200': {description: ok}}
   /read-api/{token}/reports/{key}:
     parameters:
@@ -5476,6 +5728,7 @@ paths:
     get:
       operationId: publish_h_readReport_get_read_api_token_reports_key
       x-listener: publish
+      x-vesqira-permission: capability.reader-link
       responses: {'200': {description: ok}}
   /review-api/{token}:
     parameters:
@@ -5483,6 +5736,7 @@ paths:
     get:
       operationId: review_h_snapshot_get_review_api_token
       x-listener: review
+      x-vesqira-permission: capability.review-link
       summary: "The frozen board a reviewer opens, with its comments and outcome"
       parameters:
         - name: "token"
@@ -5544,6 +5798,7 @@ paths:
     post:
       operationId: review_h_comment_post_review_api_token_comments
       x-listener: review
+      x-vesqira-permission: capability.review-link
       summary: "A reviewer starts a thread or replies in one"
       parameters:
         - name: "token"
@@ -5617,6 +5872,7 @@ paths:
     post:
       operationId: review_h_outcome_post_review_api_token_outcome
       x-listener: review
+      x-vesqira-permission: capability.review-link
       summary: "A reviewer's word on this version; each call is kept and the latest counts"
       parameters:
         - name: "token"
@@ -5691,6 +5947,7 @@ paths:
     get:
       operationId: review_h_preview_get_review_api_token_preview_sha
       x-listener: review
+      x-vesqira-permission: capability.review-link
       summary: "One published preview picture of the snapshot"
       parameters:
         - name: "token"

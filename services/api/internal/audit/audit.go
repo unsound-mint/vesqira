@@ -16,24 +16,47 @@ type Entry struct {
 	Kind   string    `json:"kind"`   // host | job | run | board | snapshot | dataset | file
 	Target int64     `json:"target"` // the id of that object, 0 when none
 	Detail string    `json:"detail"`
+	// Who did it (ADR 0050 section 4): the account id, or "local-owner" in local mode; the account a background action ran on
+	// behalf of, if any; and how the actor was authenticated ("local" today).
+	Actor      string `json:"actor"`
+	OnBehalfOf string `json:"on_behalf_of"`
+	Via        string `json:"via"`
 }
 
-type Store struct{ db *sql.DB }
+// Actor is who an entry is recorded for. The package knows nothing of internal/authz; the server hands it plain strings.
+type Actor struct{ ID, OnBehalfOf, Via string }
+
+// LocalOwner is the actor of every entry in local mode, the only mode so far. internal/server tests that it matches authz.LocalOwner.
+var LocalOwner = Actor{ID: "local-owner", Via: "local"}
+
+type Store struct {
+	db *sql.DB
+	// Default is who Record writes. Local mode records LocalOwner for everything; a mode with several actors records with RecordAs.
+	Default Actor
+}
 
 func Open(db *sql.DB) (*Store, error) {
 	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, action TEXT NOT NULL, kind TEXT NOT NULL, target INTEGER NOT NULL, detail TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, action TEXT NOT NULL, kind TEXT NOT NULL, target INTEGER NOT NULL, detail TEXT NOT NULL, actor TEXT NOT NULL DEFAULT 'local-owner', on_behalf_of TEXT NOT NULL DEFAULT '', via TEXT NOT NULL DEFAULT 'local')`,
 		`CREATE INDEX IF NOT EXISTS audit_target ON audit(kind, target)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			return nil, err
 		}
 	}
-	return &Store{db}, nil
+	return &Store{db: db, Default: LocalOwner}, nil
 }
 
-// Record appends one entry. A nil store records nothing, so callers need no checks.
+// Record appends one entry for the store's default actor. A nil store records nothing, so callers need no checks.
 func (s *Store) Record(action, kind string, target int64, detail string) {
+	if s == nil {
+		return
+	}
+	s.RecordAs(s.Default, action, kind, target, detail)
+}
+
+// RecordAs appends one entry for the given actor.
+func (s *Store) RecordAs(a Actor, action, kind string, target int64, detail string) {
 	if s == nil {
 		return
 	}
@@ -46,7 +69,7 @@ func (s *Store) Record(action, kind string, target int64, detail string) {
 	if len(detail) > 300 {
 		detail = detail[:300]
 	}
-	_, _ = s.db.Exec(`INSERT INTO audit(at,action,kind,target,detail) VALUES(?,?,?,?,?)`, time.Now().Unix(), action, kind, target, detail)
+	_, _ = s.db.Exec(`INSERT INTO audit(at,action,kind,target,detail,actor,on_behalf_of,via) VALUES(?,?,?,?,?,?,?,?)`, time.Now().Unix(), action, kind, target, detail, a.ID, a.OnBehalfOf, a.Via)
 }
 
 // List returns the newest entries first; kind and target narrow it when set.
@@ -54,7 +77,7 @@ func (s *Store) List(kind string, target int64, limit int) ([]Entry, error) {
 	if limit < 1 || limit > 500 {
 		limit = 100
 	}
-	q := `SELECT id,at,action,kind,target,detail FROM audit`
+	q := `SELECT id,at,action,kind,target,detail,actor,on_behalf_of,via FROM audit`
 	var args []any
 	if kind != "" {
 		q += ` WHERE kind=?`
@@ -75,7 +98,7 @@ func (s *Store) List(kind string, target int64, limit int) ([]Entry, error) {
 	for rows.Next() {
 		var e Entry
 		var at int64
-		if err := rows.Scan(&e.ID, &at, &e.Action, &e.Kind, &e.Target, &e.Detail); err != nil {
+		if err := rows.Scan(&e.ID, &at, &e.Action, &e.Kind, &e.Target, &e.Detail, &e.Actor, &e.OnBehalfOf, &e.Via); err != nil {
 			return nil, err
 		}
 		e.At = time.Unix(at, 0).UTC()

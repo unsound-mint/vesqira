@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/authz"
 	"github.com/unsound-mint/vesqira/services/api/internal/boards"
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/offline"
@@ -98,11 +99,11 @@ func planeBytes(w, h, step int) int64 {
 // leaves the process.
 func (s *Server) offlineHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/datasets/{id}/view", s.view)
-	mux.HandleFunc("GET /api/datasets/{id}/header-cards", s.headerCards)
-	mux.HandleFunc("GET /api/datasets/{id}/plane", s.plane)
-	mux.HandleFunc("GET /api/datasets/{id}/spectrum", s.spectrum)
-	return mux
+	s.route(mux, "GET /api/datasets/{id}/view", authz.DatasetRead, s.view)
+	s.route(mux, "GET /api/datasets/{id}/header-cards", authz.DatasetRead, s.headerCards)
+	s.route(mux, "GET /api/datasets/{id}/plane", authz.DatasetRead, s.plane)
+	s.route(mux, "GET /api/datasets/{id}/spectrum", authz.DatasetRead, s.spectrum)
+	return withLocalOwner(mux)
 }
 
 func fetch(ctx context.Context, h http.Handler, path string) (int, []byte) {

@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/unsound-mint/vesqira/services/api/internal/authz"
 	"github.com/unsound-mint/vesqira/services/api/internal/imgmeta"
 	"github.com/unsound-mint/vesqira/services/api/internal/publish"
 	"github.com/unsound-mint/vesqira/services/api/internal/reports"
@@ -27,35 +28,35 @@ import (
 // include those routes, and every write records its author.
 
 func (s *Server) reportRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/reports", s.listReports)
-	mux.HandleFunc("POST /api/reports", s.createReport)
-	mux.HandleFunc("GET /api/reports/graph", s.reportGraph)
-	mux.HandleFunc("GET /api/reports/{id}", s.getReport)
-	mux.HandleFunc("GET /api/reports/{id}/changes", s.reportChanges)
-	mux.HandleFunc("POST /api/reports/{id}", s.updateReport)
-	mux.HandleFunc("POST /api/reports/{id}/seen", s.reportSeen)
-	mux.HandleFunc("POST /api/reports/{id}/delete", s.deleteReport)
-	mux.HandleFunc("POST /api/reports/{id}/move", s.moveReport)
-	mux.HandleFunc("POST /api/reports/{id}/withdraw", s.withdrawReport)
-	mux.HandleFunc("GET /api/reports/{id}/history", s.reportHistory)
-	mux.HandleFunc("GET /api/reports/{id}/history/{rev}", s.reportRevision)
-	mux.HandleFunc("GET /api/reports/{id}/preflight", s.reportPreflight)
-	mux.HandleFunc("POST /api/reports/{id}/publish", s.publishReport)
-	mux.HandleFunc("POST /api/attachments", s.addAttachment)
-	mux.HandleFunc("GET /api/attachments/{sha}", s.getAttachment)
-	mux.HandleFunc("GET /api/publish", s.publishStatus)
-	mux.HandleFunc("POST /api/publish/settings", s.publishSettings)
-	mux.HandleFunc("POST /api/publish/sync", s.publishSyncNow)
-	mux.HandleFunc("GET /api/publish/readers", s.listReaders)
-	mux.HandleFunc("POST /api/publish/readers", s.createReader)
-	mux.HandleFunc("POST /api/publish/readers/{id}/revoke", s.revokeReader)
-	mux.HandleFunc("GET /api/report-comments", s.reportComments)
-	mux.HandleFunc("POST /api/report-comments/{id}/reply", s.replyReportComment)
-	mux.HandleFunc("POST /api/report-comments/{id}/resolve", s.resolveReportComment)
-	mux.HandleFunc("POST /api/report-comments/{id}/draft", s.draftReportReply)
-	mux.HandleFunc("POST /api/report-comments/{id}/delete", s.deleteReportComment)
-	mux.HandleFunc("POST /api/reply-drafts/{id}/send", s.sendReplyDraft)
-	mux.HandleFunc("POST /api/reply-drafts/{id}/discard", s.discardReplyDraft)
+	s.route(mux, "GET /api/reports", authz.ReportRead, s.listReports)
+	s.route(mux, "POST /api/reports", authz.ReportWrite, s.createReport)
+	s.route(mux, "GET /api/reports/graph", authz.ReportRead, s.reportGraph)
+	s.route(mux, "GET /api/reports/{id}", authz.ReportRead, s.getReport)
+	s.route(mux, "GET /api/reports/{id}/changes", authz.ReportRead, s.reportChanges)
+	s.route(mux, "POST /api/reports/{id}", authz.ReportWrite, s.updateReport)
+	s.route(mux, "POST /api/reports/{id}/seen", authz.ReportWrite, s.reportSeen)
+	s.route(mux, "POST /api/reports/{id}/delete", authz.LifecycleDelete, s.deleteReport)
+	s.route(mux, "POST /api/reports/{id}/move", authz.ReportWrite, s.moveReport)
+	s.route(mux, "POST /api/reports/{id}/withdraw", authz.PublishManage, s.withdrawReport)
+	s.route(mux, "GET /api/reports/{id}/history", authz.ReportRead, s.reportHistory)
+	s.route(mux, "GET /api/reports/{id}/history/{rev}", authz.ReportRead, s.reportRevision)
+	s.route(mux, "GET /api/reports/{id}/preflight", authz.PublishManage, s.reportPreflight)
+	s.route(mux, "POST /api/reports/{id}/publish", authz.PublishManage, s.publishReport)
+	s.route(mux, "POST /api/attachments", authz.ReportWrite, s.addAttachment)
+	s.route(mux, "GET /api/attachments/{sha}", authz.ReportRead, s.getAttachment)
+	s.route(mux, "GET /api/publish", authz.PublishManage, s.publishStatus)
+	s.route(mux, "POST /api/publish/settings", authz.PublishManage, s.publishSettings)
+	s.route(mux, "POST /api/publish/sync", authz.PublishManage, s.publishSyncNow)
+	s.route(mux, "GET /api/publish/readers", authz.PublishManage, s.listReaders)
+	s.route(mux, "POST /api/publish/readers", authz.PublishManage, s.createReader)
+	s.route(mux, "POST /api/publish/readers/{id}/revoke", authz.PublishManage, s.revokeReader)
+	s.route(mux, "GET /api/report-comments", authz.ReportRead, s.reportComments)
+	s.route(mux, "POST /api/report-comments/{id}/reply", authz.PublishManage, s.replyReportComment)
+	s.route(mux, "POST /api/report-comments/{id}/resolve", authz.PublishManage, s.resolveReportComment)
+	s.route(mux, "POST /api/report-comments/{id}/draft", authz.ReportWrite, s.draftReportReply)
+	s.route(mux, "POST /api/report-comments/{id}/delete", authz.PublishManage, s.deleteReportComment)
+	s.route(mux, "POST /api/reply-drafts/{id}/send", authz.PublishManage, s.sendReplyDraft)
+	s.route(mux, "POST /api/reply-drafts/{id}/discard", authz.ReportWrite, s.discardReplyDraft)
 }
 
 func (s *Server) reportErr(w http.ResponseWriter, err error) {
