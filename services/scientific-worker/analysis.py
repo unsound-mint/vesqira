@@ -1130,7 +1130,7 @@ def op_family_agreement(args) -> dict:
 
     def header(extra, what):
         h = image_header(ref_c, {"BUNIT": extra, "VESQOP": "family_agreement"})
-        h["HISTORY"] = what
+        h["HISTORY"] = what.encode("ascii", "replace").decode()      # a FITS header holds ASCII; the summary keeps the label as typed
         if owned:
             h["VESQBUNS"] = "corrected" if "corrected" in owned else "user"
             h["HISTORY"] = unit_history(unit, h["VESQBUNS"], "the maps")

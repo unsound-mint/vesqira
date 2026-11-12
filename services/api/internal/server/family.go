@@ -11,6 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
@@ -29,6 +32,8 @@ type familyReq struct {
 	Spread      string  `json:"spread"` // std or mad, for scalar maps
 	// Channel picks the plane of every member that is a cube; omitted for single-plane maps.
 	Channel *int `json:"channel"`
+	// Labels name the members in the result, in the order of DatasetIDs (for example "ker = 3" for a sweep); a member without one is named by its file.
+	Labels []string `json:"labels"`
 }
 
 type familyMember struct {
@@ -64,6 +69,16 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "bad channel")
 		return
 	}
+	if in.Labels != nil && len(in.Labels) != len(in.DatasetIDs) {
+		fail(w, 422, "give one label for each map, or none")
+		return
+	}
+	for _, l := range in.Labels {
+		if utf8.RuneCountInString(l) > 80 || strings.ContainsFunc(l, unicode.IsControl) {
+			fail(w, 422, "a label is at most 80 characters, without control characters")
+			return
+		}
+	}
 	refAt := 0
 	if in.ReferenceID != 0 {
 		refAt = slices.Index(in.DatasetIDs, in.ReferenceID)
@@ -97,6 +112,9 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 		}
 		ds[i], reals[i] = d, real
 		members[i] = familyMember{Path: real, Label: d.Name, Channel: in.Channel}
+		if in.Labels != nil && strings.TrimSpace(in.Labels[i]) != "" {
+			members[i].Label = strings.TrimSpace(in.Labels[i])
+		}
 		if d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
 			axial++
 			if d.Interpretation.Stale {

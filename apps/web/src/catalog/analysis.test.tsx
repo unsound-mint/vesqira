@@ -33,6 +33,28 @@ describe("analysis panel", () => {
     expect(JSON.parse(String(calls.find((c) => c.url === "/api/analysis")!.init!.body))).toEqual({ op: "moment", datasetId: 1, params: { order: "1", threshold: "1.5", chanStart: "9", chanEnd: "49" } });
   });
 
+  it("sends a spectral smoothing with the width in channels and the recorded threshold", async () => {
+    const calls = mockFetch({ "/api/analysis": () => ({ status: 201, body: { dataset: ds(6, "smooth.fits"), summary: {} } }) });
+    const created: Dataset[] = [];
+    render(<AnalysisPanel dataset={cube} datasets={[cube]} channels={64} onCreated={(d) => created.push(d)} onJob={() => {}} />);
+    await userEvent.selectOptions(screen.getByLabelText("Analysis"), "smooth_spectral");
+    expect(screen.getByRole("button", { name: "Create the new file" })).toBeDisabled();
+    await userEvent.selectOptions(screen.getByLabelText("Kernel"), "gaussian");
+    await userEvent.type(screen.getByLabelText("Width (channels)"), "4");
+    await userEvent.type(screen.getByLabelText(/Native spectral resolution/), "1.5");
+    await userEvent.click(screen.getByRole("button", { name: "Create the new file" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(JSON.parse(String(calls.find((c) => c.url === "/api/analysis")!.init!.body))).toEqual({ op: "smooth_spectral", datasetId: 1, params: { kernel: "gaussian", width: "4", minValidWeight: "0.5", nativeFwhm: "1.5" } });
+  });
+
+  it("does not smooth a single plane", async () => {
+    mockFetch({});
+    render(<AnalysisPanel dataset={cube} datasets={[cube]} channels={1} onCreated={() => {}} onJob={() => {}} />);
+    await userEvent.selectOptions(screen.getByLabelText("Analysis"), "smooth_spectral");
+    await userEvent.type(screen.getByLabelText("Width (channels)"), "3");
+    expect(screen.getByRole("button", { name: "Create the new file" })).toBeDisabled();
+  });
+
   it("explains alignment honestly and needs a reference", async () => {
     mockFetch({});
     render(<AnalysisPanel dataset={cube} datasets={[cube, ds(2, "other.fits")]} channels={64} onCreated={() => {}} onJob={() => {}} />);

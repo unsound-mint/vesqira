@@ -21935,6 +21935,11 @@ components:
         channel:
           type: "integer"
           description: "The plane of every member that is a cube; omit for single-plane maps"
+        labels:
+          type: "array"
+          items:
+            type: "string"
+          description: "One name per map, in the order of datasetIds, for the result (for example the swept value); a map without one is named by its file. At most 80 characters each"
     FamilyMemberStats:
       type: "object"
       required:

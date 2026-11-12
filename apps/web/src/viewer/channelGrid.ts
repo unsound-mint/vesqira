@@ -1,7 +1,7 @@
 import type { ChannelGridPlan, ChannelGridSpec, GridPanel } from "../api/channelmaps";
 import type { FigureRequest } from "../api/boards";
 import { lut as colorTable } from "./colormaps";
-import type { ColormapId } from "./colormaps";
+import type { RampId } from "./colormaps";
 import { normalize } from "./render";
 import type { Stretch } from "./render";
 import { FIGURE_WIDTH, blobToBase64 } from "./figure";
@@ -186,7 +186,7 @@ export const loadedText = (loaded: number, total: number, pixels: number) => {
 };
 
 /** The colour table as a CSS gradient, for the legend bar. */
-export function rampCss(id: ColormapId): string {
+export function rampCss(id: RampId): string {
   const t = colorTable(id);
   return `linear-gradient(to right, ${[0, 64, 128, 192, 255].map((k) => `rgb(${t[k * 3]},${t[k * 3 + 1]},${t[k * 3 + 2]}) ${((k / 255) * 100).toFixed(1)}%`).join(", ")})`;
 }

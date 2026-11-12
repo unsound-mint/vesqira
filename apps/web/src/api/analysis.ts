@@ -5,7 +5,7 @@ import type { components } from "./schema";
 import type { Controls } from "./runs";
 import type { MaskUse } from "./masks";
 
-export type AnalysisOp = "axial_diff" | "scalar_diff" | "stats" | "moment" | "cutout" | "slab" | "align" | "convolve";
+export type AnalysisOp = "axial_diff" | "scalar_diff" | "stats" | "moment" | "cutout" | "slab" | "align" | "convolve" | "smooth_spectral";
 /** What to do with one mask of the source in the new file (ADR 0055): carry it, or leave it behind. */
 export type CarryChoice = { id: number; carry: boolean };
 export type AnalysisRequest = { op: AnalysisOp; datasetId: number; referenceId?: number; params?: Record<string, string>; masks?: MaskUse[]; carryMasks?: CarryChoice[]; cpus?: number; mem?: string; time?: string };

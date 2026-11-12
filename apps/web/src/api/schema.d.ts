@@ -11489,6 +11489,8 @@ export interface components {
             spread?: "std" | "mad";
             /** @description The plane of every member that is a cube; omit for single-plane maps */
             channel?: number;
+            /** @description One name per map, in the order of datasetIds, for the result (for example the swept value); a map without one is named by its file. At most 80 characters each */
+            labels?: string[];
         };
         FamilyMemberStats: {
             index: number;
