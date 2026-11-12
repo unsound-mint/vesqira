@@ -10167,7 +10167,7 @@ export interface components {
         };
         CreateTokenRequest: {
             name: string;
-            /** @description write includes read; push and relay (ADR 0066) allow nothing until their routes exist */
+            /** @description write includes read; push sends frozen work and relay takes run requests for a linked computer (ADR 0066), both bound to the current workspace */
             scopes: ("read" | "write" | "push" | "relay")[];
             /** @description 0 or absent: 30 days */
             days?: number;
