@@ -136,7 +136,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Remove an account's TOTP and recovery codes and end its sessions (admin, recent sign-in) */
+        /** Remove an account's TOTP and recovery codes, end its sessions and revoke its access tokens (admin, recent sign-in) */
         post: operations["owner_s_resetSecondFactor_post_api_accounts_id_reset_second_factor"];
         delete?: never;
         options?: never;
@@ -371,7 +371,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** End every session of this account */
+        /** End every session of this account; access tokens stay valid */
         post: operations["owner_s_signOutEverywhere_post_api_auth_sign_out_everywhere"];
         delete?: never;
         options?: never;
@@ -9241,6 +9241,13 @@ export interface components {
         AccountList: {
             accounts: components["schemas"]["Account"][];
         };
+        /** @description Every session of the account ended. Access tokens are not sessions and stay valid. */
+        SignedOutEverywhere: {
+            sessionsEnded: number;
+            /** @description tokens that still work */
+            tokensKept: number;
+            note: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -9921,11 +9928,13 @@ export interface operations {
         };
         responses: {
             /** @description signed out */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SignedOutEverywhere"];
+                };
             };
             /** @description Error */
             default: {

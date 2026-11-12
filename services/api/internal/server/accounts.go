@@ -399,8 +399,10 @@ func (s *Server) signOutEverywhere(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clearSession(w)
-	s.accountAudit(sessionActor(a.ID), "signed out everywhere", fmt.Sprintf("%d sessions ended, from %s", n, s.clientAddr(r)))
-	w.WriteHeader(http.StatusNoContent)
+	kept, _ := s.MultiUser.Accounts.LiveTokens(a.ID)
+	s.accountAudit(sessionActor(a.ID), "signed out everywhere", fmt.Sprintf("%d sessions ended, %d access tokens kept, from %s", n, kept, s.clientAddr(r)))
+	// tokens are for programs, not browsers: signing out does not revoke them, and the answer says so
+	writeJSON(w, 200, map[string]any{"sessionsEnded": n, "tokensKept": kept, "note": "access tokens stay valid; revoke them under Tokens"})
 }
 
 // confirmSignIn proves the password and the second factor again for a recent sign-in (needed to create a token, delete,
@@ -562,8 +564,8 @@ func (s *Server) listAccounts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"accounts": as})
 }
 
-// resetSecondFactor is the admin reset path: the account's TOTP secret and recovery codes are removed and its sessions end,
-// so its next sign-in enrols again.
+// resetSecondFactor is the admin reset path: the account's TOTP secret and recovery codes are removed, its sessions end and
+// its access tokens are revoked, so its next sign-in enrols again.
 func (s *Server) resetSecondFactor(w http.ResponseWriter, r *http.Request) {
 	a, _ := authz.From(r.Context())
 	target, err := s.MultiUser.Accounts.Get(r.PathValue("id"))
@@ -571,13 +573,16 @@ func (s *Server) resetSecondFactor(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "account not found")
 		return
 	}
+	var sessions, tokens int64
 	if err == nil {
-		err = s.MultiUser.Accounts.ResetSecondFactor(target.ID)
+		sessions, tokens, err = s.MultiUser.Accounts.ResetSecondFactor(target.ID)
 	}
 	if err != nil {
 		fail(w, 500, "internal error")
 		return
 	}
-	s.accountAudit(sessionActor(a.ID), "second factor reset", "for "+target.ID+" ("+target.Username+"); their sessions ended")
+	s.accountAudit(sessionActor(a.ID), "second factor reset", "for "+target.ID+" ("+target.Username+")")
+	s.accountAudit(sessionActor(a.ID), "sessions ended by the reset", fmt.Sprintf("%d sessions of %s", sessions, target.ID))
+	s.accountAudit(sessionActor(a.ID), "access tokens revoked by the reset", fmt.Sprintf("%d tokens of %s", tokens, target.ID))
 	w.WriteHeader(http.StatusNoContent)
 }

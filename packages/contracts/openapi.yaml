@@ -183,7 +183,7 @@ paths:
       operationId: owner_s_resetSecondFactor_post_api_accounts_id_reset_second_factor
       x-listener: owner
       x-vesqira-permission: account.admin
-      summary: "Remove an account's TOTP and recovery codes and end its sessions (admin, recent sign-in)"
+      summary: "Remove an account's TOTP and recovery codes, end its sessions and revoke its access tokens (admin, recent sign-in)"
       requestBody:
         required: true
         content:
@@ -450,7 +450,7 @@ paths:
       operationId: owner_s_signOutEverywhere_post_api_auth_sign_out_everywhere
       x-listener: owner
       x-vesqira-permission: account.self
-      summary: "End every session of this account"
+      summary: "End every session of this account; access tokens stay valid"
       requestBody:
         required: true
         content:
@@ -458,8 +458,12 @@ paths:
             schema:
               type: "object"
       responses:
-        "204":
+        "200":
           description: "signed out"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SignedOutEverywhere"
         default:
           description: "Error"
           content:
@@ -17234,3 +17238,18 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/Account"
+    SignedOutEverywhere:
+      type: "object"
+      required:
+        - "sessionsEnded"
+        - "tokensKept"
+        - "note"
+      description: "Every session of the account ended. Access tokens are not sessions and stay valid."
+      properties:
+        sessionsEnded:
+          type: "integer"
+        tokensKept:
+          type: "integer"
+          description: "tokens that still work"
+        note:
+          type: "string"

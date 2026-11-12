@@ -503,20 +503,38 @@ func replaceRecoveryCodes(tx *sql.Tx, accountID string) ([]string, error) {
 	return out, nil
 }
 
-// ResetSecondFactor removes the account's TOTP secret and recovery codes and ends its sessions (the admin reset path): the
-// next sign-in has to enrol again.
-func (s *Store) ResetSecondFactor(accountID string) error {
+// ResetSecondFactor is the admin reset path: it removes the account's TOTP secret and recovery codes, ends its sessions and
+// revokes its personal access tokens (whoever lost the phone may have lost the laptop holding them too), in one transaction,
+// and says how many sessions and tokens there were. The next sign-in enrols again.
+func (s *Store) ResetSecondFactor(accountID string) (sessions, tokens int64, err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	defer tx.Rollback()
-	for _, q := range []string{`DELETE FROM totp_credentials WHERE account_id=?`, `DELETE FROM recovery_codes WHERE account_id=?`, `DELETE FROM sessions WHERE account_id=?`} {
+	for _, q := range []string{`DELETE FROM totp_credentials WHERE account_id=?`, `DELETE FROM recovery_codes WHERE account_id=?`} {
 		if _, err := tx.Exec(q, accountID); err != nil {
-			return err
+			return 0, 0, err
 		}
 	}
-	return tx.Commit()
+	res, err := tx.Exec(`DELETE FROM sessions WHERE account_id=?`, accountID)
+	if err != nil {
+		return 0, 0, err
+	}
+	sessions, _ = res.RowsAffected()
+	res, err = tx.Exec(`UPDATE access_tokens SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL`, s.now().Unix(), accountID)
+	if err != nil {
+		return 0, 0, err
+	}
+	tokens, _ = res.RowsAffected()
+	return sessions, tokens, tx.Commit()
+}
+
+// LiveTokens counts the account's tokens that still work.
+func (s *Store) LiveTokens(accountID string) (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM access_tokens WHERE account_id=? AND revoked_at IS NULL AND expires_at>?`, accountID, s.now().Unix()).Scan(&n)
+	return n, err
 }
 
 // ---- sessions ----

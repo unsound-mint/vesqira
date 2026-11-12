@@ -36,7 +36,7 @@ export const secondFactor = (b: { code: string } | { recoveryCode: string }) => 
 export const startEnrolment = () => postJSON<Enrolment>("/api/auth/enrolment");
 export const confirmEnrolment = (code: string) => postJSON<Schemas["EnrolmentConfirmed"]>("/api/auth/enrolment/confirm", { code });
 export const signOut = () => postJSON<null>("/api/auth/sign-out");
-export const signOutEverywhere = () => postJSON<null>("/api/auth/sign-out-everywhere");
+export const signOutEverywhere = () => postJSON<Schemas["SignedOutEverywhere"]>("/api/auth/sign-out-everywhere");
 export const confirmSignIn = (b: { password: string; code?: string; recoveryCode?: string }) => postJSON<AuthState>("/api/auth/confirm", b);
 export const replaceSecondFactor = () => postJSON<Enrolment>("/api/account/second-factor");
 export const confirmReplacement = (code: string) => postJSON<Schemas["RecoveryCodes"]>("/api/account/second-factor/confirm", { code });

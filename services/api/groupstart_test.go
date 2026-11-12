@@ -104,9 +104,18 @@ func TestAdminBootstrapPrintsASingleUseLink(t *testing.T) {
 	if _, err := acc.CreateAdminFromSetup(m[1], "Bob", "bob", "a long passphrase here"); err == nil {
 		t.Fatal("the link worked twice")
 	}
+	ada, _ := acc.ByUsername("ada")
+	acc.KnownScopes = []string{"read"}
+	tok, _, err := acc.CreateToken(ada.ID, "cli", []string{"read"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	out.Reset()
-	if code := runAdmin([]string{"reset-second-factor", "--db", db, "--username", "ada"}, &out, &errb); code != 0 || !strings.Contains(out.String(), "ada") {
+	if code := runAdmin([]string{"reset-second-factor", "--db", db, "--username", "ada"}, &out, &errb); code != 0 || !strings.Contains(out.String(), "1 access tokens revoked") {
 		t.Fatalf("reset: %d %s %s", code, out.String(), errb.String())
+	}
+	if _, err := acc.LookupToken(tok); err == nil {
+		t.Fatal("the CLI reset left a token working")
 	}
 	if code := runAdmin([]string{"reset-second-factor", "--db", db, "--username", "nobody"}, &out, &errb); code != 1 {
 		t.Fatalf("unknown account: %d", code)

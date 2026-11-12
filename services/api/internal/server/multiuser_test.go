@@ -432,7 +432,7 @@ func TestGroupCSRFRules(t *testing.T) {
 		t.Errorf("a cross-site subresource load of the app: %d", w.Code)
 	}
 	// the right write passes
-	if got := write(nil, `{}`); got != 204 {
+	if got := write(nil, `{}`); got != 200 {
 		t.Fatalf("same-origin write: %d", got)
 	}
 }
@@ -601,11 +601,24 @@ func TestGroupAdminResetsASecondFactor(t *testing.T) {
 	w := g.do(req{method: "POST", path: "/api/auth/setup", body: `{"token":"` + tok + `","name":"Bob","username":"bob","password":"` + adminPass + `"}`})
 	bobPending := sessionFrom(t, w)
 	bob := g.mustAccount("bob")
+	bobToken, _, err := g.acc.CreateToken(bob.ID, "bob's laptop", []string{"read"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if w := g.do(req{method: "POST", path: "/api/accounts/" + bob.ID + "/reset-second-factor", body: `{}`, cookie: full}); w.Code != 204 {
 		t.Fatalf("reset: %d %s", w.Code, w.Body)
 	}
 	if w := g.do(req{path: "/api/auth/state", cookie: bobPending}); decode[authStateBody](t, w).Stage != "none" {
 		t.Fatal("the reset left the account's session alive")
+	}
+	if w := g.do(req{path: "/api/capabilities", hdr: map[string]string{"Authorization": "Bearer " + bobToken}}); w.Code != 401 {
+		t.Fatalf("the reset left the account's token working: %d", w.Code)
+	}
+	got := g.auditActions(g.mustAccount("ada").ID)
+	for _, want := range []string{"second factor reset", "sessions ended by the reset", "access tokens revoked by the reset"} {
+		if !hasAction(got, want) {
+			t.Errorf("audit lacks %q: %v", want, got)
+		}
 	}
 	g.clock.add(accounts.RecentWindow)
 	if w := g.do(req{path: "/api/accounts", cookie: full}); w.Code != 401 {
@@ -675,6 +688,32 @@ func TestGroupPendingEnrolmentCannotReplaceAnEnrolledSecret(t *testing.T) {
 	}
 	if w := g.do(req{method: "POST", path: "/api/auth/second-factor", body: `{"code":"` + accounts.CodeAt(secret, g.clock.now()) + `"}`, cookie: second}); w.Code != 200 {
 		t.Fatalf("the enrolled secret no longer works: %d %s", w.Code, w.Body)
+	}
+}
+
+// Signing out everywhere ends the sessions and keeps the tokens, and says so.
+func TestGroupSignOutEverywhereKeepsTokensAndSaysSo(t *testing.T) {
+	g := newGroup(t)
+	full, _ := g.setupAdmin("ada")
+	raw, _, err := g.acc.CreateToken(g.mustAccount("ada").ID, "cli", []string{"read"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := g.do(req{method: "POST", path: "/api/auth/sign-out-everywhere", body: `{}`, cookie: full})
+	body := decode[struct {
+		SessionsEnded int    `json:"sessionsEnded"`
+		TokensKept    int    `json:"tokensKept"`
+		Note          string `json:"note"`
+	}](t, w)
+	if w.Code != 200 || body.SessionsEnded != 1 || body.TokensKept != 1 || body.Note != "access tokens stay valid; revoke them under Tokens" {
+		t.Fatalf("%d %+v", w.Code, body)
+	}
+	conforms(t, responseSchemaAt(t, loadSpec(t), "/api/auth/sign-out-everywhere", "POST", 200, "application/json"), "sign-out-everywhere", w.Body.Bytes())
+	if w := g.do(req{path: "/api/capabilities", cookie: full}); w.Code != 401 {
+		t.Fatal("a session survived")
+	}
+	if w := g.do(req{path: "/api/capabilities", hdr: map[string]string{"Authorization": "Bearer " + raw}}); w.Code != 200 {
+		t.Fatalf("the token stopped: %d", w.Code)
 	}
 }
 

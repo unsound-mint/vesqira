@@ -370,8 +370,16 @@ func TestResetSecondFactorEndsSessionsAndEnrolment(t *testing.T) {
 	a := admin(t, s, "ada")
 	enrol(t, s, c, a.ID)
 	id, _ := s.CreateSession(a.ID, StageFull, "1.2.3.4", "ua")
-	if err := s.ResetSecondFactor(a.ID); err != nil {
-		t.Fatal(err)
+	raw, _, _ := s.CreateToken(a.ID, "laptop", []string{"write"}, 0)
+	if n, err := s.LiveTokens(a.ID); err != nil || n != 1 {
+		t.Fatal(n, err)
+	}
+	sessions, tokens, err := s.ResetSecondFactor(a.ID)
+	if err != nil || sessions != 1 || tokens != 1 {
+		t.Fatalf("reset ended %d sessions and revoked %d tokens: %v", sessions, tokens, err)
+	}
+	if _, err := s.LookupToken(raw); !errors.Is(err, ErrNotFound) {
+		t.Fatal("a token survived the second-factor reset")
 	}
 	if got, _ := s.Get(a.ID); got.SecondFactor {
 		t.Fatal("still enrolled")

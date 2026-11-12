@@ -93,15 +93,18 @@ func runAdmin(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "no account has the username %q\n", *username)
 			return 1
 		}
+		var sessions, tokens int64
 		if err == nil {
-			err = acc.ResetSecondFactor(a.ID)
+			sessions, tokens, err = acc.ResetSecondFactor(a.ID)
 		}
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
-		log.RecordAs(cli, "second factor reset", "account", 0, "for "+a.ID+" ("+a.Username+"); their sessions ended")
-		fmt.Fprintf(stdout, "The second factor of %s is removed and their sessions ended; they enrol again at their next sign-in.\n", a.Username)
+		log.RecordAs(cli, "second factor reset", "account", 0, "for "+a.ID+" ("+a.Username+")")
+		log.RecordAs(cli, "sessions ended by the reset", "account", 0, fmt.Sprintf("%d sessions of %s", sessions, a.ID))
+		log.RecordAs(cli, "access tokens revoked by the reset", "account", 0, fmt.Sprintf("%d tokens of %s", tokens, a.ID))
+		fmt.Fprintf(stdout, "The second factor of %s is removed, %d sessions ended and %d access tokens revoked; they enrol again at their next sign-in.\n", a.Username, sessions, tokens)
 		return 0
 	}
 	return usage()

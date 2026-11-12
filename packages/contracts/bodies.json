@@ -14965,6 +14965,27 @@
      }
     }
    }
+  },
+  "SignedOutEverywhere": {
+   "type": "object",
+   "required": [
+    "sessionsEnded",
+    "tokensKept",
+    "note"
+   ],
+   "description": "Every session of the account ended. Access tokens are not sessions and stay valid.",
+   "properties": {
+    "sessionsEnded": {
+     "type": "integer"
+    },
+    "tokensKept": {
+     "type": "integer",
+     "description": "tokens that still work"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
   }
  },
  "operations": {
@@ -22330,7 +22351,7 @@
    }
   },
   "POST /api/auth/sign-out-everywhere": {
-   "summary": "End every session of this account",
+   "summary": "End every session of this account; access tokens stay valid",
    "requestBody": {
     "required": true,
     "content": {
@@ -22342,8 +22363,15 @@
     }
    },
    "responses": {
-    "204": {
-     "description": "signed out"
+    "200": {
+     "description": "signed out",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SignedOutEverywhere"
+       }
+      }
+     }
     },
     "default": {
      "description": "Error",
@@ -22618,7 +22646,7 @@
    }
   },
   "POST /api/accounts/{id}/reset-second-factor": {
-   "summary": "Remove an account's TOTP and recovery codes and end its sessions (admin, recent sign-in)",
+   "summary": "Remove an account's TOTP and recovery codes, end its sessions and revoke its access tokens (admin, recent sign-in)",
    "requestBody": {
     "required": true,
     "content": {

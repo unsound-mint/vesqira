@@ -41,6 +41,7 @@ export function AccountPage() {
         <Button onClick={() => void signOut().finally(() => { location.hash = ""; location.reload(); })}>Sign out</Button>
         <Button onClick={() => void signOutEverywhere().finally(() => { location.hash = ""; location.reload(); })}>Sign out everywhere</Button>
       </div>
+      <p className={s.note}>Signing out everywhere ends every browser session of this account. Access tokens stay valid; revoke them under Tokens.</p>
       {state.recent ? null : <Confirm minutes={state.recentMinutes} onDone={setState} />}
       <Tokens recent={state.recent} />
       <SecondFactor recent={state.recent} left={state.recoveryCodesLeft} onChanged={() => void refresh()} />
@@ -98,7 +99,7 @@ function Tokens({ recent }: { recent: boolean }) {
   };
   return (
     <section className={s.card}>
-      <h2 className={s.h2}>Personal access tokens</h2>
+      <h2 className={s.h2}>Tokens</h2>
       <p className={s.note}>For the agent CLI and other programs: sent as <code>Authorization: Bearer</code>. A token acts as you within its scopes until it expires or you revoke it.</p>
       {shown ? (
         <div className={s.form}>
@@ -188,7 +189,7 @@ function Accounts({ recent, self }: { recent: boolean; self: string }) {
                 <td>{a.secondFactor ? "enrolled" : "not enrolled"}</td>
                 <td>
                   {a.secondFactor && a.id !== self ? (
-                    <Button variant="danger" onClick={() => { if (confirm(`Remove ${a.name}'s second factor and sign them out? They enrol again at their next sign-in.`)) void resetSecondFactor(a.id).then(load, (e) => setError(message(e))); }}>Reset second factor</Button>
+                    <Button variant="danger" onClick={() => { if (confirm(`Remove ${a.name}'s second factor, sign them out and revoke their access tokens? They enrol again at their next sign-in.`)) void resetSecondFactor(a.id).then(load, (e) => setError(message(e))); }}>Reset second factor</Button>
                   ) : null}
                 </td>
               </tr>
