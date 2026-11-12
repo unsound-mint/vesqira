@@ -27,6 +27,7 @@ from astropy.wcs import WCS
 import convert
 import corrections as corr
 import rohsa
+import subset
 from memcap import limit_memory, over_cap_message
 from fits_header import axes_shape, clean, read_header
 
@@ -96,7 +97,7 @@ class Cube:
     brightness unit is kept apart (self.unit_override) and only unit_of reads it. Nothing is written to the file.
     """
 
-    def __init__(self, path: str, corrections: dict | None = None):
+    def __init__(self, path: str, corrections: dict | None = None, window: dict | None = None, _plane_limit: bool = True):
         st = os.stat(path)
         self.path, self.sig = path, (st.st_size, st.st_mtime_ns)
         self.file_h = read_header(path)
@@ -113,6 +114,21 @@ class Cube:
             self.h = h = corr.validate(self.file_h, (corrections or {}).get("wcs") or {}, n) if self.corrected else self.file_h
         except corr.Bad as e:
             raise Refused("unsupported", "the WCS correction is not applied: " + str(e))
+        self._build_wcs(h, n)
+        self.win = None                               # the resolved window of a virtual subset (subset.py), or None
+        self._locate_axes(check_plane=window is None and _plane_limit)
+        self.src_channels = self.channels
+        self._flags = None
+        if window is not None:
+            self._apply_window(window)
+        if self.corrected:
+            # the roles of the axes (x, y, channel) come from the file; a correction that would change them is refused
+            plain = Cube(path, _plane_limit=False)
+            if (plain.x, plain.y, plain.chan) != (self.x, self.y, self.chan):
+                raise Refused("unsupported", "the WCS correction is not applied: it would change which axes are the image and the channel axis")
+
+    def _build_wcs(self, h: fits.Header, n: int):
+        """self.wcs for header h (the axes it really has), or None; spectral_error marks a spectral axis wcslib could not set up."""
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             self.spectral_error = False
@@ -133,16 +149,30 @@ class Cube:
                         self.wcs = None
                 except Exception:
                     self.wcs = None
-        self._locate_axes()
-        self._flags = None
-        if self.corrected:
-            # the roles of the axes (x, y, channel) come from the file; a correction that would change them is refused
-            plain = Cube(path)
-            if (plain.x, plain.y, plain.chan) != (self.x, self.y, self.chan):
-                raise Refused("unsupported", "the WCS correction is not applied: it would change which axes are the image and the channel axis")
+
+    def _apply_window(self, window: dict):
+        """Turn this cube into the subset the window names (subset.py): the shape, channel count, header and WCS become the
+        subset's, and every read goes through _index, which maps subset pixels back to the source file's. Nothing is written."""
+        try:
+            res = subset.resolve(self, window)
+        except subset.Bad as e:
+            raise Refused("unsupported", str(e))
+        wh = subset.window_header(self.h, self, res)
+        self.win = res
+        self.h = wh
+        self.shape = list(self.shape)
+        self.shape[self.x], self.shape[self.y] = res["nx"], res["ny"]
+        if self.chan is not None:
+            self.shape[self.chan] = res["nc"]
+            self.channels = res["nc"]
+        if res["nx"] * res["ny"] > MAX_PLANE_ELEMENTS:
+            raise Refused("unsupported", "plane is larger than the viewer limit")
+        self._build_wcs(wh, len(self.shape))
+        if self.wcs is None:
+            raise Refused("unsupported", "the subset's coordinates could not be set up from the source's WCS")
 
     # ----- which FITS axis is what, decided from the WCS rather than assumed -----
-    def _locate_axes(self):
+    def _locate_axes(self, check_plane: bool = True):
         n, shape, w = len(self.shape), self.shape, self.wcs
         lng = lat = spec = -1
         if w is not None:
@@ -165,7 +195,7 @@ class Cube:
             chan, extra = extra[0], []
         if extra:
             raise Refused("unsupported", f"extra axis of length above 1 (axis {extra[0] + 1}); only one channel axis is supported")
-        if shape[x] * shape[y] > MAX_PLANE_ELEMENTS:
+        if check_plane and shape[x] * shape[y] > MAX_PLANE_ELEMENTS:     # a window onto a large plane is checked at its own size
             raise Refused("unsupported", "plane is larger than the viewer limit")
         if chan is not None and shape[chan] > MAX_CHANNELS:
             raise Refused("unsupported", "too many channels")
@@ -304,6 +334,15 @@ class Cube:
                 "north_angle_deg": north, "sky": self.sky_facts(),
                 "note": "0-based image pixels, pixel centres at integers; the scale is taken at the reference pixel"}
 
+    def win_report(self) -> dict:
+        """What the window resolved to, in the source file's own 0-based pixels and channels, with the rule that chose the channels."""
+        return subset.report(self.win, self.src_shape_nx_ny())
+
+    def src_shape_nx_ny(self) -> tuple[int, int, int]:
+        """(source width, source height, source channels) of a subset."""
+        w = self.win
+        return w["src_nx"], w["src_ny"], self.src_channels
+
     # ----- channel flags: a provider convention, never inferred -----
     def flags(self) -> dict:
         if self._flags is None:
@@ -322,13 +361,22 @@ class Cube:
                 return none
             hdu = hdul["FLAGS"]
             hh = hdu.header
-            if hh.get("NAXIS") != 1 or hh.get("NAXIS1") != self.channels:
+            if hh.get("NAXIS") != 1 or hh.get("NAXIS1") != self.src_channels:
                 return {**none, "note": "a FLAGS extension exists but does not match the channel axis; ignored"}
-            return {"declared": True, "source": "FLAGS extension (non-zero = flagged by the data provider)",
-                    "channels": [int(i) for i in np.flatnonzero(np.asarray(hdu.data) != 0)]}
+            flagged = [int(i) for i in np.flatnonzero(np.asarray(hdu.data) != 0)]
+            if self.win is not None:                           # the source's flags, renumbered into the subset's channels
+                flagged = [i - self.win["c0"] for i in flagged if self.win["c0"] <= i <= self.win["c1"]]
+            return {"declared": True, "source": "FLAGS extension (non-zero = flagged by the data provider)", "channels": flagged}
 
     # ----- one plane, read selectively -----
     def _index(self, channel: int, ys: slice, xs: slice) -> tuple:
+        """The numpy index into the source file of (channel, ys, xs). For a subset the arguments are in the subset's pixels and
+        are mapped to the source's here, the only place that does: its offset and, for a spatial step, a strided slice."""
+        if self.win is not None:
+            w = self.win
+            ys, xs = subset.source_slice(ys, w["ny"], w["y0"], w["step"]), subset.source_slice(xs, w["nx"], w["x0"], w["step"])
+            if self.chan is not None:
+                channel = subset.source_slice(channel, w["nc"], w["c0"], 1) if isinstance(channel, slice) else w["c0"] + channel
         n = len(self.shape)
         idx = []
         for k in range(n):                                # numpy axis k is FITS axis n-k
@@ -595,17 +643,17 @@ class Cube:
 _cubes: dict[tuple, Cube] = {}
 
 
-def cube_for(path: str) -> Cube:
+def cube_for(path: str, window: dict | None = None) -> Cube:
     """The Cube of a file, with the corrections the current request carries for it (ADR 0061). The cache key includes the
     corrections' hash, so a corrected, an uncorrected and a reverted reading of one file are never served for each other."""
     if os.path.realpath(path) != path:          # the caller sends a resolved path; a swapped-in symlink is refused
         raise Refused("bad_request", "bad request")
     st = os.stat(path)
     cs = corr.CURRENT.get(path)
-    key = (path, cs["hash"] if cs else None)
+    key = (path, cs["hash"] if cs else None, json.dumps(window, sort_keys=True) if window is not None else None)   # a subset is not its source
     c = _cubes.pop(key, None)
     if c is None or c.sig != (st.st_size, st.st_mtime_ns):
-        c = Cube(path, cs)
+        c = Cube(path, cs, window)
     _cubes[key] = c
     while len(_cubes) > CUBES_KEPT:
         _cubes.pop(next(iter(_cubes)))
@@ -1006,12 +1054,19 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
 MAX_CARDS = 3000
 
 
-def header_cards(path: str) -> dict:
+def header_cards(path: str, window: dict | None = None) -> dict:
     """The primary header exactly as the file states it, one 80-column card per entry, for reading and export.
 
-    Nothing is interpreted: this is the file's own text (control characters replaced, count bounded)."""
+    Nothing is interpreted: this is the file's own text (control characters replaced, count bounded). For a virtual subset
+    (a window onto the file) it is the header the subset would have if written: the shifted WCS, with corrections applied and
+    a COMMENT saying it is a window, not a file."""
     from fits_header import SAFE, read_header
-    h = read_header(path)
+    if window is not None:
+        c = cube_for(path, window)
+        h = c.h.copy()
+        h.add_comment("Vesqira virtual subset: a window onto a source file, shown with the WCS it would have as a file. Not a file on disk.")
+    else:
+        h = read_header(path)
     cards, truncated = [], False
     for i, card in enumerate(h.cards):
         if i >= MAX_CARDS:
@@ -1276,6 +1331,9 @@ def handle(req: dict) -> tuple[dict, bytes]:
     return head, payload
 
 
+WINDOW_OPS = ("view", "plane", "coord", "spectrum")
+
+
 def _handle(req: dict) -> tuple[dict, bytes]:
     op, path = req.get("op"), req.get("path")
     if op == "wcs_preview":
@@ -1286,7 +1344,11 @@ def _handle(req: dict) -> tuple[dict, bytes]:
         if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
             raise Refused("bad_request", "bad request")
         authorize(path)
-        return header_cards(path), b""
+        window = req.get("window")
+        if window is not None and not isinstance(window, dict):
+            raise Refused("bad_request", "bad request")
+        head = header_cards(path, window)
+        return ({**head, "window": cube_for(path, window).win_report()} if window is not None else head), b""
     if op == "mask_plane":                                       # a plane of a typed mask file (ADR 0055), for the viewer's hatch overlay
         if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
             raise Refused("bad_request", "bad request")
@@ -1315,9 +1377,15 @@ def _handle(req: dict) -> tuple[dict, bytes]:
                 authorize(req.get("reliability_path"))
     if op not in file_ops or not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096:
         raise Refused("bad_request", "bad request")
-    c = cube_for(path)
+    window = req.get("window")
+    if window is not None and (op not in WINDOW_OPS or not isinstance(window, dict)):
+        # a window changes what every pixel index means; an operation that does not read through it must refuse, not answer for the source
+        raise Refused("bad_request", "a virtual subset can be viewed, read for a plane, a spectrum or a coordinate; this operation is not available on it")
+    c = cube_for(path, window)
     bunit, status = unit_of(c, declared_unit(req))
     base = {"ok": True, "op": op, "origin": 0, "bunit": bunit, "bunit_status": status}
+    if c.win is not None:
+        base["window"] = c.win_report()                    # the API refuses a reply that does not say it applied the window it sent
     if c.corrections:
         # what the file itself says, beside the corrected values, so every surface can say "the file says K; you declared ..."
         base["file_bunit"] = clean(c.file_h.get("BUNIT")) if "BUNIT" in c.file_h else None
