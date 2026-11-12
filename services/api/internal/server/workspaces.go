@@ -320,6 +320,10 @@ func (s *Server) setMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a, id := actorOf(r), r.PathValue("id")
+	if _, err := s.MultiUser.Accounts.Role(id, a.Workspace); err != nil { // not a member here: 404 before anything else is said
+		fail(w, 404, "not found")
+		return
+	}
 	old, err := s.MultiUser.Accounts.SetRole(a.Workspace, id, in.Role)
 	switch {
 	case errors.Is(err, accounts.ErrNotFound):

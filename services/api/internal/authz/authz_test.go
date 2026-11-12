@@ -75,7 +75,7 @@ func TestRolesHoldWhatTheMatrixSays(t *testing.T) {
 		DatasetWrite: {false, true, true, true}, BoardWrite: {false, true, true, true}, ReportWrite: {false, true, true, true},
 		FigureWrite: {false, true, true, true}, AnalysisRun: {false, true, true, true}, FilesRead: {false, true, true, true},
 		LifecycleDelete: {false, false, true, true}, AuditRead: {false, false, true, true}, MemberInvite: {false, false, true, true},
-		MemberManage: {false, false, false, true},
+		MemberManage:   {false, false, false, true},
 		WorkspaceAdmin: {}, AccountAdmin: {}, LocalOnly: {}, JobSubmit: {}, ClusterUse: {}, SweepSubmit: {},
 	}
 	for p, row := range want {
