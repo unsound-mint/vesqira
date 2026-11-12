@@ -11,9 +11,10 @@ What this module keeps:
   2. the COSMO convention is turned into IAU: U_IAU = -U_COSMO, and so QU_IAU = -QU_COSMO (QQ and UU are unchanged);
   3. the kernel's weights (one pixel, the four bilinear weights, or a Gaussian over the pixel centres within 3 sigma) average Q
      and U as the pixels state them, against Galactic north (the local meridian, as healpy and reproject interpolate Q and U), and
-     the covariances with the squared weights, over the pixels that have a value. Over a symmetric kernel of radius r this differs
-     from parallel-transporting each pixel to the target only at second order in r (the first order cancels); at Planck's 1.7
-     arcmin pixels it is far below the noise, and for a smoothing of degrees at high latitude it is stated, not corrected;
+     the covariances with the squared weights, over the pixels that have a value. Galactic north turns across a kernel of radius r
+     by about r tan|b|; in a symmetric kernel the first order cancels in the mean angle and what remains is a slight
+     depolarization, second order in that turn. At Planck's 1.7 arcmin pixels it is far below the noise; a Gaussian kernel whose
+     turn at its 3 sigma edge would exceed 15 degrees (large kernels, or near a Galactic pole) is refused rather than corrected;
   4. the reference direction turns from Galactic north to the north of the target grid's own celestial frame at the target
      position, by the angle between the two norths there (astropy, through orientation.rotate_pa_frame); Q, U and the covariance
      turn by twice that angle. Every pixel of one target turns by the same angle, so turning after the average is the same as
@@ -48,6 +49,7 @@ PRODUCTS = {"dust_polarization": 0.0, "b_field": 90.0}   # degrees added to psi 
 GAUSS_TRUNCATE = 3.0                # the Gaussian kernel takes pixel centres within this many sigma
 MAX_PAIRS = 20_000_000              # target pixels x kernel pixels: bounds memory (a few hundred MB) and time
 MAX_FWHM_ARCMIN = 600.0
+MAX_KERNEL_TURN_DEG = 15.0         # Galactic north may turn at most this much at the edge (3 sigma) of a Gaussian kernel: r tan|b|
 FWHM_PER_SIGMA = 2.0 * math.sqrt(2.0 * math.log(2.0))
 SAFE = re.compile(r"[^\x20-\x7e]")
 
@@ -127,7 +129,6 @@ def describe_header(h) -> dict:
         raise HealpixRefused(f"This HEALPix table does not hold one value per pixel of NSIDE {nside} ({npix} pixels) in every column it "
                              "needs; it was not registered.")
     bad = h.get("BAD_DATA")
-    from astropy_healpix import nside_to_pixel_resolution
     return {
         "ok": True, "kind": "healpix", "nside": nside, "npix": npix, "ordering": order,
         "coordsys": coord, "frame": COORDSYS[coord.upper()], "polcconv": conv.upper(),
@@ -135,7 +136,9 @@ def describe_header(h) -> dict:
         "stokes_unit": cols["Q_STOKES"]["unit"], "covariance_unit": cols["QQ_COV"]["unit"],
         "has_qu_cov": "QU_COV" in cols, "has_i": "I_STOKES" in cols,
         "bad_data": bad if isinstance(bad, (int, float)) and not isinstance(bad, bool) and math.isfinite(bad) else None,
-        "pixel_resolution_arcmin": float(nside_to_pixel_resolution(nside).to_value("arcmin")),
+        # the square root of the pixel area (every HEALPix pixel has area 4 pi / npix), as astropy-healpix defines the resolution; no
+        # library is needed to describe a map, so a computer without astropy-healpix still registers one and says why it cannot sample it
+        "pixel_resolution_arcmin": math.degrees(math.sqrt(4.0 * math.pi / npix)) * 60.0,
         "extname": _text(h.get("EXTNAME")), "telescope": _text(h.get("TELESCOP")), "frequency": _text(h.get("FREQ")),
         "provenance_note": "values are declared by the file header; nothing here is verified",
     }
@@ -289,6 +292,16 @@ def sample(path: str, facts: dict, w, shape_yx: tuple[int, int], params: dict) -
     if params["method"] == "gaussian" and params["fwhm_arcmin"] < facts["pixel_resolution_arcmin"]:
         raise HealpixRefused(f"a Gaussian FWHM of {params['fwhm_arcmin']:g} arcmin is smaller than this map's pixels "
                              f"({facts['pixel_resolution_arcmin']:.3g} arcmin), so it would not smooth anything; use nearest or bilinear sampling")
+    if params["method"] == "gaussian" and where.size:
+        # Q and U are averaged against Galactic north at each pixel. Across a kernel of radius r that north turns by about r tan|b|,
+        # which is negligible at Magellanic latitudes but not near a Galactic pole, where averaging would depolarize silently.
+        radius = GAUSS_TRUNCATE * params["fwhm_arcmin"] / 60.0 / FWHM_PER_SIGMA
+        edge = min(89.99, float(np.max(np.abs(lat[where]))) + radius)
+        turn = radius * math.tan(math.radians(edge))
+        if turn > MAX_KERNEL_TURN_DEG:
+            raise HealpixRefused(f"at Galactic latitude up to {edge:.1f} degrees, Galactic north turns by about {turn:.0f} degrees across a "
+                                 f"{params['fwhm_arcmin']:g} arcmin kernel, and averaging Q and U against it would depolarize the result; "
+                                 f"choose a kernel under {MAX_KERNEL_TURN_DEG:g} degrees of turn, or nearest or bilinear sampling")
     tg, px, wt = kernel(hp, lon[where], lat[where], params["method"], params.get("fwhm_arcmin"))
     upix, inv = np.unique(px, return_inverse=True)
     vals = read_pixels(path, facts, upix)
@@ -366,7 +379,9 @@ def derivation(facts: dict, params: dict, res: dict) -> dict:
         "order": ("flip U (convention), average Q and U over the kernel in the Galactic basis, rotate into the grid frame, then form the "
                   "angle; every pixel of one target turns by the same angle, so rotating before or after the average is the same"),
         "basis": ("the kernel averages Q and U against Galactic north at each pixel (the local meridian), not parallel-transported to the "
-                  "target; the difference is second order in the kernel radius and is not corrected"),
+                  "target. Galactic north turns across a kernel of radius r by about r tan|b|; the first order cancels in a symmetric "
+                  "kernel and the rest is a slight depolarization, not corrected. A Gaussian kernel whose turn at its edge would exceed "
+                  f"{MAX_KERNEL_TURN_DEG:g} degrees is refused"),
         "angle": ("psi = 1/2 atan2(U, Q), east of north in the grid's own celestial frame, axial in [0, 180) degrees"
                   + ("; the field orientation is psi + 90 degrees" if params["product"] == "b_field" else "; this is the dust polarization angle")),
         "missing": "a HEALPix pixel with no value (NaN, the bad-data value, a negative variance) is left out and the kernel's weights are "

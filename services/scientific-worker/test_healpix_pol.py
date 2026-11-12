@@ -212,6 +212,30 @@ class Angle(Base):
         _, c = self.run_sample(self.write("mislabelled.fits", mislabelled), {"product": "dust_polarization"})
         self.assertGreater(np.nanmax(np.abs(((c["angle"] - a["angle"]) + 90) % 180 - 90)), 5.0)
 
+    def test_many_values_per_row_reads_the_same_map(self):
+        # Planck maps may store 1024 pixels per row (TFORM 1024E); NSIDE 16 is exactly 3 such rows
+        def psi(l, b):
+            return 20.0 + 0.9 * b + 0.4 * ((l + 180.0) % 360.0 - 180.0)
+        one = self.write("one.fits", g.healpix_pol_map(psi_gal=psi))
+        many = self.write("many.fits", g.healpix_pol_map(psi_gal=psi, per_row=1024))
+        self.assertEqual(fits.getheader(many, 1)["NAXIS2"], 3)
+        for method in ("nearest", "bilinear"):
+            _, a = self.run_sample(one, {"product": "dust_polarization", "method": method})
+            _, b = self.run_sample(many, {"product": "dust_polarization", "method": method})
+            self.assertTrue(np.array_equal(a["angle"], b["angle"]) and np.array_equal(a["sigma_p"], b["sigma_p"]), method)
+
+    def test_a_gaussian_near_the_galactic_pole_is_refused(self):
+        # Galactic north turns fast across a kernel near the pole: averaging Q and U against it would depolarize, so it is refused
+        h = grid_header(crval=(192.86, 27.13), cdelt=1.0, n=3)
+        target = self.dir / "pole.fits"
+        fits.PrimaryHDU(np.zeros((3, 3), dtype=np.float32), header=h).writeto(target, overwrite=True)
+        src = self.write("cosmo.fits", g.healpix_pol_map())
+        res, _ = self.run_sample(src, {"product": "dust_polarization", "method": "gaussian", "fwhm_arcmin": 300.0}, target)
+        self.assertFalse(res["ok"])
+        self.assertIn("depolarize", res["error"])
+        res, _ = self.run_sample(src, {"product": "dust_polarization", "method": "bilinear"}, target)
+        self.assertTrue(res["ok"], res)
+
     def test_refusals_at_sampling(self):
         src = self.write("cosmo.fits", g.healpix_pol_map())
         eq = self.write("eq.fits", g.healpix_pol_map(coordsys="C"))
@@ -247,13 +271,13 @@ class Noise(Base):
         from astropy_healpix import HEALPix
         hp = HEALPix(16, "ring", Galactic())
         s0 = 3.0e-5
-        h = grid_header(n=3, cdelt=5.0, crval=(160.0, 25.0))
+        h = grid_header(n=3, cdelt=5.0, crval=(80.9, -69.75))
         corner = WCS(h).pixel_to_world(0, 0).galactic
         missing = (int(hp.lonlat_to_healpix(corner.l, corner.b)),)
         src = self.write("g.fits", g.healpix_pol_map(qq=s0 ** 2, uu=s0 ** 2, qu=0.0, missing=missing))
         target = self.dir / "g3.fits"
         fits.PrimaryHDU(np.zeros((3, 3), dtype=np.float32), header=h).writeto(target, overwrite=True)
-        fwhm = 600.0
+        fwhm = 400.0
         res, a = self.run_sample(src, {"product": "dust_polarization", "method": "gaussian", "fwhm_arcmin": fwhm}, target)
         self.assertTrue(res["ok"], res)
         centres = hp.healpix_to_skycoord(np.arange(hp.npix))
@@ -269,7 +293,7 @@ class Noise(Base):
                 partial += int(any((pos.separation(centres[m]).deg <= 3 * sigma) for m in missing))
                 wt = np.exp(-0.5 * (d[keep] / sigma) ** 2)
                 wt /= wt.sum()
-                self.assertGreater(keep.sum(), 20)
+                self.assertGreater(keep.sum(), 10)
                 self.assertAlmostEqual(a["sigma_p"][y, x] / (s0 * math.sqrt(np.sum(wt ** 2))), 1.0, places=4)
         self.assertGreater(partial, 0)                                  # the missing pixel is inside some kernel
         self.assertEqual(res["summary"]["counts"]["partial_kernel"], partial)
@@ -285,6 +309,17 @@ class Noise(Base):
         gal = w.pixel_to_world(xs, ys).galactic
         _, wt = hp.bilinear_interpolation_weights(gal.l, gal.b)
         self.assertTrue(np.allclose(a["sigma_p"], s0 * np.sqrt(np.sum(np.asarray(wt) ** 2, axis=0)), rtol=1e-4))
+
+    def test_without_qu_covariance_it_is_taken_as_zero_and_said(self):
+        src = self.write("noqu.fits", g.healpix_pol_map(qu_cov=False))
+        res, a = self.run_sample(src, {"product": "dust_polarization"})
+        self.assertTrue(res["ok"], res)
+        q, u_ = g.PLANCK_P * math.cos(math.radians(60)), g.PLANCK_P * math.sin(math.radians(60))
+        sig = math.sqrt((q * q * g.PLANCK_QQ + u_ * u_ * g.PLANCK_UU) / g.PLANCK_P ** 2)
+        self.assertTrue(np.allclose(a["sigma_p"], sig, rtol=1e-4))
+        self.assertFalse(res["summary"]["healpix"]["has_qu_cov"])
+        self.assertIn("QU taken as 0", res["summary"]["policy"])
+        self.assertIn("no QU_COV", res["summary"]["derivation"]["noise"])
 
     def test_missing_pixel_stays_missing(self):
         from astropy.coordinates import Galactic

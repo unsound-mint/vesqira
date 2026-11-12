@@ -955,6 +955,10 @@ def op_healpix_sample(args) -> dict:
     except ValueError:
         fail("the parameters are not a JSON object")
     try:
+        import astropy_healpix  # noqa: F401  (only machines that sample HEALPix maps need it, as only alignment needs reproject)
+    except ImportError:
+        fail("sampling a HEALPix map needs the astropy-healpix package, which is not installed for this program's Python")
+    try:
         return hpp.op_sample(args, params)
     except hpp.HealpixRefused as e:
         fail(str(e))

@@ -639,7 +639,7 @@ PLANCK_QQ, PLANCK_UU, PLANCK_QU = 4.0e-10, 9.0e-10, 1.0e-10   # its covariances 
 
 
 def healpix_pol_map(nside: int = 16, ordering: str = "RING", polcconv: str | None = "COSMO", coordsys: str | None = "GALACTIC",
-                    psi_gal=PLANCK_PSI_GAL_DEG, p=PLANCK_P, qq=PLANCK_QQ, uu=PLANCK_UU, qu=PLANCK_QU, missing=(), qu_cov: bool = True) -> fits.HDUList:
+                    psi_gal=PLANCK_PSI_GAL_DEG, p=PLANCK_P, qq=PLANCK_QQ, uu=PLANCK_UU, qu=PLANCK_QU, missing=(), qu_cov: bool = True, per_row: int = 1) -> fits.HDUList:
     """A Planck HFI SkyMap-like HEALPix map: an empty primary HDU, then a binary table of I, Q, U and the covariances, one row per
     pixel. `psi_gal` is the dust polarization angle (IAU, east of Galactic north at each pixel) as a number or a function of
     (l, b) in degrees; `p`, `qq`, `uu` and `qu` are numbers or functions of (l, b). Q and U are written in `polcconv`'s sign
@@ -661,8 +661,10 @@ def healpix_pol_map(nside: int = 16, ordering: str = "RING", polcconv: str | Non
     for k in cols:
         cols[k][list(missing)] = -1.6375e30
     units = {"I_STOKES": "K_CMB", "Q_STOKES": "K_CMB", "U_STOKES": "K_CMB", "QQ_COV": "K_CMB^2", "UU_COV": "K_CMB^2", "QU_COV": "K_CMB^2"}
-    t = fits.BinTableHDU.from_columns([fits.Column(name=k, format="E", unit=units[k], array=v.astype(np.float32)) for k, v in cols.items()],
-                                      name="FREQ-MAP")
+    # one value per row, or `per_row` values per row as some Planck maps store them (TFORM 1024E)
+    t = fits.BinTableHDU.from_columns([fits.Column(name=k, format=f"{per_row}E" if per_row > 1 else "E", unit=units[k],
+                                                   array=v.astype(np.float32).reshape(-1, per_row) if per_row > 1 else v.astype(np.float32))
+                                       for k, v in cols.items()], name="FREQ-MAP")
     h = t.header
     h["PIXTYPE"], h["ORDERING"], h["NSIDE"], h["INDXSCHM"] = "HEALPIX", ordering, nside, "IMPLICIT"
     h["FIRSTPIX"], h["LASTPIX"], h["BAD_DATA"] = 0, hp.npix - 1, -1.6375e30
