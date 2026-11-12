@@ -63,31 +63,31 @@ func TestPutIsIdempotentAndSupersedesOnlyItsOwnLineage(t *testing.T) {
 	s := open(t)
 	ws := workspace.ID(1)
 	a, b := item(t, lineA, "a"), item(t, lineA, "b")
-	r1, err := s.Put(ws, ada, a, nil)
+	r1, err := s.Put(ws, ada, a, nil, Quota{})
 	if err != nil || !r1.Stored {
 		t.Fatal(r1, err)
 	}
-	r2, err := s.Put(ws, ada, a, nil)
+	r2, err := s.Put(ws, ada, a, nil, Quota{})
 	if err != nil || r2.Stored || r2.ID != r1.ID || s.Count(ws, a.Hash) != 1 {
 		t.Fatalf("the same hash twice: %+v %v", r2, err)
 	}
 	// another instance of the same account, and another account, never supersede ada's first instance
-	if _, err := s.Put(ws, ada2, item(t, lineA, "other instance"), nil); err != nil {
+	if _, err := s.Put(ws, ada2, item(t, lineA, "other instance"), nil, Quota{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Put(ws, bob, item(t, lineA, "other account"), nil); err != nil {
+	if _, err := s.Put(ws, bob, item(t, lineA, "other account"), nil, Quota{}); err != nil {
 		t.Fatal(err)
 	}
 	if heads, _ := s.Heads(ws, "ada", ada.Instance); len(heads) != 1 || heads[0].Hash != a.Hash {
 		t.Fatalf("another instance or account moved the lineage: %+v", heads)
 	}
-	r3, err := s.Put(ws, ada, b, nil)
+	r3, err := s.Put(ws, ada, b, nil, Quota{})
 	if err != nil || r3.Superseded != a.Hash {
 		t.Fatalf("B does not supersede A: %+v %v", r3, err)
 	}
 	// A again: the same row becomes the head again (nothing duplicated), B is superseded by it, and the history keeps the order of
 	// the pushes: A, B, A
-	r4, err := s.Put(ws, ada, a, nil)
+	r4, err := s.Put(ws, ada, a, nil, Quota{})
 	if err != nil || r4.Stored || r4.ID != r1.ID || r4.Superseded != b.Hash || r4.SupersededBy != "" || s.Count(ws, a.Hash) != 1 {
 		t.Fatalf("A again: %+v %v", r4, err)
 	}
@@ -105,17 +105,17 @@ func TestPutIsIdempotentAndSupersedesOnlyItsOwnLineage(t *testing.T) {
 		t.Fatalf("B is not superseded by A: %+v", db.Summary)
 	}
 	// the same A once more changes nothing: it is the head already
-	if r5, _ := s.Put(ws, ada, a, nil); r5.Superseded != "" {
+	if r5, _ := s.Put(ws, ada, a, nil, Quota{}); r5.Superseded != "" {
 		t.Fatalf("pushing the head again moved the lineage: %+v", r5)
 	}
 	if d, _ := s.Get(ws, r1.ID); len(d.Lineage) != 3 {
 		t.Fatalf("pushing the head again added history: %d", len(d.Lineage))
 	}
 	// another account replaying A never moves ada's lineage
-	if _, err := s.Put(ws, ada, b, nil); err != nil {
+	if _, err := s.Put(ws, ada, b, nil, Quota{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Put(ws, bob, a, nil); err != nil {
+	if _, err := s.Put(ws, bob, a, nil, Quota{}); err != nil {
 		t.Fatal(err)
 	}
 	if heads, _ := s.Heads(ws, "ada", ada.Instance); heads[0].Hash != b.Hash {
@@ -136,7 +136,7 @@ func TestPutRefusesAnItemWhosePicturesAreMissing(t *testing.T) {
 	it.Assets = []string{strings.Repeat("f", 64)}
 	it.Hash, _ = pushwire.ContentHash(it)
 	var miss MissingError
-	if _, err := s.Put(1, ada, it, nil); !errors.As(err, &miss) || len(miss.Hashes) != 1 || s.Count(1, it.Hash) != 0 {
+	if _, err := s.Put(1, ada, it, nil, Quota{}); !errors.As(err, &miss) || len(miss.Hashes) != 1 || s.Count(1, it.Hash) != 0 {
 		t.Fatalf("got %v", err)
 	}
 }

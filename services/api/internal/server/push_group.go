@@ -29,6 +29,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/pushed"
 	"github.com/unsound-mint/vesqira/services/api/internal/pushwire"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
 // Push to the group server (ADR 0066 section 2), the server's side. A linked local instance, through a workspace-bound token
@@ -165,23 +166,13 @@ func (s *Server) pushAsset(w http.ResponseWriter, r *http.Request) {
 		refuse(422, "the picture is not complete", "")
 		return
 	}
+	created, err := s.Pushed.PutAsset(ws, a.ID, sha, pictureMime[format], b, s.pushQuota(ws))
 	var limit pushed.LimitError
-	if err := s.Pushed.DailyRefusal(ws, a.ID, int64(len(b))); errors.As(err, &limit) {
-		s.pushRefused(r, "asset", limit.Msg)
-		w.Header().Set("Retry-After", "3600")
-		fail(w, 429, limit.Msg)
+	switch {
+	case errors.As(err, &limit):
+		s.pushLimit(w, r, "asset", limit)
 		return
-	} else if err != nil {
-		fail(w, 500, "internal error")
-		return
-	}
-	if msg := s.quotaRefusal(ws, int64(len(b))); msg != "" {
-		s.pushRefused(r, "asset", "over the workspace quota")
-		fail(w, 507, msg)
-		return
-	}
-	created, err := s.Pushed.PutAsset(ws, a.ID, sha, pictureMime[format], b)
-	if err != nil {
+	case err != nil:
 		log.Printf("push asset: %v", err)
 		fail(w, 500, "internal error")
 		return
@@ -191,6 +182,27 @@ func (s *Server) pushAsset(w http.ResponseWriter, r *http.Request) {
 		code = 201
 	}
 	writeJSON(w, code, map[string]any{"sha": sha, "stored": created})
+}
+
+// pushLimit answers a refusal by a limit: 507 for the workspace's quota, 429 with Retry-After for the account's daily limit.
+func (s *Server) pushLimit(w http.ResponseWriter, r *http.Request, kind string, limit pushed.LimitError) {
+	s.pushRefused(r, kind, limit.Msg)
+	if limit.Quota {
+		fail(w, 507, limit.Msg)
+		return
+	}
+	w.Header().Set("Retry-After", "3600")
+	fail(w, 429, limit.Msg)
+}
+
+// pushQuota is the workspace's byte quota and what it keeps outside the pushed store (managed copies and derived files), for the
+// pushed store to check against inside the transaction that stores.
+func (s *Server) pushQuota(ws workspace.ID) pushed.Quota {
+	wsp, err := s.MultiUser.Accounts.Workspace(ws)
+	if err != nil {
+		return pushed.Quota{Limit: 1} // a workspace that cannot be read takes nothing
+	}
+	return pushed.Quota{Limit: wsp.QuotaBytes, Outside: s.managedUse(ws)}
 }
 
 // Bounds on checking pictures (ADR 0066 limits; the security review of slice 4).
@@ -302,14 +314,7 @@ func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Item.Hash = h
-	if s.Pushed.Count(wsOf(r), h) == 0 {
-		if msg := s.quotaRefusal(wsOf(r), int64(len(in.Item.Doc))); msg != "" {
-			s.pushRefused(r, in.Item.Kind, "over the workspace quota")
-			fail(w, 507, msg)
-			return
-		}
-	}
-	res, err := s.Pushed.Put(wsOf(r), pushActor(r, in.Instance), in.Item, in.Identity)
+	res, err := s.Pushed.Put(wsOf(r), pushActor(r, in.Instance), in.Item, in.Identity, s.pushQuota(wsOf(r)))
 	var miss pushed.MissingError
 	var limit pushed.LimitError
 	switch {
@@ -318,9 +323,7 @@ func (s *Server) pushItem(w http.ResponseWriter, r *http.Request) {
 		failCode(w, 409, "missing", "upload the pictures this item shows first", map[string]any{"missing": miss.Hashes})
 		return
 	case errors.As(err, &limit):
-		s.pushRefused(r, in.Item.Kind, limit.Msg)
-		w.Header().Set("Retry-After", "3600")
-		fail(w, 429, limit.Msg)
+		s.pushLimit(w, r, in.Item.Kind, limit)
 		return
 	case err != nil:
 		log.Printf("push item: %v", err)

@@ -40,8 +40,45 @@ func (e MissingError) Error() string {
 	return "upload these first: " + strings.Join(e.Hashes, ", ")
 }
 
-// LimitError refuses a push over a daily limit or the workspace's byte quota; the sentence says which and the current use.
-type LimitError struct{ Msg string }
+// LimitError refuses a push over a daily limit or (Quota) the workspace's byte quota; the sentence says which and the current use.
+type LimitError struct {
+	Msg   string
+	Quota bool
+}
+
+// Quota is the workspace's byte quota as the caller knows it: Limit (0: none) and Outside, what the workspace already keeps
+// outside this store (managed copies and derived files). What was pushed is added inside the transaction that stores, so two
+// pushes at once cannot both pass a check meant for one.
+type Quota struct {
+	Limit, Outside int64
+}
+
+// checkQuota refuses size more bytes when the workspace's pushed pictures and documents, plus q.Outside, would pass q.Limit.
+func checkQuota(tx *sql.Tx, ws workspace.ID, q Quota, size int64) error {
+	if q.Limit <= 0 {
+		return nil
+	}
+	var assets, docs sql.NullInt64
+	if err := tx.QueryRow(`SELECT SUM(size) FROM pushed_assets WHERE workspace_id=?`, ws).Scan(&assets); err != nil {
+		return err
+	}
+	if err := tx.QueryRow(`SELECT SUM(bytes) FROM pushed_items WHERE workspace_id=?`, ws).Scan(&docs); err != nil {
+		return err
+	}
+	used := q.Outside + assets.Int64 + docs.Int64
+	if used+size <= q.Limit {
+		return nil
+	}
+	return LimitError{Quota: true, Msg: fmt.Sprintf("this workspace keeps %s and may keep %s; this needs %s more: archive what it no longer needs, or ask the admin to raise the quota",
+		mib(used), mib(q.Limit), mib(size))}
+}
+
+func mib(n int64) string {
+	if n < 1<<20 {
+		return fmt.Sprintf("%d KiB", (n+1023)>>10)
+	}
+	return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+}
 
 func (e LimitError) Error() string { return e.Msg }
 
@@ -82,7 +119,7 @@ func (s *Store) HasAsset(ws workspace.ID, sha string) bool {
 
 // PutAsset stores a picture the caller has already checked (hash, decode, size, metadata). Storing the same sha again is a no-op
 // and reports created false. The file is written to a fresh 0600 temporary and renamed, then the row is added.
-func (s *Store) PutAsset(ws workspace.ID, by, sha, mime string, body []byte) (bool, error) {
+func (s *Store) PutAsset(ws workspace.ID, by, sha, mime string, body []byte, q Quota) (bool, error) {
 	if !pushwire.ValidSHA(sha) || ws <= 0 {
 		return false, ErrInvalid
 	}
@@ -112,24 +149,39 @@ func (s *Store) PutAsset(ws workspace.ID, by, sha, mime string, body []byte) (bo
 	if err := os.Rename(tmp.Name(), filepath.Join(dir, sha)); err != nil {
 		return false, err
 	}
-	res, err := s.db.Exec(`INSERT OR IGNORE INTO pushed_assets(workspace_id,sha,mime,size,created_by,created_at) VALUES(?,?,?,?,?,?)`,
-		ws, sha, mime, len(body), by, s.now().Unix())
+	// the daily limit, the quota and the row in one write transaction: parallel uploads cannot both pass a check meant for one
+	tx, err := s.db.Begin()
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	defer tx.Rollback()
+	var one int
+	if tx.QueryRow(`SELECT 1 FROM pushed_assets WHERE workspace_id=? AND sha=?`, ws, sha).Scan(&one) == nil {
+		return false, nil // stored meanwhile by another request
+	}
+	now := s.now().Unix()
+	if err := checkDaily(tx, ws, by, now, int64(len(body))); err != nil {
+		tx.Rollback() // before dropOrphan reads: the catalog may have one connection
+		s.dropOrphan(ws, sha)
+		return false, err
+	}
+	if err := checkQuota(tx, ws, q, int64(len(body))); err != nil {
+		tx.Rollback()
+		s.dropOrphan(ws, sha)
+		return false, err
+	}
+	if _, err := tx.Exec(`INSERT INTO pushed_assets(workspace_id,sha,mime,size,created_by,created_at) VALUES(?,?,?,?,?,?)`,
+		ws, sha, mime, len(body), by, now); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
-// DailyRefusal says whether one more picture of size bytes would take the account past its daily limit (LimitError), checked
-// before the picture is stored, so pictures that no item shows cannot exceed it either.
-func (s *Store) DailyRefusal(ws workspace.ID, account string, size int64) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
+// dropOrphan removes a picture file that was written but refused, unless a row (another request's) holds it.
+func (s *Store) dropOrphan(ws workspace.ID, sha string) {
+	if !s.HasAsset(ws, sha) {
+		_ = os.Remove(filepath.Join(s.assetDir(ws), sha))
 	}
-	defer tx.Rollback()
-	return checkDaily(tx, ws, account, s.now().Unix(), size)
 }
 
 // AssetBytes is what the workspace's pushed pictures take (they count towards its byte quota, ADR 0050 section 8).
@@ -203,7 +255,7 @@ type Result struct {
 // the history reads A, B, A); pushed by anyone else it changes nothing. An item whose pictures are not
 // all on the server is refused with MissingError, so nothing appears with holes. A new hash becomes the head of its lineage
 // (account, instance, kind, origin), and the previous head records it as superseded_by.
-func (s *Store) Put(ws workspace.ID, p Pusher, it pushwire.Item, ids []pushwire.Identity) (Result, error) {
+func (s *Store) Put(ws workspace.ID, p Pusher, it pushwire.Item, ids []pushwire.Identity, q Quota) (Result, error) {
 	if ws <= 0 || len(ids) != len(it.References) {
 		return Result{}, ErrInvalid
 	}
@@ -283,6 +335,9 @@ func (s *Store) Put(ws workspace.ID, p Pusher, it pushwire.Item, ids []pushwire.
 		return Result{}, MissingError{missing}
 	}
 	if err := checkDaily(tx, ws, p.Account, now, int64(len(doc))); err != nil {
+		return Result{}, err
+	}
+	if err := checkQuota(tx, ws, q, int64(len(doc))); err != nil {
 		return Result{}, err
 	}
 	var head int64
@@ -376,10 +431,10 @@ func checkDaily(tx *sql.Tx, ws workspace.ID, account string, now, docBytes int64
 		return err
 	}
 	if items >= pushwire.DailyItems {
-		return LimitError{fmt.Sprintf("this account pushed %d items in the last 24 hours, the most a day allows; push again later", items)}
+		return LimitError{Msg: fmt.Sprintf("this account pushed %d items in the last 24 hours, the most a day allows; push again later", items)}
 	}
 	if used := bytes.Int64 + assets.Int64; used+docBytes > pushwire.DailyBytes {
-		return LimitError{fmt.Sprintf("this account pushed %d MiB in the last 24 hours and may push %d MiB a day; push again later", used>>20, pushwire.DailyBytes>>20)}
+		return LimitError{Msg: fmt.Sprintf("this account pushed %d MiB in the last 24 hours and may push %d MiB a day; push again later", used>>20, pushwire.DailyBytes>>20)}
 	}
 	return nil
 }

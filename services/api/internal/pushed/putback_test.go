@@ -14,8 +14,8 @@ func TestPutBackCountsAndTheLineageIsCapped(t *testing.T) {
 	s := open(t)
 	ws := workspace.ID(1)
 	a, b := item(t, lineA, "a"), item(t, lineA, "b")
-	ra, _ := s.Put(ws, ada, a, nil)
-	if _, err := s.Put(ws, ada, b, nil); err != nil {
+	ra, _ := s.Put(ws, ada, a, nil, Quota{})
+	if _, err := s.Put(ws, ada, b, nil, Quota{}); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < LineageShown+10; i++ {
@@ -23,7 +23,7 @@ func TestPutBackCountsAndTheLineageIsCapped(t *testing.T) {
 		if i%2 == 1 {
 			x = b
 		}
-		if _, err := s.Put(ws, ada, x, nil); err != nil {
+		if _, err := s.Put(ws, ada, x, nil, Quota{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -46,7 +46,7 @@ func TestPutBackCountsAndTheLineageIsCapped(t *testing.T) {
 		back = b
 	}
 	var limit LimitError
-	if _, err := s.Put(ws, ada, back, nil); !errors.As(err, &limit) {
+	if _, err := s.Put(ws, ada, back, nil, Quota{}); !errors.As(err, &limit) {
 		t.Fatalf("a put-back past the daily limit: %v", err)
 	}
 }
