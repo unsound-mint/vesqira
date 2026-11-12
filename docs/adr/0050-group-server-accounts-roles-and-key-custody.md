@@ -1,6 +1,6 @@
 # ADR 0050: Group server: accounts, roles, key custody and storage
 
-- Status: proposed; awaiting owner review — no code until accepted
+- Status: accepted with the owner's answers of 2026-11-12 (section "Owner answers" at the end, which overrides the sections it names); slices are built in order
 - Date: 2026-11-11
 - Decides the design that ADR 0028 (option B, a shared multi-user server) requires before code. Everything below is **specified**; nothing is implemented.
 
@@ -225,7 +225,24 @@ Assets: cluster access (the most valuable: compute allocation, the user's cluste
 | **A compromised identity provider or invitation email** | Identity is (issuer, sub); invitations bind once, expire in 7 days and require a verified email; admins see sign-ins in the audit log | A compromised university SSO account is a compromised Vesqira account |
 | **Insider operator** | Not defended: whoever runs the machine can read the database and use unlocked agents. Stated in the setup guide | By design |
 
-## Open questions for the owner
+## Owner answers (2026-11-12)
+
+These override the sections they name.
+
+1. **Database: SQLite with the measured triggers** (section 6 stands). PostgreSQL gets its own ADR only when a trigger fires.
+2. **Sign-in: passwords plus TOTP first.** Slice 2 ships local accounts (argon2id, TOTP, lockout, recovery codes) without waiting for university IT. OIDC stays specified and is added when a client is registered; ORCID is optional and later. The `identities (issuer, sub)` table is kept so OIDC can be added without a migration of accounts.
+3. **Key custody: keys stay on each researcher's own computer. No ssh key is ever held on the group server**, so option (b2) and slice 5's server-side keys are withdrawn; option (d) is the only path. Delegated execution is relayed instead:
+   - A member files a **run request** on the group server (template, bounded typed parameters, note, cluster, and the key holder it is addressed to). It names no path or script and cannot run by itself, as in section 5.
+   - The key holder's **local** Vesqira, signed in to the group server with a personal access token, fetches the requests addressed to them when it is online. Nothing is pushed into the local instance and the group server never connects to it.
+   - The key holder renders the request into a draft on their own machine, reads the exact script, and **approves** (submits it from their computer under their own cluster account; the record keeps requested by, approved by with the script hash read, submitted, running, finished) or **declines** with a note. Until then the request shows "waiting for <name> to review".
+   - The result reaches the workspace by the push of slice 4 (frozen copies), or through shared data roots. The requester sees the status the key holder's instance reports; not answering is not a verdict (ADR 0043).
+4. **Server location: a cloud VM** outside the university network. It does not need to reach the cluster (point 3), so no VPN is needed on the server. TLS is required (`--public-origin` is https); the deployment notes cover a reverse proxy with automatic certificates.
+5. **First users: a small group.** The owner as Admin, the supervisor and a few labmates as Members who add their own data; a supervisor who only comments is a Viewer.
+6. **Naming: "workspace"** for the shared access unit; "project" keeps its current meaning.
+
+Revised slice plan (section 9): slices 1 to 4 as written; slice 5 becomes **run requests relayed to the key holder's local instance** (point 3); server-side keys, clusters on the server and per-account ssh state are not built.
+
+## Open questions for the owner (answered above)
 
 1. **Database.** Accept SQLite (WAL, one writer, a read pool) for the group server with the measured triggers above, instead of ADR 0028's PostgreSQL move?
 2. **Identity provider.** Will the university register an OIDC client for the group server, or should slice 2 ship with passwords plus TOTP and ORCID?
