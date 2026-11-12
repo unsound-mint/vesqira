@@ -12,6 +12,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
 
 // Entry is one name in a folder. ReadDir fills only Name, Dir and Link (what the directory itself says, no stat);
@@ -122,7 +124,7 @@ func (l LocalFS) ReadFile(rel string, max int64) ([]byte, bool, error) {
 	if err != nil || !l.inside(real) {
 		return nil, false, ErrOutside
 	}
-	f, err := os.Open(real)
+	f, err := sourceroot.OpenFile(real) // no link is followed after the check above; a FIFO or device is refused
 	if err != nil {
 		return nil, false, err
 	}

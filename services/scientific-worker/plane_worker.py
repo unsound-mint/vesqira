@@ -30,6 +30,7 @@ import rohsa
 import subset
 from memcap import limit_memory, over_cap_message
 from fits_header import axes_shape, clean, read_header
+from srcopen import ROOTS, Refused, fits_open, inside_roots, source_file, stat_source
 
 MAX_PLANE_ELEMENTS = 1 << 24      # 16.7M pixels = 64 MiB as float32
 MAX_PREVIEW_STEP = 64
@@ -74,12 +75,6 @@ def fits_array(hdul):
     return hdu.section
 
 
-class Refused(Exception):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code, self.message = code, message
-
-
 def has_grid(h: fits.Header, i: int) -> bool:
     """True when axis i declares its own reference value, reference pixel and step.
 
@@ -98,9 +93,10 @@ class Cube:
     """
 
     def __init__(self, path: str, corrections: dict | None = None, window: dict | None = None, _plane_limit: bool = True):
-        st = os.stat(path)
-        self.path, self.sig = path, (st.st_size, st.st_mtime_ns)
-        self.file_h = read_header(path)
+        with source_file(path) as (_, f):             # the size and the header come from one open file
+            st = os.fstat(f.fileno())
+            self.path, self.sig = path, (st.st_size, st.st_mtime_ns)
+            self.file_h = read_header(f)
         self.shape = axes_shape(self.file_h)          # FITS order: shape[0] is axis 1
         n = len(self.shape)
         if n < 2 or all(s <= 1 for s in self.shape):
@@ -356,7 +352,7 @@ class Cube:
         none = {"declared": False, "channels": []}
         if self.chan is None:
             return none
-        with fits.open(self.path, memmap=True, mode="denywrite") as hdul:
+        with fits_open(self.path) as hdul:
             if "FLAGS" not in hdul:
                 return none
             hdu = hdul["FLAGS"]
@@ -401,7 +397,7 @@ class Cube:
     def block_reader(self):
         """Yields read(c0, c1, ys, xs): physical float64 values of channels [c0, c1) over a pixel box, shape (channels, y, x),
         from one memory-mapped open of the file (a bounded read, never the whole cube)."""
-        with fits.open(self.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
+        with fits_open(self.path, do_not_scale_image_data=True) as hdul:
             if hdul[0].header.get("NAXIS", 0) == 0:
                 raise Refused("unreadable", "the file holds no image data")
             yield lambda c0, c1, ys, xs: self._channel_block(hdul, c0, c1, ys, xs)
@@ -421,7 +417,7 @@ class Cube:
 
     def read_plane(self, channel: int) -> tuple[np.ndarray, int]:
         """(float32 plane, number of finite source values too large for float32, which became infinite)."""
-        with fits.open(self.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
+        with fits_open(self.path, do_not_scale_image_data=True) as hdul:
             hdu = hdul[0]
             if hdu.header.get("NAXIS", 0) == 0:     # not hdu.data: touching it loads or maps the whole array, which a short file refuses
                 raise Refused("unreadable", "the file holds no image data")
@@ -493,7 +489,7 @@ class Cube:
         ys, xs = slice(by0, by1 + 1), slice(bx0, bx1 + 1)
 
         def read(cube: "Cube") -> np.ndarray:
-            with fits.open(cube.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
+            with fits_open(cube.path, do_not_scale_image_data=True) as hdul:
                 return cube._physical(np.array(fits_array(hdul)[cube._index(0, ys, xs)]))
 
         values = read(self)[mask]                                    # in the declared unit
@@ -589,7 +585,7 @@ class Cube:
         # Read a block of channels per call: one strided read of the region over K channels instead of K separate reads,
         # with the per-channel mean taken in one vectorised step. K is bounded so a block stays a few tens of MB.
         block = max(1, min(nc, SPECTRUM_BLOCK_ELEMENTS // ((bx1 - bx0 + 1) * (by1 - by0 + 1))))
-        with fits.open(self.path, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
+        with fits_open(self.path, do_not_scale_image_data=True) as hdul:
             hdu = hdul[0]
             for c0 in range(0, nc, block):
                 c1 = min(nc, c0 + block)
@@ -648,7 +644,7 @@ def cube_for(path: str, window: dict | None = None) -> Cube:
     corrections' hash, so a corrected, an uncorrected and a reverted reading of one file are never served for each other."""
     if os.path.realpath(path) != path:          # the caller sends a resolved path; a swapped-in symlink is refused
         raise Refused("bad_request", "bad request")
-    st = os.stat(path)
+    st = stat_source(path)
     cs = corr.CURRENT.get(path)
     key = (path, cs["hash"] if cs else None, json.dumps(window, sort_keys=True) if window is not None else None)   # a subset is not its source
     c = _cubes.pop(key, None)
@@ -716,34 +712,13 @@ def stats(a: np.ndarray) -> dict:
     return out
 
 
-def _load_roots():
-    """Source roots enforced by this process itself (set by the remote launcher). None means the caller authorizes."""
-    raw = os.environ.get("VESQIRA_ROOTS")
-    if raw is None:
-        return None
-    try:
-        roots = json.loads(raw)
-        if not isinstance(roots, list) or not all(isinstance(r, str) and os.path.isabs(r) for r in roots):
-            raise ValueError
-    except ValueError:
-        sys.exit("VESQIRA_ROOTS must be a JSON list of absolute paths")
-    return [os.path.realpath(r) for r in roots]
-
-
-ROOTS = _load_roots()
-
-
-def inside_roots(real: str) -> bool:
-    if ROOTS is None:
-        return True
-    return any(real == r or real.startswith(r.rstrip(os.sep) + os.sep) for r in ROOTS)
-
-
 def authorize(path: str, want: str = "file") -> str:
     """The real path of `path` if it lies inside the roots and is a regular file (or a directory when want="dir").
 
     Containment is checked on the resolved path, so a symlink pointing out of the roots is refused. Every refusal is
-    the same message, whatever the reason, so callers cannot probe for files outside the roots.
+    the same message, whatever the reason, so callers cannot probe for files outside the roots. This is the check, not the
+    open: a source file is read only through srcopen (open_source, source_file, fits_open), which opens the resolved path
+    component by component without following a link, so a component swapped after this check is refused at the open.
     """
     refused = Refused("forbidden", "not available")
     if not isinstance(path, str) or not os.path.isabs(path) or len(path) > 4096 or "\0" in path:
@@ -1004,7 +979,7 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
                     break
         return {"ok": True, "op": op, "nbytes": 0, "path": real, "entries": entries}, b""
     real = authorize(path)
-    st = os.stat(real)
+    st = stat_source(real)                         # size and time of the file as opened, never of a link swapped in since the check
     if op == "resolve":
         return {"ok": True, "op": op, "nbytes": 0, "real": real, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
     if op == "stat":
@@ -1017,7 +992,7 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "bad request")
         if limit is None and st.st_size > MAX_TEXT_BYTES:
             raise Refused("unsupported", "the file is too large to read as text")
-        with open(real, "rb") as f:
+        with source_file(real) as (_, f):
             data = f.read((limit or MAX_TEXT_BYTES) + 1)
         truncated = limit is not None and len(data) > limit
         if truncated:

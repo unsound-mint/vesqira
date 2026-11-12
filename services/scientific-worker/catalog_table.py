@@ -22,7 +22,12 @@ import warnings
 from collections import OrderedDict
 from io import BytesIO
 
+import sys
+
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -P does not add the script dir
+from srcopen import source_file, stat_source
 
 MAX_FILE_BYTES = 50 << 20        # larger files are refused, not sampled
 MAX_ROWS = 2_000_000
@@ -76,9 +81,7 @@ _LOADED: OrderedDict = OrderedDict()
 def load(path: str) -> Loaded:
     """The table in `path` (an authorised file), parsed once and kept for the next page or conversion. A file that changed on disk
     is read again: the key holds size and modification time."""
-    st = os.stat(path)
-    if not stat.S_ISREG(st.st_mode):
-        raise Bad("not a regular file")
+    st = stat_source(path)          # a regular file, opened without following a link
     key = (path, st.st_size, st.st_mtime_ns)
     hit = _LOADED.get(key)
     if hit is not None:
@@ -86,7 +89,7 @@ def load(path: str) -> Loaded:
         return hit
     if st.st_size > MAX_FILE_BYTES:
         raise Bad(f"the file is {st.st_size / 1048576:.0f} MB; catalogs over {MAX_FILE_BYTES >> 20} MB are not read")
-    with open(path, "rb") as f:
+    with source_file(path) as (_, f):
         data = f.read(MAX_FILE_BYTES + 1)
     if len(data) > MAX_FILE_BYTES:
         raise Bad(f"catalogs over {MAX_FILE_BYTES >> 20} MB are not read")

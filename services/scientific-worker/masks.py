@@ -23,6 +23,7 @@ import numpy as np
 from astropy.io import fits
 
 from plane_worker import Cube, Refused, authorize, fits_array
+from srcopen import fits_open, open_fits
 
 TYPES = ("missing", "invalid", "low_snr", "saturated", "user_excluded", "other")
 POLICIES = ("exclude", "keep", "weight")
@@ -193,7 +194,7 @@ def build_import(c: Cube, params: dict):
     if nonzero not in ("flagged", "valid"):
         raise MaskError("say what a nonzero pixel of the mask file means: flagged, or valid")
     real = authorize(path)
-    with fits.open(real, memmap=True, mode="denywrite", do_not_scale_image_data=False) as hdul:
+    with fits_open(real, do_not_scale_image_data=False) as hdul:
         hdu = hdul[0]
         n = int(hdu.header.get("NAXIS", 0))
         size = int(np.prod([int(hdu.header.get(f"NAXIS{i + 1}", 0)) for i in range(n)])) if n else 0
@@ -298,7 +299,7 @@ def open_mask(s: dict, channels: int, ny: int, nx: int):
     """(hdul, array) of the mask file a spec {path, type} names, held open for reading: it must be a mask of that type, either one plane
     (ny, nx) or one per channel (channels, ny, nx). The caller closes hdul. Applying masks and carrying them both read through this."""
     real = authorize(s["path"])
-    hdul = fits.open(real, memmap=True, mode="denywrite", do_not_scale_image_data=True)
+    hdul = open_fits(real, do_not_scale_image_data=True)
     try:
         h = hdul[0].header
         if h.get("VESQMTYP") != s["type"]:
@@ -514,7 +515,7 @@ def masks_policy_sentence(specs: list[dict]) -> str:
 def mask_plane(path: str, channel: int) -> tuple[dict, bytes]:
     """The plane of a mask file for the viewer: uint8, row 0 = FITS y 1. A 2D mask is the plane of every channel."""
     real = authorize(path)
-    with fits.open(real, memmap=True, mode="denywrite", do_not_scale_image_data=True) as hdul:
+    with fits_open(real, do_not_scale_image_data=True) as hdul:
         h = hdul[0].header
         if h.get("VESQMTYP") not in TYPES or h.get("NAXIS") not in (2, 3):
             raise Refused("unreadable", "not a Vesqira mask")

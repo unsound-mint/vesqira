@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
 
 // Transfers between this computer and a host (ADR 0051). The bytes travel through the system rsync over the same ssh
@@ -367,7 +369,7 @@ func (c ctxReader) Read(p []byte) (int, error) {
 
 // HashFile is the sha256 and size of a local regular file. It stops when ctx ends.
 func HashFile(ctx context.Context, p string) (string, int64, error) {
-	f, err := os.Open(p)
+	f, err := sourceroot.OpenFile(p)
 	if err != nil {
 		return "", 0, err
 	}

@@ -16,6 +16,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
 
 // The editor for text files on this computer (ADR 0029, step 1). It exists only when the server was started with
@@ -120,7 +122,7 @@ func (s *Server) openText(p string) (real string, fi os.FileInfo, data []byte, s
 	if st, m := checkTextName(real); st != 0 {
 		return "", nil, nil, st, m
 	}
-	f, err := os.Open(real)
+	f, err := sourceroot.OpenFile(real)
 	if err != nil {
 		return "", nil, nil, 404, "that file is not inside a folder Vesqira may read"
 	}

@@ -21,6 +21,8 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/compat"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
 	"github.com/unsound-mint/vesqira/services/api/internal/masks"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/sourceroot"
 )
 
 // Typed masks (ADR 0055). A mask is a derived uint8 FITS file next to the other derived outputs, with a row that says what it
@@ -396,7 +398,7 @@ func sourceIdentity(d catalog.Dataset) string {
 }
 
 func fileIdentity(path string) (digest string, size, mtime int64, err error) {
-	f, err := os.Open(path)
+	f, err := sourceroot.OpenFile(path)
 	if err != nil {
 		return "", 0, 0, err
 	}
