@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Basis, Button, Input, More, Section, Select } from "../ui";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { newRequestId } from "../api/http";
-import { ApiError, isCatalog } from "../api/catalog";
+import { ApiError, isCatalog, isImage } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
 import { getDerived, relativeOrientationTableUrl, runRelativeOrientation } from "../api/analysis";
 import type { RelOrientParams, RelOrientSummary } from "../api/analysis";
@@ -75,7 +75,7 @@ export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dat
   const [err, setErr] = useState<{ msg: string; reasons: string[] } | null>(null);
   const why = notReady(dataset);
   const fromCatalog = isCatalog(dataset);
-  const candidates = datasets.filter((d) => d.id !== dataset.id && !d.archived && (fromCatalog ? !isCatalog(d) && d.interpretation?.kind === "axial_orientation" : isCatalog(d) ? d.catalogDeclaration?.angle : d.interpretation?.kind === "axial_orientation"));
+  const candidates = datasets.filter((d) => d.id !== dataset.id && !d.archived && (fromCatalog ? isImage(d) && d.interpretation?.kind === "axial_orientation" : isCatalog(d) ? d.catalogDeclaration?.angle : d.interpretation?.kind === "axial_orientation"));
   const chosen = datasets.find((d) => String(d.id) === other) ?? null;
   const catalogMode = fromCatalog || (chosen !== null && isCatalog(chosen));
   const mapMode = !catalogMode && chosen !== null && dataset.hostId === 0 && chosen.hostId === 0;

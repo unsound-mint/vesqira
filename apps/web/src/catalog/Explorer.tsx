@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Database, Layers, Table } from "lucide-react";
-import { isCatalog } from "../api/catalog";
+import { isCatalog, isHealpix } from "../api/catalog";
 import type { Dataset, Problem } from "../api/catalog";
 import { Button, FilterBox, PathField, TreeRow, useRoving } from "../ui";
 import { bytes } from "./format";
@@ -121,7 +121,7 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
       <div role="list" aria-label="Datasets" {...roving.listProps}>
         {shown.map((d) => (
           <div role="listitem" key={d.id}>
-            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId && selectedSubsetId === null} onSelect={() => onSelect(d.id)} trailing={`${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
+            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId && selectedSubsetId === null} onSelect={() => onSelect(d.id)} trailing={`${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${isHealpix(d) ? `HEALPix ${d.header.nside} · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
             {subsetsOf(d.id).map((x) => (
               <TreeRow key={`s${x.id}`} icon={Layers} level={1} rowProps={roving.itemProps(`s${x.id}`)} selected={x.id === selectedSubsetId} onSelect={() => onSelectSubset?.(x.id)}
                 title="A virtual subset: a saved window onto the file above, not a file"
