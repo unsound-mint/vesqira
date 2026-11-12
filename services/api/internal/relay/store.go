@@ -644,7 +644,14 @@ func (s *Store) Report(ws workspace.ID, id int64, addressee string, a Actor, rep
 		return r, false, nil
 	}
 	changed := state != r.State || code != r.Code || runHash != r.RunHash || string(cb) != mustJSON(r.Counts)
-	if changed {
+	if changed { // a transition the pull must carry, like every other one
+		ch, err := nextChange(tx, ws)
+		if err != nil {
+			return Row{}, false, err
+		}
+		if _, err := tx.Exec(`UPDATE run_requests SET change=? WHERE workspace_id=? AND id=?`, ch, ws, id); err != nil {
+			return Row{}, false, err
+		}
 		detail := state
 		if code != "" {
 			detail += " (" + code + ")"

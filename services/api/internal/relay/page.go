@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -21,7 +22,7 @@ func DecodePage(b []byte, after int64) (Page, error) {
 	if err := dec.Decode(&p); err != nil {
 		return Page{}, refuse("the server's answer could not be read strictly (%s)", err.Error())
 	}
-	if dec.More() {
+	if _, err := dec.Token(); err != io.EOF { // More() is false before a stray ] or }, so read to the end instead
 		return Page{}, refuse("the server's answer carries trailing data")
 	}
 	if len(p.Requests) > MaxPage {
