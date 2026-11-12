@@ -126,7 +126,7 @@ func (s *Server) authSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := s.clientAddr(r)
-	if ok, wait := s.MultiUser.Limiter.Allow("setup:"+client, client); !ok {
+	if ok, wait := s.MultiUser.Limiter.Allow("setup:"+client, s.limitAddr(r)); !ok {
 		tooMany(w, wait)
 		return
 	}
@@ -134,7 +134,7 @@ func (s *Server) authSetup(w http.ResponseWriter, r *http.Request) {
 	var weak accounts.ErrWeakPassword
 	switch {
 	case errors.Is(err, accounts.ErrSetupInvalid):
-		s.MultiUser.Limiter.Fail("setup:"+client, client)
+		s.MultiUser.Limiter.Fail("setup:"+client, s.limitAddr(r))
 		s.accountAudit(anonymous, "setup link refused", "from "+client)
 		fail(w, 400, err.Error())
 		return
@@ -182,7 +182,7 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request) {
 	}
 	st, lim := s.MultiUser.Accounts, s.MultiUser.Limiter
 	key, client := limitKey(in.Username), s.clientAddr(r)
-	if ok, wait := lim.Allow(key, client); !ok {
+	if ok, wait := lim.Allow(key, s.limitAddr(r)); !ok {
 		s.accountAudit(anonymous, "sign-in refused: too many attempts", "from "+client)
 		tooMany(w, wait)
 		return
@@ -194,7 +194,8 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		lim.Fail(key, client)
+		lim.Fail(key, s.limitAddr(r))
+		s.warnNoClientHeader(r)
 		if known, err := st.ByUsername(in.Username); err == nil {
 			s.accountAudit(sessionActor(known.ID), "sign-in failed", "wrong password, from "+client)
 		} else { // the name typed is not recorded: it may be a password typed into the wrong field
@@ -232,7 +233,7 @@ func (s *Server) secondFactor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key, client := limitKey(a.Username), s.clientAddr(r)
-	if ok, wait := lim.Allow(key, client); !ok {
+	if ok, wait := lim.Allow(key, s.limitAddr(r)); !ok {
 		tooMany(w, wait)
 		return
 	}
@@ -251,7 +252,8 @@ func (s *Server) secondFactor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !good {
-		lim.Fail(key, client)
+		lim.Fail(key, s.limitAddr(r))
+		s.warnNoClientHeader(r)
 		s.accountAudit(sessionActor(a.ID), "sign-in failed", "wrong or already used "+how+", from "+client)
 		fail(w, http.StatusUnauthorized, "wrong or already used code")
 		return
@@ -305,7 +307,7 @@ func (s *Server) confirmEnrolment(w http.ResponseWriter, r *http.Request, a acco
 	}
 	st, lim := s.MultiUser.Accounts, s.MultiUser.Limiter
 	key, client := limitKey(a.Username), s.clientAddr(r)
-	if ok, wait := lim.Allow(key, client); !ok {
+	if ok, wait := lim.Allow(key, s.limitAddr(r)); !ok {
 		tooMany(w, wait)
 		return nil, false
 	}
@@ -323,7 +325,8 @@ func (s *Server) confirmEnrolment(w http.ResponseWriter, r *http.Request, a acco
 		fail(w, 500, "internal error")
 		return nil, false
 	case !ok:
-		lim.Fail(key, client)
+		lim.Fail(key, s.limitAddr(r))
+		s.warnNoClientHeader(r)
 		fail(w, http.StatusUnauthorized, "wrong code: check the app shows this account and the phone's clock is right")
 		return nil, false
 	}
@@ -428,7 +431,7 @@ func (s *Server) confirmSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key, client := limitKey(a.Username), s.clientAddr(r)
-	if ok, wait := lim.Allow(key, client); !ok {
+	if ok, wait := lim.Allow(key, s.limitAddr(r)); !ok {
 		tooMany(w, wait)
 		return
 	}
@@ -446,7 +449,8 @@ func (s *Server) confirmSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !good {
-		lim.Fail(key, client)
+		lim.Fail(key, s.limitAddr(r))
+		s.warnNoClientHeader(r)
 		s.accountAudit(sessionActor(a.ID), "sign-in confirmation failed", "from "+client)
 		fail(w, http.StatusUnauthorized, "wrong password or code")
 		return

@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/accounts"
 	"github.com/unsound-mint/vesqira/services/api/internal/authz"
@@ -25,6 +26,8 @@ type MultiUser struct {
 	// ClientIPHeader names the header a trusted reverse proxy fills with the client address (--client-ip-header); without it
 	// every client behind the proxy shares the proxy's address for the per-address limit.
 	ClientIPHeader string
+
+	proxyWarned *sync.Once // the warning that the per-address limit is off, logged at the first sign-in failure
 }
 
 func (s *Server) multiUser() bool { return s.MultiUser.PublicOrigin != "" }
@@ -166,6 +169,44 @@ func (s *Server) withAccount(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// limitAddr is the address the per-address sign-in limit counts, or "" when it must not count one: with no client-address
+// header and a peer on a loopback or private address, the peer is almost certainly the reverse proxy, shared by every client,
+// and counting it would let 30 failures from anyone stop every sign-in. The per-name backoff still applies then.
+func (s *Server) limitAddr(r *http.Request) string {
+	if s.MultiUser.ClientIPHeader != "" {
+		return s.clientAddr(r)
+	}
+	if behindProxy(r.RemoteAddr) {
+		return ""
+	}
+	return s.clientAddr(r)
+}
+
+// behindProxy reports whether a peer address is loopback or private (where a reverse proxy usually is).
+func behindProxy(remote string) bool {
+	host := remote
+	if h, _, err := net.SplitHostPort(remote); err == nil {
+		host = h
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && (ip.IsLoopback() || ip.IsPrivate())
+}
+
+// warnNoClientHeader logs, once, that sign-in failures from a proxy are not limited per address.
+func (s *Server) warnNoClientHeader(r *http.Request) {
+	if s.MultiUser.ClientIPHeader != "" || !behindProxy(r.RemoteAddr) || s.MultiUser.proxyWarned == nil {
+		return
+	}
+	s.MultiUser.proxyWarned.Do(func() {
+		log.Printf("WARNING: sign-in failures arrive from %s, a loopback or private address, and --client-ip-header is not set: they are limited per name only, not per client address; set --client-ip-header to the header your proxy fills", r.RemoteAddr)
+	})
+}
+
+// NewMultiUser builds the group server's configuration.
+func NewMultiUser(origin string, st *accounts.Store, clientIPHeader string) MultiUser {
+	return MultiUser{PublicOrigin: origin, Accounts: st, Limiter: &accounts.Limiter{}, ClientIPHeader: clientIPHeader, proxyWarned: &sync.Once{}}
 }
 
 // clientAddr is the address failures are counted against: the connection's peer, or the last entry of the trusted proxy's

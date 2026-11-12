@@ -560,4 +560,17 @@ func TestLimiterBacksOffWithoutSayingWhetherTheNameExists(t *testing.T) {
 	if ok, _ := l.Allow("fresh", "9.9.9.9"); !ok {
 		t.Fatal("the address stayed stopped past the window")
 	}
+	// no address (a proxy the server cannot see past): never a per-address stop, the per-name backoff still
+	for i := 0; i < 60; i++ {
+		l.Fail(strings.Repeat("m", i+1), "")
+	}
+	if ok, _ := l.Allow("other", ""); !ok {
+		t.Fatal("failures without an address stopped everyone")
+	}
+	for i := 0; i < 5; i++ {
+		l.Fail("carol", "")
+	}
+	if ok, _ := l.Allow("carol", ""); ok {
+		t.Fatal("the per-name backoff is off without an address")
+	}
 }

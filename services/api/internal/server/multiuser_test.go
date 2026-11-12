@@ -691,6 +691,53 @@ func TestGroupPendingEnrolmentCannotReplaceAnEnrolledSecret(t *testing.T) {
 	}
 }
 
+// Behind a proxy on a private address with no client-address header, failures for many names never stop everyone (the
+// per-address limit is off), while the per-name backoff still holds. With the header, the per-address limit counts clients.
+func TestGroupProxyCannotTurnFailuresIntoAGlobalLockout(t *testing.T) {
+	g := newGroup(t)
+	_, secret := g.setupAdmin("ada")
+	viaProxy := func(name, pass string, hdr map[string]string) *httptest.ResponseRecorder {
+		q := httptest.NewRequest("POST", "/api/auth/sign-in", strings.NewReader(`{"username":"`+name+`","password":"`+pass+`"}`))
+		q.Host, q.RemoteAddr = groupHost, "10.0.0.2:5000"
+		q.Header.Set("Origin", groupOrigin)
+		q.Header.Set("Content-Type", "application/json")
+		for k, v := range hdr {
+			q.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		g.h.ServeHTTP(w, q)
+		return w
+	}
+	for i := 0; i < 40; i++ {
+		if w := viaProxy("guess"+itoa(i), "wrong password", nil); w.Code != 401 {
+			t.Fatalf("failure %d behind the proxy: %d", i, w.Code)
+		}
+	}
+	if w := viaProxy("ada", adminPass, nil); w.Code != 200 {
+		t.Fatalf("40 failures through the proxy locked the admin out: %d %s", w.Code, w.Body)
+	}
+	for i := 0; i < 5; i++ {
+		viaProxy("bob", "wrong password", nil)
+	}
+	if w := viaProxy("bob", "wrong password", nil); w.Code != 429 {
+		t.Fatalf("the per-name backoff is off behind the proxy: %d", w.Code)
+	}
+	// with the header set, a client spraying names through the proxy is stopped
+	g.s.MultiUser.ClientIPHeader = "X-Forwarded-For"
+	g.h = g.s.Handler()
+	spray := map[string]string{"X-Forwarded-For": "198.51.100.9"}
+	for i := 0; i < 30; i++ {
+		viaProxy("spray"+itoa(i), "wrong password", spray)
+	}
+	if w := viaProxy("fresh", "wrong password", spray); w.Code != 429 {
+		t.Fatalf("the per-address limit does not count clients named by the header: %d", w.Code)
+	}
+	if w := viaProxy("ada", adminPass, map[string]string{"X-Forwarded-For": "198.51.100.10"}); w.Code != 200 {
+		t.Fatalf("another client was stopped too: %d", w.Code)
+	}
+	_ = secret
+}
+
 // Signing out everywhere ends the sessions and keeps the tokens, and says so.
 func TestGroupSignOutEverywhereKeepsTokensAndSaysSo(t *testing.T) {
 	g := newGroup(t)

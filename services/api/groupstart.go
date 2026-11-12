@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -67,6 +68,26 @@ func (g groupStart) check() (string, error) {
 	return u.Scheme + "://" + host, nil
 }
 
+// proxyWarning is the start-up warning for an https origin served from a loopback or private address (behind a proxy) with no
+// client-address header: sign-in failures are then limited per name only, not per client.
+func proxyWarning(origin, clientIPHeader, addr string) string {
+	if clientIPHeader != "" || !strings.HasPrefix(origin, "https://") {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return ""
+	}
+	if host == "localhost" {
+		host = "127.0.0.1"
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil || !(ip.IsLoopback() || ip.IsPrivate()) {
+		return ""
+	}
+	return "WARNING: the group server listens on " + addr + " behind a proxy but --client-ip-header is not set: every client shares the proxy's address, so sign-in failures are limited per name only, not per client address; set --client-ip-header to the header your proxy fills (for example X-Forwarded-For)"
+}
+
 // dataTables are the tables whose rows are someone's work. A catalog with rows in any of them and no account has been used in
 // local mode; turning it into a group server shows all of it to every account, which needs the operator to say so.
 var dataTables = []string{"datasets", "figures", "boards", "snapshots", "reports", "attachments", "runs", "jobs", "sweeps", "hosts",
@@ -122,7 +143,7 @@ func sameAddr(a, b string) bool {
 
 // openGroup opens what the group server needs beside the catalog: the account store with its server key, a read-only pool
 // for the per-request session and token lookups, and the writer lock-wait log (ADR 0050 section 6). Any failure stops the start.
-func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHeader string, adopt bool) (server.MultiUser, func()) {
+func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHeader, addr string, adopt bool) (server.MultiUser, func()) {
 	acc, err := accounts.Open(store.DB())
 	if err != nil {
 		log.Fatal(err)
@@ -157,7 +178,10 @@ func openGroup(store *catalog.Store, dsn, dataDir, keyPath, origin, clientIPHead
 	if has, err := acc.HasAdmin(); err == nil && !has {
 		log.Printf("no admin account yet: run `vesqira-api admin bootstrap --db %s --public-origin %s` on this machine", dsn, origin)
 	}
-	return server.MultiUser{PublicOrigin: origin, Accounts: acc, Limiter: &accounts.Limiter{}, ClientIPHeader: clientIPHeader}, func() {
+	if w := proxyWarning(origin, clientIPHeader, addr); w != "" {
+		log.Print(w)
+	}
+	return server.NewMultiUser(origin, acc, clientIPHeader), func() {
 		stop()
 		ro.Close()
 	}

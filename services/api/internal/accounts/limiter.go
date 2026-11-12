@@ -13,7 +13,9 @@ import (
 //     name and a known one is the same. From the fifth failure within the window, each further attempt waits 30 s, doubling
 //     per failure, at most the window.
 //   - Per client address: at most ClientMax failures within the window, whatever names they were for; checked before any
-//     password is hashed.
+//     password is hashed. An empty address is not counted: the server passes none when it cannot tell clients apart (a
+//     proxy on a private address with no client-address header), so a proxy can never turn 30 failures into a lockout of
+//     everyone. The per-name backoff applies in every case.
 //
 // The counts live in memory: a restart forgets them, which costs an attacker one restart's worth of guesses, not more.
 type Limiter struct {
@@ -60,7 +62,7 @@ func (l *Limiter) Allow(name, client string) (bool, time.Duration) {
 	w, nf, cm, now := l.defaults()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if c := recent(l.client[client], now.Add(-w)); len(c) >= cm {
+	if c := recent(l.client[client], now.Add(-w)); client != "" && len(c) >= cm {
 		return false, c[0].Add(w).Sub(now)
 	}
 	n := recent(l.names[name], now.Add(-w))
@@ -86,7 +88,9 @@ func (l *Limiter) Fail(name, client string) {
 		l.names, l.client = map[string][]time.Time{}, map[string][]time.Time{}
 	}
 	add(l.names, name, now, w)
-	add(l.client, client, now, w)
+	if client != "" {
+		add(l.client, client, now, w)
+	}
 }
 
 // Succeed forgets the name's failures (the client's stay: one success does not excuse a spray of guesses).

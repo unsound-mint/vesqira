@@ -44,6 +44,25 @@ func TestGroupServerRefusesUnsafeStarts(t *testing.T) {
 	}
 }
 
+// An https origin served from a loopback or private address without --client-ip-header warns at start.
+func TestProxyWarningAtStart(t *testing.T) {
+	for _, c := range []struct {
+		origin, header, addr string
+		warn                 bool
+	}{
+		{"https://lab.example.edu", "", "127.0.0.1:8787", true},
+		{"https://lab.example.edu", "", "localhost:8787", true},
+		{"https://lab.example.edu", "", "10.1.2.3:8787", true},
+		{"https://lab.example.edu", "X-Forwarded-For", "127.0.0.1:8787", false},
+		{"https://lab.example.edu", "", "203.0.113.4:443", false},
+		{"http://localhost:8787", "", "127.0.0.1:8787", false},
+	} {
+		if got := proxyWarning(c.origin, c.header, c.addr); (got != "") != c.warn || (c.warn && !strings.Contains(got, "--client-ip-header")) {
+			t.Errorf("%+v: %q", c, got)
+		}
+	}
+}
+
 // A catalog used in local mode is not turned into a group server unless the operator says so; a fresh one, and one that
 // already has accounts, start.
 func TestGroupServerRefusesALocalCatalogWithoutAdoption(t *testing.T) {

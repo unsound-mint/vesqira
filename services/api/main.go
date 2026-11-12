@@ -243,7 +243,7 @@ func main() {
 	var group server.MultiUser
 	if *multiUser {
 		var closeGroup func()
-		group, closeGroup = openGroup(store, *db, dir, *secretKey, origin, *clientIPHeader, *adopt)
+		group, closeGroup = openGroup(store, *db, dir, *secretKey, origin, *clientIPHeader, *addr, *adopt)
 		defer closeGroup()
 		auditStore.Default = audit.System // background work on the group server acts for no account; requests record their own actor
 		hostStore, remote = nil, nil      // no ssh credential on the group server (ADR 0050 section 5): no host is reachable
