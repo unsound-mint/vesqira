@@ -224,7 +224,12 @@ func (d *dbusPortal) Open(ctx context.Context, title string, options map[string]
 			return 0, nil, fmt.Errorf("%w: FileChooser version %v cannot choose folders", errPortalUnavailable, v.Value())
 		}
 	}
-	if err := d.conn.AddMatchSignalContext(ctx, dbus.WithMatchInterface(portalRequest), dbus.WithMatchMember("Response")); err != nil {
+	// Only the portal's own reply counts: another client on the session bus could emit a Response on the request path.
+	var owner string
+	if err := d.conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.GetNameOwner", 0, portalName).Store(&owner); err != nil {
+		return 0, nil, fmt.Errorf("%w: %v", errPortalUnavailable, err)
+	}
+	if err := d.conn.AddMatchSignalContext(ctx, dbus.WithMatchSender(portalName), dbus.WithMatchInterface(portalRequest), dbus.WithMatchMember("Response")); err != nil {
 		return 0, nil, fmt.Errorf("%w: %v", errPortalUnavailable, err)
 	}
 	var handle dbus.ObjectPath
@@ -243,7 +248,7 @@ func (d *dbusPortal) Open(ctx context.Context, title string, options map[string]
 			if !open {
 				return 0, nil, errors.New("the session bus connection closed while the chooser was open")
 			}
-			if sig.Name != portalRequest+".Response" || (sig.Path != handle && sig.Path != expected) || len(sig.Body) != 2 {
+			if sig.Sender != owner || sig.Name != portalRequest+".Response" || (sig.Path != handle && sig.Path != expected) || len(sig.Body) != 2 {
 				continue
 			}
 			code, ok1 := sig.Body[0].(uint32)

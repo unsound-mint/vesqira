@@ -152,8 +152,8 @@ func matchHost(list []hosts.Host, alias []hosts.SSHHost, g gvfsInfo) (hosts.Host
 	found, exact := false, false
 	for _, h := range list {
 		user, name := "", h.Dest
-		if u, n, ok := strings.Cut(h.Dest, "@"); ok {
-			user, name = u, n
+		if i := strings.LastIndex(h.Dest, "@"); i >= 0 { // ssh splits at the last @: a user name may itself hold one
+			user, name = h.Dest[:i], h.Dest[i+1:]
 		}
 		names := []string{name}
 		for _, a := range alias {
