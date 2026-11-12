@@ -429,6 +429,10 @@ func TestPushEndToEndSendsOnlyFrozenReviewerSafeItems(t *testing.T) {
 		t.Fatalf("the pushed run line does not say three settings (partition, e-mail, remote path) were left out: %+v", det.Item.Item)
 	}
 	w := g.do(req{path: "/api/pushed/" + itoa(int(figID)), cookie: full})
+	// the members' answers are what the contract (and so the web client's types) says
+	spec := loadSpec(t)
+	conforms(t, responseSchemaAt(t, spec, "/api/pushed/{id}", "GET", 200, "application/json"), "GET /api/pushed/{id}", w.Body.Bytes())
+	conforms(t, responseSchemaAt(t, spec, "/api/pushed", "GET", 200, "application/json"), "GET /api/pushed", g.do(req{path: "/api/pushed", cookie: full}).Body.Bytes())
 	json.Unmarshal(w.Body.Bytes(), &det)
 	if w.Code != 200 || len(det.Item.References) != 1 || det.Item.References[0].Match != "none" || det.Item.References[0].Name != "cube.fits" {
 		t.Fatalf("figure detail: %d %s", w.Code, w.Body)
