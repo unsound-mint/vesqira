@@ -24,8 +24,8 @@ func (s *Server) maskByRule(ctx context.Context, p projects.Project, res *applyR
 	if !s.masksOn() {
 		return later("typed masks are not configured on this server")
 	}
-	if maskDS.Kind == catalog.KindCatalog {
-		return []string{"this file is a point catalog, not a pixel mask"}
+	if !maskDS.HasPixelGrid() {
+		return []string{"this file is a point catalog or a HEALPix map, not a pixel mask"}
 	}
 	rel, err := rule.MaskTargetPath(res.Path)
 	if err != nil {
@@ -43,8 +43,8 @@ func (s *Server) maskByRule(ctx context.Context, p projects.Project, res *applyR
 	if err != nil {
 		return later("the dataset " + rel + " could not be read")
 	}
-	if target.Kind == catalog.KindCatalog {
-		return []string{"no mask was made: " + rel + " is a point catalog, which has no pixels to flag"}
+	if !target.HasPixelGrid() {
+		return []string{"no mask was made: " + rel + " is a point catalog or a HEALPix map, which has no pixel grid to flag"}
 	}
 	name := cleanText(path.Base(res.Path), 80)
 	by := rule.DeclaredBy()

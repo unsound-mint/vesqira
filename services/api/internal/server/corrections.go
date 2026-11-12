@@ -251,6 +251,10 @@ func (s *Server) correctionsDataset(w http.ResponseWriter, r *http.Request) (cat
 		fail(w, code, msg)
 		return d, false
 	}
+	if d.Kind == catalog.KindHealpix {
+		fail(w, 409, "a HEALPix map has no image WCS or brightness unit to correct: its frame and convention are stated in its own header")
+		return d, false
+	}
 	if d.Kind == catalog.KindCatalog {
 		fail(w, 409, "a point catalog has no image WCS or brightness unit to correct: its columns are declared instead")
 		return d, false

@@ -257,12 +257,16 @@ func (p *Persistent) Do(ctx context.Context, req map[string]any) (Reply, error) 
 
 // Header reads the declared header facts of an already-authorized local file through the registration lane. The
 // result is the JSON `fits_header.py` prints, and a refusal carries the same short sanitised message, so callers see
-// what the one-process-per-file worker used to give them. Worker diagnostics are never forwarded.
+// what the one-process-per-file worker used to give them. Worker diagnostics are never forwarded. A "refused" answer (a HEALPix
+// map that does not state its convention or coordinate system, ADR 0067) is the worker's own sentence, unprefixed.
 func (p *Persistent) Header(ctx context.Context, path string) (json.RawMessage, error) {
 	r, err := p.Do(ctx, map[string]any{"op": "describe", "path": path})
 	var re *RequestError
 	switch {
 	case errors.As(err, &re):
+		if re.Code == "refused" && re.Message != "" { // a readable file the worker will not take as it is (a HEALPix map without POLCCONV): its sentence
+			return nil, errors.New(re.Message)
+		}
 		if re.Code == "unreadable" && re.Message != "" && re.Message != "cannot read file" {
 			return nil, fmt.Errorf("cannot read file: %s", re.Message)
 		}

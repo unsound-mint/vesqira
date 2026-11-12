@@ -33,8 +33,8 @@ func (s *Server) dataset(ws workspace.ID, id int64) (catalog.Dataset, int, strin
 // imageDataset is dataset for operations that need a pixel grid: a point catalog (ADR 0044) is refused with 409.
 func (s *Server) imageDataset(ws workspace.ID, id int64) (catalog.Dataset, int, string) {
 	d, code, msg := s.dataset(ws, id)
-	if code == 0 && d.Kind == catalog.KindCatalog {
-		return d, 409, "this is a point catalog: it has no pixel grid, so this operation does not apply to it"
+	if code == 0 && !d.HasPixelGrid() {
+		return d, 409, d.NoGridReason()
 	}
 	return d, code, msg
 }
@@ -70,6 +70,10 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 	}
 	if d.Kind == catalog.KindCatalog {
 		fail(w, 409, "a point catalog has no pixel grid: declare its angle column in the catalog declaration instead")
+		return
+	}
+	if d.Kind == catalog.KindHealpix {
+		fail(w, 409, "a HEALPix map holds Stokes Q and U, not angles: sample it onto a dataset's grid, and the derived angle map is declared by the sampling")
 		return
 	}
 	switch in.Kind {

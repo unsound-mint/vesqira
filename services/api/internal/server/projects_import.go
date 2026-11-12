@@ -769,8 +769,8 @@ func (s *Server) declareByRule(ctx context.Context, p projects.Project, res *app
 			return nil
 		}
 		switch {
-		case d.Kind == catalog.KindCatalog:
-			notes = append(notes, "a point catalog has no brightness unit: its columns carry their own")
+		case !d.HasPixelGrid():
+			notes = append(notes, "a point catalog or a HEALPix map has no brightness unit: its columns carry their own")
 		case d.UnitDeclaration != nil && d.UnitDeclaration.DeclaredBy == "user":
 			notes = append(notes, "kept your own declared unit "+d.UnitDeclaration.Unit)
 		default:
@@ -789,6 +789,8 @@ func (s *Server) declareByRule(ctx context.Context, p projects.Project, res *app
 		switch {
 		case d.Kind == catalog.KindCatalog:
 			notes = append(notes, "a point catalog has no pixel grid: declare its angle column with a catalog rule")
+		case d.Kind == catalog.KindHealpix:
+			notes = append(notes, "a HEALPix map holds Q and U, not angles: sample it onto a dataset's grid, and the result is declared by the sampling")
 		case nonDegenerateAxes(d.Header) != 2:
 			notes = append(notes, "not a single plane (two axes longer than 1): not declared as an orientation map")
 		case d.Interpretation != nil && d.Interpretation.DeclaredBy == "user":

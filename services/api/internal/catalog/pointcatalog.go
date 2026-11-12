@@ -81,8 +81,8 @@ func kindOf(raw json.RawMessage) string {
 	var k struct {
 		Kind string `json:"kind"`
 	}
-	if json.Unmarshal(raw, &k) == nil && k.Kind == KindCatalog {
-		return KindCatalog
+	if json.Unmarshal(raw, &k) == nil && (k.Kind == KindCatalog || k.Kind == KindHealpix) {
+		return k.Kind
 	}
 	return KindFITS
 }

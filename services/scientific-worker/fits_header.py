@@ -235,9 +235,13 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"ok": False, "error": "usage: fits_header.py <path>"}))
         return 2
     limit_memory()  # its own process, like plane_worker and analysis: a crafted header must not take the machine down
+    import healpix_pol
     try:
         print(json.dumps(describe(argv[1])))
         return 0
+    except healpix_pol.HealpixRefused as e:   # a readable HEALPix map that does not state what it must (ADR 0067): its whole sentence
+        print(json.dumps({"ok": False, "code": "refused", "error": clean(str(e), 300)}))
+        return 2
     except MemoryError:
         print(json.dumps({"ok": False, "error": over_cap_message()}))
         return 2

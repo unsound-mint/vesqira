@@ -46,6 +46,7 @@ func oneShot(path string) (out []byte, errText string) {
 	b, _ := cmd.Output()
 	var probe struct {
 		OK    bool   `json:"ok"`
+		Code  string `json:"code"`
 		Error string `json:"error"`
 	}
 	if json.Unmarshal(b, &probe) != nil {
@@ -55,6 +56,9 @@ func oneShot(path string) (out []byte, errText string) {
 		return nil, "cannot read file: <uncaught>"
 	}
 	if !probe.OK {
+		if probe.Code == "refused" && probe.Error != "" { // a file the worker reads but will not take as it is: its own sentence
+			return nil, probe.Error
+		}
 		if probe.Error != "" {
 			return nil, "cannot read file: " + probe.Error
 		}

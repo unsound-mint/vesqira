@@ -34,6 +34,10 @@ func (s *Server) declareUnit(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
+	if d.Kind == catalog.KindHealpix {
+		fail(w, 409, "a HEALPix map has no brightness: its columns carry their own units")
+		return
+	}
 	if d.Kind == catalog.KindCatalog {
 		fail(w, 409, "a point catalog has no brightness: its columns carry their own units")
 		return
