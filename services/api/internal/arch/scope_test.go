@@ -219,12 +219,45 @@ func sqlSites(t *testing.T) []sqlSite {
 	return out
 }
 
-var wsPredicate = regexp.MustCompile(`workspace_id\s*(=|IN\s*\()`)
+// dynamicName stands for a table name built at run time (an operand of a concatenation, or %s in a format string).
+const dynamicName = "dynamic_table_name"
 
-// namesWorkspace: the statement filters on workspace_id by equality (or IN), or is an INSERT that sets it. Merely selecting the
-// column, or comparing it with anything else (workspace_id>0), does not scope a statement.
+var (
+	formatTable = regexp.MustCompile(`\b(FROM|JOIN|INTO|UPDATE)\s+%[sv]`)
+	clauseWord  = regexp.MustCompile(`\b(WHERE|ON|SELECT|SET|ORDER BY|GROUP BY|HAVING|VALUES|FROM|JOIN|RETURNING|LIMIT)\b`)
+)
+
+// inFilter reports whether the text at position i sits in a WHERE or JOIN ON clause: the nearest clause keyword before it is
+// WHERE or ON (AND and OR continue a clause). A comparison in ORDER BY, a SELECT list or an UPDATE's SET does not filter.
+func inFilter(q string, i int) bool {
+	words := clauseWord.FindAllStringIndex(q[:i], -1)
+	if len(words) == 0 {
+		return false
+	}
+	last := q[words[len(words)-1][0]:words[len(words)-1][1]]
+	return last == "WHERE" || last == "ON"
+}
+
+// filtersOn reports whether the statement compares column (optionally qualified) with equality or IN inside a WHERE or ON
+// clause, on either side of the comparison.
+func filtersOn(q, column string) bool {
+	left := regexp.MustCompile(`\b(\w+\.)?` + column + `\s*(=|IN\s*\()`)
+	right := regexp.MustCompile(`=\s*(\w+\.)?` + column + `\b`)
+	for _, re := range []*regexp.Regexp{left, right} {
+		for _, m := range re.FindAllStringIndex(q, -1) {
+			if inFilter(q, m[0]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// namesWorkspace: the statement filters on workspace_id by equality (or IN) in a WHERE or ON clause, or is an INSERT that sets
+// it. Selecting the column, ordering by it, setting it in an UPDATE or comparing it with anything else (workspace_id>0) does not
+// scope a statement.
 func namesWorkspace(q string) bool {
-	return wsPredicate.MatchString(q) || (strings.Contains(q, "INSERT") && strings.Contains(q, "workspace_id"))
+	return filtersOn(q, "workspace_id") || (strings.Contains(q, "INSERT") && strings.Contains(q, "workspace_id"))
 }
 
 // crossWorkspace are the statements that read across workspaces on purpose, each with its reason. Keep it short.
@@ -252,6 +285,14 @@ func literalText(n ast.Node) (string, bool) {
 		r, rok := literalText(n.Y)
 		if !lok && !rok {
 			return "", false
+		}
+		// an operand that is not a literal stands as a marker: after FROM, JOIN, INTO or UPDATE it is a table name the scan
+		// cannot read, which fails as an unclassified table
+		if !lok {
+			l = dynamicName
+		}
+		if !rok {
+			r = dynamicName
 		}
 		return l + " " + r, true
 	case *ast.ParenExpr:
@@ -283,7 +324,8 @@ func TestEveryScopedQueryNamesTheWorkspace(t *testing.T) {
 	var problems []string
 	for _, s := range sites {
 		capability := strings.Contains(s.text, "token_hash")
-		for _, m := range tableRef.FindAllStringSubmatch(s.text, -1) {
+		text := formatTable.ReplaceAllString(s.text, "$1 "+dynamicName)
+		for _, m := range tableRef.FindAllStringSubmatch(text, -1) {
 			tbl := m[1]
 			where := s.file + ":" + strconv.Itoa(s.line) + " (" + s.fn + ")"
 			switch {
@@ -298,9 +340,9 @@ func TestEveryScopedQueryNamesTheWorkspace(t *testing.T) {
 					problems = append(problems, where+": a statement on "+tbl+" is in a function that takes no workspace.ID")
 				}
 			case childTables[tbl] != nil:
-				ok := namesWorkspace(s.text)
+				ok := namesWorkspace(s.text) || strings.HasPrefix(strings.TrimSpace(s.text), "INSERT")
 				for _, k := range childTables[tbl] {
-					ok = ok || strings.Contains(s.text, k)
+					ok = ok || filtersOn(s.text, k)
 				}
 				if !ok {
 					problems = append(problems, where+": a statement on child table "+tbl+" names neither workspace_id nor "+strings.Join(childTables[tbl], "/"))
@@ -313,5 +355,29 @@ func TestEveryScopedQueryNamesTheWorkspace(t *testing.T) {
 	sort.Strings(problems)
 	for _, p := range problems {
 		t.Error(p)
+	}
+}
+
+// The rule itself: a filter counts only in WHERE or ON, a child's parent key only as a comparison there, and a table name built
+// at run time is unreadable, so it fails as unclassified.
+func TestTheScopeRuleReadsClauses(t *testing.T) {
+	for q, want := range map[string]bool{
+		`SELECT id FROM boards WHERE id=? AND workspace_id=?`:                           true,
+		`SELECT b.id FROM boards b JOIN memberships m ON m.workspace_id=b.workspace_id`: true,
+		`INSERT INTO boards(title,workspace_id) VALUES(?,?)`:                            true,
+		`SELECT workspace_id FROM boards WHERE id=? ORDER BY workspace_id=? DESC`:       false,
+		`UPDATE boards SET workspace_id=? WHERE id=?`:                                   false,
+		`SELECT id FROM boards WHERE workspace_id>0`:                                    false,
+		`SELECT workspace_id=? FROM boards WHERE id=?`:                                  false,
+	} {
+		if namesWorkspace(q) != want {
+			t.Errorf("namesWorkspace(%q) = %v, want %v", q, !want, want)
+		}
+	}
+	if filtersOn(`SELECT dataset_id FROM derived WHERE op=?`, "dataset_id") || !filtersOn(`SELECT r.op FROM derived r JOIN datasets d ON d.id=r.dataset_id`, "dataset_id") {
+		t.Error("a parent key in the SELECT list counted as a filter, or a join on it did not")
+	}
+	if got := formatTable.ReplaceAllString(`SELECT * FROM %s WHERE id=?`, "$1 "+dynamicName); !strings.Contains(got, dynamicName) {
+		t.Errorf("a format-string table name escaped: %s", got)
 	}
 }

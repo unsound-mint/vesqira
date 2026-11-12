@@ -172,9 +172,19 @@ func (s *Service) Impact(ws workspace.ID, kind string, id int64) (Impact, error)
 func impact(q querier, ws workspace.ID, kind string, id int64) (Impact, error) {
 	im := Impact{Kind: kind, ID: id}
 	b := &builder{im: &im, ids: map[string][]int64{}}
-	table := map[string]string{KindDataset: "datasets", KindRun: "runs", KindFigure: "figures", KindBoard: "boards"}[kind]
-	col := map[string]string{KindDataset: "name", KindRun: "name", KindFigure: "title", KindBoard: "title"}[kind]
-	if table == "" || !has(q, table) || q.QueryRow(`SELECT `+col+` FROM `+table+` WHERE id=? AND workspace_id=?`, id, ws).Scan(&im.Name) != nil {
+	// one literal statement per kind, so internal/arch can read the table each one names
+	table, query := "", ""
+	switch kind {
+	case KindDataset:
+		table, query = "datasets", `SELECT name FROM datasets WHERE id=? AND workspace_id=?`
+	case KindRun:
+		table, query = "runs", `SELECT name FROM runs WHERE id=? AND workspace_id=?`
+	case KindFigure:
+		table, query = "figures", `SELECT title FROM figures WHERE id=? AND workspace_id=?`
+	case KindBoard:
+		table, query = "boards", `SELECT title FROM boards WHERE id=? AND workspace_id=?`
+	}
+	if table == "" || !has(q, table) || q.QueryRow(query, id, ws).Scan(&im.Name) != nil {
 		return im, ErrNotFound
 	}
 	var n int
@@ -382,8 +392,14 @@ func datasetImpact(q querier, b *builder, ws workspace.ID, id int64) error {
 		return "Its offline copy (kept for working without the host) goes with it, files included. The original file is not touched."
 	})
 	var decl []Item
-	for i, d := range []struct{ table, label string }{{"interpretations", "orientation declaration"}, {"dataset_nature", "declared nature"}, {"dataset_units", "declared unit"}, {"catalog_declarations", "declared catalog columns"}, {"dataset_corrections", "WCS and unit corrections with their history"}} {
-		got, err := items(q, d.table, `SELECT dataset_id, '`+d.label+`' FROM `+d.table+` WHERE dataset_id=?`, id)
+	for i, d := range []struct{ table, label, query string }{
+		{"interpretations", "orientation declaration", `SELECT dataset_id, 'orientation declaration' FROM interpretations WHERE dataset_id=?`},
+		{"dataset_nature", "declared nature", `SELECT dataset_id, 'declared nature' FROM dataset_nature WHERE dataset_id=?`},
+		{"dataset_units", "declared unit", `SELECT dataset_id, 'declared unit' FROM dataset_units WHERE dataset_id=?`},
+		{"catalog_declarations", "declared catalog columns", `SELECT dataset_id, 'declared catalog columns' FROM catalog_declarations WHERE dataset_id=?`},
+		{"dataset_corrections", "WCS and unit corrections with their history", `SELECT dataset_id, 'WCS and unit corrections with their history' FROM dataset_corrections WHERE dataset_id=?`},
+	} {
+		got, err := items(q, d.table, d.query, id)
 		if err != nil {
 			return err
 		}

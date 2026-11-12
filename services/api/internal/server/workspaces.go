@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -42,35 +43,66 @@ var scopeKinds = map[string]bool{
 	"discussion/id": true, "invitations/id": true, "snapshots/id": true, "comments/id": true,
 }
 
-// scopeLookup is the query that finds the workspace and creator of the object a path parameter names: rows of (workspace_id,
-// created_by), one for an id, possibly several for a content address (the same picture attached in two workspaces), the
-// selected workspace first.
-func scopeLookup(kind, value string, selected workspace.ID) (string, []any) {
+// scopeLookup is the query that finds the object a path parameter names among the workspaces the account is a member of: rows of
+// (workspace_id, created_by, role), the selected workspace first. An object in a workspace the account is not a member of is not
+// found, exactly like a missing one. One for an id, possibly several for a content address (the same picture attached in two
+// workspaces). One literal statement per kind, so internal/arch reads the table each names and checks the membership filter.
+func scopeLookup(kind, value, accountID string, selected workspace.ID) (string, []any) {
+	var q string
 	switch kind {
+	case "datasets/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM datasets t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "figures/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM figures t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "boards/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM boards t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "reports/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM reports t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "runs/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM runs t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "run-views/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM run_views t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "regions/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM saved_regions t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "masks/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM masks t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "subsets/sid":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM subsets t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "history/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM exploration_steps t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "projects/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM projects t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "discussion/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM member_comments t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "invitations/id":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM invitations t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
+	case "attachments/sha":
+		q = `SELECT t.workspace_id, t.created_by, m.role FROM attachments t
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.sha=?`
 	case "snapshots/id": // a snapshot belongs to its board, and "own" (publish, revoke, reply, resolve) means own board
-		return `SELECT s.workspace_id, COALESCE(b.created_by,'') FROM snapshots s LEFT JOIN boards b ON b.id=s.board_id
-			WHERE s.id=? ORDER BY s.workspace_id=? DESC`, []any{value, selected}
+		q = `SELECT t.workspace_id, COALESCE(b.created_by,''), m.role FROM snapshots t LEFT JOIN boards b ON b.id=t.board_id AND b.workspace_id=t.workspace_id
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
 	case "comments/id": // a reviewer's comment, likewise
-		return `SELECT s.workspace_id, COALESCE(b.created_by,'') FROM comments c JOIN snapshots s ON s.id=c.snapshot_id
-			LEFT JOIN boards b ON b.id=s.board_id WHERE c.id=? ORDER BY s.workspace_id=? DESC`, []any{value, selected}
-	}
-	table := scopeTables[kind]
-	if table == "" {
+		q = `SELECT t.workspace_id, COALESCE(b.created_by,''), m.role FROM comments c JOIN snapshots t ON t.id=c.snapshot_id
+			LEFT JOIN boards b ON b.id=t.board_id AND b.workspace_id=t.workspace_id
+			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE c.id=?`
+	default:
 		return "", nil
 	}
-	key := "id"
-	if kind == "attachments/sha" {
-		key = "sha"
-	}
-	return "SELECT workspace_id, created_by FROM " + table + " WHERE " + key + "=? ORDER BY workspace_id=? DESC", []any{value, selected}
-}
-
-// scopeTables names the table of each kind that carries its own workspace_id and created_by.
-var scopeTables = map[string]string{
-	"datasets/id": "datasets", "figures/id": "figures", "boards/id": "boards", "reports/id": "reports", "runs/id": "runs",
-	"run-views/id": "run_views", "regions/id": "saved_regions", "masks/id": "masks", "subsets/sid": "subsets",
-	"history/id": "exploration_steps", "projects/id": "projects", "attachments/sha": "attachments",
-	"discussion/id": "member_comments", "invitations/id": "invitations",
+	return q + ` ORDER BY t.workspace_id=? DESC`, []any{accountID, value, selected}
 }
 
 // childParams name a part of the object of the route's first parameter (a location of a dataset, an item of a board, a revision
@@ -126,39 +158,23 @@ func scopeOf(pattern string) (string, error) {
 // objectWorkspace finds the workspace and creator of the object a path parameter names, among the workspaces the account is a
 // member of, preferring selected. found is false for a missing object and for one in a workspace the account cannot see, alike.
 func (s *Server) objectWorkspace(kind string, value string, accountID string, selected workspace.ID) (ws workspace.ID, role authz.Role, createdBy string, found bool) {
-	q, args := scopeLookup(kind, value, selected)
+	q, args := scopeLookup(kind, value, accountID, selected)
 	if q == "" || s.Store == nil {
 		return 0, "", "", false
 	}
-	rows, err := s.Store.DB().Query(q, args...)
+	var r string
+	err := s.lookupDB().QueryRow(q, args...).Scan(&ws, &createdBy, &r)
 	if err != nil {
-		log.Printf("workspace of %s %q: %v", kind, value, err)
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("workspace of %s %q: %v", kind, value, err)
+		}
 		return 0, "", "", false
 	}
-	type hit struct {
-		ws workspace.ID
-		by string
-	}
-	var hits []hit
-	for rows.Next() {
-		var h hit
-		if err := rows.Scan(&h.ws, &h.by); err == nil {
-			hits = append(hits, h)
-		}
-	}
-	rows.Close()
-	for pass := 0; pass < 2; pass++ { // first the selected workspace, then any other the account belongs to
-		for _, h := range hits {
-			if (pass == 0) != (h.ws == selected) {
-				continue
-			}
-			if r, err := s.MultiUser.Accounts.Role(accountID, h.ws); err == nil {
-				return h.ws, authz.Role(r), h.by, true
-			}
-		}
-	}
-	return 0, "", "", false
+	return ws, authz.Role(r), createdBy, true
 }
+
+// lookupDB is where route's workspace lookups run: the catalog's single writer connection here; see objectWorkspace.
+func (s *Server) lookupDB() *sql.DB { return s.Store.DB() }
 
 // placeActor puts an account's actor in the workspace the request names (header) or its oldest membership, with its role there.
 // A header naming a workspace the account is not a member of leaves it in none: every workspace route then answers 403, and

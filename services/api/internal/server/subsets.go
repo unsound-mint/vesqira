@@ -64,11 +64,11 @@ func subsetStale(v subsets.Version, src catalog.Dataset) bool {
 }
 
 // subsetRecords are the records of the files written from subsets, read once per request (nil when there is no derived store).
-func (s *Server) subsetRecords() []derived.Record {
+func (s *Server) subsetRecords(ws workspace.ID) []derived.Record {
 	if s.Derived == nil {
 		return nil
 	}
-	recs, err := s.Derived.ByOp("subset")
+	recs, err := s.Derived.ByOp(ws, "subset")
 	if err != nil {
 		log.Printf("subsets: %v", err)
 		return nil
@@ -261,7 +261,7 @@ func (s *Server) listSubsets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := make([]subsetView, 0, len(all))
-	recs := s.subsetRecords()
+	recs := s.subsetRecords(wsOf(r))
 	for _, sub := range all {
 		src, err := s.Store.Get(wsOf(r), sub.SourceID)
 		if err != nil {
@@ -284,7 +284,7 @@ func (s *Server) getSubset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	made := []map[string]any{}
-	recs := s.subsetRecords()
+	recs := s.subsetRecords(wsOf(r))
 	for _, rec := range recs {
 		if sm := subsetSummary(rec); sm.ID == sub.ID {
 			made = append(made, map[string]any{"datasetId": rec.DatasetID, "version": sm.Version, "at": rec.CreatedAt})
@@ -380,7 +380,7 @@ func (s *Server) createSubset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r.Context(), "virtual subset created", "dataset", src.ID, in.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+")")
-	writeJSON(w, 201, map[string]any{"subset": s.subsetOf(wsOf(r), sub, src, s.subsetRecords()), "geometry": head})
+	writeJSON(w, 201, map[string]any{"subset": s.subsetOf(wsOf(r), sub, src, s.subsetRecords(wsOf(r))), "geometry": head})
 }
 
 // editSubset records a new version with another definition, name or reason, pinned to the source as it is now. The earlier versions
@@ -447,7 +447,7 @@ func (s *Server) saveVersion(ctx context.Context, w http.ResponseWriter, sub sub
 		return
 	}
 	s.audit(ctx, "virtual subset "+kind, "dataset", src.ID, v.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+", version "+strconv.Itoa(next.Current.Version)+")")
-	writeJSON(w, 200, map[string]any{"subset": s.subsetOf(wsCtx(ctx), next, src, s.subsetRecords()), "geometry": head})
+	writeJSON(w, 200, map[string]any{"subset": s.subsetOf(wsCtx(ctx), next, src, s.subsetRecords(wsCtx(ctx))), "geometry": head})
 }
 
 func (s *Server) deleteSubset(w http.ResponseWriter, r *http.Request) {
@@ -552,10 +552,10 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	}
 	s.subsetMu.Lock() // one writer at a time: two identical requests make one file, not two
 	defer s.subsetMu.Unlock()
-	if id, ok := s.materialisedFor(wsOf(r), s.subsetRecords(), sub.ID, cur.Version, src, carry.key(), false); ok {
+	if id, ok := s.materialisedFor(wsOf(r), s.subsetRecords(wsOf(r)), sub.ID, cur.Version, src, carry.key(), false); ok {
 		nd, err := s.Store.Get(wsOf(r), id)
 		if err == nil {
-			writeJSON(w, 200, map[string]any{"dataset": nd, "reused": true, "subset": s.subsetOf(wsOf(r), sub, src, s.subsetRecords())})
+			writeJSON(w, 200, map[string]any{"dataset": nd, "reused": true, "subset": s.subsetOf(wsOf(r), sub, src, s.subsetRecords(wsOf(r)))})
 			return
 		}
 	}
@@ -656,7 +656,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.audit(r.Context(), "virtual subset written as a file", "dataset", src.ID, cur.Name+" (subset "+strconv.FormatInt(sub.ID, 10)+", version "+strconv.Itoa(cur.Version)+") as "+filepath.Base(outPath))
-	writeJSON(w, 201, map[string]any{"dataset": nd, "reused": false, "summary": json.RawMessage(sraw), "subset": s.subsetOf(wsOf(r), sub, src, s.subsetRecords())})
+	writeJSON(w, 201, map[string]any{"dataset": nd, "reused": false, "summary": json.RawMessage(sraw), "subset": s.subsetOf(wsOf(r), sub, src, s.subsetRecords(wsOf(r)))})
 }
 
 // reviewerDefinition is the definition as a derived record keeps it for a reviewer: the region a box came from by name only, no id.
