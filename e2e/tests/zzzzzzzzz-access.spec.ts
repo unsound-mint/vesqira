@@ -12,6 +12,19 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");
 const inspector = (page: Page) => page.getByRole("complementary", { name: "Inspector" });
 
+// Clears every access label on the shared instance through the API: before the test, so a failed earlier attempt cannot leave a
+// second labelled dataset behind, and after it, so later specs publish without a question. Housekeeping, not the flow under test.
+async function clearLabels(page: Page) {
+  const r = await page.request.get("/api/access");
+  expect(r.ok()).toBeTruthy();
+  const { datasets } = (await r.json()) as { datasets: Record<string, { own: string }> };
+  for (const [id, row] of Object.entries(datasets)) {
+    if (row.own === "none") continue;
+    const set = await page.request.post(`/api/datasets/${id}/access`, { data: { label: "none", reason: "end-to-end test cleanup" } });
+    expect(set.ok()).toBeTruthy();
+  }
+}
+
 async function expectNoAxeViolations(page: Page, skip: string[] = []) {
   const r = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).disableRules(skip).analyze();
   expect(r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
@@ -19,6 +32,7 @@ async function expectNoAxeViolations(page: Page, skip: string[] = []) {
 
 test("a labelled dataset marks its figure, publishing asks for confirmation, and the reviewer is told the label", async ({ page, browser }) => {
   await page.goto("/");
+  await clearLabels(page);
   const file = "hi_cube.fits";
   const row = page.getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}`) }).first();
   if (!(await row.count())) {
@@ -38,7 +52,7 @@ test("a labelled dataset marks its figure, publishing asks for confirmation, and
   await inspector(page).getByLabel(/^Reason/).fill("not yet validated");
   await inspector(page).getByRole("button", { name: "Set label" }).click();
   await expect(inspector(page).getByText(/History \(1\)/).or(inspector(page).getByText(/History \(\d+\)/))).toBeVisible();
-  await expect(page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}.*unreleased`) })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}.*unreleased`) }).first()).toBeVisible();
   await expectNoAxeViolations(page);
 
   // a figure from it goes on a board and carries the label
@@ -91,13 +105,5 @@ test("a labelled dataset marks its figure, publishing asks for confirmation, and
   await page.emulateMedia({ colorScheme: "light" });
 
   // put the label back so later runs of the suite publish without a question
-  await page.getByRole("button", { name: "Boards", exact: true }).click();
-  if (!(await row.isVisible())) await page.getByRole("button", { name: "Explorer", exact: true }).click(); // the narrow pass may have closed it
-  await row.click();
-  if (!(await inspector(page).isVisible())) await page.getByRole("button", { name: "Toggle inspector" }).click(); // closed by the narrow pass
-  const again = inspector(page).getByRole("button", { name: /^Access/ });
-  if ((await again.getAttribute("aria-expanded")) !== "true") await again.click();
-  await inspector(page).getByLabel("Access label").selectOption("none");
-  await inspector(page).getByRole("button", { name: "Set label" }).click();
-  await expect(inspector(page).getByText("Released: no label.")).toBeVisible();
+  await clearLabels(page);
 });
