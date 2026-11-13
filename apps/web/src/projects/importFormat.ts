@@ -17,7 +17,7 @@ const ROLE_LABELS: Record<string, string> = {
   run_model_cube: "Run output: model cube",
   run_residual_cube: "Run output: residual cube",
   run_crop: "Run input: crop",
-  run_fit_rbar2: "Run output: fit R̄²",
+  run_fit_rbar2: "Run output: fit R̄ (axial)",
   run_product: "Run output: product map the profile does not place",
   run_output: "File inside a run",
   config: "Config",
