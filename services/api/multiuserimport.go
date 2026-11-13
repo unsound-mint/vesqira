@@ -51,15 +51,24 @@ type importReport struct {
 	skipped    []string
 	unresolved []string
 	previews   []previewFile
+	projects   []string
+	noAttach   int // report images whose file the archive does not hold
 	notImport  []countLine
 }
 
+// previewFile is one content-addressed file of the archive that a row needs: a figure preview (figures/<sha>.png) or a report
+// attachment (attachments/<sha>).
 type previewFile struct {
-	name    string // sha256 hex + ".png"
+	dir     string // "figures" or "attachments"
+	name    string // sha256 hex, plus ".png" for a preview
 	from    string
-	present bool // already in the server's figures folder (content-addressed: the same bytes)
+	present bool // already in the server's folder (content-addressed: the same bytes)
 	missing bool // not in the archive
 }
+
+func (p previewFile) key() string { return p.dir + "/" + p.name }
+
+func (p previewFile) sha() string { return strings.TrimSuffix(p.name, ".png") }
 
 type unresolvedError struct{ lines []string }
 
@@ -167,7 +176,7 @@ type importer struct {
 	rep       *importReport
 	hostNames map[int64]string
 
-	ds, run, job, mask, fig, board, snap, report, region, sub, comment, corr *idMap
+	ds, run, job, mask, fig, board, snap, report, region, sub, comment, corr, proj, step *idMap
 }
 
 func (im *importer) bad(format string, a ...any) {
@@ -397,7 +406,7 @@ func (im *importer) remapRunRefs(text, where string) string {
 var importTables = []string{"workspaces", "memberships", "workspace_roots", "audit", "datasets", "dataset_locations", "interpretations", "dataset_nature",
 	"dataset_units", "catalog_declarations", "dataset_corrections", "dataset_access", "derived", "saved_regions", "masks", "subsets", "subset_versions",
 	"runs", "run_review", "run_review_history", "run_outputs", "rohsa_runs", "jobs", "figures", "boards", "board_items", "snapshots", "comments",
-	"snapshot_outcomes", "reports", "report_history", "report_links", "archived_entries"}
+	"snapshot_outcomes", "reports", "report_history", "report_links", "archived_entries", "projects", "project_answers", "exploration_steps", "run_views", "attachments"}
 
 func hasTable(db interface {
 	QueryRow(string, ...any) *sql.Row
@@ -419,6 +428,7 @@ func importInto(tx *sql.Tx, sp *importSpec, now int64) (*importReport, error) {
 	im.ds, im.run, im.job, im.mask = newMap("dataset"), newMap("run"), newMap("job"), newMap("mask")
 	im.fig, im.board, im.snap, im.report = newMap("figure"), newMap("board"), newMap("snapshot"), newMap("report")
 	im.region, im.sub, im.comment, im.corr = newMap("saved region"), newMap("subset"), newMap("comment"), newMap("correction")
+	im.proj, im.step = newMap("project"), newMap("exploration step")
 	im.region.lenient = true
 
 	if hs, err := readAll(sp.src, `SELECT id, name FROM hosts`); err == nil {
@@ -667,7 +677,7 @@ func importInto(tx *sql.Tx, sp *importSpec, now int64) (*importReport, error) {
 		r.set("scene", im.remapJSON(r.str("scene"), where+" (its scene)", rules))
 		r.set("identity", im.remapJSON(r.str("identity"), where+" (its identity record)", rules))
 		sha := r.str("preview_sha")
-		pf := previewFile{name: sha + ".png", from: filepath.Join(sp.srcDir, "figures", sha+".png")}
+		pf := previewFile{dir: "figures", name: sha + ".png", from: filepath.Join(sp.srcDir, "figures", sha+".png")}
 		if _, err := os.Stat(pf.from); err != nil {
 			pf.missing = true
 		}
@@ -772,6 +782,24 @@ func importInto(tx *sql.Tx, sp *importSpec, now int64) (*importReport, error) {
 		return nil, err
 	}
 
+	// report images: the row is imported only with its file; an export from before attachments were archived has the rows only
+	if err := cp("attachments", `SELECT * FROM attachments WHERE workspace_id=1 ORDER BY sha`, "", nil, func(r *row) error {
+		sha := r.str("sha")
+		pf := previewFile{dir: "attachments", name: sha, from: filepath.Join(sp.srcDir, "attachments", sha)}
+		if _, err := os.Stat(pf.from); err != nil {
+			im.rep.noAttach++
+			return errSkip
+		}
+		if _, err := os.Stat(filepath.Join(sp.dstDir, "attachments", sha)); err == nil {
+			pf.present = true
+		}
+		im.rep.previews = append(im.rep.previews, pf)
+		im.stamp(r)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
 	// the archive marks of entries that were archived instead of deleted
 	if err := cp("archived_entries", `SELECT * FROM archived_entries ORDER BY kind, entity_id`, "", nil, func(r *row) error {
 		var m *idMap
@@ -797,15 +825,70 @@ func importInto(tx *sql.Tx, sp *importSpec, now int64) (*importReport, error) {
 		return nil, err
 	}
 
+	// working state: opened projects with the researcher's answers, saved run views and the exploration trail
+	if err := cp("projects", `SELECT * FROM projects WHERE workspace_id=1 ORDER BY id`, "id", im.proj, func(r *row) error {
+		where := fmt.Sprintf("project %q", r.str("name"))
+		oldHost := r.num("host_id")
+		to, hid, how := im.place(where, oldHost, r.str("root"))
+		im.stamp(r)
+		r.set("root", to)
+		r.set("host_id", hid)
+		switch how {
+		case "host":
+			im.rep.projects = append(im.rep.projects, fmt.Sprintf("  %s: on host %q; its folder stays as text, not a folder of this server", r.str("name"), im.hostNames[oldHost]))
+		case "mapped":
+			im.rep.projects = append(im.rep.projects, fmt.Sprintf("  %s: -> %s", r.str("name"), to))
+		default:
+			im.rep.projects = append(im.rep.projects, fmt.Sprintf("  %s: %s; no --map covers it, so it is shown as unavailable", r.str("name"), to))
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := cp("project_answers", `SELECT * FROM project_answers WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=1) ORDER BY project_id, need`, "", nil, func(r *row) error {
+		r.set("project_id", im.to(im.proj, r.num("project_id"), "an answer of a project"))
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := cp("run_views", `SELECT * FROM run_views WHERE workspace_id=1 ORDER BY id`, "id", nil, func(r *row) error {
+		im.stamp(r)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := cp("exploration_steps", `SELECT * FROM exploration_steps WHERE workspace_id=1 ORDER BY id`, "id", im.step, func(r *row) error {
+		ds, ok := im.ds.m[r.num("dataset_id")]
+		if !ok { // the trail of a dataset that is no longer in the catalog
+			im.rep.skipped = append(im.rep.skipped, fmt.Sprintf("an exploration step (%q) on a dataset that is no longer in the catalog", r.str("label")))
+			return errSkip
+		}
+		where := fmt.Sprintf("exploration step %q", r.str("label"))
+		im.stamp(r)
+		r.set("dataset_id", ds)
+		if p := r.num("project_id"); p != 0 {
+			r.set("project_id", im.to(im.proj, p, where))
+		}
+		if r.get("parent_id") != nil {
+			r.set("parent_id", im.to(im.step, r.num("parent_id"), where))
+		}
+		r.set("scene", im.remapJSON(r.str("scene"), where+" (its scene)", im.sceneRules()))
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
 	if len(im.rep.unresolved) > 0 {
 		return im.rep, &unresolvedError{im.rep.unresolved}
 	}
 
 	// what is not imported, counted from the export
 	for _, t := range []struct{ table, what string }{
-		{"hosts", "hosts (ssh aliases of the exporting computer)"}, {"projects", "opened project folders"}, {"exploration_steps", "exploration history steps"},
-		{"sweeps", "parameter sweeps"}, {"transfers", "file transfers"}, {"offline_entries", "offline copies"}, {"run_views", "saved run views"},
-		{"attachments", "report attachments (not part of an ADR 0022 export)"}, {"notifications", "notifications"}, {"report_publications", "report publications to a publish server"},
+		{"hosts", "hosts (ssh aliases of the exporting computer, not something a group server holds)"},
+		{"sweeps", "parameter sweeps (they submit jobs, which a group server does not)"}, {"transfers", "file transfers (rsync over the exporting computer's ssh)"},
+		{"offline_entries", "offline copies (cached on the exporting computer)"},
+		{"notifications", "notifications (job and run events for the person at that computer, not research state)"},
+		{"report_publications", "report publications (they belong to a publish server with its own key, not yet per workspace)"},
 	} {
 		if n, ok := count(sp.src, t.table); ok && n > 0 {
 			im.rep.notImport = append(im.rep.notImport, countLine{t.what, int(n)})
@@ -825,7 +908,8 @@ func (r *importReport) noteTable(table string, n int) {
 		"datasets": "datasets", "figures": "figures", "boards": "boards", "snapshots": "review snapshots (links to an old review address must be reissued)",
 		"comments": "reviewers' comments", "reports": "reports", "runs": "runs (kept as read-only records naming their old host as text)", "masks": "masks",
 		"saved_regions": "regions", "subsets": "subsets", "jobs": "jobs (read-only records)", "dataset_corrections": "corrections", "dataset_access": "access label records",
-		"report_history": "report revisions",
+		"report_history": "report revisions", "projects": "projects (their folders go through --map)", "project_answers": "project answers", "run_views": "saved run views",
+		"exploration_steps": "exploration steps", "attachments": "report images",
 	}
 	if l, ok := labels[table]; ok {
 		r.counts = append(r.counts, countLine{l, n})
@@ -840,29 +924,30 @@ func (r *importReport) summary() string {
 	return strings.Join(parts, ", ")
 }
 
-// copyPreviews puts the archive's figure previews into the server's figures folder before the catalog commits. They are
+// copyPreviews puts the archive's figure previews and report images into the server's folders before the catalog commits. They are
 // content-addressed, so a file that is already there is the same bytes; the file's content must match its name. It returns what
 // it created, so a failed import can take those files away again.
 func copyPreviews(rep *importReport, dstDir string) (created []string, err error) {
-	if err := os.MkdirAll(filepath.Join(dstDir, "figures"), 0o700); err != nil {
-		return nil, err
-	}
 	seen := map[string]bool{}
 	for _, p := range rep.previews {
-		if p.missing || p.present || seen[p.name] {
+		if p.missing || p.present || seen[p.key()] {
 			continue
 		}
-		seen[p.name] = true
+		seen[p.key()] = true
+		folder := filepath.Join(dstDir, p.dir)
+		if err := os.MkdirAll(folder, 0o700); err != nil {
+			return created, err
+		}
 		b, err := os.ReadFile(p.from)
 		if err != nil {
 			return created, err
 		}
 		sum := sha256.Sum256(b)
-		if hex.EncodeToString(sum[:])+".png" != p.name {
-			return created, fmt.Errorf("the preview %s in the archive does not match its name", p.name)
+		if hex.EncodeToString(sum[:]) != p.sha() {
+			return created, fmt.Errorf("the file %s in the archive does not match its name", p.key())
 		}
-		dst := filepath.Join(dstDir, "figures", p.name)
-		tmp, err := os.CreateTemp(filepath.Join(dstDir, "figures"), ".tmp-*")
+		dst := filepath.Join(folder, p.name)
+		tmp, err := os.CreateTemp(folder, ".tmp-*")
 		if err != nil {
 			return created, err
 		}
@@ -920,23 +1005,34 @@ func printPlan(w io.Writer, rep *importReport, maps []pathMap) {
 	for _, c := range rep.counts {
 		fmt.Fprintf(w, "  %d %s\n", c.n, c.what)
 	}
-	var pics, have, miss int
-	seen := map[string]bool{}
-	for _, p := range rep.previews {
-		if seen[p.name] {
-			continue
-		}
-		seen[p.name] = true
-		pics++
-		switch {
-		case p.missing:
-			miss++
-		case p.present:
-			have++
+	if len(rep.projects) > 0 {
+		fmt.Fprintln(w, "  project folders:")
+		for _, l := range rep.projects {
+			fmt.Fprintln(w, "  "+l)
 		}
 	}
-	if pics > 0 {
-		fmt.Fprintf(w, "  %d figure preview pictures (%d already on this server, %d missing from the archive)\n", pics, have, miss)
+	for _, d := range []struct{ dir, what string }{{"figures", "figure preview pictures"}, {"attachments", "report images"}} {
+		var n, have, miss int
+		seen := map[string]bool{}
+		for _, p := range rep.previews {
+			if p.dir != d.dir || seen[p.key()] {
+				continue
+			}
+			seen[p.key()] = true
+			n++
+			switch {
+			case p.missing:
+				miss++
+			case p.present:
+				have++
+			}
+		}
+		if n > 0 {
+			fmt.Fprintf(w, "  %d %s (%d already on this server, %d missing from the archive)\n", n, d.what, have, miss)
+		}
+	}
+	if rep.noAttach > 0 {
+		fmt.Fprintf(w, "  %d report images are missing: their files are not in this archive (exports made before attachments were archived do not hold them), so those reports show broken images\n", rep.noAttach)
 	}
 	for _, s := range rep.skipped {
 		fmt.Fprintf(w, "  not imported: %s\n", s)

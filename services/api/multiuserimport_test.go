@@ -70,6 +70,20 @@ func pngFile(t *testing.T, dir string, payload string) (sha string) {
 	return sha
 }
 
+func attachFile(t *testing.T, dir, payload string) string {
+	t.Helper()
+	b := []byte("attachment-" + payload)
+	sum := sha256.Sum256(b)
+	sha := hex.EncodeToString(sum[:])
+	if err := os.MkdirAll(filepath.Join(dir, "attachments"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "attachments", sha), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return sha
+}
+
 type ids struct{ a, b, c, d, run1, run2, job, mask, region, fig1, fig2, board, snap1, snap2, report1 int64 }
 
 // localExport builds a local catalog with a row of every imported kind and exports it.
@@ -144,6 +158,17 @@ func localExport(t *testing.T, extra func(db *sql.DB, src string, i ids)) (archi
 	mustExec(t, db, `INSERT INTO report_links(report_id,kind,target) VALUES(?,'figure','rev1')`, i.report1)
 	mustExec(t, db, `INSERT INTO archived_entries(kind,entity_id,archived_at) VALUES('figure',?,1),('dataset',?,1),('run',4242,1)`, i.fig2, i.c)
 	mustExec(t, db, `INSERT INTO notifications(at,kind,title,body,dedupe) VALUES(1,'job','t','b','d1')`)
+	p1 := mustExec(t, db, `INSERT INTO projects(host_id,root,name,opened_at) VALUES(0,'/home/denis/data/lmc','LMC',1)`)
+	mustExec(t, db, `INSERT INTO projects(host_id,root,name,opened_at) VALUES(0,'/scratch/proj','Scratch',1)`)
+	mustExec(t, db, `INSERT INTO projects(host_id,root,name,opened_at) VALUES(1,'/cluster/proj','Remote',1)`)
+	mustExec(t, db, `INSERT INTO project_answers(project_id,need,answer,value,declared_by,date,written) VALUES(?,?,?,?,?,?,?)`, p1, "beam", "declared", "10 arcsec", "user", "2026-01-01", 1)
+	mustExec(t, db, `INSERT INTO run_views(name,spec,updated_at) VALUES('by block','{"query":"block_size:16..64","columns":[]}',1)`)
+	st1 := mustExec(t, db, `INSERT INTO exploration_steps(project_id,dataset_id,kind,label,scene,at) VALUES(?,?,?,?,?,?)`, p1, i.a, "open", "first", fmt.Sprintf(`{"base":{"datasetId":%d}}`, i.a), 1)
+	mustExec(t, db, `INSERT INTO exploration_steps(project_id,parent_id,dataset_id,kind,label,scene,at) VALUES(0,?,?,?,?,?,?)`, st1, i.b, "open", "second", fmt.Sprintf(`{"base":{"datasetId":%d}}`, i.b), 2)
+	mustExec(t, db, `INSERT INTO exploration_steps(project_id,dataset_id,kind,label,scene,at) VALUES(0,999,'open','gone','{}',3)`)
+	asha := attachFile(t, srcDir, "image")
+	mustExec(t, db, `INSERT INTO attachments(sha,mime,size,created_at) VALUES(?,?,?,?)`, asha, "image/png", 5, 1)
+	mustExec(t, db, `INSERT INTO attachments(sha,mime,size,created_at) VALUES(?,?,?,?)`, strings.Repeat("ab", 32), "image/png", 5, 1)
 	if extra != nil {
 		extra(db, srcDir, i)
 	}
@@ -191,6 +216,9 @@ func groupServer(t *testing.T) *fixture {
 		}
 		for k := 0; k < 3; k++ {
 			mustExec(t, db, `INSERT INTO runs(dir,name,kind,imported_at,generated_at,git_commit,input_name,input_size,params,diagnostics,workspace_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, fmt.Sprintf("/srv/own/%d/run%d", ws, k), "own", "vgt", 1, "t", "c", "i", 1, `{}`, `{}`, ws)
+		}
+		for k := 0; k < 2; k++ {
+			mustExec(t, db, `INSERT INTO projects(host_id,root,name,opened_at,workspace_id) VALUES(0,?,?,1,?)`, fmt.Sprintf("/srv/own/%d/p%d", ws, k), "own", ws)
 		}
 		b := mustExec(t, db, `INSERT INTO boards(title,created_at,updated_at,workspace_id) VALUES('own',1,1,?)`, ws)
 		mustExec(t, db, `INSERT INTO snapshots(board_id,label,created_at,expires_at,token_hash,frozen,workspace_id) VALUES(?,?,?,?,?,?,?)`, b, "own", 1, 9, fmt.Sprintf("own-token-%d", ws), `{}`, ws)
@@ -275,7 +303,7 @@ func TestMultiuserImportRoundTrip(t *testing.T) {
 	}
 	for _, want := range []string{"cube.fits: /home/denis/data/lmc/cube.fits -> " + filepath.Join(f.target, "lmc", "cube.fits") + " (present)",
 		"psi.fits: /home/denis/data/lmc/psi.fits -> " + filepath.Join(f.target, "lmc", "psi.fits") + " (not found there: it will be shown as missing)",
-		"other.fits: /scratch/other.fits; no --map covers it", "x.fits: on host \"cluster\"", "1 rewritten through a map", "2 figure preview pictures", "1 access label records",
+		"other.fits: /scratch/other.fits; no --map covers it", "x.fits: on host \"cluster\"", "1 rewritten through a map", "2 figure preview pictures", "1 report images (0 already", "1 report images are missing", "3 projects", "Scratch: /scratch/proj; no --map covers it, so it is shown as unavailable", "Remote: on host \"cluster\"", "2 exploration steps", "1 saved run views", "1 access label records", "an exploration step (\"gone\")",
 		"not imported: an access label record of \"deleted.fits\"", "1 notifications", "1 hosts"} {
 		if !strings.Contains(strings.Replace(dryOut, "2 rewritten through a map", "1 rewritten through a map", 1), want) {
 			t.Errorf("the plan lacks %q:\n%s", want, dryOut)
@@ -419,6 +447,31 @@ func TestMultiuserImportRoundTrip(t *testing.T) {
 	if n := len(figureFiles(t, f.dataDir)); n != 2 {
 		t.Errorf("%d preview files copied", n)
 	}
+	if m, _ := filepath.Glob(filepath.Join(f.dataDir, "attachments", "*")); len(m) != 1 || one(t, db, `SELECT COUNT(*) FROM attachments WHERE workspace_id=?`, ws) != "1" {
+		t.Errorf("report images: files %v", m)
+	}
+
+	// projects, answers, views and the exploration trail
+	pid := func(name string) string {
+		return q(`SELECT id FROM projects WHERE workspace_id=? AND name=?`, ws, name)
+	}
+	if q(`SELECT root FROM projects WHERE id=?`, pid("LMC")) != filepath.Join(f.target, "lmc") || q(`SELECT root FROM projects WHERE id=?`, pid("Scratch")) != "/scratch/proj" ||
+		q(`SELECT host_id||root FROM projects WHERE id=?`, pid("Remote")) != "-1[host cluster] /cluster/proj" {
+		t.Error("project roots")
+	}
+	if q(`SELECT project_id||answer||value||declared_by FROM project_answers WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=?)`, ws) != pid("LMC")+"declared10 arcsecuser" {
+		t.Error("project answers")
+	}
+	if q(`SELECT COUNT(*) FROM run_views WHERE workspace_id=? AND name='by block' AND created_by=?`, ws, f.adaID) != "1" {
+		t.Error("run views")
+	}
+	step1 := q(`SELECT id FROM exploration_steps WHERE workspace_id=? AND label='first'`, ws)
+	if got := q(`SELECT project_id||'/'||dataset_id||'/'||scene FROM exploration_steps WHERE id=?`, step1); got != pid("LMC")+"/"+a+`/{"base":{"datasetId":`+a+`}}` {
+		t.Errorf("exploration step: %s", got)
+	}
+	if got := q(`SELECT parent_id||'/'||dataset_id||'/'||project_id FROM exploration_steps WHERE workspace_id=? AND label='second'`, ws); got != step1+"/"+b+"/0" {
+		t.Errorf("exploration step with a parent: %s", got)
+	}
 
 	// boards, snapshots with comments
 	bid := q(`SELECT id FROM boards WHERE workspace_id=?`, ws)
@@ -459,7 +512,7 @@ func TestMultiuserImportRoundTrip(t *testing.T) {
 
 	// workspace scoping: the other workspaces are exactly as they were, and the new rows are all in the new workspace
 	post := tableCounts(t, f.dbPath)
-	for _, table := range []string{"datasets", "runs", "figures", "boards", "snapshots", "reports", "dataset_locations", "masks", "saved_regions", "subsets", "jobs", "dataset_access"} {
+	for _, table := range []string{"datasets", "runs", "figures", "boards", "snapshots", "reports", "dataset_locations", "masks", "saved_regions", "subsets", "jobs", "dataset_access", "projects", "exploration_steps", "run_views", "attachments"} {
 		own := post[table] - preCounts[table]
 		var inNew int
 		_ = db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE workspace_id=?`, ws).Scan(&inNew)
@@ -694,4 +747,52 @@ func fileSum(t *testing.T, p string) [32]byte {
 		t.Fatal(err)
 	}
 	return sha256.Sum256(b)
+}
+
+// The catalog's transaction is open when the files are copied. A copy that fails (here the report images folder cannot be
+// written, after the figure previews were already copied) rolls the catalog back and takes the copied previews away again.
+func TestMultiuserImportFailedFileCopyLeavesNothing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("a read-only folder does not stop root")
+	}
+	archive, _, _ := localExport(t, nil)
+	f := groupServer(t)
+	att := filepath.Join(f.dataDir, "attachments")
+	if err := os.MkdirAll(att, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(att, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(att, 0o700) })
+	pre, preFiles := tableCounts(t, f.dbPath), figureFiles(t, f.dataDir)
+	code, out, errs := f.import_(archive)
+	if code != 1 || !strings.Contains(errs, "nothing was imported") {
+		t.Fatalf("exit %d, stdout %q, stderr %q", code, out, errs)
+	}
+	if !reflect.DeepEqual(pre, tableCounts(t, f.dbPath)) || !reflect.DeepEqual(preFiles, figureFiles(t, f.dataDir)) {
+		t.Error("a failed copy left rows or preview files behind")
+	}
+	// once the folder is writable the same import goes through
+	_ = os.Chmod(att, 0o700)
+	if code, _, errs := f.import_(archive); code != 0 {
+		t.Fatalf("retry: %d %s", code, errs)
+	}
+}
+
+// An export made before report images were archived still imports, and says that the images are missing.
+func TestMultiuserImportOfAnExportWithoutAttachments(t *testing.T) {
+	archive, _, _ := localExport(t, func(db *sql.DB, src string, i ids) {
+		_ = os.RemoveAll(filepath.Join(src, "attachments"))
+	})
+	f := groupServer(t)
+	code, out, errs := f.import_(archive)
+	if code != 0 || !strings.Contains(out, "2 report images are missing") {
+		t.Fatalf("%d %s %s", code, out, errs)
+	}
+	db, _ := sql.Open("sqlite", "file:"+f.dbPath+"?mode=ro")
+	defer db.Close()
+	if one(t, db, `SELECT COUNT(*) FROM attachments WHERE workspace_id<>1 AND workspace_id<>2`) != "0" {
+		t.Error("an image row was imported without its file")
+	}
 }
