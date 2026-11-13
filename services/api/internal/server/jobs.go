@@ -122,6 +122,8 @@ type vgtInput struct {
 	// RerunMode and ExpectRev come from "run again with..." (ADR 0054); ExpectRev is set for a strict rerun, and for a relayed run
 	// request's draft, which insists on its base run's commit (relayPin).
 	RerunMode, ExpectRev string
+	// PinProfile asks for the profile's own commit as a stop (never a rerun's claim, so it is not ExpectRev).
+	PinProfile bool
 	// InputRerun marks a draft that runs another run's configuration on a new cube; HashInput makes its script hash the input.
 	InputRerun *jobs.InputRerun
 	HashInput  bool
@@ -161,7 +163,7 @@ func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgt
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
-	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: name, RepoDir: in.RepoDir, Config: cfg, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev, HashInput: in.HashInput || in.InputRerun != nil})
+	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: name, RepoDir: in.RepoDir, Config: cfg, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev, HashInput: in.HashInput || in.InputRerun != nil, PinProfile: in.PinProfile})
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
@@ -169,7 +171,7 @@ func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgt
 	// reading a file that may have changed on the host since.
 	_, label := s.profiles().TemplateProfile("vgt")
 	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: baseCfg, Set: in.Set,
-		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev, InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil, Profile: label})
+		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev, InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil, PinProfile: in.PinProfile, Profile: label})
 	if !h.InRoots(out) {
 		return builtJob{}, &apiErr{422, "the output folder must be inside a source root of the host"}
 	}
@@ -217,14 +219,14 @@ func (s *Server) buildTool(ctx context.Context, h hosts.Host, name string, t *jo
 		return builtJob{}, jobAPIErr(err)
 	}
 	script, err := jobs.RenderTemplate(t, jobs.Settings{Name: name, RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, Config: text, CPUs: in.CPUs, Mem: in.Mem,
-		Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev, HashInput: in.HashInput || in.InputRerun != nil})
+		Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev, HashInput: in.HashInput || in.InputRerun != nil, PinProfile: in.PinProfile})
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
 	_, label := s.profiles().TemplateProfile(t.ID)
 	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: cfg, Set: in.Set,
 		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev,
-		InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil, Profile: label})
+		InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil, PinProfile: in.PinProfile, Profile: label})
 	return builtJob{Script: script, OutputDir: out, Request: string(rq)}, nil
 }
 
@@ -265,7 +267,7 @@ func (b toolBody) isZero() bool {
 
 func (b toolBody) input(rerunMode, expectRev string) vgtInput {
 	return vgtInput{RepoDir: b.RepoDir, ConfigPath: b.ConfigPath, ConfigText: b.ConfigText, Set: b.Set, CPUs: b.CPUs, Mem: b.Mem, Time: b.Time,
-		Partition: b.Partition, Account: b.Account, RerunMode: rerunMode, ExpectRev: expectRev}
+		Partition: b.Partition, Account: b.Account, RerunMode: rerunMode, ExpectRev: expectRev, PinProfile: b.PinProfileCommit}
 }
 
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
@@ -338,10 +340,6 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		if body.isZero() {
 			body = in.ROHSA
 		}
-	}
-	// The pin is the profile's own commit, and only on request; a strict rerun's commit (the base run's) is the stronger claim.
-	if t := s.profiles().TemplateByID(in.Template); t != nil && body.PinProfileCommit && expectRev == "" {
-		expectRev = t.Repo.Commit
 	}
 	var v builtJob
 	switch t := s.profiles().TemplateByID(in.Template); {

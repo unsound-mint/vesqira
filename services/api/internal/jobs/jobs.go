@@ -115,6 +115,8 @@ type VGTRequest struct {
 	// HashInput: the script hashes every byte of the input file before the program starts (set for a configuration run on
 	// another cube, and kept by sweeps drafted from one, so their script is what their settings render).
 	HashInput bool `json:"hashInput,omitempty"`
+	// PinProfile: the script insists on the commit the tool's profile was written against (asked for by the person; not a rerun).
+	PinProfile bool `json:"pinProfile,omitempty"`
 	// Profile is the label (name@version) of the tool profile whose template rendered the draft, so a rerun can tell which
 	// declaration the settings were checked against.
 	Profile string `json:"profile,omitempty"`
@@ -203,13 +205,15 @@ type VGTSettings struct {
 	// HashInput makes the job hash every byte of its input file before the program starts (a configuration run on another
 	// cube; the run then records input.full_sha256 as the job's own observation).
 	HashInput bool
+	// PinProfile: see Settings.PinProfile.
+	PinProfile bool
 }
 
 // RenderVGT renders the batch script for one VGT run, from the VGT.jl profile's template. The user reads and submits exactly
 // this text. The bytes for a given input are the ones this function produced before templates were data (golden_test.go).
 func RenderVGT(p VGTSettings) (string, error) {
 	return RenderTemplate(vgtTemplate(), Settings{Name: p.Name, RepoDir: p.RepoDir, Config: p.Config, CPUs: p.CPUs, Mem: p.Mem, Time: p.Time,
-		Partition: p.Partition, Account: p.Account, ExpectCommit: p.ExpectCommit, HashInput: p.HashInput})
+		Partition: p.Partition, Account: p.Account, ExpectCommit: p.ExpectCommit, HashInput: p.HashInput, PinProfile: p.PinProfile})
 }
 
 // ROHSASettings are the fields of the ROHSA job template.
@@ -226,6 +230,7 @@ type ROHSASettings struct {
 	// ExpectCommit and HashInput: as for VGTSettings.
 	ExpectCommit string
 	HashInput    bool
+	PinProfile   bool
 }
 
 // RenderROHSA renders the batch script for one ROHSA run, from the ROHSA-LMC profile's template: write the config (text embedded
@@ -235,7 +240,7 @@ type ROHSASettings struct {
 // local files only (ADR 0046).
 func RenderROHSA(p ROHSASettings) (string, error) {
 	return RenderTemplate(rohsaTemplate(), Settings{Name: p.Name, RepoDir: p.RepoDir, ConfigPath: p.ConfigPath, Config: p.Config, CPUs: p.CPUs, Mem: p.Mem,
-		Time: p.Time, Partition: p.Partition, Account: p.Account, ExpectCommit: p.ExpectCommit, HashInput: p.HashInput})
+		Time: p.Time, Partition: p.Partition, Account: p.Account, ExpectCommit: p.ExpectCommit, HashInput: p.HashInput, PinProfile: p.PinProfile})
 }
 
 // ---- remote command templates ----

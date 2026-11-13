@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -139,6 +140,12 @@ func TestSyntheticToolDraftsSubmitsAndRefuses(t *testing.T) {
 	if !strings.Contains(pinned.Script, "0123456789abcdef0123456789abcdef01234567") {
 		t.Errorf("a pinned draft insists on the profile's commit:\n%s", pinned.Script)
 	}
+	if !strings.Contains(pinned.Script, "pinned commit stopped") || strings.Contains(strings.ToLower(pinned.Script), "rerun") {
+		t.Errorf("a pinned draft says what it is, not a strict rerun:\n%s", pinned.Script)
+	}
+	if strings.Contains(j.Script, "pinned commit") {
+		t.Errorf("an unpinned draft has no pin:\n%s", j.Script)
+	}
 
 	// submitted on the fake Slurm path: the host receives exactly the script that was shown
 	sub := e.submit(j, nil)
@@ -160,5 +167,29 @@ func TestSyntheticToolDraftsSubmitsAndRefuses(t *testing.T) {
 	e.srv.Runs.Profiles = nil
 	if code, b := e.synthDraft(nil, nil); code != 400 || !strings.Contains(string(b), "job-templates") {
 		t.Errorf("an unknown template: %d %s", code, b)
+	}
+}
+
+// ROHSA posted through the generic "tool" body is the same draft as through the older "rohsa" body.
+func TestROHSAThroughToolBodyMatchesOlderBody(t *testing.T) {
+	e := newWatchEnv(t)
+	body := map[string]any{"repoDir": "/shared/home/u/vgt", "configPath": "/shared/home/u/vgt/configs/rohsa/a.toml",
+		"configText": "[input]\ninput = \"a.fits\"\noutput_dir = \"x\"\n[rohsa]\nn_gauss = [4]\n", "cpus": 4, "mem": "8G", "time": "01:00:00"}
+	var scripts []string
+	for _, field := range []string{"rohsa", "tool"} {
+		r, b := postJSON(t, e.api("/api/jobs"), map[string]any{"hostId": e.host.ID, "template": "rohsa", "name": "same", field: body})
+		if r.StatusCode != 201 {
+			t.Fatalf("%s body: %d %s", field, r.StatusCode, b)
+		}
+		var j jobs.Job
+		json.Unmarshal(b, &j)
+		if !strings.Contains(j.Script, "rohsa/cli/preprocess.jl") {
+			t.Errorf("%s body: not a ROHSA script", field)
+		}
+		// each job gets its own output folder, same-<8 hex>; everything else must match
+		scripts = append(scripts, regexp.MustCompile(`same-[0-9a-f]{8}`).ReplaceAllString(j.Script, "same-X"))
+	}
+	if scripts[0] != scripts[1] {
+		t.Errorf("the two bodies must render the same script:\n%s\n----\n%s", scripts[0], scripts[1])
 	}
 }

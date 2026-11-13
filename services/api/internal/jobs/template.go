@@ -33,6 +33,9 @@ type Settings struct {
 	// ExpectCommit makes the job stop before the program starts unless the code folder is at this revision with no changed
 	// tracked file (a strict rerun, ADR 0054).
 	ExpectCommit string
+	// PinProfile makes the job insist on the commit the template's profile was written against, the same stop as a strict rerun
+	// worded as what it is. It applies only when ExpectCommit is empty: a strict rerun's commit, the base run's, is the stronger claim.
+	PinProfile bool
 	// HashInput makes the job hash every byte of its input file before the program starts.
 	HashInput bool
 }
@@ -81,7 +84,13 @@ func RenderTemplate(t *jobtemplate.Template, p Settings) (string, error) {
 		}
 	}
 	// after the steps: the environment recorded is the one the program starts in
-	b.WriteString(EnvPreamble(envSpecFor(t, p.RepoDir, p.Config, p.ExpectCommit, p.HashInput)))
+	expect, pin := p.ExpectCommit, false
+	if p.PinProfile && expect == "" {
+		expect, pin = t.Repo.Commit, true
+	}
+	spec := envSpecFor(t, p.RepoDir, p.Config, expect, p.HashInput)
+	spec.Pin = pin
+	b.WriteString(EnvPreamble(spec))
 	args := make([]string, 0, len(t.Command))
 	for _, a := range t.Command {
 		x, err := t.Expand(a, vars, true, p.RepoDir)

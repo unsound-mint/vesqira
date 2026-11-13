@@ -107,6 +107,9 @@ type EnvSpec struct {
 	// ExpectCommit, for a strict rerun, is the commit of the run being repeated: the job stops before the science starts if
 	// the code folder is at another commit or has changed tracked files.
 	ExpectCommit string
+	// Pin says ExpectCommit is the commit the tool's profile was written against, asked for by the person, not the commit of a run
+	// being repeated: the script and its messages then say "pinned commit", never "strict rerun".
+	Pin bool
 	// HashInput asks the job to read every byte of the input file and record its SHA-256 (input.full_sha256), once, before the
 	// program starts. It costs one pass over the file on the compute node, so it is on only for a run that needs the input's
 	// identity as the job saw it (a configuration run on another cube). Never in probe mode.
@@ -155,10 +158,14 @@ func EnvPreamble(e EnvSpec) string {
 	b.WriteString("  printf '\\n  }\\n}\\n'\n} > \"$ve_file\" 2>/dev/null || true\nve_copy\ntrap ve_copy EXIT\n")
 	if c := e.ExpectCommit; c != "" {
 		repo := plainPath(e.RepoDir)
-		b.WriteString("# Strict rerun: stop here, before the science starts, if the code is not the code of the run this repeats.\n")
+		what, why := "strict rerun", "the code is not the code of the run this repeats"
+		if e.Pin {
+			what, why = "pinned commit", "the code is not at the commit this tool's profile was written against, which you asked this job to insist on"
+		}
+		fmt.Fprintf(&b, "# %s: stop here, before the science starts, if %s.\n", strings.ToUpper(what[:1])+what[1:], why)
 		fmt.Fprintf(&b, "ve_now=\"$(git --no-optional-locks -C \"%s\" rev-parse --verify HEAD 2>/dev/null || true)\"\n", repo)
-		fmt.Fprintf(&b, "if [ \"$ve_now\" != \"%s\" ]; then echo \"strict rerun stopped: the code folder is at ${ve_now:-an unknown commit}, not at %s\" >&2; exit 3; fi\n", c, c)
-		fmt.Fprintf(&b, "if [ -n \"$(git --no-optional-locks -C \"%s\" status --porcelain --untracked-files=no 2>/dev/null)\" ]; then echo \"strict rerun stopped: tracked files in the code folder have changed\" >&2; exit 3; fi\n", repo)
+		fmt.Fprintf(&b, "if [ \"$ve_now\" != \"%s\" ]; then echo \"%s stopped: the code folder is at ${ve_now:-an unknown commit}, not at %s\" >&2; exit 3; fi\n", c, what, c)
+		fmt.Fprintf(&b, "if [ -n \"$(git --no-optional-locks -C \"%s\" status --porcelain --untracked-files=no 2>/dev/null)\" ]; then echo \"%s stopped: tracked files in the code folder have changed\" >&2; exit 3; fi\n", repo, what)
 	}
 	b.WriteString("# --- end of the environment record ---\n")
 	return b.String()

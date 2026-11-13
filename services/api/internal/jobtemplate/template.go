@@ -254,6 +254,9 @@ func fail(format string, a ...any) error { return fmt.Errorf(format, a...) }
 
 // Compile checks the template and prepares it for use. It must be called once, before any other method.
 func (t *Template) Compile() error {
+	if t.Steps == nil {
+		t.Steps = []Step{} // the form maps over it: an absent list is an empty one in the JSON too
+	}
 	if !identRe.MatchString(t.ID) || t.ID == "custom" || t.ID == "analysis" {
 		return fail("the template id must be lowercase letters, digits and _, and not custom or analysis")
 	}
@@ -578,14 +581,14 @@ func (t *Template) expand(s string, vars map[string]bool, quote bool, repo strin
 	for {
 		loc := placeholRe.FindStringSubmatchIndex(rest)
 		if loc == nil {
-			if rest != "" && !literalRe.MatchString(rest) {
+			if rest != "" && (!literalRe.MatchString(rest) || strings.Contains(rest, "..")) {
 				return "", fmt.Errorf("%q holds characters a script value may not have", rest)
 			}
 			b.WriteString(rest)
 			break
 		}
 		if lit := rest[:loc[0]]; lit != "" {
-			if !literalRe.MatchString(lit) {
+			if !literalRe.MatchString(lit) || strings.Contains(lit, "..") {
 				return "", fmt.Errorf("%q holds characters a script value may not have", lit)
 			}
 			b.WriteString(lit)
