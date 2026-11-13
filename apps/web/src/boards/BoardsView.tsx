@@ -34,11 +34,13 @@ import s from "./BoardsView.module.css";
 import { PushButton } from "../push/PushButton";
 import { ShareFigureButton } from "./ShareFigureButton";
 import { FigureShares } from "./FigureShares";
+import { channelText } from "./channelText";
 
 export function provenanceLine(p: Figure["provenance"]): string {
   const v = p.view;
   const parts = [p.source.name];
-  if (v.channel !== undefined) parts.push(`channel ${v.channel + 1}`);
+  const ch = channelText(p);
+  if (ch) parts.push(ch);
   if (v.kind) parts.push(v.kind);
   return parts.join(" · ");
 }
