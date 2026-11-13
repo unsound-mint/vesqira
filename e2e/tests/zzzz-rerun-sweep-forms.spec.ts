@@ -12,6 +12,7 @@ import { API } from "../ports";
 // server's sentence, and both approval views say which code commit the script insists on and why. A VGT job is made, finished on the
 // stand-in Slurm and imported as a run, as in the walk-through; then both forms are used on it. Screenshots go to e2e/test-results.
 
+// Named to run after the walk-through: its Slurm test expects the stand-in scheduler's first job number (4242), and this spec submits a job.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const out = path.resolve(here, "../test-results");
 const remoteRoot = path.resolve(here, "../.run/remote_data");
