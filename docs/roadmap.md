@@ -84,7 +84,10 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 
 - [x] Spectral smoothing of a cube as a derived operation: boxcar, Gaussian or Hanning, width in channels (in the spectral unit only on a calibrated axis), kernel and minimum valid weight recorded, NaN kept, no in-place change, optional recorded decimation, the effective resolution stated only from a declared native response.
 - [x] Family view: maps that differ in one parameter side by side on a shared scale, each compared with a chosen reference (scalar difference and spread, or axial difference and AM for orientation maps), refused with a sentence when the grids are not shared. A family is recognised from derived records and can be picked by hand.
-- [ ] Not built: opening a family from a sweep of jobs, a family of maps on a host, cleanup of old family maps, a design review by a second person.
+- [x] Open a family from a sweep of jobs: the outputs of one chosen run role, labelled by the parameters that differ; jobs with another grid, frame or unit, no result or an undeclared orientation are listed with the reason and not compared.
+- [x] A family of maps on a host, compared by the host's worker where the files are (bounded reply, all-or-none placement of the results, cancellation, a clear refusal when the host cannot); nothing is copied here.
+- [x] Clean-up of family maps: list them by run and remove the ones nothing uses; a map used by a figure, board, report, published review or a derived dataset is kept with the reason; sources are never touched; no automatic policy.
+- [ ] Not built: deleting the result files on a host, a real-host run, a browser test that opens a sweep, a design review by a second person.
 
 ## Sky context (issue 134, ADR 0072, awaiting owner review)
 

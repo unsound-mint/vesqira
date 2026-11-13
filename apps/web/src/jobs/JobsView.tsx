@@ -14,6 +14,7 @@ import { listSweeps } from "../api/sweeps";
 import type { Sweep } from "../api/sweeps";
 import { SweepForm } from "../sweeps/SweepForm";
 import { SweepView } from "../sweeps/SweepView";
+import type { FamilyPreset } from "../family/FamilyView";
 import s from "./JobsView.module.css";
 
 export { previousUse } from "./NewJob";
@@ -43,7 +44,7 @@ export function jobFor(jobs: Job[], runId: number): Job | null {
 }
 
 /** Slurm jobs on your hosts: render a script from settings, read it, submit exactly that text, follow it, import its results. */
-export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { hosts: Host[]; focusJob?: number | null; onImported: (run: Run | null) => void; onOpenRun: (run: Run) => void }) {
+export function JobsView({ hosts, focusJob = null, onImported, onOpenRun, onOpenFamily }: { hosts: Host[]; focusJob?: number | null; onImported: (run: Run | null) => void; onOpenRun: (run: Run) => void; onOpenFamily?: (p: FamilyPreset) => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [sel, setSel] = useState<number | null>(focusJob);
   const [err, setErr] = useState<string | null>(null);
@@ -111,7 +112,7 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun }: { ho
           {newSweep ? (
             <SweepForm jobs={jobs} baseJobId={newSweep.base} onCreated={(x) => { replaceSweep(x); setNewSweep(null); setSelSweep(x.id); }} />
           ) : sweep ? (
-            <SweepView sweep={sweep} onChange={replaceSweep} onOpenJob={pickJob} />
+            <SweepView sweep={sweep} onChange={replaceSweep} onOpenJob={pickJob} onOpenFamily={onOpenFamily} />
           ) : job ? (
             <JobDetail job={job} host={hosts.find((h) => h.id === job.hostId) ?? null} onChange={replace} onImported={onImported} onOpenRun={onOpenRun} onSweep={job.template === "vgt" || job.template === "rohsa" ? () => { setSel(null); setNewSweep({ base: job.id }); } : undefined} />
           ) : (

@@ -13,7 +13,8 @@ vi.mock("../api/planes", () => ({
 const ds = (id: number, name: string, extra: Partial<ImageDataset> = {}): ImageDataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: { naxis: 2 } as Header, ...extra });
 const maps = [ds(1, "a.fits"), ds(2, "b.fits"), ds(3, "c.fits")];
 
-function mockFetch(routes: Record<string, (init?: RequestInit) => { status?: number; body: unknown }>) {
+function mockFetch(given: Record<string, (init?: RequestInit) => { status?: number; body: unknown }>) {
+  const routes: Record<string, (init?: RequestInit) => { status?: number; body: unknown }> = { "/api/analysis/family-maps": () => ({ body: { maps: [] } }), ...given }; // the clean-up list; a longer key than /api/analysis/family
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
