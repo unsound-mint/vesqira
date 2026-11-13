@@ -50,7 +50,7 @@ describe("standing approvals on the key holder's computer", () => {
     await userEvent.click(within(list).getByRole("button", { name: "Revoke" }));
     expect(posts).toHaveLength(0); // nothing until confirmed
     await userEvent.click(screen.getByRole("button", { name: "Revoke now" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("1 job(s) started under it keep running and were not cancelled: request-7 (running)");
+    expect(await screen.findByRole("status")).toHaveTextContent("The job started under it keeps running and was not cancelled: request-7 (running)");
     expect(posts).toHaveLength(1);
   });
 

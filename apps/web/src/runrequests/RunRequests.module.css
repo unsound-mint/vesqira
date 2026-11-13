@@ -3,6 +3,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: var(--sp-3);
+  align-items: start;
 }
 
 .area {

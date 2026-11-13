@@ -118,7 +118,7 @@ test("the key holder makes, reads and revokes standing approvals, and sees what 
   // revoke for real: immediate, and the running job is listed, not cancelled
   await live.getByRole("listitem").filter({ hasText: "Bea Lindqvist" }).getByRole("button", { name: "Revoke" }).click();
   await page.getByRole("button", { name: "Revoke now" }).click();
-  await expect(section.getByRole("status")).toContainText("1 job(s) started under it keep running and were not cancelled: request-12 (running)");
+  await expect(section.getByRole("status")).toContainText("The job started under it keeps running and was not cancelled: request-12 (running)");
 
   // the request that went through: the note and the exact script
   await requests.getByRole("row").filter({ hasText: "submitted without a click" }).getByRole("button", { name: "vgt on lab cluster" }).click();

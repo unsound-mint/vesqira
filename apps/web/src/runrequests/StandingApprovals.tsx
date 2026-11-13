@@ -55,8 +55,9 @@ export function StandingApprovals({ local, onChanged }: { local: RelayLocal; onC
     setError("");
     revokeGrant(g.id).then((x) => {
       setConfirm("");
+      const one = x.openJobs.length === 1;
       const open = x.openJobs.length
-        ? ` ${x.openJobs.length} job(s) started under it keep running and were not cancelled: ${x.openJobs.map((j) => `${j.name || `job ${j.id}`} (${j.state})`).join(", ")}.`
+        ? ` ${one ? "The job" : `The ${x.openJobs.length} jobs`} started under it ${one ? "keeps running and was" : "keep running and were"} not cancelled: ${x.openJobs.map((j) => `${j.name || `job ${j.id}`} (${j.state})`).join(", ")}.`
         : " No job under it is queued or running.";
       setDone(`Revoked the standing approval for ${x.requesterName}. Requests naming it now wait for you.${open}`);
       void onChanged();
