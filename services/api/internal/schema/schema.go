@@ -64,7 +64,9 @@ import (
 // Version 35: a run records the tool profile that recognised it (runs.profile), and its outputs carry a generic role with the tool's own
 // name kept as the product (run_outputs.role, .product; ADR 0068 slice 3).
 // Version 36: a figure may be a sky view, a figure of kind 'sky' with no dataset (figures.kind admits 'sky'; ADR 0072).
-const Version = 36
+// Version 37: standing approvals for relayed run requests (relay_grants, relay_grant_uses, relayed_requests.grant_id, .grant_state,
+// .grant_note on the key holder's computer; run_requests.grant_id on the group server; ADR 0074).
+const Version = 37
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -114,6 +116,7 @@ var migrations = []Migration{
 	{To: 34, Name: "access labels", Up: accessLabels},
 	{To: 35, Name: "tool profiles and generic output roles", Up: toolProfiles},
 	{To: 36, Name: "sky figures", Up: skyFigures},
+	{To: 37, Name: "standing approvals", Up: relayGrants},
 }
 
 // AccountsTables are the group server's accounts (ADR 0050 section 2, slice 2). An account carries no credential itself: a way to

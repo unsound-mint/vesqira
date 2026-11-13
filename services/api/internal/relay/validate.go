@@ -78,6 +78,13 @@ func ValidLabel(l string) bool { return labelRe.MatchString(l) && strings.TrimSp
 
 // CheckInbox validates an inbox as a key holder's computer publishes it, on both sides.
 func CheckInbox(in Inbox) error {
+	if err := checkInboxLabels(in); err != nil {
+		return err
+	}
+	return checkOffers(in)
+}
+
+func checkInboxLabels(in Inbox) error {
 	if len(in.Labels) > MaxLabels {
 		return refuse("an inbox has at most %d labels", MaxLabels)
 	}
@@ -221,6 +228,9 @@ func CheckAsk(in Inbox, a Ask) error {
 	if jobs.ShippedTemplate(a.Template) == nil {
 		return refuse("the template is a tool's template (vgt, rohsa); there is never a custom script")
 	}
+	if a.Grant != "" && !ValidGrantID(a.Grant) {
+		return refuse("a standing approval is named by its id")
+	}
 	t, err := in.find(a.Label, a.Template)
 	if err != nil {
 		return err
@@ -357,6 +367,9 @@ func CheckClaim(a Ask, c Claim) error {
 	}
 	if !ValidLabel(c.Label) {
 		return refuse("the label is at most 40 letters, digits, spaces and -")
+	}
+	if c.Grant != "" && (c.Grant != a.Grant || len(a.Grid) > 0) {
+		return refuse("a claim names only the standing approval the request was filed under")
 	}
 	for _, k := range sortedKeys(c.Params) {
 		if !settable(a.Template, k) {

@@ -40,6 +40,7 @@ func (s *Server) relayedRoutes(mux *http.ServeMux) {
 	s.route(mux, "POST /api/relayed/{id}/approve", authz.LocalOnly, s.approveRelayed)
 	s.route(mux, "POST /api/relayed/{id}/decline", authz.LocalOnly, s.declineRelayed)
 	s.route(mux, "POST /api/relayed/{id}/detach", authz.LocalOnly, s.detachRelayed)
+	s.relayGrantLocalRoutes(mux)
 }
 
 // relayState is the pull loop's state.
@@ -140,7 +141,7 @@ func (s *Server) RelayPass(ctx context.Context) {
 	// refused whole must not also stop the status of work already running
 	pull := true
 	if !st.Published {
-		if err := c.do("PUT", "/api/relay/inbox", "application/json", mustJSONBytes(map[string]any{"instance": l.Instance, "inbox": st.Inbox}), nil); err != nil {
+		if err := c.do("PUT", "/api/relay/inbox", "application/json", mustJSONBytes(map[string]any{"instance": l.Instance, "inbox": s.publishedInbox(l.Origin, st)}), nil); err != nil {
 			failed(err)
 			pull = false
 		} else {
@@ -179,6 +180,7 @@ func (s *Server) RelayPass(ctx context.Context) {
 			break
 		}
 	}
+	s.applyGrants(ctx, c, l)
 	s.tellServer(c, l)
 	s.reportAll(c, l)
 }
@@ -486,8 +488,11 @@ func (s *Server) tellServer(c *groupClient, l outbox.Link) {
 		if i == maxTellsPerPass {
 			break // the rest go in the next pass; a server sending many refusable requests gets as many calls back, slowly
 		}
+		if m.GrantState == relay.GrantStateWaiting || m.GrantState == relay.GrantStatePending {
+			continue // still to be decided under its standing approval; the review then carries the reason it fell back
+		}
 		path := fmt.Sprintf("/api/relay/requests/%d/review", m.ServerID)
-		var body any = relay.Review{Instance: l.Instance}
+		var body any = relay.Review{Instance: l.Instance, Grant: grantCodeOf(m)}
 		if m.LocalState == relay.LocalRefused {
 			path = fmt.Sprintf("/api/run-requests/%d/decline", m.ServerID)
 			body = relay.Decline{Instance: l.Instance, Note: "Refused by the key holder's computer: " + m.Refusal}
@@ -920,6 +925,9 @@ func (s *Server) draftRelayed(w http.ResponseWriter, r *http.Request) {
 		s.failAPI(w, aerr)
 		return
 	}
+	if m.Request.Ask.Grant != "" {
+		_ = s.Relayed.SetGrantState(m.ID, "", relay.GrantEdited, "Waiting for you: you drafted it again yourself, so it is no longer submitted under the standing approval.")
+	}
 	s.kickRelay() // tell the server the draft is waiting for review
 	m, _ = s.Relayed.Get(m.ID)
 	writeJSON(w, 200, s.relayedView(m))
@@ -1041,18 +1049,7 @@ func (s *Server) approveRelayed(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, relay.Sentence(err))
 		return
 	}
-	// the server must have the request waiting for review before it can be claimed
-	if m.ServerState == relay.StateRequested {
-		var out struct {
-			State string `json:"state"`
-		}
-		if err := c.postJSON(fmt.Sprintf("/api/relay/requests/%d/review", m.ServerID), relay.Review{Instance: l.Instance}, &out); err != nil {
-			s.claimFailed(w, m, err)
-			return
-		}
-		_ = s.Relayed.SetServerState(m.ID, out.State)
-	}
-	if err := c.postJSON(fmt.Sprintf("/api/relay/requests/%d/approve", m.ServerID), claim, nil); err != nil {
+	if err := s.claimOnServer(c, l, m, claim); err != nil {
 		s.claimFailed(w, m, err)
 		return
 	}
@@ -1107,16 +1104,7 @@ func (s *Server) claimFailed(w http.ResponseWriter, m relay.Mirrored, err error)
 		failCode(w, 502, "server_unreachable", "The group server could not be reached, so the request was not claimed and nothing was submitted. Try again when it answers, or keep the draft as your own job.", nil)
 		return
 	}
-	if ge.Status == 409 || ge.Status == 404 {
-		st := conflictState(ge)
-		if ge.Status == 404 {
-			st = relay.StateWithdrawn
-		}
-		_ = s.Relayed.SetServerState(m.ID, st)
-		if !relay.IsOpen(st) {
-			_ = s.Relayed.SetLocalState(m.ID, relay.LocalClosed)
-		}
-	}
+	s.noteClaimRefused(m, ge)
 	failCode(w, 409, "not_claimed", "The group server did not grant the claim, so nothing was submitted: "+ge.Msg, nil)
 }
 

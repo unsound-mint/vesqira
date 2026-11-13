@@ -48,8 +48,9 @@ var localOnlyTables = set("hosts", "jobs", "sweeps", "sweep_jobs", "transfers", 
 	"publish_comments", "reply_drafts", "report_publications", "publish_settings",
 	// the local side of the link to a group server (ADR 0066): its routes are local.only, so never mounted there
 	"group_link", "push_queue", "push_lineage",
-	// the key holder's side of relayed run requests (ADR 0066 section 3): its inbox, label-to-host map and request mirror
-	"relay_local", "relayed_requests")
+	// the key holder's side of relayed run requests (ADR 0066 section 3): its inbox, label-to-host map and request mirror, and its
+	// standing approvals with their uses (ADR 0074), kept by group link origin like relay_local
+	"relay_local", "relayed_requests", "relay_grants", "relay_grant_uses")
 
 // childTables hold no workspace_id: each row hangs off one row of a scoped table, named by these columns, and is reached only
 // through it.
@@ -131,7 +132,7 @@ func TestEveryUserDataTableIsScoped(t *testing.T) {
 	for name, create := range tables {
 		hasWS := strings.Contains(create, "workspace_id INTEGER")
 		switch {
-		case scopedTables[name], localOnlyTables[name] && name != "sweep_jobs" && name != "offline_settings" && name != "publish_settings" && name != "report_publications" && name != "group_link" && name != "relay_local":
+		case scopedTables[name], localOnlyTables[name] && name != "sweep_jobs" && name != "offline_settings" && name != "publish_settings" && name != "report_publications" && name != "group_link" && name != "relay_local" && name != "relay_grants" && name != "relay_grant_uses":
 			if !hasWS {
 				t.Errorf("%s is classified scoped but has no workspace_id column", name)
 			}

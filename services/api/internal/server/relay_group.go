@@ -35,6 +35,7 @@ func (s *Server) relayRoutes(mux *http.ServeMux) {
 	s.route(mux, "POST /api/run-requests", authz.RunRequestFile, s.fileRunRequest)
 	s.route(mux, "POST /api/run-requests/{id}/withdraw", authz.RunRequestFile, s.withdrawRunRequest)
 	s.route(mux, "POST /api/run-requests/{id}/note", authz.RunRequestFile, s.noteRunRequest)
+	s.relayGrantRoutes(mux)
 }
 
 // relayActor is the store's view of who acts: the account, how it came in, the token and the instance the body named.
@@ -110,6 +111,9 @@ func (s *Server) relayPutInbox(w http.ResponseWriter, r *http.Request) {
 func (s *Server) wireRequest(ws workspace.ID, row relay.Row, names map[string]string) (relay.Request, error) {
 	out := relay.Request{ID: row.ID, Change: row.Change, State: row.State, Requester: s.accountName(names, row.Requester), Ask: row.Ask,
 		CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt, Notes: []relay.FollowUp{}}
+	if row.Ask.Grant != "" { // the account id travels only with a grant (ADR 0074), so a page without grants stays as it was
+		out.RequesterID = row.Requester
+	}
 	if row.BaseItemID != nil {
 		b, err := s.Relay.BaseOf(ws, *row.BaseItemID)
 		if err == nil {
@@ -177,7 +181,7 @@ func (s *Server) relayReview(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "send this computer's instance id")
 		return
 	}
-	row, err := s.Relay.Review(wsOf(r), id, actorOf(r).ID, relayActor(r, in.Instance))
+	row, err := s.Relay.ReviewWith(wsOf(r), id, actorOf(r).ID, relayActor(r, in.Instance), in.Grant)
 	if err != nil {
 		s.relayFail(w, r, "relay review", err)
 		return
@@ -286,7 +290,7 @@ func (s *Server) listRunInboxes(w http.ResponseWriter, r *http.Request) {
 	names := map[string]string{}
 	out := make([]runInbox, 0, len(xs))
 	for _, x := range xs {
-		out = append(out, runInbox{x.Account, s.accountName(names, x.Account), x.Inbox, x.UpdatedAt, x.PolledAt})
+		out = append(out, runInbox{x.Account, s.accountName(names, x.Account), offersFor(x.Inbox, actorOf(r).ID), x.UpdatedAt, x.PolledAt})
 	}
 	writeJSON(w, 200, map[string]any{"inboxes": out})
 }

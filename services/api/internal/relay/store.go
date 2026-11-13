@@ -45,6 +45,9 @@ func Open(db *sql.DB) (*Store, error) {
 	if _, err := db.Exec(schema.RelayTables); err != nil {
 		return nil, err
 	}
+	if err := schema.RelayGrantColumns(db); err != nil {
+		return nil, err
+	}
 	return &Store{db: db, Now: time.Now}, nil
 }
 
@@ -120,6 +123,19 @@ func (s *Store) Inboxes(ws workspace.ID) ([]InboxRow, error) {
 	return out, rows.Err()
 }
 
+// offerFor finds the live offer id made to requester in an inbox.
+func offerFor(in Inbox, id, requester string, now time.Time) (GrantOffer, bool) {
+	for _, o := range in.Grants {
+		if o.ID == id && o.Requester == requester && o.ExpiresAt.After(now) {
+			return o, true
+		}
+	}
+	return GrantOffer{}, false
+}
+
+// OfferFor is offerFor for the server's routes (the preview).
+func OfferFor(in Inbox, id, requester string, now time.Time) (GrantOffer, bool) { return offerFor(in, id, requester, now) }
+
 // InboxOf returns one account's inbox in the workspace.
 func (s *Store) InboxOf(ws workspace.ID, account string) (InboxRow, error) {
 	r, err := scanInbox(s.db.QueryRow(`SELECT account_id, inbox, updated_at, polled_at FROM relay_inboxes WHERE workspace_id=? AND account_id=?`, ws, account))
@@ -142,6 +158,7 @@ type Approval struct {
 	BaseChosen  bool              `json:"baseChosen"`
 	EditedLines int               `json:"editedLines"`
 	AutoPush    bool              `json:"autoPush"`
+	Grant       string            `json:"grant,omitempty"`
 	At          time.Time         `json:"at"`
 }
 
@@ -173,7 +190,7 @@ type Row struct {
 
 const rowCols = `id, created_by, addressee, label, template, params, resources, grid, base_item_id, note, state, change, seq, created_at,
 	expires_at, updated_at, claim_instance, script_hash, sweep_hash, approved, approved_at, code, exit_code, counts, run_hash,
-	submitted_at, running_at, ended_at, reported_at, decline_note, closed_note`
+	submitted_at, running_at, ended_at, reported_at, decline_note, closed_note, grant_id`
 
 func ptime(v sql.NullInt64) *time.Time {
 	if !v.Valid {
@@ -190,7 +207,7 @@ func scanRow(row interface{ Scan(...any) error }) (Row, error) {
 	var created, expires, updated int64
 	err := row.Scan(&r.ID, &r.Requester, &r.Addressee, &r.Ask.Label, &r.Ask.Template, &params, &res, &grid, &base, &r.Ask.Note, &r.State,
 		&r.Change, &r.Seq, &created, &expires, &updated, &inst, &sh, &swh, &approved, &apAt, &r.Code, &r.Exit, &counts, &r.RunHash,
-		&sub, &run, &end, &rep, &r.DeclineNote, &r.ClosedNote)
+		&sub, &run, &end, &rep, &r.DeclineNote, &r.ClosedNote, &r.Ask.Grant)
 	if err != nil {
 		return r, err
 	}
@@ -339,6 +356,11 @@ func (s *Store) File(ws workspace.ID, requester, addressee string, ask Ask, base
 		return Row{}, err
 	}
 	now := s.now()
+	if ask.Grant != "" {
+		if _, ok := offerFor(in.Inbox, ask.Grant, requester, time.Unix(now, 0)); !ok {
+			return Row{}, refuse("this standing approval is not offered to you now (revoked, expired or another person's); send the request for review instead")
+		}
+	}
 	var open, day int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM run_requests WHERE workspace_id=? AND created_by=? AND addressee=? AND state IN ('requested','waiting_review') AND expires_at>?`,
 		ws, requester, addressee, now).Scan(&open); err != nil {
@@ -361,14 +383,18 @@ func (s *Store) File(ws workspace.ID, requester, addressee string, ask Ask, base
 	res, _ := json.Marshal(ask.Resources)
 	grid, _ := json.Marshal(ask.Grid)
 	r, err := tx.Exec(`INSERT INTO run_requests(workspace_id, created_by, addressee, label, template, params, resources, grid, base_item_id, note, state,
-		change, created_at, expires_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		change, created_at, expires_at, updated_at, grant_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		ws, requester, addressee, ask.Label, ask.Template, string(params), string(res), string(grid), baseItemID, ask.Note, StateRequested,
-		ch, now, now+int64(days)*86400, now)
+		ch, now, now+int64(days)*86400, now, ask.Grant)
 	if err != nil {
 		return Row{}, err
 	}
 	id, _ := r.LastInsertId()
-	if err := s.event(tx, id, a, "filed", fmt.Sprintf("%s on %q, expires in %d days", ask.Template, ask.Label, days)); err != nil {
+	filed := fmt.Sprintf("%s on %q, expires in %d days", ask.Template, ask.Label, days)
+	if ask.Grant != "" {
+		filed += ", asking to go through standing approval " + ask.Grant[:8]
+	}
+	if err := s.event(tx, id, a, "filed", filed); err != nil {
 		return Row{}, err
 	}
 	row, err := getRow(tx, ws, id)
@@ -488,6 +514,15 @@ func words(state string) string {
 
 // Review moves a request to "waiting for review": the key holder's computer rendered its draft. Idempotent.
 func (s *Store) Review(ws workspace.ID, id int64, addressee string, a Actor) (Row, error) {
+	return s.ReviewWith(ws, id, addressee, a, "")
+}
+
+// ReviewWith is Review with the code saying why a request that named a standing approval waits for the key holder (ADR 0074); the
+// record shows the code's fixed sentence.
+func (s *Store) ReviewWith(ws workspace.ID, id int64, addressee string, a Actor, grantCode string) (Row, error) {
+	if _, ok := GrantCodeText[grantCode]; grantCode != "" && !ok {
+		return Row{}, refuse("unknown standing approval code")
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Row{}, err
@@ -517,7 +552,11 @@ func (s *Store) Review(ws workspace.ID, id int64, addressee string, a Actor) (Ro
 		_ = tx.Commit()
 		return Row{}, conflict(r, now, "reviewed")
 	}
-	if err := s.event(tx, id, a, "review", "draft rendered"); err != nil {
+	detail := "draft rendered"
+	if grantCode != "" {
+		detail += "; not submitted under the standing approval: " + GrantCodeText[grantCode]
+	}
+	if err := s.event(tx, id, a, "review", detail); err != nil {
 		return Row{}, err
 	}
 	r, err = getRow(tx, ws, id)
@@ -555,7 +594,7 @@ func (s *Store) Claim(ws workspace.ID, id int64, addressee string, a Actor, c Cl
 	}
 	now := s.now()
 	ap := Approval{ScriptHash: c.ScriptHash, SweepHash: c.SweepHash, Kept: c.Kept, Concurrency: c.Concurrency, Params: c.Params,
-		Resources: c.Resources, Label: c.Label, BaseChosen: c.BaseChosen, EditedLines: c.EditedLines, AutoPush: c.AutoPush}
+		Resources: c.Resources, Label: c.Label, BaseChosen: c.BaseChosen, EditedLines: c.EditedLines, AutoPush: c.AutoPush, Grant: c.Grant}
 	if ap.Params == nil {
 		ap.Params = map[string]string{}
 	}
@@ -583,6 +622,9 @@ func (s *Store) Claim(ws workspace.ID, id int64, addressee string, a Actor, c Cl
 	}
 	if c.EditedLines > 0 {
 		detail += fmt.Sprintf(", edited by hand: %d lines", c.EditedLines)
+	}
+	if c.Grant != "" {
+		detail += ", submitted without a click under standing approval " + c.Grant[:8]
 	}
 	if err := s.event(tx, id, a, "approved", detail); err != nil {
 		return Row{}, false, err
