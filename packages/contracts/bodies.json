@@ -2168,6 +2168,14 @@
     "title": {
      "type": "string",
      "description": "Only on a figure shared on its own: the figure's title when it was shared."
+    },
+    "round": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "The snapshot's place in its board's history, 1 for the first (ADR 0073). Absent for a figure shared on its own."
+    },
+    "changes": {
+     "$ref": "#/components/schemas/RoundChanges"
     }
    }
   },
@@ -2339,6 +2347,287 @@
       "unreleased"
      ],
      "description": "The most restrictive label among the board's figures when it was published, stated on the review page; absent when released."
+    },
+    "round": {
+     "$ref": "#/components/schemas/Round"
+    }
+   }
+  },
+  "Round": {
+   "type": "object",
+   "description": "A snapshot's place in its board's history (ADR 0073): 1 for the first snapshot of the board, with what changed since the round before from round 2 on. Absent on a figure shared on its own and on snapshots made before rounds.",
+   "required": [
+    "number"
+   ],
+   "properties": {
+    "number": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "since": {
+     "$ref": "#/components/schemas/Since"
+    }
+   }
+  },
+  "Since": {
+   "type": "object",
+   "description": "The comparison with the previous round, computed once from the two frozen documents when the board was published. When the previous round's link has been revoked, what only that link entitles a reader to is withheld: previous text and pictures, removed titles, detail sentences and carried comments.",
+   "required": [
+    "label",
+    "at",
+    "items",
+    "removed",
+    "removedCount",
+    "lines",
+    "carried"
+   ],
+   "properties": {
+    "label": {
+     "type": "string",
+     "description": "The previous round's label"
+    },
+    "at": {
+     "type": "string",
+     "format": "date-time",
+     "description": "When the previous round was published"
+    },
+    "items": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ItemChange"
+     },
+     "description": "One entry per item of the snapshot, in the same order"
+    },
+    "removed": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RemovedItem"
+     }
+    },
+    "removedCount": {
+     "type": "integer"
+    },
+    "lines": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ChangeLine"
+     }
+    },
+    "carried": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/CarriedComment"
+     }
+    }
+   }
+  },
+  "ItemChange": {
+   "type": "object",
+   "description": "How one item relates to the previous round.",
+   "required": [
+    "state",
+    "changed"
+   ],
+   "properties": {
+    "state": {
+     "type": "string",
+     "enum": [
+      "new",
+      "redrawn",
+      "unchanged"
+     ],
+     "description": "redrawn: the same figure drawn again (linked by the author's draw-again), another revision. unchanged: the same revision, whose text may still differ."
+    },
+    "changed": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "title",
+       "caption",
+       "note",
+       "corrections",
+       "masks",
+       "access",
+       "state"
+      ]
+     }
+    },
+    "previous": {
+     "$ref": "#/components/schemas/PreviousItem"
+    }
+   }
+  },
+  "PreviousItem": {
+   "type": "object",
+   "description": "The earlier round's version of a redrawn figure or of an item whose text changed. Its picture is served only while the earlier round's link is valid.",
+   "required": [
+    "title",
+    "caption",
+    "note"
+   ],
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    },
+    "note": {
+     "type": "string"
+    },
+    "previewSha": {
+     "type": "string",
+     "description": "The earlier picture, on a redrawn figure only"
+    },
+    "width": {
+     "type": "integer"
+    },
+    "height": {
+     "type": "integer"
+    }
+   }
+  },
+  "RemovedItem": {
+   "type": "object",
+   "description": "An item of the previous round that this one no longer holds.",
+   "required": [
+    "title"
+   ],
+   "properties": {
+    "title": {
+     "type": "string"
+    }
+   }
+  },
+  "ChangeLine": {
+   "type": "object",
+   "description": "One thing that changed, in reading order. detail is a sentence for corrections, masks, access and state, built from the two frozen documents only.",
+   "required": [
+    "kind",
+    "title"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string",
+     "enum": [
+      "added",
+      "removed",
+      "redrawn",
+      "title",
+      "caption",
+      "note",
+      "corrections",
+      "masks",
+      "access",
+      "state"
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "detail": {
+     "type": "string"
+    }
+   }
+  },
+  "CarriedComment": {
+   "type": "object",
+   "description": "A comment of an earlier round, shown read-only on the same figure of this one and labelled with its round. The anchor is kept only when the picture is unchanged.",
+   "required": [
+    "id",
+    "parentId",
+    "round",
+    "figureRevision",
+    "author",
+    "fromOwner",
+    "body",
+    "pictureChanged",
+    "createdAt"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "parentId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "round": {
+     "type": "integer"
+    },
+    "figureRevision": {
+     "type": "string",
+     "description": "The figure's revision in this snapshot"
+    },
+    "author": {
+     "type": "string"
+    },
+    "fromOwner": {
+     "type": "boolean"
+    },
+    "body": {
+     "type": "string"
+    },
+    "anchor": {
+     "$ref": "#/components/schemas/Anchor"
+    },
+    "pictureChanged": {
+     "type": "boolean"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "resolvedAt": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "RoundChanges": {
+   "type": "object",
+   "description": "A round's comparison as the owner's history lists it. For a snapshot made before rounds it is computed from the previous snapshot by revision only.",
+   "required": [
+    "since",
+    "sinceLabel",
+    "lines",
+    "carried",
+    "removedCount"
+   ],
+   "properties": {
+    "since": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "sinceLabel": {
+     "type": "string"
+    },
+    "lines": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/ChangeLine"
+     }
+    },
+    "carried": {
+     "type": "integer",
+     "description": "How many comments were carried from earlier rounds"
+    },
+    "removedCount": {
+     "type": "integer"
+    }
+   }
+  },
+  "PreviousStatus": {
+   "type": "object",
+   "description": "Whether the earlier round's picture can still be opened from this link: false when that round's link was revoked or has expired.",
+   "required": [
+    "available"
+   ],
+   "properties": {
+    "available": {
+     "type": "boolean"
     }
    }
   },
@@ -2910,6 +3199,9 @@
     },
     "superseded": {
      "$ref": "#/components/schemas/Superseded"
+    },
+    "previous": {
+     "$ref": "#/components/schemas/PreviousStatus"
     }
    }
   },

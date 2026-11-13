@@ -25,6 +25,13 @@ export type FrozenItem = Schemas["FrozenItem"];
 /** What a reviewer's browser receives for one link. */
 export type Review = Schemas["Review"];
 export type Preflight = Schemas["Preflight"];
+/** A snapshot's place in its board's history and what changed since the round before (ADR 0073). */
+export type Round = Schemas["Round"];
+export type Since = Schemas["Since"];
+export type ItemChange = Schemas["ItemChange"];
+export type ChangeLine = Schemas["ChangeLine"];
+export type CarriedComment = Schemas["CarriedComment"];
+export type RoundChanges = Schemas["RoundChanges"];
 
 export type FigureRequest = Schemas["CreateFigureRequest"];
 

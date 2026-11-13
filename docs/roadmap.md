@@ -50,7 +50,7 @@ Replaces the owner's Notion reports. ADR 0036 (proposed): reports on the owner's
 
 - [x] Reports in the catalog: Markdown body, edit history with author, base-revision conflicts, figure, run and report references, backlinks (a rename rewrites links), attachments (PNG, JPEG, GIF).
 - [x] `vesqira mcp` (stdio) and `vesqira report` CLI for the agent: read and draft, no publish, send or resolve (a test pins the tool list).
-- [x] Owner UI for reports and the reader page (mock B): page tree, a page drawn as readers see it and edited part by part in place, Markdown source view, insert figure or run from what exists, backlinks, comments panel with agent-drafted replies to send, Share (publish server, named reader links), publish preview, block-by-block review of the agent's changes; reader page with revisions and comments beside the text. Not yet: comments on a place in a figure, a reader-side graph, a second thread on a part that has one.
+- [x] Owner UI for reports and the reader page (mock B): page tree, a page drawn as readers see it and edited part by part in place, Markdown source view, insert figure or run from what exists, backlinks, comments panel with agent-drafted replies to send, Share (publish server, named reader links), publish preview, block-by-block review of the agent's changes; reader page with revisions and comments beside the text. Not yet: placing a comment on a figure from the reader page (the publish server and its API accept a figure-anchored comment, ADR 0036 and a test pin that; only the reader page has no way to mark a place, unlike board reviews, ADR 0023), a reader-side graph, a second thread on a part that has one.
 - [x] `vesqira publish-server`: publisher key, spaces, named reader links, published revisions, block-anchored comments, sync with the owner's instance (pull every minute), preflight, owner replies, agent-drafted replies sent by the owner. Reader page: with the UI.
 - [x] `vesqira import notion` for a Notion Markdown & CSV export (zip or unpacked folder), with a dry run. PDFs and images over 4096 px are not imported.
 - [x] Deployment docs for the owner's server (`docs/setup/publish-server.md`: systemd unit, Caddy with TLS, backups).
@@ -72,6 +72,13 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [ ] 3: run detection and generic output roles
 - [ ] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps)
 - [ ] 5: run templates as data, pinned to a repository and commit
+
+## Review rounds (issue 130, ADR 0073, awaiting owner review)
+
+- [x] A board's snapshots are its rounds. A later round embeds, frozen at publish, what changed since the round before: figures added, removed or redrawn, title, caption and note changes, corrections and masks (from the frozen provenance only), access label and run-state changes. The reviewer sees "Changed since <date>" and a New / Redrawn / Unchanged marker in words on each figure.
+- [x] Comments carry over, read-only and labelled with their round, onto the same figure (same revision, or the same drawing redrawn). The earlier picture of a redrawn figure is shown only while the earlier link is valid; a revoked earlier round's text and comments are withheld.
+- [x] Owner: round numbers and the per-round change list on the board's snapshots, and the round a publish would make in the preflight.
+- [ ] Not done: a figure replaced by a different figure with no draw-again link counts as removed and added; matching by title or by data would be a guess.
 
 ## Spectral smoothing and the family view (issue 133, ADR 0070, awaiting owner review)
 

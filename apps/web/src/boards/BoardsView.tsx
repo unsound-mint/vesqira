@@ -13,6 +13,7 @@ import { markSeen, readSeen } from "./seen";
 import { readBase, reviewLink, saveBase } from "./reviewBase";
 import { accessRefusal } from "../api/access";
 import type { AccessRefusal } from "../api/access";
+import { PreflightRound, RoundChangesList } from "./RoundHistory";
 import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
 import type { NewerNotice } from "../api/catalog";
 import { NewerNotices } from "../catalog/NewerNotices";
@@ -310,6 +311,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
                   {pre.restricted!.map((r) => <li key={`${r.position}-${r.title}`}><AccessBadge label={r.label} /> {r.title} (panel {r.position}), from {r.via.map((v) => v.name).join(", ")}</li>)}
                 </ul>
               ) : null}
+              <PreflightRound pre={pre} />
               <p className={s.note}>The reviewer will see exactly this and nothing else:</p>
               {pre.warnings.length > 0 ? <ul className={s.comments}>{pre.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : <p className={s.note}>Nothing to flag.</p>}
               <ol className={s.comments}>
@@ -332,8 +334,9 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
           <ul className={s.snaps}>
             {snaps.map((sn) => (
               <li key={sn.id}>
-                <span>{sn.label || `Snapshot ${sn.id}`}</span> {sn.access ? <AccessBadge label={sn.access} /> : null} <span className={s.src}>· {sn.items} figures · {sn.comments} comment{sn.comments === 1 ? "" : "s"} · {status(sn)}{sn.supersededBy ? " · replaced by a newer version" : ""} · expires {new Date(sn.expiresAt).toLocaleDateString()}</span>
+                <span>{sn.round ? `Round ${sn.round}: ` : ""}{sn.label || `Snapshot ${sn.id}`}</span> {sn.access ? <AccessBadge label={sn.access} /> : null} <span className={s.src}>· {sn.items} figures · {sn.comments} comment{sn.comments === 1 ? "" : "s"} · {status(sn)}{sn.supersededBy ? " · replaced by a newer version" : ""} · expires {new Date(sn.expiresAt).toLocaleDateString()}</span>
                 {sn.lastActivity && new Date(sn.lastActivity).getTime() > (seenAt[sn.id] ?? readSeen(`snapshot.${sn.id}`)) ? <p className={s.note} role="status"><strong>New since you last looked:</strong> {sn.outcome ? "the reviewer's outcome or " : ""}comments from the reviewer.</p> : null}
+                <RoundChangesList sn={sn} />
                 <p className={s.note}>{sn.outcome ? `Reviewer: ${OUTCOME_TEXT[sn.outcome]}${sn.outcomeBy ? ` (${sn.outcomeBy})` : ""}${sn.outcomeNote ? ` · ${sn.outcomeNote}` : ""}` : "Not yet reviewed."}</p>
                 <div className={s.row}>
                   <Button onClick={() => void Promise.all([snapshotComments(sn.id), listSnapshots(board.id)]).then(([c, list]) => { setComments({ ...comments, [sn.id]: c }); setSnaps(list); setSeenAt({ ...seenAt, [sn.id]: readSeen(`snapshot.${sn.id}`) }); markSeen(`snapshot.${sn.id}`); })}>Comments and outcome</Button>

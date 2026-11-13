@@ -11,6 +11,7 @@ import { Threads, threadNumbers } from "../boards/Threads";
 import { placed } from "../boards/layout";
 import type { Rect } from "../boards/layout";
 import { AnchorImage } from "./AnchorImage";
+import { CarriedThreads, ChangedSince, FigureRound } from "./Rounds";
 import { markSeen, readName, readSeen, saveName } from "../boards/seen";
 import s from "./ReviewPage.module.css";
 
@@ -71,6 +72,9 @@ export function ReviewPage({ token }: { token: string }) {
   if (!rv) return <main className={s.page}><p className={s.note}>Loading the review…</p></main>;
   const snap = rv.snapshot;
   const byFigure = (rev: string): Comment[] => rv.comments.filter((c) => c.figureRevision === rev);
+  const round = snap.round;
+  const delta = round?.since; // the comparison with the round before: present from round 2 of a board on
+  const changeOf = (it: (typeof snap.items)[number]) => delta?.items[snap.items.indexOf(it)];
 
   return (
     <main className={s.page}>
@@ -88,6 +92,7 @@ export function ReviewPage({ token }: { token: string }) {
       </header>
       {since > 0 && rv.comments.some((c) => c.fromOwner && new Date(c.createdAt).getTime() > since) ? <p role="status" className={s.noteBox}><strong>Since your last visit:</strong> the author has replied. New replies are marked.</p> : null}
       {rv.superseded ? <p role="status" className={s.noteBox}><strong>The author has replaced this version.</strong> {rv.superseded.reason} Ask for the new link; this one stays readable.</p> : null}
+      {round && delta ? <ChangedSince round={round.number} since={delta} previous={rv.previous} /> : null}
       {snap.question ? <p className={s.noteBox}><strong>What the author asks you to look at:</strong> {snap.question}</p> : null}
       {msg ? <p role="alert" className={s.err}><Shown p={msg} /></p> : null}
       {/* the author's saved layout, read-only: the same columns and reading order; rows size to their content here */}
@@ -103,6 +108,7 @@ export function ReviewPage({ token }: { token: string }) {
           {/* a figure shared on its own has its title as the page heading already: keep the heading for structure, not on screen */}
           <h2 className={snap.items.length === 1 && it.title === snap.boardTitle ? s.sr : s.h2}>{it.title}</h2>
           {it.access ? <p className={s.note}><AccessBadge label={it.access} /></p> : null}
+          {round && delta && changeOf(it) ? <FigureRound change={changeOf(it)!} previous={rv.previous} pictureUrl={(sha) => reviewPreviewUrl(token, sha)} round={round.number} /> : null}
           <AnchorImage
             src={reviewPreviewUrl(token, it.previewSha)}
             alt={`${it.title}. ${it.provenance.source.name}`}
@@ -125,6 +131,7 @@ export function ReviewPage({ token }: { token: string }) {
               {it.provenance.statements.map((t) => <li key={t}>{t}</li>)}
             </ul>
           </details>
+          <CarriedThreads comments={(delta?.carried ?? []).filter((c) => c.figureRevision === it.revision)} title={it.title} />
           <section aria-label={`Comments on ${it.title}`} className={s.comments}>
             <Threads comments={byFigure(it.revision)} onReply={reply} isNew={(c) => c.fromOwner && since > 0 && new Date(c.createdAt).getTime() > since} />
             <label className={s.label}>
