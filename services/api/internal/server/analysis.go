@@ -344,7 +344,7 @@ func (s *Server) runAnalysisProgramCtx(ws workspace.ID, parent context.Context, 
 			return analysisOutcome{}, 502, "the analysis program did not apply the researcher's corrections; no result was recorded"
 		}
 	}
-	return analysisOutcome{res.Summary, res.Software, corrSnap}, 0, ""
+	return analysisOutcome{Summary: res.Summary, Software: res.Software, Corrections: corrSnap}, 0, ""
 }
 
 type limited struct {

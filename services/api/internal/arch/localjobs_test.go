@@ -10,7 +10,7 @@ import (
 // (ADR 0050 owner answer 3): only they may use the job store directly. Code shared with mounted routes reads it through
 // localJobs, which is nil on the group server, because the jobs table is not scoped by workspace (scope_test.go, localOnlyTables)
 // and an adopted catalog brings workspace 1's jobs in.
-var jobFiles = set("jobs.go", "jobwatch.go", "sweeps.go", "hostwrite.go", "hoststorage.go", "runenv.go", "analysis.go",
+var jobFiles = set("jobs.go", "jobwatch.go", "sweeps.go", "sweepfamily.go", "hostwrite.go", "hoststorage.go", "runenv.go", "analysis.go",
 	"capabilities.go", "server.go", "route.go", "rerun_input.go",
 	"relay_local.go") // the key holder's side of relayed run requests: local-only routes that render and submit drafts
 

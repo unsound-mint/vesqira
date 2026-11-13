@@ -270,13 +270,87 @@ paths:
               schema:
                 $ref: "#/components/schemas/FamilyResult"
         "409":
-          description: "the maps are not known to share a grid (reasons listed; nothing is resampled), a map lives on another host, or an orientation declaration is stale"
+          description: "the maps are not known to share a grid (reasons listed; nothing is resampled), the maps are not all in one place (here, or one host), or an orientation declaration is stale"
           content:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
           description: "fewer than 2 or more than 12 maps, mixed kinds, orientations stated in different frames, different brightness units, or the worker refused"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/analysis/family-maps:
+    get:
+      operationId: owner_s_listFamilyMaps_get_api_analysis_family_maps
+      x-listener: owner
+      x-vesqira-permission: dataset.read
+      summary: "The comparison and spread maps family runs registered in this workspace, newest first, each with what holds it (ADR 0070)"
+      responses:
+        "200":
+          description: "the maps, possibly none"
+          content:
+            "application/json":
+              schema:
+                type: "object"
+                required:
+                  - "maps"
+                properties:
+                  maps:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/FamilyMapView"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/analysis/family-maps/remove:
+    post:
+      operationId: owner_s_removeFamilyMaps_post_api_analysis_family_maps_remove
+      x-listener: owner
+      x-vesqira-permission: lifecycle.delete
+      summary: "Remove family comparison maps that nothing uses (ADR 0070): from the catalog and, for files Vesqira wrote on this computer, from disk. A map a figure, board, report or published review uses, or that something was made from, is kept with the reason. Sources are never touched"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "datasetIds"
+              properties:
+                datasetIds:
+                  type: "array"
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: "integer"
+                    format: "int64"
+      responses:
+        "200":
+          description: "one result per map; some may have been kept"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/FamilyMapsRemoved"
+        "409":
+          description: "nothing was removed: every chosen map is held or not a family map"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/FamilyMapsRemoved"
+        "422":
+          description: "no maps or more than 500"
           content:
             "application/json":
               schema:
@@ -7361,6 +7435,40 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Sweep"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/sweeps/{id}/family:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_sweepFamily_get_api_sweeps_id_family
+      x-listener: owner
+      x-vesqira-permission: sweep.read
+      summary: "A sweep's finished jobs as a family of maps (ADR 0070): the outputs of one run role, labelled by the parameters that differ, with the jobs that cannot be compared listed and the reason"
+      parameters:
+        - name: "role"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "The run output role to compare (orientation, support, ...). Left out: the only role the jobs have, else the roles are listed and none is chosen"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SweepFamily"
+        "422":
+          description: "no job of the sweep has an output with that role"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
         default:
           description: "Error"
           content:
@@ -22655,7 +22763,7 @@ components:
           items:
             type: "integer"
             format: "int64"
-          description: "The maps to compare: all scalar maps or all declared axial orientation maps, on this computer, sharing one grid"
+          description: "The maps to compare: all scalar maps or all declared axial orientation maps, all on this computer or all on one host (then the host's copy of the program compares them there and writes the results in its derived folder), sharing one grid"
         referenceId:
           type: "integer"
           format: "int64"
@@ -23610,3 +23718,169 @@ components:
             pinProfileCommit:
               type: "boolean"
               description: "Stop the job unless the tool's folder is at the commit the profile was written against (off unless asked)"
+    SweepFamily:
+      type: "object"
+      description: "A sweep's finished jobs as a family: one map per job (the run's single output of the chosen role), labelled by the parameters that differ, and the jobs left out with the reason"
+      required:
+        - "sweepId"
+        - "name"
+        - "role"
+        - "roles"
+        - "members"
+        - "excluded"
+        - "referenceId"
+        - "note"
+      properties:
+        sweepId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        role:
+          type: "string"
+          description: "The run output role compared; empty when the jobs have several kinds of output and none was chosen"
+        roles:
+          type: "array"
+          items:
+            type: "object"
+            required:
+              - "role"
+              - "jobs"
+            properties:
+              role:
+                type: "string"
+              jobs:
+                type: "integer"
+                description: "How many jobs have a registered output of this role"
+        members:
+          type: "array"
+          description: "In the sweep's order; the first is the suggested reference"
+          items:
+            type: "object"
+            required:
+              - "jobId"
+              - "label"
+              - "datasetId"
+              - "name"
+            properties:
+              jobId:
+                type: "integer"
+                format: "int64"
+              label:
+                type: "string"
+                description: "The parameter values that differ across the sweep, e.g. kernel = 3"
+              datasetId:
+                type: "integer"
+                format: "int64"
+              name:
+                type: "string"
+        excluded:
+          type: "array"
+          description: "Jobs not compared, each with the reason (no result yet, no output of the role, another grid, another brightness unit, an orientation map nobody declared, ...)"
+          items:
+            type: "object"
+            required:
+              - "jobId"
+              - "label"
+              - "reason"
+            properties:
+              jobId:
+                type: "integer"
+                format: "int64"
+              label:
+                type: "string"
+              reason:
+                type: "string"
+        referenceId:
+          type: "integer"
+          format: "int64"
+          description: "0 when there is no member"
+        note:
+          type: "string"
+    FamilyMapView:
+      type: "object"
+      description: "A comparison or spread map a family run registered, and what holds it"
+      required:
+        - "datasetId"
+        - "name"
+        - "role"
+        - "member"
+        - "run"
+        - "referenceId"
+        - "hostId"
+        - "sizeBytes"
+        - "createdAt"
+        - "holds"
+      properties:
+        datasetId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "spread"
+            - "difference"
+        member:
+          type: "integer"
+          description: "The member compared with the reference, -1 for the spread map"
+        run:
+          type: "string"
+          description: "The maps of one comparison share it"
+        referenceId:
+          type: "integer"
+          format: "int64"
+        hostId:
+          type: "integer"
+          format: "int64"
+          description: "0 for a file on this computer"
+        sizeBytes:
+          type: "integer"
+          format: "int64"
+        createdAt:
+          type: "string"
+          format: "date-time"
+        holds:
+          type: "array"
+          items:
+            type: "string"
+          description: "What keeps the map (a figure, board, report or published review that uses it, something made from it, or something you declared on it); empty when it can be removed"
+    FamilyMapRemoval:
+      type: "object"
+      required:
+        - "datasetId"
+        - "name"
+        - "removed"
+        - "bytes"
+      properties:
+        datasetId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        removed:
+          type: "boolean"
+        reason:
+          type: "string"
+          description: "Why a map was kept"
+        bytes:
+          type: "string"
+          enum:
+            - "none"
+            - "removed"
+            - "kept"
+            - "failed"
+          description: "removed: the file Vesqira wrote on this computer was deleted; kept: a file on a host is left there (Vesqira deletes nothing on a host); failed: the file could not be deleted"
+    FamilyMapsRemoved:
+      type: "object"
+      required:
+        - "results"
+      properties:
+        results:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/FamilyMapRemoval"
+        error:
+          type: "string"
+          description: "Present when nothing was removed: the first reason"

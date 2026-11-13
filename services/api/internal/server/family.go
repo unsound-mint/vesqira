@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -101,10 +102,6 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 			fail(w, code, msg)
 			return
 		}
-		if d.HostID != 0 {
-			fail(w, 409, d.Name+" lives on another host: the agreement is computed on this computer, from maps registered here")
-			return
-		}
 		real, _, status, m := s.authorize(r.Context(), d)
 		if status != 0 {
 			fail(w, status, m)
@@ -126,6 +123,12 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 		} else if u := declaredUnitOf(d); u != "" {
 			members[i].DeclaredUnit = u
 		}
+	}
+	// The comparison is made where the maps are: here, or on one host by that host's copy of the program (ADR 0070). Maps in two places
+	// are not copied to meet: that is a transfer the person decides on.
+	if where := familyPlaces(ds); where != "" {
+		fail(w, 409, where)
+		return
 	}
 	if axial != 0 && axial != len(ds) {
 		fail(w, 422, "the chosen maps mix orientation maps with scalar maps: a difference of those is not meaningful, so choose maps of one kind")
@@ -150,20 +153,54 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 	famJSON, _ := json.Marshal(members)
 	var b [4]byte
 	_, _ = rand.Read(b[:])
-	stem := filepath.Join(s.derivedDirOf(wsOf(r)), fmt.Sprintf("family-%d-%s", ref.ID, hex.EncodeToString(b[:])))
-	spreadPath := stem + ".fits"
-	cleanup := func() {
-		_ = os.Remove(spreadPath)
-		for i := range ds {
-			_ = os.Remove(fmt.Sprintf("%s-m%d.fits", stem, i))
+	tag := hex.EncodeToString(b[:])
+	fileName := fmt.Sprintf("family-%d-%s.fits", ref.ID, tag)
+	args := []string{"--input", reals[refAt], "--family", string(famJSON), "--reference-index", fmt.Sprint(refAt), "--spread", in.Spread}
+	var res analysisOutcome
+	var spreadPath string
+	var extra []string // the comparison maps' paths, in the order of the summary's comparison_maps
+	var register func(string) (catalog.Dataset, int, string)
+	cleanup := func() {}
+	if ref.HostID != 0 {
+		// On the host: nothing of the maps crosses, the host's derived folder receives the new files (all or none, hostrun.py) and only the
+		// summary comes back. Vesqira deletes nothing there, so a result it cannot register stays as an inert file.
+		if len(famJSON) > 15000 {
+			fail(w, 413, "the maps' paths are too long to send to the host in one request; choose fewer maps or maps with shorter paths")
+			return
 		}
-	}
-	args := []string{"-P", s.Analysis.Script, "family_agreement", "--input", reals[refAt], "--family", string(famJSON), "--reference-index", fmt.Sprint(refAt), "--spread", in.Spread, "--out", spreadPath}
-	res, code, msg := s.runAnalysisProgram(r, args)
-	if code != 0 {
-		cleanup()
-		fail(w, code, msg)
-		return
+		h, code, msg := s.hostOf(ref.HostID)
+		if code != 0 {
+			fail(w, code, msg)
+			return
+		}
+		var out analysisOutcome
+		if out, spreadPath, code, msg = s.hostRunAnalysis(r.Context(), h, "family", fileName, args, nil); code != 0 {
+			if code == 422 && msg == "bad request" {
+				msg = "the analysis program on " + h.Name + " does not support a family comparison (an older copy); check the host (Hosts, Check) to put the current one there, then try again"
+			}
+			fail(w, code, msg)
+			return
+		}
+		res, extra = out, out.Files
+		register = func(p string) (catalog.Dataset, int, string) { return s.registerRemoteFile(waiting(r.Context()), h, p) }
+	} else {
+		stem := filepath.Join(s.derivedDirOf(wsOf(r)), "family-"+fmt.Sprint(ref.ID)+"-"+tag)
+		spreadPath = stem + ".fits"
+		cleanup = func() {
+			_ = os.Remove(spreadPath)
+			for i := range ds {
+				_ = os.Remove(fmt.Sprintf("%s-m%d.fits", stem, i))
+			}
+		}
+		var code int
+		var msg string
+		res, code, msg = s.runAnalysisProgram(r, append([]string{"-P", s.Analysis.Script, "family_agreement"}, append(args, "--out", spreadPath)...))
+		if code != 0 {
+			cleanup()
+			fail(w, code, msg)
+			return
+		}
+		register = func(p string) (catalog.Dataset, int, string) { return s.registerPath(waiting(r.Context()), p) }
 	}
 	var sum struct {
 		Comparison []int `json:"comparison_maps"`
@@ -173,6 +210,20 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 		fail(w, 502, "the analysis answered unexpectedly")
 		return
 	}
+	if ref.HostID != 0 { // the host names its files: each must be the comparison map asked for, beside the spread map
+		ok := len(extra) == len(sum.Comparison)
+		for k, i := range sum.Comparison {
+			ok = ok && k < len(extra) && hostFileNamed(extra[k], fmt.Sprintf("family-%d-%s-m%d.fits", ref.ID, tag, i)) && path.Dir(extra[k]) == path.Dir(spreadPath)
+		}
+		if !ok {
+			fail(w, 502, "the host answered unexpectedly about the comparison maps; no result was recorded")
+			return
+		}
+	} else {
+		for _, i := range sum.Comparison {
+			extra = append(extra, fmt.Sprintf("%s-m%d.fits", strings.TrimSuffix(spreadPath, ".fits"), i))
+		}
+	}
 	sources := slices.Clone(in.DatasetIDs)
 	type registered struct {
 		Role    string          `json:"role"` // "spread" or "difference"
@@ -180,14 +231,24 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 		Dataset catalog.Dataset `json:"dataset"`
 	}
 	var out []registered
-	save := func(path, role string, member int) bool {
-		nd, code, msg := s.registerPath(waiting(r.Context()), path)
+	save := func(file, role string, member int) bool {
+		nd, code, msg := register(file)
 		if code != 0 {
 			cleanup()
+			if ref.HostID != 0 {
+				msg = "the comparison was made on the host (its files are in the host's derived folder) but could not be registered: " + msg
+			}
 			fail(w, code, msg)
 			return false
 		}
-		params, _ := json.Marshal(map[string]any{"role": role, "member": member, "referenceId": ref.ID, "spread": in.Spread, "channel": in.Channel, "datasetIds": in.DatasetIDs})
+		pm := map[string]any{"role": role, "member": member, "referenceId": ref.ID, "spread": in.Spread, "channel": in.Channel, "datasetIds": in.DatasetIDs, "run": tag}
+		if ref.HostID != 0 {
+			pm["hostId"] = ref.HostID
+		}
+		if res.Corrections != nil {
+			pm["corrections"] = res.Corrections // the correction state the maps were read with (ADR 0061)
+		}
+		params, _ := json.Marshal(pm)
 		if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: "family_agreement", Params: params, Sources: sources, Summary: res.Summary, Software: res.Software}); err != nil {
 			log.Printf("derived: %v", err)
 		}
@@ -197,12 +258,33 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 	if !save(spreadPath, "spread", -1) {
 		return
 	}
-	for _, i := range sum.Comparison {
-		if !save(fmt.Sprintf("%s-m%d.fits", stem, i), "difference", i) {
+	for k, i := range sum.Comparison {
+		if !save(extra[k], "difference", i) {
 			return
 		}
 	}
 	writeJSON(w, 201, map[string]any{"summary": res.Summary, "maps": out, "datasetIds": in.DatasetIDs, "referenceId": ref.ID})
+}
+
+// familyPlaces is a sentence when the maps are not all in one place: all on this computer, or all on one host.
+func familyPlaces(ds []catalog.Dataset) string {
+	var here, there []string
+	hostID := int64(0)
+	for _, d := range ds {
+		if d.HostID == 0 {
+			here = append(here, d.Name)
+			continue
+		}
+		if hostID != 0 && d.HostID != hostID {
+			return d.Name + " is on another host than " + there[0] + ": a comparison is made where the maps are, and Vesqira does not copy maps to meet. Choose maps on one host"
+		}
+		hostID = d.HostID
+		there = append(there, d.Name)
+	}
+	if len(here) > 0 && len(there) > 0 {
+		return strings.Join(there, ", ") + " is on a host and " + strings.Join(here, ", ") + " is on this computer: a comparison is made where the maps are, and Vesqira does not copy maps to meet. Choose maps in one place, or transfer one set first"
+	}
+	return ""
 }
 
 // A family candidate is a set of derived datasets made from one source by one operation with every option equal but one. It is

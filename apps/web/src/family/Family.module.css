@@ -172,3 +172,13 @@
 .table td {
   text-align: right;
 }
+
+.runBox {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+}

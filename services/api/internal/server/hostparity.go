@@ -63,6 +63,7 @@ func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name str
 		File     string          `json:"file"`
 		Carried  []string        `json:"carried_files"`
 		Missing  string          `json:"missing_file"`
+		Extra    []string        `json:"extra_files"`
 	}
 	if json.Unmarshal(out, &res) != nil {
 		return analysisOutcome{}, "", 502, "the host answered unexpectedly"
@@ -86,7 +87,7 @@ func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name str
 			return analysisOutcome{}, "", 502, "the program on the host did not apply the researcher's corrections (it may be an older version); no result was recorded"
 		}
 	}
-	return analysisOutcome{res.Summary, res.Software, corrSnap}, res.File, 0, ""
+	return analysisOutcome{Summary: res.Summary, Software: res.Software, Corrections: corrSnap, Files: res.Extra}, res.File, 0, ""
 }
 
 // hostFileNamed reports whether p is the resolved absolute path of a file called name.
