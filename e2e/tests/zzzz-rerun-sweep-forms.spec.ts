@@ -44,6 +44,18 @@ async function shoot(page: Page, name: string) {
   await page.emulateMedia({ colorScheme: "dark" });
 }
 
+/** At phone width no element of the form pokes out of it (a long field description must wrap in its column). */
+async function expectNoOverflow(form: Locator) {
+  const page = form.page();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const out = await form.evaluate((f) => {
+    const box = f.getBoundingClientRect();
+    return [...f.querySelectorAll("*")].filter((e) => e.getBoundingClientRect().right > box.right + 1).map((e) => `${e.tagName}.${e.className}`).slice(0, 5);
+  });
+  expect(out).toEqual([]);
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
 /** The labels of the controls reached by pressing Tab from `first`, in order. */
 async function tabbedLabels(page: Page, first: Locator, count: number): Promise<string[]> {
   await first.focus();
@@ -102,6 +114,7 @@ test("rerun and sweep forms come from the template, refuse a value outside its r
   // one field per editable key, in the template's order, reached in that order by the keyboard
   const labels = editable.map((k) => k.label);
   expect(await tabbedLabels(page, form.getByLabel(labels[0]!), labels.length)).toEqual(labels);
+  await expectNoOverflow(form);
   await shoot(page, "rerun-form");
   await form.getByLabel("output binning (pixels, 1 or more)").fill("0");
   await form.getByRole("button", { name: "Prepare the job" }).click();
@@ -129,6 +142,10 @@ test("rerun and sweep forms come from the template, refuse a value outside its r
   await expect(page.getByRole("combobox", { name: "Code commit" })).toHaveValue("base");
   // the keyboard reaches the form's controls in the order they are read
   expect((await tabbedLabels(page, page.getByLabel(/^Base job/), 6)).map((l) => l.split(" ")[0])).toEqual(["Base", "Code", "Sweep", "Setting", "Label", "Values"]);
+  await expectNoOverflow(page.getByRole("form", { name: "New sweep" }));
+  // the Label box sits level with the Setting select however long the select's description is
+  const top = async (l: Locator) => (await l.boundingBox())!.y;
+  expect(Math.abs((await top(page.getByLabel("Label", { exact: true }))) - (await top(setting)))).toBeLessThan(1);
   await shoot(page, "sweep-form");
   // a binning of 0 is outside "1 or more": the server's sentence, and nothing is counted
   await setting.selectOption("output_bin");

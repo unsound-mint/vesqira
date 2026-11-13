@@ -229,4 +229,5 @@
 .hint {
   color: var(--text-3);
   font-size: var(--text-xs);
+  overflow-wrap: anywhere;
 }

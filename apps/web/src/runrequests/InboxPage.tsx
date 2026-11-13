@@ -3,6 +3,7 @@ import { ApiError } from "../api/http";
 import { grantFellBack, grantStateText, pollRelay, relayLocal, setRelayInbox, stateText } from "../api/runRequests";
 import type { RelayInbox, RelayLocal, TemplateBounds } from "../api/runRequests";
 import { Button, Checkbox, Input, LinkButton, Select } from "../ui";
+import { ScrollTable } from "../ui/ScrollTable";
 import s from "../account/Account.module.css";
 import r from "./RunRequests.module.css";
 import { RelayedView } from "./RelayedView";
@@ -116,7 +117,8 @@ export function InboxPage() {
         <section className={s.card}>
           <h2 className={s.h2}>Requests</h2>
           {requests.length ? (
-            <table className={s.table}>
+            <ScrollTable label="Requests">
+            <table className={`${s.table} ${r.requests}`}>
               <thead><tr><th>Request</th><th>From</th><th>Here</th><th>On the server</th><th>Received</th></tr></thead>
               <tbody>
                 {requests.map((x) => (
@@ -133,6 +135,7 @@ export function InboxPage() {
                 ))}
               </tbody>
             </table>
+            </ScrollTable>
           ) : <p className={s.note}>No requests have arrived.</p>}
         </section>
       ) : null}

@@ -90,6 +90,10 @@ test("the key holder makes, reads and revokes standing approvals, and sees what 
   const requests = page.getByRole("table");
   await expect(requests).toContainText("submitted without a click under the standing approval");
   await expect(requests).toContainText("waiting for you: it asks for settings or resources outside the standing approval");
+  // at phone width the table scrolls inside its own focusable region; the page itself does not scroll sideways
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("region", { name: "Requests" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await shots(page, "standing-approvals-inbox");
 
   // keyboard: Revoke asks first, focus lands on the safe "Keep it", and Enter there backs out
