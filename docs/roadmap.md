@@ -204,9 +204,11 @@ The owner chose a shared multi-user server (ADR 0028 option B). Its design ADR c
 
 Needs an ADR before code: it changes the security boundary.
 
-- [ ] Accounts and roles per project and per cluster (Q29–Q31). Design in ADR 0050, accepted with the owner's answers of 2026-11-12; slices built in order.
-- [ ] Push from a local instance and run requests relayed to the key holder's own instance (ADR 0050 slices 4 and 5), specified in [ADR 0066](adr/0066-push-to-the-group-server-and-relayed-run-requests.md). Push is implemented (slice 4, schema 32); `multiuser import` is a dry run only and writes nothing; relayed run requests (slice 5) are not implemented.
-- [ ] Authentication before anyone but the owner can act; delegation and approval lifecycle for other users' requests (Q44, Q71).
+- [x] Accounts and roles per workspace (Q29–Q31), ADR 0050 slices 1 to 3.
+- [x] Push from a local instance (slice 4, schema 32) and run requests relayed to the key holder's own instance, approved there against the exact script (slice 5, schema 33), specified in [ADR 0066](adr/0066-push-to-the-group-server-and-relayed-run-requests.md).
+- [ ] `multiuser import` of a local catalog into a group workspace: a dry run only, it writes nothing yet.
+- [x] Sign-in before anyone but the owner can act, and an approval lifecycle for other people's run requests (Q44, Q71), ADR 0050 slices 2 and 5.
+- [ ] Preapproved templates and budgets for trusted collaborators (deferred in ADR 0050; every request needs an explicit approval today).
 - [x] Worker memory cap and the authorize-then-open window for source files. The memory cap applies to every worker entry point and its setting reaches the workers. Every source read goes through `srcopen.py` in the worker and `sourceroot.OpenFile` in the API: the resolved path is opened without following a link, so a component swapped after the check is refused (ADR 0050, section 8). The device and inode a location had when it was recorded (schema 27) are compared when a dataset is read, and sent to the worker with the plane requests, which refuse another file with a sentence; the other worker ops do not carry them yet. The file tree opens its folder without following a link and shows links with their target and where they point; the worker's own listings (`walk`, `list`, `canon`) and the path completion still use path names.
 
 ## Stage 8 — Later phases (kept, not scheduled)
