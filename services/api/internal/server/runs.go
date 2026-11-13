@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -142,20 +143,77 @@ func (s *Server) profiles() *runs.Registry {
 // them as a Run under their generic roles, pairs the reliability map and proposes the axial interpretation of the orientation map
 // as the adapter's (never the user's, never overriding theirs).
 func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, string) {
-	prof := s.profiles().ByRecordFile(src.RecordFile(), runs.ReaderRunMetadata)
-	if prof == nil {
+	reg := s.profilesAt(wsCtx(ctx), src.Key()) // the program's profiles and those of the project the folder is in
+	if !reg.HasRecordFile(src.RecordFile(), runs.ReaderRunMetadata) {
 		return runs.Run{}, 422, src.RecordFile() + " is not a run record any tool profile reads"
 	}
 	data, name, code, msg := src.Meta(ctx)
 	if code != 0 {
 		return runs.Run{}, code, msg
 	}
+	prof := reg.ByRecord(src.RecordFile(), runs.ReaderRunMetadata, data)
+	if prof == nil {
+		return runs.Run{}, 422, src.RecordFile() + " holds none of the keys the tool profiles that read a file of that name look for, so it is not taken for any tool's run"
+	}
 	parsed, err := runs.ParseRecord(prof, data, name)
 	if err != nil {
 		return runs.Run{}, 422, err.Error()
 	}
-	if dec := s.profiles().DecompositionOf(prof); dec != nil && dec.Source.Kind == runs.SourceFitsMaps {
-		return s.importMapsRun(ctx, src, prof, dec, parsed, data) // the tool writes its components as maps, not outputs the record names
+	if dec := reg.DecompositionOf(prof); dec != nil {
+		return s.importDecompRun(ctx, src, prof, dec, parsed, data) // the tool fits components: they are imported with the run
+	}
+	if prof.Outputs == nil {
+		return runs.Run{}, 422, "the tool profile " + prof.Label() + " declares neither outputs nor components, so nothing can be imported from its runs; add them to the profile"
+	}
+	outs, byRole, code, msg := s.registerRecordOutputs(ctx, src, prof, parsed)
+	if code != 0 {
+		return runs.Run{}, code, msg
+	}
+	if len(outs) == 0 {
+		return runs.Run{}, 422, "none of the output files the profile " + prof.Label() + " names were found next to the run's " + src.RecordFile()
+	}
+	run, err := s.Runs.Save(wsCtx(ctx), actorID(ctx), src.Key(), parsed, outs)
+	if err != nil {
+		log.Printf("runs: %v", err)
+		return runs.Run{}, 500, "internal error"
+	}
+	s.proposeOrientation(ctx, prof, byRole)
+	return run, 0, ""
+}
+
+// proposeOrientation declares, as the adapter's proposal (never the researcher's, never over theirs), the axial interpretation of a
+// run's orientation output and pairs the reliability map found on the same grid. The interpretation is the header's, read by an
+// orientation profile, when the cards let it place frame and unit; for a file with no cards of any tool it is the convention the
+// project profile declares (declaredOrientation), if it declares one.
+func (s *Server) proposeOrientation(ctx context.Context, prof *runs.Profile, byRole map[string]catalog.Dataset) {
+	if psi, ok := byRole[runs.RoleOrientation]; ok {
+		cur, _ := s.Store.Get(wsCtx(ctx), psi.ID)
+		if adapterMayDeclare(cur.Interpretation) {
+			var rel *int64
+			if rd, ok := byRole[runs.RoleReliability]; ok && rd.HostID == psi.HostID {
+				if why, err := compat.Grids(effectiveHeader(psi), effectiveHeader(rd)); err == nil && len(why) == 0 {
+					rel = &rd.ID
+				}
+			}
+			in, ok := proposedPsi(cur, rel)
+			if !ok {
+				in, ok = declaredOrientation(prof, cur, rel)
+			}
+			if ok {
+				if err := s.Store.SetInterpretation(cur, in); err != nil {
+					log.Printf("runs: %v", err)
+				}
+			}
+		}
+	}
+}
+
+// registerRecordOutputs registers the files the profile's outputs table names in the record, next to it, and returns them under the
+// roles the profile gives them. A name the record does not carry, or a file that is not there, is skipped (nothing is invented);
+// a file that is there and cannot be registered stops the import with the reason.
+func (s *Server) registerRecordOutputs(ctx context.Context, src runSource, prof *runs.Profile, parsed runs.Parsed) ([]runs.Output, map[string]catalog.Dataset, int, string) {
+	if code, msg := s.checkDeclaredOrientation(ctx, src, prof, parsed); code != 0 {
+		return nil, nil, code, msg
 	}
 	var outs []runs.Output
 	byRole := map[string]catalog.Dataset{}
@@ -166,7 +224,7 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 		}
 		d, found, code, msg := src.Register(ctx, file)
 		if code != 0 {
-			return runs.Run{}, code, file + ": " + msg
+			return nil, nil, code, file + ": " + msg
 		}
 		if !found {
 			continue
@@ -174,47 +232,82 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 		byRole[ref.Role] = d
 		outs = append(outs, runs.Output{Role: ref.Role, Product: ref.Product, DatasetID: d.ID, Name: d.Name})
 	}
-	if len(outs) == 0 {
-		return runs.Run{}, 422, "none of the run's output files were found next to its " + src.RecordFile()
+	return outs, byRole, 0, ""
+}
+
+// headerPeeker is a run source whose files' headers can be read without registering them.
+type headerPeeker interface {
+	PeekHeader(ctx context.Context, name string) (json.RawMessage, bool)
+}
+
+func (l localRun) PeekHeader(ctx context.Context, name string) (json.RawMessage, bool) {
+	real, err := l.s.roots(wsCtx(ctx)).Resolve(filepath.Join(l.dir, name))
+	if err != nil || hasCatalogExt(real) || l.s.Worker == nil {
+		return nil, false
 	}
-	run, err := s.Runs.Save(wsCtx(ctx), actorID(ctx), src.Key(), parsed, outs)
-	if err != nil {
-		log.Printf("runs: %v", err)
-		return runs.Run{}, 500, "internal error"
+	h, err := l.s.Worker.Header(ctx, real)
+	return h, err == nil
+}
+
+// checkDeclaredOrientation refuses, before any file of the run is registered, an orientation output whose header cards contradict the
+// profile's declared convention, so "nothing was imported" is true. A file that cannot be read here is left to the registration, which
+// says why; a declaration on a source whose headers cannot be read before registering (a host) is refused, since it could not be checked.
+func (s *Server) checkDeclaredOrientation(ctx context.Context, src runSource, prof *runs.Profile, parsed runs.Parsed) (int, string) {
+	if prof.Orientation.Decl == nil {
+		return 0, ""
 	}
-	if psi, ok := byRole[runs.RoleOrientation]; ok {
-		cur, _ := s.Store.Get(wsCtx(ctx), psi.ID)
-		if adapterMayDeclare(cur.Interpretation) {
-			var rel *int64
-			if rd, ok := byRole[runs.RoleReliability]; ok && rd.HostID == psi.HostID {
-				if why, err := compat.Grids(effectiveHeader(psi), effectiveHeader(rd)); err == nil && len(why) == 0 {
-					rel = &rd.ID
-				}
-			}
-			if in, ok := proposedPsi(cur, rel); ok {
-				if err := s.Store.SetInterpretation(cur, in); err != nil {
-					log.Printf("runs: %v", err)
-				}
+	pk, local := src.(headerPeeker)
+	for _, ref := range prof.Products() {
+		file, ok := parsed.OutputFiles[ref.Product]
+		if !ok || ref.Role != runs.RoleOrientation {
+			continue
+		}
+		if !local {
+			return 422, "the profile " + prof.Label() + " declares an orientation, which can only be checked against a file on this computer, and this run is on a host; nothing was imported"
+		}
+		if hdr, ok := pk.PeekHeader(ctx, file); ok {
+			if why := orientationContradiction(prof, catalog.VGTOf(hdr)); why != "" {
+				return 422, file + ": " + why
 			}
 		}
 	}
-	return run, 0, ""
+	return 0, ""
 }
 
-// importsFromRecord says whether a scanned run is one whose profile has the record itself name the outputs, so that a project
-// scan imports it from the record (a row stored before profiles existed has only its record kind).
-func (s *Server) importsFromRecord(r *discover.Run) bool {
-	p := s.profiles().ByLabel(r.Profile)
+// runProfile is the profile that read a scanned run (a row stored before profiles existed has only its record kind).
+func runProfile(reg *runs.Registry, r *discover.Run) *runs.Profile {
+	p := reg.ByLabel(r.Profile)
 	if p == nil && r.Profile == "" {
-		p = s.profiles().ByKind(r.RecordKind)
+		p = reg.ByKind(r.RecordKind)
 	}
-	return p != nil && p.NamesOutputs()
+	return p
+}
+
+// scanImports says whether a project scan imports a run by itself: its profile has the record name the outputs, and the profile is
+// the program's. A profile from the project folder is a researcher's declaration and, like an import rule, is applied by a person's
+// act (the run's Import button), never by a scan (ADR 0058, ADR 0068 slice 6).
+func scanImports(reg *runs.Registry, r *discover.Run) bool {
+	p := runProfile(reg, r)
+	return p != nil && p.NamesOutputs() && !p.FromProject()
+}
+
+// holdsOutputs says whether a scanned run's files belong to its import, so the scan does not register them as loose datasets.
+func holdsOutputs(reg *runs.Registry, r *discover.Run) bool {
+	p := runProfile(reg, r)
+	return p != nil && (p.NamesOutputs() || p.FromProject())
+}
+
+// importable says whether importFrom can read a scanned run: its profile has a record of the run_metadata kind and either names the
+// outputs or declares components.
+func importable(reg *runs.Registry, r *discover.Run) bool {
+	p := runProfile(reg, r)
+	return p != nil && p.Record != nil && p.Record.Reader == runs.ReaderRunMetadata && (p.NamesOutputs() || reg.DecompositionOf(p) != nil)
 }
 
 // recordPath is the run record an import path names: the record itself (a name some profile reads), or the folder holding one.
 // A folder with none of them gets the first profile's name, so the refusal says which file was looked for.
-func (s *Server) recordPath(ws workspace.ID, p string) string {
-	files := s.profiles().RecordFiles(runs.ReaderRunMetadata)
+func (s *Server) recordPath(ws workspace.ID, reg *runs.Registry, p string) string {
+	files := reg.RecordFiles(runs.ReaderRunMetadata)
 	for _, f := range files {
 		if filepath.Base(p) == f {
 			return p
@@ -246,7 +339,8 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		s.importROHSAFromHost(w, r, in.HostID, in.Path)
 		return
 	}
-	if dat, found, code, msg := s.rohsaTarget(wsOf(r), in.Path); found {
+	reg := s.refreshProfilesAt(wsOf(r), in.Path, true) // a project's own profile files, as they are now
+	if dat, found, code, msg := s.rohsaTarget(wsOf(r), reg, in.Path); found {
 		if code != 0 {
 			fail(w, code, msg)
 			return
@@ -259,7 +353,7 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 201, s.runView(wsOf(r), run))
 		return
 	}
-	meta := s.recordPath(wsOf(r), in.Path)
+	meta := s.recordPath(wsOf(r), reg, in.Path)
 	realMeta, err := s.roots(wsOf(r)).Resolve(meta) // same containment rules as any file: inside a source root, regular file
 	if err != nil {
 		fail(w, 403, err.Error())
@@ -283,6 +377,9 @@ type runJSON struct {
 	Reproducibility []runs.Fact `json:"reproducibility"`
 	// Rohsa is the decomposition record of a ROHSA run (ADR 0046); null for every other kind.
 	Rohsa *runs.RohsaInfo `json:"rohsa"`
+	// ProfileOrigin is set when the run's profile was read from a project folder: its file (project-relative) and the sha256 of it.
+	// Everything that profile supplied is declared by the researcher's file, never verified. Null for a profile of this program.
+	ProfileOrigin *runs.Origin `json:"profileOrigin"`
 	// JobID is the Vesqira job whose outputs this run is; ParentRunID is the run that job was drafted from.
 	JobID       *int64 `json:"jobId"`
 	ParentRunID *int64 `json:"parentRunId"`
@@ -396,7 +493,14 @@ func (s *Server) runViewWith(ws workspace.ID, r runs.Run, lin map[int64]jobs.Lin
 		}
 	}
 	out.Reproducibility = runs.Reproducibility(r, out.InputHint != nil)
-	if p := s.profiles().ByLabel(r.Profile); r.Kind == "rohsa" || p != nil && s.profiles().DecompositionOf(p) != nil {
+	reg := s.profilesAt(ws, r.Dir)
+	if r.Profile != "" && r.Profile != runs.LegacyProfile && reg.ByLabel(r.Profile) == nil {
+		reg = s.refreshProfilesAt(ws, r.Dir, false) // a project profile not read since this program started
+	}
+	if p := reg.ByLabel(r.Profile); p != nil {
+		out.ProfileOrigin = p.Origin
+	}
+	if p := reg.ByLabel(r.Profile); r.Kind == "rohsa" || p != nil && reg.DecompositionOf(p) != nil {
 		if rr, err := s.Runs.ROHSA(ws, r.ID); err == nil {
 			out.Rohsa = &rr.Info
 		}
@@ -686,11 +790,62 @@ func (s *Server) rohsaSizing(w http.ResponseWriter, r *http.Request) {
 // the pipeline's convention for it, and the map stays unresolved until the researcher declares it. The absence of PSIFRAME is never
 // read as "pixel" from the WCS or from anything else in the file.
 func proposedPsi(d catalog.Dataset, rel *int64) (catalog.Interpretation, bool) {
-	if d.VGT == nil || d.VGT.Orientation == nil {
+	if d.OrientationHeader == nil || d.OrientationHeader.Orientation == nil {
 		return catalog.Interpretation{}, false
 	}
-	o := d.VGT.Orientation
+	o := d.OrientationHeader.Orientation
 	return catalog.Interpretation{Kind: "axial_orientation", Unit: o.Unit, ReliabilityID: rel, Frame: &o.Frame, Quantity: o.Quantity, DeclaredBy: o.Profile}, true
+}
+
+// orientationContradiction is the sentence that refuses an import when the orientation map's own header cards and the project
+// profile's declared convention disagree, naming both, and "" when there is nothing to refuse: the profile declares no orientation,
+// the header has no card of any tool that states one, or the cards agree. Neither side is picked: the cards are the file's own
+// statement and the declaration is the researcher's, so a difference is for them to settle in the profile or the file.
+func orientationContradiction(prof *runs.Profile, h *catalog.VGTHeader) string {
+	decl := prof.Orientation.Decl
+	if decl == nil || h == nil {
+		return "" // no declaration, or no card of a tool that states an orientation: the declaration fills what the file does not say
+	}
+	who := "the project profile " + prof.Label()
+	if prof.Origin != nil {
+		who += " (" + prof.Origin.File + ")"
+	}
+	fix := "; nothing was imported, so correct the profile or the file"
+	o := h.Orientation
+	if o == nil {
+		return "the header carries orientation cards that could not be read in full (" + strings.Join(h.Unresolved, ", ") + " unresolved), and " + who +
+			" declares the angle " + decl.Text() + ": the declaration is not applied over a header that says something else in part" + fix
+	}
+	var diff []string
+	if o.Frame != decl.Frame {
+		diff = append(diff, "frame")
+	}
+	if o.Basis["unit"] == "file" && o.Unit != decl.Unit {
+		diff = append(diff, "unit")
+	}
+	if o.Quantity != nil && decl.Quantity != "" && *o.Quantity != decl.Quantity {
+		diff = append(diff, "quantity")
+	}
+	if len(diff) == 0 {
+		return ""
+	}
+	return "the header states the angle as " + o.Text() + ", in " + o.Unit + " (" + o.Cards["unit"] + "), but " + who + " declares it " + decl.Text() +
+		" (they differ in " + strings.Join(diff, " and ") + ")" + fix
+}
+
+// declaredOrientation is the interpretation a project profile's declared convention gives an orientation map whose header carries
+// no orientation card of any tool (orientationContradiction has already refused the file when it does and they differ). Declared by
+// the project profile, never verified; false when the profile declares none or the file's own cards already did.
+func declaredOrientation(prof *runs.Profile, d catalog.Dataset, rel *int64) (catalog.Interpretation, bool) {
+	decl := prof.Orientation.Decl
+	if decl == nil || d.OrientationHeader != nil {
+		return catalog.Interpretation{}, false
+	}
+	in := catalog.Interpretation{Kind: "axial_orientation", Unit: decl.Unit, ReliabilityID: rel, Frame: &decl.Frame, DeclaredBy: catalog.ProjectProfileAuthorPrefix + prof.Label()}
+	if decl.Quantity != "" {
+		in.Quantity = &decl.Quantity
+	}
+	return in, true
 }
 
 // adapterMayDeclare says whether a run import may write its proposed orientation over what is there: over nothing, over an earlier

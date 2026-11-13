@@ -129,7 +129,7 @@ func (d *Decomposition) compile() error {
 				return fmt.Errorf("the %s map's file is a name in the run's folder", p)
 			}
 			if m.Pattern != "" {
-				re, err := regexp.Compile(m.Pattern)
+				re, err := compilePattern(m.Pattern)
 				if err != nil {
 					return err
 				}
@@ -332,4 +332,7 @@ func recordValue(data []byte, key string) any {
 type DecompRecord struct {
 	Profile string              `json:"profile"`
 	Files   map[string][]string `json:"files,omitempty"`
+	// ProfileSHA pins a profile read from a project folder: the hash of the file the run was imported with. The declaration is looked up
+	// again at every request, so a file edited since (same name and version) is refused instead of silently reading the run differently.
+	ProfileSHA string `json:"profileSha,omitempty"`
 }

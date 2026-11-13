@@ -84,6 +84,8 @@ export type ProjectSummary = {
   registration: { registered: number; failed: number; errors: string[]; capped: boolean };
   /** What the saved import rules select, counted by the last scan; null when the project has no rules. A scan never registers these. */
   importRules: ImportSummary | null;
+  /** The files of .vesqira/profiles/: a loaded one names its profile (name@version), a refused one says why. */
+  profiles?: { file: string; profile: string; why: string }[];
   health: HealthItem[];
   needsCount: number;
 };
@@ -119,8 +121,14 @@ export type TreeRun = {
   notes: string[];
   outputCount: number;
   outputBytes: number;
-  /** The imported Vesqira run (VGT runs only), else null. */
+  /** The imported Vesqira run, else null. */
   runId: number | null;
+  /** The tool profile (name@version) that recognised the folder, "" for a record no profile claims. */
+  profile?: string;
+  /** The file in the project's .vesqira/profiles/ that declared that profile; "" for a profile of this program. */
+  profileFile?: string;
+  /** The Import button can read this run. A run of a project profile is imported by that button and never by a scan. */
+  importable?: boolean;
 };
 
 export type TreeEntry = {

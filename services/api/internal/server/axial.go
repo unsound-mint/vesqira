@@ -94,11 +94,11 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 				fail(w, 400, "fromFile takes the unit, frame and quantity from the file's header; do not send them with it")
 				return
 			}
-			if d.VGT == nil || d.VGT.Orientation == nil {
+			if d.OrientationHeader == nil || d.OrientationHeader.Orientation == nil {
 				fail(w, 422, "the file's header does not declare an angle frame and unit that an orientation profile places, so there is nothing to adopt from it; declare it yourself")
 				return
 			}
-			o := d.VGT.Orientation
+			o := d.OrientationHeader.Orientation
 			in.Unit, in.Frame, in.Quantity, author = o.Unit, &o.Frame, o.Quantity, o.Profile
 			if in.ReliabilityID == nil && d.Interpretation != nil {
 				in.ReliabilityID = d.Interpretation.ReliabilityID // adopting the frame must not unpair the reliability map

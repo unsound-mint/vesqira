@@ -37,7 +37,7 @@ var rohsaDat = runs.Shipped().ByName("ROHSA").FilePattern(runs.RoleComponentTabl
 
 // rohsaTarget decides whether an import path names a ROHSA fit: a rohsa_*.dat file, or a folder with exactly one of them
 // and no run_metadata.toml. found is false when the path is something else and the VGT import should look at it.
-func (s *Server) rohsaTarget(ws workspace.ID, p string) (datReal string, found bool, code int, msg string) {
+func (s *Server) rohsaTarget(ws workspace.ID, reg *runs.Registry, p string) (datReal string, found bool, code int, msg string) {
 	if strings.HasSuffix(strings.ToLower(p), ".dat") {
 		real, err := s.roots(ws).Resolve(p)
 		if err != nil {
@@ -48,7 +48,7 @@ func (s *Server) rohsaTarget(ws workspace.ID, p string) (datReal string, found b
 		}
 		return real, true, 0, ""
 	}
-	records := s.profiles().RecordFiles(runs.ReaderRunMetadata)
+	records := reg.RecordFiles(runs.ReaderRunMetadata)
 	for _, f := range records {
 		if filepath.Base(p) == f {
 			return "", false, 0, ""
@@ -485,7 +485,7 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 		return t, false
 	}
 	t = rohsaTask{run: rr, crop: crop, cropReal: cropReal, key: key}
-	decl, why := s.decompositionRequest(rr)
+	decl, why := s.decompositionRequest(wsOf(r), rr)
 	if why != "" {
 		fail(w, 409, why)
 		return t, false

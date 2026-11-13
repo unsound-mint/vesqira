@@ -67,6 +67,15 @@ for r in 2026-08-01T100000Z_abc1234:0.5 2026-08-02T110000Z_abc1234:0.9; do
   mkdir -p "$d"
   printf 'generated_at_utc = "2026-08-01T10:00:00Z"\ngitcommit = "abc1234"\n[config]\nlambda = %s\nwidth = 3\n[input]\npath = "%s/data/raw/hi_cube.fits"\nsize_bytes = 100\n[outputs]\npsi_path = "%s/psi.fits"\n' "${r##*:}" "$proj" "$d" > "$d/run_metadata.toml"
 done
+# A project that carries a profile for a tool Vesqira does not ship (ADR 0068 slice 6, tests/zzzzzzzzzzzz-project-profiles.spec.ts):
+# the synthetic HOG-style run folder and its profile file, written in the project-file form from the test profile.
+own="$run/project/own-tool-study"
+mkdir -p "$own/.vesqira/profiles"
+cp -r "$run/data/hog_run_demo" "$own/hog_run_demo"
+python3 -I -c "import json, sys
+doc = json.load(open(sys.argv[1]))
+json.dump({'format': 1, 'about': 'e2e: a profile for the synthetic HOG-style tool', 'profile': doc['profiles'][0]}, open(sys.argv[2], 'w'), indent=1)" \
+  "$root/services/api/internal/runs/testdata/synthetic_hog_profile.json" "$own/.vesqira/profiles/hog.json"
 cd "$root"
 exec "$run/api" --ssh "$run/fake-ssh" --addr 127.0.0.1:${VESQIRA_API_PORT:?} --db "$run/t.db" --data-dir "$run" --root "$run/data" \
   --review-addr 127.0.0.1:${VESQIRA_REVIEW_PORT:?} --web-dist "$root/apps/web/dist" --ssh-config "" --enable-terminal --enable-vpn \

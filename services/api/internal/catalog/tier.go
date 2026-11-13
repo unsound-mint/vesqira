@@ -39,7 +39,7 @@ func TierOf(by string) (tier, mapping string) {
 	if by == "" || by == "user" || strings.HasPrefix(by, RuleAuthorPrefix) {
 		return TierDeclared, ""
 	}
-	if strings.HasPrefix(by, ProfileAuthorPrefix) {
+	if strings.HasPrefix(by, ProfileAuthorPrefix) || strings.HasPrefix(by, ProjectProfileAuthorPrefix) {
 		// "profile:<name>@<version>": the file's statement read by that version of the profile's table
 		if i := strings.LastIndex(by, "@"); i >= 0 {
 			return TierDeclared, by[i+1:]

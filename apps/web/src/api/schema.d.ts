@@ -6018,13 +6018,8 @@ export interface components {
             corrections?: components["schemas"]["Corrections"] | null;
             /** @description Only on the dataset list: the datasets this file is the imported mask file of, when that is its only role (a file also used for a figure, region, analysis, run, or opened in the viewer has none). Derived from the masks' rows; nothing is hidden or unregistered by it (ADR 0058, mask files). */
             maskSourceFor?: components["schemas"]["MaskSourceRef"][];
-            /** @description What the file's own header says of its orientation through the tool profile that read it (VGT.jl's PSIFRAME, PSIANGLE, VGTPROD, the VGT* run parameters and the input beam, today), and where the declaration in force disagrees with it; null for a file no profile reads. Computed on read (ADR 0014 amendment, ADR 0068 slice 3). */
+            /** @description What the file's own header says of its orientation through the tool profile that read it (VGT.jl's PSIFRAME, PSIANGLE, VGTPROD, the VGT* run parameters and the input beam, today), and where the declaration in force disagrees with it; null for a file no profile reads. Computed on read (ADR 0014 amendment, ADR 0068 slice 3). It was also sent as vgtHeader until ADR 0068 slice 6. */
             orientationHeader?: components["schemas"]["OrientationHeader"] | null;
-            /**
-             * @deprecated
-             * @description Deprecated name of orientationHeader, with the same value. Sent for one release after ADR 0068 slice 3 (until schema 36); clients read orientationHeader.
-             */
-            vgtHeader?: components["schemas"]["OrientationHeader"] | null;
         };
         DatasetList: {
             datasets: components["schemas"]["Dataset"][];

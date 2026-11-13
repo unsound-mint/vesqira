@@ -39,6 +39,8 @@ export type Run = {
   kind: string;
   /** The tool profile (name@version) that recognised the run, or "legacy". Absent in older responses. */
   profile?: string;
+  /** Set when the profile came from the project's .vesqira/profiles/ (the file, relative to the project, and its sha256). */
+  profileOrigin?: { file: string; sha256: string } | null;
   importedAt: string;
   generatedAt: string;
   gitCommit: string;

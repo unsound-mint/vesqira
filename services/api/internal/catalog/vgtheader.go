@@ -22,6 +22,11 @@ const FileHeaderAuthor = "vgt-file-header"
 // statement read by that profile's table. It is declared by the file's header, never verified.
 const ProfileAuthorPrefix = "profile:"
 
+// ProjectProfileAuthorPrefix starts the author of a declaration a project's own profile file made for a file that carries no cards:
+// "project-profile:<name>@<version>". The researcher's statement in that file, not the file's own, and never verified. It is not a
+// file-header author: nothing is read back from the header for it.
+const ProjectProfileAuthorPrefix = "project-profile:"
+
 // IsFileHeaderAuthor reports whether by names a declaration read from the file's own header: by a profile, or by the VGT.jl reading
 // that came before profiles.
 func IsFileHeaderAuthor(by string) bool {
@@ -238,14 +243,13 @@ func (o FileOrientation) Text() string {
 	return "measured on the pixel grid, " + o.Sense + " from " + o.ZeroDirection + " (" + card + ")"
 }
 
-// attachVGT fills d.VGT from the stored header and, when a declaration other than the file's is in force, lists where they differ.
+// attachVGT fills d.OrientationHeader from the stored header and, when a declaration other than the file's is in force, lists where they differ.
 func (d *Dataset) attachVGT() {
-	d.VGT = VGTOf(d.Header)
-	d.OrientationHeader = d.VGT // the same value under the name that is not VGT's (ADR 0068, slice 3)
-	if d.VGT == nil || d.VGT.Orientation == nil || d.Interpretation == nil || d.Interpretation.Kind != "axial_orientation" || IsFileHeaderAuthor(d.Interpretation.DeclaredBy) {
+	d.OrientationHeader = VGTOf(d.Header)
+	if d.OrientationHeader == nil || d.OrientationHeader.Orientation == nil || d.Interpretation == nil || d.Interpretation.Kind != "axial_orientation" || IsFileHeaderAuthor(d.Interpretation.DeclaredBy) {
 		return
 	}
-	d.VGT.Conflicts = orientationConflicts(*d.VGT.Orientation, *d.Interpretation, gridFrame(d.Header))
+	d.OrientationHeader.Conflicts = orientationConflicts(*d.OrientationHeader.Orientation, *d.Interpretation, gridFrame(d.Header))
 }
 
 func orientationConflicts(file FileOrientation, in Interpretation, grid string) []string {

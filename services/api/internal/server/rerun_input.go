@@ -376,7 +376,7 @@ func (s *Server) planInputRerun(ctx context.Context, ws workspace.ID, runID int6
 	}
 	p.summary = sum
 	p.draft = jobs.Job{HostID: p.host.ID, Name: name, Template: template, Script: b.Script, OutputDir: b.OutputDir, Request: b.Request, ParentRunID: &runID,
-		Note: fmt.Sprintf("Configuration of run %d (%s) on %s", runID, run.Name, ds.Name), AutoImport: autoImports(template)}
+		Note: fmt.Sprintf("Configuration of run %d (%s) on %s", runID, run.Name, ds.Name), AutoImport: s.autoImports(template)}
 	if utf8.RuneCountInString(p.draft.Note) > jobs.MaxNote {
 		p.draft.Note = string([]rune(p.draft.Note)[:jobs.MaxNote])
 	}
