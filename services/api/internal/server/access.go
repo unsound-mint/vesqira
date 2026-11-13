@@ -284,6 +284,12 @@ func answerAccess(w http.ResponseWriter, err error) bool {
 // whatever the request says; any other label needs the author's explicit confirmation, which names the datasets. confirm never
 // overrides a block.
 func (s *Server) publishGate(ctx context.Context, confirm bool) func([]boards.Item) (boards.AccessLabels, error) {
+	return s.publishGateFor(ctx, confirm, "board")
+}
+
+// publishGateFor is publishGate for what is being published: "board", or "figure" for a figure shared on its own (ADR 0071). The
+// decision is the same; only the words and the audit target differ.
+func (s *Server) publishGateFor(ctx context.Context, confirm bool, what string) func([]boards.Item) (boards.AccessLabels, error) {
 	return func(items []boards.Item) (boards.AccessLabels, error) {
 		ws := wsCtx(ctx)
 		v, err := s.accessView(ws)
@@ -297,7 +303,7 @@ func (s *Server) publishGate(ctx context.Context, confirm bool) func([]boards.It
 		blocked := s.blockedLabels(ws)
 		for _, p := range ba.Restricted {
 			if access.Blocks(blocked, p.Label) {
-				s.audit(ctx, "review publish refused", "board", 0, "blocked by the workspace policy: "+ba.sentence())
+				s.audit(ctx, "review publish refused", what, 0, "blocked by the workspace policy: "+ba.sentence())
 				return boards.AccessLabels{}, &accessRefusal{status: 403, code: "publishing_blocked",
 					msg:   fmt.Sprintf("Publishing is blocked in this workspace for data labelled %s: %s. A workspace admin can change this policy; confirming does not override it.", p.Label.Name(), ba.sentence()),
 					extra: map[string]any{"restricted": ba.Restricted, "label": ba.Label}}
@@ -305,11 +311,11 @@ func (s *Server) publishGate(ctx context.Context, confirm bool) func([]boards.It
 		}
 		if !confirm {
 			return boards.AccessLabels{}, &accessRefusal{status: 409, code: "access_confirmation_required",
-				msg: fmt.Sprintf("This board uses data labelled %s: %s. A reviewer receives the pictures only, never the data, but the pictures show it. Confirm to publish.",
-					ba.Label.Name(), ba.sentence()),
+				msg: fmt.Sprintf("This %s uses data labelled %s: %s. A reviewer receives the pictures only, never the data, but the pictures show it. Confirm to publish.",
+					what, ba.Label.Name(), ba.sentence()),
 				extra: map[string]any{"restricted": ba.Restricted, "label": ba.Label}}
 		}
-		s.audit(ctx, "review publish confirmed with labelled data", "board", 0, string(ba.Label)+": "+ba.sentence())
+		s.audit(ctx, "review publish confirmed with labelled data", what, 0, string(ba.Label)+": "+ba.sentence())
 		return ba.labels(), nil
 	}
 }

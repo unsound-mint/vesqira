@@ -10,6 +10,7 @@ import { Threads } from "./Threads";
 // loaded when someone presents: it brings the modal primitives (ADR 0033), which the rest of the app does not need
 const PresentView = lazy(() => import("./PresentView").then((m) => ({ default: m.PresentView })));
 import { markSeen, readSeen } from "./seen";
+import { readBase, reviewLink, saveBase } from "./reviewBase";
 import { accessRefusal } from "../api/access";
 import type { AccessRefusal } from "../api/access";
 import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
@@ -30,15 +31,8 @@ import { BoardCompare } from "./BoardCompare";
 import { BoardGrid } from "./BoardGrid";
 import s from "./BoardsView.module.css";
 import { PushButton } from "../push/PushButton";
-
-const BASE_KEY = "vesqira.reviewBase";
-const readBase = () => {
-  try {
-    return localStorage.getItem(BASE_KEY) ?? "http://127.0.0.1:8788";
-  } catch {
-    return "http://127.0.0.1:8788";
-  }
-};
+import { ShareFigureButton } from "./ShareFigureButton";
+import { FigureShares } from "./FigureShares";
 
 export function provenanceLine(p: Figure["provenance"]): string {
   const v = p.view;
@@ -66,6 +60,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
   const [hours, setHours] = useState("336");
   const [link, setLink] = useState<string | null>(null);
   const [base, setBase] = useState(readBase);
+  const [sharesKey, setSharesKey] = useState(0); // bumped when a figure is shared from a card, so the list of figure links reloads
   const [comments, setComments] = useState<Record<number, Comment[]>>({});
   const [question, setQuestion] = useState("");
   const [replaces, setReplaces] = useState(false);
@@ -160,12 +155,8 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
       const r = await publish(board.id, label, Number(hours), { question, ...(replaces && prev ? { supersedes: prev.id, reason } : {}), ...(confirmAccess ? { confirmAccess: true } : {}) });
       setPre(null);
       setRefusal(null);
-      try {
-        localStorage.setItem(BASE_KEY, base);
-      } catch {
-        /* storage may be unavailable; the link is still shown */
-      }
-      setLink(`${base.replace(/\/$/, "")}${r.reviewPath}`);
+      saveBase(base);
+      setLink(reviewLink(base, r.reviewPath));
       setSnaps(await listSnapshots(board.id));
       setErr(null);
     } catch (e) {
@@ -266,6 +257,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
                 <IconButton icon={ArrowDown} label="Move down" disabled={i === board.items.length - 1} onClick={() => run(() => moveItem(board.id, board, it.position, 1))} /></>}
                 {f ? <LinkButton icon={Download} href={`/api/figures/${f.id}/download`} download>Download PNG</LinkButton> : null}
                 {f ? <PushButton kind="figure" id={f.id} /> : null}
+                {f ? <ShareFigureButton title={f.title} label="Share this figure" getFigure={async () => f} onClosed={() => setSharesKey((k) => k + 1)} /> : null}
                 <IconButton icon={Trash2} label="Remove from board" onClick={() => run(() => removeItem(board.id, board, it.position))} />
               </div>
               {f ? <FigureRedraw figure={f} addTo={(figureId) => run(() => addToBoard(board.id, figureId))} /> : null}
@@ -366,6 +358,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
           </ul>
         </section>
       ) : null}
+      <FigureShares refreshKey={sharesKey} />
     </div>
   );
 }

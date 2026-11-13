@@ -2099,7 +2099,8 @@
     },
     "boardId": {
      "type": "integer",
-     "format": "int64"
+     "format": "int64",
+     "description": "0 for a figure shared on its own, which has no board (ADR 0071)"
     },
     "label": {
      "type": "string"
@@ -2159,6 +2160,14 @@
       "collaboration",
       "unreleased"
      ]
+    },
+    "revision": {
+     "type": "string",
+     "description": "Only on a figure shared on its own (ADR 0071): the revision of its one figure."
+    },
+    "title": {
+     "type": "string",
+     "description": "Only on a figure shared on its own: the figure's title when it was shared."
     }
    }
   },
@@ -19801,6 +19810,26 @@
      }
     }
    }
+  },
+  "ShareFigureRequest": {
+   "type": "object",
+   "description": "Unknown keys are refused.",
+   "properties": {
+    "label": {
+     "type": "string"
+    },
+    "question": {
+     "type": "string"
+    },
+    "hours": {
+     "type": "number",
+     "description": "Lifetime of the link; 0 or absent means 14 days; beyond 90 days is refused"
+    },
+    "confirmAccess": {
+     "type": "boolean",
+     "description": "The author's explicit yes to sharing a figure that uses labelled data. Without it such a share is refused with 409; it never overrides a blocked label (403)."
+    }
+   }
   }
  },
  "operations": {
@@ -30159,6 +30188,134 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/SkyPoint"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/figures/{id}/share": {
+   "summary": "Share one figure on its own: freeze it and return the review token once (ADR 0071)",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/ShareFigureRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PublishResponse"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "403": {
+     "description": "A label on the figure blocks publishing in this workspace (code publishing_blocked), or the caller may not publish",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AccessRefusal"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "The figure uses labelled data and confirmAccess was not sent (code access_confirmation_required)",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AccessRefusal"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/figures/{id}/shares": {
+   "summary": "Links made from this figure on its own, newest first",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SnapshotList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/figure-shares": {
+   "summary": "Every figure link of the workspace, newest first, so one can be found and revoked without opening its figure",
+   "parameters": [],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SnapshotList"
        }
       }
      }

@@ -853,6 +853,9 @@ type Snapshot struct {
 	Items     int       `json:"items"`
 	Question  string    `json:"question,omitempty"`
 	Access    string    `json:"access,omitempty"` // the label stated on the review page when it was published (ADR 0069)
+	// Revision and Title are set only on a figure shared on its own (ADR 0071): the figure's revision and its title when shared.
+	Revision string `json:"revision,omitempty"`
+	Title    string `json:"title,omitempty"`
 	// Outcome is what the reviewer said about this version; empty means not yet reviewed. It is not a scientific
 	// assessment of any run: that is the author's own, and kept apart.
 	Outcome      string     `json:"outcome"`
@@ -908,7 +911,6 @@ func StampAccess(frozen []FrozenItem, items []Item, a AccessLabels) {
 }
 
 func (s *Store) PublishWith(ws workspace.ID, by string, boardID int64, o PublishOptions) (Snapshot, string, error) {
-	label, ttl := o.Label, o.TTL
 	b, err := s.Board(ws, boardID)
 	if err != nil {
 		return Snapshot{}, "", err
@@ -916,18 +918,36 @@ func (s *Store) PublishWith(ws workspace.ID, by string, boardID int64, o Publish
 	if len(b.Items) == 0 {
 		return Snapshot{}, "", fmt.Errorf("%w: the board has no figures", ErrInvalid)
 	}
+	return s.publishItems(ws, by, boardID, b.Title, b.Items, o)
+}
+
+// FigureShareBoard is the board id of a snapshot that has no board: a figure shared on its own (ADR 0071). No board has id 0.
+const FigureShareBoard = 0
+
+// PublishFigure freezes one figure as a review snapshot of its own, through the same freezing, access gate, token and expiry as a
+// board (ADR 0071). The snapshot has no board; its one item is the figure with no note and no layout.
+func (s *Store) PublishFigure(ws workspace.ID, by string, figureID int64, o PublishOptions) (Snapshot, string, error) {
+	f, err := s.Figure(ws, figureID)
+	if err != nil {
+		return Snapshot{}, "", err
+	}
+	return s.publishItems(ws, by, FigureShareBoard, f.Title, []Item{{Kind: KindFigure, Figure: &f}}, o)
+}
+
+func (s *Store) publishItems(ws workspace.ID, by string, boardID int64, title string, items []Item, o PublishOptions) (Snapshot, string, error) {
+	label, ttl := o.Label, o.TTL
 	if ttl <= 0 || ttl > 90*24*time.Hour {
 		return Snapshot{}, "", fmt.Errorf("%w: expiry must be between a moment and 90 days", ErrInvalid)
 	}
 	now := time.Now()
-	fr := Frozen{BoardTitle: b.Title, Label: clip(label, 200), Question: clip(o.Question, 1000), CreatedAt: now.UTC(), ExpiresAt: now.Add(ttl).UTC(), Items: []FrozenItem{}}
-	fr.Items = freeze(b.Items, o.Jobs, now)
+	fr := Frozen{BoardTitle: title, Label: clip(label, 200), Question: clip(o.Question, 1000), CreatedAt: now.UTC(), ExpiresAt: now.Add(ttl).UTC(), Items: []FrozenItem{}}
+	fr.Items = freeze(items, o.Jobs, now)
 	if o.Access != nil {
-		a, err := o.Access(b.Items)
+		a, err := o.Access(items)
 		if err != nil {
 			return Snapshot{}, "", err
 		}
-		StampAccess(fr.Items, b.Items, a)
+		StampAccess(fr.Items, items, a)
 		fr.Access = a.Board
 	}
 	raw, err := json.Marshal(fr)
@@ -958,6 +978,26 @@ func (s *Store) PublishWith(ws workspace.ID, by string, boardID int64, o Publish
 }
 
 func (s *Store) Snapshots(ws workspace.ID, boardID int64) ([]Snapshot, error) {
+	return s.snapshotList(ws, boardID)
+}
+
+// FigureShares lists the snapshots made by sharing a figure on its own (ADR 0071), newest first. With a revision, only those of
+// that figure: a share holds the revision of its one figure, so editing the figure's title never loses the link to it.
+func (s *Store) FigureShares(ws workspace.ID, revision string) ([]Snapshot, error) {
+	all, err := s.snapshotList(ws, FigureShareBoard)
+	if err != nil || revision == "" {
+		return all, err
+	}
+	out := []Snapshot{}
+	for _, sn := range all {
+		if sn.Revision == revision {
+			out = append(out, sn)
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) snapshotList(ws workspace.ID, boardID int64) ([]Snapshot, error) {
 	rows, err := s.db.Query(`SELECT id,board_id,label,created_at,expires_at,revoked,frozen,superseded_by FROM snapshots WHERE board_id=? AND workspace_id=? ORDER BY id DESC`, boardID, ws)
 	if err != nil {
 		return nil, err
@@ -974,6 +1014,9 @@ func (s *Store) Snapshots(ws workspace.ID, boardID int64) ([]Snapshot, error) {
 		var fr Frozen
 		_ = json.Unmarshal([]byte(frozen), &fr)
 		sn.CreatedAt, sn.ExpiresAt, sn.Revoked, sn.Items, sn.Question, sn.Access = time.Unix(c, 0).UTC(), time.Unix(e, 0).UTC(), rv != 0, len(fr.Items), fr.Question, fr.Access
+		if boardID == FigureShareBoard && len(fr.Items) == 1 {
+			sn.Revision, sn.Title = fr.Items[0].Revision, fr.Items[0].Title
+		}
 		out = append(out, sn)
 	}
 	if err := rows.Err(); err != nil {

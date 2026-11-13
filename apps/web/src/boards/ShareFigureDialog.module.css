@@ -1,0 +1,50 @@
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  font-weight: var(--w-strong);
+}
+
+.body {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.err {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--text-sm);
+}
+
+.refusal {
+  padding: var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+}
+
+.more {
+  display: grid;
+  gap: var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.linkInput {
+  min-width: 0;
+  height: var(--ctl-sm);
+  padding: 0 var(--sp-3);
+  border: var(--bw) solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+}
