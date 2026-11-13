@@ -78,6 +78,12 @@
   border-radius: var(--r-md);
 }
 
+/* settings carry a sentence each, so their columns are wider than the resource fields' */
+.settings {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
+}
+
 .fields legend {
   padding: 0 var(--sp-1);
   color: var(--text-2);

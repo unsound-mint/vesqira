@@ -47,6 +47,8 @@ export function NewJob({ hosts, jobs, templates, onCreated }: { hosts: Host[]; j
     setName(`${t.id}-run`);
     setRes(startingRequest(t));
     setPin(false);
+    setRepoDir(""); // another tool has another checkout and another config
+    setConfigPath("");
     setLoaded(false);
     setVals({});
     setWas({});
@@ -130,7 +132,7 @@ export function NewJob({ hosts, jobs, templates, onCreated }: { hosts: Host[]; j
         <Button type="button" disabled={busy || !configPath || !hostId} onClick={load}>Load settings</Button>
       </div>
       {loaded ? (
-        <fieldset className={s.fields}>
+        <fieldset className={`${s.fields} ${s.settings}`}>
           <legend>Settings (from the config; change what this run needs)</legend>
           {editableKeys(t).map(field)}
         </fieldset>
