@@ -838,6 +838,23 @@ class ProjectWalk(unittest.TestCase):
         self.assertFalse(self.ask(op="canon", path=str(self.root / "z.txt"))["is_dir"])
         self.assertEqual(self.ask(op="canon", path="relative")["code"], "bad_request")
 
+    def test_modes_says_who_can_write_a_path_and_is_not_a_roots_escape(self):
+        d = self.root / "code"
+        d.mkdir(exist_ok=True)
+        d.chmod(0o755)
+        r = self.ask(op="modes", paths=[str(d), str(d / "absent")])
+        self.assertTrue(r["ok"])
+        a, b = r["paths"]
+        self.assertEqual((a["mode"], a["group_write"], a["other_write"]), ("0755", False, False))
+        self.assertFalse(b["exists"])
+        d.chmod(0o775)
+        self.assertTrue(self.ask(op="modes", paths=[str(d)])["paths"][0]["group_write"])
+        d.chmod(0o757)
+        self.assertTrue(self.ask(op="modes", paths=[str(d)])["paths"][0]["other_write"])
+        d.chmod(0o755)
+        for bad in ([], "x", ["relative"], [str(d)] * 9, [1]):
+            self.assertEqual(self.ask(op="modes", paths=bad)["code"], "bad_request", bad)
+
     def test_readtext_can_return_just_the_start_of_a_file(self):
         t = self.root / "job.sh"
         t.write_text("#!/bin/bash\n#SBATCH -n 4\n" + "x" * 100)

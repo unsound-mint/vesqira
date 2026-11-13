@@ -416,16 +416,54 @@ func SetConfig(t *jobtemplate.Template, text string, values map[string]string, o
 // InputKeyOf is the config key that names the input cube ("input_file" in a VGT config, "input" in a ROHSA config).
 func InputKeyOf(t *jobtemplate.Template) string { return t.Config.InputKey }
 
-// InputPathFor is the input cube path a config names, or "" when it names none that is a string.
+// InputPathFor is the input cube path a config names, or "" when it names none that is a string (or, for a by-name template, names
+// it more than once: see InputPathOnce).
 func InputPathFor(t *jobtemplate.Template, config string) string {
-	var cfg struct {
-		Input map[string]any `toml:"input"`
+	p, _ := InputPathOnce(t, config)
+	return p
+}
+
+// InputPathOnce reads the input path the way the tool does. A template that edits by name reads the key in any table outside its
+// guard table, so the key is looked for in every table (nested ones too); a file that names it in more than one place is refused,
+// because the tool's own choice among them is not one Vesqira can vouch for. Any other template reads the one [input] table.
+// It returns "" and no error when the config names no input string.
+func InputPathOnce(t *jobtemplate.Template, config string) (string, error) {
+	var raw map[string]any
+	if _, err := toml.Decode(config, &raw); err != nil {
+		return "", nil
 	}
-	if _, err := toml.Decode(config, &cfg); err != nil {
-		return ""
+	key := t.Config.InputKey
+	if t.Config.Edit != jobtemplate.EditByName {
+		in, _ := raw["input"].(map[string]any)
+		s, _ := in[key].(string)
+		return s, nil
 	}
-	s, _ := cfg.Input[t.Config.InputKey].(string)
-	return s
+	guard := ""
+	if g := t.Config.Guard; g != nil {
+		guard = g.Table
+	}
+	var found []any
+	var walk func(m map[string]any, top bool)
+	walk = func(m map[string]any, top bool) {
+		for k, v := range m {
+			if sub, ok := v.(map[string]any); ok {
+				if !(top && k == guard) {
+					walk(sub, false)
+				}
+			} else if k == key {
+				found = append(found, v)
+			}
+		}
+	}
+	walk(raw, true)
+	if len(found) > 1 {
+		return "", fmt.Errorf("%w: the config names %q in more than one table, so which one the tool reads is not checked here", ErrInvalid, key)
+	}
+	if len(found) == 1 {
+		s, _ := found[0].(string)
+		return s, nil
+	}
+	return "", nil
 }
 
 // SetInputPath returns config text with the input path replaced and nothing else changed (the other lines stay byte for byte).

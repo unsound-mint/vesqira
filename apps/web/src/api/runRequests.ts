@@ -88,6 +88,7 @@ const GRANT_TEXT: Record<GrantState, string> = {
   waiting: "waiting for a free slot under the standing approval",
   pending: "the group server did not answer the claim yet; tried again at the next check",
   used: "submitted without a click under the standing approval",
+  stopped: "claimed under the standing approval, but not submitted (see the note)",
   unknown: "the standing approval it named is not one this computer has for the requester",
   revoked: "the standing approval was revoked",
   expired: "the standing approval has expired",

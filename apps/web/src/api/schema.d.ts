@@ -11793,10 +11793,10 @@ export interface components {
             /** @description the standing approval it was submitted under */
             grantId?: string;
             /**
-             * @description empty (no standing approval named, or not decided yet), waiting for a slot, pending a server answer, used, or the code of why it waits for the key holder
+             * @description empty (no standing approval named, or not decided yet), waiting for a slot, pending a server answer, used, stopped (claimed but not submitted), or the code of why it waits for the key holder
              * @enum {string}
              */
-            grantState?: "" | "waiting" | "pending" | "used" | "unknown" | "revoked" | "expired" | "stale" | "outside" | "grid" | "base" | "input" | "commit" | "budget" | "edited";
+            grantState?: "" | "waiting" | "pending" | "used" | "stopped" | "unknown" | "revoked" | "expired" | "stale" | "outside" | "grid" | "base" | "input" | "commit" | "budget" | "edited";
             /** @description the key holder's computer's own sentence about the standing approval (may name a path; never sent to the server) */
             grantNote?: string;
         };

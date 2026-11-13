@@ -82,7 +82,10 @@ func (s *Server) applyGrants(ctx context.Context, c *groupClient, l outbox.Link)
 	if err != nil {
 		return
 	}
+	s.grantDown = map[int64]bool{}
+	defer func() { s.grantDown = nil }()
 	s.settleGrantUses()
+	s.retryGrantSubmits(ctx, c, l)
 	ms, err := s.Relayed.Undecided(l.Origin)
 	if err != nil {
 		return
@@ -122,7 +125,8 @@ func (s *Server) grantVerdict(ctx context.Context, st relay.LocalState, m relay.
 		return grantFit{g: g}, relay.GrantRevoked, "The standing approval it names was revoked on " + g.RevokedAt.Format("2006-01-02") + "."
 	case !g.ExpiresAt.After(now):
 		return grantFit{g: g}, relay.GrantExpired, "The standing approval it names expired on " + g.ExpiresAt.Format("2006-01-02") + "."
-	case m.Request.CreatedAt.Before(g.CreatedAt):
+	case m.Request.CreatedAt.Before(g.CreatedAt) || m.ReceivedAt.Before(g.CreatedAt):
+		// the server's own CreatedAt can be forged, so the time this computer first stored the request counts as well
 		return grantFit{g: g}, relay.GrantStale, "It was filed before the standing approval was made, so it is not taken as one made under it."
 	case !m.Request.ExpiresAt.After(now) || !relay.IsOpen(m.ServerState):
 		return grantFit{g: g}, relay.GrantStale, "It is no longer open on the group server (" + m.ServerState + ")."
@@ -157,7 +161,15 @@ func (s *Server) grantVerdict(ctx context.Context, st relay.LocalState, m relay.
 	if !ok || t == nil {
 		return grantFit{g: g}, relay.GrantBase, "The draft kept no settings to check."
 	}
-	input := jobs.InputPathFor(t, req.BaseConfigText)
+	if why, answered := s.codeFolderRefusal(ctx, h, []string{req.RepoDir}); !answered {
+		return grantFit{g: g}, relay.GrantStatePending, "The host " + h.Name + " did not answer, so its code folder could not be checked; tried again at the next check."
+	} else if why != "" {
+		return grantFit{g: g}, relay.GrantOutside, "Another account can write where the code runs, so a standing approval does not apply: " + why + "."
+	}
+	input, ierr := jobs.InputPathOnce(t, req.BaseConfigText)
+	if ierr != nil {
+		return grantFit{g: g}, relay.GrantInput, "The base run's config is not one a standing approval can check: " + strings.TrimPrefix(ierr.Error(), jobs.ErrInvalid.Error()+": ") + "."
+	}
 	if v, set := req.Set[jobs.InputKey(j.Template)]; set {
 		input = v
 	}
@@ -238,7 +250,8 @@ func (s *Server) applyGrant(ctx context.Context, c *groupClient, l outbox.Link, 
 		resolved = fmt.Sprintf("The base run's input %s resolved to %s on the host; the submitted script names that path.", asked, fit.real)
 	}
 	g, j, cpus, minutes := fit.g, fit.j, fit.cpus, fit.minutes
-	took, err := s.Relayed.Reserve(g.ID, m.ID, j.ID, cpus, minutes, j.ScriptHash)
+	reserved := j.ScriptHash // the hash that was checked; it is what is reserved, claimed, audited and the only one submitted
+	took, err := s.Relayed.Reserve(g.ID, m.ID, j.ID, cpus, minutes, reserved)
 	if err != nil {
 		log.Printf("relay grant: %v", err)
 		return
@@ -289,18 +302,10 @@ func (s *Server) applyGrant(ctx context.Context, c *groupClient, l outbox.Link, 
 	ctx = localCtx(ctx)
 	s.audit(ctx, "run request submitted under a standing approval", "relayed", m.ID,
 		fmt.Sprintf("request %d from %s, standing approval %s, job %d, input %s, script sha256 %s", m.ServerID, m.Request.Requester, g.ID, j.ID, fit.real, j.ScriptHash))
-	h, err := s.HostDB.Get(j.HostID)
-	if err != nil {
-		_ = s.Relayed.SetGrantState(m.ID, g.ID, relay.GrantStateUsed, "Claimed, but the host no longer exists; nothing was submitted.")
-		return
+	if s.grantHook != nil {
+		s.grantHook(m)
 	}
-	j, _ = s.Jobs.Get(j.ID)
-	t := true
-	if _, aerr := s.submitDraft(ctx, j, h, j.ScriptHash, &t); aerr != nil {
-		_ = s.Relayed.SetGrantState(m.ID, g.ID, relay.GrantStateUsed, "Claimed under the standing approval, but the submission failed: "+aerr.Msg+" Approve it again yourself.")
-	}
-	m, _ = s.Relayed.Get(m.ID)
-	s.reportOne(c, l, m)
+	s.submitGranted(ctx, c, l, m, g, reserved, 0)
 }
 
 // resolveGrantInput asks the host where a granted request's input really is. A refusal (outside the host's source roots, not a
@@ -309,9 +314,7 @@ func (s *Server) resolveGrantInput(ctx context.Context, h hosts.Host, input stri
 	if s.Remote == nil {
 		return "", relay.GrantStatePending, "The host's input could not be checked on this computer; tried again at the next check."
 	}
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "resolve", "path": input})
+	rep, err := s.grantHostDo(ctx, h, map[string]any{"op": "resolve", "path": input}, 60*time.Second)
 	var re *worker.RequestError
 	switch {
 	case errors.As(err, &re):
@@ -558,6 +561,14 @@ func (s *Server) createGrant(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, "once their links are followed on the host: "+relay.Sentence(err))
 		return
 	}
+	// a person who can write in the code folder (or the Julia depot inside it) can plant code that runs as the key holder
+	if why, answered := s.codeFolderRefusal(r.Context(), h, s.grantRepoDirs(h.ID, in.Template)); !answered {
+		fail(w, 502, "the host is not reachable (is the VPN up?), so its code folder could not be checked")
+		return
+	} else if why != "" {
+		fail(w, 422, "another account can write where the code runs, so it cannot be run without a click: "+why+". Remove the write permission for group and others, then make the standing approval")
+		return
+	}
 	g, err = s.Relayed.CreateGrant(l.Origin, g)
 	if err != nil {
 		log.Printf("relay grant: %v", err)
@@ -570,16 +581,17 @@ func (s *Server) createGrant(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, s.grantViewOf(g))
 }
 
-// revokeGrant revokes a grant at once. It takes the pass's lock, so a revocation never lands between a reservation and sbatch.
-// Jobs already queued or running under it are listed, never cancelled.
+// revokeGrant revokes a grant at once. It does not take the pass's lock: a pass can hold it for minutes (a host that does not
+// answer costs a timeout), and revoking must not wait. The revocation is one write; Reserve reads it in the same statement that
+// takes a slot, and the pass reads it again just before it sends a reserved draft (submitGrantedJob), so a request that has not
+// reached sbatch by then is not submitted. A submission already inside sbatch cannot be recalled. Jobs already queued or running
+// under the grant are listed, never cancelled.
 func (s *Server) revokeGrant(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !relay.ValidGrantID(id) {
 		fail(w, 404, "not found")
 		return
 	}
-	s.relayMu.Lock()
-	defer s.relayMu.Unlock()
 	g, err := s.Relayed.GrantByID(id)
 	if err != nil {
 		fail(w, 404, "not found")
