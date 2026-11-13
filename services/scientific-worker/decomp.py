@@ -45,6 +45,8 @@ MAX_GAUSSIANS = rohsa.MAX_GAUSSIANS
 TILE_ELEMENTS = 1 << 21              # values per parameter in one tile of rows read from FITS maps
 MAX_MAP_FILES = 3 * MAX_GAUSSIANS
 MAX_MAP_AXIS = 1 << 20
+MAX_HDUS = 4096                      # HDUs whose headers are looked at when an HDU is named
+MAX_EXTVER = 1 << 20
 WIDTH_KINDS = ("sigma", "dispersion", "fwhm")
 CHANNEL = "channel"
 GRID = "grid"
@@ -120,11 +122,16 @@ def parse(decl) -> dict:
             _bad("maps must say where the amplitude, centre and width are")
         m_out = {}
         for k, m in maps.items():
-            m = _only(m, {"hdu"}, f"maps.{k}")
+            m = _only(m, {"hdu", "extver"}, f"maps.{k}")
             h = m.get("hdu", 0)
-            if isinstance(h, bool) or not (isinstance(h, int) and 0 <= h < 1000 or isinstance(h, str) and 0 < len(h) <= 68 and h.isprintable()):
+            if isinstance(h, bool) or not (isinstance(h, int) and 0 <= h < 1000 or isinstance(h, str) and 0 < len(h.strip()) <= 68 and h.isprintable()):
                 _bad(f"maps.{k}.hdu must be an HDU number or name")
-            m_out[k] = {"hdu": h}
+            m_out[k] = {"hdu": h.strip() if isinstance(h, str) else h}
+            v = m.get("extver")
+            if v is not None:
+                if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= MAX_EXTVER or not isinstance(h, str):
+                    _bad(f"maps.{k}.extver is the EXTVER (a whole number from 1) of an HDU named by hdu; a numbered HDU has none")
+                m_out[k]["extver"] = v
         axis = src.get("componentAxis")
         if axis is not None and (isinstance(axis, bool) or axis not in (1, 2, 3)):
             _bad("componentAxis must be the FITS axis 1, 2 or 3 that counts components, or absent when each component has its own map")
@@ -337,12 +344,7 @@ class MapsSource:
                 except Exception:
                     raise Bad("unsupported", f"the {p} map is not a readable FITS file") from None
                 try:
-                    h = self.decl["source"]["maps"][p]["hdu"]
-                    try:
-                        hdu = hl[h]
-                    except (IndexError, KeyError):
-                        raise Bad("unsupported", f"the {p} map has no HDU {h!r}") from None
-                    yield hdu
+                    yield find_hdu(hl, self.decl["source"]["maps"][p], p)
                 finally:
                     hl.close()
         return cm()
@@ -457,6 +459,52 @@ class MapsSource:
             yy, xx = np.meshgrid(np.arange(y0, y1, dtype=np.int64), np.arange(nx, dtype=np.int64), indexing="ij")
             yy, xx = np.repeat(yy.ravel(), n), np.repeat(xx.ravel(), n)       # pixel-major, component fastest
             yield xx, yy, a.ravel(), c.ravel(), w.ravel(), present.ravel()
+
+
+def find_hdu(hl, spec: dict, p: str):
+    """The image HDU a map declaration names. A number is an index into the file. A name is matched on EXTNAME (case-insensitively, as
+    astropy does) and, when `extver` is declared, on EXTVER too (a card that is absent counts as 1, the FITS default). A name that
+    several HDUs carry, or none does, is a refusal that says so: the first match is never taken on a guess. Only headers are looked
+    at, up to MAX_HDUS."""
+    from astropy.io import fits
+    h, ver = spec["hdu"], spec.get("extver")
+    if isinstance(h, int):
+        try:
+            hdu = hl[h]
+        except IndexError:
+            raise Bad("unsupported", f"the {p} map has no HDU number {h}") from None
+    else:
+        want, found = h.strip().upper(), []
+        for i in range(MAX_HDUS):
+            try:
+                cand = hl[i]
+            except IndexError:
+                break
+            name = cand.header.get("EXTNAME")
+            if not isinstance(name, str) or name.strip().upper() != want:
+                continue
+            raw = cand.header.get("EXTVER", 1)
+            found.append((i, raw if isinstance(raw, int) and not isinstance(raw, bool) else None))
+        else:
+            raise Bad("unsupported", f"the {p} map's file has more than {MAX_HDUS} HDUs; HDU {h!r} is not looked for in it")
+        shown = ", ".join(f"HDU {i} (EXTVER {v if v is not None else 'not a number'})" for i, v in found)
+        if ver is not None:
+            hit = [i for i, v in found if v == ver]
+            if not hit:
+                raise Bad("unsupported", f"the {p} map's file has no HDU named {h!r} with EXTVER {ver}" + (f"; it has {shown}" if found else ""))
+            if len(hit) > 1:
+                raise Bad("unsupported", f"the {p} map's file has {len(hit)} HDUs named {h!r} with EXTVER {ver} ({shown}); the name does not pick one")
+            idx = hit[0]
+        else:
+            if not found:
+                raise Bad("unsupported", f"the {p} map's file has no HDU named {h!r}")
+            if len(found) > 1:
+                raise Bad("unsupported", f"the {p} map's file has {len(found)} HDUs named {h!r} ({shown}); declare which with extver, the first is not taken")
+            idx = found[0][0]
+        hdu = hl[idx]
+    if not isinstance(hdu, (fits.PrimaryHDU, fits.ImageHDU, fits.CompImageHDU)):
+        raise Bad("unsupported", f"the {p} map's HDU is not an image")
+    return hdu
 
 
 def _check_sky_grid(h, grid_header, p: str) -> str | None:

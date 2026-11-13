@@ -229,7 +229,7 @@ func (s *Server) findRemoteROHSA(ctx context.Context, h hosts.Host, dir string) 
 		}
 		if real == "" {
 			if it.depth == 0 {
-				return nil, false, errors.New("not available")
+				return nil, false, errRemoteRefused // not a folder there, or not one the worker may read: a refusal, not a silent host
 			}
 			continue
 		}
@@ -283,6 +283,8 @@ func (s *Server) rohsaTargetRemote(ctx context.Context, h hosts.Host, p string) 
 	switch {
 	case err != nil && errors.Is(err, context.Canceled):
 		return "", 499, "canceled"
+	case errors.Is(err, errRemoteRefused):
+		return "", 403, "not available"
 	case err != nil && silent(err):
 		return "", 502, "the host is not reachable (is the VPN up?)"
 	case err != nil:

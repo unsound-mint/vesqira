@@ -947,6 +947,9 @@ def complete_names(req: dict) -> dict:
     return out
 
 
+STAT_MANY_MAX = 192                                  # decomp.MAX_MAP_FILES
+
+
 def host_op(op: str, req: dict) -> tuple[dict, bytes]:
     """Operations used when this worker runs on a remote host (and by the local API for registration)."""
     if op == "ping":
@@ -960,6 +963,16 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         return walk_page(req), b""
     if op == "canon":
         return canonical_dir(path), b""
+    if op == "stat_many":
+        # the size and time of a few files at once (the map files of a decomposition), each authorized and opened like any source
+        paths = req.get("paths")
+        if not isinstance(paths, list) or not 1 <= len(paths) <= STAT_MANY_MAX:
+            raise Refused("bad_request", "bad request")
+        files = []
+        for p in paths:
+            st = stat_source(authorize(p))
+            files.append({"size": st.st_size, "mtime_ns": st.st_mtime_ns})
+        return {"ok": True, "op": op, "nbytes": 0, "files": files}, b""
     if op == "list":
         real = authorize(path, "dir")
         entries = []
@@ -1298,7 +1311,8 @@ def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
         if not isinstance(v, str) or not os.path.isabs(v) or len(v) > 4096 or "\0" in v:
             raise Refused("bad_request", "bad request")
     real_crop, real_dat = authorize(req["path"]), authorize(req["dat_path"], decomp.dat_want(req))
-    cache_dir = req["cache_dir"] if ROOTS is None else remote_cache_dir(real_dat)
+    # only a text table keeps a sidecar index; FITS maps are read in place by pixel, so a host writes nothing for them
+    cache_dir = None if decomp.dat_want(req) == "dir" else req["cache_dir"] if ROOTS is None else remote_cache_dir(real_dat)
     c = cube_for(real_crop)
     if c.chan is None or c.channels < 2:
         raise Refused("unsupported", "the crop has no spectral axis of at least two channels")
@@ -1391,7 +1405,7 @@ def _handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "channel must be a non-negative integer")
         import masks as mk
         return mk.mask_plane(path, ch)
-    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "fingerprint", "fingerprint_full"):
+    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "fingerprint", "fingerprint_full", "stat_many"):
         return host_op(op, req)
     if isinstance(op, str) and op.startswith("catalog_"):
         return catalog_op(op, path, req)

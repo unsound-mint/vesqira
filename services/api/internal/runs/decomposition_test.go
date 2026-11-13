@@ -53,6 +53,15 @@ func TestDecompositionDeclarationsThatClaimTooMuchAreRefused(t *testing.T) {
 		"a pattern without a group": func(d map[string]any) {
 			d["source"].(map[string]any)["maps"].(map[string]any)["width"] = map[string]any{"pattern": "^w\\.fits$"}
 		},
+		"extver on a numbered hdu": func(d map[string]any) {
+			d["source"].(map[string]any)["maps"].(map[string]any)["width"] = map[string]any{"file": "w.fits", "hdu": 1, "extver": 1}
+		},
+		"extver with no hdu": func(d map[string]any) {
+			d["source"].(map[string]any)["maps"].(map[string]any)["width"] = map[string]any{"file": "w.fits", "extver": 1}
+		},
+		"extver below 1": func(d map[string]any) {
+			d["source"].(map[string]any)["maps"].(map[string]any)["width"] = map[string]any{"file": "w.fits", "hdu": "W", "extver": 0}
+		},
 		"a file name with a folder": func(d map[string]any) {
 			d["source"].(map[string]any)["maps"].(map[string]any)["width"] = map[string]any{"file": "../w.fits"}
 		},
@@ -63,6 +72,22 @@ func TestDecompositionDeclarationsThatClaimTooMuchAreRefused(t *testing.T) {
 	}
 	if err := mapsProfile(t, func(map[string]any) {}); err != nil {
 		t.Errorf("the synthetic profile itself: %v", err)
+	}
+}
+
+func TestAnHDUNameAndItsExtverAreSentToTheWorker(t *testing.T) {
+	data, _ := os.ReadFile("testdata/synthetic_maps_profile.json")
+	reg, err := LoadProfiles(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := reg.DecompositionOf(reg.ByName("SynthDecomp-hdus"))
+	maps := d.Declaration()["source"].(map[string]any)["maps"].(map[string]any)
+	if got := maps["amplitude"].(map[string]any); got["hdu"] != "AMP" || got["extver"] != 1 {
+		t.Errorf("amplitude: %v", got)
+	}
+	if got := maps["centre"].(map[string]any); got["hdu"] != "CENTRE" || got["extver"] != nil {
+		t.Errorf("centre (no EXTVER declared, so none is sent): %v", got)
 	}
 }
 
