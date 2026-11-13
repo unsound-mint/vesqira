@@ -1228,7 +1228,7 @@ def review_inputs(args):
     dat = params.get("dat_path")
     if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= gr.MAX_GAUSSIANS or not isinstance(dat, str) or not os.path.isabs(dat) or "\0" in dat:
         fail("the decomposition review needs the .dat's path and the number of Gaussians")
-    dat = authorize(dat)
+    dat = authorize(dat, decomp.dat_want(params))
     c = open_cube(args.input)
     if isinstance(params.get("decomposition"), dict) and "\0" in json.dumps(params["decomposition"]):
         fail("the decomposition declaration is not valid")

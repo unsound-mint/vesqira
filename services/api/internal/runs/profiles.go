@@ -56,8 +56,10 @@ type Profile struct {
 	Record      *RecordSpec         `json:"record"`
 	Files       map[string]FileSpec `json:"files"`
 	Outputs     *OutputSpec         `json:"outputs"`
-	recordRe    *regexp.Regexp      `json:"-"`
-	fileRe      map[string]*regexp.Regexp
+	// Decomposition declares where the tool writes per-pixel Gaussian components and what each field means (slice 4).
+	Decomposition *Decomposition `json:"decomposition"`
+	recordRe      *regexp.Regexp `json:"-"`
+	fileRe        map[string]*regexp.Regexp
 }
 
 // RecordSpec is how a run of the tool is recognised: a record file (by name or by pattern) and, inside it, a key.
@@ -157,6 +159,14 @@ func LoadProfiles(data []byte) (*Registry, error) {
 }
 
 func (p *Profile) compile(reg *Registry) error {
+	if d := p.Decomposition; d != nil {
+		if err := d.compile(); err != nil {
+			return fmt.Errorf("decomposition: %w", err)
+		}
+		if d.Source.Kind == SourceFitsMaps && (p.Record == nil || d.Crop == "") {
+			return errors.New("decomposition: a profile whose components are FITS maps needs a record, and the key in it that names the cube the fit was made on")
+		}
+	}
 	if r := p.Record; r != nil {
 		if (r.File == "") == (r.Pattern == "") {
 			return errors.New("a record names a file or a pattern, not both and not neither")

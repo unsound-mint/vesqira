@@ -333,7 +333,7 @@ class MapsSource:
         def cm():
             with source_file(self.files[p][k]) as (_, f):
                 try:
-                    hl = fits.open(f, memmap=False, lazy_load_hdus=True)
+                    hl = fits.open(f, mode="denywrite", memmap=False, lazy_load_hdus=True)
                 except Exception:
                     raise Bad("unsupported", f"the {p} map is not a readable FITS file") from None
                 try:
@@ -548,6 +548,14 @@ def coerce(x, grid):
         return x
     d = parse(ROHSA_DECLARATION)
     return Decomposition(d, TableSource(d, x), grid)
+
+
+def dat_want(req: dict) -> str:
+    """What `dat_path` must be for this request: the run's folder for FITS maps, else the .dat file (a malformed declaration is left
+    to open_decomposition to refuse)."""
+    spec = req.get("decomposition")
+    src = spec.get("declaration", {}).get("source") if isinstance(spec, dict) and isinstance(spec.get("declaration"), dict) else None
+    return "dir" if isinstance(src, dict) and src.get("kind") == "fits_maps" else "file"
 
 
 def open_decomposition(req: dict, grid, nx: int, ny: int, n: int, dat_path: str, authorize, grid_header=None) -> Decomposition:

@@ -191,6 +191,7 @@ func (s *Server) importROHSA(ctx context.Context, src rohsaSource) (runs.Run, in
 	if err := ctx.Err(); err != nil {
 		return runs.Run{}, 502, "the import was interrupted before it finished; nothing was saved"
 	}
+	info.Decomposition = &runs.DecompRecord{Profile: parsed.Profile} // how the components are read: this profile's declaration
 	run, err := s.Runs.Save(wsCtx(ctx), actorID(ctx), src.Key(), parsed.Parsed, outs)
 	if err != nil {
 		log.Printf("runs: %v", err)
@@ -408,6 +409,8 @@ type rohsaTask struct {
 	datSize, datMtime int64
 	host              *hosts.Host // nil for a fit on this machine
 	key               cacheKey
+	// decl is how the worker reads the components: the declaration of the run's profile, with the map files of a FITS maps run.
+	decl map[string]any
 }
 
 func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int64) (rohsaTask, bool) {
@@ -469,7 +472,27 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 		return t, false
 	}
 	t = rohsaTask{run: rr, crop: crop, cropReal: cropReal, key: key}
+	decl, why := s.decompositionRequest(rr)
+	if why != "" {
+		fail(w, 409, why)
+		return t, false
+	}
+	t.decl = decl
 	if rr.Info.HostID == 0 {
+		if files, isMaps := decl["files"].(map[string][]string); isMaps {
+			// FITS maps: the run's folder is what the worker is given, and the files in it are fingerprinted instead of one .dat
+			folder, err := s.roots(wsOf(r)).ResolveDir(rr.DatPath)
+			if err != nil {
+				fail(w, 403, err.Error())
+				return t, false
+			}
+			t.datReal = folder
+			if t.datSize, t.datMtime, err = mapsFingerprint(folder, files); err != nil {
+				fail(w, 409, "a map file of this run is no longer in its folder")
+				return t, false
+			}
+			return t, true
+		}
 		datReal, err := s.roots(wsOf(r)).Resolve(rr.DatPath)
 		if err != nil {
 			fail(w, 403, err.Error())
@@ -548,7 +571,7 @@ func (s *Server) rohsaDo(w http.ResponseWriter, r *http.Request, t rohsaTask, re
 // request is what the worker is asked. A host's worker is never told where to cache: it keeps the index in its own account's
 // cache folder (plane_worker.remote_cache_dir), so no request can make it write anywhere else.
 func (t rohsaTask) request(op string, s *Server) map[string]any {
-	req := map[string]any{"op": op, "path": t.cropReal, "dat_path": t.datReal, "n_gauss": t.run.Info.NGauss}
+	req := map[string]any{"op": op, "path": t.cropReal, "dat_path": t.datReal, "n_gauss": t.run.Info.NGauss, "decomposition": t.decl}
 	if t.host == nil {
 		req["cache_dir"] = s.CacheDir
 	}

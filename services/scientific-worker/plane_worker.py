@@ -1297,7 +1297,7 @@ def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
         v = req.get(key)
         if not isinstance(v, str) or not os.path.isabs(v) or len(v) > 4096 or "\0" in v:
             raise Refused("bad_request", "bad request")
-    real_crop, real_dat = authorize(req["path"]), authorize(req["dat_path"])
+    real_crop, real_dat = authorize(req["path"]), authorize(req["dat_path"], decomp.dat_want(req))
     cache_dir = req["cache_dir"] if ROOTS is None else remote_cache_dir(real_dat)
     c = cube_for(real_crop)
     if c.chan is None or c.channels < 2:
