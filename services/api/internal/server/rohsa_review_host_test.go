@@ -364,7 +364,7 @@ func TestReviewOnAHostRefusesAnOldWorkerAndStopsWaitingForASilentOne(t *testing.
 	e.srv.Analysis.Timeout = 2 * time.Second
 	t0 := time.Now()
 	r, b := postJSON(t, base+"/sigmav", diagram)
-	if r.StatusCode != 504 || !strings.Contains(string(b), "stopped waiting") || time.Since(t0) > 30*time.Second {
+	if r.StatusCode != 504 || !strings.Contains(string(b), "stopped waiting") || time.Since(t0) > 8*time.Second {
 		t.Errorf("a silent host: %d %s after %s", r.StatusCode, b, time.Since(t0))
 	}
 

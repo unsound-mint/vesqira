@@ -94,6 +94,7 @@ func (m *Manager) hostProgram(ctx context.Context, h Host, body map[string]any, 
 	cmd.Stdin = bytes.NewReader(append(req, '\n'))
 	out := capped{max: MaxHostRunReply}
 	cmd.Stdout = &out
+	killTree(cmd)
 	runErr := cmd.Run()
 	if ctx.Err() != nil {
 		return nil, ErrHostRunTimeout

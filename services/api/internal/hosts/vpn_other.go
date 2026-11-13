@@ -6,10 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 )
 
 // killTree does nothing extra where there are no process groups: a timeout kills the program itself.
-func killTree(*exec.Cmd) {}
+func killTree(cmd *exec.Cmd) { cmd.WaitDelay = 2 * time.Second }
 
 func detach(*exec.Cmd) {}
 
