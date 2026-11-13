@@ -952,7 +952,6 @@ func AddColumn(db interface {
 	return err
 }
 
-
 // skyFigures lets figures.kind be 'sky' (ADR 0072). The kind list is a CHECK, which SQLite cannot change in place, so the table is
 // rebuilt as crossRunFigures did: every figure keeps its id, revision, picture, text and workspace, and the AUTOINCREMENT counter is
 // carried over so an id that was once used is never handed out again. Nothing references figures by a foreign key. A catalog without
