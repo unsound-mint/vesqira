@@ -160,7 +160,7 @@ test("round 2 tells the reviewer what changed and carries round 1's comment", as
     await second.getByText(/Changed since round 1/).click();
     await expect(second.getByText("Added: Rounds C", { exact: true })).toBeVisible();
     await expect(page.getByRole("listitem").filter({ hasText: "Round 1: First draft" })).toBeVisible();
-    await expectNoAxeViolations(page, ["heading-order"]);
+    await expectNoAxeViolations(page);
     await page.screenshot({ path: test.info().outputPath("rounds-history-dark.png") });
 
     // revoking round 1 takes its text and comments out of the new link at once; the new round itself stays readable

@@ -90,7 +90,7 @@ test("share the view from the viewer, open it as a reviewer, then revoke it", as
   const shared = page.getByRole("region", { name: "Shared figures" });
   await expect(shared).toContainText("Shared peak");
   await expect(shared).toContainText("Active");
-  await expectNoAxeViolations(page, ["heading-order"]);
+  await expectNoAxeViolations(page);
   await shared.getByRole("button", { name: /^Revoke the link to Shared peak, For the call/ }).first().click();
   await expect(shared.getByText("Revoked").first()).toBeVisible();
   await page.screenshot({ path: test.info().outputPath("shared-figures-dark.png") });
