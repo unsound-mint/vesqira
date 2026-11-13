@@ -12,7 +12,7 @@ The catalog, figure previews, derived results and managed copies live in one dat
 Copying the directory by hand (inconsistent while the server writes); including the referenced FITS cubes (gigabytes, and the originals stay the reference).
 
 ## Consequences
-Implemented as commands; no screen. Secrets are not in the catalog (ssh keys are never handled; review tokens are stored as hashes), but host aliases, paths and notes are, so treat an archive as private.
+Implemented as commands; no screen. Secrets are not in the catalog (ssh keys are never handled; review tokens are stored as hashes), but host aliases, paths and notes are, so treat an archive as private. Known gap: report attachments (`attachments/`) are not in the archive, so a restored or imported report loses its images (follow-up). `vesqira-api multiuser import` reads this format into a group server (ADR 0050, slice 4).
 
 ## Validation
 Tests: round trip into an empty directory with contents, permissions (managed copies stay read-only) and the catalog compared; a modified file is caught by its checksum and leaves nothing behind; a manifest entry that climbs out of the directory and non-archives are refused; restoring over a catalog is refused. A manual run of export, restore and a second restore against a running server's data directory.

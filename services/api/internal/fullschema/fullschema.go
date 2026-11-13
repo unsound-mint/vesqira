@@ -1,5 +1,5 @@
 // Package fullschema opens every store main.go opens on the catalog file, so a test sees the whole schema a running
-// install has. Only tests import it. Add a store here when main.go gains one (main's TestFullSchemaOpensEveryStoreMainOpens
+// install has. Only tests and `multiuser import` (which brings an older export's copy to the current schema) import it. Add a store here when main.go gains one (main's TestFullSchemaOpensEveryStoreMainOpens
 // fails otherwise).
 package fullschema
 
