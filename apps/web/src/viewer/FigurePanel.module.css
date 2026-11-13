@@ -38,3 +38,9 @@
   color: var(--err);
   font-size: var(--text-sm);
 }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}

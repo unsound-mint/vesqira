@@ -9,6 +9,7 @@ import { defaultFigureTitle, saveViewFigure } from "./saveFigure";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { FigureRedraw } from "../boards/FigureRedraw";
+import { ShareFigureButton } from "../boards/ShareFigureButton";
 import s from "./FigurePanel.module.css";
 
 /** Saves what is on screen as a figure that keeps its source, parameters and provenance (pinned evidence). */
@@ -54,6 +55,14 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
     }
   }
 
+  const cannotSave = (kind === "spectrum" && !canSpectrum) || (kind !== "spectrum" && Boolean(v.plane?.head.preview));
+
+  async function shareNow(): Promise<Figure> {
+    const f = await saveViewFigure(v, dataset, { title, caption, kind, datasets, compass });
+    setSaved(f);
+    return f;
+  }
+
   async function addIt() {
     if (!saved) return;
     try {
@@ -92,7 +101,11 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
           <p role="note" className={s.note}>{compassNote(view.compass)}</p>
         )
       ) : null}
-      <Button variant="primary" onClick={save} disabled={busy || (kind === "spectrum" && !canSpectrum) || (kind !== "spectrum" && Boolean(v.plane?.head.preview))}>{busy ? "Saving…" : "Save as figure"}</Button>
+      <div className={s.actions}>
+        <Button variant="primary" onClick={save} disabled={busy || cannotSave}>{busy ? "Saving…" : "Save as figure"}</Button>
+        {/* freezes what is on screen now (saving it first; identical evidence is one figure) and makes a review link, no board needed */}
+        <ShareFigureButton title={title.trim() || defaultTitle} disabled={busy || cannotSave} getFigure={shareNow} />
+      </div>
       {kind !== "spectrum" && v.plane?.head.preview ? <p className={s.note}>This is a reduced preview. The figure can be saved when the full plane has loaded.</p> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
       <p className={s.note}>The figure keeps the picture as drawn, the facts it came from (file name, size, time, declared header values, channel, region, display settings) and the caveats. It never contains the file path.</p>
@@ -106,6 +119,7 @@ export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Data
           {!boardId ? <Input label="New board name" value={newBoard} onChange={(e) => setNewBoard(e.target.value)} /> : null}
           <Button onClick={addIt}>Add to board</Button>
           {note ? <p className={s.note}>{note}</p> : null}
+          <ShareFigureButton title={saved.title} label="Share this figure" getFigure={async () => saved} />
           <FigureRedraw figure={saved} only="svg" />
         </div>
       ) : null}

@@ -102,11 +102,11 @@ func scopeLookup(kind, value, accountID string, selected workspace.ID) (string, 
 	case "attachments/sha":
 		q = `SELECT t.workspace_id, t.created_by, m.role FROM attachments t
 			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.sha=?`
-	case "snapshots/id": // a snapshot belongs to its board, and "own" (publish, revoke, reply, resolve) means own board
-		q = `SELECT t.workspace_id, COALESCE(b.created_by,''), m.role FROM snapshots t LEFT JOIN boards b ON b.id=t.board_id AND b.workspace_id=t.workspace_id
+	case "snapshots/id": // a snapshot belongs to its board, and "own" (publish, revoke, reply, resolve) means own board; a figure shared on its own has no board and belongs to whoever shared it
+		q = `SELECT t.workspace_id, COALESCE(b.created_by,t.created_by,''), m.role FROM snapshots t LEFT JOIN boards b ON b.id=t.board_id AND b.workspace_id=t.workspace_id
 			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE t.id=?`
 	case "comments/id": // a reviewer's comment, likewise
-		q = `SELECT t.workspace_id, COALESCE(b.created_by,''), m.role FROM comments c JOIN snapshots t ON t.id=c.snapshot_id
+		q = `SELECT t.workspace_id, COALESCE(b.created_by,t.created_by,''), m.role FROM comments c JOIN snapshots t ON t.id=c.snapshot_id
 			LEFT JOIN boards b ON b.id=t.board_id AND b.workspace_id=t.workspace_id
 			JOIN memberships m ON m.workspace_id=t.workspace_id AND m.account_id=? WHERE c.id=?`
 	default:

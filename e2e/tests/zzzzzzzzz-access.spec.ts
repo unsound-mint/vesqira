@@ -67,7 +67,7 @@ test("a labelled dataset marks its figure, publishing asks for confirmation, and
   const sup = await ctx.newPage();
   await sup.goto(link);
   await expect(sup.getByRole("heading", { name: "Access board" })).toBeVisible();
-  await expect(sup.getByRole("note")).toContainText("marked the data behind this board as unreleased");
+  await expect(sup.getByRole("note")).toContainText("marked the data shown here as unreleased");
   expect(await sup.locator("body").innerText()).not.toMatch(/Made from/); // the owner's "Made from <dataset>" line is not the reviewer's
   await expectNoAxeViolations(sup);
   for (const scheme of ["dark", "light"] as const) {

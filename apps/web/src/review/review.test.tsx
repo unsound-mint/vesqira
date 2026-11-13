@@ -75,7 +75,7 @@ describe("review page", () => {
     render(<ReviewPage token="tok" />);
     await screen.findByRole("heading", { name: "Group meeting" });
     expect(screen.getByRole("note")).toHaveTextContent("Unreleased");
-    expect(screen.getByRole("note")).toHaveTextContent(/marked the data behind this board as unreleased/);
+    expect(screen.getByRole("note")).toHaveTextContent(/marked the data shown here as unreleased/);
     expect(screen.getAllByText("Unreleased").length).toBeGreaterThan(1); // the board's and the figure's
   });
 

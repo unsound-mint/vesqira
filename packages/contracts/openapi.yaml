@@ -3230,6 +3230,26 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/figure-shares:
+    get:
+      operationId: owner_s_allFigureShares_get_api_figure_shares
+      x-listener: owner
+      x-vesqira-permission: review.read
+      summary: "Every figure link of the workspace, newest first, so one can be found and revoked without opening its figure"
+      parameters: []
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SnapshotList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/figures:
     get:
       operationId: owner_s_listFigures_get_api_figures
@@ -3482,6 +3502,80 @@ paths:
       x-listener: owner
       x-vesqira-permission: lifecycle.archive
       responses: {'200': {description: ok}}
+  /api/figures/{id}/share:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_shareFigure_post_api_figures_id_share
+      x-listener: owner
+      x-vesqira-permission: review.publish
+      summary: "Share one figure on its own: freeze it and return the review token once (ADR 0071)"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/ShareFigureRequest"
+      responses:
+        "201":
+          description: "created"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PublishResponse"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "A label on the figure blocks publishing in this workspace (code publishing_blocked), or the caller may not publish"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AccessRefusal"
+        "409":
+          description: "The figure uses labelled data and confirmAccess was not sent (code access_confirmation_required)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AccessRefusal"
+  /api/figures/{id}/shares:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_figureShares_get_api_figures_id_shares
+      x-listener: owner
+      x-vesqira-permission: review.read
+      summary: "Links made from this figure on its own, newest first"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/SnapshotList"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/figures/{id}/text:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -9796,6 +9890,7 @@ components:
         boardId:
           type: "integer"
           format: "int64"
+          description: "0 for a figure shared on its own, which has no board (ADR 0071)"
         label:
           type: "string"
         createdAt:
@@ -9839,6 +9934,12 @@ components:
           enum:
             - "collaboration"
             - "unreleased"
+        revision:
+          type: "string"
+          description: "Only on a figure shared on its own (ADR 0071): the revision of its one figure."
+        title:
+          type: "string"
+          description: "Only on a figure shared on its own: the figure's title when it was shared."
     SnapshotList:
       type: "object"
       required:
@@ -22498,3 +22599,17 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/RestrictedPanel"
+    ShareFigureRequest:
+      type: "object"
+      description: "Unknown keys are refused."
+      properties:
+        label:
+          type: "string"
+        question:
+          type: "string"
+        hours:
+          type: "number"
+          description: "Lifetime of the link; 0 or absent means 14 days; beyond 90 days is refused"
+        confirmAccess:
+          type: "boolean"
+          description: "The author's explicit yes to sharing a figure that uses labelled data. Without it such a share is refused with 409; it never overrides a blocked label (403)."
