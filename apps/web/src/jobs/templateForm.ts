@@ -32,7 +32,9 @@ export function sweepKeys(t: JobTemplate): { key: string; label: string; descrip
 /** A key's plain description with what it accepts and the tool's documented default, as the job form words it. */
 export function keyDescription(k: TemplateKey): string {
   const hint = keyHint(k);
-  return hint ? `${k.description} (${hint})` : k.description;
+  if (!hint) return k.description;
+  const end = /[.!?]$/.exec(k.description)?.[0] ?? "";   // the hint goes inside the sentence: "Bins (2 to 64; ...)." not "Bins. (...)"
+  return `${end ? k.description.slice(0, -1) : k.description} (${hint})${end}`;
 }
 
 /**
