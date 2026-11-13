@@ -149,8 +149,8 @@ describe("declaring an interpretation", () => {
 
   it("says plainly that a header its profile cannot place leaves the frame and quantity unresolved, and assumes nothing", () => {
     const vgtHeader = { product: "psi", psiFrame: null, psiAngle: null, params: [], resolution: null, notes: [], profile: "profile:VGT.jl@1", unresolved: ["frame", "quantity"],
-      orientation: null, conflicts: [] } as unknown as Dataset["vgtHeader"];
-    const d: Dataset = { ...ds(1, "psi.fits"), vgtHeader };
+      orientation: null, conflicts: [] } as unknown as Dataset["orientationHeader"];
+    const d: Dataset = { ...ds(1, "psi.fits"), orientationHeader: vgtHeader };
     render(<InterpretationPanel v={viewer} dataset={d} datasets={[d]} declare={async () => null} />);
     expect(screen.getByText(/profile:VGT\.jl@1 cannot place the frame, quantity of this file.*unresolved\. Nothing is inferred/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Use the file’s declaration" })).not.toBeInTheDocument();
@@ -159,8 +159,8 @@ describe("declaring an interpretation", () => {
   it("shows what the file's own header declares, a disagreement with the person's declaration, and adopts it only on request", async () => {
     const vgtHeader = { product: "psi", psiFrame: "GALACTIC", psiAngle: "BFIELD", params: [{ key: "VGTDN", value: "10" }], resolution: null, notes: [], profile: "profile:VGT.jl@1", unresolved: [],
       orientation: { profile: "profile:VGT.jl@1", unit: "rad", frame: "sky", skyFrame: "galactic", zeroDirection: "north", sense: "east of north", cards: { frame: "PSIFRAME=GALACTIC" }, quantity: "b_field", basis: { frame: "file", quantity: "file", unit: "file" } },
-      conflicts: ["the header states the angle as a position angle east of north in the Galactic frame (PSIFRAME=GALACTIC), which is not this grid's own frame; the declaration in force says east of north in the grid's own frame"] } as unknown as Dataset["vgtHeader"];
-    const mine: Dataset = { ...ds(1, "psi.fits"), vgtHeader, interpretation: { kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "sky", quantity: "b_field", declaredBy: "user", tier: "declared", mappingVersion: "", declaredAt: "", stale: false } };
+      conflicts: ["the header states the angle as a position angle east of north in the Galactic frame (PSIFRAME=GALACTIC), which is not this grid's own frame; the declaration in force says east of north in the grid's own frame"] } as unknown as Dataset["orientationHeader"];
+    const mine: Dataset = { ...ds(1, "psi.fits"), orientationHeader: vgtHeader, interpretation: { kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "sky", quantity: "b_field", declaredBy: "user", tier: "declared", mappingVersion: "", declaredAt: "", stale: false } };
     const calls: unknown[] = [];
     render(<InterpretationPanel v={viewer} dataset={mine} datasets={[mine]} declare={async (_id, b) => (calls.push(b), null)} />);
     expect(screen.getByRole("alert")).toHaveTextContent(/disagrees with the declaration in force.*stays in use/);

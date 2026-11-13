@@ -46,8 +46,8 @@ func TestEveryOrientationNameIsAProfileOfTheWorker(t *testing.T) {
 		have[p.Name+"@"+p.Version] = true
 	}
 	for _, p := range Shipped().All() {
-		if p.Orientation != "" && !have[p.Orientation+"@"+p.Version] {
-			t.Errorf("%s names the orientation profile %s@%s, which the worker's table does not have", p.Label(), p.Orientation, p.Version)
+		if p.Orientation.Worker != "" && !have[p.Orientation.Worker+"@"+p.Version] {
+			t.Errorf("%s names the orientation profile %s@%s, which the worker's table does not have", p.Label(), p.Orientation.Worker, p.Version)
 		}
 	}
 }

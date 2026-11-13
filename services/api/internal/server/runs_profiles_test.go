@@ -17,7 +17,7 @@ import (
 
 // A tool that has only a profile (ADR 0068, slice 3): the synthetic HOG-style folder is imported as a run with generic output roles,
 // its own product names, and no interpretation, because the profile declares none. Without that profile the same folder is refused.
-// A VGT run's JSON carries both orientationHeader and the deprecated vgtHeader during the compatibility period.
+// A VGT run's dataset JSON carries orientationHeader and no longer the vgtHeader it was sent under until slice 6.
 func TestRunImportOfAToolThatHasOnlyAProfile(t *testing.T) {
 	t.Parallel()
 	repo, _ := filepath.Abs("../../../..")
@@ -87,7 +87,7 @@ func TestRunImportOfAToolThatHasOnlyAProfile(t *testing.T) {
 	_, pb := get(t, ts.URL+"/api/datasets/"+itoa(int(got["orientation_map"])))
 	var d catalog.Dataset
 	json.Unmarshal(pb, &d)
-	if d.Interpretation != nil || d.VGT != nil || d.OrientationHeader != nil {
+	if d.Interpretation != nil || d.OrientationHeader != nil {
 		t.Errorf("a profile with no orientation declares nothing: %+v", d.Interpretation)
 	}
 	// generic roles drive the brightness rule: orientation and reliability outputs cannot be given a brightness unit
@@ -116,8 +116,8 @@ func TestRunImportOfAToolThatHasOnlyAProfile(t *testing.T) {
 		_, db := get(t, ts.URL+"/api/datasets/"+itoa(int(o.DatasetID)))
 		var raw map[string]json.RawMessage
 		json.Unmarshal(db, &raw)
-		if len(raw["orientationHeader"]) == 0 || string(raw["orientationHeader"]) == "null" || string(raw["orientationHeader"]) != string(raw["vgtHeader"]) {
-			t.Errorf("orientationHeader and vgtHeader differ: %s vs %s", raw["orientationHeader"], raw["vgtHeader"])
+		if len(raw["orientationHeader"]) == 0 || string(raw["orientationHeader"]) == "null" || len(raw["vgtHeader"]) != 0 {
+			t.Errorf("orientationHeader missing or the removed vgtHeader still sent: %s vs %s", raw["orientationHeader"], raw["vgtHeader"])
 		}
 		return
 	}

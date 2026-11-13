@@ -50,7 +50,9 @@ type Run struct {
 	Kind string `json:"kind"`
 	// Profile is the profile (name@version) that recognised the run, "legacy" for a run recorded before profiles, whose
 	// detection was Vesqira's earlier built-in code.
-	Profile        string            `json:"profile"`
+	Profile string `json:"profile"`
+	// Dir is the folder the run was imported from (host-qualified for a remote one); it decides which project's profiles read the run.
+	Dir            string            `json:"-"`
 	ImportedAt     time.Time         `json:"importedAt"`
 	GeneratedAt    string            `json:"generatedAt"`
 	GitCommit      string            `json:"gitCommit"`
@@ -355,14 +357,14 @@ func (s *Store) Save(ws workspace.ID, by, dir string, p Parsed, outs []Output) (
 	return s.Get(ws, id)
 }
 
-var runCols = `id,name,kind,profile,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,environment,controls,` + schema.ArchivedExpr("run", "runs.id")
+var runCols = `id,dir,name,kind,profile,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,environment,controls,` + schema.ArchivedExpr("run", "runs.id")
 
 func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	var r Run
 	var at int64
 	var el sql.NullFloat64
 	var pj, dj, mj, ej, cj string
-	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &r.Profile, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj, &mj, &ej, &cj, &r.Archived); err != nil {
+	if err := row.Scan(&r.ID, &r.Dir, &r.Name, &r.Kind, &r.Profile, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj, &mj, &ej, &cj, &r.Archived); err != nil {
 		return Run{}, err
 	}
 	r.ImportedAt = time.Unix(at, 0).UTC()

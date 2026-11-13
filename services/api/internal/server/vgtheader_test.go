@@ -86,14 +86,14 @@ func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 	if in.Stale {
 		t.Errorf("a declaration just read from the header is not stale")
 	}
-	if cur.VGT == nil || len(cur.VGT.Conflicts) != 0 || cur.VGT.Orientation == nil || cur.VGT.Orientation.Basis["frame"] != "file" {
-		t.Errorf("header view: %+v", cur.VGT)
+	if cur.OrientationHeader == nil || len(cur.OrientationHeader.Conflicts) != 0 || cur.OrientationHeader.Orientation == nil || cur.OrientationHeader.Orientation.Basis["frame"] != "file" {
+		t.Errorf("header view: %+v", cur.OrientationHeader)
 	}
 
 	// an older output has no card the profile knows: nothing is declared (no pixel frame, no radians, no B-field), nothing from the WCS
 	old := psiOf("vgt_run_demo")
-	if old.Interpretation != nil || old.VGT != nil {
-		t.Fatalf("an older output must stay unresolved: %+v vgt=%+v", old.Interpretation, old.VGT)
+	if old.Interpretation != nil || old.OrientationHeader != nil {
+		t.Fatalf("an older output must stay unresolved: %+v vgt=%+v", old.Interpretation, old.OrientationHeader)
 	}
 	// VGT.jl cards without PSIFRAME: the profile places the unit (BUNIT) but not the frame or the quantity, so the map is unresolved
 	noFrame := exec.Command("python3", "-c", "import sys, pathlib, generate; generate.write_vgt_run(pathlib.Path(sys.argv[1]), current=True, psiframe=None)", filepath.Join(root, "vgt_run_noframe"))
@@ -102,9 +102,9 @@ func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	nf := psiOf("vgt_run_noframe")
-	if nf.Interpretation != nil || nf.VGT == nil || nf.VGT.Orientation != nil || nf.VGT.Profile == nil || *nf.VGT.Profile != "profile:VGT.jl@1" ||
-		strings.Join(nf.VGT.Unresolved, ",") != "frame,quantity" {
-		t.Fatalf("no PSIFRAME: %+v vgt=%+v", nf.Interpretation, nf.VGT)
+	if nf.Interpretation != nil || nf.OrientationHeader == nil || nf.OrientationHeader.Orientation != nil || nf.OrientationHeader.Profile == nil || *nf.OrientationHeader.Profile != "profile:VGT.jl@1" ||
+		strings.Join(nf.OrientationHeader.Unresolved, ",") != "frame,quantity" {
+		t.Fatalf("no PSIFRAME: %+v vgt=%+v", nf.Interpretation, nf.OrientationHeader)
 	}
 
 	// a person's own declaration is kept; the disagreement with the header is shown with the header's words
@@ -116,16 +116,16 @@ func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 	if cur2.Interpretation.DeclaredBy != "user" || *cur2.Interpretation.Frame != "pixel" {
 		t.Fatalf("a re-import overwrote the person's declaration: %+v", cur2.Interpretation)
 	}
-	if cur2.VGT == nil || len(cur2.VGT.Conflicts) != 1 || !strings.Contains(cur2.VGT.Conflicts[0], "Galactic") || !strings.Contains(cur2.VGT.Conflicts[0], "pixel grid") {
-		t.Fatalf("conflict not shown: %+v", cur2.VGT)
+	if cur2.OrientationHeader == nil || len(cur2.OrientationHeader.Conflicts) != 1 || !strings.Contains(cur2.OrientationHeader.Conflicts[0], "Galactic") || !strings.Contains(cur2.OrientationHeader.Conflicts[0], "pixel grid") {
+		t.Fatalf("conflict not shown: %+v", cur2.OrientationHeader)
 	}
 	// "sky" by the person means the grid's own frame (ICRS here): that also disagrees with a Galactic header
 	postJSON(t, ts.URL+"/api/datasets/"+itoa(int(cur.ID))+"/interpretation", map[string]any{"kind": "axial_orientation", "unit": "rad", "frame": "sky", "quantity": "b_field"})
 	_, pb := get(t, ts.URL+"/api/datasets/"+itoa(int(cur.ID)))
 	var d3 catalog.Dataset
 	json.Unmarshal(pb, &d3)
-	if d3.VGT == nil || len(d3.VGT.Conflicts) != 1 || !strings.Contains(d3.VGT.Conflicts[0], "not this grid's own frame") {
-		t.Fatalf("sky-in-own-frame against GALACTIC: %+v", d3.VGT)
+	if d3.OrientationHeader == nil || len(d3.OrientationHeader.Conflicts) != 1 || !strings.Contains(d3.OrientationHeader.Conflicts[0], "not this grid's own frame") {
+		t.Fatalf("sky-in-own-frame against GALACTIC: %+v", d3.OrientationHeader)
 	}
 	// adopting the file's declaration is explicit, and cannot be mixed with values sent by hand
 	if r, _ := postJSON(t, ts.URL+"/api/datasets/"+itoa(int(cur.ID))+"/interpretation", map[string]any{"kind": "axial_orientation", "fromFile": true, "unit": "deg"}); r.StatusCode != 400 {
@@ -134,7 +134,7 @@ func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 	r, b = postJSON(t, ts.URL+"/api/datasets/"+itoa(int(cur.ID))+"/interpretation", map[string]any{"kind": "axial_orientation", "fromFile": true})
 	var d4 catalog.Dataset
 	json.Unmarshal(b, &d4)
-	if r.StatusCode != 200 || d4.Interpretation.DeclaredBy != "profile:VGT.jl@1" || d4.Interpretation.SkyFrame == nil || len(d4.VGT.Conflicts) != 0 {
+	if r.StatusCode != 200 || d4.Interpretation.DeclaredBy != "profile:VGT.jl@1" || d4.Interpretation.SkyFrame == nil || len(d4.OrientationHeader.Conflicts) != 0 {
 		t.Fatalf("adopt: %d %s", r.StatusCode, b)
 	}
 	// a file with no PSIFRAME has nothing to adopt
@@ -147,12 +147,12 @@ func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 
 func TestSourceBeamAcceptedFromTheFilesOwnKeywordsOnly(t *testing.T) {
 	t.Parallel()
-	good := catalog.Dataset{VGT: &catalog.VGTHeader{Resolution: json.RawMessage(`{"status":"approximate","gaussian_arcsec":{"bmaj":680.5,"bmin":679.25,"bpa":30}}`)}}
+	good := catalog.Dataset{OrientationHeader: &catalog.VGTHeader{Resolution: json.RawMessage(`{"status":"approximate","gaussian_arcsec":{"bmaj":680.5,"bmin":679.25,"bpa":30}}`)}}
 	opts := map[string]string{"source-beam-basis": "vgt_approximate", "source-bmaj": "1"} // numbers a client sent are replaced by the file's
 	if code, msg := acceptSourceBeam("convolve", good, opts); code != 0 || opts["source-bmaj"] != "680.5" || opts["source-bmin"] != "679.25" || opts["source-bpa"] != "30" {
 		t.Fatalf("%d %s %v", code, msg, opts)
 	}
-	notEstablished := catalog.Dataset{VGT: &catalog.VGTHeader{Resolution: json.RawMessage(`{"status":"not_established","reasons":["x"]}`)}}
+	notEstablished := catalog.Dataset{OrientationHeader: &catalog.VGTHeader{Resolution: json.RawMessage(`{"status":"not_established","reasons":["x"]}`)}}
 	if code, msg := acceptSourceBeam("convolve", notEstablished, map[string]string{"source-beam-basis": "vgt_approximate"}); code != 422 || !strings.Contains(msg, "not established") {
 		t.Errorf("not established must be refused: %d %s", code, msg)
 	}

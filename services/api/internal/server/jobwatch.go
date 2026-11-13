@@ -334,8 +334,10 @@ func (s *Server) autoImport(ctx context.Context, jobID int64, h hosts.Host) {
 	var msg string
 	if j.Template == "rohsa" {
 		run, code, msg = s.importROHSAJob(ctx, j, h)
+	} else if _, record, why := s.jobImport(j.Template); why != "" {
+		code, msg = 422, why
 	} else {
-		run, code, msg = s.importFrom(ctx, remoteRun{s: s, h: h, dir: j.OutputDir})
+		run, code, msg = s.importFrom(ctx, remoteRun{s: s, h: h, dir: j.OutputDir, file: record})
 	}
 	if code != 0 {
 		s.Audit.RecordCtx(ctx, "run import failed", "job", j.ID, h.Name+": "+msg)

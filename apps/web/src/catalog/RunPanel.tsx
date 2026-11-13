@@ -9,12 +9,12 @@ const ROLE: Record<string, string> = { reliability: "Reliability", support: "Sup
 
 /**
  * What an output is called on screen. A generic role says what the file is for; the tool's own name for it stays visible, so a VGT
- * orientation map reads "Orientation (psi)" and a ROHSA map reads by its product name. A run recorded before profiles has the old role
- * as its product and gets the same names.
+ * orientation map reads "Orientation (psi)" and a ROHSA map reads by its product name. Rows recorded before profiles were rewritten
+ * by the schema 35 migration (the old role became the product), so no old role name is handled here.
  */
 export function outputLabel(o: { role: string; product?: string }): string {
   const product = o.product || o.role;
-  if (o.role === "orientation" || o.role === "psi") return `Orientation (${product})`;
+  if (o.role === "orientation") return `Orientation (${product})`;
   return ROLE[o.role] ?? product;
 }
 

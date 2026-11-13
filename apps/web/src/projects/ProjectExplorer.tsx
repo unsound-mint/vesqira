@@ -31,7 +31,7 @@ export function matchEntry(e: TreeEntry, q: string): boolean {
 }
 
 /** `onEditFile` is given only when the server has the editor on (ADR 0029); it receives the file's absolute path and the project's host (0: this computer). */
-type Handlers = { selectedDatasetId: number | null; onOpenRun: (runId: number) => void; onSelectDataset: (id: number) => void; onEditFile?: (path: string, hostId: number) => void };
+type Handlers = { selectedDatasetId: number | null; onOpenRun: (runId: number) => void; onImportRun: (path: string, hostId?: number) => Promise<{ id: number } | { error: string }>; onSelectDataset: (id: number) => void; onEditFile?: (path: string, hostId: number) => void };
 
 /** One page of a group, or of one folder in it; more pages on request. Children are fetched when the folder is opened. */
 function Listing({ project, version, group, path, level, filter, ...h }: Handlers & { project: ProjectSummary; version: number; group: TreeGroup; path: string; level: number; filter: string }) {
@@ -76,31 +76,17 @@ function Listing({ project, version, group, path, level, filter, ...h }: Handler
   );
 }
 
-function Entry({ project, version, group, entry: e, level, filter, selectedDatasetId, onOpenRun, onSelectDataset, onEditFile }: Handlers & { project: ProjectSummary; version: number; group: TreeGroup; entry: TreeEntry; level: number; filter: string }) {
+function Entry({ project, version, group, entry: e, level, filter, selectedDatasetId, onOpenRun, onImportRun, onSelectDataset, onEditFile }: Handlers & { project: ProjectSummary; version: number; group: TreeGroup; entry: TreeEntry; level: number; filter: string }) {
   const [open, setOpen] = useState(false);
   if (e.kind === "dir") {
     return (
       <>
         <TreeRow icon={open ? FolderOpen : Folder} level={level} expanded={open} onSelect={() => setOpen(!open)} trailing={e.count !== null ? num(e.count) : undefined}>{e.name}</TreeRow>
-        {open ? <Listing project={project} version={version} group={group} path={e.path} level={level + 1} filter={filter} selectedDatasetId={selectedDatasetId} onOpenRun={onOpenRun} onSelectDataset={onSelectDataset} onEditFile={onEditFile} /> : null}
+        {open ? <Listing project={project} version={version} group={group} path={e.path} level={level + 1} filter={filter} selectedDatasetId={selectedDatasetId} onOpenRun={onOpenRun} onImportRun={onImportRun} onSelectDataset={onSelectDataset} onEditFile={onEditFile} /> : null}
       </>
     );
   }
-  if (e.kind === "run" && e.run) {
-    const runId = e.run.runId;
-    const full = `${e.path}${e.run.record ? ` · record: ${e.run.record}` : " · marked by you"}`;
-    return (
-      <TreeRow
-        icon={GitBranch}
-        level={level}
-        title={runId === null ? `${full}\nNot imported as a Vesqira run (only VGT runs are).` : full}
-        onSelect={runId !== null ? () => onOpenRun(runId) : undefined}
-        trailing={e.run.recordKind === "manual" ? "by you" : e.run.recordKind}
-      >
-        {runLabel(e)}
-      </TreeRow>
-    );
-  }
+  if (e.kind === "run" && e.run) return <RunRow project={project} entry={e} level={level} onOpenRun={onOpenRun} onImportRun={onImportRun} />;
   const f = e.file;
   // Only a config or job file of a project (on this computer or on a host), that is not marked read-only, and that the server would open as text.
   const editPath = onEditFile && (e.kind === "config" || e.kind === "job") && !f?.readOnly && looksEditable(e.name) ? `${project.path.replace(/\/+$/, "")}/${e.path}` : null;
@@ -120,6 +106,60 @@ function Entry({ project, version, group, entry: e, level, filter, selectedDatas
   );
 }
 
+/**
+ * A run row. A run a tool profile can read but nobody has imported gets an Import button: the person's own act applies a profile that
+ * came from the project folder, a scan never does. The row says whose profile reads it and that the file only declares.
+ */
+function RunRow({ project, entry: e, level, onOpenRun, onImportRun }: { project: ProjectSummary; entry: TreeEntry; level: number; onOpenRun: (runId: number) => void; onImportRun: Handlers["onImportRun"] }) {
+  const [state, setState] = useState<"idle" | "busy" | "error">("idle");
+  const [error, setError] = useState("");
+  const [madeId, setMadeId] = useState<number | null>(null); // the run this row just imported, until the tree is read again
+  const run = e.run!;
+  const runId = run.runId ?? madeId;
+  const fromProject = Boolean(run.profileFile);
+  const importHere = async () => {
+    setState("busy");
+    const r = await onImportRun(`${project.path.replace(/\/+$/, "")}/${e.path}`, project.hostId || undefined);
+    if ("error" in r) {
+      setError(r.error);
+      setState("error");
+      return;
+    }
+    setState("idle");
+    setMadeId(r.id);
+    onOpenRun(r.id);
+  };
+  const origin = run.profile ? ` · read with ${run.profile}${fromProject ? `, declared by this project's ${run.profileFile} (not verified)` : ""}` : "";
+  const full = `${e.path}${run.record ? ` · record: ${run.record}` : " · marked by you"}${origin}`;
+  const importable = runId === null && run.importable === true;
+  return (
+    <>
+      <TreeRow
+        icon={GitBranch}
+        level={level}
+        title={runId === null && !importable ? `${full}\nNot imported as a Vesqira run: no tool profile reads this record's results.` : full}
+        onSelect={runId !== null ? () => onOpenRun(runId) : undefined}
+        trailing={
+          importable ? (
+            <Button type="button" onClick={() => void importHere()} disabled={state === "busy"} aria-label={`Import ${e.name}${fromProject ? " with the project's profile" : ""}`}>
+              {state === "busy" ? "Importing…" : "Import"}
+            </Button>
+          ) : fromProject ? (
+            "project profile"
+          ) : run.recordKind === "manual" ? (
+            "by you"
+          ) : (
+            run.recordKind
+          )
+        }
+      >
+        {runLabel(e)}
+      </TreeRow>
+      {state === "error" ? <p role="alert" className={s.rowErr}>{error}</p> : null}
+    </>
+  );
+}
+
 function Group({ project, version, def, filter, setFilter, ...h }: Handlers & { project: ProjectSummary; version: number; def: (typeof GROUPS)[number]; filter: string; setFilter: (v: string) => void }) {
   const n = def.count(project.counts);
   const [opened, setOpened] = useState(n > 0 && (def.group === "runs" || def.group === "data"));
@@ -136,7 +176,7 @@ function Group({ project, version, def, filter, setFilter, ...h }: Handlers & { 
 }
 
 /** Screen 3: the open project in the explorer, grouped, lazy and paged. */
-export function ProjectExplorer({ project, version, hostName, selectedDatasetId, onOpenRun, onSelectDataset, onEditFile, onOverview, onImport, onCancel }: Handlers & { project: ProjectSummary; version: number; hostName: (id: number) => string; onOverview: () => void; onImport: () => void; onCancel: () => void }) {
+export function ProjectExplorer({ project, version, hostName, selectedDatasetId, onOpenRun, onImportRun, onSelectDataset, onEditFile, onOverview, onImport, onCancel }: Handlers & { project: ProjectSummary; version: number; hostName: (id: number) => string; onOverview: () => void; onImport: () => void; onCancel: () => void }) {
   const [filter, setFilter] = useState("");
   const ch = project.changes;
   const rules = project.importRules;
@@ -147,6 +187,21 @@ export function ProjectExplorer({ project, version, hostName, selectedDatasetId,
         <p className={s.projectWhere} title={project.path}>{location(project, hostName)}</p>
         <ScanStatus scan={project.scan} onCancel={onCancel} />
         {ch && ch.added + ch.removed + ch.changed > 0 ? <p className={s.rowNote}>Since last scan: {num(ch.added)} added · {num(ch.changed)} changed · {num(ch.removed)} removed</p> : null}
+        {project.profiles && project.profiles.length > 0 ? (
+          <details className={s.rowNote}>
+            <summary>
+              {num(project.profiles.filter((p) => !p.why).length)} tool {project.profiles.filter((p) => !p.why).length === 1 ? "profile" : "profiles"} from this folder
+              {project.profiles.some((p) => p.why) ? `, ${num(project.profiles.filter((p) => p.why).length)} refused` : ""}
+            </summary>
+            <ul>
+              {project.profiles.map((p) => (
+                <li key={p.file}>
+                  <span className="mono">{p.file}</span>: {p.why ? p.why : `${p.profile}, declared by this file and not verified`}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
         {!project.projectFile.exists ? <p className={s.rowNote}>No .vesqira/project.toml yet.</p> : null}
         {rules && rules.rules > 0 && (rules.new > 0 || rules.pending > 0) ? (
           <p className={s.rowNote} role="status">
@@ -160,7 +215,7 @@ export function ProjectExplorer({ project, version, hostName, selectedDatasetId,
         </div>
       </div>
       {!project.scanned ? <p className={s.rowNote}>{isScanning(project) ? "Reading the folder. The groups appear when the first scan has finished." : "Not scanned yet."}</p> : null}
-      {project.scanned ? GROUPS.map((def) => <Group key={def.group} project={project} version={version} def={def} filter={filter} setFilter={setFilter} selectedDatasetId={selectedDatasetId} onOpenRun={onOpenRun} onSelectDataset={onSelectDataset} onEditFile={onEditFile} />) : null}
+      {project.scanned ? GROUPS.map((def) => <Group key={def.group} project={project} version={version} def={def} filter={filter} setFilter={setFilter} selectedDatasetId={selectedDatasetId} onOpenRun={onOpenRun} onImportRun={onImportRun} onSelectDataset={onSelectDataset} onEditFile={onEditFile} />) : null}
     </div>
   );
 }

@@ -92,7 +92,8 @@ func (s *Server) walkForImport(ctx context.Context, p projects.Project, folder s
 	}
 	pf, _, _, _ := readProjectFile(fsys)
 	answers, _ := s.Projects.Answers(p.ID)
-	opt := discover.Options{Layout: pf.ScanLayout(), ManualRuns: append(pf.ManualRuns(), manualFromAnswers(answers)...), Inventory: true, MaxDepth: importDepth, Start: folder, Catalogs: !remote}
+	profs, _ := s.loadProjectProfiles(wsCtx(ctx), p, fsys)
+	opt := discover.Options{Layout: pf.ScanLayout(), ManualRuns: append(pf.ManualRuns(), manualFromAnswers(answers)...), Inventory: true, MaxDepth: importDepth, Start: folder, Catalogs: !remote, Profiles: profs}
 	var walkTruncated bool
 	var walkWhy string
 	if remote {

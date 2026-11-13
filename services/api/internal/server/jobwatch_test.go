@@ -97,6 +97,9 @@ PATH=%[4]s:$PATH exec sh -c "$cmd"
 	srv := &Server{Roots: rs, Store: cat, Worker: headerWorker(t, "python3", repo), Planes: local, Runs: rn, HostDB: hs, Remote: mgr, Jobs: js, Audit: au, Notes: ns, Sweeps: ss, Boards: bs}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
+	// cleanups run last-registered first: wait for the record and import goroutines a refresh or a watch pass started, so none of
+	// them is still writing into the temporary folders when the test removes them ("directory not empty")
+	t.Cleanup(func() { srv.waitRecords(); srv.waitImports() })
 	py, _ := exec.LookPath("python3")
 	h, err := hs.Create(hosts.Host{Name: "Cluster", Dest: "login1", Python: py, Roots: []string{remoteRoot}})
 	if err != nil {

@@ -99,7 +99,7 @@ func acceptSourceBeam(op string, d catalog.Dataset, opts map[string]string) (int
 				Bpa  float64 `json:"bpa"`
 			} `json:"gaussian_arcsec"`
 		}
-		if d.VGT == nil || json.Unmarshal(d.VGT.Resolution, &res) != nil || res.Status != "approximate" || res.Gauss == nil {
+		if d.OrientationHeader == nil || json.Unmarshal(d.OrientationHeader.Resolution, &res) != nil || res.Status != "approximate" || res.Gauss == nil {
 			return 422, "the file's header does not establish an approximate resolution (effective resolution: not established), so there is nothing to accept; enter the resolution yourself"
 		}
 		opts["source-bmaj"], opts["source-bmin"], opts["source-bpa"] = fmt.Sprint(res.Gauss.Bmaj), fmt.Sprint(res.Gauss.Bmin), fmt.Sprint(res.Gauss.Bpa)
