@@ -29,7 +29,7 @@ describe("run", () => {
   it("names an output by its generic role and the tool's own product, (old rows were rewritten by the schema 35 migration)", () => {
     expect(outputLabel({ role: "orientation", product: "psi" })).toBe("Orientation (psi)");
     expect(outputLabel({ role: "reliability", product: "reliability" })).toBe("Reliability");
-    expect(outputLabel({ role: "fit_rbar2", product: "fit_rbar2" })).toBe("Fit R̄²");
+    expect(outputLabel({ role: "fit_rbar2", product: "fit_rbar2" })).toBe("Fit R̄ (axial)");
     expect(outputLabel({ role: "component_maps", product: "component_g1_mu_kms" })).toBe("component_g1_mu_kms");
     expect(runFor([run()], 5)?.product).toBe("psi");
   });

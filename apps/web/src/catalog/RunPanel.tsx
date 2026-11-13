@@ -5,7 +5,7 @@ import { runReviewHistory, setRunReview } from "../api/runs";
 import type { RunReview, RunReviewRevision } from "../api/runs";
 import s from "./RunPanel.module.css";
 
-const ROLE: Record<string, string> = { reliability: "Reliability", support: "Support", fit_rbar2: "Fit R̄²" };
+const ROLE: Record<string, string> = { reliability: "Reliability", support: "Support", fit_rbar2: "Fit R̄ (axial)" };
 
 /**
  * What an output is called on screen. A generic role says what the file is for; the tool's own name for it stays visible, so a VGT

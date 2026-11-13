@@ -228,7 +228,7 @@
           "psi_path": {"product": "psi", "role": "orientation"},
           "reliability_path": {"product": "reliability", "role": "reliability"},
           "support_path": {"product": "support", "role": "support"},
-          "fit_rbar2_path": {"product": "fit_rbar2", "role": "fit_rbar2", "extra": "Fit R̄²"}
+          "fit_rbar2_path": {"product": "fit_rbar2", "role": "fit_rbar2", "extra": "Fit R̄ (axial)"}
         }
       }
     },
