@@ -796,3 +796,30 @@ func TestMultiuserImportOfAnExportWithoutAttachments(t *testing.T) {
 		t.Error("an image row was imported without its file")
 	}
 }
+
+// A sky view's description names the datasets and virtual subsets it drew footprints of (ADR 0072): both ids move with the import,
+// or a figure in the new workspace would name another workspace's subset.
+func TestMultiuserImportRemapsASkyViewsFootprints(t *testing.T) {
+	im := &importer{rep: &importReport{}}
+	im.ds, im.fig, im.run, im.mask = newMap("dataset"), newMap("figure"), newMap("run"), newMap("mask")
+	im.region, im.sub = newMap("saved region"), newMap("subset")
+	im.ds.m[3], im.sub.m[7] = 103, 207
+	scene := `{"hips":"CDS/P/DSS2/color","footprints":[{"datasetId":3,"basis":"celestial WCS"},{"datasetId":3,"subsetId":7,"subsetVersion":2}]}`
+	got := im.remapJSON(scene, "the sky view", im.sceneRules())
+	var doc struct {
+		Footprints []struct {
+			DatasetID     int64 `json:"datasetId"`
+			SubsetID      int64 `json:"subsetId"`
+			SubsetVersion int   `json:"subsetVersion"`
+		} `json:"footprints"`
+	}
+	if err := json.Unmarshal([]byte(got), &doc); err != nil || len(doc.Footprints) != 2 {
+		t.Fatalf("remapped scene %s: %v", got, err)
+	}
+	if f := doc.Footprints; f[0].DatasetID != 103 || f[1].DatasetID != 103 || f[1].SubsetID != 207 || f[1].SubsetVersion != 2 {
+		t.Errorf("footprints not moved: %s", got)
+	}
+	if len(im.rep.unresolved) != 0 {
+		t.Errorf("unresolved: %v", im.rep.unresolved)
+	}
+}

@@ -314,7 +314,7 @@ type idRules struct {
 
 func (im *importer) sceneRules() idRules {
 	return idRules{
-		scalar: map[string]*idMap{"datasetId": im.ds, "reliabilityId": im.ds, "figureId": im.fig},
+		scalar: map[string]*idMap{"datasetId": im.ds, "reliabilityId": im.ds, "figureId": im.fig, "subsetId": im.sub}, // subsetId: a sky view's footprint of a virtual subset
 		arrays: map[string]*idMap{"datasets": im.ds, "overlays": im.ds},
 		items:  map[string]*idMap{"runs": im.run, "masks": im.mask, "saved": im.region},
 	}
