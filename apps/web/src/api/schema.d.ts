@@ -11779,7 +11779,7 @@ export interface components {
             restricted?: components["schemas"]["RestrictedPanel"][];
         };
         /** @description How a sky-panel position was placed: the dataset's celestial frame and how it is known, and the panel's frame. */
-        SkyFacts: {
+        SkyPlacement: {
             /**
              * @description The panel frame the positions are in.
              * @enum {string}
@@ -11801,26 +11801,26 @@ export interface components {
         /** @description The outline of a dataset's image on the sky (ADR 0072), from its celestial WCS (the researcher's corrections applied) carried into the panel's frame by astropy. footprint is null when the dataset has no celestial WCS, its frame is not one the app transforms, or it is a survey-sized map; `reason` says which. Nothing is guessed. It is context for the sky panel and not a measurement. */
         SkyFootprint: {
             method?: string;
-            footprint?: {
+            footprint: {
                 /** @description Vertices [longitude, latitude] in degrees, counter-clockwise on the pixel grid, sampled along the four pixel edges. Longitudes are continuous across 0/360 (they may be negative or above 360); wrap them for display. */
-                polygon?: number[][];
-                center?: {
-                    lon?: number;
-                    lat?: number;
+                polygon: number[][];
+                center: {
+                    lon: number;
+                    lat: number;
                 };
                 /** @description The largest angular distance of a vertex from the centre. */
-                extent_deg?: number;
+                extent_deg: number;
                 /** @description Edge samples with no position in the WCS, left out. */
                 dropped?: number;
             } | null;
-        } & components["schemas"]["SkyFacts"];
+        } & WithRequired<components["schemas"]["SkyPlacement"], "frame">;
         /** @description The position of one pixel (the viewer's cursor) in the panel's frame, from the dataset's celestial WCS. position is null when there is no celestial WCS or the pixel has no position; `reason` says which. */
         SkyPoint: {
-            position?: {
-                lon?: number;
-                lat?: number;
+            position: {
+                lon: number;
+                lat: number;
             } | null;
-        } & components["schemas"]["SkyFacts"];
+        } & WithRequired<components["schemas"]["SkyPlacement"], "frame">;
     };
     responses: never;
     parameters: never;
@@ -22756,3 +22756,6 @@ export interface operations {
         };
     };
 }
+type WithRequired<T, K extends keyof T> = T & {
+    [P in K]-?: T[P];
+};

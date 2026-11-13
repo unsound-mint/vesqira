@@ -19667,7 +19667,7 @@
     }
    }
   },
-  "SkyFacts": {
+  "SkyPlacement": {
    "type": "object",
    "description": "How a sky-panel position was placed: the dataset's celestial frame and how it is known, and the panel's frame.",
    "properties": {
@@ -19712,8 +19712,12 @@
    "description": "The outline of a dataset's image on the sky (ADR 0072), from its celestial WCS (the researcher's corrections applied) carried into the panel's frame by astropy. footprint is null when the dataset has no celestial WCS, its frame is not one the app transforms, or it is a survey-sized map; `reason` says which. Nothing is guessed. It is context for the sky panel and not a measurement.",
    "allOf": [
     {
-     "$ref": "#/components/schemas/SkyFacts"
+     "$ref": "#/components/schemas/SkyPlacement"
     }
+   ],
+   "required": [
+    "footprint",
+    "frame"
    ],
    "properties": {
     "method": {
@@ -19722,6 +19726,11 @@
     "footprint": {
      "type": "object",
      "nullable": true,
+     "required": [
+      "polygon",
+      "center",
+      "extent_deg"
+     ],
      "properties": {
       "polygon": {
        "type": "array",
@@ -19737,6 +19746,10 @@
       },
       "center": {
        "type": "object",
+       "required": [
+        "lon",
+        "lat"
+       ],
        "properties": {
         "lon": {
          "type": "number"
@@ -19763,13 +19776,21 @@
    "description": "The position of one pixel (the viewer's cursor) in the panel's frame, from the dataset's celestial WCS. position is null when there is no celestial WCS or the pixel has no position; `reason` says which.",
    "allOf": [
     {
-     "$ref": "#/components/schemas/SkyFacts"
+     "$ref": "#/components/schemas/SkyPlacement"
     }
+   ],
+   "required": [
+    "position",
+    "frame"
    ],
    "properties": {
     "position": {
      "type": "object",
      "nullable": true,
+     "required": [
+      "lon",
+      "lat"
+     ],
      "properties": {
       "lon": {
        "type": "number"
