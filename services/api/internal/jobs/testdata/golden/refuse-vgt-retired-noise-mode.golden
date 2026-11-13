@@ -1,0 +1,1 @@
+ERROR: invalid: noise_mode must be one of scalar, channel, spatial, separable, auto

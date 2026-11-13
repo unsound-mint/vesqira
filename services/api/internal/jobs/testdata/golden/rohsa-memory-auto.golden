@@ -1,0 +1,34 @@
+# Run: test region 512x512, N=16, spatial smoothing lambda=10
+# ROHSA preprocessing config. Edit this file directly.
+
+[input]
+input = "data/interim/test_region.fits"
+output_dir = "validation_output/rohsa/test_region_n16"
+
+# crop_size = 0 means full cube.
+crop_size = 512
+crop_x0 = 1
+crop_y0 = 1
+spatial_stride = 1
+spectral_kernel = "hanning"
+memory_gb = "auto"
+
+[rohsa]
+n_gauss = [16]
+lambda_amp = 10.0
+lambda_mu = 10.0
+lambda_sig = 10.0
+lambda_var_amp = 0.0
+lambda_var_mu = 0.0
+lambda_var_sig = 0.0
+lb_sig = 1.2
+ub_sig = 100.0
+maxiter = 800
+noise = true
+regul = true
+
+[auto_config]
+enabled = false
+max_candidates = 24
+# n_gauss = [4, 6, 8]
+# lambda_amp = [10.0, 100.0, 1000.0]

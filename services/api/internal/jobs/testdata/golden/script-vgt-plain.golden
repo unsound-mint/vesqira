@@ -1,0 +1,136 @@
+#!/bin/bash -l
+#SBATCH --job-name=vgt-run
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=64G
+#SBATCH --time=1-00:00:00
+#SBATCH --output=%x-%j.out
+#SBATCH --error=%x-%j.err
+
+# Rendered by Vesqira from the settings in the job record. This exact text is what is submitted.
+set -euo pipefail
+jobdir="$SLURM_SUBMIT_DIR"
+cfg="$jobdir/config.toml"
+cat > "$cfg" <<'VESQIRA_CONFIG_END'
+# a VGT config shaped like the pipeline's own
+[input]
+input_file = "/data/cube.fits"
+output_dir = "/data/vesqira_runs/vgt-run-0a1b2c3d"
+
+[vgt]
+dn = 8
+ker = 8
+min_valid = 3
+
+[noise]
+noise = 0.17
+noise_mode = "scalar"
+VESQIRA_CONFIG_END
+
+cd /shared/home/you/vgt
+export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-/shared/home/you/vgt/.julia-vesqira}"
+threads="${SLURM_CPUS_PER_TASK:-1}"
+export JULIA_NUM_THREADS="$threads"
+echo "job_id=$SLURM_JOB_ID host=$(hostname) threads=$threads"
+date --iso-8601=seconds
+command -v julia >/dev/null || { echo "Julia is not on PATH" >&2; exit 2; }
+
+# --- Vesqira: record the environment this job runs in (ADR 0054). Read-only commands; nothing in the code folder is
+# written, and a failure here never fails the job. The record is vesqira-env.json next to the outputs. ---
+ve_out="/data/vesqira_runs/vgt-run-0a1b2c3d"
+ve_file="$jobdir/vesqira-env.json"
+ve_copy() { [ -n "$ve_out" ] && [ -d "$ve_out" ] && [ ! -L "$ve_out" ] && [ ! -L "$ve_out/vesqira-env.json" ] && [ -f "$ve_file" ] && cp -f "$ve_file" "$ve_out/vesqira-env.json" 2>/dev/null; return 0; }
+(
+  set +e +u
+  ve_emit() { printf '%s|%s|%s\n' "$1" "$2" "$3"; }
+ve_clean() { tr -cd 'A-Za-z0-9 ._:/+=,@%()-' | head -c 200; }
+ve_ok() { ve_emit "$1" verified "$(printf '%s' "$2" | ve_clean)"; }
+ve_no() { ve_emit "$1" unresolved "$(printf '%s' "$2" | ve_clean)"; }
+ve_no_all() { r="$1"; shift; for k in "$@"; do ve_no "$k" "$r"; done; }
+ve_t() { if command -v timeout >/dev/null 2>&1; then timeout 30 "$@"; else "$@"; fi; }
+ve_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -c1-64; elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -c1-64; fi; }
+ve_code() {
+  if ! command -v git >/dev/null 2>&1; then ve_no_all "git is not installed on this node" code.commit code.dirty code.untracked_files code.diff_sha256; return; fi
+  if ! c=$(ve_t git --no-optional-locks -C "$1" rev-parse --verify HEAD 2>/dev/null) || [ -z "$c" ]; then
+    ve_no_all "the code folder is not a repository that git can read" code.commit code.dirty code.untracked_files code.diff_sha256; return
+  fi
+  ve_ok code.commit "$c"
+  if s=$(ve_t git --no-optional-locks -C "$1" status --porcelain --untracked-files=no 2>/dev/null); then
+    if [ -z "$s" ]; then ve_ok code.dirty no; ve_ok code.diff_sha256 none
+    else
+      ve_ok code.dirty yes
+      if d=$(set -o pipefail; ve_t git --no-optional-locks -C "$1" diff --no-ext-diff --no-textconv HEAD 2>/dev/null | ve_sha) && [ -n "$d" ]; then ve_ok code.diff_sha256 "$d"; else ve_no code.diff_sha256 "git diff did not finish"; fi
+    fi
+  else ve_no code.dirty "git status failed"; ve_no code.diff_sha256 "git status failed"; fi
+  if u=$(ve_t git --no-optional-locks -C "$1" status --porcelain --untracked-files=normal 2>/dev/null); then ve_ok code.untracked_files "$(printf '%s\n' "$u" | grep -c '^??')"; else ve_no code.untracked_files "git status failed"; fi
+}
+ve_manifest() {
+  if [ -f "$1/Manifest.toml" ]; then
+    h=$(ve_sha < "$1/Manifest.toml")
+    if [ -n "$h" ]; then ve_ok julia.manifest_sha256 "$h"; else ve_no julia.manifest_sha256 "no sha256 tool on this node"; fi
+  else ve_no julia.manifest_sha256 "no Manifest.toml in the code folder"; fi
+}
+ve_machine() {
+  if command -v julia >/dev/null 2>&1; then
+    v=$(ve_t julia --version 2>/dev/null | head -n 1)
+    if [ -n "$v" ]; then ve_ok julia.version "$v"; else ve_no julia.version "julia did not report a version"; fi
+  else ve_no julia.version "julia is not on PATH at this point of the script"; fi
+  ve_no python.version "the job template does not run Python"
+  if type module >/dev/null 2>&1; then
+    l=$(module list 2>&1 | tr '\n' ' ')
+    [ -n "$l" ] || l="module list printed nothing"
+    ve_ok modules.list "$l"
+    h=$(printf '%s' "$l" | ve_sha)
+    if [ -n "$h" ]; then ve_ok modules.sha256 "$h"; else ve_no modules.sha256 "no sha256 tool on this node"; fi
+  else ve_no_all "there is no module command in this shell" modules.list modules.sha256; fi
+  n=$(hostname 2>/dev/null)
+  if [ -n "$n" ]; then ve_ok node.name "$n"; else ve_no node.name "hostname gave nothing"; fi
+  m=$(grep -m1 -i '^model name' /proc/cpuinfo 2>/dev/null | sed 's/^[^:]*: *//')
+  [ -n "$m" ] || m=$(lscpu 2>/dev/null | grep -m1 -i 'model name' | sed 's/^[^:]*: *//')
+  if [ -n "$m" ]; then ve_ok cpu.model "$m"; else ve_no cpu.model "this node does not report a CPU model"; fi
+}
+ve_input() {
+  case "$1" in
+    /*) ;;
+    *) ve_no_all "the config names no input file as a plain absolute path" input.size_bytes input.mtime_epoch; return ;;
+  esac
+  if [ ! -f "$1" ]; then ve_no_all "the input file is not readable on this node" input.size_bytes input.mtime_epoch; return; fi
+  z=$(stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null)
+  t=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)
+  if [ -n "$z" ]; then ve_ok input.size_bytes "$z"; else ve_no input.size_bytes "stat gave no size"; fi
+  if [ -n "$t" ]; then ve_ok input.mtime_epoch "$t"; else ve_no input.mtime_epoch "stat gave no modification time"; fi
+}
+ve_input_full() {
+  case "$1" in
+    /*) ;;
+    *) ve_no input.full_sha256 "the config names no input file as a plain absolute path"; return ;;
+  esac
+  if [ ! -f "$1" ]; then ve_no input.full_sha256 "the input file is not readable on this node"; return; fi
+  z0=$(stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null); t0=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)
+  h=$(ve_sha < "$1")
+  z1=$(stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null); t1=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null)
+  if [ -z "$h" ]; then ve_no input.full_sha256 "no sha256 tool on this node, or the file could not be read"
+  elif [ -z "$z0" ] || [ "$z0" != "$z1" ] || [ "$t0" != "$t1" ]; then ve_no input.full_sha256 "the input file changed while it was being read, or its size and time could not be read"
+  else ve_ok input.full_sha256 "$h"; fi
+}
+ve_collect() {
+  if [ -z "$1" ] || [ ! -d "$1" ]; then
+    ve_no_all "the code folder is not readable on this node" code.commit code.dirty code.untracked_files code.diff_sha256 julia.manifest_sha256
+  else ve_code "$1"; ve_manifest "$1"; fi
+  ve_input "$2"
+  if [ "$3" != probe ] && [ "$4" = full ]; then ve_input_full "$2"; fi
+  if [ "$3" != probe ]; then ve_machine; fi
+}
+  ve_collect "/shared/home/you/vgt" "/data/cube.fits" job
+) > "$jobdir/vesqira-env.lines" 2>/dev/null || true
+{
+  printf '{\n  "record": "vesqira-env",\n  "version": 1,\n  "slurm_job_id": "%s",\n  "facts": {' "$(printf '%s' "${SLURM_JOB_ID:-}" | tr -cd '0-9')"
+  awk -F'|' 'NF>=3 { v=$3; for (i=4;i<=NF;i++) v=v "|" $i; printf "%s\n    \"%s\": {\"status\": \"%s\", \"%s\": \"%s\"}", (n++ ? "," : ""), $1, $2, ($2=="verified" ? "value" : "reason"), v }' "$jobdir/vesqira-env.lines"
+  printf '\n  }\n}\n'
+} > "$ve_file" 2>/dev/null || true
+ve_copy
+trap ve_copy EXIT
+# --- end of the environment record ---
+srun --ntasks=1 julia --project=. --threads="$threads" main.jl "$cfg"
+date --iso-8601=seconds

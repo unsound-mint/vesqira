@@ -1,0 +1,62 @@
+vgt angle_frame="pixel" ok
+vgt angle_frame="galactic" ok
+vgt angle_frame="icrs" ok
+vgt angle_frame="fk5" ERROR: invalid: angle_frame must be one of pixel, galactic, icrs
+vgt dn="8" ok
+vgt dn="-1" ERROR: invalid: dn must be a whole number
+vgt dn="0" ok
+vgt dn="8.0" ERROR: invalid: dn must be a whole number
+vgt input_file="/a/b" ok
+vgt input_file="a" ERROR: invalid: input_file must be an absolute path without spaces or quotes
+vgt input_file="/a/../b" ERROR: invalid: input_file must be an absolute path without spaces or quotes
+vgt noise="0.17" ok
+vgt noise="abc" ERROR: invalid: noise must be a number
+vgt noise="1e5" ok
+vgt noise="" ERROR: invalid: noise must be a number
+vgt noise_mode="scalar" ok
+vgt noise_mode="separable" ok
+vgt noise_mode="separable_shrinkage" ERROR: invalid: noise_mode must be one of scalar, channel, spatial, separable, auto
+vgt output_bin="1" ok
+vgt output_bin="0" ERROR: invalid: output_bin must be a whole number, 1 or more
+vgt output_bin="99" ok
+vgt shell="1" ERROR: invalid: "shell" is not an editable setting
+rohsa crop_size="0" ok
+rohsa crop_size="100000" ok
+rohsa crop_size="100001" ERROR: invalid: crop_size must be between 0 and 100000
+rohsa lambda="10" ok
+rohsa lambda="x" ERROR: invalid: lambda_amp must be a number
+rohsa maxiter="1" ok
+rohsa maxiter="1000000" ok
+rohsa maxiter="1000001" ERROR: invalid: maxiter must be between 1 and 1000000
+rohsa memory_gb="auto" ok
+rohsa memory_gb="96" ok
+rohsa memory_gb="96.5" ok
+rohsa memory_gb="0" ERROR: invalid: memory_gb must be between 1 and 100000
+rohsa memory_gb="100001" ERROR: invalid: memory_gb must be between 1 and 100000
+rohsa memory_gb="1e2" ERROR: invalid: memory_gb must be a number of GB (96 or 96.5) or auto
+rohsa n_gauss="1" ok
+rohsa n_gauss="64" ok
+rohsa n_gauss="65" ERROR: invalid: n_gauss must be between 1 and 64
+rohsa n_gauss="0" ERROR: invalid: n_gauss must be between 1 and 64
+rohsa noise="true" ok
+rohsa noise="false" ok
+rohsa noise="1" ERROR: invalid: noise must be true or false
+rohsa output_dir="/a" ERROR: invalid: "output_dir" is not an editable setting
+rohsa spectral_kernel="none" ok
+rohsa spectral_kernel="hanning" ok
+rohsa spectral_kernel="gauss1" ok
+rohsa spectral_kernel="gauss1.5" ok
+rohsa spectral_kernel="gauss" ERROR: invalid: spectral_kernel must be none, hanning or gauss<sigma in channels> (gauss1, gauss1.5)
+rohsa spectral_kernel="x" ERROR: invalid: spectral_kernel must be none, hanning or gauss<sigma in channels> (gauss1, gauss1.5)
+rohsa keys crop_size,crop_x0,crop_y0,lambda,lambda_amp,lambda_mu,lambda_sig,lambda_var_amp,lambda_var_mu,lambda_var_sig,lb_sig,lb_sig_init,maxiter,maxiter_init,memory_gb,n_gauss,noise,sig_init,spectral_kernel,ub_sig,ub_sig_init
+vgt dn int true
+vgt noise_mode enum true
+vgt input_file path true
+vgt angle_frame enum true
+vgt output_bin posint true
+rohsa lambda number true
+rohsa n_gauss intlist true
+rohsa output_dir  false
+rohsa memory_gb gb true
+rohsa spectral_kernel kernel true
+rohsa nope  false

@@ -1,0 +1,1 @@
+ERROR: invalid: memory_gb must be a number of GB (96 or 96.5) or auto

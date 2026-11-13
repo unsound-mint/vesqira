@@ -1,0 +1,4 @@
+[rohsa]
+n_gauss = [4]
+
+maxiter_init = 200

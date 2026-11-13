@@ -1,0 +1,1 @@
+ERROR: invalid: spectral_kernel must be none, hanning or gauss<sigma in channels> (gauss1, gauss1.5)

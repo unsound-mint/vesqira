@@ -1,0 +1,13 @@
+# a VGT config shaped like the pipeline's own
+[input]
+input_file = "/data/cube.fits"
+output_dir = "/data/o"
+
+[vgt]
+dn = 16
+ker = 8
+min_valid = 5
+
+[noise]
+noise = 0.2
+noise_mode = "channel"
