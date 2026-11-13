@@ -31204,12 +31204,132 @@
     }
    }
   },
+  "GET /api/subsets/{sid}/sky-footprint": {
+   "summary": "Where the image lies on the sky, in the sky panel's frame",
+   "description": "From the dataset's celestial WCS with the researcher's corrections in force, by astropy (ADR 0072). A dataset with no usable celestial WCS is a 200 with `footprint` null and the reason. A point catalog or HEALPix map is a 409. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.",
+   "parameters": [
+    {
+     "name": "sid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "frame",
+     "in": "query",
+     "required": true,
+     "description": "The sky panel's frame: the positions come back in it.",
+     "schema": {
+      "type": "string",
+      "enum": [
+       "icrs",
+       "galactic"
+      ]
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SkyFootprint"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
   "GET /api/datasets/{id}/sky-point": {
    "summary": "Where one pixel is on the sky, in the sky panel's frame",
    "description": "The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason.",
    "parameters": [
     {
      "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "frame",
+     "in": "query",
+     "required": true,
+     "description": "The sky panel's frame: the positions come back in it.",
+     "schema": {
+      "type": "string",
+      "enum": [
+       "icrs",
+       "galactic"
+      ]
+     }
+    },
+    {
+     "name": "x",
+     "in": "query",
+     "required": true,
+     "description": "0-based image pixel, as the coordinate readout uses.",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    {
+     "name": "y",
+     "in": "query",
+     "required": true,
+     "description": "0-based image pixel, as the coordinate readout uses.",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SkyPoint"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/subsets/{sid}/sky-point": {
+   "summary": "Where one pixel is on the sky, in the sky panel's frame",
+   "description": "The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.",
+   "parameters": [
+    {
+     "name": "sid",
      "in": "path",
      "required": true,
      "schema": {

@@ -1359,7 +1359,7 @@ def handle(req: dict) -> tuple[dict, bytes]:
     return head, payload
 
 
-WINDOW_OPS = ("view", "plane", "coord", "spectrum")
+WINDOW_OPS = ("view", "plane", "coord", "spectrum", "sky_footprint", "sky_point")
 
 
 def _handle(req: dict) -> tuple[dict, bytes]:

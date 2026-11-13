@@ -4895,6 +4895,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/subsets/{sid}/sky-footprint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Where the image lies on the sky, in the sky panel's frame
+         * @description From the dataset's celestial WCS with the researcher's corrections in force, by astropy (ADR 0072). A dataset with no usable celestial WCS is a 200 with `footprint` null and the reason. A point catalog or HEALPix map is a 409. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.
+         */
+        get: operations["owner_s_skyFootprint_get_api_subsets_sid_sky_footprint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/sky-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Where one pixel is on the sky, in the sky panel's frame
+         * @description The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.
+         */
+        get: operations["owner_s_skyPoint_get_api_subsets_sid_sky_point"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/subsets/{sid}/spectrum": {
         parameters: {
             query?: never;
@@ -21481,6 +21525,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubsetSaved"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_skyFootprint_get_api_subsets_sid_sky_footprint: {
+        parameters: {
+            query: {
+                /** @description The sky panel's frame: the positions come back in it. */
+                frame: "icrs" | "galactic";
+            };
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkyFootprint"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_skyPoint_get_api_subsets_sid_sky_point: {
+        parameters: {
+            query: {
+                /** @description The sky panel's frame: the positions come back in it. */
+                frame: "icrs" | "galactic";
+                /** @description 0-based image pixel, as the coordinate readout uses. */
+                x: number;
+                /** @description 0-based image pixel, as the coordinate readout uses. */
+                y: number;
+            };
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkyPoint"];
                 };
             };
             /** @description Error */

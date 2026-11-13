@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Crosshair, Download, Minus, Plus, Scan } from "lucide-react";
 import type { Dataset } from "../api/catalog";
+import type { SubsetView } from "../api/subsets";
 import type { SkyFrame } from "../api/sky";
 import { Button, IconButton, Select } from "../ui";
 import { clampFov, fitView, pan, zoom } from "./projection";
@@ -32,9 +33,11 @@ function itemNote(it: SkyItem): string {
  * every outline and the cursor position are world coordinates the worker computed from the dataset's celestial WCS in the panel's
  * frame. The survey image is context only: it is labelled as such, is not sampled into any number and is off by default.
  */
-export function SkyPanel({ datasets, datasetId, probe, onOpen }: {
+export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
   datasets: Dataset[];
-  /** The dataset open in the viewer, or null (a virtual subset has no sky route of its own, so it is null too). */
+  /** The virtual subsets (ADR 0063): each is drawn as its own window, computed by the worker from its source's WCS. */
+  subsets?: SubsetView[];
+  /** The viewer's id of what is open: a dataset's id, the negative of a subset's id, or null. */
   datasetId: number | null;
   /** The viewer's pixel (hover, or pinned by a click), 0-based, in the open dataset's own grid. */
   probe: { x: number; y: number } | null;
@@ -43,9 +46,9 @@ export function SkyPanel({ datasets, datasetId, probe, onOpen }: {
   const { settings, set } = useSkySettings();
   const frame = settings.frame;
   const survey = surveyById(settings.survey);
-  const { items, omitted } = useFootprints(datasets, frame);
+  const { items, omitted } = useFootprints(datasets, frame, true, subsets);
   const bg = settings.background;
-  const icrs = useFootprints(datasets, "icrs", bg && frame !== "icrs");
+  const icrs = useFootprints(datasets, "icrs", bg && frame !== "icrs", subsets);
   const [asking, setAsking] = useState(false);
   const [status, setStatus] = useState<BackgroundStatus>({ state: "connecting" });
   const [api, setApi] = useState<BackgroundApi | null>(null);

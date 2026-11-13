@@ -102,6 +102,41 @@ describe("sky panel with the background off", () => {
   });
 });
 
+describe("virtual subsets", () => {
+  const subset = (id: number, over: Record<string, unknown> = {}) => ({ id, sourceId: 1, name: "Core", version: 2, stale: false, ...over }) as never;
+  const fresh = [ds(1, "hi_cube.fits", { modifiedAt: "sub" })];
+
+  it("draws a subset as its own window, keyed apart from a dataset with the same number, and reads it through the subset route", async () => {
+    getSkyFootprint.mockImplementation((id: number) => Promise.resolve(footprint(id < 0 ? 150.1 : 150, 2)));
+    const { onOpen } = mount({ datasets: [ds(3, "other.fits", { modifiedAt: "sub" }), ...fresh], subsets: [subset(3)], datasetId: null });
+    const outline = await screen.findByRole("button", { name: "Open Core (subset)" });
+    expect(screen.getByRole("button", { name: "Open other.fits" })).toBeInTheDocument();
+    expect(getSkyFootprint.mock.calls.map((c) => c[0]).sort()).toEqual([-3, 1, 3]);
+    await userEvent.click(outline);
+    expect(onOpen).toHaveBeenLastCalledWith(-3);
+  });
+
+  it("asks for the open subset's cursor on the subset route, in the subset's own pixels", async () => {
+    getSkyFootprint.mockImplementation((id: number) => Promise.resolve(footprint(id < 0 ? 150.1 : 150, 2)));
+    mount({ datasets: fresh, subsets: [subset(5)], datasetId: -5, probe: { x: 2, y: 4 } });
+    expect(await screen.findByText(/RA 150\.25/)).toBeInTheDocument();
+    expect(getSkyPoint).toHaveBeenCalledWith(-5, "icrs", 2, 4, expect.anything());
+  });
+
+  it("lists a stale subset with its reason and never asks the worker for it", async () => {
+    mount({ datasets: fresh, subsets: [subset(7, { stale: true })], datasetId: -7, probe: { x: 1, y: 1 } });
+    expect(await screen.findByText(/Core \(subset\): the file this subset was defined on has changed.*The cursor has no sky position here/)).toBeInTheDocument();
+    expect(getSkyFootprint.mock.calls.map((c) => c[0])).not.toContain(-7);
+    expect(getSkyPoint).not.toHaveBeenCalled();
+  });
+
+  it("leaves out a subset whose source is not in the list or is a catalog", async () => {
+    mount({ datasets: [...fresh, catalog], subsets: [subset(8, { sourceId: 99 }), subset(9, { sourceId: 3 })], datasetId: null });
+    await screen.findByRole("button", { name: "Open hi_cube.fits" });
+    expect(screen.queryByText(/Core \(subset\)/)).toBeNull();
+  });
+});
+
 describe("consent for the survey background", () => {
   it("names the server and what it receives before anything is contacted, and Cancel contacts nothing", async () => {
     const fetchSpy = vi.fn();
