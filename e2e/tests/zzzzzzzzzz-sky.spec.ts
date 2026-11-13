@@ -67,7 +67,7 @@ test("the sky panel works offline, draws footprints from the WCS, links the curs
   await expect(panel.getByText(/Plain coordinate grid\. No survey image: the background is off/)).toBeVisible();
   await panel.getByRole("button", { name: "Choose a survey image…" }).click();
   await expect(panel.getByRole("group", { name: "Contact a server" })).toContainText("alasky.cds.unistra.fr");
-  await expect(panel.getByRole("group", { name: "Contact a server" })).toContainText("No dataset, file name, path or coordinate from your files is sent");
+  await expect(panel.getByRole("group", { name: "Contact a server" })).toContainText("so those requests show which field you are working on");
   await panel.getByRole("button", { name: "Cancel" }).click();
 
   // the other frame is asked of the worker again, and the outlines stay

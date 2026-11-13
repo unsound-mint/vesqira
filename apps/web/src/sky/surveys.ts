@@ -31,5 +31,5 @@ export const surveyById = (id: string): Survey => SURVEYS.find((s) => s.id === i
 
 /** The sentence the person reads before the background is turned on, and again beside the switch while it is on. */
 export function contactNotice(s: Survey): string {
-  return `Turning this on contacts ${s.host}, the HiPS server of ${s.provider}. It receives the parts of the sky you look at (the image tiles your position and zoom request) and your IP address. No dataset, file name, path or coordinate from your files is sent. With it off, nothing leaves this computer.`;
+  return `Turning this on contacts ${s.host}, the HiPS server of ${s.provider}. It receives the parts of the sky you look at (the image tiles your position and zoom request) and your IP address. The view centres on your datasets, so those requests show which field you are working on. No dataset, file name, path or pixel value is sent. With it off, nothing leaves this computer.`;
 }
