@@ -1858,6 +1858,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/figure-shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every figure link of the workspace, newest first, so one can be found and revoked without opening its figure */
+        get: operations["owner_s_allFigureShares_get_api_figure_shares"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/figures": {
         parameters: {
             query?: never;
@@ -2039,6 +2056,44 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["owner_s_lifecycleArchive_post_api_figures_id_restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/figures/{id}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Share one figure on its own: freeze it and return the review token once (ADR 0071) */
+        post: operations["owner_s_shareFigure_post_api_figures_id_share"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/figures/{id}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Links made from this figure on its own, newest first */
+        get: operations["owner_s_figureShares_get_api_figures_id_shares"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6270,7 +6325,10 @@ export interface components {
         Snapshot: {
             /** Format: int64 */
             id: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description 0 for a figure shared on its own, which has no board (ADR 0071)
+             */
             boardId: number;
             label: string;
             /** Format: date-time */
@@ -6297,6 +6355,10 @@ export interface components {
             lastActivity?: string;
             /** @enum {string} */
             access?: "collaboration" | "unreleased";
+            /** @description Only on a figure shared on its own (ADR 0071): the revision of its one figure. */
+            revision?: string;
+            /** @description Only on a figure shared on its own: the figure's title when it was shared. */
+            title?: string;
         };
         SnapshotList: {
             snapshots: components["schemas"]["Snapshot"][];
@@ -11599,6 +11661,15 @@ export interface components {
             label?: components["schemas"]["AccessLabel"];
             restricted?: components["schemas"]["RestrictedPanel"][];
         };
+        /** @description Unknown keys are refused. */
+        ShareFigureRequest: {
+            label?: string;
+            question?: string;
+            /** @description Lifetime of the link; 0 or absent means 14 days; beyond 90 days is refused */
+            hours?: number;
+            /** @description The author's explicit yes to sharing a figure that uses labelled data. Without it such a share is refused with 409; it never overrides a blocked label (403). */
+            confirmAccess?: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -15266,6 +15337,35 @@ export interface operations {
             };
         };
     };
+    owner_s_allFigureShares_get_api_figure_shares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listFigures_get_api_figures: {
         parameters: {
             query?: never;
@@ -15602,6 +15702,90 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_shareFigure_post_api_figures_id_share: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareFigureRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishResponse"];
+                };
+            };
+            /** @description A label on the figure blocks publishing in this workspace (code publishing_blocked), or the caller may not publish */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRefusal"];
+                };
+            };
+            /** @description The figure uses labelled data and confirmAccess was not sent (code access_confirmation_required) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRefusal"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_figureShares_get_api_figures_id_shares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

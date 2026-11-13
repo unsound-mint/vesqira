@@ -61,6 +61,12 @@ export const setLayout = (boardId: number, layout: (BoardRect | null)[], expect:
   post<Board>(`/api/boards/${boardId}/layout`, { layout, expect, ...(from ? { from } : {}) });
 export const publish = (boardId: number, label: string, hours: number, extra: { question?: string; supersedes?: number; reason?: string; confirmAccess?: boolean } = {}) =>
   post<Schemas["PublishResponse"]>(`/api/boards/${boardId}/publish`, { label, hours, ...extra });
+/** One figure shared on its own, with no board (ADR 0071): the same freezing, access confirmation and expiry as a board link. */
+export const shareFigure = (figureId: number, label: string, hours: number, extra: { question?: string; confirmAccess?: boolean } = {}) =>
+  post<Schemas["PublishResponse"]>(`/api/figures/${figureId}/share`, { label, hours, ...extra });
+/** The links made from one figure, and from every figure, newest first. */
+export const listFigureShares = (figureId: number) => call<{ snapshots: Snapshot[] }>(`/api/figures/${figureId}/shares`).then((r) => r.snapshots);
+export const listAllFigureShares = () => call<{ snapshots: Snapshot[] }>("/api/figure-shares").then((r) => r.snapshots);
 export const preflight = (boardId: number, question: string) => call<Preflight>(`/api/boards/${boardId}/preflight?question=${encodeURIComponent(question)}`);
 export const listSnapshots = (boardId: number) => call<{ snapshots: Snapshot[] }>(`/api/boards/${boardId}/snapshots`).then((r) => r.snapshots);
 export const revokeSnapshot = (id: number) => post<Schemas["Revoked"]>(`/api/snapshots/${id}/revoke`, {});
