@@ -385,6 +385,8 @@ class Cube:
         parallel. Without it each channel's few rows fault one at a time and every fault reads a readahead window of several MB:
         a 10 x 10 box over 600 channels asked the disk for 2.4 GB (measured, 5 GiB cube on NVMe) and waited on 600 reads in turn.
         MADV_RANDOM switches that readahead off for this mapping and MADV_WILLNEED queues the exact byte span of each channel.
+        The advice lives on this open's mapping only: every request opens the file itself (block_reader, read_plane), so a plane
+        read after a spectrum has the kernel's normal readahead (bench row plane_after_spectrum).
         Only hints: values are never affected, and any failure (no mmap object, other platform) leaves the plain read."""
         try:
             import mmap as _mmap

@@ -230,6 +230,7 @@ def run(path: str, nx: int, ny: int, nc: int, repeats: int, worker: "Worker | No
     }
     if drop is not None:
         scenarios["plane_scrub"] = [dict(op="plane", path=path, channel=ch) for ch in range(mid - 2, mid + 3)]
+        scenarios["plane_after_spectrum"] = dict(op="plane", path=path, channel=min(nc - 1, mid + 7))
     for name, req in scenarios.items():
         reqs = req if isinstance(req, list) else [req]
         times: list[float] = []
@@ -238,6 +239,9 @@ def run(path: str, nx: int, ny: int, nc: int, repeats: int, worker: "Worker | No
         resident = None
         io0 = mf0 = 0
         if drop is not None:
+            if name == "plane_after_spectrum":        # a cold box spectrum on the same worker first; the plane is then read cold on another channel
+                drop(path)
+                w.ask(**scenarios["spectrum_small"])
             drop(path)
             resident = cached_fraction(path)       # a page the worker still has mapped is not evicted: say so per row
             io0, mf0 = w.read_bytes(), w.major_faults()
