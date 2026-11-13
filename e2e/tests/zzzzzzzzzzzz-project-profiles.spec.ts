@@ -13,9 +13,8 @@ const FOLDER = path.resolve(here, "../.run/project/own-tool-study");
 const out = path.resolve(here, "../test-results");
 
 async function expectNoAxeViolations(page: Page) {
-  // the header's warn pills ("to answer", health) fail color-contrast at 390 wide in the light scheme in every project view; not part of this change
-  const r = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).exclude("button[class*=pillBtn]").analyze();
-  expect(r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
+  const r = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).analyze();
+  expect(r.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")} ${v.nodes[0]?.any[0]?.message}`)).toEqual([]);
 }
 
 

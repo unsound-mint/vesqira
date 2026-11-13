@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,10 @@ func newProfEnv(t *testing.T) *profEnv {
 	e.srv.Worker, e.srv.Planes, e.srv.Cache = pw, pw, NewPlaneCache(8<<20)
 	e.srv.CacheDir, e.srv.Derived = filepath.Join(e.base, "cache"), ds
 	e.srv.Analysis = &AnalysisConfig{Python: py, Script: filepath.Join(repo, "services/scientific-worker/analysis.py"), DerivedDir: derivedDir, Timeout: 2 * time.Minute}
+	// the analysis routes are registered when the handler is built, so build it again with the analysis programs configured
+	e.ts.Close()
+	e.ts = httptest.NewServer(e.srv.Handler())
+	t.Cleanup(e.ts.Close)
 	fx := filepath.Join(e.base, "fixtures")
 	os.MkdirAll(fx, 0o755)
 	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), fx)
@@ -225,5 +230,14 @@ func TestProjectProfileDecompositionIsPinnedToTheFileItWasImportedUnder(t *testi
 	resp, b := get(t, base+"/components?run="+itoa(int(run.ID))+"&x=3&y=2")
 	if resp.StatusCode != 409 || !strings.Contains(string(b), "changed") {
 		t.Fatalf("components after the profile changed: %d %s", resp.StatusCode, b)
+	}
+	// the Gaussian review (diagram and class maps) reads the fit through the same check
+	for name, body := range map[string]map[string]any{
+		"/sigmav":     {"runId": run.ID, "weight": "count", "velocityBins": map[string]any{"min": -20.0, "max": 30.0, "n": 10}, "sigmaBins": map[string]any{"min": 0.0, "max": 4.0, "n": 8}},
+		"/class-maps": {"runId": run.ID, "weight": "count", "edges": []float64{2.03}},
+	} {
+		if resp, b := postJSON(t, base+name, body); resp.StatusCode != 409 || !strings.Contains(string(b), "changed") {
+			t.Errorf("%s after the profile changed: %d %s", name, resp.StatusCode, b)
+		}
 	}
 }
