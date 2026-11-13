@@ -42,6 +42,12 @@ func OpenLocal(db *sql.DB) (*Local, error) {
 	if _, err := db.Exec(schema.RelayedTables); err != nil {
 		return nil, err
 	}
+	if _, err := db.Exec(schema.RelayGrantTables); err != nil {
+		return nil, err
+	}
+	if err := schema.RelayGrantColumns(db); err != nil {
+		return nil, err
+	}
 	return &Local{db: db, Now: time.Now}, nil
 }
 
@@ -140,14 +146,19 @@ type Mirrored struct {
 	RunHash     string      `json:"runHash"`
 	Seq         int64       `json:"seq"`
 	Reported    string      `json:"reported"`
-	ReceivedAt  time.Time   `json:"receivedAt"`
-	UpdatedAt   time.Time   `json:"updatedAt"`
+	// GrantID is the standing approval the request was submitted under (ADR 0074), set once used; GrantState is what this computer
+	// decided about the grant the request named ("" not yet, waiting, pending, used, manual) and GrantNote why it waits for you.
+	GrantID     string    `json:"grantId"`
+	GrantState  string    `json:"grantState"`
+	GrantNote   string    `json:"grantNote"`
+	ReceivedAt  time.Time `json:"receivedAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 	origin      string
 	workspaceID workspace.ID
 }
 
 const mirrorCols = `id, workspace_id, origin, server_id, request, server_state, local_state, refusal, job_id, sweep_id, base_run_id, base_chosen, draft,
-	script_hash, auto_push, run_hash, seq, reported, received_at, updated_at`
+	script_hash, auto_push, run_hash, seq, reported, received_at, updated_at, grant_id, grant_state, grant_note`
 
 func scanMirror(row interface{ Scan(...any) error }) (Mirrored, error) {
 	var m Mirrored
@@ -155,7 +166,7 @@ func scanMirror(row interface{ Scan(...any) error }) (Mirrored, error) {
 	var job, sweep, base sql.NullInt64
 	var rec, upd int64
 	err := row.Scan(&m.ID, &m.workspaceID, &m.origin, &m.ServerID, &raw, &m.ServerState, &m.LocalState, &m.Refusal, &job, &sweep, &base, &m.BaseChosen, &draft,
-		&m.ScriptHash, &m.AutoPush, &m.RunHash, &m.Seq, &m.Reported, &rec, &upd)
+		&m.ScriptHash, &m.AutoPush, &m.RunHash, &m.Seq, &m.Reported, &rec, &upd, &m.GrantID, &m.GrantState, &m.GrantNote)
 	if err != nil {
 		return m, err
 	}
@@ -283,7 +294,7 @@ func (l *Local) Upsert(origin string, req Request, refusal string) (Mirrored, bo
 	keep := old.Request
 	keep.State, keep.Change, keep.Notes, keep.ExpiresAt = req.State, req.Change, req.Notes, req.ExpiresAt
 	state, why := old.LocalState, old.Refusal
-	if !reflect.DeepEqual(normalAsk(old.Request.Ask), normalAsk(req.Ask)) || !reflect.DeepEqual(old.Request.Base, req.Base) || old.Request.Requester != req.Requester {
+	if !reflect.DeepEqual(normalAsk(old.Request.Ask), normalAsk(req.Ask)) || !reflect.DeepEqual(old.Request.Base, req.Base) || old.Request.Requester != req.Requester || old.Request.RequesterID != req.RequesterID {
 		if state == LocalReceived || state == LocalDraft {
 			state, why = LocalRefused, "the request changed on the server after this computer received it; it is not followed"
 		}

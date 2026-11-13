@@ -3,6 +3,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: var(--sp-3);
+  align-items: start;
 }
 
 .area {
@@ -48,4 +49,88 @@
 .plain {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* standing approvals (ADR 0074): one item per grant, its terms as a two-column list, usage as text with a thin bar */
+.grants {
+  display: grid;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.grant {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+  border-top: var(--bw) solid var(--line);
+}
+
+.terms {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+}
+
+.terms dt {
+  color: var(--text-2);
+}
+
+.terms dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.paths {
+  font-family: var(--font-data);
+  overflow-wrap: anywhere;
+}
+
+.usages {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.usage {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) 96px;
+  gap: var(--sp-3);
+  align-items: center;
+}
+
+.track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.keyrow {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 160px));
+  gap: var(--sp-3);
+}
+
+.grantNote {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--accent);
+  background: var(--bg-2);
 }

@@ -3762,6 +3762,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/relay/local/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Standing approvals with their usage, and each tool's profile commit (local only) */
+        get: operations["owner_s_listGrants_get_api_relay_local_grants"];
+        put?: never;
+        /** Make a standing approval for one collaborator, label and template, inside the inbox (local only) */
+        post: operations["owner_s_createGrant_post_api_relay_local_grants"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/local/grants/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a standing approval at once; the jobs still queued or running under it are listed, never cancelled (local only) */
+        post: operations["owner_s_revokeGrant_post_api_relay_local_grants_id_revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/relay/local/inbox": {
         parameters: {
             query?: never;
@@ -3772,6 +3809,23 @@ export interface paths {
         get?: never;
         /** Set the inbox and the host each label stands for; published at the next pull (local only) */
         put: operations["owner_s_relayLocalInbox_put_api_relay_local_inbox"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/local/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The group workspace's members, asked of the group server, to choose a collaborator (local only) */
+        get: operations["owner_s_relayLocalMembers_get_api_relay_local_members"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -3790,6 +3844,23 @@ export interface paths {
         put?: never;
         /** Pull now (local only) */
         post: operations["owner_s_relayLocalPoll_post_api_relay_local_poll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The workspace's members other than the token's account (relay token) */
+        get: operations["owner_s_relayMembers_get_api_relay_members"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4384,6 +4455,23 @@ export interface paths {
         put?: never;
         /** File a run request to a key holder, validated against their inbox and rate-limited (session only) */
         post: operations["owner_s_fileRunRequest_post_api_run_requests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/run-requests/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Whether a request would go through a standing approval or wait for review, and why (advisory) */
+        post: operations["owner_s_previewRunRequest_post_api_run_requests_preview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11452,6 +11540,8 @@ export interface components {
         RelayInbox: {
             paused: boolean;
             labels: components["schemas"]["RelayLabel"][];
+            /** @description the standing approvals offered; the server shows each member only their own */
+            grants?: components["schemas"]["RelayGrantOffer"][];
         };
         /** @description Zero or absent keeps the base's value. */
         RelayResources: {
@@ -11474,6 +11564,8 @@ export interface components {
             resources: components["schemas"]["RelayResources"];
             grid: components["schemas"]["RelayGridKey"][];
             note: string;
+            /** @description the id of a standing approval the requester files under (ADR 0074); the key holder's computer checks every term again */
+            grant?: string;
         };
         RelayBase: {
             origin: string;
@@ -11500,6 +11592,8 @@ export interface components {
             /** Format: date-time */
             expiresAt: string;
             notes: components["schemas"]["RelayFollowUp"][];
+            /** @description the requester's account id, sent only with a request that names a standing approval */
+            requesterId?: string;
         };
         /** @description One pull: the requests addressed to the token's account that changed after the cursor, in order, and the next cursor. */
         RelayPage: {
@@ -11531,6 +11625,8 @@ export interface components {
             baseChosen: boolean;
             editedLines: number;
             autoPush: boolean;
+            /** @description the standing approval a request is submitted under without a click */
+            grant?: string;
         };
         /** @description A status transition with a per-request sequence number; only enumerated words cross. */
         RelayReport: {
@@ -11576,6 +11672,8 @@ export interface components {
             autoPush: boolean;
             /** Format: date-time */
             at: string;
+            /** @description the standing approval it was submitted under, if any */
+            grant?: string;
         };
         RelayClaimed: {
             /** @enum {string} */
@@ -11692,6 +11790,15 @@ export interface components {
             origin: string;
             jobName?: string;
             jobState?: string;
+            /** @description the standing approval it was submitted under */
+            grantId?: string;
+            /**
+             * @description empty (no standing approval named, or not decided yet), waiting for a slot, pending a server answer, used, or the code of why it waits for the key holder
+             * @enum {string}
+             */
+            grantState?: "" | "waiting" | "pending" | "used" | "unknown" | "revoked" | "expired" | "stale" | "outside" | "grid" | "base" | "input" | "commit" | "budget" | "edited";
+            /** @description the key holder's computer's own sentence about the standing approval (may name a path; never sent to the server) */
+            grantNote?: string;
         };
         RelayLocalState: {
             origin: string;
@@ -12528,6 +12635,116 @@ export interface components {
             results: components["schemas"]["FamilyMapRemoval"][];
             /** @description Present when nothing was removed: the first reason */
             error?: string;
+        };
+        /** @description A standing approval as the group server shows it, only to its collaborator: no path, host, root or commit (ADR 0074). Usage is as of the key holder's computer's last publish. */
+        RelayGrantOffer: {
+            id: string;
+            /** @description the collaborator's account id */
+            requester: string;
+            label: string;
+            /** @enum {string} */
+            template: "vgt" | "rohsa";
+            keys: components["schemas"]["RelayBound"][];
+            perJob: components["schemas"]["RelayLimits"];
+            maxJobs: number;
+            jobsUsed: number;
+            maxCoreHours: number;
+            coreHoursUsed: number;
+            maxAtOnce: number;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        RelayReview: {
+            instance: string;
+            /**
+             * @description why a request that named a standing approval waits for review
+             * @enum {string}
+             */
+            grant?: "unknown" | "revoked" | "expired" | "stale" | "outside" | "grid" | "base" | "input" | "commit" | "budget" | "edited";
+        };
+        RelayGrantJob: {
+            id: number;
+            name: string;
+            state: string;
+        };
+        /** @description A standing approval as the key holder's computer keeps it, with its usage and the jobs still queued or running under it (local only). */
+        RelayGrant: {
+            id: string;
+            requesterId: string;
+            requesterName: string;
+            label: string;
+            hostId: number;
+            /** @enum {string} */
+            template: "vgt" | "rohsa";
+            profile: string;
+            commit: string;
+            /** @enum {string} */
+            commitBasis: "profile" | "typed";
+            keys: components["schemas"]["RelayBound"][];
+            roots: string[];
+            files: string[];
+            maxJobs: number;
+            maxCoreHours: number;
+            perJob: components["schemas"]["RelayLimits"];
+            maxAtOnce: number;
+            note: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt?: string;
+            jobsUsed: number;
+            coreMinutesUsed: number;
+            atOnce: number;
+            live: boolean;
+            hostName: string;
+            openJobs: components["schemas"]["RelayGrantJob"][];
+        };
+        RelayTemplateCommit: {
+            profile: string;
+            commit: string;
+        };
+        RelayGrantList: {
+            linked: boolean;
+            grants: components["schemas"]["RelayGrant"][];
+            /** @description each tool's profile and the commit it was written against */
+            templates: {
+                [key: string]: components["schemas"]["RelayTemplateCommit"];
+            };
+        };
+        RelayGrantCreate: {
+            requesterId: string;
+            requesterName: string;
+            label: string;
+            /** @enum {string} */
+            template: "vgt" | "rohsa";
+            /** @enum {string} */
+            commitBasis: "profile" | "typed";
+            /** @description the full commit, when typed */
+            commit?: string;
+            keys: components["schemas"]["RelayBound"][];
+            roots: string[];
+            files: string[];
+            maxJobs: number;
+            maxCoreHours: number;
+            perJob: components["schemas"]["RelayLimits"];
+            maxAtOnce: number;
+            expiresInDays: number;
+            note?: string;
+        };
+        RelayMember: {
+            id: string;
+            name: string;
+        };
+        RelayMembers: {
+            members: components["schemas"]["RelayMember"][];
+        };
+        RunRequestPreview: {
+            /** @enum {string} */
+            route: "grant" | "review";
+            grant?: components["schemas"]["RelayGrantOffer"];
+            reason: string;
         };
     };
     responses: never;
@@ -19872,6 +20089,99 @@ export interface operations {
             };
         };
     };
+    owner_s_listGrants_get_api_relay_local_grants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayGrantList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createGrant_post_api_relay_local_grants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayGrantCreate"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayGrant"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_revokeGrant_post_api_relay_local_grants_id_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayGrant"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_relayLocalInbox_put_api_relay_local_inbox: {
         parameters: {
             query?: never;
@@ -19905,6 +20215,35 @@ export interface operations {
             };
         };
     };
+    owner_s_relayLocalMembers_get_api_relay_local_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayMembers"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_relayLocalPoll_post_api_relay_local_poll: {
         parameters: {
             query?: never;
@@ -19921,6 +20260,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RelayLocal"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_relayMembers_get_api_relay_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayMembers"];
                 };
             };
             /** @description Error */
@@ -20009,7 +20377,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RelayInstance"];
+                "application/json": components["schemas"]["RelayReview"];
             };
         };
         responses: {
@@ -20846,6 +21214,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunRequest"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_previewRunRequest_post_api_run_requests_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunRequestFile"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRequestPreview"];
                 };
             };
             /** @description Error */

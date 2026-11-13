@@ -119,6 +119,9 @@ type Label struct {
 type Inbox struct {
 	Paused bool    `json:"paused"`
 	Labels []Label `json:"labels"`
+	// Grants are the standing approvals this computer offers (ADR 0074), published with the inbox; the key holder's typed inbox
+	// never holds them. The group server shows each member only the offers made to them.
+	Grants []GrantOffer `json:"grants,omitempty"`
 }
 
 // Resources a request asks for; a zero field leaves the base's value.
@@ -142,6 +145,8 @@ type Ask struct {
 	Resources Resources         `json:"resources"`
 	Grid      []GridKey         `json:"grid"`
 	Note      string            `json:"note"`
+	// Grant is the id of the standing approval the requester asks to go through (ADR 0074), "" for an ordinary request.
+	Grant string `json:"grant,omitempty"`
 }
 
 // Base is the pushed run a request starts from, as the key holder's computer needs it: the opaque origin key of its lineage, its
@@ -162,15 +167,18 @@ type FollowUp struct {
 
 // Request is one request as the key holder's computer pulls it.
 type Request struct {
-	ID        int64      `json:"id"`
-	Change    int64      `json:"change"`
-	State     string     `json:"state"`
-	Requester string     `json:"requester"`
-	Ask       Ask        `json:"ask"`
-	Base      *Base      `json:"base,omitempty"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ExpiresAt time.Time  `json:"expiresAt"`
-	Notes     []FollowUp `json:"notes"`
+	ID        int64  `json:"id"`
+	Change    int64  `json:"change"`
+	State     string `json:"state"`
+	Requester string `json:"requester"`
+	// RequesterID is the requester's account id, sent only when the ask names a grant (ADR 0074), so a page without grants is what
+	// an older computer decodes.
+	RequesterID string     `json:"requesterId,omitempty"`
+	Ask         Ask        `json:"ask"`
+	Base        *Base      `json:"base,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	ExpiresAt   time.Time  `json:"expiresAt"`
+	Notes       []FollowUp `json:"notes"`
 }
 
 // Page is one pull: the requests addressed to the token's account in its workspace that changed after the cursor sent, in the
@@ -199,6 +207,8 @@ type Claim struct {
 	BaseChosen  bool              `json:"baseChosen"`
 	EditedLines int               `json:"editedLines"`
 	AutoPush    bool              `json:"autoPush"`
+	// Grant is the standing approval the request was submitted under without a per-request click (ADR 0074), "" for a manual one.
+	Grant string `json:"grant,omitempty"`
 }
 
 // Report is a status transition the key holder's computer reports, with a sequence number per request. Only enumerated words
@@ -216,6 +226,8 @@ type Report struct {
 // Review says the draft is rendered (ADR 0066: waiting for review).
 type Review struct {
 	Instance string `json:"instance"`
+	// Grant is why a request that named a standing approval waits for the key holder: one of the Grant* codes, never a sentence.
+	Grant string `json:"grant,omitempty"`
 }
 
 // Decline is the key holder's no, with a note.

@@ -40,6 +40,7 @@ func (s *Server) relayedRoutes(mux *http.ServeMux) {
 	s.route(mux, "POST /api/relayed/{id}/approve", authz.LocalOnly, s.approveRelayed)
 	s.route(mux, "POST /api/relayed/{id}/decline", authz.LocalOnly, s.declineRelayed)
 	s.route(mux, "POST /api/relayed/{id}/detach", authz.LocalOnly, s.detachRelayed)
+	s.relayGrantLocalRoutes(mux)
 }
 
 // relayState is the pull loop's state.
@@ -140,7 +141,7 @@ func (s *Server) RelayPass(ctx context.Context) {
 	// refused whole must not also stop the status of work already running
 	pull := true
 	if !st.Published {
-		if err := c.do("PUT", "/api/relay/inbox", "application/json", mustJSONBytes(map[string]any{"instance": l.Instance, "inbox": st.Inbox}), nil); err != nil {
+		if err := c.do("PUT", "/api/relay/inbox", "application/json", mustJSONBytes(map[string]any{"instance": l.Instance, "inbox": s.publishedInbox(l.Origin, st)}), nil); err != nil {
 			failed(err)
 			pull = false
 		} else {
@@ -179,6 +180,7 @@ func (s *Server) RelayPass(ctx context.Context) {
 			break
 		}
 	}
+	s.applyGrants(ctx, c, l)
 	s.tellServer(c, l)
 	s.reportAll(c, l)
 }
@@ -231,6 +233,13 @@ func (s *Server) ownBase(l outbox.Link, req relay.Request) (int64, bool) {
 // that made the base run: the repository, config and input are the key holder's, the output folder is a fresh one of theirs, and
 // only the request's whitelisted values (with the key holder's changes) and resources differ. Every value is validated again here.
 func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID int64, chosen bool, changes map[string]string, lower relay.Resources) *apiErr {
+	return s.renderRelayedInput(ctx, m, baseRunID, chosen, changes, lower, "")
+}
+
+// renderRelayedInput is renderRelayed with the input replaced by realInput when it is set: a standing approval (ADR 0074) renders
+// the script it submits with the input's real path on the host, as resolved when the grant was checked, so a link swapped after the
+// check cannot change what the job reads. Only a single draft takes one; a grid never goes through a grant.
+func (s *Server) renderRelayedInput(ctx context.Context, m relay.Mirrored, baseRunID int64, chosen bool, changes map[string]string, lower relay.Resources, realInput string) *apiErr {
 	if s.Jobs == nil || s.HostDB == nil {
 		return &apiErr{404, "jobs are not available on this computer"}
 	}
@@ -315,8 +324,15 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 	}
 	ref := fmt.Sprintf("request %d from %s", m.ServerID, m.Request.Requester)
 	rev, mode := s.relayPin(baseRunID)
+	pinProfile := req.PinProfile
+	if rev == "" {
+		rev, pinProfile = s.grantPin(m, rev, pinProfile)
+	}
 	draft := relay.DraftValues{Params: params, Resources: res, Label: strings.TrimSpace(ask.Label)}
 	ctx = localCtx(ctx)
+	if realInput != "" && len(ask.Grid) != 0 {
+		return &apiErr{422, "a grid is never rendered for a standing approval"}
+	}
 	if len(ask.Grid) == 0 {
 		set := map[string]string{}
 		for k, v := range jobs.CarriedSet(base.Template, req.Set) {
@@ -324,6 +340,19 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 		}
 		for k, v := range params {
 			set[k] = v
+		}
+		configText := req.BaseConfigText
+		if realInput != "" {
+			text, err := jobs.SetInputFile(base.Template, configText, realInput)
+			if err != nil {
+				return &apiErr{422, "the input could not be written as its real path: " + err.Error()}
+			}
+			configText = text
+			delete(set, jobs.InputKey(base.Template))
+			note += " Its input resolved to " + realInput + " on the host."
+			if utf8.RuneCountInString(note) > jobs.MaxNote {
+				note = string([]rune(note)[:jobs.MaxNote])
+			}
 		}
 		cpus := req.CPUs
 		if res.CPUs > 0 {
@@ -335,8 +364,8 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 		if tm == "" {
 			tm = req.Time
 		}
-		b, aerr := s.buildJob(ctx, h, base.Template, name, draftInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: req.BaseConfigText, Set: set,
-			CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev, PinProfile: req.PinProfile})
+		b, aerr := s.buildJob(ctx, h, base.Template, name, draftInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: configText, Set: set,
+			CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev, PinProfile: pinProfile})
 		if aerr != nil {
 			return aerr
 		}
@@ -415,6 +444,9 @@ func (s *Server) relayPin(baseRunID int64) (rev, mode string) {
 // relayCode says, for the approval view, which code the draft runs: the commit its script insists on, or why it insists on none.
 func (s *Server) relayCode(m relay.Mirrored, j jobs.Job) string {
 	req, haveReq := j.ConfigRequest()
+	if why := s.grantPinWhy(m, req); haveReq && why != "" {
+		return why
+	}
 	if haveReq && req.ExpectCommit != "" {
 		return "The script insists on commit " + req.ExpectCommit + ", the base run's: the job stops before the program starts unless the code folder on the host is at that commit with no changed tracked file."
 	}
@@ -486,8 +518,11 @@ func (s *Server) tellServer(c *groupClient, l outbox.Link) {
 		if i == maxTellsPerPass {
 			break // the rest go in the next pass; a server sending many refusable requests gets as many calls back, slowly
 		}
+		if m.GrantState == relay.GrantStateWaiting || m.GrantState == relay.GrantStatePending {
+			continue // still to be decided under its standing approval; the review then carries the reason it fell back
+		}
 		path := fmt.Sprintf("/api/relay/requests/%d/review", m.ServerID)
-		var body any = relay.Review{Instance: l.Instance}
+		var body any = relay.Review{Instance: l.Instance, Grant: grantCodeOf(m)}
 		if m.LocalState == relay.LocalRefused {
 			path = fmt.Sprintf("/api/run-requests/%d/decline", m.ServerID)
 			body = relay.Decline{Instance: l.Instance, Note: "Refused by the key holder's computer: " + m.Refusal}
@@ -920,6 +955,9 @@ func (s *Server) draftRelayed(w http.ResponseWriter, r *http.Request) {
 		s.failAPI(w, aerr)
 		return
 	}
+	if m.Request.Ask.Grant != "" {
+		_ = s.Relayed.SetGrantState(m.ID, "", relay.GrantEdited, "Waiting for you: you drafted it again yourself, so it is no longer submitted under the standing approval.")
+	}
 	s.kickRelay() // tell the server the draft is waiting for review
 	m, _ = s.Relayed.Get(m.ID)
 	writeJSON(w, 200, s.relayedView(m))
@@ -1041,18 +1079,7 @@ func (s *Server) approveRelayed(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, relay.Sentence(err))
 		return
 	}
-	// the server must have the request waiting for review before it can be claimed
-	if m.ServerState == relay.StateRequested {
-		var out struct {
-			State string `json:"state"`
-		}
-		if err := c.postJSON(fmt.Sprintf("/api/relay/requests/%d/review", m.ServerID), relay.Review{Instance: l.Instance}, &out); err != nil {
-			s.claimFailed(w, m, err)
-			return
-		}
-		_ = s.Relayed.SetServerState(m.ID, out.State)
-	}
-	if err := c.postJSON(fmt.Sprintf("/api/relay/requests/%d/approve", m.ServerID), claim, nil); err != nil {
+	if err := s.claimOnServer(c, l, m, claim); err != nil {
 		s.claimFailed(w, m, err)
 		return
 	}
@@ -1107,16 +1134,7 @@ func (s *Server) claimFailed(w http.ResponseWriter, m relay.Mirrored, err error)
 		failCode(w, 502, "server_unreachable", "The group server could not be reached, so the request was not claimed and nothing was submitted. Try again when it answers, or keep the draft as your own job.", nil)
 		return
 	}
-	if ge.Status == 409 || ge.Status == 404 {
-		st := conflictState(ge)
-		if ge.Status == 404 {
-			st = relay.StateWithdrawn
-		}
-		_ = s.Relayed.SetServerState(m.ID, st)
-		if !relay.IsOpen(st) {
-			_ = s.Relayed.SetLocalState(m.ID, relay.LocalClosed)
-		}
-	}
+	s.noteClaimRefused(m, ge)
 	failCode(w, 409, "not_claimed", "The group server did not grant the claim, so nothing was submitted: "+ge.Msg, nil)
 }
 

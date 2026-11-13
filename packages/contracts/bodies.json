@@ -17902,6 +17902,13 @@
      "items": {
       "$ref": "#/components/schemas/RelayLabel"
      }
+    },
+    "grants": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayGrantOffer"
+     },
+     "description": "the standing approvals offered; the server shows each member only their own"
     }
    }
   },
@@ -17977,6 +17984,10 @@
     },
     "note": {
      "type": "string"
+    },
+    "grant": {
+     "type": "string",
+     "description": "the id of a standing approval the requester files under (ADR 0074); the key holder's computer checks every term again"
     }
    }
   },
@@ -18079,6 +18090,10 @@
      "items": {
       "$ref": "#/components/schemas/RelayFollowUp"
      }
+    },
+    "requesterId": {
+     "type": "string",
+     "description": "the requester's account id, sent only with a request that names a standing approval"
     }
    }
   },
@@ -18185,6 +18200,10 @@
     },
     "autoPush": {
      "type": "boolean"
+    },
+    "grant": {
+     "type": "string",
+     "description": "the standing approval a request is submitted under without a click"
     }
    }
   },
@@ -18364,6 +18383,10 @@
     "at": {
      "type": "string",
      "format": "date-time"
+    },
+    "grant": {
+     "type": "string",
+     "description": "the standing approval it was submitted under, if any"
     }
    }
   },
@@ -18785,6 +18808,35 @@
     },
     "jobState": {
      "type": "string"
+    },
+    "grantId": {
+     "type": "string",
+     "description": "the standing approval it was submitted under"
+    },
+    "grantState": {
+     "type": "string",
+     "enum": [
+      "",
+      "waiting",
+      "pending",
+      "used",
+      "unknown",
+      "revoked",
+      "expired",
+      "stale",
+      "outside",
+      "grid",
+      "base",
+      "input",
+      "commit",
+      "budget",
+      "edited"
+     ],
+     "description": "empty (no standing approval named, or not decided yet), waiting for a slot, pending a server answer, used, or the code of why it waits for the key holder"
+    },
+    "grantNote": {
+     "type": "string",
+     "description": "the key holder's computer's own sentence about the standing approval (may name a path; never sent to the server)"
     }
    }
   },
@@ -21345,6 +21397,427 @@
     "error": {
      "type": "string",
      "description": "Present when nothing was removed: the first reason"
+    }
+   }
+  },
+  "RelayGrantOffer": {
+   "type": "object",
+   "required": [
+    "id",
+    "requester",
+    "label",
+    "template",
+    "keys",
+    "perJob",
+    "maxJobs",
+    "jobsUsed",
+    "maxCoreHours",
+    "coreHoursUsed",
+    "maxAtOnce",
+    "expiresAt"
+   ],
+   "description": "A standing approval as the group server shows it, only to its collaborator: no path, host, root or commit (ADR 0074). Usage is as of the key holder's computer's last publish.",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "requester": {
+     "type": "string",
+     "description": "the collaborator's account id"
+    },
+    "label": {
+     "type": "string"
+    },
+    "template": {
+     "type": "string",
+     "enum": [
+      "vgt",
+      "rohsa"
+     ]
+    },
+    "keys": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayBound"
+     }
+    },
+    "perJob": {
+     "$ref": "#/components/schemas/RelayLimits"
+    },
+    "maxJobs": {
+     "type": "integer"
+    },
+    "jobsUsed": {
+     "type": "integer"
+    },
+    "maxCoreHours": {
+     "type": "integer"
+    },
+    "coreHoursUsed": {
+     "type": "number"
+    },
+    "maxAtOnce": {
+     "type": "integer"
+    },
+    "expiresAt": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "RelayReview": {
+   "type": "object",
+   "required": [
+    "instance"
+   ],
+   "properties": {
+    "instance": {
+     "type": "string"
+    },
+    "grant": {
+     "type": "string",
+     "enum": [
+      "unknown",
+      "revoked",
+      "expired",
+      "stale",
+      "outside",
+      "grid",
+      "base",
+      "input",
+      "commit",
+      "budget",
+      "edited"
+     ],
+     "description": "why a request that named a standing approval waits for review"
+    }
+   }
+  },
+  "RelayGrantJob": {
+   "type": "object",
+   "required": [
+    "id",
+    "name",
+    "state"
+   ],
+   "properties": {
+    "id": {
+     "type": "integer"
+    },
+    "name": {
+     "type": "string"
+    },
+    "state": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayGrant": {
+   "type": "object",
+   "required": [
+    "id",
+    "requesterId",
+    "requesterName",
+    "label",
+    "hostId",
+    "template",
+    "profile",
+    "commit",
+    "commitBasis",
+    "keys",
+    "roots",
+    "files",
+    "maxJobs",
+    "maxCoreHours",
+    "perJob",
+    "maxAtOnce",
+    "note",
+    "createdAt",
+    "expiresAt",
+    "jobsUsed",
+    "coreMinutesUsed",
+    "atOnce",
+    "live",
+    "hostName",
+    "openJobs"
+   ],
+   "description": "A standing approval as the key holder's computer keeps it, with its usage and the jobs still queued or running under it (local only).",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "requesterId": {
+     "type": "string"
+    },
+    "requesterName": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "hostId": {
+     "type": "integer"
+    },
+    "template": {
+     "type": "string",
+     "enum": [
+      "vgt",
+      "rohsa"
+     ]
+    },
+    "profile": {
+     "type": "string"
+    },
+    "commit": {
+     "type": "string"
+    },
+    "commitBasis": {
+     "type": "string",
+     "enum": [
+      "profile",
+      "typed"
+     ]
+    },
+    "keys": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayBound"
+     }
+    },
+    "roots": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "files": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "maxJobs": {
+     "type": "integer"
+    },
+    "maxCoreHours": {
+     "type": "integer"
+    },
+    "perJob": {
+     "$ref": "#/components/schemas/RelayLimits"
+    },
+    "maxAtOnce": {
+     "type": "integer"
+    },
+    "note": {
+     "type": "string"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "expiresAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "revokedAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "jobsUsed": {
+     "type": "integer"
+    },
+    "coreMinutesUsed": {
+     "type": "integer"
+    },
+    "atOnce": {
+     "type": "integer"
+    },
+    "live": {
+     "type": "boolean"
+    },
+    "hostName": {
+     "type": "string"
+    },
+    "openJobs": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayGrantJob"
+     }
+    }
+   }
+  },
+  "RelayTemplateCommit": {
+   "type": "object",
+   "required": [
+    "profile",
+    "commit"
+   ],
+   "properties": {
+    "profile": {
+     "type": "string"
+    },
+    "commit": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayGrantList": {
+   "type": "object",
+   "required": [
+    "linked",
+    "grants",
+    "templates"
+   ],
+   "properties": {
+    "linked": {
+     "type": "boolean"
+    },
+    "grants": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayGrant"
+     }
+    },
+    "templates": {
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "#/components/schemas/RelayTemplateCommit"
+     },
+     "description": "each tool's profile and the commit it was written against"
+    }
+   }
+  },
+  "RelayGrantCreate": {
+   "type": "object",
+   "required": [
+    "requesterId",
+    "requesterName",
+    "label",
+    "template",
+    "commitBasis",
+    "keys",
+    "roots",
+    "files",
+    "maxJobs",
+    "maxCoreHours",
+    "perJob",
+    "maxAtOnce",
+    "expiresInDays"
+   ],
+   "properties": {
+    "requesterId": {
+     "type": "string"
+    },
+    "requesterName": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "template": {
+     "type": "string",
+     "enum": [
+      "vgt",
+      "rohsa"
+     ]
+    },
+    "commitBasis": {
+     "type": "string",
+     "enum": [
+      "profile",
+      "typed"
+     ]
+    },
+    "commit": {
+     "type": "string",
+     "description": "the full commit, when typed"
+    },
+    "keys": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayBound"
+     }
+    },
+    "roots": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "files": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "maxJobs": {
+     "type": "integer"
+    },
+    "maxCoreHours": {
+     "type": "integer"
+    },
+    "perJob": {
+     "$ref": "#/components/schemas/RelayLimits"
+    },
+    "maxAtOnce": {
+     "type": "integer"
+    },
+    "expiresInDays": {
+     "type": "integer"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayMember": {
+   "type": "object",
+   "required": [
+    "id",
+    "name"
+   ],
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    }
+   }
+  },
+  "RelayMembers": {
+   "type": "object",
+   "required": [
+    "members"
+   ],
+   "properties": {
+    "members": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/RelayMember"
+     }
+    }
+   }
+  },
+  "RunRequestPreview": {
+   "type": "object",
+   "required": [
+    "route",
+    "reason"
+   ],
+   "properties": {
+    "route": {
+     "type": "string",
+     "enum": [
+      "grant",
+      "review"
+     ]
+    },
+    "grant": {
+     "$ref": "#/components/schemas/RelayGrantOffer"
+    },
+    "reason": {
+     "type": "string"
     }
    }
   }
@@ -30527,7 +31000,7 @@
     "content": {
      "application/json": {
       "schema": {
-       "$ref": "#/components/schemas/RelayInstance"
+       "$ref": "#/components/schemas/RelayReview"
       }
      }
     }
@@ -32200,6 +32673,176 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/relay/local/grants": {
+   "summary": "Standing approvals with their usage, and each tool's profile commit (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayGrantList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relay/local/grants": {
+   "summary": "Make a standing approval for one collaborator, label and template, inside the inbox (local only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RelayGrantCreate"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayGrant"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/relay/local/grants/{id}/revoke": {
+   "summary": "Revoke a standing approval at once; the jobs still queued or running under it are listed, never cancelled (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayGrant"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/relay/local/members": {
+   "summary": "The group workspace's members, asked of the group server, to choose a collaborator (local only)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayMembers"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/relay/members": {
+   "summary": "The workspace's members other than the token's account (relay token)",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RelayMembers"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/run-requests/preview": {
+   "summary": "Whether a request would go through a standing approval or wait for review, and why (advisory)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/RunRequestFile"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunRequestPreview"
        }
       }
      }

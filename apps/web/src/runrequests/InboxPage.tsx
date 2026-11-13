@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../api/http";
-import { pollRelay, relayLocal, setRelayInbox, stateText } from "../api/runRequests";
+import { grantFellBack, grantStateText, pollRelay, relayLocal, setRelayInbox, stateText } from "../api/runRequests";
 import type { RelayInbox, RelayLocal, TemplateBounds } from "../api/runRequests";
 import { Button, Checkbox, Input, LinkButton, Select } from "../ui";
 import s from "../account/Account.module.css";
 import r from "./RunRequests.module.css";
 import { RelayedView } from "./RelayedView";
+import { StandingApprovals } from "./StandingApprovals";
 
 const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
 const when = (iso: string) => iso.slice(0, 16).replace("T", " ");
@@ -110,6 +111,7 @@ export function InboxPage() {
         </section>
       ) : null}
       {local?.linked && st ? <Settings key={JSON.stringify(st.inbox) + JSON.stringify(st.hosts)} local={local} onSaved={setLocal} /> : null}
+      {local?.linked && st?.configured ? <StandingApprovals local={local} onChanged={refresh} /> : null}
       {local?.linked ? (
         <section className={s.card}>
           <h2 className={s.h2}>Requests</h2>
@@ -121,7 +123,10 @@ export function InboxPage() {
                   <tr key={x.id}>
                     <td><Button variant="ghost" onClick={() => setOpenId(x.id)}>{x.request.ask.template} on {x.request.ask.label}</Button></td>
                     <td>{x.request.requester}</td>
-                    <td>{x.localState}{x.refusal ? `: ${x.refusal}` : ""}</td>
+                    <td>
+                      {x.localState}{x.refusal ? `: ${x.refusal}` : ""}
+                      {x.grantState ? <span className={s.note}>{grantFellBack(x.grantState) ? `; waiting for you: ${grantStateText(x.grantState)}` : `; ${grantStateText(x.grantState)}`}</span> : null}
+                    </td>
                     <td>{stateText(x.serverState)}</td>
                     <td>{when(x.receivedAt)}</td>
                   </tr>
