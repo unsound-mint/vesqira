@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Database, Layers, Table } from "lucide-react";
 import { isCatalog, isHealpix } from "../api/catalog";
 import type { Dataset, Problem } from "../api/catalog";
-import { Button, FilterBox, PathField, TreeRow, useRoving } from "../ui";
+import { Button, FilterBox, PathField, TreeRow, VirtualList } from "../ui";
 import { bytes } from "./format";
 import { matchDataset } from "./filter";
 import { datasetVocabulary } from "./vocabulary";
@@ -59,8 +59,16 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
   const shown = showSources ? matching : matching.filter((d) => !isSource(d));
   const vocabulary = useMemo(() => datasetVocabulary(datasets, hosts), [datasets, hosts]);
   const active = datasets.filter((d) => !d.archived).length;
-  const subsetsOf = (id: number) => subsets.filter((x) => x.sourceId === id);
-  const roving = useRoving(shown.flatMap((d) => [String(d.id), ...subsetsOf(d.id).map((x) => `s${x.id}`)]), selectedSubsetId !== null ? `s${selectedSubsetId}` : selectedId === null ? null : String(selectedId));
+  // One flat list of rows (a dataset, then the virtual subsets of it): the windowed list needs the rows by index, and the
+  // subsets are grouped once here instead of filtering all of them for each of thousands of datasets.
+  const subsetById = useMemo(() => new Map(subsets.map((x) => [`s${x.id}`, x])), [subsets]);
+  const datasetById = useMemo(() => new Map(datasets.map((d) => [String(d.id), d])), [datasets]);
+  const rowIds = useMemo(() => {
+    const bySource = new Map<number, string[]>();
+    for (const x of subsets) bySource.set(x.sourceId, [...(bySource.get(x.sourceId) ?? []), `s${x.id}`]);
+    return shown.flatMap((d) => [String(d.id), ...(bySource.get(d.id) ?? [])]);
+  }, [shown, subsets]);
+  const selectedRow = selectedSubsetId !== null ? `s${selectedSubsetId}` : selectedId === null ? null : String(selectedId);
 
   async function doPreview() {
     try {
@@ -120,18 +128,18 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
         </p>
       ) : null}
       {datasets.length > 0 && shown.length === 0 ? <p className={s.note}>{active === 0 && !q.includes("archived:") ? "All datasets are archived. Filter with archived:yes to see them." : "No dataset matches."}</p> : null}
-      <div role="list" aria-label="Datasets" {...roving.listProps}>
-        {shown.map((d) => (
-          <div role="listitem" key={d.id}>
-            <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={roving.itemProps(String(d.id))} selected={d.id === selectedId && selectedSubsetId === null} onSelect={() => onSelect(d.id)} trailing={`${access[String(d.id)] === "unreleased" ? "unreleased · " : access[String(d.id)] === "collaboration" ? "collaboration only · " : ""}${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${isHealpix(d) ? `HEALPix ${d.header.nside} · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>
-            {subsetsOf(d.id).map((x) => (
-              <TreeRow key={`s${x.id}`} icon={Layers} level={1} rowProps={roving.itemProps(`s${x.id}`)} selected={x.id === selectedSubsetId} onSelect={() => onSelectSubset?.(x.id)}
-                title="A virtual subset: a saved window onto the file above, not a file"
-                trailing={`virtual subset${x.stale ? " · stale: its file changed" : ""}`}>{x.name}</TreeRow>
-            ))}
-          </div>
-        ))}
-      </div>
+      <VirtualList label="Datasets" ids={rowIds} selectedId={selectedRow} renderRow={(id, rowProps) => {
+        const x = subsetById.get(id);
+        if (x) {
+          return (
+            <TreeRow icon={Layers} level={1} rowProps={rowProps} selected={x.id === selectedSubsetId} onSelect={() => onSelectSubset?.(x.id)}
+              title="A virtual subset: a saved window onto the file above, not a file"
+              trailing={`virtual subset${x.stale ? " · stale: its file changed" : ""}`}>{x.name}</TreeRow>
+          );
+        }
+        const d = datasetById.get(id)!;
+        return <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={rowProps} selected={d.id === selectedId && selectedSubsetId === null} onSelect={() => onSelect(d.id)} trailing={`${access[String(d.id)] === "unreleased" ? "unreleased · " : access[String(d.id)] === "collaboration" ? "collaboration only · " : ""}${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${isHealpix(d) ? `HEALPix ${d.header.nside} · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>;
+      }} />
     </div>
   );
 }

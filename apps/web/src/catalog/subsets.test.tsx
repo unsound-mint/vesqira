@@ -107,15 +107,16 @@ describe("the explorer marks a subset as virtual", () => {
     const user = userEvent.setup();
     const onSelectSubset = vi.fn();
     render(<Explorer {...props} subsets={[view(), view({ id: 2, name: "Old window", stale: true })]} onSelectSubset={onSelectSubset} />);
+    // one flat list (it can be windowed): a.fits, its two subsets, then b.fits
     const items = screen.getAllByRole("listitem");
-    expect(items).toHaveLength(2); // a.fits with its two subsets, then b.fits
-    const a = within(items[0]!);
-    expect(a.getByRole("button", { name: /a\.fits/ })).toBeInTheDocument();
-    const core = a.getByRole("button", { name: /Core/ });
+    expect(items).toHaveLength(4);
+    expect(within(items[0]!).getByRole("button", { name: /a\.fits/ })).toBeInTheDocument();
+    const core = within(items[1]!).getByRole("button", { name: /Core/ });
     expect(core).toHaveTextContent("virtual subset");
     expect(core).not.toHaveTextContent("stale");
-    expect(a.getByRole("button", { name: /Old window/ })).toHaveTextContent("virtual subset · stale: its file changed");
-    expect(within(items[1]!).queryByText(/virtual subset/)).toBeNull();
+    expect(within(items[2]!).getByRole("button", { name: /Old window/ })).toHaveTextContent("virtual subset · stale: its file changed");
+    expect(within(items[3]!).getByRole("button", { name: /b\.fits/ })).toBeInTheDocument();
+    expect(within(items[3]!).queryByText(/virtual subset/)).toBeNull();
     await user.click(core);
     expect(onSelectSubset).toHaveBeenCalledWith(1);
   });
