@@ -36,8 +36,8 @@ var (
 )
 
 var (
-	destRe   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{0,99}$`) // never starts with "-": no option injection
-	pythonRe = regexp.MustCompile(`^[A-Za-z0-9_./~-]{1,200}$`)
+	destRe   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{0,99}$`)       // never starts with "-": no option injection
+	pythonRe = regexp.MustCompile(`^[A-Za-z0-9_./~][A-Za-z0-9_./~-]{0,199}$`) // never starts with "-": `exec -c` or a python option must not come from here
 )
 
 // MaxRoots is how many source roots a host may have. Opening a project folder on a host adds one.

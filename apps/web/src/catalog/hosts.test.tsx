@@ -58,7 +58,7 @@ describe("hosts panel", () => {
     expect(screen.queryByLabelText(/password|key/i)).toBeNull();
   });
 
-  it("adds a host by choosing its source folders on the host, never typing a path or a Python", async () => {
+  it("adds a host by choosing its source folders on the host, never typing a path (the Python command is optional)", async () => {
     const calls = mockFetch({
       "/api/hosts/browse?dest=laptop2&path=%2Fhome%2Fu%2Fcubes": () => ({ body: { path: "/home/u/cubes", entries: [] } }),
       "/api/hosts/browse": () => ({ body: { path: "/home/u", entries: [{ name: "cubes" }] } }),
@@ -69,7 +69,7 @@ describe("hosts panel", () => {
     const user = userEvent.setup();
     const add = screen.getByRole("button", { name: "Add host" });
     expect(add).toBeDisabled();
-    expect(screen.queryByLabelText(/Python/)).toBeNull();
+    expect(screen.getByLabelText("Python command")).toHaveValue(""); // collapsed and optional: the default python3 is sent when empty
     expect(screen.getByRole("button", { name: "Choose folder…" })).toBeDisabled(); // needs a destination first
     await user.type(screen.getByLabelText("Host name"), "Second laptop");
     await user.type(screen.getByLabelText("SSH destination"), "laptop2");

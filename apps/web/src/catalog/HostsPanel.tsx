@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent } from "react";
 import { File, Folder, X } from "lucide-react";
-import { Button, Input, PathField, Select, getHostOffer, offerDest, subscribeHostOffer } from "../ui";
+import { Button, Input, More, PathField, Select, getHostOffer, offerDest, subscribeHostOffer } from "../ui";
 import { browseHostDirs, checkHost, createHost, deleteHost, listRemote, registerRemote, sshConfigHosts, vpnEnabled } from "../api/hosts";
+import { ApiError } from "../api/http";
 import type { Host, HostCheck, RemoteEntry, SshAlias } from "../api/hosts";
 import { bytes } from "./format";
 import { HostStorage } from "../hosts/HostStorage";
 import { HostVpn, VpnFields, parseArgv } from "../hosts/HostVpn";
+import { HostPython, PythonHelp } from "../hosts/HostPython";
 import { Transfers } from "../hosts/Transfers";
 import s from "./HostsPanel.module.css";
 
@@ -17,7 +19,7 @@ const msg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : 
 
 /** Other machines (an HPC login node, another laptop). Reached with your own ssh and agent; the VPN is yours to bring up. */
 export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; onChange: () => Promise<void>; onRegistered: () => Promise<void> }) {
-  const [form, setForm] = useState({ name: "", dest: "" });
+  const [form, setForm] = useState({ name: "", dest: "", python: "" });
   const [roots, setRoots] = useState<string[]>([]);
   const [choosing, setChoosing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
     const alias = aliasesRef.current.find((a) => a.hostName?.toLowerCase() === o.host.toLowerCase() && (!o.user || !a.user || a.user === o.user));
     const dest = alias ? alias.alias : offerDest(o);
     setOther(!alias);
-    setForm({ name: dest ? alias?.alias ?? o.host : "", dest: dest ?? "" });
+    setForm({ name: dest ? alias?.alias ?? o.host : "", dest: dest ?? "", python: "" });
     requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>("input")?.focus()); // after the section has opened
     setRoots([]);
     setChoosing(false);
@@ -75,8 +77,8 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
     setBusy(true);
     try {
       const vpn = vpnOn ? { vpnCommand: parseArgv(vpnConnect, "Connect command"), vpnDisconnectCommand: parseArgv(vpnDisconnect, "Disconnect command") } : {};
-      await createHost({ name: form.name.trim(), dest: form.dest.trim(), roots, ...vpn });
-      setForm({ name: "", dest: "" });
+      await createHost({ name: form.name.trim(), dest: form.dest.trim(), roots, ...(form.python.trim() ? { python: form.python.trim() } : {}), ...vpn });
+      setForm({ name: "", dest: "", python: "" });
       setVpnConnect("");
       setVpnDisconnect("");
       setRoots([]);
@@ -121,18 +123,23 @@ export function HostsPanel({ hosts, onChange, onRegistered }: { hosts: Host[]; o
             <Button type="button" disabled={!form.dest.trim() || roots.length >= 8} onClick={() => setChoosing(true)}>{roots.length ? "Add another folder…" : "Choose folder…"}</Button>
           )}
         </div>
+        <More summary="Python command on the host" open={form.python.trim() !== ""}>
+          <Input label="Python command" value={form.python} onChange={(e) => setForm({ ...form, python: e.target.value })} placeholder="python3 (the default) or /full/path/to/python" spellCheck={false} autoComplete="off" />
+          <p className={s.note}><PythonHelp /> After adding the host, Check connection tells you whether it works, and the host card can search for a Python.</p>
+        </More>
         {vpnOn ? <VpnFields connect={vpnConnect} disconnect={vpnDisconnect} onConnect={setVpnConnect} onDisconnect={setVpnDisconnect} /> : null}
         {fromMount ? <p role="status" className={s.note}>{fromMount}</p> : null}
         <Button type="submit" disabled={busy || !form.name.trim() || !form.dest.trim() || roots.length === 0}>Add host</Button>
         {err ? <p role="alert" className={s.err}>{err}</p> : null}
       </form>
-      <p className={s.note}>Vesqira runs your own <span className="mono">ssh</span> without prompts: bring the VPN up first (for example gpclient, or set a VPN command for the host if this server was started with --enable-vpn), make sure <span className="mono">ssh &lt;destination&gt;</span> works, and install astropy for the host's python3. Keys and passwords are never read by Vesqira.</p>
+      <p className={s.note}>Vesqira runs your own <span className="mono">ssh</span> without prompts: bring the VPN up first (for example gpclient, or set a VPN command for the host if this server was started with --enable-vpn), make sure <span className="mono">ssh &lt;destination&gt;</span> works, and give the host a Python with astropy (a module or a virtual environment, see the Python command above). Keys and passwords are never read by Vesqira.</p>
     </div>
   );
 }
 
 function HostRow({ host, vpn, onChange, onRegistered }: { host: Host; vpn: boolean; onChange: () => Promise<void>; onRegistered: () => Promise<void> }) {
   const [check, setCheck] = useState<HostCheck | null>(null);
+  const [failure, setFailure] = useState<string | null>(null); // the code of a failed check: "ssh", "python_old", ...
   const [state, setState] = useState<string | null>(null);
   const [dir, setDir] = useState<string | null>(null);
   const [entries, setEntries] = useState<RemoteEntry[]>([]);
@@ -151,6 +158,21 @@ function HostRow({ host, vpn, onChange, onRegistered }: { host: Host; vpn: boole
     } finally {
       setBusy(false);
     }
+  }
+  async function runCheck() {
+    setBusy(true);
+    try {
+      setCheck(await checkHost(host.id));
+      setState(null);
+      setFailure(null);
+    } catch (x) {
+      setCheck(null);
+      setState(msg(x, "That did not work."));
+      setFailure(x instanceof ApiError ? ((x.body as { code?: string } | null)?.code ?? null) : null);
+    } finally {
+      setBusy(false);
+    }
+    await onChange(); // the server noted whether the host answered
   }
   async function open(path?: string) {
     const r = await run(() => listRemote(host.id, path));
@@ -177,7 +199,7 @@ function HostRow({ host, vpn, onChange, onRegistered }: { host: Host; vpn: boole
         <span className="mono">{host.dest}</span>
       </div>
       <div className={s.row}>
-        <Button type="button" disabled={busy} onClick={async () => { setCheck(await run(() => checkHost(host.id))); if (vpn) await onChange(); /* the server noted whether the host answered */ }}>Check connection</Button>
+        <Button type="button" disabled={busy} onClick={() => void runCheck()}>Check connection</Button>
         <Button type="button" disabled={busy} onClick={() => open()}>Browse</Button>
         <Button type="button" disabled={busy} onClick={async () => { if (await run(() => deleteHost(host.id))) await onChange(); }}>Remove</Button>
       </div>
@@ -186,6 +208,7 @@ function HostRow({ host, vpn, onChange, onRegistered }: { host: Host; vpn: boole
         <Button type="submit" disabled={busy || !regPath.trim()}>Register</Button>
       </form>
       {state ? <p role="alert" className={s.err}>{state}</p> : null}
+      <HostPython host={host} failure={failure} onChange={onChange} onChecked={(c) => { setCheck(c); setState(null); setFailure(null); }} />
       {vpn ? <HostVpn host={host} onChange={onChange} /> : null}
       <HostStorage host={host} />
       {check ? (
