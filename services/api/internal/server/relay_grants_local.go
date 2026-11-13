@@ -95,59 +95,67 @@ func (s *Server) applyGrants(ctx context.Context, c *groupClient, l outbox.Link)
 	}
 }
 
-// grantVerdict checks every term of the grant a request named against this computer's own records. It returns the grant, the draft
-// and its CPUs and minutes when the request is inside it, else a code and the sentence shown to the key holder. The code is
-// relay.GrantStatePending when the host did not answer, which is not a verdict: the request is tried again at the next pass.
-func (s *Server) grantVerdict(ctx context.Context, st relay.LocalState, m relay.Mirrored) (relay.Grant, jobs.Job, int, int, string, string) {
-	var none jobs.Job
+// grantFit is what a request inside its grant is submitted with: the grant, the draft, its CPUs and minutes, and the input the draft
+// names with where that input really is on the host.
+type grantFit struct {
+	g             relay.Grant
+	j             jobs.Job
+	cpus, minutes int
+	input, real   string
+}
+
+// grantVerdict checks every term of the grant a request named against this computer's own records. It returns the fit when the
+// request is inside it, else a code and the sentence shown to the key holder. The code is relay.GrantStatePending when the host did
+// not answer, which is not a verdict: the request is tried again at the next pass.
+func (s *Server) grantVerdict(ctx context.Context, st relay.LocalState, m relay.Mirrored) (grantFit, string, string) {
 	now := s.relayClock()
 	ask := m.Request.Ask
 	g, err := s.Relayed.GrantByID(ask.Grant)
 	if err != nil || g.Origin() != m.Origin() {
-		return g, none, 0, 0, relay.GrantUnknown, "It names a standing approval this computer does not have (a forged or deleted id)."
+		return grantFit{g: g}, relay.GrantUnknown, "It names a standing approval this computer does not have (a forged or deleted id)."
 	}
 	if g.RequesterID != m.Request.RequesterID {
-		return g, none, 0, 0, relay.GrantUnknown, "It names the standing approval made for " + g.RequesterName + ", but someone else filed it."
+		return grantFit{g: g}, relay.GrantUnknown, "It names the standing approval made for " + g.RequesterName + ", but someone else filed it."
 	}
 	switch {
 	case g.RevokedAt != nil:
-		return g, none, 0, 0, relay.GrantRevoked, "The standing approval it names was revoked on " + g.RevokedAt.Format("2006-01-02") + "."
+		return grantFit{g: g}, relay.GrantRevoked, "The standing approval it names was revoked on " + g.RevokedAt.Format("2006-01-02") + "."
 	case !g.ExpiresAt.After(now):
-		return g, none, 0, 0, relay.GrantExpired, "The standing approval it names expired on " + g.ExpiresAt.Format("2006-01-02") + "."
+		return grantFit{g: g}, relay.GrantExpired, "The standing approval it names expired on " + g.ExpiresAt.Format("2006-01-02") + "."
 	case m.Request.CreatedAt.Before(g.CreatedAt):
-		return g, none, 0, 0, relay.GrantStale, "It was filed before the standing approval was made, so it is not taken as one made under it."
+		return grantFit{g: g}, relay.GrantStale, "It was filed before the standing approval was made, so it is not taken as one made under it."
 	case !m.Request.ExpiresAt.After(now) || !relay.IsOpen(m.ServerState):
-		return g, none, 0, 0, relay.GrantStale, "It is no longer open on the group server (" + m.ServerState + ")."
+		return grantFit{g: g}, relay.GrantStale, "It is no longer open on the group server (" + m.ServerState + ")."
 	case st.Hosts[strings.TrimSpace(ask.Label)] != g.HostID:
-		return g, none, 0, 0, relay.GrantUnknown, "The label " + ask.Label + " now stands for another host than when the standing approval was made."
+		return grantFit{g: g}, relay.GrantUnknown, "The label " + ask.Label + " now stands for another host than when the standing approval was made."
 	}
 	if err := relay.CheckGrantTerms(st.Inbox, g, now); err != nil {
-		return g, none, 0, 0, relay.GrantOutside, "The standing approval no longer fits your inbox or the template: " + relay.Sentence(err) + "."
+		return grantFit{g: g}, relay.GrantOutside, "The standing approval no longer fits your inbox or the template: " + relay.Sentence(err) + "."
 	}
 	h, err := s.HostDB.Get(g.HostID)
 	if err != nil {
-		return g, none, 0, 0, relay.GrantUnknown, "The host of the standing approval no longer exists."
+		return grantFit{g: g}, relay.GrantUnknown, "The host of the standing approval no longer exists."
 	}
 	if err := relay.CheckGrantInputs(g.Roots, g.Files, h.InRoots); err != nil {
-		return g, none, 0, 0, relay.GrantInput, "The standing approval's inputs no longer lie inside the host's source roots: " + relay.Sentence(err) + "."
+		return grantFit{g: g}, relay.GrantInput, "The standing approval's inputs no longer lie inside the host's source roots: " + relay.Sentence(err) + "."
 	}
 	if _, label := s.profiles().TemplateProfile(g.Template); label != g.Profile {
-		return g, none, 0, 0, relay.GrantCommit, "The tool's profile is now " + label + "; the standing approval was made under " + g.Profile + "."
+		return grantFit{g: g}, relay.GrantCommit, "The tool's profile is now " + label + "; the standing approval was made under " + g.Profile + "."
 	}
 	if code, err := relay.CheckGrantAsk(g.Offer(), ask); err != nil {
-		return g, none, 0, 0, code, relay.Sentence(err) + "."
+		return grantFit{g: g}, code, relay.Sentence(err) + "."
 	}
 	if m.LocalState != relay.LocalDraft || m.JobID == nil || m.BaseChosen {
-		return g, none, 0, 0, relay.GrantBase, "Its base run did not resolve through your own pushed runs, so you choose it."
+		return grantFit{g: g}, relay.GrantBase, "Its base run did not resolve through your own pushed runs, so you choose it."
 	}
 	j, err := s.Jobs.Get(*m.JobID)
 	if err != nil || j.State != jobs.StateDraft || editedLines(j) != 0 {
-		return g, none, 0, 0, relay.GrantEdited, "The draft is gone, no longer a draft, or was edited."
+		return grantFit{g: g}, relay.GrantEdited, "The draft is gone, no longer a draft, or was edited."
 	}
 	req, ok := j.ConfigRequest()
 	t := jobs.ShippedTemplate(j.Template)
 	if !ok || t == nil {
-		return g, none, 0, 0, relay.GrantBase, "The draft kept no settings to check."
+		return grantFit{g: g}, relay.GrantBase, "The draft kept no settings to check."
 	}
 	input := jobs.InputPathFor(t, req.BaseConfigText)
 	if v, set := req.Set[jobs.InputKey(j.Template)]; set {
@@ -158,46 +166,78 @@ func (s *Server) grantVerdict(ctx context.Context, st relay.LocalState, m relay.
 	// the grant's folders and files were stored resolved when it was made, so a path through an alias of a granted folder still fits.
 	real, code, why := s.resolveGrantInput(ctx, h, input)
 	if code != "" {
-		return g, none, 0, 0, code, why
+		return grantFit{g: g}, code, why
 	}
 	if !g.InputAllowed(real) {
 		if real != input {
-			return g, none, 0, 0, relay.GrantInput, fmt.Sprintf("The base run's input %q resolves on the host to %q, which is not inside the standing approval's input folders or files.", input, real)
+			return grantFit{g: g}, relay.GrantInput, fmt.Sprintf("The base run's input %q resolves on the host to %q, which is not inside the standing approval's input folders or files.", input, real)
 		}
-		return g, none, 0, 0, relay.GrantInput, fmt.Sprintf("The base run's input %q is not one of the standing approval's input folders or files.", input)
+		return grantFit{g: g}, relay.GrantInput, fmt.Sprintf("The base run's input %q is not one of the standing approval's input folders or files.", input)
 	}
 	if pin := s.codePinOf(j.Template, req); pin.Commit != g.Commit {
 		got := "no commit"
 		if pin.Commit != "" {
 			got = "commit " + pin.Commit
 		}
-		return g, none, 0, 0, relay.GrantCommit, "The draft insists on " + got + "; the standing approval allows commit " + g.Commit + "."
+		return grantFit{g: g}, relay.GrantCommit, "The draft insists on " + got + "; the standing approval allows commit " + g.Commit + "."
 	}
 	rq := jobs.RequestedOf(j.Script)
 	minutes := int((rq.TimeSeconds + 59) / 60)
 	if rq.CPUs < 1 || rq.MemBytes <= 0 || minutes < 1 {
-		return g, none, 0, 0, relay.GrantOutside, "The draft's script does not state its CPUs, memory and time limit in a form this computer reads."
+		return grantFit{g: g}, relay.GrantOutside, "The draft's script does not state its CPUs, memory and time limit in a form this computer reads."
 	}
 	if rq.CPUs > g.PerJob.MaxCPUs || rq.MemBytes > int64(g.PerJob.MaxMemGiB)<<30 || minutes > g.PerJob.MaxTimeMinutes {
-		return g, none, 0, 0, relay.GrantOutside, fmt.Sprintf("The draft asks for %d CPUs, %.1f GiB and %d minutes; the standing approval allows at most %d CPUs, %d GiB and %d minutes per job.",
+		return grantFit{g: g}, relay.GrantOutside, fmt.Sprintf("The draft asks for %d CPUs, %.1f GiB and %d minutes; the standing approval allows at most %d CPUs, %d GiB and %d minutes per job.",
 			rq.CPUs, float64(rq.MemBytes)/(1<<30), minutes, g.PerJob.MaxCPUs, g.PerJob.MaxMemGiB, g.PerJob.MaxTimeMinutes)
 	}
-	return g, j, rq.CPUs, minutes, "", ""
+	return grantFit{g: g, j: j, cpus: rq.CPUs, minutes: minutes, input: input, real: real}, "", ""
 }
 
 func (s *Server) applyGrant(ctx context.Context, c *groupClient, l outbox.Link, st relay.LocalState, m relay.Mirrored) {
 	fallback := func(code, why string) {
 		_ = s.Relayed.SetGrantState(m.ID, "", code, "Waiting for you: outside the standing approval. "+why)
 	}
-	g, j, cpus, minutes, code, why := s.grantVerdict(ctx, st, m)
-	if code == relay.GrantStatePending {
-		_ = s.Relayed.SetGrantState(m.ID, "", relay.GrantStatePending, why)
+	verdict := func() (grantFit, bool) {
+		fit, code, why := s.grantVerdict(ctx, st, m)
+		switch code {
+		case "":
+			return fit, true
+		case relay.GrantStatePending:
+			_ = s.Relayed.SetGrantState(m.ID, "", relay.GrantStatePending, why)
+		default:
+			fallback(code, why)
+		}
+		return fit, false
+	}
+	fit, ok := verdict()
+	if !ok {
 		return
 	}
-	if code != "" {
-		fallback(code, why)
-		return
+	// The script that is submitted names the input where it really is, as just resolved, so a link swapped after the check cannot
+	// change what the job reads: the draft is rendered again from the same base with the real path, and checked again in full. Its
+	// hash is the one reserved, claimed, audited and shown. The request on the server keeps what the requester asked.
+	resolved := ""
+	if fit.input != fit.real {
+		asked := fit.input
+		if m.BaseRunID == nil {
+			fallback(relay.GrantBase, "Its draft names no base run to render again from.")
+			return
+		}
+		if aerr := s.renderRelayedInput(ctx, m, *m.BaseRunID, false, nil, relay.Resources{}, fit.real); aerr != nil {
+			fallback(relay.GrantInput, "The draft could not be rendered with its input's real path on the host: "+aerr.Msg+".")
+			return
+		}
+		m, _ = s.Relayed.Get(m.ID)
+		if fit, ok = verdict(); !ok {
+			return
+		}
+		if fit.input != fit.real {
+			fallback(relay.GrantInput, fmt.Sprintf("The base run's input %q changed on the host while it was checked (now %q).", asked, fit.real))
+			return
+		}
+		resolved = fmt.Sprintf("The base run's input %s resolved to %s on the host; the submitted script names that path.", asked, fit.real)
 	}
+	g, j, cpus, minutes := fit.g, fit.j, fit.cpus, fit.minutes
 	took, err := s.Relayed.Reserve(g.ID, m.ID, j.ID, cpus, minutes, j.ScriptHash)
 	if err != nil {
 		log.Printf("relay grant: %v", err)
@@ -243,12 +283,12 @@ func (s *Server) applyGrant(ctx context.Context, c *groupClient, l outbox.Link, 
 	if err := s.Relayed.SetApproved(m.ID, j.ScriptHash, true); err != nil {
 		log.Printf("relay grant: %v", err)
 	}
-	_ = s.Relayed.SetGrantState(m.ID, g.ID, relay.GrantStateUsed, "")
+	_ = s.Relayed.SetGrantState(m.ID, g.ID, relay.GrantStateUsed, resolved)
 	_ = s.Jobs.AddDraftNote(j.ID, fmt.Sprintf("Submitted without a click under standing approval %s, made for %s.", g.ID[:8], g.RequesterName))
 	_ = s.Relayed.Unpublish(l.Origin) // the offer's usage changed
 	ctx = localCtx(ctx)
 	s.audit(ctx, "run request submitted under a standing approval", "relayed", m.ID,
-		fmt.Sprintf("request %d from %s, standing approval %s, job %d, script sha256 %s", m.ServerID, m.Request.Requester, g.ID, j.ID, j.ScriptHash))
+		fmt.Sprintf("request %d from %s, standing approval %s, job %d, input %s, script sha256 %s", m.ServerID, m.Request.Requester, g.ID, j.ID, fit.real, j.ScriptHash))
 	h, err := s.HostDB.Get(j.HostID)
 	if err != nil {
 		_ = s.Relayed.SetGrantState(m.ID, g.ID, relay.GrantStateUsed, "Claimed, but the host no longer exists; nothing was submitted.")

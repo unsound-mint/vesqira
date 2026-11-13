@@ -233,6 +233,13 @@ func (s *Server) ownBase(l outbox.Link, req relay.Request) (int64, bool) {
 // that made the base run: the repository, config and input are the key holder's, the output folder is a fresh one of theirs, and
 // only the request's whitelisted values (with the key holder's changes) and resources differ. Every value is validated again here.
 func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID int64, chosen bool, changes map[string]string, lower relay.Resources) *apiErr {
+	return s.renderRelayedInput(ctx, m, baseRunID, chosen, changes, lower, "")
+}
+
+// renderRelayedInput is renderRelayed with the input replaced by realInput when it is set: a standing approval (ADR 0074) renders
+// the script it submits with the input's real path on the host, as resolved when the grant was checked, so a link swapped after the
+// check cannot change what the job reads. Only a single draft takes one; a grid never goes through a grant.
+func (s *Server) renderRelayedInput(ctx context.Context, m relay.Mirrored, baseRunID int64, chosen bool, changes map[string]string, lower relay.Resources, realInput string) *apiErr {
 	if s.Jobs == nil || s.HostDB == nil {
 		return &apiErr{404, "jobs are not available on this computer"}
 	}
@@ -323,6 +330,9 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 	}
 	draft := relay.DraftValues{Params: params, Resources: res, Label: strings.TrimSpace(ask.Label)}
 	ctx = localCtx(ctx)
+	if realInput != "" && len(ask.Grid) != 0 {
+		return &apiErr{422, "a grid is never rendered for a standing approval"}
+	}
 	if len(ask.Grid) == 0 {
 		set := map[string]string{}
 		for k, v := range jobs.CarriedSet(base.Template, req.Set) {
@@ -330,6 +340,19 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 		}
 		for k, v := range params {
 			set[k] = v
+		}
+		configText := req.BaseConfigText
+		if realInput != "" {
+			text, err := jobs.SetInputFile(base.Template, configText, realInput)
+			if err != nil {
+				return &apiErr{422, "the input could not be written as its real path: " + err.Error()}
+			}
+			configText = text
+			delete(set, jobs.InputKey(base.Template))
+			note += " Its input resolved to " + realInput + " on the host."
+			if utf8.RuneCountInString(note) > jobs.MaxNote {
+				note = string([]rune(note)[:jobs.MaxNote])
+			}
 		}
 		cpus := req.CPUs
 		if res.CPUs > 0 {
@@ -341,7 +364,7 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 		if tm == "" {
 			tm = req.Time
 		}
-		b, aerr := s.buildJob(ctx, h, base.Template, name, draftInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: req.BaseConfigText, Set: set,
+		b, aerr := s.buildJob(ctx, h, base.Template, name, draftInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: configText, Set: set,
 			CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev, PinProfile: pinProfile})
 		if aerr != nil {
 			return aerr

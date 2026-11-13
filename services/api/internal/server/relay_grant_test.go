@@ -422,9 +422,27 @@ func TestGrantInputIsCheckedThroughItsLinks(t *testing.T) {
 	id = r.file(grantAsk(g.ID, "6"))
 	r.pass()
 	r.srv.waitRecords()
-	if m := r.mirrorOf(id); m.GrantState != relay.GrantStateUsed || r.submissions() != before+1 {
+	m = r.mirrorOf(id)
+	if m.GrantState != relay.GrantStateUsed || r.submissions() != before+1 {
 		t.Fatalf("a link to another place inside the grant: %+v", m)
 	}
+	// the submitted script names the real path, not the link, and its hash is the one claimed and kept; the request keeps the name
+	j := r.job(r.detail(m.ID).Job.ID)
+	if !strings.Contains(j.Script, deep+"/hnv1.fits") || strings.Contains(j.Script, input) {
+		t.Fatalf("the submitted script does not name the input's real path:\n%s", j.Script)
+	}
+	if s := r.onServer(id); s.Request.Approval == nil || s.Request.Approval.ScriptHash != j.ScriptHash || m.ScriptHash != j.ScriptHash {
+		t.Fatalf("the claimed hash is not the submitted script's: %+v, mirror %s, job %s", s.Request.Approval, m.ScriptHash, j.ScriptHash)
+	}
+	if !strings.Contains(m.GrantNote, "resolved to "+deep+"/hnv1.fits on the host") || !strings.Contains(j.Note, "resolved to "+deep+"/hnv1.fits on the host") {
+		t.Fatalf("the notes do not say where the input resolved: %q / %q", m.GrantNote, j.Note)
+	}
+	// swapping the link after the check changes nothing the job reads
+	symlink(t, secret+"/other.fits", input)
+	if j2 := r.job(j.ID); j2.Script != j.Script || j2.ScriptHash != j.ScriptHash || strings.Contains(j2.Script, secret) {
+		t.Fatalf("the submitted script changed with the link")
+	}
+	symlink(t, deep+"/hnv1.fits", input)
 
 	// a host that does not answer is not a verdict: the request waits as pending and goes once the host answers again
 	r.srv.Remote.Close() // the next worker call starts a new ssh, which the stand-in refuses while DOWN exists
