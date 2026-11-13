@@ -246,7 +246,7 @@ func newPushLocal(t *testing.T, group *httptest.Server) *pushLocal {
 	run, err := rn.Save(workspace.Local, "local-owner", filepath.Join(root, "runs", l.runDir), runs.Parsed{Run: runs.Run{Name: "2026-11-08_a1f3c", Kind: "vgt",
 		Params: []runs.Param{{Key: "block_size", Value: "32", Source: "config"}, {Key: "partition", Value: "LEAKPART", Source: "config"},
 			{Key: "notify", Value: "someone@LEAKMAIL.example.org", Source: "config"}, {Key: "input_file", Value: "/scratch/" + clusterUserMark + "/cubes/lmc.fits", Source: "config"}}}},
-		[]runs.Output{{Role: "psi", DatasetID: d.ID, Name: d.Name}})
+		[]runs.Output{{Role: "orientation", Product: "psi", DatasetID: d.ID, Name: d.Name}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -687,6 +687,37 @@ def vgt_psi_planck_field() -> fits.HDUList:
     return fits.HDUList([fits.PrimaryHDU(a, header=h)])
 
 
+def write_hog_run(directory: Path) -> Path:
+    """A clearly synthetic run of a HOG-style tool, for the tool-profile tests (ADR 0068).
+
+    HOG (histogram of oriented gradients) is a method, not a file format: nothing here is a public tool's convention. The record
+    is hog_run.toml with its own key ([hog] version), its outputs sit in [products], and the orientation map carries the cards
+    HOGFRAME, HOGANGLE and HOGUNIT (the ones test_orientation_profiles.py reads with a test-only profile). No shipped profile
+    detects this folder: a test loads the profile that does (services/api/internal/runs/testdata/synthetic_hog_profile.json).
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    vgt_psi_with_cards("deg", [("HOGFRAME", "IMAGE", "angle from +x, counter-clockwise"), ("HOGANGLE", "GRADIENT", "gradient direction"),
+                               ("HOGUNIT", "deg", "unit of the angle")]).writeto(directory / "hog_orientation.fits", overwrite=True)
+    vgt_reliability_map().writeto(directory / "hog_coherence.fits", overwrite=True)
+    fits.HDUList([fits.PrimaryHDU(np.ones((4, 4), dtype=np.float32), header=_map_header((4, 4)))]).writeto(directory / "hog_mask.fits", overwrite=True)
+    (directory / "hog_run.toml").write_text("""generated_at_utc = "2026-11-13T09:00:00Z"
+gitcommit = "0123456789abcdef0123456789abcdef01234567"
+
+[hog]
+version = "0.1-synthetic"
+
+[config]
+kernel = 3
+bins = 36
+
+[products]
+orientation_file = "/scratch/someone/hog_orientation.fits"
+coherence_file = "/scratch/someone/hog_coherence.fits"
+mask_file = "/scratch/someone/hog_mask.fits"
+""")
+    return directory / "hog_run.toml"
+
+
 def write_all(directory: Path) -> dict[str, Path]:
     directory.mkdir(parents=True, exist_ok=True)
     out = {}
@@ -730,6 +761,7 @@ def write_all(directory: Path) -> dict[str, Path]:
     write_vgt_run(directory / "vgt_run_demo", metrics=True)
     write_vgt_run(directory / "vgt_run_current", dirty=False, current=True)
     write_rohsa_run(directory / "rohsa_run_demo")
+    write_hog_run(directory / "hog_run_demo")
     return out
 
 

@@ -11,7 +11,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,7 +32,8 @@ import (
 
 const maxROHSAProducts = 200
 
-var rohsaDat = regexp.MustCompile(`^rohsa_[A-Za-z0-9._-]+\.dat$`)
+// rohsaDat is the pattern the ROHSA profile gives a fit's component table (ADR 0068).
+var rohsaDat = runs.Shipped().ByName("ROHSA").FilePattern(runs.RoleComponentTable)
 
 // rohsaTarget decides whether an import path names a ROHSA fit: a rohsa_*.dat file, or a folder with exactly one of them
 // and no run_metadata.toml. found is false when the path is something else and the VGT import should look at it.
@@ -48,15 +48,20 @@ func (s *Server) rohsaTarget(ws workspace.ID, p string) (datReal string, found b
 		}
 		return real, true, 0, ""
 	}
-	if filepath.Base(p) == "run_metadata.toml" {
-		return "", false, 0, ""
+	records := s.profiles().RecordFiles(runs.ReaderRunMetadata)
+	for _, f := range records {
+		if filepath.Base(p) == f {
+			return "", false, 0, ""
+		}
 	}
 	dir, err := s.roots(ws).ResolveDir(p)
 	if err != nil {
 		return "", false, 0, ""
 	}
-	if _, err := os.Stat(filepath.Join(dir, "run_metadata.toml")); err == nil {
-		return "", false, 0, ""
+	for _, f := range records {
+		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+			return "", false, 0, ""
+		}
 	}
 	ents, err := os.ReadDir(dir)
 	if err != nil {
@@ -127,9 +132,10 @@ func (s *Server) importROHSA(ctx context.Context, src rohsaSource) (runs.Run, in
 	if info.RegionBasis != "declared" {
 		info.Notes = append(info.Notes, "No trace names the region, so the crop is looked for under the folder's name; that name is the only link between the fit and the file.")
 	}
-	// the crop: <region>.fits beside the .dat, the way the pipeline names it
+	// the crop: <region>.fits beside the .dat, the way the pipeline names it (the profile's name for the crop)
+	prof := s.profiles().ByName("ROHSA-LMC")
+	cropName, _ := prof.FileName(runs.RoleCrop, map[string]string{"region": info.Region})
 	if info.Region != "" && !strings.ContainsAny(info.Region, `/\`) {
-		cropName := info.Region + ".fits"
 		if d, found, code, msg := src.Register(ctx, cropName); found {
 			if code != 0 {
 				info.Notes = append(info.Notes, cropName+" could not be registered ("+msg+"), so the run has no spectral calibration.")
@@ -140,13 +146,13 @@ func (s *Server) importROHSA(ctx context.Context, src rohsaSource) (runs.Run, in
 		}
 	}
 	if info.CropDatasetID == nil {
-		info.Notes = append(info.Notes, "The crop FITS the fit used ("+info.Region+".fits) was not found beside the .dat, so this run has no spectral calibration: component curves and velocities are not available.")
+		info.Notes = append(info.Notes, "The crop FITS the fit used ("+cropName+") was not found beside the .dat, so this run has no spectral calibration: component curves and velocities are not available.")
 	}
 	// the product tree: <dir>/rohsa/<label>/{maps,cubes}/*.fits, each a dataset linked by the name the pipeline gave it
 	var outs []runs.Output
 	seen := map[string]bool{}
-	for _, sub := range []struct{ folder, prefix string }{{"maps", ""}, {"cubes", "cube_"}} {
-		rel := path.Join("rohsa", parsed.ProductLabel, sub.folder)
+	for _, dir := range prof.FolderDirs() {
+		rel := path.Join(prof.TreeDir(parsed.ProductLabel), dir)
 		for _, name := range src.Fits(ctx, rel) {
 			if len(outs) >= maxROHSAProducts {
 				info.Notes = append(info.Notes, fmt.Sprintf("Only the first %d product files were linked.", maxROHSAProducts))
@@ -160,19 +166,21 @@ func (s *Server) importROHSA(ctx context.Context, src rohsaSource) (runs.Run, in
 				info.Notes = append(info.Notes, name+" was not linked: "+msg)
 				continue
 			}
-			role := sub.prefix + strings.TrimSuffix(strings.TrimPrefix(name, parsed.ProductLabel+"_"), ".fits")
-			if seen[role] {
+			product := prof.FolderPrefix(dir) + strings.TrimSuffix(strings.TrimPrefix(name, parsed.ProductLabel+"_"), ".fits")
+			if seen[product] {
 				continue
 			}
-			seen[role] = true
-			outs = append(outs, runs.Output{Role: role, DatasetID: d.ID, Name: d.Name})
-			if note := s.proposeProductUnit(wsCtx(ctx), d, role); note != "" {
-				info.UnitNotes[role] = note
+			seen[product] = true
+			outs = append(outs, runs.Output{Role: prof.FolderRole(dir, product), Product: product, DatasetID: d.ID, Name: d.Name})
+			if note := s.proposeProductUnit(wsCtx(ctx), d, product); note != "" {
+				info.UnitNotes[product] = note
 			}
 		}
 	}
 	if len(outs) == 0 {
-		info.Notes = append(info.Notes, "No product maps were found under rohsa/"+parsed.ProductLabel+"/ beside the .dat.")
+		info.Notes = append(info.Notes, "No product maps were found under "+prof.TreeDir(parsed.ProductLabel)+"/ beside the .dat.")
+	} else {
+		parsed.Profile = prof.Label() // the product tree is ROHSA-LMC's layout, whether or not a trace sat beside the .dat
 	}
 	// A host that stopped answering (ssh dropped, the deadline passed, the caller left) is not a host with no trace, no crop or no
 	// maps. Nothing is saved: a run built from silence would overwrite a good one under the same key, and an automatic import

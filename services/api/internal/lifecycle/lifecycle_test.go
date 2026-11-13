@@ -33,7 +33,7 @@ func TestDeletingARunUnlinksItsJobsAndOutputsAndDropsItsReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	run, err := rn.Save(workspace.Local, "local-owner", "/runs/r1", runs.Parsed{Run: runs.Run{Name: "r1", Kind: "vgt", Params: []runs.Param{}, Diagnostics: map[string]string{}}},
-		[]runs.Output{{Role: "psi", DatasetID: 7, Name: "psi.fits"}})
+		[]runs.Output{{Role: "orientation", Product: "psi", DatasetID: 7, Name: "psi.fits"}})
 	if err != nil {
 		t.Fatal(err)
 	}

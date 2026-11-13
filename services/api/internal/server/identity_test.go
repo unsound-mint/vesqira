@@ -439,7 +439,7 @@ func TestNewerResultsForARerunAFileChangedInPlaceAndFiguresDrawnFromIt(t *testin
 	if _, err := e.db.Exec(`INSERT INTO runs(id,dir,name,kind,imported_at,generated_at,git_commit,input_name,input_size,params,diagnostics) VALUES(1,'/x','run','vgt',0,'','','',0,'{}','{}')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.db.Exec(`INSERT INTO run_outputs(run_id,role,dataset_id,name) VALUES(1,'psi',?,'psi_hnv1.fits')`, d.ID); err != nil {
+	if _, err := e.db.Exec(`INSERT INTO run_outputs(run_id,role,product,dataset_id,name) VALUES(1,'orientation','psi',?,'psi_hnv1.fits')`, d.ID); err != nil {
 		t.Fatal(err)
 	}
 	if n := newer(); len(n.Datasets) != 0 || len(n.Figures) != 0 {

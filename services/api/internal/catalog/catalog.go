@@ -53,6 +53,9 @@ type Dataset struct {
 	// VGT is what the file's header says when it carries VGT.jl's keywords (the angle's frame and meaning, the product role, the run
 	// parameters, the resolution), and where a declaration in force disagrees with it; nil for any other file. Computed on read.
 	VGT *VGTHeader `json:"vgtHeader"`
+	// OrientationHeader is VGT under its general name: what the header says of an orientation through the tool profile that read
+	// it. Both are sent until schema 36; clients read this one.
+	OrientationHeader *VGTHeader `json:"orientationHeader"`
 }
 
 // Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).

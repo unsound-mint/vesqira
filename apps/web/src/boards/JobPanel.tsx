@@ -59,7 +59,7 @@ export function JobFrame({ job }: { job: JobInfo }) {
 
 /** The run's default output: the orientation field when there is one, else the first output. */
 export function defaultOutput(run: Run) {
-  return run.outputs.find((o) => o.role === "psi") ?? run.outputs[0];
+  return run.outputs.find((o) => o.role === "orientation" || o.role === "psi") ?? run.outputs[0];
 }
 
 /**

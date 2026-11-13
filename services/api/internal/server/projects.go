@@ -431,7 +431,7 @@ func (s *Server) projectTree(w http.ResponseWriter, r *http.Request) {
 			var run discover.Run
 			_ = json.Unmarshal(row.Data, &run)
 			tr := &treeRun{Record: run.Record, RecordKind: run.RecordKind, Fields: run.Fields, Settings: run.Settings, Differs: run.Differs, Notes: run.Notes, OutputCount: run.OutputCount, OutputBytes: run.OutputBytes}
-			if run.RecordKind == "vgt" && s.Runs != nil {
+			if s.Runs != nil && s.importsFromRecord(&run) {
 				key := absFor(p, row.Path)
 				if p.HostID != 0 {
 					key = hostKey(p.HostID, key)

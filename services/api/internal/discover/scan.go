@@ -42,11 +42,13 @@ type File struct {
 
 // Run is a folder that is a run: it has a run record, or the researcher marked it.
 type Run struct {
-	Path       string    `json:"path"`
-	Record     string    `json:"record"`     // the file that made it a run, relative to the run folder; "" for a manual mark
-	RecordKind string    `json:"recordKind"` // vgt, provenance, run-json, params, mlflow, manual
-	Fields     []Field   `json:"fields"`
-	Settings   []Setting `json:"settings"`
+	Path       string `json:"path"`
+	Record     string `json:"record"`     // the file that made it a run, relative to the run folder; "" for a manual mark
+	RecordKind string `json:"recordKind"` // a tool profile's run kind (vgt, rohsa, ...), provenance, run-json, params, mlflow, manual
+	// Profile is the tool profile (name@version) whose record this is, "" for a record that is not a tool's.
+	Profile  string    `json:"profile,omitempty"`
+	Fields   []Field   `json:"fields"`
+	Settings []Setting `json:"settings"`
 	// Differs is the settings of this run that differ from its siblings in the same folder (computed once per scan).
 	Differs     []Setting `json:"differs"`
 	Notes       []string  `json:"notes"`
@@ -55,9 +57,11 @@ type Run struct {
 	OutputBytes int64     `json:"outputBytes"`
 	MtimeNS     int64     `json:"mtimeNs"` // of the run record
 	RecordSize  int64     `json:"recordSize"`
-	// OutputRoles maps an output file name to the role the run record gives it (VGT: psi, reliability, support, fit_rbar2). Only
-	// what the record names; a file the record does not name has no role here.
-	OutputRoles map[string]string `json:"outputRoles,omitempty"`
+	// OutputRoles maps an output file name to the generic role the profile gives the output the run record names (orientation,
+	// reliability, support, ...), and OutputProducts to the tool's own name for it (psi, ...). Only what the record names; a file
+	// the record does not name has no role here. Rows stored before ADR 0068 slice 3 hold the old role names (psi).
+	OutputRoles    map[string]string `json:"outputRoles,omitempty"`
+	OutputProducts map[string]string `json:"outputProducts,omitempty"`
 
 	// jobID and jobTemplate are the Vesqira job a run.json names (0 and "" when none): what lets a job's record and the fit
 	// it produced be recognised as one run (mergeJobRecords). Not part of the wire.
@@ -119,6 +123,8 @@ type Options struct {
 	Start string
 	// Dirty counts changed files in the git work tree; nil leaves it unknown. Never called when there is no .git.
 	Dirty func(ctx context.Context) (int, bool)
+	// Profiles are the tool profiles that recognise runs; nil means the shipped ones (ADR 0068).
+	Profiles *runs.Registry
 }
 
 const (
@@ -151,6 +157,8 @@ type Result struct {
 	// (OthersTruncated says when there were more), each with the run folder it sits in, if any.
 	Others          []Other `json:"others,omitempty"`
 	OthersTruncated bool    `json:"othersTruncated,omitempty"`
+
+	reg *runs.Registry // the profiles the scan used, for Items
 }
 
 // Other is a file that no built-in rule recognised.
@@ -214,7 +222,10 @@ func Scan(ctx context.Context, fsys FS, opt Options) *Result {
 	if opt.MaxDuration <= 0 {
 		opt.MaxDuration = DefaultMaxDuration
 	}
-	s := &scanner{ctx: ctx, fs: fsys, opt: opt, res: &Result{}, manual: map[string]ManualRun{}, layRun: map[string]bool{}}
+	if opt.Profiles == nil {
+		opt.Profiles = runs.Shipped()
+	}
+	s := &scanner{ctx: ctx, fs: fsys, opt: opt, res: &Result{reg: opt.Profiles}, manual: map[string]ManualRun{}, layRun: map[string]bool{}}
 	s.start = s.now()
 	for _, m := range opt.ManualRuns {
 		if p := clean([]string{m.Path}); len(p) == 1 {
@@ -494,28 +505,32 @@ func (s *scanner) link(rel string) {
 // maybeRun decides whether dir is a run (a record, a manual mark, or a folder of runs the layout declares) and
 // returns the run context its contents belong to. A run inside a run wins for its own files: the outer run keeps a note.
 func (s *scanner) maybeRun(dir string, ents []Entry, names map[string]bool, in *runCtx) *runCtx {
-	file, kind, ok := detectRecord(names)
 	man, marked := s.manual[dir]
 	layoutRun := s.layRun[path.Dir(dir)] || (path.Dir(dir) == "." && s.layRun[""])
-	if !ok && !marked && !layoutRun {
+	cands := detectRecords(s.opt.Profiles, names)
+	if len(cands) == 0 && !marked && !layoutRun {
 		return in
 	}
 	r := Run{Path: dir, Fields: []Field{}, Settings: []Setting{}, Notes: []string{}, Outputs: []File{}}
-	if ok {
-		r.Record, r.RecordKind = file, string(kind)
-		if st, err := s.fs.Stat(joinRel(dir, file)); err == nil {
+	ok := false
+	for _, c := range cands {
+		r = Run{Path: dir, Fields: []Field{}, Settings: []Setting{}, Notes: []string{}, Outputs: []File{}, Record: c.file, RecordKind: string(c.kind)}
+		if c.prof != nil {
+			r.Profile = c.prof.Label()
+		}
+		if st, err := s.fs.Stat(joinRel(dir, c.file)); err == nil {
 			r.MtimeNS, r.RecordSize = st.MtimeNS, st.Size
 		}
-		if !s.readRecord(&r, kind) {
-			if kind == recMLflow { // meta.yaml is only a run record when it says it is an MLflow run
-				if !marked && !layoutRun {
-					return in
-				}
-				r.Record, r.RecordKind = "", string(recManual)
-			}
+		if s.readRecord(&r, c) {
+			ok = true
+			break
 		}
-	} else {
-		r.RecordKind = string(recManual)
+	}
+	if !ok { // a profile's record that is not its tool's, or a meta.yaml that is not an MLflow run: only a mark or the layout makes a run
+		if !marked && !layoutRun {
+			return in
+		}
+		r = Run{Path: dir, Fields: []Field{}, Settings: []Setting{}, Notes: []string{}, Outputs: []File{}, RecordKind: string(recManual)}
 	}
 	if marked || (!ok && layoutRun) {
 		src := "project.toml"
@@ -567,7 +582,8 @@ func firstNonEmpty(a, b string) string {
 }
 
 // readRecord fills a run from its record. It returns false when the record turned out not to be a run record.
-func (s *scanner) readRecord(r *Run, kind recordKind) bool {
+func (s *scanner) readRecord(r *Run, c candidate) bool {
+	kind := c.kind
 	data, truncated, err := s.fs.ReadFile(joinRel(r.Path, r.Record), runs.MaxMetadataBytes)
 	if err != nil {
 		r.Notes = append(r.Notes, "the run record "+r.Record+" could not be read")
@@ -577,46 +593,10 @@ func (s *scanner) readRecord(r *Run, kind recordKind) bool {
 		r.Notes = append(r.Notes, "the run record "+r.Record+" is too large to read here; its settings are not shown")
 		return true
 	}
+	if c.prof != nil {
+		return s.readProfileRecord(r, c.prof, data)
+	}
 	switch kind {
-	case recVGT:
-		p, err := runs.ParseVGT(data, path.Base(r.Path))
-		if err != nil {
-			r.Notes = append(r.Notes, "run_metadata.toml could not be read as a VGT run record: "+err.Error())
-			return true
-		}
-		if p.GeneratedAt != "" {
-			r.Fields = append(r.Fields, Field{"startedAt", p.GeneratedAt, "declared", r.Record})
-		}
-		if p.GitCommit != "" {
-			r.Fields = append(r.Fields, Field{"commit", p.GitCommit, "declared", r.Record})
-		}
-		for _, p := range p.Params {
-			r.Settings = append(r.Settings, Setting{p.Key, p.Value})
-		}
-		if len(p.OutputFiles) > 0 {
-			r.OutputRoles = map[string]string{}
-			for role, name := range p.OutputFiles {
-				r.OutputRoles[name] = role
-			}
-		}
-	case recROHSA:
-		stem := strings.TrimSuffix(r.Record, "_run_trace.toml")
-		p, err := runs.ParseROHSA(data, nil, nil, stem, path.Base(r.Path))
-		if err != nil {
-			r.Notes = append(r.Notes, r.Record+" could not be read as a ROHSA run trace: "+err.Error())
-			return true
-		}
-		for _, p := range p.Params {
-			r.Settings = append(r.Settings, Setting{p.Key, p.Value})
-		}
-		r.Notes = append(r.Notes, "a ROHSA fit: its raw output is "+stem+".dat; other fits in this folder share this run record's folder")
-		// the folder may also hold the record Vesqira wrote for the job that made the fit: the same run, named once
-		if rec, trunc, err := s.fs.ReadFile(joinRel(r.Path, "run.json"), runs.MaxMetadataBytes); err == nil && !trunc {
-			if id, tpl, ok := jobOf(rec); ok && tpl == "rohsa" {
-				r.jobID, r.jobTemplate = id, tpl
-				addJob(r, id, "run.json")
-			}
-		}
 	case recProvenance, recRunJSON:
 		s.fromJSON(r, data)
 		if kind == recRunJSON {

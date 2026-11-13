@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
 // Researcher import rules (ADR 0058). A rule maps a pattern on a file's path, relative to the project folder, to a role and
@@ -369,15 +371,12 @@ const (
 	BICatalog       = "catalog"
 	BIRunRecord     = "run_record"
 	BIRunOutput     = "run_output"
-	BIROHSAFit      = "rohsa_fit"
-	BIROHSAProduct  = "rohsa_product"
 	BIConfig        = "config"
 	BIJob           = "job_template"
 	BIArchive       = "archive"
 	BIOtherData     = "other_discipline"
 	BIDeclaredData  = "declared_data"
 	BIOther         = "other"
-	vgtRolePrefix   = "vgt_"
 	ruleByBuiltin   = "built-in"
 	maxConflictList = 50
 	maxExamples     = 10
@@ -389,8 +388,9 @@ type Item struct {
 	Size    int64  `json:"size"`
 	MtimeNS int64  `json:"mtimeNs"`
 	Format  string `json:"format,omitempty"`
-	// Role is the built-in role: dataset, catalog, run_record, vgt_psi/vgt_reliability/vgt_support/vgt_fit_rbar2, run_output,
-	// rohsa_fit, rohsa_product, config, job_template, archive, other_discipline, declared_data or other.
+	// Role is the built-in role: dataset, catalog, run_record, run_<role> for a file a tool profile places in a run (run_orientation,
+	// run_reliability, run_support, run_component_table, run_component_maps, run_model_cube, or run_ and a profile's extra role),
+	// run_output, config, job_template, archive, other_discipline, declared_data or other.
 	Role string `json:"role"`
 	// Why names the built-in rule behind Role.
 	Why     string `json:"why"`
@@ -414,7 +414,7 @@ func Items(r *Result) []Item {
 				Why: "run record (" + run.RecordKind + "): a folder holding " + run.Record + " is a run"})
 		}
 		for _, o := range run.Outputs {
-			role, why := runFileRole(run, o.Path, o.Format)
+			role, why := runFileRole(r.reg, run, o.Path, o.Format)
 			out = append(out, Item{Path: o.Path, Size: o.Size, MtimeNS: o.MtimeNS, Format: o.Format, Role: role, Why: why, RunPath: run.Path})
 		}
 	}
@@ -434,7 +434,7 @@ func Items(r *Result) []Item {
 	for _, o := range r.Others {
 		it := Item{Path: o.Path, Size: o.Size, MtimeNS: o.MtimeNS, RunPath: o.RunPath, Role: BIOther, Why: "no built-in rule recognises this file"}
 		if run := runKind[o.RunPath]; run != nil && o.RunPath != "" {
-			it.Role, it.Why = runFileRole(run, o.Path, "")
+			it.Role, it.Why = runFileRole(r.reg, run, o.Path, "")
 		}
 		out = append(out, it)
 	}
@@ -461,26 +461,14 @@ func dataRole(f File) (role, why string) {
 	return BIOtherData, f.Format + " file: listed with \"no viewer yet\""
 }
 
-// runFileRole is the role of a file inside a run folder: what the run record names, or a plain output of the run.
-func runFileRole(run *Run, rel, format string) (role, why string) {
-	base := path.Base(rel)
-	switch run.RecordKind {
-	case string(recVGT):
-		if r, ok := run.OutputRoles[base]; ok {
-			return vgtRolePrefix + r, "VGT output: " + run.Record + " names " + base + " as the run's " + strings.ReplaceAll(r, "_", " ") + " map"
-		}
-	case string(recROHSA):
-		stem := strings.TrimSuffix(run.Record, "_run_trace.toml")
-		if base == stem+".dat" {
-			return BIROHSAFit, "ROHSA fit: the raw output of the run " + run.Record + " names (" + stem + ".dat)"
-		}
-		if format == "FITS" || fitsName(strings.ToLower(base)) {
-			for _, seg := range strings.Split(path.Dir(rel), "/") {
-				if seg == "maps" || seg == "cubes" {
-					return BIROHSAProduct, "ROHSA product: a FITS file under " + seg + "/ in a ROHSA run folder"
-				}
-			}
-		}
+// runFileRole is the role of a file inside a run folder: what the run's tool profile places (the outputs its record names, its
+// component table, its product tree), or a plain output of the run.
+func runFileRole(reg *runs.Registry, run *Run, rel, format string) (role, why string) {
+	if reg == nil {
+		reg = runs.Shipped()
+	}
+	if role, why := profileFileRole(reg, run, rel, format); role != "" {
+		return role, why
 	}
 	return BIRunOutput, "file in the run folder " + run.Path + ": it belongs to the run, which does not name it"
 }

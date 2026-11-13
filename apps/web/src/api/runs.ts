@@ -2,8 +2,12 @@ import { postJSON, request as call } from "./http";
 import type { Job, JobUsage } from "./jobs";
 
 export type RunParam = { key: string; value: string; source: "config" | "run_parameters" | "parameters" | "run_trace" };
-/** psi, reliability, support, fit_rbar2 for a VGT run; the product name (component_g1_mu_kms, cube_model, ...) for a ROHSA run. */
-export type RunOutput = { role: string; datasetId: number; name: string };
+/**
+ * role is the generic role its tool profile gives the output (orientation, reliability, support, component_maps, model_cube, ...) or a
+ * declared extra (fit_rbar2); product is the tool's own name for it (psi, component_g1_mu_kms, cube_model, ...). A run recorded before
+ * profiles keeps its old role names (psi, ...) as the product and has the profile "legacy".
+ */
+export type RunOutput = { role: string; product?: string; datasetId: number; name: string };
 
 export type RunReview = { qc: "not_assessed" | "passed" | "failed" | "inconclusive"; interpretation: "not_interpreted" | "supports" | "challenges" | "inconclusive"; note: string };
 
@@ -33,6 +37,8 @@ export type Run = {
   id: number;
   name: string;
   kind: string;
+  /** The tool profile (name@version) that recognised the run, or "legacy". Absent in older responses. */
+  profile?: string;
   importedAt: string;
   generatedAt: string;
   gitCommit: string;

@@ -41,7 +41,7 @@ type Resolution = { status?: string; reasons?: string[]; gaussian_arcsec?: { bma
  */
 function SourceResolution({ dataset, v, set }: { dataset: Dataset; v: Record<string, string>; set: (k: string, val: string) => void }) {
   const hasBeam = (dataset as { header?: { beam?: { status?: string } } }).header?.beam?.status === "declared";
-  const r = (dataset.vgtHeader?.resolution ?? null) as Resolution | null;
+  const r = ((dataset.orientationHeader ?? dataset.vgtHeader)?.resolution ?? null) as Resolution | null;
   if (hasBeam) return null;
   const ok = r?.status === "approximate" && r.gaussian_arcsec;
   return (

@@ -72,7 +72,7 @@ describe("a board panel that follows a running job", () => {
 
   it("saves the finished run's result as a figure and pins it, and offers a retry when saving fails", async () => {
     const done = job({ state: "completed", runId: 7 });
-    const run = { id: 7, name: "vgt-ker16", outputs: [{ role: "reliability", datasetId: 21, name: "rel.fits" }, { role: "psi", datasetId: 22, name: "psi.fits" }] };
+    const run = { id: 7, name: "vgt-ker16", outputs: [{ role: "reliability", datasetId: 21, name: "rel.fits" }, { role: "orientation", product: "psi", datasetId: 22, name: "psi.fits" }] };
     const calls = mockFetch({
       "/api/boards/1/items/0/pin": () => ({ body: { id: 1, title: "Live", createdAt: "", updatedAt: "", items: [{ position: 0, kind: "figure", figure, note: "wait for this" }] } }),
       "/api/boards": () => ({ body: { boards: [boardWith(done)] } }),

@@ -412,7 +412,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 	if s.Runs != nil {
 		for i := range res.Runs {
 			r := &res.Runs[i]
-			if r.RecordKind != "vgt" {
+			if !s.importsFromRecord(r) {
 				continue
 			}
 			key := abs(r.Path)
@@ -439,7 +439,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 	}
 	for _, r := range res.Runs {
 		for _, o := range r.Outputs {
-			if o.Format == "FITS" && r.RecordKind != "vgt" { // a VGT run registers the outputs its record names
+			if o.Format == "FITS" && !s.importsFromRecord(&r) { // a run whose profile has its record name the outputs registers those
 				fits = append(fits, o)
 			}
 		}

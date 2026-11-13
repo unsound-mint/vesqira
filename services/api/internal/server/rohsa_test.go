@@ -68,6 +68,7 @@ type rohsaRunJSON struct {
 	Metrics []runs.Metric
 	Outputs []struct {
 		Role      string
+		Product   string
 		DatasetID int64
 	}
 	Rohsa *runs.RohsaInfo
@@ -115,7 +116,7 @@ func TestROHSAImportDeclaresSettingsLinksProductsAndNeverGuessesUnits(t *testing
 	}
 	ids := map[string]int64{}
 	for _, o := range run.Outputs {
-		ids[o.Role] = o.DatasetID
+		ids[o.Product] = o.DatasetID
 	}
 	for _, role := range []string{"component_g1_amp_k", "component_g1_mu_kms", "component_g1_sigma_kms", "model_nhi_cm2", "residual_moment0_kkms", "cube_model"} {
 		if ids[role] == 0 {

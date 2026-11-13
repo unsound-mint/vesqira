@@ -65,7 +65,7 @@ func TestRunImportReadsTheAngleFrameFromTheHeader(t *testing.T) {
 		}
 		json.Unmarshal(out, &run)
 		for _, o := range run.Outputs {
-			if o.Role == "psi" {
+			if o.Role == "orientation" {
 				_, pb := get(t, ts.URL+"/api/datasets/"+itoa(int(o.DatasetID)))
 				var d catalog.Dataset
 				json.Unmarshal(pb, &d)

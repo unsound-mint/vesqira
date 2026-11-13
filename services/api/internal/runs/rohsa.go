@@ -103,7 +103,12 @@ func ParseROHSA(trace, products, params []byte, stem, folder string) (RohsaParse
 	nl := namelist(params)
 
 	p := RohsaParsed{ProductLabel: stem}
-	p.Kind = "rohsa"
+	// Any record beside the .dat (trace, products trace, namelist) is ROHSA-LMC's; a bare .dat is only the ROHSA format.
+	prof := Shipped().ByName("ROHSA")
+	if len(trace) > 0 || len(products) > 0 || len(params) > 0 {
+		prof = Shipped().ByName("ROHSA-LMC")
+	}
+	p.Kind, p.Profile = prof.Kind, prof.Label()
 	p.Name = stem
 	p.Diagnostics = map[string]string{}
 	if tr.Status != "" && len(tr.Status) <= 60 {

@@ -69,7 +69,7 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [ ] 0: template drift fixed (VGT.jl config keys, ROHSA-LMC repository label)
 - [x] 1: analysis presets; results stop citing the owner's script lines
 - [ ] 2: orientation conventions from a header-card profile; "unresolved" instead of an assumed default
-- [ ] 3: run detection and generic output roles
+- [x] 3: run detection and generic output roles (schema 35; `vgtHeader` goes in schema 36)
 - [ ] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps)
 - [ ] 5: run templates as data, pinned to a repository and commit
 

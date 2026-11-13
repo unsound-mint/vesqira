@@ -5,13 +5,25 @@ import { runReviewHistory, setRunReview } from "../api/runs";
 import type { RunReview, RunReviewRevision } from "../api/runs";
 import s from "./RunPanel.module.css";
 
-export const ROLE: Record<string, string> = { psi: "Orientation (psi)", reliability: "Reliability", support: "Support", fit_rbar2: "Fit R̄²" };
+const ROLE: Record<string, string> = { reliability: "Reliability", support: "Support", fit_rbar2: "Fit R̄²" };
 
-export function runFor(runs: Run[], datasetId: number | null): { run: Run; role: string } | null {
+/**
+ * What an output is called on screen. A generic role says what the file is for; the tool's own name for it stays visible, so a VGT
+ * orientation map reads "Orientation (psi)" and a ROHSA map reads by its product name. A run recorded before profiles has the old role
+ * as its product and gets the same names.
+ */
+export function outputLabel(o: { role: string; product?: string }): string {
+  const product = o.product || o.role;
+  if (o.role === "orientation" || o.role === "psi") return `Orientation (${product})`;
+  return ROLE[o.role] ?? product;
+}
+
+/** The product of the output of this run that holds the dataset: the key of per-product notes such as unit notes. */
+export function runFor(runs: Run[], datasetId: number | null): { run: Run; role: string; product: string } | null {
   if (datasetId === null) return null;
   for (const run of runs) {
     const o = run.outputs.find((x) => x.datasetId === datasetId);
-    if (o) return { run, role: o.role };
+    if (o) return { run, role: o.role, product: o.product || o.role };
   }
   return null;
 }
@@ -20,10 +32,10 @@ export function runFor(runs: Run[], datasetId: number | null): { run: Run; role:
  * What a ROHSA run records beyond the common run model, each with where it comes from. The crop is the run's input, found by
  * name beside the .dat; a missing one is said, never replaced by another file.
  */
-export function RohsaFacts({ run, role }: { run: Run; role?: string }) {
+export function RohsaFacts({ run, product }: { run: Run; product?: string }) {
   const r = run.rohsa;
   if (!r) return null;
-  const unitNote = role ? r.unitNotes[role] : undefined;
+  const unitNote = product ? r.unitNotes[product] : undefined;
   return (
     <div className={s.wrap}>
       <dl className={s.facts}>
@@ -41,14 +53,14 @@ export function RohsaFacts({ run, role }: { run: Run; role?: string }) {
 }
 
 /** Compact summary in the inspector; the run itself opens as a page. */
-export function RunPanel({ run, role, job, onOpenPage, onRunAgain, orientationUnresolved }: { run: Run; role: string; orientationUnresolved?: boolean; job?: { name: string; slurmId: string; state: string } | null; onOpenPage: () => void; onRunAgain?: () => void }) {
+export function RunPanel({ run, role, product, job, onOpenPage, onRunAgain, orientationUnresolved }: { run: Run; role: string; product?: string; orientationUnresolved?: boolean; job?: { name: string; slurmId: string; state: string } | null; onOpenPage: () => void; onRunAgain?: () => void }) {
   return (
     <div className={s.wrap}>
       <dl className={s.facts}>
         <dt>Run</dt>
         <dd className="mono" title={run.name}>{run.name}</dd>
         <dt>This file</dt>
-        <dd>{ROLE[role] ?? role}</dd>
+        <dd>{outputLabel({ role, product })}</dd>
         {job ? (
           <>
             <dt>Job</dt>
@@ -56,7 +68,7 @@ export function RunPanel({ run, role, job, onOpenPage, onRunAgain, orientationUn
           </>
         ) : null}
       </dl>
-      <RohsaFacts run={run} role={role} />
+      <RohsaFacts run={run} product={product ?? role} />
       {orientationUnresolved ? <p className={s.note}>This orientation map has no declared frame, quantity or unit: its file does not state them and none is assumed. The map still displays; declare it in the inspector before an analysis that needs it.</p> : null}
       {run.reproducibleFromCommit ? (
         <Pill tone="ok">Commit recorded</Pill>
