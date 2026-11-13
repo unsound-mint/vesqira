@@ -220,10 +220,11 @@ func figuresOf(q querier, ws workspace.ID, datasetIDs ...int64) (figs []Item, re
 		return nil, nil, nil
 	}
 	in, args := inList(datasetIDs)
-	// a sky view (ADR 0072) has no dataset of its own: it counts as made from every dataset its description drew a footprint of
+	// a figure holds a dataset as its base or as a layer of its scene (contours, orientation lines, a mask, a sky view's footprints: any "datasetId" the owner-only
+	// scene names), and either way deleting the dataset would leave a figure whose provenance names a file that is gone
 	all := append(append([]any{ws}, args...), args...)
-	rows, err := q.Query(`SELECT id,title,revision FROM figures WHERE workspace_id=? AND (dataset_id IN (`+in+`)
-		OR (kind='sky' AND EXISTS (SELECT 1 FROM json_each(figures.scene,'$.footprints') j WHERE json_extract(j.value,'$.datasetId') IN (`+in+`)))) ORDER BY id`, all...)
+	rows, err := q.Query(`SELECT DISTINCT f.id,f.title,f.revision FROM figures f, json_tree(CASE WHEN json_valid(f.scene) THEN f.scene ELSE '{}' END) t
+		WHERE f.workspace_id=? AND (f.dataset_id IN (`+in+`) OR (t.key='datasetId' AND t.value IN (`+in+`))) ORDER BY f.id`, all...)
 	if err != nil {
 		return nil, nil, err
 	}

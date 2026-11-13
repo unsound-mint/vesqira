@@ -266,6 +266,7 @@ func (s *Server) Handler() http.Handler {
 				s.route(mux, "POST /api/sweeps/{id}/submit", authz.SweepSubmit, s.submitSweep)
 				s.route(mux, "POST /api/sweeps/{id}/cancel", authz.SweepSubmit, s.cancelSweep)
 				s.route(mux, "GET /api/sweeps/{id}/grid", authz.SweepRead, s.sweepGrid)
+				s.route(mux, "GET /api/sweeps/{id}/family", authz.SweepRead, s.sweepFamily)
 				if s.Boards != nil {
 					s.route(mux, "POST /api/sweeps/{id}/board", authz.SweepSubmit, s.boardFromSweep)
 				}
@@ -284,6 +285,8 @@ func (s *Server) Handler() http.Handler {
 		s.route(mux, "POST /api/analysis/relative-orientation", authz.AnalysisRun, s.relativeOrientation)
 		s.route(mux, "POST /api/analysis/family", authz.AnalysisRun, s.familyAgreement)
 		s.route(mux, "GET /api/analysis/families", authz.DatasetRead, s.familyCandidates)
+		s.route(mux, "GET /api/analysis/family-maps", authz.DatasetRead, s.listFamilyMaps)
+		s.route(mux, "POST /api/analysis/family-maps/remove", authz.LifecycleDelete, s.removeFamilyMaps)
 		s.route(mux, "GET /api/analysis/relative-orientation/presets", authz.AnalysisRun, s.relativeOrientationPresets)
 		s.route(mux, "POST /api/analysis/healpix-sample", authz.AnalysisRun, s.healpixSample)
 		if s.Runs != nil {

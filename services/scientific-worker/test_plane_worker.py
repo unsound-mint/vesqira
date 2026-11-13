@@ -672,6 +672,13 @@ class RemoteRoots(unittest.TestCase):
         self.assertEqual(len(set(replies)), 1)                           # nothing tells existing and missing files apart
         for op in ("plane",):
             self.assertEqual(self.c.ask(op=op, path=str(self.root / "link_out.fits"), channel=0)[0]["code"], "forbidden")
+        for p in outside:                                                # one file outside refuses the whole batch, with the same refusal
+            r = self.ask(op="stat_many", paths=[str(self.root / "hi_cube.fits"), p])
+            self.assertEqual((r["ok"], r["code"], r["error"]), (False, "forbidden", replies[0]))
+        ok = self.ask(op="stat_many", paths=[str(self.root / "hi_cube.fits"), str(self.root / "vgt_psi_deg.fits")])
+        self.assertEqual([f["size"] for f in ok["files"]], [(self.root / n).stat().st_size for n in ("hi_cube.fits", "vgt_psi_deg.fits")])
+        for bad in ([], "x", [1], ["/x"] * 193):
+            self.assertEqual(self.ask(op="stat_many", paths=bad)["ok"], False)
         self.assertEqual(self.ask(op="axial", path=str(self.root / "vgt_psi_deg.fits"), unit="deg", weights_path=str(self.other / "secret.fits"))["code"], "forbidden")
 
     def test_completion_lists_names_only_and_may_leave_the_roots(self):

@@ -32,7 +32,7 @@ func makeDataDir(t *testing.T) (dir, db string) {
 			t.Fatal(err)
 		}
 	}
-	for rel, body := range map[string]string{"figures/aa.png": "png-bytes", "derived/psi.fits": "derived-bytes", "managed/copy.fits": "managed-bytes", "figures/.tmp-x": "partial"} {
+	for rel, body := range map[string]string{"figures/aa.png": "png-bytes", "derived/psi.fits": "derived-bytes", "managed/copy.fits": "managed-bytes", "attachments/bb": "image-bytes", "attachments/.part-1": "partial", "figures/.tmp-x": "partial"} {
 		p := filepath.Join(dir, rel)
 		os.MkdirAll(filepath.Dir(p), 0o700)
 		os.WriteFile(p, []byte(body), 0o444)
@@ -47,7 +47,7 @@ func TestExportThenRestoreIntoAnEmptyDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.SchemaVersion != 1 || len(m.Files) != 4 { // the catalog and three data files; the half-written one is skipped
+	if m.SchemaVersion != 1 || len(m.Files) != 5 { // the catalog and four data files (report images included); the half-written one is skipped
 		t.Fatalf("manifest: %+v", m)
 	}
 	if len(m.References) != 1 || m.References[0].Path != "/data/hi.fits" {
@@ -57,7 +57,7 @@ func TestExportThenRestoreIntoAnEmptyDirectory(t *testing.T) {
 	if _, err := Restore(bytes.NewReader(buf.Bytes()), into); err != nil {
 		t.Fatal(err)
 	}
-	for rel, want := range map[string]string{"figures/aa.png": "png-bytes", "derived/psi.fits": "derived-bytes", "managed/copy.fits": "managed-bytes"} {
+	for rel, want := range map[string]string{"figures/aa.png": "png-bytes", "derived/psi.fits": "derived-bytes", "managed/copy.fits": "managed-bytes", "attachments/bb": "image-bytes"} {
 		b, err := os.ReadFile(filepath.Join(into, rel))
 		if err != nil || string(b) != want {
 			t.Errorf("%s: %v %q", rel, err, b)
