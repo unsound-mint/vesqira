@@ -2,17 +2,21 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/authz"
+	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
 	"github.com/unsound-mint/vesqira/services/api/internal/outbox"
 	"github.com/unsound-mint/vesqira/services/api/internal/relay"
+	"github.com/unsound-mint/vesqira/services/api/internal/worker"
 )
 
 // Standing approvals, the key holder's side (ADR 0074). A grant lets one collaborator's requests be submitted without a click, inside
@@ -92,8 +96,9 @@ func (s *Server) applyGrants(ctx context.Context, c *groupClient, l outbox.Link)
 }
 
 // grantVerdict checks every term of the grant a request named against this computer's own records. It returns the grant, the draft
-// and its CPUs and minutes when the request is inside it, else a code and the sentence shown to the key holder.
-func (s *Server) grantVerdict(st relay.LocalState, m relay.Mirrored) (relay.Grant, jobs.Job, int, int, string, string) {
+// and its CPUs and minutes when the request is inside it, else a code and the sentence shown to the key holder. The code is
+// relay.GrantStatePending when the host did not answer, which is not a verdict: the request is tried again at the next pass.
+func (s *Server) grantVerdict(ctx context.Context, st relay.LocalState, m relay.Mirrored) (relay.Grant, jobs.Job, int, int, string, string) {
 	var none jobs.Job
 	now := s.relayClock()
 	ask := m.Request.Ask
@@ -148,7 +153,17 @@ func (s *Server) grantVerdict(st relay.LocalState, m relay.Mirrored) (relay.Gran
 	if v, set := req.Set[jobs.InputKey(j.Template)]; set {
 		input = v
 	}
-	if !g.InputAllowed(input) {
+	// The input is checked where it really is, not by its name: a collaborator who can write in a granted folder could put a link
+	// there to other data this account reads. The host's worker resolves it (and refuses anything outside the host's source roots);
+	// the grant's folders and files were stored resolved when it was made, so a path through an alias of a granted folder still fits.
+	real, code, why := s.resolveGrantInput(ctx, h, input)
+	if code != "" {
+		return g, none, 0, 0, code, why
+	}
+	if !g.InputAllowed(real) {
+		if real != input {
+			return g, none, 0, 0, relay.GrantInput, fmt.Sprintf("The base run's input %q resolves on the host to %q, which is not inside the standing approval's input folders or files.", input, real)
+		}
 		return g, none, 0, 0, relay.GrantInput, fmt.Sprintf("The base run's input %q is not one of the standing approval's input folders or files.", input)
 	}
 	if pin := s.codePinOf(j.Template, req); pin.Commit != g.Commit {
@@ -174,7 +189,11 @@ func (s *Server) applyGrant(ctx context.Context, c *groupClient, l outbox.Link, 
 	fallback := func(code, why string) {
 		_ = s.Relayed.SetGrantState(m.ID, "", code, "Waiting for you: outside the standing approval. "+why)
 	}
-	g, j, cpus, minutes, code, why := s.grantVerdict(st, m)
+	g, j, cpus, minutes, code, why := s.grantVerdict(ctx, st, m)
+	if code == relay.GrantStatePending {
+		_ = s.Relayed.SetGrantState(m.ID, "", relay.GrantStatePending, why)
+		return
+	}
 	if code != "" {
 		fallback(code, why)
 		return
@@ -242,6 +261,63 @@ func (s *Server) applyGrant(ctx context.Context, c *groupClient, l outbox.Link, 
 	}
 	m, _ = s.Relayed.Get(m.ID)
 	s.reportOne(c, l, m)
+}
+
+// resolveGrantInput asks the host where a granted request's input really is. A refusal (outside the host's source roots, not a
+// regular file, or missing) is a verdict; a host that does not answer is not, and the request waits for the next pass.
+func (s *Server) resolveGrantInput(ctx context.Context, h hosts.Host, input string) (string, string, string) {
+	if s.Remote == nil {
+		return "", relay.GrantStatePending, "The host's input could not be checked on this computer; tried again at the next check."
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "resolve", "path": input})
+	var re *worker.RequestError
+	switch {
+	case errors.As(err, &re):
+		return "", relay.GrantInput, fmt.Sprintf("The base run's input %q is not a file inside %s's source roots once its links are followed (the host said: %s).", input, h.Name, re.Message)
+	case err != nil:
+		return "", relay.GrantStatePending, "The host " + h.Name + " did not answer, so the base run's input could not be checked; tried again at the next check."
+	}
+	var out struct {
+		Real string `json:"real"`
+	}
+	if json.Unmarshal(rep.Head, &out) != nil || !path.IsAbs(out.Real) || path.Clean(out.Real) != out.Real {
+		return "", relay.GrantInput, "The host answered unexpectedly when asked where the base run's input is."
+	}
+	return out.Real, "", ""
+}
+
+// resolveGrantPaths replaces a new grant's folders and files with their real paths on the host: each folder through the worker's
+// canon op (it must be a folder), each file through resolve, which the worker refuses outside the host's source roots.
+func (s *Server) resolveGrantPaths(ctx context.Context, h hosts.Host, g *relay.Grant) (int, string) {
+	if s.Remote == nil {
+		return 502, "the host cannot be asked where the input folders are"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	for i, p := range g.Roots {
+		real, isDir, _, err := s.remoteCanon(ctx, h, p)
+		if err != nil {
+			return hostErrStatus(err)
+		}
+		if !isDir {
+			return 422, fmt.Sprintf("%s is not a folder on %s", p, h.Name)
+		}
+		g.Roots[i] = real
+	}
+	for i, p := range g.Files {
+		real, code, _ := s.resolveGrantInput(ctx, h, p)
+		switch code {
+		case "":
+			g.Files[i] = real
+		case relay.GrantStatePending:
+			return 502, "the host is not reachable (is the VPN up?)"
+		default:
+			return 422, fmt.Sprintf("%s is not a file inside %s's source roots once its links are followed", p, h.Name)
+		}
+	}
+	return 0, ""
 }
 
 // claimOnServer claims a drafted request on the group server: it first marks the request waiting for review when the server still
@@ -431,6 +507,15 @@ func (s *Server) createGrant(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := relay.CheckGrantInputs(g.Roots, g.Files, h.InRoots); err != nil {
 		fail(w, 422, relay.Sentence(err))
+		return
+	}
+	// stored where they really are, so a request's input, resolved the same way, is compared with real paths on both sides
+	if code, msg := s.resolveGrantPaths(r.Context(), h, &g); code != 0 {
+		fail(w, code, msg)
+		return
+	}
+	if err := relay.CheckGrantInputs(g.Roots, g.Files, h.InRoots); err != nil {
+		fail(w, 422, "once their links are followed on the host: "+relay.Sentence(err))
 		return
 	}
 	g, err = s.Relayed.CreateGrant(l.Origin, g)

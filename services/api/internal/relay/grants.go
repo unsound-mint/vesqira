@@ -266,7 +266,8 @@ func CheckGrantInputs(roots, files []string, inRoots func(string) bool) error {
 }
 
 // InputAllowed reports whether an input path is one of the grant's files or lies under one of its folders. The path must itself be
-// absolute and clean: a path with ".." is never inside anything.
+// absolute and clean: a path with ".." is never inside anything. The check is lexical, so callers pass the real path the host's
+// worker resolved and compare it with the grant's folders and files, which are stored resolved (a link's name proves nothing).
 func (g Grant) InputAllowed(p string) bool {
 	if p == "" || !path.IsAbs(p) || path.Clean(p) != p || strings.Contains(p, "..") {
 		return false

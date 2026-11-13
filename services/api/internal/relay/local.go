@@ -148,11 +148,11 @@ type Mirrored struct {
 	Reported    string      `json:"reported"`
 	// GrantID is the standing approval the request was submitted under (ADR 0074), set once used; GrantState is what this computer
 	// decided about the grant the request named ("" not yet, waiting, pending, used, manual) and GrantNote why it waits for you.
-	GrantID     string      `json:"grantId"`
-	GrantState  string      `json:"grantState"`
-	GrantNote   string      `json:"grantNote"`
-	ReceivedAt  time.Time   `json:"receivedAt"`
-	UpdatedAt   time.Time   `json:"updatedAt"`
+	GrantID     string    `json:"grantId"`
+	GrantState  string    `json:"grantState"`
+	GrantNote   string    `json:"grantNote"`
+	ReceivedAt  time.Time `json:"receivedAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 	origin      string
 	workspaceID workspace.ID
 }

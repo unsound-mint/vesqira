@@ -134,7 +134,9 @@ func offerFor(in Inbox, id, requester string, now time.Time) (GrantOffer, bool) 
 }
 
 // OfferFor is offerFor for the server's routes (the preview).
-func OfferFor(in Inbox, id, requester string, now time.Time) (GrantOffer, bool) { return offerFor(in, id, requester, now) }
+func OfferFor(in Inbox, id, requester string, now time.Time) (GrantOffer, bool) {
+	return offerFor(in, id, requester, now)
+}
 
 // InboxOf returns one account's inbox in the workspace.
 func (s *Store) InboxOf(ws workspace.ID, account string) (InboxRow, error) {

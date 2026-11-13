@@ -167,18 +167,18 @@ type FollowUp struct {
 
 // Request is one request as the key holder's computer pulls it.
 type Request struct {
-	ID        int64      `json:"id"`
-	Change    int64      `json:"change"`
-	State     string     `json:"state"`
-	Requester string     `json:"requester"`
+	ID        int64  `json:"id"`
+	Change    int64  `json:"change"`
+	State     string `json:"state"`
+	Requester string `json:"requester"`
 	// RequesterID is the requester's account id, sent only when the ask names a grant (ADR 0074), so a page without grants is what
 	// an older computer decodes.
-	RequesterID string `json:"requesterId,omitempty"`
-	Ask       Ask        `json:"ask"`
-	Base      *Base      `json:"base,omitempty"`
-	CreatedAt time.Time  `json:"createdAt"`
-	ExpiresAt time.Time  `json:"expiresAt"`
-	Notes     []FollowUp `json:"notes"`
+	RequesterID string     `json:"requesterId,omitempty"`
+	Ask         Ask        `json:"ask"`
+	Base        *Base      `json:"base,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	ExpiresAt   time.Time  `json:"expiresAt"`
+	Notes       []FollowUp `json:"notes"`
 }
 
 // Page is one pull: the requests addressed to the token's account in its workspace that changed after the cursor sent, in the

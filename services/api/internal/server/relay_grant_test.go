@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,13 @@ func newGrantEnv(t *testing.T) *grantEnv {
 	})
 	// the key holder's computer keeps the group server's (test) clock, so expiries agree on both sides
 	r.srv.RelayNow, r.srv.Relayed.Now = r.g.clock.now, r.g.clock.now
+	// the input really is on the host: the key holder's computer resolves it through the host's worker before it counts
+	for _, d := range []string{cubes, r.remoteRoot + "/other"} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, cubes+"/hnv1.fits")
 	return &grantEnv{relayEnv: r, cubes: cubes}
 }
 
@@ -352,6 +360,94 @@ func TestGrantInputsAreCheckedAtCreationAndAtUse(t *testing.T) {
 	r.srv.waitRecords()
 	if m := r.mirrorOf(id); m.GrantState != relay.GrantStateUsed || r.submissions() != before+1 {
 		t.Fatalf("input on the grant's file: %+v", m)
+	}
+}
+
+func writeFile(t *testing.T, p string) {
+	t.Helper()
+	if err := os.WriteFile(p, []byte("SIMPLE  =                    T"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func symlink(t *testing.T, target, link string) {
+	t.Helper()
+	_ = os.Remove(link)
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The input is judged where it really is. A collaborator who can write in a granted folder puts a link there to other data the key
+// holder's account reads inside the host's roots: the link's name is inside the grant, its target is not, so the request waits with
+// the resolved path in the reason (and only the code on the server). A link to another place inside the grant is fine. A grant made
+// through an alias of its folder is stored resolved, so the real input still fits it; a granted file that links out of the host's
+// roots is refused when the grant is made.
+func TestGrantInputIsCheckedThroughItsLinks(t *testing.T) {
+	r := newGrantEnv(t)
+	secret, deep := r.remoteRoot+"/secret", r.cubes+"/deep"
+	for _, d := range []string{secret, deep} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, secret+"/other.fits")
+	writeFile(t, deep+"/hnv1.fits")
+	input := r.cubes + "/hnv1.fits"
+	alias := r.remoteRoot + "/lab-cubes" // another name for the granted folder
+	symlink(t, r.cubes, alias)
+	g := r.grant(map[string]any{"roots": []string{alias}})
+	if len(g.Roots) != 1 || g.Roots[0] != r.cubes {
+		t.Fatalf("the grant's folder is not stored resolved: %v", g.Roots)
+	}
+	before := r.submissions()
+
+	symlink(t, secret+"/other.fits", input)
+	id := r.file(grantAsk(g.ID, "6"))
+	r.pass()
+	m := r.mirrorOf(id)
+	if m.GrantState != relay.GrantInput || m.LocalState == relay.LocalApproved || r.submissions() != before {
+		t.Fatalf("a link out of the grant went through: %+v", m)
+	}
+	if !strings.Contains(m.GrantNote, "resolves on the host to") || !strings.Contains(m.GrantNote, secret+"/other.fits") {
+		t.Fatalf("the reason does not say where the input really is: %q", m.GrantNote)
+	}
+	for _, x := range r.wire.exchanges() {
+		if strings.Contains(x.url, "/api/relay/") && bytes.Contains(x.body, []byte(secret)) {
+			t.Errorf("%s %s carried the resolved path: %s", x.method, x.url, x.body)
+		}
+	}
+
+	symlink(t, deep+"/hnv1.fits", input)
+	id = r.file(grantAsk(g.ID, "6"))
+	r.pass()
+	r.srv.waitRecords()
+	if m := r.mirrorOf(id); m.GrantState != relay.GrantStateUsed || r.submissions() != before+1 {
+		t.Fatalf("a link to another place inside the grant: %+v", m)
+	}
+
+	// a host that does not answer is not a verdict: the request waits as pending and goes once the host answers again
+	r.srv.Remote.Close() // the next worker call starts a new ssh, which the stand-in refuses while DOWN exists
+	writeFile(t, r.home+"/DOWN")
+	id = r.file(grantAsk(g.ID, "6"))
+	r.pass()
+	if m := r.mirrorOf(id); m.GrantState != relay.GrantStatePending || r.submissions() != before+1 {
+		t.Fatalf("an unreachable host: %+v", m)
+	}
+	if err := os.Remove(r.home + "/DOWN"); err != nil {
+		t.Fatal(err)
+	}
+	r.pass()
+	r.srv.waitRecords()
+	if m := r.mirrorOf(id); m.GrantState != relay.GrantStateUsed || r.submissions() != before+2 {
+		t.Fatalf("after the host answered again: %+v", m)
+	}
+
+	outside := t.TempDir() + "/elsewhere.fits"
+	writeFile(t, outside)
+	symlink(t, outside, r.cubes+"/away.fits")
+	if st, b := callJSON(t, "POST", r.api("/api/relay/local/grants"), r.grantBody(map[string]any{"roots": []string{}, "files": []string{r.cubes + "/away.fits"}})); st != 422 {
+		t.Fatalf("a granted file that links out of the host's roots: %d %s", st, b)
 	}
 }
 
