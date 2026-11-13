@@ -95,7 +95,7 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
   return (
     <div className={s.wrap}>
       <form className={s.form} onSubmit={submit}>
-        <PathField label="Register a FITS file or a catalog" kind="file" ext={FITS_EXT} placeholder="/absolute/path/to/cube.fits or stars.csv" value={path} onChange={setPath} />
+        <PathField label="Register a FITS file or a catalog" kind="file" ext={FITS_EXT} placeholder="/path/to/cube.fits" value={path} onChange={setPath} />
         <Button type="submit" variant="primary" disabled={busy || !path.trim()}>{busy ? "Reading header…" : "Register"}</Button>
         <Button type="button" disabled={busy || !isFitsPath(path)} onClick={doPreview} title={path.trim() && !isFitsPath(path) ? "The preview is for FITS files; a catalog shows its rows once registered." : undefined}>Preview before registering</Button>
         {preview ? (

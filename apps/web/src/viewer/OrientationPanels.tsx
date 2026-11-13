@@ -8,6 +8,9 @@ import type { AngleFrame, AngleQuantity, InterpretationRequest } from "../api/ca
 import type { AxialSummary } from "../api/planes";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
+import { runFor } from "../catalog/RunPanel";
+import type { Run } from "../api/runs";
+import { datasetLabels } from "./datasetLabels";
 import s from "./OrientationPanels.module.css";
 
 /** Whether a declaration was read from the file's own header: by an orientation profile ("profile:VGT.jl@1"), or by the VGT.jl reading that came before profiles. */
@@ -57,28 +60,35 @@ const planeSize = (d: Dataset): string | null => {
   return a.length >= 2 ? `${a[0]!.length}×${a[1]!.length}` : null;
 };
 
-/** The folder (and host, when not this computer) a dataset lives in: what tells two files of the same name apart. */
-export function whereText(d: Dataset): string {
-  const parts = d.path.split("/");
-  const folder = parts.length > 1 ? `…/${parts.slice(-2, -1)[0]}` : "";
-  return `${d.hostId !== 0 ? `host ${d.hostId}, ` : ""}${folder}`.replace(/, $/, "");
-}
+/** The roles of a run's outputs that can be the reliability of its orientation map. */
+export const RELIABILITY_ROLES = ["reliability", "support", "fit_rbar2"];
+
+export type ReliabilityChoice = { id: number; label: string; thisRun: boolean };
 
 /**
  * The maps that can be this map's reliability: single planes of the same size, never itself, an archived dataset or a catalog
  * (the server checks the sky grid itself; the size is what the catalog knows). The choice already declared stays listed even
- * when it no longer fits, so opening the form never silently drops it. A name two datasets share gets its folder (and host).
+ * when it no longer fits, so opening the form never silently drops it. A name two datasets share gets the folder that tells them apart
+ * (and the host's name). When the map is an output of a run, that run's own reliability, support and fit_rbar2 outputs come first and
+ * are marked `thisRun`: the run record says they belong with it, a file name does not.
  */
-export function reliabilityChoices(self: Dataset, all: Dataset[], currentId: number | null): { id: number; label: string }[] {
+export function reliabilityChoices(self: Dataset, all: Dataset[], currentId: number | null, runs: Run[] = [], hostName: (id: number) => string = (id) => `host ${id}`): ReliabilityChoice[] {
   const size = planeSize(self);
   const fits = all.filter((d) => d.id !== self.id && !d.archived && isImage(d) && (d.id === currentId || (size !== null && planeSize(d) === size && d.hostId === self.hostId)));
-  const count = new Map<string, number>();
-  for (const d of fits) count.set(d.name, (count.get(d.name) ?? 0) + 1);
-  return fits.map((d) => ({ id: d.id, label: (count.get(d.name) ?? 0) > 1 ? `${d.name} (${whereText(d)})` : d.name }));
+  const labels = datasetLabels(fits, hostName);
+  const own = new Set(runFor(runs, self.id)?.run.outputs.filter((o) => RELIABILITY_ROLES.includes(o.role)).map((o) => o.datasetId) ?? []);
+  const choices = fits.map((d) => ({ id: d.id, label: labels.get(d.id)!, thisRun: own.has(d.id) }));
+  return [...choices.filter((c) => c.thisRun), ...choices.filter((c) => !c.thisRun)];
+}
+
+/** The output this map's run records as its reliability map, when it is one of the choices; null otherwise. */
+export function runReliability(self: Dataset, runs: Run[], choices: { id: number }[]): number | null {
+  const o = runFor(runs, self.id)?.run.outputs.find((x) => x.role === "reliability" && x.datasetId !== self.id && choices.some((c) => c.id === x.datasetId));
+  return o ? o.datasetId : null;
 }
 
 /** What the user says this single-plane map is. Declared by the user, stored in the catalog, never written to the file. */
-export function InterpretationPanel({ v, dataset, datasets, declare }: { v: Viewer; dataset: Dataset; datasets: Dataset[]; declare: (id: number, b: InterpretationRequest) => Promise<string | null> }) {
+export function InterpretationPanel({ v, dataset, datasets, runs, hostName, declare }: { v: Viewer; dataset: Dataset; datasets: Dataset[]; runs?: Run[]; hostName?: (id: number) => string; declare: (id: number, b: InterpretationRequest) => Promise<string | null> }) {
   const cur = dataset.interpretation;
   const [kind, setKind] = useState<"scalar" | "axial">(cur ? "axial" : "scalar");
   const [unit, setUnit] = useState<"" | "deg" | "rad">(cur?.unit ?? "");
@@ -91,7 +101,8 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
   if (v.view.channels !== 1) return <p className={s.note}>Orientation maps are single planes; this file has {v.view.channels} channels.</p>;
 
   const others = datasets.filter((d) => d.id !== dataset.id);
-  const choices = reliabilityChoices(dataset, datasets, cur?.reliabilityId ?? null);
+  const choices = reliabilityChoices(dataset, datasets, cur?.reliabilityId ?? null, runs, hostName);
+  const fromRun = runReliability(dataset, runs ?? [], choices);
   const suggestion = suggestCompanion(dataset.name, others.filter((d) => choices.some((c) => c.id === d.id)));
   const st = v.plane?.head.stats;
 
@@ -120,9 +131,21 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
           ) : null}
           <Select label="Reliability map (optional)" value={rel} onChange={(e) => setRel(e.target.value)}>
             <option value="">None</option>
-            {choices.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            {choices.some((c) => c.thisRun) ? (
+              <>
+                <optgroup label="This run">{choices.filter((c) => c.thisRun).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</optgroup>
+                <optgroup label="Other maps">{choices.filter((c) => !c.thisRun).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</optgroup>
+              </>
+            ) : choices.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </Select>
-          {suggestion && rel !== String(suggestion.id) ? (
+          {fromRun !== null ? (
+            rel !== String(fromRun) ? (
+              <p className={s.note}>
+                This run’s reliability map is <span className="mono">{choices.find((c) => c.id === fromRun)!.label}</span>; the run record says so.{" "}
+                <Button type="button" onClick={() => setRel(String(fromRun))}>Use it</Button>
+              </p>
+            ) : null
+          ) : suggestion && rel !== String(suggestion.id) ? (
             <p className={s.note}>
               By file name, <span className="mono">{suggestion.name}</span> may be its reliability map.{" "}
               <Button type="button" onClick={() => setRel(String(suggestion.id))}>Use it</Button>

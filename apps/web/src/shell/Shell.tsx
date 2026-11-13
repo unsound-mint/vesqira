@@ -488,7 +488,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
         {mode === "open" || noProjectYet ? (
           <OpenProject recent={proj.recent} hosts={cat.hosts} currentId={project?.id ?? null} busy={proj.opening} error={proj.error} onOpen={(path, hostId) => void openFolder(path, hostId)} />
         ) : mode === "look" && project ? (
-          <FirstLook key={project.id} project={project} onWrite={writeFile} onUseWithout={() => setMode("viewer")} onCancel={() => void proj.cancel()} />
+          <FirstLook key={project.id} project={project} hostName={hostName} onWrite={writeFile} onUseWithout={() => setMode("viewer")} onCancel={() => void proj.cancel()} />
         ) : mode === "needs" && project ? (
           <NeedsView project={project} version={proj.version} onChanged={() => { void proj.refresh(project.id); void refreshDatasets(); /* an answer can declare a unit on the files it is about */ }} />
         ) : mode === "import" && project ? (
@@ -623,7 +623,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
           </Section>
           {actDs && (viewer.view === null || viewer.view.channels === 1) ? (
             <Section title="Interpretation">
-              <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} declare={cat.declare} />
+              <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} runs={cat.runs} hostName={hostName} declare={cat.declare} />
             </Section>
           ) : null}
           {actDs ? <HealpixSampleDone dataset={actDs} datasets={cat.allDatasets} onOpen={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} /> : null}
