@@ -61,6 +61,12 @@ test("two smoothings of a cube are recognised as a family and compared on one sc
   await expect(readout.getByRole("table")).toBeVisible();
   await expect(readout).toContainText("Spread across the maps");
 
+  // the maps this comparison saved are listed for clean-up, none held by anything yet
+  const cleanup = page.getByRole("region", { name: "Earlier comparison maps" });
+  await expect(cleanup).toContainText("difference");
+  await expect(cleanup).toContainText("spread");
+  await expect(cleanup).toContainText("There is no automatic clean-up");
+
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     for (const [w, h] of [[1440, 900], [390, 844]] as const) {
@@ -70,9 +76,23 @@ test("two smoothings of a cube are recognised as a family and compared on one sc
       await page.screenshot({ path: path.join(shots, `family-${scheme}-${w}-top.png`) });
       await numbers.scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(shots, `family-${scheme}-${w}-numbers.png`) });
+      await cleanup.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(shots, `family-${scheme}-${w}-cleanup.png`) });
     }
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   const axe = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).analyze();
   expect(axe.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
+
+  // remove them: sources stay, the list empties and says what happened to the files
+  const before = ((await (await request.get(`${API}/api/analysis/family-maps`)).json()) as { maps: { datasetId: number }[] }).maps.length;
+  expect(before).toBeGreaterThan(0);
+  page.once("dialog", (d) => void d.accept());
+  await cleanup.getByRole("button", { name: /Choose the maps of this run that can go/ }).first().click();
+  await cleanup.getByRole("button", { name: /^Remove \d+ chosen$/ }).click();
+  await expect(cleanup.getByRole("status", { name: "What was removed" })).toContainText("removed");
+  const after = ((await (await request.get(`${API}/api/analysis/family-maps`)).json()) as { maps: unknown[] }).maps.length;
+  expect(after).toBe(0);
+  const left = (await (await request.get(`${API}/api/datasets`)).json()) as { datasets: Ds[] };
+  expect(left.datasets.some((d) => d.name === "hi_cube.fits")).toBe(true);
 });

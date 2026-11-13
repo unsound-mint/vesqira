@@ -235,6 +235,65 @@ class HostRun(unittest.TestCase):
         self.assertNotEqual(p.returncode, 0)
         self.assertIn("without its roots", p.stdout)
 
+    def family_files(self):
+        h = fits.Header()
+        h["BUNIT"] = "K"
+        paths = []
+        for k, v in enumerate((1.0, 2.0, 4.0)):
+            p = os.path.join(self.root, f"m{k}.fits")
+            fits.PrimaryHDU(np.full((2, 3), v, dtype="f4"), header=h).writeto(p)
+            paths.append(p)
+        return paths
+
+    def family_req(self, paths, name="family-1-0a1b.fits", extra=()):
+        fam = json.dumps([{"path": p, "label": f"m{i}"} for i, p in enumerate(paths)])
+        return {"op": "family", "name": name, "argv": ["--input", paths[0], "--family", fam, "--reference-index", "0", "--spread", "std", *extra]}
+
+    def test_a_family_writes_the_spread_and_every_comparison_map_together(self):
+        paths = self.family_files()
+        code, res = self.run_req(self.family_req(paths))
+        self.assertEqual(code, 0, res)
+        want = ["family-1-0a1b-m1.fits", "family-1-0a1b-m2.fits", "family-1-0a1b.fits"]
+        self.assertEqual(self.files(), want)
+        self.assertEqual(res["file"], os.path.join(self.derived, "family-1-0a1b.fits"))
+        self.assertEqual(res["extra_files"], [os.path.join(self.derived, n) for n in want[:2]])
+        self.assertEqual(res["summary"]["comparison_maps"], [1, 2])
+        # member minus reference: 2 - 1 and 4 - 1; the spread of (1, 2, 4) with ddof 1 is sqrt(7/3)
+        self.assertTrue(np.allclose(fits.getdata(res["extra_files"][0]), 1.0))
+        self.assertTrue(np.allclose(fits.getdata(res["extra_files"][1]), 3.0))
+        self.assertTrue(np.allclose(fits.getdata(res["file"]), np.sqrt(7.0 / 3.0), rtol=1e-6))
+
+    def test_a_family_refuses_other_options_and_leaves_nothing(self):
+        paths = self.family_files()
+        for req in (self.family_req(paths, extra=("--out=" + os.path.join(self.root, "x.fits"),)),
+                    self.family_req(paths, extra=("--params", "{}")),
+                    self.family_req(paths, name="family-1-0a1b.fits/../../y.fits"),
+                    self.family_req(paths, name="mask-1-0a1b.fits")):
+            code, res = self.run_req(req)
+            self.assertNotEqual(code, 0, req)
+            self.assertFalse(res["ok"])
+        self.assertEqual(self.files(), [])
+
+    def test_a_family_member_outside_the_roots_is_refused_and_leaves_nothing(self):
+        paths = self.family_files()
+        paths[2] = os.path.join(self.outside, "cube.fits")
+        code, res = self.run_req(self.family_req(paths))
+        self.assertNotEqual(code, 0)
+        self.assertFalse(res["ok"])
+        self.assertEqual(self.files(), [])
+
+    def test_a_family_name_collision_on_a_comparison_map_leaves_everything_as_it_was(self):
+        paths = self.family_files()
+        os.makedirs(self.derived)
+        with open(os.path.join(self.derived, "family-1-0a1b-m2.fits"), "w") as f:
+            f.write("the researcher's own")
+        code, res = self.run_req(self.family_req(paths))
+        self.assertNotEqual(code, 0)
+        self.assertIn("left as it is", res["error"])
+        self.assertEqual(self.files(), ["family-1-0a1b-m2.fits"])
+        with open(os.path.join(self.derived, "family-1-0a1b-m2.fits")) as f:
+            self.assertEqual(f.read(), "the researcher's own")
+
 
 if __name__ == "__main__":
     unittest.main()

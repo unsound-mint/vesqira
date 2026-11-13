@@ -222,6 +222,19 @@ func (s *Server) importROHSAFromHost(w http.ResponseWriter, r *http.Request, hos
 	ctx, cancel := context.WithTimeout(r.Context(), remoteImportTimeout)
 	defer cancel()
 	dat, code, msg := s.rohsaTargetRemote(ctx, h, p)
+	if (code == 422 || code == 403) && dat == "" {
+		// no ROHSA fit there (or a record file, not a folder): it may be a run of a tool whose profile declares FITS maps
+		if rec, ok := s.mapsRecordOnHost(ctx, h, p); ok {
+			run, code, msg := s.importFrom(ctx, rec)
+			if code != 0 {
+				fail(w, code, msg)
+				return
+			}
+			s.Audit.RecordCtx(r.Context(), "decomposition run imported from host", "run", run.ID, h.Name+": "+rec.dir)
+			writeJSON(w, 201, s.runView(wsOf(r), run))
+			return
+		}
+	}
 	if code != 0 {
 		fail(w, code, msg)
 		return
@@ -487,7 +500,7 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 				return t, false
 			}
 			t.datReal = folder
-			if t.datSize, t.datMtime, err = mapsFingerprint(folder, files); err != nil {
+			if t.datSize, t.datMtime, err = mapsFingerprint(files, localMapStat(folder)); err != nil {
 				fail(w, 409, "a map file of this run is no longer in its folder")
 				return t, false
 			}
@@ -512,6 +525,23 @@ func (s *Server) rohsaResolve(w http.ResponseWriter, r *http.Request, runID int6
 	if err != nil || !h.InRoots(rr.DatPath) {
 		fail(w, 403, "not available")
 		return t, false
+	}
+	if files, isMaps := decl["files"].(map[string][]string); isMaps {
+		// FITS maps on the host: the run's folder is what that worker is given, and the files in it are fingerprinted there in one request
+		var err error
+		t.datSize, t.datMtime, err = mapsFingerprint(files, s.remoteMapStat(r.Context(), h, rr.DatPath))
+		switch {
+		case errors.Is(err, errRemoteRefused):
+			fail(w, 403, "not available")
+			return t, false
+		case errors.Is(err, context.Canceled):
+			return t, false
+		case err != nil:
+			fail(w, 502, "the host is not reachable (is the VPN up?)")
+			return t, false
+		}
+		t.datReal, t.host = rr.DatPath, &h
+		return t, true
 	}
 	rep, err := s.Remote.Do(r.Context(), h, map[string]any{"op": "stat", "path": rr.DatPath}) // the host's worker enforces its roots
 	var re *worker.RequestError

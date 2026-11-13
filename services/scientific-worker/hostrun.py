@@ -1,10 +1,12 @@
-"""One bounded write on a host (ADR 0064): make a mask of a file there, or write a virtual subset of it as a file, without the bytes
-crossing to the researcher's computer.
+"""One bounded write on a host (ADR 0064): make a mask of a file there, write a virtual subset of it as a file, or compare a family of
+maps there (ADR 0070), without the bytes crossing to the researcher's computer.
 
     VESQIRA_ROOTS='[...]' VESQIRA_DERIVED=/root/vesqira_derived python3 -P hostrun.py  < request.json
 
 The request is one JSON object on stdin, never on the command line (a mask's name or a subset's note is free text, and the command
-line goes through the account's login shell): {"op": "mask" | "subset", "name": "<file name>", "argv": [analysis.py options]}.
+line goes through the account's login shell): {"op": "mask" | "subset" | "family", "name": "<file name>", "argv": [analysis.py options]}.
+A family (name family-....fits, the spread map) also writes one comparison map per non-reference member beside it, <stem>-m<i>.fits, named by
+hostrun.py from the program's summary and placed with the spread map, all or none; the reply's "extra_files" lists them.
 A subset may also name the mask files its result carries (ADR 0064, masks carried through a subset, ADR 0055): "carry": [{"name":
 "<file name>", "path": "<source mask>", "type": "<mask type>"}] and "missing": "<file name>" (the result's own no-value mask, computed
 again). They are structured fields, not options: --carry-masks and --missing-out stay out of the allow-list, and hostrun.py builds
@@ -40,10 +42,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # python -P does not add the script dir
 
-OPS = ("mask", "subset")
-NAME = re.compile(r"^(mask|subset)-[A-Za-z0-9_-]{1,100}\.fits$")
+OPS = ("mask", "subset", "family")
+NAME = re.compile(r"^(mask|subset|family)-[A-Za-z0-9_-]{1,100}\.fits$")
 ALLOWED = {"mask": {"--input", "--params", "--corrections", "--declared-unit"},
-           "subset": {"--input", "--window", "--note", "--declared-unit", "--corrections"}}
+           "subset": {"--input", "--window", "--note", "--declared-unit", "--corrections"},
+           "family": {"--input", "--family", "--reference-index", "--spread", "--corrections"}}
+ANALYSIS_OP = {"mask": "mask", "subset": "subset", "family": "family_agreement"}
+MAX_FAMILY_MAPS = 12
 MASK_TYPES = ("invalid", "low_snr", "saturated", "user_excluded", "other")   # a carried mask is never the no-value mask
 MAX_CARRY = 16
 MAX_REQUEST = 64 << 10
@@ -137,6 +142,8 @@ def main() -> int:
     op, name, argv = req.get("op"), req.get("name"), req.get("argv")
     if op not in OPS or not isinstance(name, str) or not NAME.match(name) or not name.startswith(op + "-"):
         return refuse("bad request")
+    if op == "family" and not name.endswith(".fits"):
+        return refuse("bad request")
     if not isinstance(argv, list) or len(argv) > 40 or not all(isinstance(a, str) and len(a) <= 16384 and "\0" not in a for a in argv):
         return refuse("bad request")
     if not options_ok(op, argv):
@@ -161,7 +168,7 @@ def main() -> int:
     linked: list[str] = []
     try:
         with contextlib.redirect_stdout(buf):
-            code = analysis.main([op, *argv, "--out", tmps[0], *extra])
+            code = analysis.main([ANALYSIS_OP[op], *argv, "--out", tmps[0], *extra])
         out = buf.getvalue().strip().splitlines()
         try:
             res = json.loads(out[-1]) if out else {}
@@ -170,6 +177,16 @@ def main() -> int:
         if code != 0 or not isinstance(res, dict) or not res.get("ok"):
             print(json.dumps(res if isinstance(res, dict) and res.get("error") else {"ok": False, "error": "the program failed on the host"}))
             return 2
+        if op == "family":
+            # the comparison maps are written beside the spread map as <stem>-m<i>.fits (analysis.py); they are placed with it, all or none
+            idx = res.get("summary", {}).get("comparison_maps") if isinstance(res.get("summary"), dict) else None
+            if not isinstance(idx, list) or len(idx) >= MAX_FAMILY_MAPS or len(set(idx)) != len(idx) or not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < MAX_FAMILY_MAPS for i in idx):
+                print(json.dumps({"ok": False, "error": "the program on the host answered unexpectedly about the comparison maps"}))
+                return 2
+            stem_tmp, stem_final = tmps[0][:-5], name[:-5]
+            for i in idx:
+                tmps.append(f"{stem_tmp}-m{i}.fits")
+                finals.append(f"{stem_final}-m{i}.fits")
         try:
             print(json.dumps({"stage": "placing"}), flush=True)   # the caller is still there? (raises when the connection is gone)
         except OSError:
@@ -188,6 +205,8 @@ def main() -> int:
             _unlink_all(linked)
             return refuse("the file could not be put in place in the derived folder on the host")
         res["file"] = linked[0]
+        if op == "family":
+            res["extra_files"] = linked[1:]       # the comparison maps, in the order of summary.comparison_maps
         if carry or missing:
             res["carried_files"] = linked[1:1 + len(carry)]
             res["missing_file"] = linked[-1] if missing else None
@@ -195,6 +214,8 @@ def main() -> int:
         return 0
     finally:
         _unlink_all(tmps)
+        if op == "family":                   # a failed run may have left some comparison maps' temporaries, which are not in tmps yet
+            _unlink_all([os.path.join(folder, n) for n in os.listdir(folder) if n.startswith(f".part-{tag}-")])
 
 
 if __name__ == "__main__":

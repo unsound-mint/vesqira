@@ -8,6 +8,7 @@ import { initialRunsView } from "../runs/runsViewState";
 import type { RunsViewState } from "../runs/runsViewState";
 import { JobsView, jobFor } from "../jobs/JobsView";
 import { FamilyView } from "../family/FamilyView";
+import type { FamilyPreset } from "../family/FamilyView";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { useNotifications } from "../notifications/useNotifications";
 import { FigurePanel } from "../viewer/FigurePanel";
@@ -298,6 +299,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null), setOutsideIn(null);
   }, [linked, group?.facets.cursor, group?.basis]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
+  const [familyPreset, setFamilyPreset] = useState<FamilyPreset | null>(null);
   const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs" | "run" | "rerun" | "open" | "look" | "needs" | "health" | "import" | "family">("viewer");
   const [runId, setRunId] = useState<number | null>(null);
   const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs">("viewer");
@@ -493,7 +495,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
         ) : mode === "health" && project ? (
           <HealthView project={project} />
         ) : mode === "jobs" ? (
-          <JobsView focusJob={focusJob} hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => openRun(r.id)} />
+          <JobsView focusJob={focusJob} hosts={cat.hosts} onImported={() => { void cat.refreshRuns(); void cat.refreshDatasets(); }} onOpenRun={(r) => openRun(r.id)} onOpenFamily={(p) => { setFamilyPreset(p); setMode("family"); }} />
         ) : mode === "run" ? (
           pageRun ? (
             <RunPage key={pageRun.id} run={pageRun} runs={cat.runs} datasets={cat.allDatasets} onEntryChanged={(c) => { void cat.refreshRuns(); void cat.refreshDatasets(); if (c === "deleted") setMode(runFrom); }} job={(pageRun.jobId != null ? cat.jobs.find((j) => j.id === pageRun.jobId) : undefined) ?? jobFor(cat.jobs, pageRun.id)} onBack={() => setMode(runFrom)} onOpenRun={openRun} onOpenInViewer={(id) => { cat.select(id); setMode("viewer"); }} onCompareInViewer={compareInViewer} onRunAgain={runAgain} onDraftedOnCube={(j) => { setFocusJob(j.id); setMode("jobs"); }} />
@@ -515,7 +517,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
         ) : mode === "runs" ? (
           <RunsView runs={cat.runs} jobs={cat.jobs} hostName={runHostName} state={runsView} onState={patchRunsView} onOpenRun={openRun} />
         ) : mode === "family" ? (
-          <FamilyView datasets={cat.allDatasets} preset={null} />
+          <FamilyView datasets={cat.allDatasets} preset={familyPreset} onCatalogChanged={() => { void cat.refreshDatasets(); }} />
         ) : mode === "reports" ? (
           <ReportsView onOpenRun={openRun} />
         ) : mode === "boards" ? (

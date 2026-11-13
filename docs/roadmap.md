@@ -70,7 +70,7 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] 1: analysis presets; results stop citing the owner's script lines
 - [x] 2: orientation conventions from a header-card profile; "unresolved" instead of an assumed default
 - [x] 3: run detection and generic output roles (schema 35; `vgtHeader` goes in schema 36)
-- [x] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps); no schema change, GaussPy+ not shipped (layout not verified)
+- [x] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps, also read on a host per pixel; HDUs by name and EXTVER; a cell click uses the pixel index for maps too); no schema change, GaussPy+ not shipped (layout not verified). Review of a run kept on a host stays local-only
 - [x] 5: run templates as data (steps, typed keys, command, probes, progress); a synthetic tool runs through the fake Slurm path; schema unchanged
 
 ## Review rounds (issue 130, ADR 0073, awaiting owner review)
@@ -84,7 +84,10 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 
 - [x] Spectral smoothing of a cube as a derived operation: boxcar, Gaussian or Hanning, width in channels (in the spectral unit only on a calibrated axis), kernel and minimum valid weight recorded, NaN kept, no in-place change, optional recorded decimation, the effective resolution stated only from a declared native response.
 - [x] Family view: maps that differ in one parameter side by side on a shared scale, each compared with a chosen reference (scalar difference and spread, or axial difference and AM for orientation maps), refused with a sentence when the grids are not shared. A family is recognised from derived records and can be picked by hand.
-- [ ] Not built: opening a family from a sweep of jobs, a family of maps on a host, cleanup of old family maps, a design review by a second person.
+- [x] Open a family from a sweep of jobs: the outputs of one chosen run role, labelled by the parameters that differ; jobs with another grid, frame or unit, no result or an undeclared orientation are listed with the reason and not compared.
+- [x] A family of maps on a host, compared by the host's worker where the files are (bounded reply, all-or-none placement of the results, cancellation, a clear refusal when the host cannot); nothing is copied here.
+- [x] Clean-up of family maps: list them by run and remove the ones nothing uses; a map used by a figure, board, report, published review or a derived dataset is kept with the reason; sources are never touched; no automatic policy.
+- [ ] Not built: deleting the result files on a host, a real-host run, a browser test that opens a sweep, a design review by a second person.
 
 ## Sky context (issue 134, ADR 0072, awaiting owner review)
 
@@ -204,9 +207,11 @@ The owner chose a shared multi-user server (ADR 0028 option B). Its design ADR c
 
 Needs an ADR before code: it changes the security boundary.
 
-- [ ] Accounts and roles per project and per cluster (Q29–Q31). Design in ADR 0050, accepted with the owner's answers of 2026-11-12; slices built in order.
-- [ ] Push from a local instance and run requests relayed to the key holder's own instance (ADR 0050 slices 4 and 5), specified in [ADR 0066](adr/0066-push-to-the-group-server-and-relayed-run-requests.md). Push is implemented (slice 4, schema 32); `multiuser import` is implemented (all-or-nothing write into a new workspace, explicit `--map` paths only, `--dry-run` lists the same plan; ADR 0050 slice 4); relayed run requests (slice 5) are not implemented.
-- [ ] Authentication before anyone but the owner can act; delegation and approval lifecycle for other users' requests (Q44, Q71).
+- [x] Accounts and roles per workspace (Q29–Q31), ADR 0050 slices 1 to 3.
+- [x] Push from a local instance (slice 4, schema 32) and run requests relayed to the key holder's own instance, approved there against the exact script (slice 5, schema 33), specified in [ADR 0066](adr/0066-push-to-the-group-server-and-relayed-run-requests.md).
+- [x] `multiuser import` of a local catalog into a new group workspace: all or nothing, paths rewritten only through explicit `--map` prefixes, `--dry-run` lists the same plan (ADR 0050 slice 4).
+- [x] Sign-in before anyone but the owner can act, and an approval lifecycle for other people's run requests (Q44, Q71), ADR 0050 slices 2 and 5.
+- [ ] Preapproved templates and budgets for trusted collaborators (deferred in ADR 0050; every request needs an explicit approval today).
 - [x] Worker memory cap and the authorize-then-open window for source files. The memory cap applies to every worker entry point and its setting reaches the workers. Every source read goes through `srcopen.py` in the worker and `sourceroot.OpenFile` in the API: the resolved path is opened without following a link, so a component swapped after the check is refused (ADR 0050, section 8). The device and inode a location had when it was recorded (schema 27) are compared when a dataset is read, and sent to the worker with the plane requests, which refuse another file with a sentence; the other worker ops do not carry them yet. The file tree opens its folder without following a link and shows links with their target and where they point; the worker's own listings (`walk`, `list`, `canon`) and the path completion still use path names.
 
 ## Stage 8 — Later phases (kept, not scheduled)
