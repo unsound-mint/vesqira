@@ -176,7 +176,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
   return (
     <div className={s.root}>
       {/* the page's section heading, so the panel titles (h3) are not orphaned when the explorer and its h2 are hidden at phone width */}
-      <h2 className={s.sr}>{board ? `Board: ${board.title}` : "Boards"}</h2>
+      <h2 className={s.sr}>Boards</h2>
       <div className={s.bar}>
         <Select label="Board" value={id ?? ""} onChange={(e) => setId(Number(e.target.value))}>
           {boards.length === 0 ? <option value="">No boards yet</option> : null}
