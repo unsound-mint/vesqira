@@ -107,7 +107,7 @@ func (s *Server) retryGrantSubmits(ctx context.Context, c *groupClient, l outbox
 		g, err := s.Relayed.GrantByID(m.GrantID)
 		if err != nil || m.ScriptHash == "" {
 			_ = s.Relayed.EndUseOf(m.ID)
-			_ = s.Relayed.SetGrantState(m.ID, m.GrantID, relay.GrantStateUsed, "The standing approval is gone; nothing was submitted.")
+			_ = s.Relayed.SetGrantState(m.ID, m.GrantID, relay.GrantStateStopped, "The standing approval is gone; nothing was submitted.")
 			continue
 		}
 		s.submitGranted(ctx, c, l, m, g, m.ScriptHash, grantTries(m.GrantNote))
