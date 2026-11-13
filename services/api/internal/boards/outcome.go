@@ -82,6 +82,9 @@ func (s *Store) Preflight(ws workspace.ID, boardID int64, question string, jobs 
 		warns = append(warns, "No question for the reviewer: say what you want them to look at.")
 	}
 	fr.Items = freeze(b.Items, jobs, fr.CreatedAt)
+	if err := s.addRound(ws, boardID, &fr); err != nil {
+		return Preflight{}, err
+	}
 	for _, it := range b.Items {
 		if it.Kind == KindJob {
 			js, ok := jobs[it.Job.ID]

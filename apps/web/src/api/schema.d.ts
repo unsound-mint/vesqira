@@ -6393,6 +6393,9 @@ export interface components {
             revision?: string;
             /** @description Only on a figure shared on its own: the figure's title when it was shared. */
             title?: string;
+            /** @description The snapshot's place in its board's history, 1 for the first (ADR 0073). Absent for a figure shared on its own. */
+            round?: number;
+            changes?: components["schemas"]["RoundChanges"];
         };
         SnapshotList: {
             snapshots: components["schemas"]["Snapshot"][];
@@ -6446,6 +6449,92 @@ export interface components {
              * @enum {string}
              */
             access?: "collaboration" | "unreleased";
+            round?: components["schemas"]["Round"];
+        };
+        /** @description A snapshot's place in its board's history (ADR 0073): 1 for the first snapshot of the board, with what changed since the round before from round 2 on. Absent on a figure shared on its own and on snapshots made before rounds. */
+        Round: {
+            number: number;
+            since?: components["schemas"]["Since"];
+        };
+        /** @description The comparison with the previous round, computed once from the two frozen documents when the board was published. When the previous round's link has been revoked, what only that link entitles a reader to is withheld: previous text and pictures, removed titles, detail sentences and carried comments. */
+        Since: {
+            /** @description The previous round's label */
+            label: string;
+            /**
+             * Format: date-time
+             * @description When the previous round was published
+             */
+            at: string;
+            /** @description One entry per item of the snapshot, in the same order */
+            items: components["schemas"]["ItemChange"][];
+            removed: components["schemas"]["RemovedItem"][];
+            removedCount: number;
+            lines: components["schemas"]["ChangeLine"][];
+            carried: components["schemas"]["CarriedComment"][];
+        };
+        /** @description How one item relates to the previous round. */
+        ItemChange: {
+            /**
+             * @description redrawn: the same figure drawn again (linked by the author's draw-again), another revision. unchanged: the same revision, whose text may still differ.
+             * @enum {string}
+             */
+            state: "new" | "redrawn" | "unchanged";
+            changed: ("title" | "caption" | "note" | "corrections" | "masks" | "access" | "state")[];
+            previous?: components["schemas"]["PreviousItem"];
+        };
+        /** @description The earlier round's version of a redrawn figure or of an item whose text changed. Its picture is served only while the earlier round's link is valid. */
+        PreviousItem: {
+            title: string;
+            caption: string;
+            note: string;
+            /** @description The earlier picture, on a redrawn figure only */
+            previewSha?: string;
+            width?: number;
+            height?: number;
+        };
+        /** @description An item of the previous round that this one no longer holds. */
+        RemovedItem: {
+            title: string;
+        };
+        /** @description One thing that changed, in reading order. detail is a sentence for corrections, masks, access and state, built from the two frozen documents only. */
+        ChangeLine: {
+            /** @enum {string} */
+            kind: "added" | "removed" | "redrawn" | "title" | "caption" | "note" | "corrections" | "masks" | "access" | "state";
+            title: string;
+            detail?: string;
+        };
+        /** @description A comment of an earlier round, shown read-only on the same figure of this one and labelled with its round. The anchor is kept only when the picture is unchanged. */
+        CarriedComment: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            parentId: number;
+            round: number;
+            /** @description The figure's revision in this snapshot */
+            figureRevision: string;
+            author: string;
+            fromOwner: boolean;
+            body: string;
+            anchor?: components["schemas"]["Anchor"];
+            pictureChanged: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            resolvedAt?: string;
+        };
+        /** @description A round's comparison as the owner's history lists it. For a snapshot made before rounds it is computed from the previous snapshot by revision only. */
+        RoundChanges: {
+            /** Format: date-time */
+            since: string;
+            sinceLabel: string;
+            lines: components["schemas"]["ChangeLine"][];
+            /** @description How many comments were carried from earlier rounds */
+            carried: number;
+            removedCount: number;
+        };
+        /** @description Whether the earlier round's picture can still be opened from this link: false when that round's link was revoked or has expired. */
+        PreviousStatus: {
+            available: boolean;
         };
         /** @description What publishing would expose and what a careful author would want to know first. Creates nothing. */
         Preflight: {
@@ -6658,6 +6747,7 @@ export interface components {
             comments: components["schemas"]["Comment"][];
             outcome: components["schemas"]["Outcome"];
             superseded?: components["schemas"]["Superseded"];
+            previous?: components["schemas"]["PreviousStatus"];
         };
         Revoked: {
             revoked: boolean;
