@@ -5275,6 +5275,58 @@ paths:
       x-listener: owner
       x-vesqira-permission: project.write
       responses: {'200': {description: ok}}
+  /api/projects/{id}/answers/tree:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_answerTree_post_api_projects_id_answers_tree
+      x-listener: owner
+      x-vesqira-permission: project.write
+      summary: "Answer every open missing-BUNIT question under a folder at once (preview, then confirm). Each is recorded as the researcher's own, with the folder tree as its scope; answered questions are not overwritten"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/TreeAnswerRequest"
+      responses:
+        "200":
+          description: "ok"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TreeAnswer"
+        "409":
+          description: "the project file could not be written"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "not a folder inside the project, or not an answer a folder tree takes, or an invalid unit"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "no such project"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/projects/{id}/import/apply:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -24699,6 +24751,73 @@ components:
           $ref: "#/components/schemas/RelayGrantOffer"
         reason:
           type: "string"
+    TreeAnswerRequest:
+      type: "object"
+      description: "Answers every open 'FITS files without BUNIT' question under a folder with the same answer. Without confirm it only counts what the answer would reach."
+      required:
+        - "folder"
+        - "answer"
+      properties:
+        folder:
+          type: "string"
+          description: "Relative to the project folder, slash-separated; \".\" is the whole project. The questions it reaches are derived on the server, never taken from the request."
+        answer:
+          type: "string"
+          enum:
+            - "declare"
+            - "unknown"
+        value:
+          type: "string"
+          description: "The unit, for declare (1 to 40 printable characters, as typed); empty for unknown."
+        confirm:
+          type: "boolean"
+          description: "false (the default) is a preview: nothing is changed."
+        write:
+          type: "boolean"
+          description: "Also create .vesqira/project.toml when it does not exist yet (it is appended to when it does)."
+    TreeAnswer:
+      type: "object"
+      description: "What a folder-tree answer reaches (preview) or reached (applied). Each folder's answer is stored as declared by the researcher for the folder tree, not per file; questions that already had an answer are left as they were."
+      required:
+        - "folder"
+        - "applied"
+        - "folders"
+        - "files"
+        - "sample"
+        - "answered"
+        - "writtenToProject"
+        - "open"
+      properties:
+        folder:
+          type: "string"
+        applied:
+          type: "boolean"
+        folders:
+          type: "integer"
+          description: "Open questions (folders) reached; after applying, the ones answered."
+        files:
+          type: "integer"
+          description: "Files in those folders with no BUNIT and no unit yet."
+        sample:
+          type: "array"
+          items:
+            type: "string"
+          description: "The first folders reached, at most 20."
+        answered:
+          type: "integer"
+          description: "Questions under the folder that already had an answer and were not touched."
+        writtenToProject:
+          type: "boolean"
+        note:
+          type: "string"
+        open:
+          type: "integer"
+          description: "Questions still open in the project."
+        failed:
+          type: "array"
+          items:
+            type: "string"
+          description: "Folders whose answer could not be applied; answering again retries them."
     HostPython:
       type: "object"
       required:

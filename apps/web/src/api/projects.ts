@@ -64,6 +64,8 @@ export type ProjectSummary = {
     otherFiles: number;
     archives: { count: number; bytes: number };
     skippedDirs: number;
+    /** Folders skipped as tool environments (venv, conda env, Julia depot, node_modules); counted, not listed. */
+    toolEnvs?: number;
     /** Names marked as not to be opened: never read. */
     neverRead: number;
     /** Data files in a raw or external folder (read-only inputs). */
@@ -146,7 +148,7 @@ export type TreePage = { group: TreeGroup; path: string; entries: TreeEntry[]; t
 
 export type NeedOption = { id: string; label: string; input: "" | "text" | "choice"; choices?: string[]; hint?: string };
 
-export type ProjectAnswer = { need: string; answer: string; value: string; declaredBy: "you"; date: string; writtenToProject: boolean };
+export type ProjectAnswer = { need: string; answer: string; value: string; declaredBy: string; date: string; writtenToProject: boolean };
 
 export type Need = {
   id: string;
@@ -179,6 +181,23 @@ export const projectNeeds = (id: number) => call<{ needs: Need[]; open: number }
 /** Answer one question. `write` writes it to .vesqira/project.toml even if the file does not exist yet. */
 export const answerNeed = (id: number, need: string, answer: string, value = "", write = false) =>
   post<AnswerResult>(`/api/projects/${id}/answers`, { need, answer, value, write });
+export type TreeAnswer = {
+  folder: string;
+  applied: boolean;
+  /** Open questions (folders) the answer reaches; after applying, the ones answered. */
+  folders: number;
+  files: number;
+  sample: string[];
+  /** Questions under the folder that already had an answer and were left as they were. */
+  answered: number;
+  writtenToProject: boolean;
+  note?: string;
+  open: number;
+  failed?: string[];
+};
+/** One answer for every open "no BUNIT" question under a folder. Without `confirm` it only counts what the answer would reach. */
+export const answerTree = (id: number, folder: string, answer: "declare" | "unknown", value: string, confirm: boolean, write = false) =>
+  post<TreeAnswer>(`/api/projects/${id}/answers/tree`, { folder, answer, value, confirm, write });
 /** Writes the proposed (or the given) .vesqira/project.toml. Only after the researcher confirms; never committed. */
 export const writeProjectFile = (id: number, text = "") => post<{ written: boolean; path: string; replaced: boolean }>(`/api/projects/${id}/project-file`, { write: true, text });
 

@@ -26,6 +26,9 @@ type Entry struct {
 	LinkDangling bool   `json:"linkDangling,omitempty"`
 	Size         int64  `json:"size"`
 	MtimeNS      int64  `json:"mtimeNs"`
+	// ToolEnv is set by a host's worker on a folder it recognised as a tool environment (venv, conda env, Julia depot)
+	// and did not list; a local scan recognises one from its listing instead.
+	ToolEnv bool `json:"toolEnv,omitempty"`
 }
 
 // FS reads a project folder. Paths are slash-separated and relative to the folder ("" is the folder itself); a path
@@ -162,7 +165,7 @@ func (m *MemFS) Add(rel string, e Entry) {
 		parent = ""
 	}
 	e.Name = path.Base(rel)
-	m.dirs[parent] = append(m.dirs[parent], Entry{Name: e.Name, Dir: e.Dir, Link: e.Link})
+	m.dirs[parent] = append(m.dirs[parent], Entry{Name: e.Name, Dir: e.Dir, Link: e.Link, ToolEnv: e.ToolEnv})
 	m.stats[rel] = e
 	if e.Dir {
 		if _, ok := m.dirs[rel]; !ok {
