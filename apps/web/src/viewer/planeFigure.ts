@@ -51,7 +51,7 @@ export function planeFigureParts(i: PlaneFigureInput): { figure: ImageFigure; vi
   const lim = limits(plane.head.stats, range, (d.limits as [number, number] | undefined) ?? null);
   const region = ((regionsOf(drawn)?.active && regionsOf(drawn)!.active!.shape !== "line" ? regionsOf(drawn)!.active : null) ?? null) as RegionShape | null;
   const facts = { dataset: dataset.name, kind: axial ? ("orientation" as const) : ("plane" as const), channelLine: "", displayLine: "", limits: lim, limitsUnit: view.bunit, unitDeclared: view.bunit_status === "user" };
-  const captions = captionLines(facts, view, plane, { colormap: d.colormap, stretch: d.stretch, range: d.range, axial, region, nature: dataset.nature });
+  const captions = captionLines(facts, view, plane, { colormap: d.colormap, stretch: d.stretch, range: d.range, axial, region, nature: dataset.nature, interp: i.interp });
   const nameOf = datasetNameOf(dataset, i.datasets);
   // every overlay drawn from another file (or the grid) states its basis in the caption, as its row does on screen
   const overlayLines = drawn.overlays

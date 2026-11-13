@@ -36,8 +36,8 @@ var (
 )
 
 var (
-	destRe   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{0,99}$`) // never starts with "-": no option injection
-	pythonRe = regexp.MustCompile(`^[A-Za-z0-9_./~-]{1,200}$`)
+	destRe   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{0,99}$`)       // never starts with "-": no option injection
+	pythonRe = regexp.MustCompile(`^[A-Za-z0-9_./~][A-Za-z0-9_./~-]{0,199}$`) // never starts with "-": `exec -c` or a python option must not come from here
 )
 
 // MaxRoots is how many source roots a host may have. Opening a project folder on a host adds one.
@@ -229,6 +229,7 @@ type Manager struct {
 	Files      map[string][]byte // worker script files to deploy: the modules listed in the worker directory's DEPLOY file (LoadWorkerFiles)
 	ControlDir string            // where ssh keeps its multiplexing sockets (short path)
 	Timeout    time.Duration
+	OnDo       func(op string) // called for each worker request, before it is sent; tests count round trips with it
 
 	mu       sync.Mutex
 	workers  map[int64]*worker.Persistent
@@ -369,6 +370,10 @@ func (m *Manager) worker(h Host) *worker.Persistent {
 
 // Do sends one request to the host's worker, deploying it first if needed.
 func (m *Manager) Do(ctx context.Context, h Host, req map[string]any) (worker.Reply, error) {
+	if m.OnDo != nil {
+		op, _ := req["op"].(string)
+		m.OnDo(op)
+	}
 	if err := m.Deploy(ctx, h); err != nil {
 		return worker.Reply{}, fmt.Errorf("%w: %v", worker.ErrUnavailable, err)
 	}

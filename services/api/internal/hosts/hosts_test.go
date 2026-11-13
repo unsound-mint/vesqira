@@ -32,6 +32,7 @@ func TestValidateRefusesWhatCouldReachTheSSHCommandLine(t *testing.T) {
 		{Name: "n", Dest: "-oProxyCommand=x", Python: "python3", Roots: ok.Roots},
 		{Name: "n", Dest: "a;b", Python: "python3", Roots: ok.Roots},
 		{Name: "n", Dest: "a", Python: "$(id)", Roots: ok.Roots},
+		{Name: "n", Dest: "a", Python: "-c", Roots: ok.Roots},
 		{Name: "n", Dest: "a", Python: "python3", Roots: []string{"/a/../b"}},
 		{Name: strings.Repeat("x", 61), Dest: "a", Python: "python3", Roots: ok.Roots},
 		{Name: "n", Dest: "a", Python: "python3", Roots: []string{"/"}},

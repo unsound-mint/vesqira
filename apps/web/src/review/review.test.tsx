@@ -155,10 +155,17 @@ describe("figure captions", () => {
     expect(t).toMatch(/not verified/);
   });
 
-  it("calls an axial figure axial, unit declared, convention assumed", () => {
-    const t = captionLines({ ...facts, kind: "orientation" }, view, plane, { colormap: "", stretch: "", range: "", axial: true, region: null }).join("\n");
-    expect(t).toMatch(/Axial orientation \(0° = 180°\); unit declared by the author/);
-    expect(t).toMatch(/assumed/);
+  it("states the axial convention that was declared, and by whom, never an assumed one", () => {
+    const interp = { kind: "axial_orientation", unit: "rad", reliabilityId: null, frame: "pixel", quantity: null, declaredBy: "user", declaredAt: "2026-11-13T00:00:00Z", stale: false, tier: "declared" } as const;
+    const axial = (i: unknown) => captionLines({ ...facts, kind: "orientation" }, view, plane, { colormap: "", stretch: "", range: "", axial: true, region: null, interp: i as never }).join("\n");
+    const user = axial(interp);
+    expect(user).toMatch(/Axial orientation \(0° = 180°\) in radians, as declared by the author/);
+    expect(user).toMatch(/\+x axis towards \+y/);
+    expect(user).not.toMatch(/assum|VGT convention/);
+    expect(axial({ ...interp, frame: "sky", unit: "deg", declaredBy: "profile:VGT.jl@1" })).toMatch(/in degrees, as the file’s header declares it.*east of north/s);
+    expect(axial({ ...interp, frame: null })).toMatch(/not declared, so directions on this figure cannot be read/);
+    expect(axial({ ...interp, declaredBy: "vgt-run-adapter" })).toMatch(/proposed by the run import, not by the file/);
+    expect(axial(null)).toMatch(/cannot be read/);
   });
 });
 

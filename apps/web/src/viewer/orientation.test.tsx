@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Dataset, Header, ImageDataset } from "../api/catalog";
 import { lut } from "./colormaps";
 import { glyphStride, orientationLines } from "./glyphs";
 import { axialMeanText, InterpretationPanel, meanText, reliabilityChoices, suggestCompanion } from "./OrientationPanels";
 import type { AxialSummary } from "../api/planes";
+import type { Run } from "../api/runs";
 import { axialDegrees, renderPlane } from "./render";
 import type { Viewer } from "./useViewer";
 
@@ -187,10 +188,52 @@ describe("reliability map choices", () => {
     expect(reliabilityChoices(self, [self, ds(3, "small.fits", 32, "/a/small.fits")], 3).map((c) => c.id)).toEqual([3]);
   });
 
-  it("tells two files of one name apart by their folder, and by host when it is not this computer", () => {
+  it("tells two files of one name apart by their folder", () => {
     const self = ds(1, "psi.fits", 64, "/a/psi.fits");
     const labels = reliabilityChoices(self, [self, ds(2, "rel.fits", 64, "/run1/rel.fits"), ds(3, "rel.fits", 64, "/run2/rel.fits"), ds(4, "alone.fits", 64, "/x/alone.fits")], null).map((c) => c.label);
-    expect(labels).toEqual(["rel.fits (…/run1)", "rel.fits (…/run2)", "alone.fits"]);
+    expect(labels).toEqual(["rel.fits (run1)", "rel.fits (run2)", "alone.fits"]);
+  });
+
+  it("shows the folder that differs and the host's name, not its id, for one run folder under two parents", () => {
+    const run = "vgt_Tb_combined_mw_full_hnv_res1_3pperb_reprojected_on_gass_vm2p0_to_2p0kms";
+    const rel = "psi_reliability_" + run + ".fits";
+    const self = ds(1, "psi.fits", 64, "/h/vgt/psi.fits", 2);
+    const out = reliabilityChoices(self, [self, ds(2, rel, 64, `/h/vgt/validation_output/fg_slabs/${run}/${rel}`, 2), ds(3, rel, 64, `/h/vgt/validation_output/fg_sliding/${run}/${rel}`, 2)], null, [], () => "Irgetas").map((c) => c.label);
+    expect(out).toEqual([`${rel} (Irgetas, fg_slabs/…)`, `${rel} (Irgetas, fg_sliding/…)`]);
+    expect(out.join()).not.toMatch(/host 2/);
+  });
+
+  it("lists the run's own reliability, support and fit_rbar2 outputs first, in their own group", () => {
+    const self = ds(1, "psi.fits", 64, "/r/psi.fits");
+    const all = [self, ds(2, "aaa_other.fits", 64, "/r/aaa_other.fits"), ds(3, "support.fits", 64, "/r/support.fits"), ds(4, "rel.fits", 64, "/r/rel.fits"), ds(5, "fit_rbar2.fits", 64, "/r/fit_rbar2.fits"), ds(6, "comp.fits", 64, "/r/comp.fits")];
+    const runs = [{ id: 7, outputs: [{ role: "orientation", datasetId: 1, name: "psi.fits" }, { role: "support", datasetId: 3, name: "" }, { role: "reliability", datasetId: 4, name: "" }, { role: "fit_rbar2", datasetId: 5, name: "" }, { role: "component_maps", datasetId: 6, name: "" }] }] as unknown as Run[];
+    const c = reliabilityChoices(self, all, null, runs);
+    expect(c.map((x) => [x.id, x.thisRun])).toEqual([[3, true], [4, true], [5, true], [2, false], [6, false]]);
+    expect(reliabilityChoices(self, all, null, []).every((x) => !x.thisRun)).toBe(true);
+  });
+
+  const viewer = { view: { channels: 1 }, plane: { head: { stats: { min: 0, max: 3.1 } } } } as unknown as Viewer;
+  const runOf = (outputs: { role: string; datasetId: number }[]) => [{ id: 7, outputs: [{ role: "orientation", datasetId: 1, name: "" }, ...outputs] }] as unknown as Run[];
+
+  it("says the run's reliability map is the one its record links, instead of guessing by file name", async () => {
+    const calls: unknown[] = [];
+    const maps = [ds(1, "psi_hnv1.fits", 64, "/r/psi_hnv1.fits"), ds(2, "psi_reliability_hnv1.fits", 64, "/r/psi_reliability_hnv1.fits"), ds(3, "support_hnv1.fits", 64, "/r/support_hnv1.fits")];
+    render(<InterpretationPanel v={viewer} dataset={maps[0]!} datasets={maps} runs={runOf([{ role: "reliability", datasetId: 3 }])} declare={async (_id, b) => (calls.push(b), null)} />);
+    await userEvent.selectOptions(screen.getByLabelText("Treat this map as"), "axial");
+    expect(screen.getByText(/This run’s reliability map is/)).toHaveTextContent("support_hnv1.fits");
+    expect(screen.queryByText(/may be its reliability map/)).toBeNull();
+    const group = screen.getByRole("group", { name: "This run" });
+    expect(within(group).getAllByRole("option").map((o) => o.textContent)).toEqual(["support_hnv1.fits"]);
+    await userEvent.click(screen.getByRole("button", { name: "Use it" }));
+    expect((screen.getByLabelText("Reliability map (optional)") as HTMLSelectElement).value).toBe("3");
+  });
+
+  it("keeps the file-name suggestion for a map that is not a run output", async () => {
+    const maps = [ds(1, "psi_hnv1.fits", 64, "/r/psi_hnv1.fits"), ds(2, "psi_reliability_hnv1.fits", 64, "/r/psi_reliability_hnv1.fits")];
+    render(<InterpretationPanel v={viewer} dataset={maps[0]!} datasets={maps} runs={[]} declare={async () => null} />);
+    await userEvent.selectOptions(screen.getByLabelText("Treat this map as"), "axial");
+    expect(screen.getByText(/By file name/)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "This run" })).toBeNull();
   });
 });
 

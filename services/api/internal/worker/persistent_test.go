@@ -30,6 +30,10 @@ for line in sys.stdin.buffer:
         sys.stdout.write('{"ok":false,"code":"bad_request","error":"channel out of range","nbytes":0}\n'); sys.stdout.flush(); continue
     if m == "big":
         sys.stdout.buffer.write(b'{"ok":true,"marker":"intact","nbytes":300000}\n' + b"z" * 300000); sys.stdout.flush(); continue
+    if m == "longhead":   # a walk page of real paths: a header line far longer than the reader's buffer, then a payload
+        sys.stdout.buffer.write(b'{"ok":true,"pad":"' + b"p" * 400000 + b'","end":"intact","nbytes":4}\n' + b"abcd"); sys.stdout.flush(); continue
+    if m == "endless":    # a header line longer than any reply is allowed to be
+        sys.stdout.buffer.write(b'{"ok":true,"pad":"' + b"p" * (9 << 20) + b'","nbytes":0}\n'); sys.stdout.flush(); continue
     if m == "echoid":
         sys.stdout.write('{"ok":true,"id":%s,"nbytes":0}\n' % json.dumps(r.get("requestId"))); sys.stdout.flush(); continue
     if m == "slow":
@@ -130,6 +134,29 @@ func TestMissingInterpreterIsUnavailable(t *testing.T) {
 	p := &Persistent{Command: []string{"/nonexistent/python"}, Timeout: time.Second}
 	if _, err := do(p, "ok"); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("%v", err)
+	}
+}
+
+// A remote project walk returns pages of a few hundred KB; a 64 KB header limit made every real project unscannable and the
+// failure read as "the host is not reachable".
+func TestALongHeaderLineIsReadWholeAndTheProcessKept(t *testing.T) {
+	p := newFake(t, 5*time.Second)
+	r, err := do(p, "longhead")
+	if err != nil || len(r.Head) < 400000 || !strings.HasSuffix(string(r.Head), `"end":"intact","nbytes":4}`) || string(r.Payload) != "abcd" {
+		t.Fatalf("head=%d payload=%q err=%v", len(r.Head), r.Payload, err)
+	}
+	if _, err := do(p, "ok"); err != nil || p.Starts.Load() != 1 {
+		t.Fatalf("follow-up err=%v starts=%d", err, p.Starts.Load())
+	}
+}
+
+func TestAnOversizedHeaderIsItsOwnErrorAndTheProcessIsReplaced(t *testing.T) {
+	p := newFake(t, 10*time.Second)
+	if _, err := do(p, "endless"); !errors.Is(err, ErrReplyTooLarge) {
+		t.Fatalf("err=%v", err)
+	}
+	if _, err := do(p, "ok"); err != nil || p.Starts.Load() != 2 {
+		t.Fatalf("follow-up err=%v starts=%d", err, p.Starts.Load())
 	}
 }
 

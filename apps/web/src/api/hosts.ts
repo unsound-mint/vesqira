@@ -44,6 +44,11 @@ export const runHostVpn = (id: number, action: "connect" | "disconnect") => post
 /** Replaces both stored VPN commands of a host (a missing one is cleared). */
 export const setHostVpn = (id: number, c: { vpnCommand?: string[]; vpnDisconnectCommand?: string[] }) => post<Host>(`/api/hosts/${id}/vpn-config`, c);
 export const checkHost = (id: number) => post<HostCheck>(`/api/hosts/${id}/check`, {});
+export type PythonCandidate = components["schemas"]["HostPythonCandidate"];
+/** Sets the host's Python command (a module's interpreter or a venv), drops its cached worker and checks it again. */
+export const setHostPython = (id: number, python: string) => post<HostCheck>(`/api/hosts/${id}/python`, { python });
+/** Looks on the host for interpreters with numpy and astropy: login-shell python, environment modules, venvs and conda. Read-only. */
+export const findHostPython = (id: number) => post<{ candidates: PythonCandidate[]; minPython: string }>(`/api/hosts/${id}/python/find`, {});
 export const deleteHost = (id: number) => post<{ deleted: boolean }>(`/api/hosts/${id}/delete`, {});
 export const listRemote = (id: number, path?: string) =>
   call<{ path: string; entries: RemoteEntry[] }>(`/api/hosts/${id}/list${path ? `?path=${encodeURIComponent(path)}` : ""}`);

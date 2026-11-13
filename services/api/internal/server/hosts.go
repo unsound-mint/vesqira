@@ -211,21 +211,113 @@ func (s *Server) deleteHost(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"deleted": true})
 }
 
-// checkHost deploys the worker if needed and asks it who it is: Python, astropy, and whether it enforces the roots.
+// checkHost deploys the worker if needed and asks it who it is: Python, astropy, and whether it enforces the roots. When that
+// fails it runs a fixed probe to say why (ssh, the deploy folder, the Python command) instead of one sentence that blames all of them.
 func (s *Server) checkHost(w http.ResponseWriter, r *http.Request) {
 	h, ok := s.hostFrom(w, r)
 	if !ok {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	s.runHostCheck(w, r, h)
+}
+
+// runHostCheck answers a host check: the worker's own ping, or the classified reason it failed.
+func (s *Server) runHostCheck(w http.ResponseWriter, r *http.Request, h hosts.Host) {
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	rep, status, msg, _ := s.pingHost(ctx, h)
+	if status == 502 {
+		if d, ok := s.diagnoseHost(ctx, h); ok {
+			s.failDiagnosis(w, h, d)
+			return
+		}
+	}
 	if status != 0 {
 		fail(w, status, msg)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(rep.Head)
+}
+
+// diagnoseHost classifies a failed worker start. Tests that stand in for the host check have no probe unless they set diagHook.
+func (s *Server) diagnoseHost(ctx context.Context, h hosts.Host) (hosts.Diagnosis, bool) {
+	if s.diagHook != nil {
+		return s.diagHook(ctx, h), true
+	}
+	if s.pingHook != nil {
+		return hosts.Diagnosis{}, false
+	}
+	return s.Remote.Diagnose(ctx, h), true
+}
+
+// failDiagnosis answers 502 when the host could not be reached (ssh) or the worker misbehaved, and 422 when ssh works and the Python
+// command is the problem. The message is fixed text: no destination, no path.
+func (s *Server) failDiagnosis(w http.ResponseWriter, h hosts.Host, d hosts.Diagnosis) {
+	status := 422
+	switch d.Class {
+	case hosts.ClassSSH:
+		s.reach.set(h.ID, false)
+		status = 502
+	case hosts.ClassProtocol, hosts.ClassDeploy:
+		s.reach.set(h.ID, true)
+		status = 502
+	default:
+		s.reach.set(h.ID, true) // ssh worked: the host answered
+	}
+	extra := map[string]any{}
+	if d.Python != "" {
+		extra["pythonVersion"] = d.Python
+	}
+	if d.Missing != "" {
+		extra["missingModule"] = d.Missing
+	}
+	failCode(w, status, d.Class, d.Message, extra)
+}
+
+// setHostPython changes the Python command of a host (a module's interpreter or a project venv), drops the host's cached worker
+// so the next start uses it, and runs the check again.
+func (s *Server) setHostPython(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.hostFrom(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		Python string `json:"python"`
+	}
+	if !body(w, r, 1<<10, &in, true) {
+		return
+	}
+	nh, err := s.HostDB.SetPython(h.ID, strings.TrimSpace(in.Python))
+	if err != nil {
+		s.hostErr(w, err)
+		return
+	}
+	s.Remote.Forget(h.ID)
+	s.Audit.RecordCtx(r.Context(), "host python changed", "host", h.ID, h.Name)
+	s.runHostCheck(w, r, nh)
+}
+
+// findHostPython runs the fixed search for interpreters with astropy on the host and lists what it tested.
+func (s *Server) findHostPython(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.hostFrom(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	var cands []hosts.PythonCandidate
+	var err error
+	if s.findHook != nil {
+		cands, err = s.findHook(ctx, h)
+	} else {
+		cands, err = s.Remote.FindPython(ctx, h)
+	}
+	if err != nil {
+		failCode(w, 502, hosts.ClassSSH, err.Error(), nil)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"candidates": cands, "minPython": "3.11"})
 }
 
 func (s *Server) listRemote(w http.ResponseWriter, r *http.Request) {
@@ -278,11 +370,18 @@ func (s *Server) registerRemoteFile(ctx context.Context, h hosts.Host, p string)
 	var size, mtime int64
 	_ = json.Unmarshal(meta["size"], &size)
 	_ = json.Unmarshal(meta["mtime_ns"], &mtime)
+	return s.storeRemoteFile(ctx, h, realPath, size, mtime, meta, nil)
+}
+
+// storeRemoteFile catalogs a remote file whose header report (meta) and stat are known, then records what is known of its
+// bytes. Registering one file and registering a batch (registerRemoteBatch) both end here, so they give the same rows.
+// sampled, when not nil, is a fingerprint already measured on the host; nil measures it with a worker call.
+func (s *Server) storeRemoteFile(ctx context.Context, h hosts.Host, realPath string, size, mtime int64, meta map[string]json.RawMessage, sampled func() (measured, int, string)) (d catalog.Dataset, code int, msg string) {
 	for _, k := range []string{"nbytes", "op", "size", "mtime_ns"} {
 		delete(meta, k)
 	}
 	clean, _ := json.Marshal(meta)
-	d, err = s.Store.Upsert(wsCtx(ctx), actorID(ctx), catalog.Dataset{HostID: h.ID, Path: realPath, Name: path.Base(realPath), SizeBytes: size, ModifiedAt: time.Unix(0, mtime), Header: clean})
+	d, err := s.Store.Upsert(wsCtx(ctx), actorID(ctx), catalog.Dataset{HostID: h.ID, Path: realPath, Name: path.Base(realPath), SizeBytes: size, ModifiedAt: time.Unix(0, mtime), Header: clean})
 	if errors.Is(err, catalog.ErrLocationExists) {
 		return d, 409, "this file is already another location of a dataset: remove that location first, or open that dataset"
 	}
@@ -290,7 +389,109 @@ func (s *Server) registerRemoteFile(ctx context.Context, h hosts.Host, p string)
 		log.Printf("register remote: %v", err)
 		return d, 500, "internal error"
 	}
-	return s.recordIdentity(ctx, d), 0, ""
+	return s.recordIdentityWith(ctx, d, sampled), 0, ""
+}
+
+// Registering up to remoteBatchMax files in one worker call. The request line must fit the worker channel (8 KiB, so a
+// batch is cut by the bytes of its paths too), and a long call must come back with what it did (the worker stops after
+// its own time budget and says how far it got).
+const (
+	remoteBatchMax       = 32
+	remoteBatchPathBytes = 6 << 10
+)
+
+// batchOf is how many of the leading paths go in one register_many call.
+func batchOf(paths []string) int {
+	n, bytes := 0, 0
+	for _, p := range paths {
+		bytes += len(p) + 4
+		if n > 0 && (n == remoteBatchMax || bytes > remoteBatchPathBytes) {
+			break
+		}
+		n++
+	}
+	return n
+}
+
+type remoteResult struct {
+	d    catalog.Dataset
+	code int
+	msg  string
+}
+
+// registerRemoteBatch registers the leading files of paths with one worker call (op register_many) and returns one result
+// per file the worker reached, in order; the caller sends the rest again. A file is refused alone, with the status and
+// sentence registerRemoteFile gives. tooOld reports a worker that does not know the operation: nothing was done, and the
+// caller registers one by one.
+func (s *Server) registerRemoteBatch(ctx context.Context, h hosts.Host, paths []string) (out []remoteResult, tooOld bool) {
+	n := batchOf(paths)
+	out = make([]remoteResult, 0, n)
+	var send []string
+	for _, p := range paths[:n] {
+		if !h.InRoots(p) {
+			break // refused without a round trip, like the single route; keep the order by sending what precedes it
+		}
+		send = append(send, p)
+	}
+	if len(send) == 0 { // the first path is outside the roots
+		return []remoteResult{{code: 403, msg: "not available"}}, false
+	}
+	rep, err := s.Remote.Do(ctx, h, map[string]any{"op": "register_many", "paths": send})
+	var re *worker.RequestError
+	if errors.As(err, &re) && re.Code == "bad_request" {
+		return nil, true
+	}
+	if err != nil {
+		for range send {
+			out = append(out, remoteResult{code: 502, msg: "the host is not reachable (is the VPN up?)"})
+		}
+		return out, false
+	}
+	var reply struct {
+		Files []struct {
+			OK      bool                       `json:"ok"`
+			Stage   string                     `json:"stage"`
+			Error   string                     `json:"error"`
+			Real    string                     `json:"real"`
+			Size    int64                      `json:"size"`
+			MtimeNS int64                      `json:"mtime_ns"`
+			Header  map[string]json.RawMessage `json:"header"`
+			Sampled string                     `json:"sampled"`
+			SampErr *struct {
+				Error string `json:"error"`
+			} `json:"sampled_error"`
+		} `json:"files"`
+	}
+	if json.Unmarshal(rep.Head, &reply) != nil || len(reply.Files) == 0 || len(reply.Files) > len(send) {
+		for range send {
+			out = append(out, remoteResult{code: 502, msg: "the host answered unexpectedly"})
+		}
+		return out, false
+	}
+	for _, f := range reply.Files {
+		switch {
+		case !f.OK && f.Stage == "header":
+			out = append(out, remoteResult{code: 422, msg: "cannot read file: " + f.Error})
+		case !f.OK:
+			out = append(out, remoteResult{code: 403, msg: "not available"})
+		case !h.InRoots(f.Real) || f.Header == nil:
+			out = append(out, remoteResult{code: 403, msg: "not available"})
+		default:
+			// the same check measureRemote makes: a fingerprint is stored only when the file is still what the header read saw
+			sampled := func() (measured, int, string) {
+				switch {
+				case f.SampErr != nil:
+					return measured{}, 409, f.SampErr.Error
+				case f.Sampled == "":
+					return measured{}, 502, "the host answered unexpectedly"
+				}
+				return measured{f.Sampled, "worker on " + h.Name, f.Size, f.MtimeNS}, 0, ""
+			}
+			d, code, msg := s.storeRemoteFile(ctx, h, f.Real, f.Size, f.MtimeNS, f.Header, sampled)
+			out = append(out, remoteResult{d: d, code: code, msg: msg})
+		}
+	}
+	return out, false
 }
 
 func (s *Server) registerRemote(w http.ResponseWriter, r *http.Request) {

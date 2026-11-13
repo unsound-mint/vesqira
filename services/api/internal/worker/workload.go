@@ -86,7 +86,7 @@ var opLabels = map[string]string{
 	"spectrum": "region spectrum", "axial": "orientation statistics", "pv": "PV diagram", "channel_grid": "channel grid",
 	"rohsa_index": "ROHSA index", "catalog_describe": "catalog read", "catalog_rows": "catalog read", "catalog_report": "catalog read",
 	"catalog_positions": "catalog read", "catalog_transform": "catalog read", "overlay_catalog": "catalog overlay",
-	"fingerprint_full": "full file hash", "fingerprint": "file fingerprint", "describe": "header read", "header": "header read",
+	"fingerprint_full": "full file hash", "fingerprint": "file fingerprint", "describe": "header read", "header": "header read", "register_many": "header read",
 	"plane": "plane", "coord": "coordinate readout", "convert_values": "unit conversion",
 }
 

@@ -181,8 +181,16 @@ func primaryOf(locs []catalog.Location) (catalog.Location, bool) {
 // full SHA-256 too when the file is small. Failure leaves the dataset registered without it (the location says "not
 // computed"); registration never depends on it. Returns the dataset as stored.
 func (s *Server) recordIdentity(ctx context.Context, d catalog.Dataset) catalog.Dataset {
+	return s.recordIdentityWith(ctx, d, nil)
+}
+
+// recordIdentityWith is recordIdentity with the sampled fingerprint already measured (by a batch on the host); nil measures it here.
+func (s *Server) recordIdentityWith(ctx context.Context, d catalog.Dataset, sampled func() (measured, int, string)) catalog.Dataset {
 	if p, ok := primaryOf(d.Locations); ok {
-		s.storeMeasure(wsCtx(ctx), p, "sampled", func() (measured, int, string) { return s.measureSampled(ctx, p) })
+		if sampled == nil {
+			sampled = func() (measured, int, string) { return s.measureSampled(ctx, p) }
+		}
+		s.storeMeasure(wsCtx(ctx), p, "sampled", sampled)
 		if p.HostID == 0 && p.SizeBytes <= idty.SmallFull {
 			s.storeMeasure(wsCtx(ctx), p, "full", func() (measured, int, string) { return s.measureFull(ctx, p, nil) })
 		}

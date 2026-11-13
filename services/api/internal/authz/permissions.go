@@ -51,7 +51,7 @@ const (
 	SweepSubmit Permission = "sweep.submit" // R with own cluster access
 	ClusterRead Permission = "cluster.read" // R with own cluster access: list, browse, complete, text, storage, folders, check
 	ClusterUse  Permission = "cluster.use"  // R with own cluster access: register remote, transfers, VPN connect
-	// ClusterAdmin is A: declare or delete a cluster, set its VPN commands.
+	// ClusterAdmin is A: declare or delete a cluster, set its VPN commands and the Python command it runs.
 	ClusterAdmin Permission = "cluster.admin"
 	// AccountSelf is any signed-in account, acting on itself through a session: its sign-in state, signing out (here or
 	// everywhere), listing and revoking its own access tokens. Never through a token.

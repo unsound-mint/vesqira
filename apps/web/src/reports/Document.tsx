@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode }
 import { MessageSquare, MessageSquarePlus, TextQuote } from "lucide-react";
 import "katex/dist/katex.min.css";
 import type { Provenance } from "../api/boards";
+import { channelText } from "../boards/channelText";
 import type { Metric } from "../api/metrics";
 import { metricText } from "../api/metrics";
 import { Icon } from "../ui/Icon";
@@ -207,7 +208,7 @@ function provenanceLine(p: Provenance | null | undefined): string[] {
   const parts = [p.source.name];
   const v = p.view;
   if (v.spectralValue != null && v.spectralUnit) parts.push(`${Number(v.spectralValue.toPrecision(6))} ${v.spectralUnit}`);
-  else if (v.channel != null) parts.push(`channel ${v.channel}`);
+  else if (channelText(p)) parts.push(channelText(p));
   if (p.run) parts.push(`run ${p.run.name}`);
   if (p.interpretation) parts.push(p.interpretation.kind === "axial" ? "axial orientation (0° = 180°)" : p.interpretation.kind);
   return parts;
