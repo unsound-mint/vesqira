@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
 import type { Job } from "../api/jobs";
-import { RunPanel, runFor } from "./RunPanel";
+import { RunPanel, outputLabel, runFor } from "./RunPanel";
 import { RunPage } from "../runs/RunPage";
 import { Shell } from "../shell/Shell";
 
@@ -11,7 +11,7 @@ const run = (over: Partial<Run> = {}): Run => ({
   jobId: null, parentRunId: null, id: 1, name: "s1_ker8", kind: "vgt", importedAt: "", generatedAt: "2026-06-25T09:21:44Z", gitCommit: "bcbaed4ec9800ef95c561cfb4ad45c344743e469-dirty",
   dirty: true, reproducibleFromCommit: false, elapsedSeconds: 106.2, params: [{ key: "ker", value: "8", source: "config" }], diagnostics: {},
   inputName: "hnv1.fits", inputSizeBytes: 4007885760, inputHint: null, metrics: [],
-  outputs: [{ role: "psi", datasetId: 5, name: "psi.fits" }, { role: "reliability", datasetId: 6, name: "rel.fits" }], review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, ...over,
+  outputs: [{ role: "orientation", product: "psi", datasetId: 5, name: "psi.fits" }, { role: "reliability", datasetId: 6, name: "rel.fits" }], review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, ...over,
 });
 const job: Job = { id: 7, hostId: 1, name: "vgt-ker8", template: "vgt", script: "", scriptHash: "", state: "running", detail: "", slurmId: "48235", workDir: "", outputDir: "", createdAt: "", submittedAt: null, finishedAt: null, runId: 1, parentRunId: null, note: "", autoImport: true, usage: null };
 const page = (r: Run, over: { runs?: Run[]; datasets?: Dataset[]; job?: Job | null } = {}) =>
@@ -26,9 +26,18 @@ describe("run", () => {
     expect(runFor([run()], null)).toBeNull();
   });
 
+  it("names an output by its generic role and the tool's own product, for new and legacy rows alike", () => {
+    expect(outputLabel({ role: "orientation", product: "psi" })).toBe("Orientation (psi)");
+    expect(outputLabel({ role: "psi" })).toBe("Orientation (psi)"); // a row from before profiles
+    expect(outputLabel({ role: "reliability", product: "reliability" })).toBe("Reliability");
+    expect(outputLabel({ role: "fit_rbar2", product: "fit_rbar2" })).toBe("Fit R̄²");
+    expect(outputLabel({ role: "component_maps", product: "component_g1_mu_kms" })).toBe("component_g1_mu_kms");
+    expect(runFor([run()], 5)?.product).toBe("psi");
+  });
+
   it("the inspector keeps a compact summary with a way to the run page", async () => {
     const open = vi.fn();
-    render(<RunPanel run={run()} role="psi" onOpenPage={open} />);
+    render(<RunPanel run={run()} role="orientation" product="psi" onOpenPage={open} />);
     expect(screen.getByText(/Not reproducible from the commit: uncommitted changes/)).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "Open run page" }));
     expect(open).toHaveBeenCalled();

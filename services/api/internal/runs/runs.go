@@ -35,16 +35,22 @@ type Param struct {
 	Source string `json:"source"` // config | run_parameters
 }
 
+// Output is a file a run produced. Role is a generic role (orientation, reliability, support, component_maps, model_cube, ...)
+// or an extra the run's profile declares; Product is the tool's own name for the output (psi, component_g1_mu_kms, ...).
 type Output struct {
-	Role      string `json:"role"` // psi | reliability | support | fit_rbar2
+	Role      string `json:"role"`
+	Product   string `json:"product"`
 	DatasetID int64  `json:"datasetId"`
 	Name      string `json:"name"`
 }
 
 type Run struct {
-	ID             int64             `json:"id"`
-	Name           string            `json:"name"`
-	Kind           string            `json:"kind"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	// Profile is the profile (name@version) that recognised the run, "legacy" for a run recorded before profiles, whose
+	// detection was Vesqira's earlier built-in code.
+	Profile        string            `json:"profile"`
 	ImportedAt     time.Time         `json:"importedAt"`
 	GeneratedAt    string            `json:"generatedAt"`
 	GitCommit      string            `json:"gitCommit"`
@@ -76,6 +82,14 @@ type Review struct {
 
 var qcValues = map[string]bool{"not_assessed": true, "passed": true, "failed": true, "inconclusive": true}
 var interpValues = map[string]bool{"not_interpreted": true, "supports": true, "challenges": true, "inconclusive": true}
+
+// productName is the tool's name for an output; an output built without one is named by its role.
+func (o Output) productName() string {
+	if o.Product != "" {
+		return o.Product
+	}
+	return o.Role
+}
 
 // Summary is what leaves the machine with a figure: no paths, ids or locations.
 type Summary struct {
@@ -117,11 +131,12 @@ type vgtMeta struct {
 // Parsed is a run read from metadata, before it is linked to datasets.
 type Parsed struct {
 	Run
-	// OutputFiles maps role to a file name that must sit next to the metadata file.
+	// OutputFiles maps product (the tool's name for an output) to a file name that must sit next to the metadata file;
+	// OutputRoles maps the same product to its role.
 	OutputFiles map[string]string
+	OutputRoles map[string]string
 }
 
-var outputKeys = map[string]string{"psi_path": "psi", "reliability_path": "reliability", "support_path": "support", "fit_rbar2_path": "fit_rbar2"}
 var locationKey = regexp.MustCompile(`(?i)(^|_)(file|path|dir|directory|home|root|host|user)(_|$)`)
 
 func scalar(v any) (string, bool) {
@@ -165,9 +180,19 @@ func params(m map[string]any, source string) []Param {
 // import applies, shared so that discovery shows the same settings an import would keep.
 func Settings(m map[string]any, source string) []Param { return params(m, source) }
 
-// ParseVGT reads the VGT pipeline's run_metadata.toml. Output paths in the file are relative to the machine the run
-// happened on, so only their file names are kept and the caller looks for them next to the metadata.
+// ParseVGT reads a VGT.jl run_metadata.toml: ParseRecord with the shipped VGT.jl profile.
 func ParseVGT(data []byte, dirName string) (Parsed, error) {
+	return ParseRecord(Shipped().ByName("VGT.jl"), data, dirName)
+}
+
+// ParseRecord reads a run record in the run_metadata layout (tables config, diagnostics, input, outputs, performance,
+// run_parameters, metrics) for the profile that claimed it. The profile names the table and keys that hold the outputs; this
+// code does the reading and the validation. Output paths in the file are relative to the machine the run happened on, so only
+// their file names are kept and the caller looks for them next to the record.
+func ParseRecord(prof *Profile, data []byte, dirName string) (Parsed, error) {
+	if prof == nil || prof.Record == nil || prof.Record.Reader != ReaderRunMetadata {
+		return Parsed{}, errors.New("no profile reads this record")
+	}
 	if len(data) > MaxMetadataBytes {
 		return Parsed{}, errors.New("run metadata is too large")
 	}
@@ -175,11 +200,14 @@ func ParseVGT(data []byte, dirName string) (Parsed, error) {
 	if _, err := toml.Decode(string(data), &m); err != nil {
 		return Parsed{}, errors.New("run metadata is not valid TOML")
 	}
-	if m.Outputs == nil && m.GitCommit == "" && m.Config == nil {
-		return Parsed{}, errors.New("this does not look like a VGT run_metadata.toml")
+	if !prof.Claims(data) {
+		return Parsed{}, fmt.Errorf("this does not look like a %s %s", prof.ToolName(), prof.Record.File)
 	}
-	p := Parsed{OutputFiles: map[string]string{}}
-	p.Kind = "vgt"
+	var all map[string]any
+	_, _ = toml.Decode(string(data), &all)
+	p := Parsed{OutputFiles: map[string]string{}, OutputRoles: map[string]string{}}
+	p.Profile = prof.Label()
+	p.Kind = prof.Kind
 	p.Name = dirName
 	p.GeneratedAt = m.GeneratedAt
 	p.GitCommit = m.GitCommit
@@ -202,27 +230,50 @@ func ParseVGT(data []byte, dirName string) (Parsed, error) {
 			p.Diagnostics[k] = s
 		}
 	}
-	for k, role := range outputKeys {
-		if s, ok := m.Outputs[k].(string); ok && s != "" {
-			if b := filepath.Base(filepath.FromSlash(s)); b != "." && b != string(filepath.Separator) {
-				p.OutputFiles[role] = b
+	if prof.Outputs != nil {
+		table := tableAt(all, prof.Outputs.Table)
+		for key, ref := range prof.Outputs.Files {
+			if s, ok := table[key].(string); ok && s != "" {
+				if b := filepath.Base(filepath.FromSlash(s)); b != "." && b != string(filepath.Separator) {
+					p.OutputFiles[ref.Product] = b
+					p.OutputRoles[ref.Product] = ref.Role
+				}
 			}
 		}
 	}
 	return p, nil
 }
 
+// ToolName is the tool's plain name for a message ("VGT"), the profile's name when it has none.
+func (p *Profile) ToolName() string {
+	if p.Tool != "" {
+		return p.Tool
+	}
+	return p.Name
+}
+
 // ---- store ----
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+	// Profiles are the tool profiles runs are recognised by; nil means the shipped ones.
+	Profiles *Registry
+}
+
+// Registry is the profile registry in use.
+func (s *Store) Registry() *Registry {
+	if s.Profiles != nil {
+		return s.Profiles
+	}
+	return Shipped()
+}
 
 func Open(db *sql.DB) (*Store, error) {
 	for _, q := range []string{
 		schema.RunsTable,
 		`CREATE TABLE IF NOT EXISTS run_review(run_id INTEGER PRIMARY KEY, qc TEXT NOT NULL, interpretation TEXT NOT NULL, note TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS run_review_history(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, at INTEGER NOT NULL, qc TEXT NOT NULL, interpretation TEXT NOT NULL, note TEXT NOT NULL)`,
-		`CREATE TABLE IF NOT EXISTS run_outputs(
-			run_id INTEGER NOT NULL, role TEXT NOT NULL, dataset_id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY(run_id, role))`,
+		schema.RunOutputsTable,
 		schema.RunViewsTable,
 	} {
 		if _, err := db.Exec(q); err != nil {
@@ -230,6 +281,9 @@ func Open(db *sql.DB) (*Store, error) {
 		}
 	}
 	if err := schema.AddColumn(db, "runs", "metrics", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		return nil, err
+	}
+	if err := schema.AddColumn(db, "runs", "profile", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return nil, err
 	}
 	for _, c := range []string{"environment", "controls"} {
@@ -240,7 +294,7 @@ func Open(db *sql.DB) (*Store, error) {
 	if err := schema.EnsureArchive(db); err != nil {
 		return nil, err
 	}
-	st := &Store{db}
+	st := &Store{db: db}
 	if err := st.openROHSA(); err != nil {
 		return nil, err
 	}
@@ -274,12 +328,12 @@ func (s *Store) Save(ws workspace.ID, by, dir string, p Parsed, outs []Output) (
 		return Run{}, err
 	}
 	defer tx.Rollback()
-	_, err = tx.Exec(`INSERT INTO runs(dir,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,workspace_id,created_by)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(workspace_id,dir) DO UPDATE SET name=excluded.name,imported_at=excluded.imported_at,generated_at=excluded.generated_at,
+	_, err = tx.Exec(`INSERT INTO runs(dir,name,kind,profile,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,workspace_id,created_by)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(workspace_id,dir) DO UPDATE SET name=excluded.name,profile=excluded.profile,imported_at=excluded.imported_at,generated_at=excluded.generated_at,
 			git_commit=excluded.git_commit,elapsed=excluded.elapsed,input_name=excluded.input_name,input_size=excluded.input_size,
 			params=excluded.params,diagnostics=excluded.diagnostics,metrics=excluded.metrics`,
-		dir, p.Name, p.Kind, time.Now().Unix(), p.GeneratedAt, p.GitCommit, p.ElapsedSeconds, p.InputName, p.InputSizeBytes, pj, dj, mj, ws, by)
+		dir, p.Name, p.Kind, p.Profile, time.Now().Unix(), p.GeneratedAt, p.GitCommit, p.ElapsedSeconds, p.InputName, p.InputSizeBytes, pj, dj, mj, ws, by)
 	if err != nil {
 		return Run{}, err
 	}
@@ -291,7 +345,7 @@ func (s *Store) Save(ws workspace.ID, by, dir string, p Parsed, outs []Output) (
 		return Run{}, err
 	}
 	for _, o := range outs {
-		if _, err := tx.Exec(`INSERT INTO run_outputs(run_id,role,dataset_id,name) VALUES(?,?,?,?)`, id, o.Role, o.DatasetID, o.Name); err != nil {
+		if _, err := tx.Exec(`INSERT INTO run_outputs(run_id,role,product,dataset_id,name) VALUES(?,?,?,?,?)`, id, o.Role, o.productName(), o.DatasetID, o.Name); err != nil {
 			return Run{}, err
 		}
 	}
@@ -301,17 +355,20 @@ func (s *Store) Save(ws workspace.ID, by, dir string, p Parsed, outs []Output) (
 	return s.Get(ws, id)
 }
 
-var runCols = `id,name,kind,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,environment,controls,` + schema.ArchivedExpr("run", "runs.id")
+var runCols = `id,name,kind,profile,imported_at,generated_at,git_commit,elapsed,input_name,input_size,params,diagnostics,metrics,environment,controls,` + schema.ArchivedExpr("run", "runs.id")
 
 func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 	var r Run
 	var at int64
 	var el sql.NullFloat64
 	var pj, dj, mj, ej, cj string
-	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj, &mj, &ej, &cj, &r.Archived); err != nil {
+	if err := row.Scan(&r.ID, &r.Name, &r.Kind, &r.Profile, &at, &r.GeneratedAt, &r.GitCommit, &el, &r.InputName, &r.InputSizeBytes, &pj, &dj, &mj, &ej, &cj, &r.Archived); err != nil {
 		return Run{}, err
 	}
 	r.ImportedAt = time.Unix(at, 0).UTC()
+	if r.Profile == "" {
+		r.Profile = LegacyProfile
+	}
 	if el.Valid {
 		r.ElapsedSeconds = &el.Float64
 	}
@@ -336,7 +393,7 @@ func scanRun(row interface{ Scan(...any) error }) (Run, error) {
 }
 
 func (s *Store) outputs(id int64) ([]Output, error) {
-	rows, err := s.db.Query(`SELECT role,dataset_id,name FROM run_outputs WHERE run_id=? ORDER BY role`, id)
+	rows, err := s.db.Query(`SELECT role,product,dataset_id,name FROM run_outputs WHERE run_id=? ORDER BY product`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +401,7 @@ func (s *Store) outputs(id int64) ([]Output, error) {
 	out := []Output{}
 	for rows.Next() {
 		var o Output
-		if err := rows.Scan(&o.Role, &o.DatasetID, &o.Name); err != nil {
+		if err := rows.Scan(&o.Role, &o.Product, &o.DatasetID, &o.Name); err != nil {
 			return nil, err
 		}
 		out = append(out, o)

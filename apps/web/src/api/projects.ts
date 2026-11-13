@@ -110,7 +110,8 @@ export type TreeFile = {
 export type TreeRun = {
   /** The file that made this folder a run, relative to it; empty for a run you marked by hand. */
   record: string;
-  recordKind: "vgt" | "provenance" | "run-json" | "params" | "mlflow" | "manual";
+  /** vgt, rohsa, or the kind a tool profile gives its runs; provenance, run-json, params, mlflow or manual otherwise. */
+  recordKind: string;
   fields: RunField[];
   settings: { key: string; value: string }[];
   /** The settings of this run that differ from its siblings in the same folder. */

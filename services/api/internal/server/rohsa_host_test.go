@@ -91,7 +91,7 @@ func TestROHSAImportFromAHostRegistersRemoteDatasetsAndReadsNoBulkData(t *testin
 	// the crop and every product are datasets that live on the host, as other remote FITS files do
 	ids := map[string]int64{"crop": *run.Rohsa.CropDatasetID}
 	for _, o := range run.Outputs {
-		ids[o.Role] = o.DatasetID
+		ids[o.Product] = o.DatasetID
 	}
 	for _, role := range []string{"crop", "component_g1_amp_k", "component_g1_mu_kms", "component_g1_sigma_kms", "model_nhi_cm2", "residual_moment0_kkms", "cube_model"} {
 		if ids[role] == 0 {

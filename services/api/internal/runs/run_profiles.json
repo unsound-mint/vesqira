@@ -1,0 +1,73 @@
+{
+  "format": 1,
+  "about": "How Vesqira recognises a run of a tool and which of its outputs fill which generic role (ADR 0068, item 1). A profile only declares: a file and a key inside it that identify a run, and the names the tool gives its outputs. Reading the file, validating values and registering outputs stay in Vesqira's own code, and a profile never runs anything. What it supplies is labelled profile:<name>@<version>, never verified. Generic roles are the ids in 'roles'; an output a tool names that fits none of them is a declared extra, shown by the tool's own name. The orientation conventions (header cards) of the same tool are in the worker's orientation_profiles.json, linked by the 'orientation' name (one file for both is the consolidation step recorded in ADR 0068).",
+  "roles": {
+    "orientation": "Orientation map",
+    "reliability": "Reliability",
+    "support": "Support",
+    "component_table": "Component table",
+    "component_maps": "Component maps",
+    "model_cube": "Model cube",
+    "residual_cube": "Residual cube",
+    "crop": "Crop"
+  },
+  "profiles": [
+    {
+      "name": "VGT.jl",
+      "version": "1",
+      "kind": "vgt",
+      "label": "VGT",
+      "source": "https://github.com/ISM-NU/VGT.jl: the run_metadata.toml of a run (tables config, diagnostics, input, outputs, performance, run_parameters, metrics) and its psi_path, reliability_path, support_path and fit_rbar2_path entries, the output names Vesqira has read since ADR 0014",
+      "orientation": "VGT.jl",
+      "record": {
+        "file": "run_metadata.toml",
+        "reader": "run_metadata",
+        "anyKey": ["outputs", "gitcommit", "config"]
+      },
+      "outputs": {
+        "table": "outputs",
+        "files": {
+          "psi_path": {"product": "psi", "role": "orientation"},
+          "reliability_path": {"product": "reliability", "role": "reliability"},
+          "support_path": {"product": "support", "role": "support"},
+          "fit_rbar2_path": {"product": "fit_rbar2", "role": "fit_rbar2", "extra": "Fit R̄²"}
+        }
+      }
+    },
+    {
+      "name": "ROHSA",
+      "version": "1",
+      "kind": "rohsa",
+      "label": "ROHSA",
+      "source": "https://github.com/antoinemarchal/ROHSA: the .dat rows (# i, j, A, mean, sigma; i and j 0-based, mean 1-based in channels, sigma in channels, no units), as ADR 0046 reads them. No content check at detection: the file can be tens of GB, so its layout is verified when the index is built",
+      "files": {
+        "component_table": {"pattern": "^rohsa_[A-Za-z0-9._-]+\\.dat$"}
+      }
+    },
+    {
+      "name": "ROHSA-LMC",
+      "version": "1",
+      "kind": "rohsa",
+      "label": "ROHSA",
+      "source": "https://github.com/ISM-NU/ROHSA-LMC: rohsa_<label>_run_trace.toml, rohsa_<label>_products_trace.toml, parameters_n<N>.txt and the rohsa/<label>/{maps,cubes} tree, as ADR 0046 reads them",
+      "components": "ROHSA",
+      "record": {
+        "pattern": "^rohsa_[A-Za-z0-9._-]+_run_trace\\.toml$",
+        "reader": "rohsa_trace",
+        "stemSuffix": "_run_trace.toml",
+        "anyKey": ["n_gauss", "region", "status", "config"]
+      },
+      "files": {
+        "component_table": {"file": "{stem}.dat"},
+        "crop": {"file": "{region}.fits", "input": true}
+      },
+      "outputs": {
+        "tree": "rohsa/{label}",
+        "folders": [
+          {"dir": "maps", "productPrefix": "", "match": [{"pattern": "(^|_)component_g[0-9]+_", "role": "component_maps"}]},
+          {"dir": "cubes", "productPrefix": "cube_", "products": {"cube_model": "model_cube"}}
+        ]
+      }
+    }
+  ]
+}

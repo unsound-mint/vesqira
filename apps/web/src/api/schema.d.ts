@@ -5886,8 +5886,13 @@ export interface components {
             corrections?: components["schemas"]["Corrections"] | null;
             /** @description Only on the dataset list: the datasets this file is the imported mask file of, when that is its only role (a file also used for a figure, region, analysis, run, or opened in the viewer has none). Derived from the masks' rows; nothing is hidden or unregistered by it (ADR 0058, mask files). */
             maskSourceFor?: components["schemas"]["MaskSourceRef"][];
-            /** @description What the file's own header says when it carries VGT.jl's keywords (PSIFRAME, PSIANGLE, VGTPROD, the VGT* run parameters, the input beam), and where the declaration in force disagrees with it; null for any other file. Computed on read (ADR 0014 amendment). */
-            vgtHeader?: components["schemas"]["VgtHeader"] | null;
+            /** @description What the file's own header says of its orientation through the tool profile that read it (VGT.jl's PSIFRAME, PSIANGLE, VGTPROD, the VGT* run parameters and the input beam, today), and where the declaration in force disagrees with it; null for a file no profile reads. Computed on read (ADR 0014 amendment, ADR 0068 slice 3). */
+            orientationHeader?: components["schemas"]["OrientationHeader"] | null;
+            /**
+             * @deprecated
+             * @description Deprecated name of orientationHeader, with the same value. Sent for one release after ADR 0068 slice 3 (until schema 36); clients read orientationHeader.
+             */
+            vgtHeader?: components["schemas"]["OrientationHeader"] | null;
         };
         DatasetList: {
             datasets: components["schemas"]["Dataset"][];
@@ -9620,7 +9625,7 @@ export interface components {
             /** Format: int64 */
             mtimeNs: number;
             format?: string;
-            /** @description The built-in role: dataset, catalog, run_record, vgt_psi, vgt_reliability, vgt_support, vgt_fit_rbar2, run_output, rohsa_fit, rohsa_product, config, job_template, archive, other_discipline, declared_data or other. */
+            /** @description The built-in role: dataset, catalog, run_record, run_<role> (a run output or file a tool profile places: run_orientation, run_reliability, run_support, run_component_table, run_component_maps, run_model_cube, run_crop, run_product for one it does not place, or run_<extra> for a declared extra), run_output, config, job_template, archive, other_discipline, declared_data or other. */
             role: string;
             /** @description The built-in rule behind the role. */
             why: string;
@@ -10692,8 +10697,8 @@ export interface components {
             tokensKept: number;
             note: string;
         };
-        /** @description The VGT.jl keywords of a product header as the file states them, and what an orientation profile (ADR 0068, slice 2: the table is orientation_profiles.json in the worker) places of them in Vesqira's orientation declaration. Everything here is declared by the file and none of it is verified. A field the profile cannot place is unresolved, never defaulted. */
-        VgtHeader: {
+        /** @description What a product's own header says of its orientation: the cards a tool's profile reads (VGT.jl's PSIFRAME, PSIANGLE, VGTPROD and VGT* run parameters, today) as the file states them, and what the orientation profile (ADR 0068, slice 2: orientation_profiles.json in the worker) places of them in Vesqira's orientation declaration. Everything here is declared by the file and none of it is verified. A field the profile cannot place is unresolved, never defaulted. The field names product, psiFrame and psiAngle keep VGT.jl's card names until a second shipped tool needs more (ADR 0068, slice 3). */
+        OrientationHeader: {
             /** @description VGTPROD: the product's role (psi, reliability, fit_rbar2, support). */
             product: string | null;
             /** @description PSIFRAME as written. Absent in older VGT output; its absence is never inferred from the WCS. */

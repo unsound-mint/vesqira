@@ -26,7 +26,8 @@ import (
 // runSource abstracts where a run folder lives: this machine (inside a source root) or a remote host.
 type runSource interface {
 	Key() string                                                                  // unique per folder (host-qualified for remote ones)
-	Meta(ctx context.Context) (data []byte, dirName string, code int, msg string) // run_metadata.toml and the folder's name
+	RecordFile() string                                                           // the name of the run record, which a tool profile claims (run_metadata.toml for VGT.jl)
+	Meta(ctx context.Context) (data []byte, dirName string, code int, msg string) // the run record and the folder's name
 	Register(ctx context.Context, name string) (d catalog.Dataset, found bool, code int, msg string)
 }
 
@@ -36,7 +37,8 @@ type localRun struct {
 	meta string
 }
 
-func (l localRun) Key() string { return l.dir }
+func (l localRun) Key() string        { return l.dir }
+func (l localRun) RecordFile() string { return filepath.Base(l.meta) }
 func (l localRun) Meta(context.Context) ([]byte, string, int, string) {
 	info, err := os.Stat(l.meta)
 	if err != nil || info.Size() > runs.MaxMetadataBytes {
@@ -61,11 +63,22 @@ type remoteRun struct {
 	s   *Server
 	h   hosts.Host
 	dir string
+	// file is the run record's name; "" is the record of the VGT job template (a Vesqira job's output folder).
+	file string
 }
 
 func (r remoteRun) Key() string { return fmt.Sprintf("h%d:%s", r.h.ID, r.dir) }
+func (r remoteRun) RecordFile() string {
+	if r.file != "" {
+		return r.file
+	}
+	if p := r.s.profiles().ByKind("vgt"); p != nil {
+		return p.Record.File
+	}
+	return "run_metadata.toml"
+}
 func (r remoteRun) Meta(ctx context.Context) ([]byte, string, int, string) {
-	text, code, msg := r.s.remoteText(ctx, r.h, path.Join(r.dir, "run_metadata.toml"))
+	text, code, msg := r.s.remoteText(ctx, r.h, path.Join(r.dir, r.RecordFile()))
 	if code != 0 {
 		return nil, "", code, msg
 	}
@@ -79,21 +92,34 @@ func (r remoteRun) Register(ctx context.Context, name string) (catalog.Dataset, 
 	return d, code == 0, code, msg
 }
 
-// importFrom parses the run's metadata, registers the outputs found next to it, links them as a Run, pairs the
-// reliability map and proposes the axial interpretation as the adapter's (never the user's, never overriding theirs).
+// profiles are the tool profiles runs are recognised by (ADR 0068): the shipped ones unless the store was given others.
+func (s *Server) profiles() *runs.Registry {
+	if s.Runs != nil {
+		return s.Runs.Registry()
+	}
+	return runs.Shipped()
+}
+
+// importFrom parses the run's record with the profile that claims it, registers the outputs the record names next to it, links
+// them as a Run under their generic roles, pairs the reliability map and proposes the axial interpretation of the orientation map
+// as the adapter's (never the user's, never overriding theirs).
 func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, string) {
+	prof := s.profiles().ByRecordFile(src.RecordFile(), runs.ReaderRunMetadata)
+	if prof == nil {
+		return runs.Run{}, 422, src.RecordFile() + " is not a run record any tool profile reads"
+	}
 	data, name, code, msg := src.Meta(ctx)
 	if code != 0 {
 		return runs.Run{}, code, msg
 	}
-	parsed, err := runs.ParseVGT(data, name)
+	parsed, err := runs.ParseRecord(prof, data, name)
 	if err != nil {
 		return runs.Run{}, 422, err.Error()
 	}
 	var outs []runs.Output
 	byRole := map[string]catalog.Dataset{}
-	for _, role := range []string{"psi", "reliability", "support", "fit_rbar2"} {
-		file, ok := parsed.OutputFiles[role]
+	for _, ref := range prof.Products() {
+		file, ok := parsed.OutputFiles[ref.Product]
 		if !ok {
 			continue
 		}
@@ -104,22 +130,22 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 		if !found {
 			continue
 		}
-		byRole[role] = d
-		outs = append(outs, runs.Output{Role: role, DatasetID: d.ID, Name: d.Name})
+		byRole[ref.Role] = d
+		outs = append(outs, runs.Output{Role: ref.Role, Product: ref.Product, DatasetID: d.ID, Name: d.Name})
 	}
 	if len(outs) == 0 {
-		return runs.Run{}, 422, "none of the run's output files were found next to its run_metadata.toml"
+		return runs.Run{}, 422, "none of the run's output files were found next to its " + src.RecordFile()
 	}
 	run, err := s.Runs.Save(wsCtx(ctx), actorID(ctx), src.Key(), parsed, outs)
 	if err != nil {
 		log.Printf("runs: %v", err)
 		return runs.Run{}, 500, "internal error"
 	}
-	if psi, ok := byRole["psi"]; ok {
+	if psi, ok := byRole[runs.RoleOrientation]; ok {
 		cur, _ := s.Store.Get(wsCtx(ctx), psi.ID)
 		if adapterMayDeclare(cur.Interpretation) {
 			var rel *int64
-			if rd, ok := byRole["reliability"]; ok && rd.HostID == psi.HostID {
+			if rd, ok := byRole[runs.RoleReliability]; ok && rd.HostID == psi.HostID {
 				if why, err := compat.Grids(effectiveHeader(psi), effectiveHeader(rd)); err == nil && len(why) == 0 {
 					rel = &rd.ID
 				}
@@ -132,6 +158,38 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 		}
 	}
 	return run, 0, ""
+}
+
+// importsFromRecord says whether a scanned run is one whose profile has the record itself name the outputs, so that a project
+// scan imports it from the record (a row stored before profiles existed has only its record kind).
+func (s *Server) importsFromRecord(r *discover.Run) bool {
+	p := s.profiles().ByLabel(r.Profile)
+	if p == nil && r.Profile == "" {
+		p = s.profiles().ByKind(r.RecordKind)
+	}
+	return p != nil && p.NamesOutputs()
+}
+
+// recordPath is the run record an import path names: the record itself (a name some profile reads), or the folder holding one.
+// A folder with none of them gets the first profile's name, so the refusal says which file was looked for.
+func (s *Server) recordPath(ws workspace.ID, p string) string {
+	files := s.profiles().RecordFiles(runs.ReaderRunMetadata)
+	for _, f := range files {
+		if filepath.Base(p) == f {
+			return p
+		}
+	}
+	if dir, err := s.roots(ws).ResolveDir(p); err == nil { // only a folder inside a source root is looked into
+		for _, f := range files {
+			if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+				return filepath.Join(p, f)
+			}
+		}
+	}
+	if len(files) > 0 {
+		return filepath.Join(p, files[0])
+	}
+	return p
 }
 
 func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
@@ -160,10 +218,7 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 201, s.runView(wsOf(r), run))
 		return
 	}
-	meta := in.Path
-	if filepath.Base(meta) != "run_metadata.toml" {
-		meta = filepath.Join(meta, "run_metadata.toml")
-	}
+	meta := s.recordPath(wsOf(r), in.Path)
 	realMeta, err := s.roots(wsOf(r)).Resolve(meta) // same containment rules as any file: inside a source root, regular file
 	if err != nil {
 		fail(w, 403, err.Error())

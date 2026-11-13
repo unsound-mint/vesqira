@@ -5,7 +5,7 @@ import { jobLog } from "../api/jobs";
 import { metricText } from "../api/metrics";
 import type { Run } from "../api/runs";
 import { getRun } from "../api/runs";
-import { Assessment, ROLE, RohsaFacts } from "../catalog/RunPanel";
+import { Assessment, outputLabel, RohsaFacts } from "../catalog/RunPanel";
 import { bytes, EM } from "../catalog/format";
 import { TONE } from "../jobs/JobsView";
 import { PlaneViewer } from "../viewer/PlaneViewer";
@@ -47,7 +47,7 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
     return () => { live = false; };
   }, [listed.id]);
   const run = detail && detail.id === listed.id ? { ...listed, ...detail } : listed;
-  const first = run.outputs.find((o) => o.role === "psi") ?? run.outputs[0] ?? null;
+  const first = run.outputs.find((o) => o.role === "orientation" || o.role === "psi") ?? run.outputs[0] ?? null;
   const [shown, setShown] = useState<number | null>(first?.datasetId ?? null);
   const output = run.outputs.find((o) => o.datasetId === shown) ?? first;
   const dataset = output ? datasets.find((d) => d.id === output.datasetId) ?? null : null;
@@ -80,6 +80,7 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
               <span className={s.sub}>parent run not found</span>
             )
           ) : null}
+          {run.profile ? <span className={s.sub} title="The tool profile that recognised this run. A profile is a declaration of how to read a tool's record, not a check that the run is valid.">{run.profile === "legacy" ? "recorded before tool profiles" : `read with the ${run.profile} profile`}</span> : null}
           {run.dirty ? <Pill tone="warn">code has uncommitted changes</Pill> : null}
           {(run.kind === "vgt" || run.kind === "rohsa") && onRunAgain ? <Button type="button" onClick={() => onRunAgain(run.id)}>Run again with…</Button> : null}
           <PushButton kind="run" id={run.id} />
@@ -95,11 +96,11 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
 
         {run.rohsa ? (
           <Section title="Decomposition">
-            <RohsaFacts run={run} role={output?.role} />
+            <RohsaFacts run={run} product={output?.product ?? output?.role} />
           </Section>
         ) : null}
 
-        <Section title={`Result${output ? ` · ${ROLE[output.role] ?? output.role}` : ""}`} meta={output && output === first ? "default" : undefined}>
+        <Section title={`Result${output ? ` · ${outputLabel(output)}` : ""}`} meta={output && output === first ? "default" : undefined}>
           {output ? (
             dataset ? (
               <div className={s.block}>
@@ -118,13 +119,13 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
         </Section>
 
         {others.length > 0 ? (
-          <Section title={`More results (${others.length})`} meta={others.length <= 6 ? others.map((o) => ROLE[o.role] ?? o.role).join(" · ") : undefined}>
+          <Section title={`More results (${others.length})`} meta={others.length <= 6 ? others.map((o) => outputLabel(o)).join(" · ") : undefined}>
             <ul className={s.chips}>
               {others.map((o) => (
                 <li key={o.datasetId} className={s.chipRow}>
-                  <button type="button" className={s.chip} onClick={() => setShown(o.datasetId)} aria-label={`Show ${ROLE[o.role] ?? o.role} in the result block`}>{ROLE[o.role] ?? o.role}</button>
-                  <Button type="button" variant="ghost" onClick={() => onOpenInViewer(o.datasetId)} aria-label={`Open ${ROLE[o.role] ?? o.role} in the viewer`}>Open in the viewer</Button>
-                  {onCompareInViewer && dataset ? <Button type="button" variant="ghost" onClick={() => onCompareInViewer(dataset.id, o.datasetId)} aria-label={`Compare ${ROLE[o.role] ?? o.role} with ${output ? ROLE[output.role] ?? output.role : "the result"} side by side`}>Side by side</Button> : null}
+                  <button type="button" className={s.chip} onClick={() => setShown(o.datasetId)} aria-label={`Show ${outputLabel(o)} in the result block`}>{outputLabel(o)}</button>
+                  <Button type="button" variant="ghost" onClick={() => onOpenInViewer(o.datasetId)} aria-label={`Open ${outputLabel(o)} in the viewer`}>Open in the viewer</Button>
+                  {onCompareInViewer && dataset ? <Button type="button" variant="ghost" onClick={() => onCompareInViewer(dataset.id, o.datasetId)} aria-label={`Compare ${outputLabel(o)} with ${output ? outputLabel(output) : "the result"} side by side`}>Side by side</Button> : null}
                 </li>
               ))}
             </ul>

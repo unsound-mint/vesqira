@@ -187,10 +187,10 @@ func TestImportPreviewGroupsWhatIsAndIsNotRecognisedAndChangesNothing(t *testing
 	if n, ok := p.group("dataset", ".fits", "built-in"); !ok || n != 5 {
 		t.Fatalf("FITS files are datasets by the built-in rules: %+v", p.Groups)
 	}
-	if n, ok := p.group("rohsa_product", ".fits", "built-in"); !ok || n != 2 {
+	if n, ok := p.group("run_product", ".fits", "built-in"); !ok || n != 2 {
 		t.Fatalf("the ROHSA maps are products of the fit: %+v", p.Groups)
 	}
-	if _, ok := p.group("rohsa_fit", ".dat", "built-in"); !ok {
+	if _, ok := p.group("run_component_table", ".dat", "built-in"); !ok {
 		t.Fatalf("%+v", p.Groups)
 	}
 	if _, ok := p.group("run_record", ".toml", "built-in"); !ok {
@@ -516,7 +516,7 @@ func TestImportRuleOnARunFileWaitsForTheRunImport(t *testing.T) {
 	tinyFITS(t, root, "validation_output/a/mom_kms.fits", 6, "")
 	s := e.open(t, root)
 	p := e.preview(t, s.ID, map[string]any{"rules": []any{kmsRule}})
-	if _, ok := p.group("vgt_psi", ".fits", "built-in"); !ok {
+	if _, ok := p.group("run_orientation", ".fits", "built-in"); !ok {
 		t.Fatalf("the VGT output keeps its role from the run record: %+v", p.Groups)
 	}
 	for _, g := range p.Groups {

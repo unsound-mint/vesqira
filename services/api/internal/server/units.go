@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
@@ -91,7 +92,7 @@ func declaredUnitOf(d catalog.Dataset) string {
 }
 
 // noBrightness is the datasets that cannot be given a brightness unit: the store's (orientation maps, the reliability maps declared for
-// them, point catalogs) and the psi and reliability outputs of a run. The run record says what those files are, and an orientation map
+// them, point catalogs) and the orientation and reliability outputs of a run, by their generic roles (ADR 0068, slice 3). The run record says what those files are, and an orientation map
 // whose frame, quantity or unit nobody has declared yet (ADR 0068, slice 2: none is assumed) is still an angle map, not a brightness one.
 func (s *Server) noBrightness(ws workspace.ID) (map[int64]bool, error) {
 	out, err := s.Store.NoBrightnessIDs(ws)
@@ -103,7 +104,7 @@ func (s *Server) noBrightness(ws workspace.ID) (map[int64]bool, error) {
 		return out, err
 	}
 	for id, role := range roles {
-		if role == "psi" || role == "reliability" {
+		if role == runs.RoleOrientation || role == runs.RoleReliability {
 			out[id] = true
 		}
 	}

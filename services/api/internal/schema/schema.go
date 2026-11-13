@@ -61,7 +61,9 @@ import (
 // relayed_requests and jobs.request_ref on the key holder's computer; ADR 0066 section 3, ADR 0050 slice 5).
 // Version 34: access labels on datasets, an append-only history per dataset (dataset_access), and the labels a workspace's admin
 // has made block publishing (workspaces.blocked_labels; ADR 0069).
-const Version = 34
+// Version 35: a run records the tool profile that recognised it (runs.profile), and its outputs carry a generic role with the tool's own
+// name kept as the product (run_outputs.role, .product; ADR 0068 slice 3).
+const Version = 35
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -109,6 +111,7 @@ var migrations = []Migration{
 	{To: 32, Name: "push to the group server", Up: pushTables},
 	{To: 33, Name: "relayed run requests", Up: relayTables},
 	{To: 34, Name: "access labels", Up: accessLabels},
+	{To: 35, Name: "tool profiles and generic output roles", Up: toolProfiles},
 }
 
 // AccountsTables are the group server's accounts (ADR 0050 section 2, slice 2). An account carries no credential itself: a way to

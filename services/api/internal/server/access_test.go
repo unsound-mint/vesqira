@@ -435,7 +435,7 @@ func (r *accessRig) runBoard(t *testing.T, inputName string) (board, psi int64) 
 	rex := r.g.mustAccount("rex")
 	psi = ins(`INSERT INTO datasets(path,name,size_bytes,modified_at,added_at,header,workspace_id,created_by) VALUES(?,'psi.fits',9,1,1,'{}',1,?)`, fmt.Sprintf("/o/%s/psi.fits", inputName), rex.ID)
 	run, err := rn.Save(workspace.Local, rex.ID, t.TempDir(), runs.Parsed{Run: runs.Run{Name: "vgt-a1", Kind: "vgt", InputName: "/scratch/lab/" + inputName, InputSizeBytes: 1}},
-		[]runs.Output{{Role: "psi", DatasetID: psi, Name: "psi.fits"}})
+		[]runs.Output{{Role: "orientation", Product: "psi", DatasetID: psi, Name: "psi.fits"}})
 	if err != nil || run.ID == 0 {
 		t.Fatal(err)
 	}

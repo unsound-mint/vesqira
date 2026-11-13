@@ -626,6 +626,7 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 		Reproducible bool `json:"reproducibleFromCommit"`
 		Outputs      []struct {
 			Role      string
+			Product   string
 			DatasetID int64
 		}
 		InputHint *struct{ DatasetID int64 } `json:"inputHint"`
@@ -639,7 +640,7 @@ func TestRunImportLinksOutputsAndKeepsLocationsFromReviewers(t *testing.T) {
 	}
 	ids := map[string]int64{}
 	for _, o := range run.Outputs {
-		ids[o.Role] = o.DatasetID
+		ids[o.Product] = o.DatasetID
 	}
 	_, pb := get(t, ts.URL+"/api/datasets/"+itoa(int(ids["psi"])))
 	var psi catalog.Dataset

@@ -306,7 +306,7 @@ PATH=%s:$PATH exec sh -c "$cmd"
 		if d.HostID != h.ID {
 			t.Errorf("output %s should live on the host", o.Role)
 		}
-		if o.Role == "psi" && d.Interpretation != nil { // this fixture is an older output: no profile places it, so nothing is declared for it
+		if o.Role == "orientation" && d.Interpretation != nil { // this fixture is an older output: no profile places it, so nothing is declared for it
 			t.Errorf("an older output must stay unresolved: %+v", d.Interpretation)
 		}
 	}

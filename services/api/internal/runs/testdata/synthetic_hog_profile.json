@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "about": "TEST ONLY. A synthetic profile for a HOG-style tool whose file format is invented by the test fixture (fixtures/generate.py write_hog_run). HOG is a method, not a documented file format, so this is never shipped. It proves that a tool other than VGT.jl and ROHSA is detected by content and has its outputs mapped to generic roles from data alone.",
+  "roles": {
+    "orientation": "Orientation map",
+    "reliability": "Reliability",
+    "support": "Support",
+    "component_table": "Component table",
+    "component_maps": "Component maps",
+    "model_cube": "Model cube",
+    "residual_cube": "Residual cube",
+    "crop": "Crop"
+  },
+  "profiles": [
+    {
+      "name": "HOG-synthetic",
+      "version": "1",
+      "kind": "hog-synthetic",
+      "label": "HOG (synthetic)",
+      "source": "none: invented for the tests",
+      "record": {
+        "file": "hog_run.toml",
+        "reader": "run_metadata",
+        "anyKey": ["hog.version"]
+      },
+      "outputs": {
+        "table": "products",
+        "files": {
+          "orientation_file": {"product": "orientation_map", "role": "orientation"},
+          "coherence_file": {"product": "coherence", "role": "reliability"},
+          "mask_file": {"product": "mask", "role": "support"}
+        }
+      }
+    }
+  ]
+}

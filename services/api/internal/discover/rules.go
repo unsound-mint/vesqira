@@ -3,9 +3,10 @@ package discover
 import (
 	"path"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
 // SkipNames are folders that are never walked, in any project.
@@ -177,8 +178,7 @@ func RoleIsReadOnly(role string) bool { return role == "raw" || role == "externa
 type recordKind string
 
 const (
-	recVGT        recordKind = "vgt"        // run_metadata.toml
-	recROHSA      recordKind = "rohsa"      // rohsa_<label>_run_trace.toml
+	recROHSA      recordKind = "rohsa"      // a profile's run kind that mergeJobRecords knows (ADR 0046)
 	recProvenance recordKind = "provenance" // provenance.json
 	recRunJSON    recordKind = "run-json"   // run.json
 	recParams     recordKind = "params"     // params.yaml|params.json with metrics.json
@@ -186,42 +186,34 @@ const (
 	recManual     recordKind = "manual"     // marked by the researcher
 )
 
-// detectRecord finds the run record among the names in a folder. params.* counts only next to metrics.json.
-func detectRecord(names map[string]bool) (file string, kind recordKind, ok bool) {
-	switch {
-	case names["run_metadata.toml"]:
-		return "run_metadata.toml", recVGT, true
-	case rohsaTrace(names) != "":
-		return rohsaTrace(names), recROHSA, true
-	case names["provenance.json"]:
-		return "provenance.json", recProvenance, true
-	case names["run.json"]:
-		return "run.json", recRunJSON, true
-	case names["params.yaml"] && names["metrics.json"]:
-		return "params.yaml", recParams, true
-	case names["params.json"] && names["metrics.json"]:
-		return "params.json", recParams, true
-	case names["meta.yaml"]:
-		return "meta.yaml", recMLflow, true // confirmed by its content (a run_id) when read
-	}
-	return "", "", false
+// candidate is a file that may be the run record of a folder. A profile's candidate is decided by the record's content: the
+// file name alone only nominates it (ADR 0068).
+type candidate struct {
+	file string
+	kind recordKind
+	prof *runs.Profile // nil for the records that are not a tool's
 }
 
-var rohsaTraceName = regexp.MustCompile(`^rohsa_[A-Za-z0-9._-]+_run_trace\.toml$`)
-
-// rohsaTrace is the first (by name) ROHSA run trace among the names of a folder, or "".
-func rohsaTrace(names map[string]bool) string {
-	var found []string
-	for n := range names {
-		if rohsaTraceName.MatchString(n) {
-			found = append(found, n)
-		}
+// detectRecords lists the candidates for a folder's run record in the order they are tried: the tools' profiles, then
+// provenance.json, run.json, params.* (only next to metrics.json) and meta.yaml (confirmed by its content, a run_id, when read).
+func detectRecords(reg *runs.Registry, names map[string]bool) []candidate {
+	var out []candidate
+	for _, c := range reg.Candidates(names) {
+		out = append(out, candidate{c.File, recordKind(c.Profile.Kind), c.Profile})
 	}
-	if len(found) == 0 {
-		return ""
+	switch {
+	case names["provenance.json"]:
+		out = append(out, candidate{file: "provenance.json", kind: recProvenance})
+	case names["run.json"]:
+		out = append(out, candidate{file: "run.json", kind: recRunJSON})
+	case names["params.yaml"] && names["metrics.json"]:
+		out = append(out, candidate{file: "params.yaml", kind: recParams})
+	case names["params.json"] && names["metrics.json"]:
+		out = append(out, candidate{file: "params.json", kind: recParams})
+	case names["meta.yaml"]:
+		out = append(out, candidate{file: "meta.yaml", kind: recMLflow})
 	}
-	sort.Strings(found)
-	return found[0]
+	return out
 }
 
 var stampSha = regexp.MustCompile(`^(\d{4})-?(\d{2})-?(\d{2})t(\d{2}):?(\d{2}):?(\d{2})z?_([0-9a-f]{7,40})$`)

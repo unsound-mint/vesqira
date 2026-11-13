@@ -183,12 +183,12 @@ func TestItemsNameTheBuiltinRoleAndTheRuleBehindIt(t *testing.T) {
 	}
 	want := map[string]string{
 		"validation_output/a/run_metadata.toml":              BIRunRecord,
-		"validation_output/a/psi.fits":                       "vgt_psi",
+		"validation_output/a/psi.fits":                       "run_orientation",
 		"validation_output/a/other.fits":                     BIRunOutput,
 		"validation_output/a/log.txt":                        BIRunOutput,
 		"validation_output/rohsa/n4/rohsa_n4_run_trace.toml": BIRunRecord,
-		"validation_output/rohsa/n4/rohsa_n4.dat":            BIROHSAFit,
-		"validation_output/rohsa/n4/maps/mu_kms.fits":        BIROHSAProduct,
+		"validation_output/rohsa/n4/rohsa_n4.dat":            "run_component_table",
+		"validation_output/rohsa/n4/maps/mu_kms.fits":        "run_product",
 		"validation_output/rohsa/n4/notes.txt":               BIRunOutput,
 		"data/exp_raw/cube.fits":                             BIDataset,
 		"data/sims/box.h5":                                   BIOtherData,
