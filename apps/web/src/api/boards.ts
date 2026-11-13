@@ -41,6 +41,9 @@ export type RunFigureRequest = Schemas["CreateRunFigureRequest"];
 /** The owner-only description a cross-run plot was drawn from (cross-run/1). */
 export type CrossRunDescription = Schemas["CrossRunDescription"];
 export const createRunFigure = (r: RunFigureRequest) => post<Figure>("/api/figures/runs", r);
+/** The sky panel's view saved as a figure with no dataset of its own (ADR 0072): the server reads each footprint itself and writes the survey's credit. */
+export type SkyFigureRequest = Schemas["CreateSkyFigureRequest"];
+export const createSkyFigure = (r: SkyFigureRequest) => post<Figure>("/api/figures/sky", r);
 export const listFigures = () => call<{ figures: Figure[] }>("/api/figures").then((r) => r.figures);
 export const figurePreviewUrl = (id: number) => `/api/figures/${id}/preview`;
 /** What "draw again" must tell the owner before it draws (ADR 0042, section 5); reads and changes nothing. */

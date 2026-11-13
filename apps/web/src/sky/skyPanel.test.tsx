@@ -15,6 +15,11 @@ vi.mock("../api/sky", () => ({
   getSkyFootprint: (...a: unknown[]) => getSkyFootprint(...a),
   getSkyPoint: (...a: unknown[]) => getSkyPoint(...a),
 }));
+const createSkyFigure = vi.fn();
+vi.mock("../api/boards", () => ({ createSkyFigure: (...a: unknown[]) => createSkyFigure(...a) }));
+// jsdom has no canvas: the picture is a stand-in, the caption it is given is what these tests read
+const renderPng = vi.fn();
+vi.mock("./exportSky", async (orig) => ({ ...(await orig<typeof import("./exportSky")>()), renderPng: (...a: unknown[]) => renderPng(...a) }));
 const loadAladin = vi.fn();
 vi.mock("./aladinLoader", () => ({ loadAladin: () => loadAladin() }));
 
@@ -34,6 +39,10 @@ beforeEach(() => {
   getSkyFootprint.mockReset();
   getSkyPoint.mockReset();
   loadAladin.mockReset();
+  createSkyFigure.mockReset();
+  renderPng.mockReset();
+  renderPng.mockResolvedValue(new Blob(["x"], { type: "image/png" }));
+  createSkyFigure.mockResolvedValue({ id: 9, title: "t" });
   getSkyFootprint.mockImplementation((id: number) =>
     Promise.resolve(id === 1 ? footprint(150, 2) : { frame: "icrs", footprint: null, reason: "this file has no celestial WCS, so no position on the sky is known" }));
   getSkyPoint.mockResolvedValue({ frame: "icrs", position: { lon: 150.25, lat: 2.5 } });
@@ -196,5 +205,41 @@ describe("stored settings", () => {
   it("only ever name surveys on the one CDS host", () => {
     expect(new Set(SURVEYS.map((s) => new URL(s.url).host))).toEqual(new Set(["alasky.cds.unistra.fr"]));
     expect(SURVEYS.every((s) => s.host === new URL(s.url).host)).toBe(true);
+  });
+});
+
+describe("save as figure", () => {
+  it("sends what is drawn, with no survey while the background is off, and says the figure has none", async () => {
+    mount();
+    await screen.findByRole("button", { name: "Open hi_cube.fits" });
+    await userEvent.click(screen.getByRole("button", { name: "Save as figure" }));
+    expect(await screen.findByText(/It has no survey image/)).toBeInTheDocument();
+    const body = createSkyFigure.mock.calls[0]![0];
+    expect(body.frame).toBe("icrs");
+    expect(body.survey).toBeNull();
+    // only the outline that was drawn: the dataset without a WCS and the catalog are not in it
+    expect(body.footprints).toEqual([{ kind: "dataset", id: 1 }]);
+    expect(body.fovDeg).toBeGreaterThan(0);
+    expect(renderPng.mock.calls[0]![1]).toBeNull();
+    expect(renderPng.mock.calls[0]![0].lines.join(" ")).not.toMatch(/Background|HiPS/);
+  });
+
+  it("names a subset by its own id, apart from a dataset with the same number", async () => {
+    getSkyFootprint.mockImplementation((id: number) => Promise.resolve(footprint(id < 0 ? 151 : 150, 2)));
+    const sub = { id: 1, sourceId: 1, name: "Core", version: 2, stale: false } as never;
+    mount({ datasets: [ds(1, "hi_cube.fits", { modifiedAt: "sf" })], subsets: [sub] });
+    await screen.findByRole("button", { name: "Open Core (subset)" });
+    await userEvent.click(screen.getByRole("button", { name: "Save as figure" }));
+    await waitFor(() => expect(createSkyFigure).toHaveBeenCalled());
+    expect(createSkyFigure.mock.calls[0]![0].footprints).toEqual([{ kind: "dataset", id: 1 }, { kind: "subset", id: 1 }]);
+  });
+
+  it("shows the server's refusal and offers no saved message", async () => {
+    createSkyFigure.mockRejectedValue(new Error("a footprint could not be read"));
+    mount();
+    await screen.findByRole("button", { name: "Open hi_cube.fits" });
+    await userEvent.click(screen.getByRole("button", { name: "Save as figure" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("a footprint could not be read");
+    expect(screen.queryByText(/Saved as the figure/)).toBeNull();
   });
 });

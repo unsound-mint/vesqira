@@ -60,7 +60,7 @@ export function PrintBoard({ boardId }: { boardId: number }) {
           {f.caption ? <p className={s.cap}>{f.caption}</p> : null}
           {note ? <p className={s.cap}>Note: {note}</p> : null}
           <div className={s.prov}>
-            <p>{f.provenance.runPlot ? "Source" : "File"} <span className="mono">{f.provenance.source.name}</span> ({f.provenance.source.identity}).</p>
+            <p>{f.provenance.runPlot || f.provenance.sky ? "Source" : "File"} <span className="mono">{f.provenance.source.name}</span> ({f.provenance.source.identity}).</p>
             {f.provenance.interpretation ? <p>Interpretation declared by {f.provenance.interpretation.declaredBy}: {f.provenance.interpretation.kind}, unit {f.provenance.interpretation.unit}.</p> : null}
             {f.provenance.run ? <RunLine run={f.provenance.run} /> : null}
             {(f.provenance.tiers ?? []).map((t) => <p key={t.what} data-tier={t.tier}>{tierLine(t)}</p>)}

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Crosshair, Download, Minus, Plus, Scan } from "lucide-react";
+import { Crosshair, Download, ImagePlus, Minus, Plus, Scan } from "lucide-react";
 import type { Dataset } from "../api/catalog";
 import type { SubsetView } from "../api/subsets";
 import type { SkyFrame } from "../api/sky";
@@ -7,7 +7,9 @@ import { Button, IconButton, Select } from "../ui";
 import { clampFov, fitView, pan, zoom } from "./projection";
 import type { View } from "./projection";
 import { buildScene, frameName, pathData, positionText, SIZE } from "./skyScene";
-import { saveSkyImage, captionOf } from "./exportSky";
+import { saveSkyImage, captionOf, renderPng } from "./exportSky";
+import { createSkyFigure } from "../api/boards";
+import { blobToBase64 } from "../viewer/figure";
 import { useSkySettings } from "./settings";
 import { contactNotice, SURVEYS, surveyById } from "./surveys";
 import { useFootprints, useSkyCursor } from "./useSky";
@@ -54,6 +56,7 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
   const [api, setApi] = useState<BackgroundApi | null>(null);
   const [withBackground, setWithBackground] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [figure, setFigure] = useState<{ state: "saving" } | { state: "saved"; title: string; survey: boolean } | null>(null);
 
   const selected = items.find((i) => i.id === datasetId) ?? null;
   const cursorId = selected?.state === "ready" ? selected.id : null;
@@ -115,6 +118,37 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
       await saveSkyImage({ scene, lines: captionOf({ frame: frameName(frame), centre: `${centre.names[0]} ${centre.deg[0]}, ${centre.names[1]} ${centre.deg[1]}`, fov: fovText(view.fov), selected: selected?.name ?? null, survey: include ? survey : null }) }, bgUrl);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "The image could not be saved.");
+    }
+  }
+
+  // The view as a registered figure (ADR 0072). The server reads each outline again and writes the survey's words itself; the picture
+  // here carries the same caption as the PNG, so the survey is named in the picture too. Nothing is sent that the person did not draw.
+  async function saveFigure() {
+    if (!scene || !view) return;
+    setSaveError(null);
+    setFigure({ state: "saving" });
+    try {
+      const include = withBackground && shown;
+      const bgUrl = include ? ((await api?.capture()) ?? null) : null;
+      if (include && !bgUrl) throw new Error("The survey view could not be captured, so no figure was made.");
+      const drawn = items.filter((i) => i.state === "ready");
+      const centre = positionText(frame, view.lon, view.lat);
+      const lines = captionOf({ frame: frameName(frame), centre: `${centre.names[0]} ${centre.deg[0]}, ${centre.names[1]} ${centre.deg[1]}`, fov: fovText(view.fov), selected: selected?.name ?? null, survey: include ? survey : null });
+      const png = await renderPng({ scene, lines }, bgUrl);
+      const title = `Sky view, ${frameName(frame)}, ${fovText(view.fov)} across`;
+      await createSkyFigure({
+        title,
+        previewPng: await blobToBase64(png),
+        frame,
+        centre: { lon: view.lon, lat: view.lat },
+        fovDeg: view.fov,
+        survey: include ? survey.id : null,
+        footprints: drawn.map((i) => (i.id < 0 ? { kind: "subset" as const, id: -i.id } : { kind: "dataset" as const, id: i.id })),
+      });
+      setFigure({ state: "saved", title, survey: include });
+    } catch (e) {
+      setFigure(null);
+      setSaveError(e instanceof Error ? e.message : "The figure could not be saved.");
     }
   }
 
@@ -253,6 +287,8 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
           </label>
         ) : null}
         <Button icon={Download} onClick={() => void save()} disabled={!scene}>Save sky image (PNG)</Button>
+        <Button icon={ImagePlus} onClick={() => void saveFigure()} disabled={!scene || withOutline === 0 || figure?.state === "saving"}>Save as figure</Button>
+        {figure?.state === "saved" ? <p className={s.note} role="status">Saved as the figure &quot;{figure.title}&quot;. Add it to a board from the Boards view. {figure.survey ? "It includes the survey image, which is context only." : "It has no survey image."}</p> : null}
         {saveError ? <p className={s.error} role="alert">{saveError}</p> : null}
       </div>
     </div>

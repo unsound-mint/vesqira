@@ -316,6 +316,7 @@ func (s *Server) Handler() http.Handler {
 	if s.Boards != nil {
 		s.route(mux, "POST /api/figures", authz.FigureWrite, s.createFigure)
 		s.route(mux, "POST /api/figures/runs", authz.FigureWrite, s.createRunFigure)
+		s.route(mux, "POST /api/figures/sky", authz.FigureWrite, s.createSkyFigure)
 		s.route(mux, "GET /api/figures", authz.FigureRead, s.listFigures)
 		s.route(mux, "GET /api/figures/{id}/preview", authz.FigureRead, s.figurePreview)
 		s.route(mux, "GET /api/figures/{id}/download", authz.FigureRead, s.figureDownload)

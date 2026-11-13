@@ -1988,6 +1988,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/figures/sky": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save the sky panel's view as a figure that draws no dataset of its own (owner listener only) */
+        post: operations["owner_s_createSkyFigure_post_api_figures_sky"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/figures/{id}/archive": {
         parameters: {
             query?: never;
@@ -6162,10 +6179,10 @@ export interface components {
             cy?: number;
             r?: number;
         };
-        /** @description What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request. */
+        /** @description What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request. sky is the kind of a sky view (ADR 0072) and is never accepted on a request. */
         FigureView: {
             /** @enum {string} */
-            kind: "plane" | "spectrum" | "orientation" | "channelgrid" | "runplot";
+            kind: "plane" | "spectrum" | "orientation" | "channelgrid" | "runplot" | "sky";
             channel?: number;
             spectralValue?: number;
             /** @description At most 16 characters of letters, digits and / * ^ . - space */
@@ -6279,7 +6296,7 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
-        /** @description Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts. */
+        /** @description Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts. For a sky view (ADR 0072) source says there is no file, view.kind is sky and sky gives the frame, the field, the survey background (context only) and each footprint by file name and WCS basis; it has no dataset id. */
         FigureProvenance: {
             /** @description The source file by name only; no path and no dataset id. */
             source: {
@@ -6307,8 +6324,9 @@ export interface components {
             /** @description Present when the figure was drawn under corrections (ADR 0061) */
             corrections?: components["schemas"]["FigureCorrection"][];
             runPlot?: components["schemas"]["FigureRunPlot"];
+            sky?: components["schemas"]["FigureSkyView"];
         };
-        /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind "dataset"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind "crossrun". */
+        /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind "dataset"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind "crossrun". A sky view (ADR 0072) also has no dataset (datasetId null) and kind "sky". */
         Figure: {
             /** Format: int64 */
             id: number;
@@ -6333,7 +6351,7 @@ export interface components {
             /** @description Absent for figures saved before identities (ADR 0053). */
             identity?: components["schemas"]["FigureIdentity"];
             /** @enum {string} */
-            kind: "dataset" | "crossrun";
+            kind: "dataset" | "crossrun" | "sky";
             /** @description The access label the figure carries, from its source datasets at the time of the reply; absent when released. Owner API only (it names datasets). */
             access?: components["schemas"]["AccessEffective"];
         };
@@ -12318,6 +12336,55 @@ export interface components {
                 pinProfileCommit?: boolean;
             };
         };
+        /** @description The survey image behind a sky view. It is context: not data from the author's files and never sampled into a number. The server fills these words from its fixed list. */
+        FigureSkyBackground: {
+            hipsId: string;
+            name: string;
+            provider: string;
+            credit: string;
+            /** @enum {string} */
+            role: "context";
+        };
+        /** @description One outline drawn on a sky view: the file's name, whether it is a window onto the file (a virtual subset), and how the file's celestial frame is known. */
+        FigureSkyFootprint: {
+            name: string;
+            window: boolean;
+            basis: string;
+        };
+        /** @description Reviewer-safe account of a sky view: the frame, the centre, the field, the survey background or null, and the footprints. It has no dataset id. */
+        FigureSkyView: {
+            /** @enum {string} */
+            frame: "icrs" | "galactic";
+            centre: {
+                lon: number;
+                lat: number;
+            };
+            fovDeg: number;
+            background: components["schemas"]["FigureSkyBackground"] | null;
+            footprints: components["schemas"]["FigureSkyFootprint"][];
+        };
+        /** @description Saves the sky panel's view as a figure (ADR 0072). The server reads every footprint itself, through the same routes the panel uses, and writes the survey's name, provider and credit from its fixed list; the browser says which datasets or subsets, the frame, the centre, the field and whether a survey was in the picture. The server never contacts the survey host. */
+        CreateSkyFigureRequest: {
+            title: string;
+            caption?: string;
+            /** @description base64 PNG */
+            previewPng: string;
+            /** @enum {string} */
+            frame: "icrs" | "galactic";
+            centre: {
+                lon: number;
+                lat: number;
+            };
+            fovDeg: number;
+            /** @description The HiPS id of the background in the picture; absent or null for the plain grid. */
+            survey?: string | null;
+            footprints: {
+                /** @enum {string} */
+                kind: "dataset" | "subset";
+                /** Format: int64 */
+                id: number;
+            }[];
+        };
     };
     responses: never;
     parameters: never;
@@ -16240,6 +16307,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateRunFigureRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Figure"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createSkyFigure_post_api_figures_sky: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSkyFigureRequest"];
             };
         };
         responses: {

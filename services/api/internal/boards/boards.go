@@ -117,7 +117,7 @@ type Figure struct {
 	// DatasetID is the dataset the figure was made from; null for a cross-run plot (Kind "crossrun", ADR 0065), which is made
 	// from runs and has no dataset.
 	DatasetID  *int64          `json:"datasetId"`
-	Kind       string          `json:"kind"` // dataset | crossrun
+	Kind       string          `json:"kind"` // dataset | crossrun | sky
 	Title      string          `json:"title"`
 	Caption    string          `json:"caption"`
 	CreatedAt  time.Time       `json:"createdAt"`
@@ -145,13 +145,19 @@ type Figure struct {
 const (
 	KindDatasetFigure = "dataset"
 	KindCrossRun      = "crossrun"
+	// KindSky is a view of the sky panel (ADR 0072): footprints of several datasets, optionally on a survey image that is context
+	// only. It has no dataset of its own; the datasets it drew are named in its owner-only description.
+	KindSky = "sky"
 )
 
 // NewFigure carries what the caller knows. Provenance must already be the reviewer-safe document; Scene, when set, is a
 // validated scene/1 document (internal/scene), or the cross-run/1 description of a cross-run plot (then DatasetID is nil).
 type NewFigure struct {
-	// DatasetID is the dataset the figure is made from; 0 means none, which is only valid for a cross-run plot (ADR 0065).
-	DatasetID  int64
+	// DatasetID is the dataset the figure is made from; 0 means none, which is only valid for a cross-run plot (ADR 0065) or a sky
+	// view (ADR 0072).
+	DatasetID int64
+	// Kind says which of the two it is when DatasetID is 0: KindSky, or empty for a cross-run plot.
+	Kind       string
 	Title      string
 	Caption    string
 	Provenance json.RawMessage
@@ -183,9 +189,16 @@ func (s *Store) CreateFigure(ws workspace.ID, by string, in NewFigure, pngBytes 
 	if in.DatasetID == 0 {
 		dataset = nil
 		kind = KindCrossRun
-		if len(in.Scene) == 0 {
-			return Figure{}, fmt.Errorf("%w: a figure with no dataset needs the description of the runs it was drawn from", ErrInvalid)
+		if in.Kind == KindSky {
+			kind = KindSky
+		} else if in.Kind != "" {
+			return Figure{}, fmt.Errorf("%w: unknown figure kind", ErrInvalid)
 		}
+		if len(in.Scene) == 0 {
+			return Figure{}, fmt.Errorf("%w: a figure with no dataset needs the description of what it was drawn from", ErrInvalid)
+		}
+	} else if in.Kind != "" {
+		return Figure{}, fmt.Errorf("%w: a figure of a dataset has no other kind", ErrInvalid)
 	}
 	sum := sha256.Sum256(pngBytes)
 	sha := hex.EncodeToString(sum[:])

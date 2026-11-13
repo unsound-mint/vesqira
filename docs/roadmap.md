@@ -78,6 +78,7 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] A board's snapshots are its rounds. A later round embeds, frozen at publish, what changed since the round before: figures added, removed or redrawn, title, caption and note changes, corrections and masks (from the frozen provenance only), access label and run-state changes. The reviewer sees "Changed since <date>" and a New / Redrawn / Unchanged marker in words on each figure.
 - [x] Comments carry over, read-only and labelled with their round, onto the same figure (same revision, or the same drawing redrawn). The earlier picture of a redrawn figure is shown only while the earlier link is valid; a revoked earlier round's text and comments are withheld.
 - [x] Owner: round numbers and the per-round change list on the board's snapshots, and the round a publish would make in the preflight.
+- [x] Two publishes of one board at the same moment never share a round number: the loser rebuilds against the new round or gets a clear 409.
 - [ ] Not done: a figure replaced by a different figure with no draw-again link counts as removed and added; matching by title or by data would be a guess.
 
 ## Spectral smoothing and the family view (issue 133, ADR 0070, awaiting owner review)
@@ -92,7 +93,9 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] The viewer cursor (hover or pinned pixel) shown as a world position, and a click on an outline or list entry opens the dataset.
 - [x] Opt-in survey background (Aladin Lite 3.8.2, bundled, loaded after opt-in): off by default, the contacted server and what it receives stated before it is contacted, context only, stored per browser. Works fully offline without it.
 - [x] Local PNG of the panel; the survey is in it only when ticked for that file, with its name, HiPS id and provider in the caption.
-- [ ] Not built: a survey background inside a registered board figure with HiPS provenance, footprints for virtual subsets, a check against the live survey servers, a second person's design review.
+- [x] Footprints and the cursor link for virtual subsets: the worker applies the subset's window to the parent's WCS (ADR 0072).
+- [x] The sky view as a registered figure (schema 36): HiPS id, survey name, provider and credit, frame, field and centre, and each drawn file with its WCS basis in the provenance; the survey is labelled context only in the picture, the reviewer page and exports; the access labels of the drawn datasets apply to publishing it.
+- [ ] Not built: a check against the live survey servers, reading Aladin's own pan back into the saved field, a second person's design review.
 
 ## Stage S — Scene, cross-tracer comparison and the researcher's loop (owner direction, 2026-11-11)
 

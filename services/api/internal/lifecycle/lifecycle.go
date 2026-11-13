@@ -220,7 +220,10 @@ func figuresOf(q querier, ws workspace.ID, datasetIDs ...int64) (figs []Item, re
 		return nil, nil, nil
 	}
 	in, args := inList(datasetIDs)
-	rows, err := q.Query(`SELECT id,title,revision FROM figures WHERE workspace_id=? AND dataset_id IN (`+in+`) ORDER BY id`, append([]any{ws}, args...)...)
+	// a sky view (ADR 0072) has no dataset of its own: it counts as made from every dataset its description drew a footprint of
+	all := append(append([]any{ws}, args...), args...)
+	rows, err := q.Query(`SELECT id,title,revision FROM figures WHERE workspace_id=? AND (dataset_id IN (`+in+`)
+		OR (kind='sky' AND EXISTS (SELECT 1 FROM json_each(figures.scene,'$.footprints') j WHERE json_extract(j.value,'$.datasetId') IN (`+in+`)))) ORDER BY id`, all...)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -63,7 +63,8 @@ import (
 // has made block publishing (workspaces.blocked_labels; ADR 0069).
 // Version 35: a run records the tool profile that recognised it (runs.profile), and its outputs carry a generic role with the tool's own
 // name kept as the product (run_outputs.role, .product; ADR 0068 slice 3).
-const Version = 35
+// Version 36: a figure may be a sky view, a figure of kind 'sky' with no dataset (figures.kind admits 'sky'; ADR 0072).
+const Version = 36
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -112,6 +113,7 @@ var migrations = []Migration{
 	{To: 33, Name: "relayed run requests", Up: relayTables},
 	{To: 34, Name: "access labels", Up: accessLabels},
 	{To: 35, Name: "tool profiles and generic output roles", Up: toolProfiles},
+	{To: 36, Name: "sky figures", Up: skyFigures},
 }
 
 // AccountsTables are the group server's accounts (ADR 0050 section 2, slice 2). An account carries no credential itself: a way to
@@ -183,16 +185,16 @@ func accountsTables(tx *sql.Tx) error {
 	return err
 }
 
-// FiguresTable is the pinned figures (ADR 0041, 0042, 0053, 0065). A figure of a dataset has dataset_id; a cross-run plot (ADR 0065)
-// has none, so the column is nullable and `kind` says which it is, with a CHECK that ties the two together: a figure with a dataset
-// is kind 'dataset' and a figure without one is kind 'crossrun', never anything else. `scene` holds the owner-only description the
-// picture was drawn from (scene/1, channel-grid/1, or cross-run/1). The boards package creates the table for a fresh install and the
+// FiguresTable is the pinned figures (ADR 0041, 0042, 0053, 0065, 0072). A figure of a dataset has dataset_id; a cross-run plot (ADR 0065)
+// and a sky view (ADR 0072) have none, so the column is nullable and `kind` says which it is, with a CHECK that ties the two together:
+// a figure with a dataset is kind 'dataset' and a figure without one is kind 'crossrun' or 'sky', never anything else. `scene` holds
+// the owner-only description the picture was drawn from (scene/1, channel-grid/1, cross-run/1 or sky-view/1). The boards package creates the table for a fresh install and the
 // migration for an upgraded one, from this one text.
 const FiguresTable = `CREATE TABLE IF NOT EXISTS figures(
 	id INTEGER PRIMARY KEY AUTOINCREMENT, dataset_id INTEGER, title TEXT NOT NULL, caption TEXT NOT NULL,
 	created_at INTEGER NOT NULL, revision TEXT NOT NULL, preview_sha TEXT NOT NULL, width INTEGER NOT NULL,
 	height INTEGER NOT NULL, provenance TEXT NOT NULL, scene TEXT NOT NULL DEFAULT '', identity TEXT NOT NULL DEFAULT '',
-	kind TEXT NOT NULL DEFAULT 'dataset' CHECK(kind IN ('dataset','crossrun')),
+	kind TEXT NOT NULL DEFAULT 'dataset' CHECK(kind IN ('dataset','crossrun','sky')),
 	workspace_id INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL DEFAULT 'local-owner',
 	CHECK((kind='dataset') = (dataset_id IS NOT NULL)),
 	UNIQUE(workspace_id, revision))`
@@ -947,5 +949,50 @@ func AddColumn(db interface {
 		return nil
 	}
 	_, err = db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, definition))
+	return err
+}
+
+
+// skyFigures lets figures.kind be 'sky' (ADR 0072). The kind list is a CHECK, which SQLite cannot change in place, so the table is
+// rebuilt as crossRunFigures did: every figure keeps its id, revision, picture, text and workspace, and the AUTOINCREMENT counter is
+// carried over so an id that was once used is never handed out again. Nothing references figures by a foreign key. A catalog without
+// the table needs nothing (the boards package creates it from FiguresTable).
+func skyFigures(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='figures'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	var seq sql.NullInt64
+	if err := tx.QueryRow(`SELECT seq FROM sqlite_sequence WHERE name='figures'`).Scan(&seq); err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	const cols = `id,dataset_id,title,caption,created_at,revision,preview_sha,width,height,provenance,scene,identity,kind,workspace_id,created_by`
+	for _, q := range []string{
+		`DROP TABLE IF EXISTS figures_v36`,
+		strings.Replace(FiguresTable, "IF NOT EXISTS figures(", "figures_v36(", 1),
+		`INSERT INTO figures_v36(` + cols + `) SELECT ` + cols + ` FROM figures`,
+		`DROP TABLE figures`,
+		`ALTER TABLE figures_v36 RENAME TO figures`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	if !seq.Valid {
+		return nil
+	}
+	// the copy's counter is the largest id it holds; the old one may be higher (the newest figures were deleted)
+	res, err := tx.Exec(`UPDATE sqlite_sequence SET seq=? WHERE name='figures' AND seq<?`, seq.Int64, seq.Int64)
+	if err != nil {
+		return err
+	}
+	if k, _ := res.RowsAffected(); k == 0 {
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_sequence WHERE name='figures'`).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			_, err = tx.Exec(`INSERT INTO sqlite_sequence(name,seq) VALUES('figures',?)`, seq.Int64)
+		}
+	}
 	return err
 }
