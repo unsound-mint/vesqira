@@ -94,6 +94,10 @@ func (s *Server) previewRunRequest(w http.ResponseWriter, r *http.Request) {
 		review("It would wait for review: a standing approval needs a base run the key holder pushed.")
 		return
 	}
+	if _, err := s.Relay.BaseOf(ws, *in.BaseItemID); err != nil {
+		fail(w, 422, "the base run is not one pushed to this workspace")
+		return
+	}
 	writeJSON(w, 200, previewAnswer{Route: "grant", Grant: &o,
 		Reason: "It fits the standing approval as last published, so the key holder's computer should submit it without a click. That computer still checks the base run's input, the code commit and the budget itself, and anything outside the approval waits for review."})
 }

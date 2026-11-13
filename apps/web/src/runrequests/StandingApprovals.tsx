@@ -128,7 +128,8 @@ function GrantItem({ g, confirming, onAsk, onCancel, onRevoke }: { g: Grant; con
           <div className={s.row} role="group" aria-label={`Revoke the standing approval for ${g.requesterName}`}>
             <span className={s.note}>Revoke now? Requests naming it will wait for you. Jobs already queued or running keep running.</span>
             <Button variant="danger" onClick={onRevoke}>Revoke now</Button>
-            <Button onClick={onCancel}>Keep it</Button>
+            {/* the safe choice takes the focus the replaced Revoke button had */}
+            <Button onClick={onCancel} autoFocus>Keep it</Button>
           </div>
         ) : <div className={s.row}><Button onClick={onAsk}>Revoke</Button></div>
       ) : null}

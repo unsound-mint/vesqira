@@ -573,7 +573,8 @@ var bodyIDRoutes = map[string]struct{ path, body string }{
 	"POST /api/datasets/{id}/locations": {"/api/datasets/{own:datasets/id}/locations", `{"hostId":1,"path":"/a/x.fits"}`},
 	"POST /api/reports/{id}/move":       {"/api/reports/{own:reports/id}/move", `{"parent":{reports/id}}`},
 	// a run request whose base is A's pushed run: the base is looked up in B and not found
-	"POST /api/run-requests": {"/api/run-requests", `{"addressee":"x","ask":{"label":"L","template":"vgt","params":{},"resources":{},"grid":[],"note":""},"baseItemId":{pushed/id}}`},
+	"POST /api/run-requests":         {"/api/run-requests", `{"addressee":"x","ask":{"label":"L","template":"vgt","params":{},"resources":{},"grid":[],"note":""},"baseItemId":{pushed/id}}`},
+	"POST /api/run-requests/preview": {"/api/run-requests/preview", `{"addressee":"x","ask":{"label":"L","template":"vgt","params":{},"resources":{},"grid":[],"note":""},"baseItemId":{pushed/id}}`},
 }
 
 // The body and query-string half of guard 3: an Owner of workspace B names workspace A's objects in the body or the query of a

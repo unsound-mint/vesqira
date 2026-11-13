@@ -96,7 +96,7 @@
 
 .usage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
+  grid-template-columns: minmax(0, 220px) 96px;
   gap: var(--sp-3);
   align-items: center;
 }
