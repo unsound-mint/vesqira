@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import stat
 import time
@@ -27,6 +28,9 @@ import zlib
 
 import numpy as np
 
+import decomp
+import rohsa
+from decomp import Refusal
 from srcopen import source_file, stat_source
 
 CHUNK_BYTES = 8 << 20
@@ -41,10 +45,6 @@ SQRT_2PI = float(np.sqrt(2.0 * np.pi))
 NHI_PER_K_KMS = 1.8224e18
 
 WEIGHTS = ("integrated", "column_thin", "count")
-
-
-class Refusal(Exception):
-    """A request this module will not carry out, with the sentence the person reads."""
 
 
 # ---- binning
@@ -92,9 +92,11 @@ class Scales:
     """What the crop says about channels: the velocity of channel 0 and the step (signed) when its axis is a resolved, uniform velocity
     axis, else None (centres and widths stay in channels), and the brightness unit with whose it is."""
 
-    def __init__(self, nc: int, w0: float | None, step: float | None, axis: dict, bunit: str | None, bunit_source: str):
+    def __init__(self, nc: int, w0: float | None, step: float | None, axis: dict, bunit: str | None, bunit_source: str, specsys: str | None = None):
         self.nc, self.w0, self.step, self.axis = nc, w0, step, axis
+        # bunit is the unit the amplitudes are in: the crop's, unless the decomposition declares or carries its own (decomp.py)
         self.bunit, self.bunit_source = bunit, bunit_source
+        self.specsys = specsys                           # the crop's spectral frame (SPECSYS), None when it states none
 
     @property
     def velocity(self) -> bool:
@@ -148,8 +150,9 @@ def weights_of(weight: str, amp: np.ndarray, sigma_ch: np.ndarray, sc: Scales) -
 
 # ---- the streaming reader
 
-def stream_components(dat_path: str, nx: int, ny: int, n: int, max_seconds: float = MAX_SECONDS):
-    """Yield (x, y, amp, mean_raw, sigma_ch) arrays for consecutive chunks of whole rows of a ROHSA .dat.
+def stream_components(dat_path: str, nx: int, ny: int, n: int, max_seconds: float = MAX_SECONDS, layout=None):
+    """Yield (x, y, amp, centre, width) arrays, as the file states the centre and width, for consecutive chunks of whole rows of a
+    table of components (ROHSA's .dat by default; `layout` names other columns, rohsa.Layout).
 
     The layout is verified as the rows pass (rohsa.py): five finite columns, and the row at position r is the (i, j) of pixel r // n
     (so the pixel of a component is read from the verified columns, never inferred); the total must be nx x ny x n rows. The file is
@@ -157,6 +160,7 @@ def stream_components(dat_path: str, nx: int, ny: int, n: int, max_seconds: floa
     """
     if n < 1 or n > MAX_GAUSSIANS:
         raise Refusal(f"n_gauss must be from 1 to {MAX_GAUSSIANS}")
+    lay = layout or rohsa.DEFAULT_LAYOUT
     t0 = time.monotonic()
     row = 0
     expected = nx * ny * n
@@ -168,22 +172,23 @@ def stream_components(dat_path: str, nx: int, ny: int, n: int, max_seconds: floa
         toks = buf.split()
         if not toks:
             return None
-        if len(toks) % 5:
-            raise Refusal("a row of the .dat does not have five columns; it is not the ROHSA row layout")
+        if len(toks) % lay.ncols:
+            raise Refusal(f"a row of the .dat does not have {lay.ncols} columns; it is not the declared row layout")
         try:
-            v = np.array(toks, dtype="S").astype(np.float64).reshape(-1, 5)
+            v = np.array(toks, dtype="S").astype(np.float64).reshape(-1, lay.ncols)
         except ValueError:
             raise Refusal("a value in the .dat is not a number; it is not the ROHSA row layout")
         if not np.isfinite(v).all():
             raise Refusal("a value in the .dat is not finite; it is not the ROHSA row layout")
         r = row + np.arange(len(v), dtype=np.int64)
         p = r // n
-        if not (np.array_equal(v[:, 0], p // nx) and np.array_equal(v[:, 1], p % nx)):
+        if not (np.array_equal(v[:, lay.row], p // nx + lay.base) and np.array_equal(v[:, lay.col], p % nx + lay.base)):
             raise Refusal(f"the .dat is not in y, x, Gaussian order for a {nx} x {ny} crop with {n} Gaussians (row {row + 1} onwards)")
         row += len(v)
         if row > expected:
             raise Refusal(f"the .dat has more rows than {nx} x {ny} pixels x {n} Gaussians = {expected}")
-        return v[:, 1].astype(np.int64), v[:, 0].astype(np.int64), v[:, 2].copy(), v[:, 3].copy(), v[:, 4].copy()
+        return (v[:, lay.col].astype(np.int64) - lay.base, v[:, lay.row].astype(np.int64) - lay.base, v[:, lay.amp].copy(), v[:, lay.centre].copy(),
+                v[:, lay.width].copy())
 
     with source_file(dat_path) as (_, f):
         tail = b""
@@ -236,17 +241,17 @@ def default_bins(sc: Scales) -> tuple[dict, dict]:
 NO_CELL = 65535                      # a row that is in no cell of the diagram (invalid sigma, or outside its limits)
 
 
-def cells_path(cache_dir: str, dat_path: str, nx: int, ny: int, n: int, sc: Scales, v_edges: np.ndarray, s_edges: np.ndarray) -> str:
-    """Where the per-row cell index of one diagram lives: the .dat's own cache key (path, size, mtime, as the components index) plus a
-    hash of everything that decides a row's cell (the edges, the axis and the crop's shape), so a changed file or other bins never
-    find it. The folder is the caller's cache folder, never beside the data."""
-    import rohsa
-    real = os.path.realpath(dat_path)
-    here = os.path.realpath(cache_dir)
-    if here == os.path.dirname(real) or here.startswith(os.path.dirname(real) + os.sep):
-        raise Refusal("the cache folder is inside the fit's own folder; the pixel index is not written next to the data")
-    what = repr((nx, ny, n, [float(e).hex() for e in v_edges], [float(e).hex() for e in s_edges], sc.unit, sc.w0, sc.step))
-    return os.path.join(cache_dir, f"{rohsa._key(dat_path, stat_source(dat_path))}-{hashlib.sha256(what.encode()).hexdigest()[:16]}.cells")
+def cells_path(cache_dir: str, dat_path, nx: int, ny: int, n: int, sc: Scales, v_edges: np.ndarray, s_edges: np.ndarray) -> str:
+    """Where the per-row cell index of one diagram lives: the decomposition's own cache key (the .dat's path, size and mtime as the
+    components index, or every map's for FITS maps) plus a hash of everything that decides a row's cell (the edges, the axis, the
+    crop's shape and the declaration), so a changed file or other bins never find it. The folder is the caller's cache folder, never
+    beside the data."""
+    dec = decomp.coerce(dat_path, sc)
+    for src in dec.source_dirs():
+        if os.path.realpath(cache_dir) == src or os.path.realpath(cache_dir).startswith(src + os.sep):
+            raise Refusal("the cache folder is inside the fit's own folder; the pixel index is not written next to the data")
+    what = repr((nx, ny, n, [float(e).hex() for e in v_edges], [float(e).hex() for e in s_edges], sc.unit, sc.w0, sc.step, json.dumps(dec.decl, sort_keys=True)))
+    return os.path.join(cache_dir, f"{dec.cache_key()}-{hashlib.sha256(what.encode()).hexdigest()[:16]}.cells")
 
 
 def _plain(path: str) -> None:
@@ -300,10 +305,11 @@ class CellIndex:
         return 2 * self.rows
 
 
-def sigmav(dat_path: str, nx: int, ny: int, n: int, sc: Scales, weight: str, v_edges: np.ndarray, s_edges: np.ndarray,
+def sigmav(dat_path, nx: int, ny: int, n: int, sc: Scales, weight: str, v_edges: np.ndarray, s_edges: np.ndarray,
            max_seconds: float = MAX_SECONDS, cache_dir: str | None = None) -> dict:
     """One pass: the 2D histogram of width (rows, `s_edges`) against centre (columns, `v_edges`), weighted, with the contributor count of each cell.
     With a cache folder the same pass writes the per-row cell index that `cell_mask` reads, so a click on a cell never reads the .dat again."""
+    dat_path = decomp.coerce(dat_path, sc)
     unit, how = weight_unit(weight, sc)
     nv, ns = len(v_edges) - 1, len(s_edges) - 1
     index = CellIndex(cache_dir, cells_path(cache_dir, dat_path, nx, ny, n, sc, v_edges, s_edges), nx * ny * n) if cache_dir else None
@@ -322,23 +328,24 @@ def _sigmav_pass(dat_path, nx, ny, n, sc, weight, v_edges, s_edges, max_seconds,
     nv, ns = len(v_edges) - 1, len(s_edges) - 1
     counts = np.zeros(ns * nv, dtype=np.int64)
     sums = np.zeros(ns * nv, dtype=np.float64)
-    total = invalid = outside = negative = 0
+    total = invalid = outside = negative = not_fitted = 0
     w_total = w_outside = 0.0
     lo_s = hi_s = lo_c = hi_c = None
-    for x, y, amp, mean_raw, sig in stream_components(dat_path, nx, ny, n, max_seconds):
-        ok = valid_mask(amp, sig)
-        total += len(amp)
-        invalid += int((~ok).sum())
+    for x, y, amp, mean0, sig, present in dat_path.stream(nx, ny, n, max_seconds):
+        ok = valid_mask(amp, sig) & present
+        total += int(present.sum())
+        not_fitted += int((~present).sum())
+        invalid += int((present & ~ok).sum())
         code = np.full(len(amp), NO_CELL, dtype=np.uint16) if index else None
         okidx = np.flatnonzero(ok)
-        amp, mean_raw, sig = amp[ok], mean_raw[ok], sig[ok]
+        amp, mean0, sig = amp[ok], mean0[ok], sig[ok]
         if not len(amp):
             if index:
                 index.add(code)
             continue
         w = weights_of(weight, amp, sig, sc)
         negative += int((w < 0).sum())
-        cen, wid = sc.centre(mean_raw - 1.0), sc.width(sig)
+        cen, wid = sc.centre(mean0), sc.width(sig)
         lo_s = float(wid.min()) if lo_s is None else min(lo_s, float(wid.min()))
         hi_s = float(wid.max()) if hi_s is None else max(hi_s, float(wid.max()))
         lo_c = float(cen.min()) if lo_c is None else min(lo_c, float(cen.min()))
@@ -363,7 +370,7 @@ def _sigmav_pass(dat_path, nx, ny, n, sc, weight, v_edges, s_edges, max_seconds,
         "v_edges": [float(e) for e in v_edges], "sigma_edges": [float(e) for e in s_edges],
         "binning": "half-open bins [lo, hi): a value on a bin's upper edge is in the next bin, and a value on the last edge is outside the diagram",
         "cells": [[int(i // nv), int(i % nv), int(counts[i]), float(sums[i])] for i in nz],
-        "components": total, "invalid_sigma": invalid, "outside": outside, "in_diagram": int(counts.sum()),
+        "components": total, "invalid_sigma": invalid, "not_fitted": not_fitted, "outside": outside, "in_diagram": int(counts.sum()),
         "weight_total": w_total, "weight_outside": w_outside, "negative_weight_components": negative,
         "observed": {"sigma": [lo_s, hi_s], "centre": [lo_c, hi_c]},
     }
@@ -374,13 +381,14 @@ def _sigmav_pass(dat_path, nx, ny, n, sc, weight, v_edges, s_edges, max_seconds,
 BLOCK_ROWS = 1 << 24
 
 
-def cell_mask(dat_path: str, nx: int, ny: int, n: int, sc: Scales, v_edges: np.ndarray, s_edges: np.ndarray, cell_s: int, cell_v: int,
+def cell_mask(dat_path, nx: int, ny: int, n: int, sc: Scales, v_edges: np.ndarray, s_edges: np.ndarray, cell_s: int, cell_v: int,
               cache_dir: str) -> dict:
     """The pixels that have at least one component in the diagram cell (sigma bin `cell_s`, centre bin `cell_v`), as a packed mask, from the
     per-row cell index the diagram wrote: the .dat is not read. A missing index (the diagram was not drawn for these bins on this version
     of the file, or its cache was cleared) is a Refusal that says to draw the diagram again; the file is never re-parsed here, so a click
     stays fast on a fit of any size."""
     nv, ns = len(v_edges) - 1, len(s_edges) - 1
+    dat_path = decomp.coerce(dat_path, sc)
     if not (0 <= cell_s < ns and 0 <= cell_v < nv):
         raise Refusal("that cell is outside the diagram")
     path = cells_path(cache_dir, dat_path, nx, ny, n, sc, v_edges, s_edges)
@@ -404,17 +412,18 @@ def cell_mask(dat_path: str, nx: int, ny: int, n: int, sc: Scales, v_edges: np.n
     return {"mask": pack_mask(hit, nx, ny), "pixels": int(hit.sum()), "components": ncomp, "source": "pixel index written by the diagram"}
 
 
-def cell_mask_stream(dat_path: str, nx: int, ny: int, n: int, sc: Scales, v_edges: np.ndarray, s_edges: np.ndarray, cell_s: int, cell_v: int,
+def cell_mask_stream(dat_path, nx: int, ny: int, n: int, sc: Scales, v_edges: np.ndarray, s_edges: np.ndarray, cell_s: int, cell_v: int,
                      max_seconds: float = MAX_SECONDS) -> dict:
     """The same mask by reading the whole .dat again (the reference the index is tested against; not used by the API)."""
     nv, ns = len(v_edges) - 1, len(s_edges) - 1
+    dat_path = decomp.coerce(dat_path, sc)
     if not (0 <= cell_s < ns and 0 <= cell_v < nv):
         raise Refusal("that cell is outside the diagram")
     hit = np.zeros(nx * ny, dtype=bool)
     ncomp = 0
-    for x, y, amp, mean_raw, sig in stream_components(dat_path, nx, ny, n, max_seconds):
-        ok = valid_mask(amp, sig)
-        iv = bin_index(sc.centre(mean_raw - 1.0), v_edges)
+    for x, y, amp, mean0, sig, present in dat_path.stream(nx, ny, n, max_seconds):
+        ok = valid_mask(amp, sig) & present
+        iv = bin_index(sc.centre(mean0), v_edges)
         js = bin_index(sc.width(sig), s_edges)
         sel = ok & (iv == cell_v) & (js == cell_s)
         ncomp += int(sel.sum())
@@ -438,24 +447,26 @@ def unpack_mask(m: dict) -> np.ndarray:
 
 # ---- one map per width class
 
-def class_maps(dat_path: str, nx: int, ny: int, n: int, sc: Scales, weight: str, cuts: np.ndarray, max_seconds: float = MAX_SECONDS) -> dict:
+def class_maps(dat_path, nx: int, ny: int, n: int, sc: Scales, weight: str, cuts: np.ndarray, max_seconds: float = MAX_SECONDS) -> dict:
     """The decomposition summed per width class: for every pixel, the weight of its valid components of each class.
 
     A pixel with no valid component has no value (NaN) in any class; a pixel with valid components and none in a class has 0 in it.
     """
     if not sc.velocity:
         raise Refusal("width classes are cut in km/s, and this crop's spectral axis is not a resolved velocity axis. " + (sc.axis.get("note") or ""))
+    dat_path = decomp.coerce(dat_path, sc)
     unit, how = weight_unit(weight, sc)
     k = len(cuts) + 1
     npix = nx * ny
     sums = np.zeros((k, npix), dtype=np.float64)
     comps = np.zeros(k, dtype=np.int64)
     has = np.zeros(npix, dtype=bool)
-    invalid = total = 0
-    for x, y, amp, mean_raw, sig in stream_components(dat_path, nx, ny, n, max_seconds):
-        ok = valid_mask(amp, sig)
-        total += len(amp)
-        invalid += int((~ok).sum())
+    invalid = total = not_fitted = 0
+    for x, y, amp, mean0, sig, present in dat_path.stream(nx, ny, n, max_seconds):
+        ok = valid_mask(amp, sig) & present
+        total += int(present.sum())
+        not_fitted += int((~present).sum())
+        invalid += int((present & ~ok).sum())
         if not ok.any():
             continue
         pix = y[ok] * nx + x[ok]
@@ -476,10 +487,12 @@ def class_maps(dat_path: str, nx: int, ny: int, n: int, sc: Scales, weight: str,
         classes.append({"index": c, "label": label, "lo": lo, "hi": None if hi == float("inf") else hi, "components": int(comps[c]),
                         "weight_total": float(sums[c].sum())})
     return {"maps": maps, "weight": weight, "weight_unit": unit, "weight_how": how, "classes": classes, "components": total,
-            "invalid_sigma": invalid, "pixels_without_valid_component": int((~has).sum())}
+            "invalid_sigma": invalid, "not_fitted": not_fitted, "pixels_without_valid_component": int((~has).sum())}
 
 
-def dat_identity(dat_path: str) -> dict:
+def dat_identity(dat_path) -> dict:
     """The fit as the result names it: file name, size and mtime (never the folder: the run record keeps no location)."""
+    if isinstance(dat_path, decomp.Decomposition):
+        return dat_path.identity()
     st = stat_source(dat_path)
     return {"name": os.path.basename(dat_path), "size_bytes": int(st.st_size), "mtime_ns": int(st.st_mtime_ns)}

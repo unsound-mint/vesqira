@@ -1,0 +1,147 @@
+{
+  "format": 1,
+  "about": "TEST ONLY. Synthetic profiles for a tool that is neither VGT nor ROHSA and writes its Gaussian decomposition as FITS maps, in the layout invented by fixtures/generate.py write_synth_decomp_run (amplitude in K and centre in m/s from BUNIT, a FWHM in km/s that the maps do not label). It is not a public tool's format and is never shipped. It proves that the decomposition record is read from a profile's declaration alone. SynthDecomp-noframe leaves the centre's spectral frame undeclared, to show that nothing is drawn from a record that does not say enough.",
+  "roles": {
+    "orientation": "Orientation map",
+    "reliability": "Reliability",
+    "support": "Support",
+    "component_table": "Component table",
+    "component_maps": "Component maps",
+    "model_cube": "Model cube",
+    "residual_cube": "Residual cube",
+    "crop": "Crop"
+  },
+  "profiles": [
+    {
+      "name": "SynthDecomp-cubes",
+      "version": "1",
+      "kind": "synthdecomp",
+      "label": "synthetic decomposition",
+      "source": "none: invented for the tests",
+      "record": {
+        "file": "synth_decomp_run.toml",
+        "reader": "run_metadata",
+        "anyKey": [
+          "synthdecomp.version"
+        ]
+      },
+      "decomposition": {
+        "source": {
+          "kind": "fits_maps",
+          "maps": {
+            "amplitude": {
+              "file": "synth_decomp_amp.fits",
+              "hdu": 0
+            },
+            "centre": {
+              "file": "synth_decomp_centre.fits",
+              "hdu": 0
+            },
+            "width": {
+              "file": "synth_decomp_fwhm.fits",
+              "hdu": 0
+            }
+          },
+          "componentAxis": 3
+        },
+        "amplitude": {},
+        "centre": {
+          "frame": "LSRK"
+        },
+        "width": {
+          "kind": "fwhm",
+          "unit": "km/s"
+        },
+        "order": "slot index along the component axis, as the tool numbers them",
+        "components": "config.n_components",
+        "crop": "input.path"
+      }
+    },
+    {
+      "name": "SynthDecomp-maps",
+      "version": "1",
+      "kind": "synthdecomp",
+      "label": "synthetic decomposition",
+      "source": "none: invented for the tests",
+      "record": {
+        "file": "synth_decomp_2d_run.toml",
+        "reader": "run_metadata",
+        "anyKey": [
+          "synthdecomp.version"
+        ]
+      },
+      "decomposition": {
+        "source": {
+          "kind": "fits_maps",
+          "maps": {
+            "amplitude": {
+              "pattern": "^synth_decomp_amp_g([0-9]+)\\.fits$",
+              "hdu": 0
+            },
+            "centre": {
+              "pattern": "^synth_decomp_centre_g([0-9]+)\\.fits$",
+              "hdu": 0
+            },
+            "width": {
+              "pattern": "^synth_decomp_fwhm_g([0-9]+)\\.fits$",
+              "hdu": 0
+            }
+          }
+        },
+        "amplitude": {},
+        "centre": {
+          "frame": "LSRK"
+        },
+        "width": {
+          "kind": "fwhm",
+          "unit": "km/s"
+        },
+        "order": "the number in the file name, counted from 1",
+        "crop": "input.path"
+      }
+    },
+    {
+      "name": "SynthDecomp-noframe",
+      "version": "1",
+      "kind": "synthdecomp",
+      "label": "synthetic decomposition",
+      "source": "none: invented for the tests",
+      "record": {
+        "file": "synth_decomp_noframe_run.toml",
+        "reader": "run_metadata",
+        "anyKey": [
+          "synthdecomp.version"
+        ]
+      },
+      "decomposition": {
+        "source": {
+          "kind": "fits_maps",
+          "maps": {
+            "amplitude": {
+              "file": "synth_decomp_amp.fits",
+              "hdu": 0
+            },
+            "centre": {
+              "file": "synth_decomp_centre.fits",
+              "hdu": 0
+            },
+            "width": {
+              "file": "synth_decomp_fwhm.fits",
+              "hdu": 0
+            }
+          },
+          "componentAxis": 3
+        },
+        "amplitude": {},
+        "centre": {},
+        "width": {
+          "kind": "fwhm",
+          "unit": "km/s"
+        },
+        "order": "slot index along the component axis, as the tool numbers them",
+        "components": "config.n_components",
+        "crop": "input.path"
+      }
+    }
+  ]
+}

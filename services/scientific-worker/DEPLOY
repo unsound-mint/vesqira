@@ -27,3 +27,4 @@ orientation_profiles.json
 specsmooth.py
 family.py
 sky_context.py
+decomp.py

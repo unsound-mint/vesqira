@@ -19,6 +19,7 @@ import os
 import stat
 import sys
 import time
+from typing import NamedTuple
 
 import numpy as np
 
@@ -38,14 +39,32 @@ DOPPLER_K_PER_KMS2 = 121.2
 FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))
 
 
+class Layout(NamedTuple):
+    """Where the columns of a table of components are: how many there are, and which one holds the pixel row, the pixel column, the
+    amplitude, the centre and the width, and the index base of the pixel row and column (decomp.py reads it from the profile's
+    declaration). The default is ROHSA's `.dat`: i, j, A, mean, sigma with i and j counted from 0."""
+    ncols: int = 5
+    row: int = 0
+    col: int = 1
+    amp: int = 2
+    centre: int = 3
+    width: int = 4
+    base: int = 0
+
+
+DEFAULT_LAYOUT = Layout()
+
+
 class Bad(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code, self.message = code, message
 
 
-def _key(dat_real: str, st: os.stat_result) -> str:
-    return hashlib.sha256(f"{dat_real}\0{st.st_size}\0{st.st_mtime_ns}".encode()).hexdigest()[:32]
+def _key(dat_real: str, st: os.stat_result, layout: Layout = DEFAULT_LAYOUT) -> str:
+    # the default layout hashes as it always did, so an index built before layouts were declared is still found
+    extra = "" if layout == DEFAULT_LAYOUT else f"\0{tuple(layout)}"
+    return hashlib.sha256(f"{dat_real}\0{st.st_size}\0{st.st_mtime_ns}{extra}".encode()).hexdigest()[:32]
 
 
 def _paths(cache_dir: str, key: str) -> tuple[str, str]:
@@ -89,7 +108,7 @@ def _check_args(nx: int, ny: int, n: int) -> None:
         raise Bad("bad_request", f"n_gauss must be an integer in [1, {MAX_GAUSSIANS}]")
 
 
-def _scan_fast(buf: bytes, base: int, row0: int, nx: int, n: int):
+def _scan_fast(buf: bytes, base: int, row0: int, nx: int, n: int, lay: Layout = DEFAULT_LAYOUT):
     """Offsets of pixel starts for a chunk that is all data lines, or None when the chunk needs the careful path."""
     if b"#" in buf:
         return None
@@ -97,26 +116,26 @@ def _scan_fast(buf: bytes, base: int, row0: int, nx: int, n: int):
     if not lines:
         return np.empty(0, dtype=np.uint64)
     toks = buf.split()
-    if len(toks) != 5 * len(lines):
+    if len(toks) != lay.ncols * len(lines):
         return None
     lens = np.fromiter((len(x) for x in lines), dtype=np.int64, count=len(lines)) + 1
     if int(lens.max()) > MAX_ROW_BYTES:
         return None
     try:
-        vals = np.array(toks, dtype="S").astype(np.float64).reshape(-1, 5)
+        vals = np.array(toks, dtype="S").astype(np.float64).reshape(-1, lay.ncols)
     except ValueError:
         return None
     if not np.isfinite(vals).all():
         return None
     r = row0 + np.arange(len(lines), dtype=np.int64)
     p = r // n
-    if not (np.array_equal(vals[:, 0], p // nx) and np.array_equal(vals[:, 1], p % nx)):
+    if not (np.array_equal(vals[:, lay.row], p // nx + lay.base) and np.array_equal(vals[:, lay.col], p % nx + lay.base)):
         return None
     starts = base + np.cumsum(lens) - lens
     return starts[(r % n) == 0].astype(np.uint64)
 
 
-def _scan_slow(buf: bytes, base: int, row0: int, nx: int, n: int, line0: int, examples: list):
+def _scan_slow(buf: bytes, base: int, row0: int, nx: int, n: int, line0: int, examples: list, lay: Layout = DEFAULT_LAYOUT):
     """Line by line: skips comment and blank lines, reports every malformed row (up to a cap) and builds offsets."""
     offs: list[int] = []
     nbad = 0
@@ -133,14 +152,14 @@ def _scan_slow(buf: bytes, base: int, row0: int, nx: int, n: int, line0: int, ex
         else:
             t = s.split()
             try:
-                if len(t) != 5:
-                    raise ValueError(f"{len(t)} columns instead of 5")
+                if len(t) != lay.ncols:
+                    raise ValueError(f"{len(t)} columns instead of {lay.ncols}")
                 v = [float(x) for x in t]
                 if not all(np.isfinite(v)):
                     raise ValueError("a value is not finite")
                 p = r // n
-                if v[0] != p // nx or v[1] != p % nx:
-                    raise ValueError(f"row is for pixel ({v[0]:g}, {v[1]:g}) but position {r + 1} should be ({p // nx}, {p % nx})")
+                if v[lay.row] != p // nx + lay.base or v[lay.col] != p % nx + lay.base:
+                    raise ValueError(f"row is for pixel ({v[lay.row]:g}, {v[lay.col]:g}) but position {r + 1} should be ({p // nx + lay.base}, {p % nx + lay.base})")
             except ValueError as e:
                 problem = str(e)
         if problem:
@@ -155,7 +174,7 @@ def _scan_slow(buf: bytes, base: int, row0: int, nx: int, n: int, line0: int, ex
     return np.array(offs, dtype=np.uint64), r - row0, nbad
 
 
-def index_step(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, budget_s: float = 15.0) -> dict:
+def index_step(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, budget_s: float = 15.0, layout: Layout = DEFAULT_LAYOUT) -> dict:
     """Continue (or start) the index of one .dat for a crop of nx x ny pixels and n Gaussians; returns its state.
 
     state is "building" (call again), "ready", or "refused" with a reason and example rows: the file is not the layout
@@ -164,7 +183,7 @@ def index_step(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, budget_s
     _check_args(nx, ny, n)
     st = stat_source(dat_path)
     os.makedirs(cache_dir, exist_ok=True)
-    key = _key(dat_path, st)
+    key = _key(dat_path, st, layout)
     meta_path, offs_path = _paths(cache_dir, key)
     _refuse_links(meta_path, offs_path, meta_path + ".tmp")
     m = _load_meta(meta_path, st, nx, ny, n)
@@ -199,11 +218,11 @@ def index_step(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, budget_s
                 consumed = cut + 1
                 buf = buf[:consumed]
             nlines = buf.count(b"\n")
-            offs = _scan_fast(buf, m["done"], m["rows"], nx, n)
+            offs = _scan_fast(buf, m["done"], m["rows"], nx, n, layout)
             if offs is not None:
                 rows = nlines
             else:
-                offs, rows, nbad = _scan_slow(buf, m["done"], m["rows"], nx, n, m["lines"], m["examples"])
+                offs, rows, nbad = _scan_slow(buf, m["done"], m["rows"], nx, n, m["lines"], m["examples"], layout)
                 m["bad_count"] += nbad
                 if nbad:
                     m.update(state="refused", reason=f"{m['bad_count']} malformed row(s); the file is not the ROHSA row layout")
@@ -235,13 +254,14 @@ def _summary(m: dict, st: os.stat_result) -> dict:
             "malformed": m["bad_count"], "examples": m["examples"], "index_bytes": m["pixels"] * 8}
 
 
-def read_pixel(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, x: int, y: int):
-    """(amp, raw 1-based mean in channels, sigma in channels) of the n Gaussians at pixel (x, y), each row verified."""
+def read_pixel(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, x: int, y: int, layout: Layout = DEFAULT_LAYOUT):
+    """(amp, raw centre, raw width) of the n components at pixel (x, y), each row verified, as the file states them (for the default
+    layout, the 1-based mean in channels and sigma in channels)."""
     _check_args(nx, ny, n)
     if not (0 <= x < nx and 0 <= y < ny):
         raise Bad("bad_request", "pixel outside the crop")
     st = stat_source(dat_path)
-    meta_path, offs_path = _paths(cache_dir, _key(dat_path, st))
+    meta_path, offs_path = _paths(cache_dir, _key(dat_path, st, layout))
     m = _load_meta(meta_path, st, nx, ny, n)
     if m is None or m["state"] == "building":
         raise Bad("index_not_ready", "the .dat has not been indexed yet")
@@ -271,9 +291,9 @@ def read_pixel(dat_path: str, cache_dir: str, nx: int, ny: int, n: int, x: int, 
         v = np.array([[float(t) for t in r] for r in rows])
     except ValueError:
         raise Bad("unsupported", "the .dat changed since it was indexed; rebuild")
-    if v.shape[1] != 5 or not (np.all(v[:, 0] == y) and np.all(v[:, 1] == x)):
+    if v.shape[1] != layout.ncols or not (np.all(v[:, layout.row] == y + layout.base) and np.all(v[:, layout.col] == x + layout.base)):
         raise Bad("unsupported", "the .dat changed since it was indexed; rebuild")
-    return v[:, 2].copy(), v[:, 3].copy(), v[:, 4].copy()
+    return v[:, layout.amp].copy(), v[:, layout.centre].copy(), v[:, layout.width].copy()
 
 
 def gaussian(channels: np.ndarray, amp: float, mean0: float, sigma: float) -> np.ndarray:
@@ -282,21 +302,33 @@ def gaussian(channels: np.ndarray, amp: float, mean0: float, sigma: float) -> np
 
 
 def components_at(amp: np.ndarray, mean_raw: np.ndarray, sigma_ch: np.ndarray, nc: int, world, dv: float | None) -> tuple[list, np.ndarray, np.ndarray]:
-    """Components and curves on the crop's channel grid.
+    """Components and curves on the crop's channel grid, for a table in ROHSA's convention: the file's mean counts channels from 1.
 
     world(c) maps 0-based (fractional) channel numbers to the velocity axis in km/s, dv is |km/s per channel|; both are
     None when the spectral axis is not a resolved velocity, and then centre and width are given in channels only.
     A component whose sigma is not positive and finite is invalid: listed, flagged, and left out of the curves (no floor
     is invented). An amplitude of 0 is a real fitted value and stays.
     """
+    return components_from_channels(amp, mean_raw - 1.0, sigma_ch, nc, world, dv, raw_centre=mean_raw)   # the file counts channels from 1
+
+
+def components_from_channels(amp: np.ndarray, mean0: np.ndarray, sigma_ch: np.ndarray, nc: int, world, dv: float | None,
+                             raw_centre=None, raw_width=None, present=None) -> tuple[list, np.ndarray, np.ndarray]:
+    """The same for components already in the grid's terms: mean0 the 0-based (fractional) channel of the centre, sigma_ch in channels.
+
+    present False marks a slot a tool did not fit here (NaN in the source): listed as such, never drawn, never zero. raw_centre and
+    raw_width are what the source states, kept beside the converted values.
+    """
     ch = np.arange(nc, dtype=np.float64)
     comps, curves = [], np.zeros((len(amp), nc))
     for k in range(len(amp)):
-        a, m1, s = float(amp[k]), float(mean_raw[k]), float(sigma_ch[k])
-        m0 = m1 - 1.0                                   # the file counts channels from 1
-        valid = bool(np.isfinite(a) and np.isfinite(m0) and np.isfinite(s) and s > 0)
-        c = {"k": k + 1, "amp": a, "mean_channel_file": m1, "mean_channel": m0, "sigma_channel": s, "valid": valid,
-             "centre": None, "sigma": None, "fwhm": None, "t_doppler_k": None}
+        a, m0, s = float(amp[k]), float(mean0[k]), float(sigma_ch[k])
+        here = True if present is None else bool(present[k])
+        valid = bool(here and np.isfinite(a) and np.isfinite(m0) and np.isfinite(s) and s > 0)
+        rc = None if raw_centre is None else float(raw_centre[k])
+        c = {"k": k + 1, "present": here, "amp": a if here else None, "mean_channel_file": rc, "mean_channel": m0 if here else None,
+             "sigma_channel": s if here else None, "valid": valid, "centre": None, "sigma": None, "fwhm": None, "t_doppler_k": None,
+             "centre_raw": rc, "width_raw": None if raw_width is None else float(raw_width[k])}
         if valid:
             curves[k] = gaussian(ch, a, m0, s)
             if world is not None and dv is not None:

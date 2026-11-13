@@ -70,7 +70,7 @@ func (s *Server) reviewParams(in rohsaReviewReq, op string, t rohsaTask) (map[st
 	if !rohsaReviewWeights[w] {
 		return nil, "weight must be integrated, column_thin or count"
 	}
-	p := map[string]any{"dat_path": t.datReal, "n_gauss": t.run.Info.NGauss, "weight": w}
+	p := map[string]any{"dat_path": t.datReal, "n_gauss": t.run.Info.NGauss, "weight": w, "decomposition": t.decl}
 	if op == "rohsa_classmaps" {
 		if len(in.Edges) < 1 || len(in.Edges) > maxReviewClasses-1 {
 			return nil, fmt.Sprintf("give from 1 to %d width edges", maxReviewClasses-1)

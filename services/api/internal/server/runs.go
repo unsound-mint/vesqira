@@ -116,6 +116,9 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 	if err != nil {
 		return runs.Run{}, 422, err.Error()
 	}
+	if dec := s.profiles().DecompositionOf(prof); dec != nil && dec.Source.Kind == runs.SourceFitsMaps {
+		return s.importMapsRun(ctx, src, prof, dec, parsed, data) // the tool writes its components as maps, not outputs the record names
+	}
 	var outs []runs.Output
 	byRole := map[string]catalog.Dataset{}
 	for _, ref := range prof.Products() {
@@ -355,7 +358,7 @@ func (s *Server) runViewWith(ws workspace.ID, r runs.Run, lin map[int64]jobs.Lin
 		}
 	}
 	out.Reproducibility = runs.Reproducibility(r, out.InputHint != nil)
-	if r.Kind == "rohsa" {
+	if p := s.profiles().ByLabel(r.Profile); r.Kind == "rohsa" || p != nil && s.profiles().DecompositionOf(p) != nil {
 		if rr, err := s.Runs.ROHSA(ws, r.ID); err == nil {
 			out.Rohsa = &rr.Info
 		}

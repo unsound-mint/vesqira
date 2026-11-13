@@ -70,7 +70,7 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] 1: analysis presets; results stop citing the owner's script lines
 - [x] 2: orientation conventions from a header-card profile; "unresolved" instead of an assumed default
 - [x] 3: run detection and generic output roles (schema 35; `vgtHeader` goes in schema 36)
-- [ ] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps)
+- [x] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps); no schema change, GaussPy+ not shipped (layout not verified)
 - [ ] 5: run templates as data, pinned to a repository and commit
 
 ## Review rounds (issue 130, ADR 0073, awaiting owner review)

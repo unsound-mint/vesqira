@@ -42,6 +42,18 @@
       "source": "https://github.com/antoinemarchal/ROHSA: the .dat rows (# i, j, A, mean, sigma; i and j 0-based, mean 1-based in channels, sigma in channels, no units), as ADR 0046 reads them. No content check at detection: the file can be tens of GB, so its layout is verified when the index is built",
       "files": {
         "component_table": {"pattern": "^rohsa_[A-Za-z0-9._-]+\\.dat$"}
+      },
+      "decomposition": {
+        "source": {
+          "kind": "table",
+          "columns": {"row": 0, "col": 1, "amplitude": 2, "centre": 3, "width": 4},
+          "ncols": 5,
+          "pixelBase": 0
+        },
+        "amplitude": {"unit": "grid"},
+        "centre": {"unit": "channel", "base": 1, "frame": "grid"},
+        "width": {"kind": "sigma", "unit": "channel"},
+        "order": "the source's own numbering, 1 to n"
       }
     },
     {

@@ -162,7 +162,7 @@ export function GaussianReview({ st, v, cut }: { st: ComponentsState; v: Viewer;
   return (
     <section className={s.wrap} aria-label="Review of the decomposition">
       <h3 className={s.h}>Review the decomposition</h3>
-      <p className={s.note}>The widths and centres of all {run.nGauss} Gaussians in every pixel, weighted, and maps of them per width class. Drawing the diagram and making the maps each read the whole .dat once on this computer (a large fit takes minutes); a click on a cell then uses the index the diagram wrote and is quick.</p>
+      <p className={s.note}>The widths and centres of all {run.nGauss} Gaussians in every pixel, weighted, and maps of them per width class. Drawing the diagram and making the maps each read the whole fit (the .dat, or every map file) once on this computer (a large fit takes minutes); a click on a cell then uses the index the diagram wrote and is quick.</p>
       <Select label="Weight" value={weight} onChange={(e) => setWeight(e.target.value as Weight)}>
         <option value="integrated" disabled={run.cropBunit === null}>Integrated intensity{run.cropBunit === null ? " (the crop's brightness unit is unresolved)" : ` (${run.cropBunit} km/s)`}</option>
         <option value="column_thin" disabled={!thinOk}>Optically thin column density (cm⁻²){thinOk ? "" : " (needs a brightness temperature in K)"}</option>
@@ -184,7 +184,7 @@ export function GaussianReview({ st, v, cut }: { st: ComponentsState; v: Viewer;
         <Button onClick={() => void drawDiagram()} disabled={datasetId === null || binError !== null || busy !== null}>{shown ? "Draw the diagram again" : "Draw the diagram"}</Button>
         {busy ? <Button variant="ghost" onClick={() => abort.current?.abort()}>Cancel</Button> : null}
       </div>
-      {busy ? <p role="status" className={s.note}>{busy === "diagram" ? "Reading the .dat…" : busy === "cell" ? "Finding the pixels of the cell…" : "Making the class maps…"}</p> : null}
+      {busy ? <p role="status" className={s.note}>{busy === "diagram" ? "Reading the fit…" : busy === "cell" ? "Finding the pixels of the cell…" : "Making the class maps…"}</p> : null}
       <QueueNote reason={reason} />
       {note ? <p role="status" className={s.note}>{note}</p> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
@@ -193,7 +193,7 @@ export function GaussianReview({ st, v, cut }: { st: ComponentsState; v: Viewer;
         <>
           <SigmavPlot ref={svgRef} d={shown.d} run={run.name} cut={cut} cursor={cursor} selected={sel?.cell ?? null} onCursor={setCursor} onSelect={(c) => void selectCell(c)} />
           <p className={s.note}>
-            {weightingText(shown.d)}. {shown.d.in_diagram.toLocaleString("en-US")} of {shown.d.components.toLocaleString("en-US")} components are inside the diagram; {shown.d.outside.toLocaleString("en-US")} outside its limits and {shown.d.invalid_sigma.toLocaleString("en-US")} with a width that is not positive are left out.
+            {weightingText(shown.d)}. {shown.d.in_diagram.toLocaleString("en-US")} of {shown.d.components.toLocaleString("en-US")} components are inside the diagram; {shown.d.outside.toLocaleString("en-US")} outside its limits and {shown.d.invalid_sigma.toLocaleString("en-US")} with a width that is not positive are left out.{shown.d.not_fitted ? ` ${shown.d.not_fitted.toLocaleString("en-US")} slots the tool did not fit are not components and are not counted.` : ""}
             {!km ? " The crop has no resolved velocity axis, so widths and centres stay in channels and the width cut and class maps are not available." : ""}
           </p>
           <Basis summary={shown.d.weight_how.split(".")[0] ?? "How the weight is formed"}>

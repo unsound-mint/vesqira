@@ -69,4 +69,5 @@ for r in 2026-08-01T100000Z_abc1234:0.5 2026-08-02T110000Z_abc1234:0.9; do
 done
 cd "$root"
 exec "$run/api" --ssh "$run/fake-ssh" --addr 127.0.0.1:${VESQIRA_API_PORT:?} --db "$run/t.db" --data-dir "$run" --root "$run/data" \
-  --review-addr 127.0.0.1:${VESQIRA_REVIEW_PORT:?} --web-dist "$root/apps/web/dist" --ssh-config "" --enable-terminal --enable-vpn
+  --review-addr 127.0.0.1:${VESQIRA_REVIEW_PORT:?} --web-dist "$root/apps/web/dist" --ssh-config "" --enable-terminal --enable-vpn \
+  --run-profiles "$root/services/api/internal/runs/testdata/synthetic_maps_profile.json"

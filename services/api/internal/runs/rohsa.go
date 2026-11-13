@@ -35,6 +35,9 @@ type RohsaInfo struct {
 	Notes  []string `json:"notes"`
 	// UnitNotes says, per output role, how the unit shown for a product map relates to its name (see ProposeUnit).
 	UnitNotes map[string]string `json:"unitNotes"`
+	// Decomposition says how this run's components are read: the profile that declares it and, for FITS maps, the files. Nil in a row
+	// stored before slice 4, which is read as the ROHSA profile reads a .dat.
+	Decomposition *DecompRecord `json:"decomposition,omitempty"`
 }
 
 // RohsaParsed is a ROHSA run read from its text records, before the crop and the products are looked up.

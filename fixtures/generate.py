@@ -6,6 +6,7 @@ so tests can assert exact expected values. Files are written on demand and never
 from __future__ import annotations
 
 import math
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -718,6 +719,116 @@ mask_file = "/scratch/someone/hog_mask.fits"
     return directory / "hog_run.toml"
 
 
+# ---- a decomposition tool that writes FITS maps (ADR 0068, slice 4): the fixture of the tool-profile validation ----
+# A clearly synthetic tool, "synth-decomp": nothing here is a public tool's output format. Its record is synth_decomp_run.toml (key
+# [synthdecomp] version); its fit is one FITS cube per parameter with the components along FITS axis 3 (amplitude in K from BUNIT,
+# centre in m/s from BUNIT, width as a FWHM in km/s whose map has no BUNIT, so the profile declares the unit), and a slot a pixel
+# did not need is NaN in all three. services/api/internal/runs/testdata/synthetic_maps_profile.json declares exactly that, test only.
+DX, DY, DC, DN = 7, 5, 36, 3                      # pixel columns, rows (not square), channels, component slots
+D_V0_KMS, D_DV_KMS, D_CRPIX3 = -20.0, 1.25, 1.0   # VRAD in km/s: v(channel c) = -20 + 1.25 c (c counted from 0)
+D_FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))
+D_SPECSYS = "LSRK"
+D_NAME = "synth_decomp"
+
+
+def decomp_truth() -> dict:
+    """Closed form, (DN, DY, DX): amplitude in K, centre in km/s (LSRK), FWHM in km/s; NaN where a slot is not fitted.
+
+    The third slot is not fitted where (x + y) % 4 == 0 (a tool with a variable number of components per pixel)."""
+    k, y, x = np.meshgrid(np.arange(DN), np.arange(DY), np.arange(DX), indexing="ij")
+    amp = 2.0 + 0.5 * k + 0.1 * x + 0.05 * y
+    centre = -12.0 + 9.0 * k + 0.4 * x + 0.6 * y
+    fwhm = 2.5 + 2.0 * k + 0.2 * x
+    absent = (k == 2) & ((x + y) % 4 == 0)
+    for a in (amp, centre, fwhm):
+        a[absent] = np.nan
+    return {"amp": amp, "centre_kms": centre, "fwhm_kms": fwhm}
+
+
+def _decomp_sky(h: fits.Header) -> None:
+    for i, (ct, cv, cd, cp) in enumerate([("RA---TAN", CRVAL_RA, -CDELT_DEG, (DX + 1) / 2), ("DEC--TAN", CRVAL_DEC, CDELT_DEG, (DY + 1) / 2)], start=1):
+        h[f"CTYPE{i}"], h[f"CRVAL{i}"], h[f"CDELT{i}"], h[f"CRPIX{i}"], h[f"CUNIT{i}"] = ct, cv, cd, cp, "deg"
+    h["RADESYS"] = "ICRS"
+
+
+def decomp_cube() -> fits.PrimaryHDU:
+    """The spectral cube the decomposition was fitted to: the sum of the components in K, on a VRAD axis in km/s in the LSRK frame."""
+    t = decomp_truth()
+    v = D_V0_KMS + D_DV_KMS * np.arange(DC)[:, None, None, None]
+    sigma = t["fwhm_kms"] / D_FWHM_PER_SIGMA
+    with np.errstate(invalid="ignore"):
+        model = np.nansum(t["amp"][None] * np.exp(-((v - t["centre_kms"][None]) ** 2) / (2 * sigma[None] ** 2)), axis=1)
+    hdu = fits.PrimaryHDU(model.astype(np.float32))
+    h = hdu.header
+    _decomp_sky(h)
+    h["CTYPE3"], h["CRVAL3"], h["CDELT3"], h["CRPIX3"], h["CUNIT3"] = "VRAD", D_V0_KMS, D_DV_KMS, D_CRPIX3, "km/s"
+    h["SPECSYS"], h["BUNIT"] = D_SPECSYS, "K"
+    return hdu
+
+
+def _decomp_map(values: np.ndarray, bunit: str | None) -> fits.PrimaryHDU:
+    hdu = fits.PrimaryHDU(np.asarray(values, dtype=np.float64))
+    _decomp_sky(hdu.header)
+    if bunit:
+        hdu.header["BUNIT"] = bunit
+    return hdu
+
+
+def write_synth_decomp_run(directory: Path) -> Path:
+    """<directory>/synth_cube.fits, the amplitude, centre and FWHM cubes and the record synth_decomp_run.toml (cubes layout), and
+    <directory>/per_component/ with the same numbers as one 2D map per parameter per component and its own record
+    (synth_decomp_2d_run.toml), the layout a tool with one file per component writes."""
+    directory.mkdir(parents=True, exist_ok=True)
+    t = decomp_truth()
+    decomp_cube().writeto(directory / "synth_cube.fits", overwrite=True)
+    _decomp_map(t["amp"], "K").writeto(directory / f"{D_NAME}_amp.fits", overwrite=True)
+    _decomp_map(t["centre_kms"] * 1000.0, "m/s").writeto(directory / f"{D_NAME}_centre.fits", overwrite=True)   # BUNIT m/s: the file's unit is the one used
+    _decomp_map(t["fwhm_kms"], None).writeto(directory / f"{D_NAME}_fwhm.fits", overwrite=True)                 # no BUNIT: the profile declares km/s
+    (directory / "synth_decomp_run.toml").write_text("""generated_at_utc = "2026-11-13T09:00:00Z"
+
+[synthdecomp]
+version = "0.1-synthetic"
+
+[config]
+n_components = 3
+
+[input]
+path = "/scratch/someone/synth_cube.fits"
+
+[outputs]
+amplitude_file = "/scratch/someone/synth_decomp_amp.fits"
+centre_file = "/scratch/someone/synth_decomp_centre.fits"
+fwhm_file = "/scratch/someone/synth_decomp_fwhm.fits"
+""")
+    each = directory / "per_component"
+    each.mkdir(exist_ok=True)
+    decomp_cube().writeto(each / "synth_cube.fits", overwrite=True)
+    for k in range(DN):
+        _decomp_map(t["amp"][k], "K").writeto(each / f"{D_NAME}_amp_g{k + 1}.fits", overwrite=True)
+        _decomp_map(t["centre_kms"][k] * 1000.0, "m/s").writeto(each / f"{D_NAME}_centre_g{k + 1}.fits", overwrite=True)
+        _decomp_map(t["fwhm_kms"][k], None).writeto(each / f"{D_NAME}_fwhm_g{k + 1}.fits", overwrite=True)
+    ncomp = np.sum(np.isfinite(t["amp"]), axis=0).astype(np.float32)
+    _decomp_map(ncomp, "components").writeto(each / f"{D_NAME}_ncomp.fits", overwrite=True)
+    (each / "synth_decomp_2d_run.toml").write_text("""generated_at_utc = "2026-11-13T09:00:00Z"
+
+[synthdecomp]
+version = "0.1-synthetic"
+
+[input]
+path = "/scratch/someone/synth_cube.fits"
+
+[outputs]
+ncomp_file = "/scratch/someone/synth_decomp_ncomp.fits"
+""")
+    # the same maps under a record whose profile leaves the centre's spectral frame undeclared: the viewer must say so and draw nothing
+    bare = directory / "unresolved"
+    bare.mkdir(exist_ok=True)
+    for name in ("synth_cube.fits", f"{D_NAME}_amp.fits", f"{D_NAME}_centre.fits", f"{D_NAME}_fwhm.fits"):
+        shutil.copyfile(directory / name, bare / name)
+    (bare / "synth_decomp_noframe_run.toml").write_text((directory / "synth_decomp_run.toml").read_text())
+    return directory / "synth_decomp_run.toml"
+
+
 def write_all(directory: Path) -> dict[str, Path]:
     directory.mkdir(parents=True, exist_ok=True)
     out = {}
@@ -762,6 +873,7 @@ def write_all(directory: Path) -> dict[str, Path]:
     write_vgt_run(directory / "vgt_run_current", dirty=False, current=True)
     write_rohsa_run(directory / "rohsa_run_demo")
     write_hog_run(directory / "hog_run_demo")
+    write_synth_decomp_run(directory / "synth_decomp_demo")
     return out
 
 

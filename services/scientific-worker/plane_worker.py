@@ -1257,56 +1257,92 @@ def rohsa_velocity_axis(c):
     return world, dv, axis
 
 
-def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
-    """ROHSA decomposition (ADR 0046): index the raw .dat (resumable), then read one pixel's Gaussians as curves.
+def decomposition_grid(c):
+    """The crop as the decomposition reader needs it: channels, velocity of channel 0 and step when the axis is a resolved velocity axis,
+    the spectral frame (SPECSYS), the brightness unit and whose it is. Also the `world` function and the axis record of the reply."""
+    import decomp
+    world, dv, axis = rohsa_velocity_axis(c)
+    w0 = step = None
+    if world is not None:
+        w = world(np.array([0.0, 1.0]))
+        w0, step = float(w[0]), float(w[1] - w[0])
+    facts = c.spectral_facts() or {}
+    bunit, src = unit_of(c, None)
+    return decomp.Grid(c.channels, w0, step, facts.get("specsys"), bunit, src, c.h), world, dv, axis
 
-    The crop FITS (`path`) gives the pixel grid and the spectral axis; the .dat (`dat_path`) holds the fit. The sidecar
-    index goes under a cache folder, so this is the one operation that writes, and only there. Locally the API names the
-    folder (`cache_dir`). A worker that enforces roots (a host) takes none from the request: its own cache folder is fixed
+
+def finite_or_none(v):
+    """JSON has no NaN or Infinity: a non-finite number is sent as null."""
+    if isinstance(v, float):
+        return v if np.isfinite(v) else None
+    if isinstance(v, dict):
+        return {k: finite_or_none(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [finite_or_none(x) for x in v]
+    return v
+
+
+def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
+    """The Gaussian components of a decomposition (ADR 0046, 0068): index the source when it needs one (a text table; resumable), then
+    read one pixel's components as curves.
+
+    The crop FITS (`path`) gives the pixel grid and the spectral axis; `dat_path` holds the fit (a table file, or the folder of the
+    FITS maps) and `decomposition` (declaration and map files) says how to read it; without it the table is read as ROHSA writes it.
+    The sidecar index of a table goes under a cache folder, so this is the one operation that writes, and only there. Locally the API
+    names the folder (`cache_dir`). A worker that enforces roots (a host) takes none from the request: its own cache folder is fixed
     by the launcher (remote_cache_dir), the index is built on the machine that owns the data, and the .dat never travels.
     """
+    import decomp
     for key in ("path", "dat_path") + (("cache_dir",) if ROOTS is None else ()):
         v = req.get(key)
         if not isinstance(v, str) or not os.path.isabs(v) or len(v) > 4096 or "\0" in v:
             raise Refused("bad_request", "bad request")
-    real_crop, real_dat = authorize(req["path"]), authorize(req["dat_path"])
+    real_crop, real_dat = authorize(req["path"]), authorize(req["dat_path"], decomp.dat_want(req))
     cache_dir = req["cache_dir"] if ROOTS is None else remote_cache_dir(real_dat)
     c = cube_for(real_crop)
     if c.chan is None or c.channels < 2:
         raise Refused("unsupported", "the crop has no spectral axis of at least two channels")
     nx, ny, nc = c.shape[c.x], c.shape[c.y], c.channels
     n = req.get("n_gauss")
+    grid, world, dv, axis = decomposition_grid(c)
     try:
+        dec = decomp.open_decomposition(req, grid, nx, ny, n, real_dat, authorize, c.h)
         if op == "rohsa_index":
             budget = req.get("budget_s", 15)
             if isinstance(budget, bool) or not isinstance(budget, (int, float)) or not 0 < budget <= 20:
                 raise Refused("bad_request", "bad request")
             return {"ok": True, "op": op, "nbytes": 0, "width": nx, "height": ny,
-                    **rohsa.index_step(real_dat, cache_dir, nx, ny, n, float(budget))}, b""
+                    **dec.source.index_step(cache_dir, nx, ny, n, float(budget))}, b""
         x, y = as_index(req, "x", nx), as_index(req, "y", ny)
         if nc * (n + 2 if isinstance(n, int) and not isinstance(n, bool) else 2) > rohsa.MAX_CURVE_ELEMENTS:
             raise Refused("unsupported", "too many channels for the curves")
-        amp, mean_raw, sig = rohsa.read_pixel(real_dat, cache_dir, nx, ny, n, x, y)
+        amp, cen, wid, present = dec.read_pixel(cache_dir, nx, ny, n, x, y)
     except rohsa.Bad as e:
         raise Refused(e.code, e.message)
     except OSError:
-        raise Refused("unsupported", "the .dat cannot be read")
-    world, dv, axis = rohsa_velocity_axis(c)
-    comps, curves, model = rohsa.components_at(amp, mean_raw, sig, nc, world, dv)
+        raise Refused("unsupported", "the decomposition cannot be read")
+    record = dec.record()
+    centre_is_channel = dec.decl["centre"].get("unit") == decomp.CHANNEL
+    try:
+        m0, sig = dec.normalise(amp, cen, wid)[1:]
+        comps, curves, model = rohsa.components_from_channels(amp, m0, sig, nc, world, dv, raw_centre=cen, raw_width=wid, present=present)
+        drawn_why = None
+    except decomp.Refusal as e:
+        # the centre or the width is not defined for this grid: the values are listed as the source states them, nothing is drawn
+        drawn_why = str(e)
+        comps, curves, model = rohsa.components_from_channels(amp, np.full(len(amp), np.nan), np.full(len(amp), np.nan), nc, world, dv,
+                                                              raw_centre=cen, raw_width=wid, present=present)
+    for k, comp in enumerate(comps):
+        if not centre_is_channel:
+            comp["mean_channel_file"] = None     # that field is the file's channel number; this source's centre is not one
     chan = np.arange(nc, dtype=np.float64)
     ax = world(chan) if world is not None else chan
     payload = (np.asarray(ax, dtype="<f8").tobytes() + model.astype("<f8").tobytes() + curves.astype("<f8").tobytes())
-    head = {"ok": True, "op": op, "nbytes": len(payload), "x": x, "y": y, "channels": nc, "n_gauss": n, "components": comps,
-            "axis": axis, "bunit": unit_of(c, None)[0],
+    amp_unit = dec.amp_unit if dec.amp_basis != decomp.GRID else unit_of(c, None)[0]
+    head = {"ok": True, "op": op, "nbytes": len(payload), "x": x, "y": y, "channels": nc, "n_gauss": n, "components": finite_or_none(comps),
+            "axis": axis, "bunit": amp_unit, "record": finite_or_none(record), "drawn": drawn_why is None, "not_drawn_reason": drawn_why,
             "layout": "float64 axis[channels], float64 model[channels], float64 component[n_gauss][channels], little-endian",
-            "conventions": {
-                "file_columns": "i j amp mean sigma; i = zero-based row (FITS axis 2), j = zero-based column (FITS axis 1)",
-                "mean": "1-based channel number in the file; mean_channel = file mean - 1 is the 0-based channel index",
-                "sigma": "channels; centre and width in km/s use the crop's spectral axis (astropy WCS), no hand-rolled conversion",
-                "model": "sum of the valid components, each amp * exp(-(channel - mean_channel)^2 / (2 sigma^2)) at every channel",
-                "invalid": "a component whose sigma is not positive and finite is listed as invalid and is not drawn; no floor is applied; amplitude 0 is a real value",
-                "fwhm": "2 sqrt(2 ln 2) sigma",
-                "t_doppler": f"T_D = {rohsa.DOPPLER_K_PER_KMS2} K (km/s)^-2 x sigma^2: m_H sigma^2 / k_B for atomic hydrogen, with m_H = 1.6735e-27 kg and k_B = 1.380649e-23 J/K; an upper limit on the kinetic temperature (thermal broadening only)"}}
+            "conventions": decomp.conventions(dec, rohsa.DOPPLER_K_PER_KMS2)}
     return head, payload
 
 
