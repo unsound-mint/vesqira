@@ -1,6 +1,44 @@
 package jobs
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/jobtemplate"
+)
+
+// FixedByVesqira reports whether key of a shipped template is one Vesqira sets or reads as a path: the output folder it makes
+// per job, or any key of the path kind. A request can neither set nor sweep such a key.
+func FixedByVesqira(template, key string) bool {
+	t := ShippedTemplate(template)
+	if t == nil {
+		return false
+	}
+	k := t.Key(key)
+	return k != nil && (k.Internal || k.Kind == jobtemplate.KindPath)
+}
+
+// OverlapIn reports whether two settings of a shipped template change a common config key (a tie and one of its keys do).
+func OverlapIn(template, a, b string) bool {
+	t := ShippedTemplate(template)
+	return t != nil && Overlap(t, a, b)
+}
+
+// CarriedSet is the settings of a stored request as a new draft takes them over: the keys Vesqira sets per job are dropped.
+// A request stored before VGT drafts refused them could hold an output folder the job never used (its own folder always won),
+// so dropping it changes nothing the earlier job ran with.
+func CarriedSet(template string, set map[string]string) map[string]string {
+	out := make(map[string]string, len(set))
+	t := ShippedTemplate(template)
+	for k, v := range set {
+		if t != nil {
+			if spec := t.Key(k); spec != nil && spec.Internal {
+				continue
+			}
+		}
+		out[k] = v
+	}
+	return out
+}
 
 // SetRequestRef records which relayed run request a draft was rendered for (ADR 0066 section 3). Only a draft takes one; the
 // text is a reference for people, never read back as a path or an id of anything on this computer.

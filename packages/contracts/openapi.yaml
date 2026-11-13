@@ -13953,6 +13953,26 @@ components:
           items:
             type: "string"
           description: "The explicit list, as typed; never reparsed. Letters, digits and . _ + - only"
+    CodePin:
+      type: "object"
+      description: "Which commit a draft's script insists on and why (ADR 0054, ADR 0068): the commit of the run it repeats, the commit the tool's profile was written against (asked for with pinProfileCommit), or none. The run's commit wins when both apply."
+      required:
+        - "commit"
+        - "basis"
+        - "why"
+      properties:
+        commit:
+          type: "string"
+          description: "The revision the script stops unless the code folder is at; empty when it insists on none"
+        basis:
+          type: "string"
+          enum:
+            - "run"
+            - "profile"
+            - ""
+          description: "run: the commit of the run being repeated; profile: the revision the profile was written against; empty: none"
+        why:
+          type: "string"
     SweepRequest:
       type: "object"
       description: "A sweep to create or preview. Nothing is submitted by either."
@@ -13977,6 +13997,9 @@ components:
         note:
           type: "string"
           description: "Why, kept with every draft (at most 500 characters)"
+        pinProfileCommit:
+          type: "boolean"
+          description: "Make every draft stop unless the tool's folder is at the commit its profile was written against. Absent keeps what the base job did"
     Requested:
       type: "object"
       description: "What a script asks the scheduler for, read from its #SBATCH lines; zero means the script does not say"
@@ -14345,6 +14368,7 @@ components:
         - "template"
         - "defaultConcurrency"
         - "concurrencyNote"
+        - "codePin"
       properties:
         sweep:
           $ref: "#/components/schemas/Sweep"
@@ -14386,6 +14410,8 @@ components:
         concurrencyNote:
           type: "string"
           description: "Why one at a time matters for this kind of sweep; empty when there is nothing specific to say (ROHSA: the shared, rebuilt source folder)"
+        codePin:
+          $ref: "#/components/schemas/CodePin"
     SweepSubmitRequest:
       type: "object"
       required:
@@ -16322,6 +16348,7 @@ components:
         - "blocking"
         - "messages"
         - "notes"
+        - "codePin"
       properties:
         mode:
           type: "string"
@@ -16355,6 +16382,8 @@ components:
           type: "array"
           items:
             type: "string"
+        codePin:
+          $ref: "#/components/schemas/CodePin"
     SceneLink:
       type: "object"
       additionalProperties: false
@@ -23702,6 +23731,9 @@ components:
         sizing:
           type: "string"
           description: "A built-in sizing table shown beside the request (rohsa_crop_table), or empty"
+        sweepKey:
+          type: "string"
+          description: "The setting a new sweep row starts on; empty means the first key a sweep may vary"
     JobTemplateList:
       type: "object"
       required:

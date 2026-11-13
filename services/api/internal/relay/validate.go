@@ -41,15 +41,12 @@ func ValidOrigin(s string) bool { return originRe.MatchString(s) }
 // ValidInstance reports a 128-bit instance id in hex.
 func ValidInstance(s string) bool { return instanceRe.MatchString(s) }
 
-// forbiddenKeys are never settable through a request, whatever a template says (ADR 0066 section 3): the output folder and the
-// input. Any setting of the path kind is refused as well.
-var forbiddenKeys = map[string]bool{"output_dir": true, "input_file": true, "input": true}
-
-// settable reports whether a request may set key under template: a key of the template's whitelist, of a kind that is not a
-// path, and not one of the forbidden keys.
+// settable reports whether a request may set key under template (ADR 0066 section 3): a key the template's profile declares, and not
+// one Vesqira sets or reads as a path. The output folder is declared internal and the input cube is a path key (or not declared at
+// all), so neither can be set whatever a profile lists; a profile that declared a new path key would be refused the same way.
 func settable(template, key string) bool {
-	kind, ok := jobs.SettingKind(template, key)
-	return ok && kind != "path" && !forbiddenKeys[key]
+	_, ok := jobs.SettingKind(template, key)
+	return ok && !jobs.FixedByVesqira(template, key)
 }
 
 // Settable is settable for callers outside the package (the local re-render of a key holder's own changes).
@@ -98,8 +95,8 @@ func CheckInbox(in Inbox) error {
 		}
 		tseen := map[string]bool{}
 		for _, t := range l.Templates {
-			if t.Template != TemplateVGT && t.Template != TemplateROHSA {
-				return refuse("label %q: only the vgt and rohsa templates take requests; there is never a custom script", l.Label)
+			if jobs.ShippedTemplate(t.Template) == nil {
+				return refuse("label %q: only a tool's template takes requests (vgt, rohsa); there is never a custom script", l.Label)
 			}
 			if tseen[t.Template] {
 				return refuse("label %q lists %s twice", l.Label, t.Template)
@@ -221,8 +218,8 @@ func CheckResources(r Resources, l Limits) error {
 // combinations, and the note. The server runs it as a first filter; the key holder's computer runs it again against the inbox
 // it stored itself.
 func CheckAsk(in Inbox, a Ask) error {
-	if a.Template != TemplateVGT && a.Template != TemplateROHSA {
-		return refuse("the template is vgt or rohsa; there is never a custom script")
+	if jobs.ShippedTemplate(a.Template) == nil {
+		return refuse("the template is a tool's template (vgt, rohsa); there is never a custom script")
 	}
 	t, err := in.find(a.Label, a.Template)
 	if err != nil {
@@ -270,13 +267,12 @@ func CheckAsk(in Inbox, a Ask) error {
 			return refuse("a grid expands to at most %d combinations", MaxCombos)
 		}
 	}
-	if a.Template == TemplateROHSA {
-		keys := append(sortedKeys(a.Params), gridKeys(a.Grid)...)
-		for i, x := range keys {
-			for _, y := range keys[i+1:] {
-				if jobs.ROHSAOverlap(x, y) {
-					return refuse("%s and %s change the same config lines; ask for one of them", x, y)
-				}
+	// settings a template ties together (lambda and lambda_amp) change the same config lines, whichever tool declares the tie
+	keys := append(sortedKeys(a.Params), gridKeys(a.Grid)...)
+	for i, x := range keys {
+		for _, y := range keys[i+1:] {
+			if jobs.OverlapIn(a.Template, x, y) {
+				return refuse("%s and %s change the same config lines; ask for one of them", x, y)
 			}
 		}
 	}

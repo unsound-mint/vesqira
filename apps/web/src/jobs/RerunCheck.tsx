@@ -46,6 +46,7 @@ export function RerunCheck({ job }: { job: Job }) {
           <ul>{chk.messages.map((m) => <li key={m}>{m}</li>)}</ul>
         </div>
       ) : null}
+      <p className={s.lead}><strong>Code commit.</strong> {chk.codePin.why}</p>
       {chk.mode !== "adapted" && chk.codeChecked && chk.messages.length === 0 ? <p className={s.lead}>No difference found in what could be read before the job runs.</p> : null}
       {chk.differences.length > 0 ? (
         <div className={s.scroll}>

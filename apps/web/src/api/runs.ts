@@ -98,6 +98,8 @@ export type RerunRequest = {
   time: string | null;
   partition: string | null;
   account: string | null;
+  /** The job's script insisted on the commit its tool's profile was written against; a new draft starts with the same choice. */
+  pinProfile?: boolean;
 };
 
 /** The settings a new VGT or ROHSA draft starts from. A null is unknown, never a default: imported runs do not say how they ran. */

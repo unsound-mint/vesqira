@@ -47,6 +47,9 @@ type sweepIn struct {
 	mem, time string
 	// expectRev pins every draft to the base run's commit (relayPin); rerunMode goes with it.
 	expectRev, rerunMode string
+	// PinProfileCommit: every draft insists on the commit the tool's profile was written against (the checkbox of a new job). Absent
+	// takes over what the base job did; a base run's commit (expectRev) still wins when both apply.
+	PinProfileCommit *bool `json:"pinProfileCommit"`
 }
 
 func (in sweepIn) params() []sweeps.Param {
@@ -96,18 +99,11 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 	if p.baseRun == nil {
 		p.baseRun = p.base.RunID
 	}
-	var req jobs.VGTRequest
-	var ok bool
-	switch p.base.Template {
-	case "vgt":
-		req, ok = p.base.VGTRequest()
-	case "rohsa":
-		req, ok = p.base.ROHSARequest()
-	}
+	req, ok := p.base.ConfigRequest()
 	if !ok {
 		return p, &apiErr{422, "only a VGT or ROHSA job that kept its settings can be swept: its config settings are the parameters (custom scripts, and ROHSA jobs drafted before settings were kept, have none)"}
 	}
-	rohsa := p.base.Template == "rohsa"
+	tmpl := p.base.Template
 	if !sweepNameRe.MatchString(in.Name) {
 		return p, &apiErr{422, "the sweep name may use letters, digits, . _ - (up to 40); it starts each job's name"}
 	}
@@ -118,28 +114,26 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 	if err := sweeps.Validate(p.params); err != nil {
 		return p, &apiErr{422, err.Error()}
 	}
-	if rohsa {
-		for i, a := range p.params {
-			for _, b := range p.params[i+1:] {
-				if jobs.ROHSAOverlap(a.Key, b.Key) {
-					return p, &apiErr{422, a.Key + " and " + b.Key + " change the same config lines (lambda sets lambda_amp, lambda_mu and lambda_sig together); sweep one of them"}
-				}
+	for i, a := range p.params {
+		for _, b := range p.params[i+1:] {
+			if jobs.OverlapIn(tmpl, a.Key, b.Key) {
+				return p, &apiErr{422, a.Key + " and " + b.Key + " change the same config lines (a tied setting such as ROHSA's lambda sets several keys together); sweep one of them"}
 			}
 		}
 	}
 	for _, sp := range p.params {
-		if sp.Key == "output_dir" || sp.Key == "input_file" {
+		if jobs.FixedByVesqira(tmpl, sp.Key) {
 			return p, &apiErr{422, sp.Key + " is set by Vesqira or is a path; it cannot be swept"}
 		}
 		for _, v := range sp.Values {
-			check := jobs.CheckSetting
-			if rohsa {
-				check = jobs.CheckROHSASetting
-			}
-			if err := check(sp.Key, v); err != nil {
+			if err := jobs.CheckTemplateSetting(tmpl, sp.Key, v); err != nil {
 				return p, &apiErr{422, err.Error()}
 			}
 		}
+	}
+	pin := req.PinProfile
+	if in.PinProfileCommit != nil {
+		pin = *in.PinProfileCommit
 	}
 	if p.host, err = s.HostDB.Get(p.base.HostID); err != nil {
 		return p, &apiErr{409, "the base job's host no longer exists"}
@@ -160,11 +154,11 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 	}
 	for i, c := range p.combos {
 		set := map[string]string{}
-		for k, v := range req.Set {
+		for k, v := range jobs.CarriedSet(tmpl, req.Set) {
 			// a setting of the base job that changes a line a swept setting changes would fight it; the swept value is the draft's
 			swept := false
 			for _, sp := range p.params {
-				swept = swept || (rohsa && jobs.ROHSAOverlap(k, sp.Key)) || k == sp.Key
+				swept = swept || jobs.OverlapIn(tmpl, k, sp.Key) || k == sp.Key
 			}
 			if !swept {
 				set[k] = v
@@ -189,13 +183,8 @@ func (s *Server) plan(ctx context.Context, in sweepIn) (sweepPlan, *apiErr) {
 		if in.time != "" {
 			tm = in.time
 		}
-		if rohsa {
-			b, aerr = s.buildROHSA(ctx, p.host, name, rohsaInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
-				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: in.rerunMode, ExpectRev: in.expectRev})
-		} else {
-			b, aerr = s.buildVGT(ctx, p.host, name, vgtInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
-				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: in.rerunMode, ExpectRev: in.expectRev})
-		}
+		b, aerr = s.buildJob(ctx, p.host, tmpl, name, draftInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: cfg, Set: set,
+			CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: in.rerunMode, ExpectRev: in.expectRev, PinProfile: pin})
 		if aerr != nil {
 			return p, &apiErr{aerr.Code, name + ": " + aerr.Msg}
 		}
@@ -491,9 +480,21 @@ func (s *Server) reviewSweep(w http.ResponseWriter, r *http.Request) {
 	// The drafts are compared with what the base's settings render, so a line is only "other" when it is unexpected in the
 	// draft; the base's own edits are counted once, and the review says they are not carried over.
 	ref, baseEdited := base.Script, 0
-	if rendered, ok := renderedFromSettings(base); ok && rendered != base.Script {
+	draftPin, pin := false, codePin{}
+	if req, ok := base.ConfigRequest(); ok {
+		draftPin = req.PinProfile
+	}
+	if len(pj) > 0 {
+		if req, ok := pj[0].ConfigRequest(); ok {
+			draftPin, pin = req.PinProfile, s.codePinOf(pj[0].Template, req)
+		}
+	}
+	if own, ok := renderedFromSettings(base); ok && own != base.Script {
+		baseEdited = len(sweeps.Diff(own, base.Script, nil)) // lines, "-" and "+" together
+	}
+	// the drafts' own pin is the sweep's choice, shown under "code pin"; it is not a difference the base's hand edits explain
+	if rendered, ok := renderedWithPin(base, draftPin); ok && rendered != base.Script {
 		ref = rendered
-		baseEdited = len(sweeps.Diff(rendered, base.Script, nil)) // lines, "-" and "+" together
 	}
 	list := make([]reviewJob, 0, len(pj))
 	scripts := make([]string, 0, len(pj))
@@ -509,38 +510,34 @@ func (s *Server) reviewSweep(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"sweep": s.sweepView(sw), "baseJobId": base.ID, "baseName": base.Name, "baseScript": base.Script, "baseEditedLines": baseEdited, "keys": keys, "jobs": list,
 		"sweepHash": sweepHash(pj), "totals": sumRequested(scripts), "estimate": estimateFrom(base), "maxConcurrency": sweeps.MaxConcurrency,
-		"template": base.Template, "defaultConcurrency": sweeps.DefaultConcurrency, "concurrencyNote": note})
+		"template": base.Template, "defaultConcurrency": sweeps.DefaultConcurrency, "concurrencyNote": note, "codePin": pin})
 }
 
 // renderedFromSettings is the script the base job's own settings render now, with the base's name and output folder: what the
 // base would be had nobody edited its text. False for a job with no kept settings or one that no longer renders.
 func renderedFromSettings(base jobs.Job) (string, bool) {
-	if base.Template == "rohsa" {
-		req, ok := base.ROHSARequest()
-		if !ok || req.BaseConfigText == "" {
-			return "", false
-		}
-		text, err := jobs.SetROHSAConfig(req.BaseConfigText, req.Set, base.OutputDir)
-		if err != nil {
-			return "", false
-		}
-		script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: base.Name, RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, ExpectCommit: req.ExpectCommit, HashInput: req.HashInput})
-		return script, err == nil
-	}
-	req, ok := base.VGTRequest()
-	if !ok || req.BaseConfigText == "" {
+	req, ok := base.ConfigRequest()
+	if !ok {
 		return "", false
 	}
-	vals := map[string]string{}
-	for k, v := range req.Set {
-		vals[k] = v
+	return renderedWithPin(base, req.PinProfile)
+}
+
+// renderedWithPin is renderedFromSettings with the profile's commit pinned or not, whatever the base asked for: the sweep review
+// compares drafts with the base as the drafts' own pin would render it, so a pin the sweep changed is reported once, not as an
+// unexpected difference in every draft.
+func renderedWithPin(base jobs.Job, pin bool) (string, bool) {
+	req, ok := base.ConfigRequest()
+	t := jobs.ShippedTemplate(base.Template)
+	if !ok || t == nil || req.BaseConfigText == "" {
+		return "", false
 	}
-	vals["output_dir"] = base.OutputDir
-	text, err := jobs.SetConfigValues(req.BaseConfigText, vals)
+	text, err := jobs.SetConfig(t, req.BaseConfigText, jobs.CarriedSet(base.Template, req.Set), base.OutputDir)
 	if err != nil {
 		return "", false
 	}
-	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: base.Name, RepoDir: req.RepoDir, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, ExpectCommit: req.ExpectCommit, HashInput: req.HashInput})
+	script, err := jobs.RenderTemplate(t, jobs.Settings{Name: base.Name, RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, Config: text, CPUs: req.CPUs, Mem: req.Mem, Time: req.Time,
+		Partition: req.Partition, Account: req.Account, ExpectCommit: req.ExpectCommit, HashInput: req.HashInput, PinProfile: pin})
 	return script, err == nil
 }
 

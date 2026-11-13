@@ -5,6 +5,7 @@ import type { Job } from "../api/jobs";
 import type { Rerun, Run } from "../api/runs";
 import { RunsUsingFile } from "../catalog/RunPanel";
 import { RerunDraft } from "./RerunDraft";
+import { rohsaTemplate, vgtTemplate } from "../jobs/templateFixtures";
 
 const host: Host = { id: 1, name: "Cluster", dest: "login1", python: "python3", roots: ["/data"], createdAt: "" };
 const run = (over: Partial<Run> = {}): Run => ({
@@ -29,6 +30,7 @@ const boardList = { boards: [{ id: 5, title: "LMC paper", createdAt: "", updated
 function mockFetch(rerun: Rerun, addFails = false) {
   const posts: { url: string; body: any }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/job-templates") return new Response(JSON.stringify({ templates: [vgtTemplate, rohsaTemplate] }), { status: 200 });
     if (init?.method === "POST") {
       posts.push({ url, body: JSON.parse(String(init.body)) });
       if (url.startsWith("/api/boards/") && addFails) return new Response(JSON.stringify({ error: "board is locked" }), { status: 409 });
@@ -60,7 +62,33 @@ describe("run again with…", () => {
     await waitFor(() => expect(done).toHaveBeenCalledWith(created));
     expect(posts).toHaveLength(1);
     expect(posts[0]!.url).toBe("/api/jobs");
-    expect(posts[0]!.body).toMatchObject({ hostId: 1, template: "vgt", parentRunId: 1, note: "wider smoothing", vgt: { repoDir: "/shared/vgt", configPath: "/data/configs/a.toml", configText: baseText, set: { dn: "12", ker: "16" }, cpus: 16, mem: "64G", time: "02:00:00" } });
+    expect(posts[0]!.body).toMatchObject({ hostId: 1, template: "vgt", parentRunId: 1, note: "wider smoothing", tool: { repoDir: "/shared/vgt", configPath: "/data/configs/a.toml", configText: baseText, set: { dn: "12", ker: "16" }, cpus: 16, mem: "64G", time: "02:00:00" } });
+  });
+
+  it("reads a VGT job's starting values from its config text even when the server sends an empty settings object", async () => {
+    mockFetch({ ...fromJob, settings: {} });
+    render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);
+    expect(await screen.findByLabelText(/^ker \(smoothing/)).toHaveValue("8");
+  });
+
+  it("starts with the parent job's commit pin, lets it be changed, and says a strict rerun's own commit wins", async () => {
+    const posts = mockFetch({ ...fromJob, vgt: { ...fromJob.vgt, pinProfile: true } });
+    render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);
+    const box = await screen.findByLabelText(/Stop the job unless the folder is at commit 0123456/);
+    expect(box).toBeChecked();
+    expect(screen.getByText(/A strict rerun insists on the parent run's own commit instead/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Prepare the job" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]!.body.tool.pinProfileCommit).toBe(true);
+  });
+
+  it("sends no pin when the parent had none and none is asked for", async () => {
+    const posts = mockFetch(fromJob);
+    render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);
+    expect(await screen.findByLabelText(/Stop the job unless the folder is at commit/)).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Prepare the job" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]!.body.tool.pinProfileCommit).toBeUndefined();
   });
 
   it("warns when the config file on the host changed, and when that could not be checked", async () => {
@@ -88,7 +116,7 @@ describe("run again with…", () => {
     expect(await screen.findByText(/how it was started is not known/)).toBeInTheDocument();
     expect(screen.getByLabelText("Host")).toHaveValue("");
     expect(screen.getByLabelText("VGT folder on the host")).toHaveValue("");
-    expect(screen.getByLabelText("Config on the host")).toHaveValue("");
+    expect(screen.getByLabelText("Base config on the host")).toHaveValue("");
     expect(screen.getByLabelText("CPUs")).toHaveValue("");
     expect(screen.getByLabelText(/^ker \(smoothing/)).toHaveValue("4");
     expect(screen.getAllByText("declared by the run")[0]).toBeInTheDocument();
@@ -96,20 +124,20 @@ describe("run again with…", () => {
     expect(prepare).toBeDisabled();
     await userEvent.selectOptions(screen.getByLabelText("Host"), "Cluster");
     await userEvent.type(screen.getByLabelText("VGT folder on the host"), "/shared/vgt");
-    await userEvent.type(screen.getByLabelText("Config on the host"), "/data/c.toml");
+    await userEvent.type(screen.getByLabelText("Base config on the host"), "/data/c.toml");
     await userEvent.type(screen.getByLabelText("CPUs"), "4");
     await userEvent.type(screen.getByLabelText("Memory"), "8G");
     await userEvent.type(screen.getByLabelText("Time limit"), "01:00:00");
     expect(prepare).toBeEnabled();
     await userEvent.click(prepare);
     await waitFor(() => expect(posts).toHaveLength(1));
-    expect(posts[0]!.body.vgt.configText).toBeUndefined(); // the file on the host is read, no stored text exists
-    expect(posts[0]!.body.vgt.set).toEqual({ ker: "4" });
+    expect(posts[0]!.body.tool.configText).toBeUndefined(); // the file on the host is read, no stored text exists
+    expect(posts[0]!.body.tool.set).toEqual({ ker: "4" });
   });
 
   it("shows the API message when the draft cannot be prepared", async () => {
     vi.stubGlobal("fetch", vi.fn(async (_u: string, init?: RequestInit) =>
-      init?.method === "POST" ? new Response(JSON.stringify({ error: "the note is at most 500 characters" }), { status: 422 }) : new Response(JSON.stringify(_u === "/api/boards" ? boardList : fromJob), { status: 200 })));
+      init?.method === "POST" ? new Response(JSON.stringify({ error: "the note is at most 500 characters" }), { status: 422 }) : new Response(JSON.stringify(_u === "/api/boards" ? boardList : _u === "/api/job-templates" ? { templates: [vgtTemplate, rohsaTemplate] } : fromJob), { status: 200 })));
     render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);
     await userEvent.click(await screen.findByRole("button", { name: "Prepare the job" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("the note is at most 500 characters");

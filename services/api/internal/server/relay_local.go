@@ -319,7 +319,7 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 	ctx = localCtx(ctx)
 	if len(ask.Grid) == 0 {
 		set := map[string]string{}
-		for k, v := range req.Set {
+		for k, v := range jobs.CarriedSet(base.Template, req.Set) {
 			set[k] = v
 		}
 		for k, v := range params {
@@ -335,15 +335,8 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 		if tm == "" {
 			tm = req.Time
 		}
-		var b builtJob
-		var aerr *apiErr
-		if base.Template == "rohsa" {
-			b, aerr = s.buildROHSA(ctx, h, name, rohsaInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: req.BaseConfigText, Set: set,
-				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev})
-		} else {
-			b, aerr = s.buildVGT(ctx, h, name, vgtInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: req.BaseConfigText, Set: set,
-				CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev})
-		}
+		b, aerr := s.buildJob(ctx, h, base.Template, name, draftInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: req.BaseConfigText, Set: set,
+			CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev, PinProfile: req.PinProfile})
 		if aerr != nil {
 			return aerr
 		}
@@ -421,9 +414,20 @@ func (s *Server) relayPin(baseRunID int64) (rev, mode string) {
 
 // relayCode says, for the approval view, which code the draft runs: the commit its script insists on, or why it insists on none.
 func (s *Server) relayCode(m relay.Mirrored, j jobs.Job) string {
-	if req, ok := j.ConfigRequest(); ok && req.ExpectCommit != "" {
+	req, haveReq := j.ConfigRequest()
+	if haveReq && req.ExpectCommit != "" {
 		return "The script insists on commit " + req.ExpectCommit + ", the base run's: the job stops before the program starts unless the code folder on the host is at that commit with no changed tracked file."
 	}
+	if haveReq && req.PinProfile {
+		// the base's own pin is carried into the draft: the base run's code is not described by one commit, but the job that made it
+		// insisted on the profile's
+		return s.codePinOf(j.Template, req).Why + " The base run's own code is not described by one commit here (" + s.relayWhyUnpinned(m) + ")."
+	}
+	return "Not pinned to a commit: " + s.relayWhyUnpinned(m) + ". The job runs the code as it is on the host when it starts."
+}
+
+// relayWhyUnpinned is why the base run's code gave no commit to insist on.
+func (s *Server) relayWhyUnpinned(m relay.Mirrored) string {
 	why := "the base run is not known here"
 	if m.BaseRunID != nil && s.Runs != nil {
 		if b, err := s.parentBaseline(workspace.Local, *m.BaseRunID); err == nil {
@@ -432,7 +436,7 @@ func (s *Server) relayCode(m relay.Mirrored, j jobs.Job) string {
 			}
 		}
 	}
-	return "Not pinned to a commit: " + why + ". The job runs the code as it is on the host when it starts."
+	return why
 }
 
 // stillAcceptable is what this computer requires of a request it accepted, at drafting and approval: its values pass the whitelist

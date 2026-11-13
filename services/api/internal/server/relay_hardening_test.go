@@ -191,11 +191,11 @@ func TestRelayedDraftCarriesTheBaseRunsCommit(t *testing.T) {
 }
 
 // A host with no source root has nowhere to write results: refused with a sentence, not a panic.
-func TestBuildVGTRefusesAHostWithoutRoots(t *testing.T) {
+func TestBuildJobRefusesAHostWithoutRoots(t *testing.T) {
 	e := newWatchEnv(t)
 	h := e.host
 	h.Roots = nil
-	_, aerr := e.srv.buildVGT(context.Background(), h, "x", vgtInput{RepoDir: "/shared/home/u/vgt", ConfigText: e.baseConfig})
+	_, aerr := e.srv.buildJob(context.Background(), h, "vgt", "x", draftInput{RepoDir: "/shared/home/u/vgt", ConfigText: e.baseConfig})
 	if aerr == nil || aerr.Code != 422 || !strings.Contains(aerr.Msg, "source folder") {
 		t.Fatalf("%+v", aerr)
 	}

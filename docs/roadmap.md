@@ -75,6 +75,7 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] 3: run detection and generic output roles (schema 35)
 - [x] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps, also read on a host per pixel; HDUs by name and EXTVER; a cell click uses the pixel index for maps too); no schema change, GaussPy+ not shipped (layout not verified). the review (diagram, cell click, class maps) of a run kept on a host runs on the host: index in its cache folder, class maps written there as host datasets; stand-in host only, no real cluster
 - [x] 5: run templates as data (steps, typed keys, command, probes, progress); a synthetic tool runs through the fake Slurm path; schema unchanged
+- [x] 5b: the commit pin carries through sweeps, reruns and relays (a strict rerun's commit wins); rerun and sweep forms and relay checks come from the declared keys; VGT drafts use the generic builder (`output_dir` is refused with a sentence); goldens for sweep and rerun scripts
 - [x] 6: a project's own profiles from `.vesqira/profiles/` (declared, never verified; a scan lists, the person imports; no job templates); generic result import for any profiled tool; `vgtHeader` and the `psi` fallbacks removed
 - [ ] Not built: project orientation card tables, profiles on host projects, job templates from a project folder
 

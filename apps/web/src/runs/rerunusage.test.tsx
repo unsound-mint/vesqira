@@ -4,6 +4,7 @@ import type { Host } from "../api/hosts";
 import type { JobUsage } from "../api/jobs";
 import type { Rerun, Run } from "../api/runs";
 import { RerunDraft } from "./RerunDraft";
+import { rohsaTemplate, vgtTemplate } from "../jobs/templateFixtures";
 
 const GiB = 2 ** 30;
 const host: Host = { id: 1, name: "Cluster", dest: "login1", python: "python3", roots: ["/data"], createdAt: "" };
@@ -19,6 +20,7 @@ const rerun = (lastJob: Rerun["lastJob"]): Rerun => ({
 function mockFetch(r: Rerun) {
   const posts: { url: string; body: any }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/job-templates") return new Response(JSON.stringify({ templates: [vgtTemplate, rohsaTemplate] }), { status: 200 });
     if (init?.method === "POST") {
       posts.push({ url, body: JSON.parse(String(init.body)) });
       return new Response(JSON.stringify({ id: 9 }), { status: 201 });
@@ -44,7 +46,7 @@ describe("run again with… and the previous run's measured use", () => {
     // preparing the job without clicking sends the values as they were
     await userEvent.click(screen.getByRole("button", { name: "Prepare the job" }));
     await waitFor(() => expect(posts).toHaveLength(1));
-    expect(posts[0]!.body.vgt).toMatchObject({ mem: "64G", time: "02:00:00" });
+    expect(posts[0]!.body.tool).toMatchObject({ mem: "64G", time: "02:00:00" });
   });
 
   it("applies the suggestion when the researcher clicks, and sends it", async () => {
@@ -57,7 +59,7 @@ describe("run again with… and the previous run's measured use", () => {
     expect(screen.getByLabelText("Time limit")).toHaveValue("09:19:00");
     await userEvent.click(screen.getByRole("button", { name: "Prepare the job" }));
     await waitFor(() => expect(posts).toHaveLength(1));
-    expect(posts[0]!.body.vgt).toMatchObject({ mem: "103G", time: "09:19:00" });
+    expect(posts[0]!.body.tool).toMatchObject({ mem: "103G", time: "09:19:00" });
   });
 
   it("offers nothing for a run whose job has no recorded use (imported, or ended before usage was kept)", async () => {

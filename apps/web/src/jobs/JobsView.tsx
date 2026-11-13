@@ -21,23 +21,6 @@ export { previousUse } from "./NewJob";
 
 export const TONE: Record<JobState, "neutral" | "ok" | "warn" | "err" | "accent"> = { draft: "neutral", submitting: "warn", submitted: "accent", running: "accent", completed: "ok", failed: "err", cancelled: "warn" };
 const ACTIVE: JobState[] = ["submitted", "running"];
-export const SETTINGS: { key: string; label: string; kind: "text" | "noise_mode" | "angle_frame" }[] = [
-  { key: "input_file", label: "Input cube on the host", kind: "text" },
-  { key: "ker", label: "ker (smoothing, pixels)", kind: "text" },
-  { key: "dn", label: "dn (window, pixels)", kind: "text" },
-  { key: "min_valid", label: "min_valid", kind: "text" },
-  { key: "noise", label: "noise (1 sigma)", kind: "text" },
-  { key: "noise_mode", label: "noise mode", kind: "noise_mode" },
-  { key: "noise_sigma_multiplier", label: "noise sigma multiplier", kind: "text" },
-  { key: "angle_frame", label: "angle frame (PSIFRAME of the outputs)", kind: "angle_frame" },
-  { key: "output_bin", label: "output binning (pixels, 1 or more)", kind: "text" },
-];
-export const ANGLE_FRAMES = ["pixel", "galactic", "icrs"];
-/** The options of an enum setting, or null for a text field. */
-export function enumOptions(kind: string): string[] | null {
-  return kind === "noise_mode" ? NOISE_MODES : kind === "angle_frame" ? ANGLE_FRAMES : null;
-}
-export const NOISE_MODES = ["scalar", "channel", "spatial", "separable", "auto"];
 
 export function jobFor(jobs: Job[], runId: number): Job | null {
   return jobs.find((j) => j.runId === runId) ?? null;
@@ -110,7 +93,7 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun, onOpen
         </section>
         <div className={s.main}>
           {newSweep ? (
-            <SweepForm jobs={jobs} baseJobId={newSweep.base} onCreated={(x) => { replaceSweep(x); setNewSweep(null); setSelSweep(x.id); }} />
+            <SweepForm jobs={jobs} templates={templates} baseJobId={newSweep.base} onCreated={(x) => { replaceSweep(x); setNewSweep(null); setSelSweep(x.id); }} />
           ) : sweep ? (
             <SweepView sweep={sweep} onChange={replaceSweep} onOpenJob={pickJob} onOpenFamily={onOpenFamily} />
           ) : job ? (

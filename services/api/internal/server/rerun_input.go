@@ -330,15 +330,8 @@ func (s *Server) planInputRerun(ctx context.Context, ws workspace.ID, runID int6
 		return p, refuse("the job name is at most 40 characters")
 	}
 	rec := &jobs.InputRerun{SourceRunID: runID, SourceConfigHash: srcHash, ConfigHash: newHash, PreviousInput: prev, Input: ident, Notes: notes}
-	var b builtJob
-	var aerr *apiErr
-	if template == "rohsa" {
-		b, aerr = s.buildROHSA(ctx, p.host, name, rohsaInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: newBase, Set: req.Set,
-			CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, RerunMode: mode, InputRerun: rec})
-	} else {
-		b, aerr = s.buildVGT(ctx, p.host, name, vgtInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: newBase, Set: req.Set,
-			CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, RerunMode: mode, InputRerun: rec})
-	}
+	b, aerr := s.buildJob(ctx, p.host, template, name, draftInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: newBase, Set: jobs.CarriedSet(template, req.Set),
+		CPUs: req.CPUs, Mem: req.Mem, Time: req.Time, Partition: req.Partition, Account: req.Account, RerunMode: mode, InputRerun: rec, PinProfile: req.PinProfile})
 	if aerr != nil {
 		return p, aerr
 	}
@@ -367,6 +360,12 @@ func (s *Server) planInputRerun(ctx context.Context, ws workspace.ID, runID int6
 	}
 	if req.Account != "" {
 		sum.Carried = append(sum.Carried, summaryValue{"resources.account", req.Account})
+	}
+	if dreq := req; req.PinProfile {
+		dreq.ExpectCommit = "" // this draft repeats no run's commit; only the profile's pin carries over
+		n := s.pinNote(template, dreq)
+		sum.Carried = append(sum.Carried, summaryValue{"code.pinned_commit", s.codePinOf(template, dreq).Commit})
+		sum.Notes = append(sum.Notes, "The source job asked its script to insist on the profile's commit, and this draft does too. "+n)
 	}
 	if rendered, ok := renderedFromSettings(p.job); ok && rendered != p.job.Script {
 		sum.SourceEditedLines = len(sweeps.Diff(rendered, p.job.Script, nil)) // lines, "-" and "+" together: the count the sweep review gives

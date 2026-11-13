@@ -113,8 +113,8 @@ func jobAPIErr(err error) *apiErr {
 	return &apiErr{500, "internal error"}
 }
 
-// vgtInput is everything a VGT draft is rendered from.
-type vgtInput struct {
+// draftInput is everything a tool's draft is rendered from.
+type draftInput struct {
 	RepoDir, ConfigPath, ConfigText string
 	Set                             map[string]string
 	CPUs                            int
@@ -122,7 +122,8 @@ type vgtInput struct {
 	// RerunMode and ExpectRev come from "run again with..." (ADR 0054); ExpectRev is set for a strict rerun, and for a relayed run
 	// request's draft, which insists on its base run's commit (relayPin).
 	RerunMode, ExpectRev string
-	// PinProfile asks for the profile's own commit as a stop (never a rerun's claim, so it is not ExpectRev).
+	// PinProfile asks for the profile's own commit as a stop (never a rerun's claim, so it is not ExpectRev). When ExpectRev is
+	// also set, the run's commit wins: it is the stronger claim, and the script, the request and the approval views say so.
 	PinProfile bool
 	// InputRerun marks a draft that runs another run's configuration on a new cube; HashInput makes its script hash the input.
 	InputRerun *jobs.InputRerun
@@ -131,67 +132,29 @@ type vgtInput struct {
 
 type builtJob struct{ Script, OutputDir, Request string }
 
-// buildVGT renders a VGT job from its settings: the config text (read from the host unless given), the editable settings
-// applied through the whitelist, a fresh output folder inside the host's source roots, the script, and the request kept so a
-// rerun can start from an exact copy. Nothing is stored. createJob and sweeps both call it, so a sweep's drafts are rendered by
-// exactly the code that renders any other draft.
-func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgtInput) (builtJob, *apiErr) {
-	cfg := in.ConfigText
-	if cfg == "" && in.ConfigPath != "" {
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		text, code, msg := s.remoteText(ctx, h, in.ConfigPath)
-		cancel()
-		if code != 0 {
-			return builtJob{}, &apiErr{code, "config: " + msg}
+// buildJob renders a draft of any tool from the template its job template id names (vgt, rohsa, or a profile of a tool added with
+// --run-profiles). createJob, sweeps, reruns and relayed run requests all go through it, so every draft of every tool is
+// rendered, checked and recorded by the same code.
+func (s *Server) buildJob(ctx context.Context, h hosts.Host, template, name string, in draftInput) (builtJob, *apiErr) {
+	t := s.profiles().TemplateByID(template)
+	if t == nil {
+		return builtJob{}, &apiErr{422, "no tool profile declares a job template " + template}
+	}
+	return s.buildTool(ctx, h, name, t, in)
+}
+
+// buildTool renders a job of any tool from its profile's template: the config text (read from the host unless given), the
+// editable settings applied through the template's typed keys, a fresh output folder inside the host's source roots that Vesqira
+// sets (so a repeated run never writes over an earlier one), the script with the config embedded, and the request kept so a
+// rerun or a sweep can start from an exact copy. Nothing is stored. A request that sets the output folder is refused with a
+// sentence, as is any key the template does not let a person set. (VGT drafts used to overwrite a requested output_dir without
+// saying so; a draft whose settings say one thing and whose script does another is not one a person can review.)
+func (s *Server) buildTool(ctx context.Context, h hosts.Host, name string, t *jobtemplate.Template, in draftInput) (builtJob, *apiErr) {
+	for k := range in.Set {
+		if spec := t.Key(k); spec != nil && spec.Internal {
+			return builtJob{}, &apiErr{422, k + " is set by Vesqira: every job writes to a new folder of its own inside the host's source root, so a request cannot choose it (it could write over an earlier run). Leave " + k + " out of the settings."}
 		}
-		cfg = text
 	}
-	if len(h.Roots) == 0 {
-		return builtJob{}, &apiErr{422, "the host has no source folder to write results into"}
-	}
-	var suffix [4]byte
-	_, _ = rand.Read(suffix[:])
-	// results go inside the host's source roots so Vesqira can read them afterwards
-	out := path.Join(h.Roots[0], "vesqira_runs", name+"-"+hex.EncodeToString(suffix[:]))
-	baseCfg := cfg
-	vals := map[string]string{}
-	for k, v := range in.Set {
-		vals[k] = v
-	}
-	vals["output_dir"] = out
-	cfg, err := jobs.SetConfigValues(cfg, vals)
-	if err != nil {
-		return builtJob{}, jobAPIErr(err)
-	}
-	script, err := jobs.RenderVGT(jobs.VGTSettings{Name: name, RepoDir: in.RepoDir, Config: cfg, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev, HashInput: in.HashInput || in.InputRerun != nil, PinProfile: in.PinProfile})
-	if err != nil {
-		return builtJob{}, jobAPIErr(err)
-	}
-	// The base text and the overrides are kept apart so a rerun can change one setting on the same base, without
-	// reading a file that may have changed on the host since.
-	_, label := s.profiles().TemplateProfile("vgt")
-	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: baseCfg, Set: in.Set,
-		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev, InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil, PinProfile: in.PinProfile, Profile: label})
-	if !h.InRoots(out) {
-		return builtJob{}, &apiErr{422, "the output folder must be inside a source root of the host"}
-	}
-	return builtJob{Script: script, OutputDir: out, Request: string(rq)}, nil
-}
-
-// rohsaInput is vgtInput under the name its callers use: every tool's draft is rendered from the same fields.
-type rohsaInput = vgtInput
-
-// buildROHSA renders a ROHSA job from the ROHSA-LMC profile's template (see buildTool).
-func (s *Server) buildROHSA(ctx context.Context, h hosts.Host, name string, in rohsaInput) (builtJob, *apiErr) {
-	return s.buildTool(ctx, h, name, jobs.ShippedTemplate("rohsa"), in)
-}
-
-// buildTool renders a job of any tool from its profile's template the way buildVGT renders a VGT one: the config text (read from
-// the host unless given), the editable settings applied through the template's typed keys, a fresh output folder inside the
-// host's source roots that Vesqira sets (so a repeated run never writes over an earlier one), the script with the config
-// embedded, and the request kept so a rerun or a sweep can start from an exact copy. Nothing is stored. A request that sets the
-// output folder is refused, as is any key the template does not let a person set.
-func (s *Server) buildTool(ctx context.Context, h hosts.Host, name string, t *jobtemplate.Template, in vgtInput) (builtJob, *apiErr) {
 	cfg := in.ConfigText
 	if cfg == "" && in.ConfigPath != "" {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -265,8 +228,8 @@ func (b toolBody) isZero() bool {
 		b.Partition == "" && b.Account == "" && !b.PinProfileCommit
 }
 
-func (b toolBody) input(rerunMode, expectRev string) vgtInput {
-	return vgtInput{RepoDir: b.RepoDir, ConfigPath: b.ConfigPath, ConfigText: b.ConfigText, Set: b.Set, CPUs: b.CPUs, Mem: b.Mem, Time: b.Time,
+func (b toolBody) input(rerunMode, expectRev string) draftInput {
+	return draftInput{RepoDir: b.RepoDir, ConfigPath: b.ConfigPath, ConfigText: b.ConfigText, Set: b.Set, CPUs: b.CPUs, Mem: b.Mem, Time: b.Time,
 		Partition: b.Partition, Account: b.Account, RerunMode: rerunMode, ExpectRev: expectRev, PinProfile: b.PinProfileCommit}
 }
 
@@ -348,8 +311,6 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	case t == nil:
 		fail(w, 400, "template must be custom or the id of a tool template (see /api/job-templates)")
 		return
-	case in.Template == "vgt":
-		v, aerr = s.buildVGT(r.Context(), h, in.Name, body.input(rerunMode, expectRev))
 	default:
 		v, aerr = s.buildTool(r.Context(), h, in.Name, t, body.input(rerunMode, expectRev))
 	}

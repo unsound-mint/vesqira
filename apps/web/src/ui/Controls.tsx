@@ -24,14 +24,15 @@ export function Switch({ label, ...rest }: { label: ReactNode } & Omit<InputHTML
 }
 
 /** `description` is a plain sentence under the field, read with it. */
-export function Select({ label, description, children, ...rest }: { label: string; description?: string } & SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({ label, description, children, "aria-describedby": extra, ...rest }: { label: string; description?: string } & SelectHTMLAttributes<HTMLSelectElement>) {
   const id = useId();
   const descId = `${id}-desc`;
+  const described = [description ? descId : "", extra ?? ""].filter(Boolean).join(" "); // a caller's own description is added, never replaces this one
   return (
     <div className={s.field}>
       <label htmlFor={id} className={s.label}>{label}</label>
       <div className={s.selectWrap}>
-        <select id={id} className={s.select} aria-describedby={description ? descId : undefined} {...rest}>{children}</select>
+        <select id={id} className={s.select} aria-describedby={described || undefined} {...rest}>{children}</select>
         <span className={s.chevron}><Icon icon={ChevronDown} /></span>
       </div>
       {description ? <span id={descId} className={s.hint}>{description}</span> : null}
@@ -40,11 +41,11 @@ export function Select({ label, description, children, ...rest }: { label: strin
 }
 
 /** `hint` is a short gloss under the field ("1 day" for a time limit of 1-00:00:00), read with the field; nothing shows when it is empty. `description` is a plain sentence under it. */
-export function Input({ label, hint, description, ...rest }: { label: string; hint?: string; description?: string } & InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ label, hint, description, "aria-describedby": extra, ...rest }: { label: string; hint?: string; description?: string } & InputHTMLAttributes<HTMLInputElement>) {
   const id = useId();
   const hintId = `${id}-hint`;
   const descId = `${id}-desc`;
-  const described = [hint ? hintId : "", description ? descId : ""].filter(Boolean).join(" ");
+  const described = [hint ? hintId : "", description ? descId : "", extra ?? ""].filter(Boolean).join(" "); // a caller's own description is added, never replaces these
   return (
     <div className={s.field}>
       <label htmlFor={id} className={s.label}>{label}</label>

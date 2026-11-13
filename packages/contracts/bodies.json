@@ -7221,6 +7221,33 @@
     }
    }
   },
+  "CodePin": {
+   "type": "object",
+   "description": "Which commit a draft's script insists on and why (ADR 0054, ADR 0068): the commit of the run it repeats, the commit the tool's profile was written against (asked for with pinProfileCommit), or none. The run's commit wins when both apply.",
+   "required": [
+    "commit",
+    "basis",
+    "why"
+   ],
+   "properties": {
+    "commit": {
+     "type": "string",
+     "description": "The revision the script stops unless the code folder is at; empty when it insists on none"
+    },
+    "basis": {
+     "type": "string",
+     "enum": [
+      "run",
+      "profile",
+      ""
+     ],
+     "description": "run: the commit of the run being repeated; profile: the revision the profile was written against; empty: none"
+    },
+    "why": {
+     "type": "string"
+    }
+   }
+  },
   "SweepRequest": {
    "type": "object",
    "description": "A sweep to create or preview. Nothing is submitted by either.",
@@ -7251,6 +7278,10 @@
     "note": {
      "type": "string",
      "description": "Why, kept with every draft (at most 500 characters)"
+    },
+    "pinProfileCommit": {
+     "type": "boolean",
+     "description": "Make every draft stop unless the tool's folder is at the commit its profile was written against. Absent keeps what the base job did"
     }
    }
   },
@@ -7745,7 +7776,8 @@
     "maxConcurrency",
     "template",
     "defaultConcurrency",
-    "concurrencyNote"
+    "concurrencyNote",
+    "codePin"
    ],
    "properties": {
     "sweep": {
@@ -7806,6 +7838,9 @@
     "concurrencyNote": {
      "type": "string",
      "description": "Why one at a time matters for this kind of sweep; empty when there is nothing specific to say (ROHSA: the shared, rebuilt source folder)"
+    },
+    "codePin": {
+     "$ref": "#/components/schemas/CodePin"
     }
    }
   },
@@ -10449,7 +10484,8 @@
     "settingsKnown",
     "blocking",
     "messages",
-    "notes"
+    "notes",
+    "codePin"
    ],
    "properties": {
     "mode": {
@@ -10497,6 +10533,9 @@
      "items": {
       "type": "string"
      }
+    },
+    "codePin": {
+     "$ref": "#/components/schemas/CodePin"
     }
    }
   },
@@ -20709,6 +20748,10 @@
     "sizing": {
      "type": "string",
      "description": "A built-in sizing table shown beside the request (rohsa_crop_table), or empty"
+    },
+    "sweepKey": {
+     "type": "string",
+     "description": "The setting a new sweep row starts on; empty means the first key a sweep may vary"
     }
    }
   },
