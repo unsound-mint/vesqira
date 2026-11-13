@@ -2,6 +2,7 @@ import { Button, Checkbox, Input, Pill, Select } from "../ui";
 import type { Compat, Dataset } from "../api/catalog";
 import { FACETS } from "../scene/link";
 import type { LinkFacet, LinkGroup, LinkPrefs, Pill as PillSpec } from "../scene/link";
+import { datasetLabels } from "./datasetLabels";
 import s from "./CompareBar.module.css";
 
 /** Links only maps that are known to share a grid. Otherwise they sit side by side, unlinked, with the reasons. */
@@ -38,6 +39,7 @@ export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChan
   link?: LinkControls;
 }) {
   const others = datasets.filter((d) => d.id !== selectedId);
+  const labels = datasetLabels(others, (id) => hosts.find((h) => h.id === id)?.name ?? "host", { hostAlways: true });
   const st = linkState(compat, loading);
   const both = !!link && link.prefs.members.a && link.prefs.members.b;
   // the pill: the group's own statements when linked; otherwise why they are not (different grids, or a pane left)
@@ -50,7 +52,7 @@ export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChan
     <div className={s.bar}>
       <Select label="Compare with" value={compareId ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}>
         <option value="">Nothing</option>
-        {others.map((d) => <option key={d.id} value={d.id}>{d.name}{d.hostId ? ` (${hosts.find((h) => h.id === d.hostId)?.name ?? "host"})` : ""}</option>)}
+        {others.map((d) => <option key={d.id} value={d.id}>{labels.get(d.id)}</option>)}
       </Select>
       {compareId !== null && onShared ? (
         <div className={s.state}>

@@ -32,7 +32,7 @@ export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?
   const axial = v.interp !== null;
   const lim = limits(plane.head.stats, v.range, v.customLimits);
   const facts = { dataset: dataset.name, kind: axial ? ("orientation" as const) : kind, channelLine: "", displayLine: "", limits: lim, limitsUnit: view.bunit, unitDeclared: view.bunit_status === "user" };
-  const captions = captionLines(facts, view, plane, { colormap: v.colormap, stretch: v.stretch, range: v.range, axial, region: v.region, nature: dataset.nature });
+  const captions = captionLines(facts, view, plane, { colormap: v.colormap, stretch: v.stretch, range: v.range, axial, region: v.region, nature: dataset.nature, interp: v.interp });
   const heading = opts.title?.trim() || defaultFigureTitle(v, dataset);
   let blob: Blob;
   let scene: Scene | null = null; // a spectrum figure is a plot, not a pane: it has no scene

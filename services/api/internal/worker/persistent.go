@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	maxReplyHead = 64 << 10 // header line of a reply
+	readBuf      = 64 << 10 // the reader's buffer; a longer header line is assembled from several reads
+	maxReplyHead = 8 << 20  // header line of a reply: a project walk page of 2000 entries with real paths is about 300 KB
 	maxPayload   = 64 << 20 // 16M float32 pixels
 	maxReqBytes  = 8 << 10
 )
@@ -61,6 +62,10 @@ func (e *RequestError) Error() string { return e.Message }
 // ErrUnavailable means the worker could not be run or answered wrongly; the next call starts a fresh one.
 var ErrUnavailable = errors.New("scientific worker unavailable")
 var ErrTimeout = errors.New("worker timed out")
+
+// ErrReplyTooLarge is a reply whose header line is longer than maxReplyHead. The process is then out of step with the
+// protocol and is closed like any other broken exchange; it is not a sign that the host is unreachable.
+var ErrReplyTooLarge = errors.New("the worker's reply was too large")
 
 // Persistent keeps long-lived scientific workers, so Python and astropy start once instead of per request.
 //
@@ -156,7 +161,7 @@ func (p *Persistent) start() (*proc, error) {
 		return nil, ErrUnavailable
 	}
 	p.Starts.Add(1)
-	return &proc{cmd: cmd, in: in, out: bufio.NewReaderSize(out, maxReplyHead)}, nil
+	return &proc{cmd: cmd, in: in, out: bufio.NewReaderSize(out, readBuf)}, nil
 }
 
 func (pr *proc) kill() {
@@ -250,6 +255,9 @@ func (p *Persistent) Do(ctx context.Context, req map[string]any) (Reply, error) 
 	if err != nil && !errors.As(err, &re) { // protocol break or crash: never reuse this process
 		pr.kill()
 		l.proc = nil
+		if errors.Is(err, ErrReplyTooLarge) {
+			return Reply{}, ErrReplyTooLarge
+		}
 		return Reply{}, ErrUnavailable
 	}
 	return reply, err
@@ -281,16 +289,34 @@ func (p *Persistent) Header(ctx context.Context, path string) (json.RawMessage, 
 	return r.Head, nil
 }
 
+// readHead reads one header line of up to maxReplyHead bytes. The returned slice is a copy: ReadSlice returns a view of the
+// reader's buffer, which the next read (the payload) overwrites.
+func readHead(r *bufio.Reader) ([]byte, error) {
+	var line []byte
+	for {
+		chunk, err := r.ReadSlice('\n')
+		if len(line)+len(chunk) > maxReplyHead {
+			return nil, ErrReplyTooLarge
+		}
+		line = append(line, chunk...)
+		if err == nil {
+			return line, nil
+		}
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return nil, err
+		}
+	}
+}
+
 func exchange(pr *proc, line []byte) (Reply, error) {
 	if _, err := pr.in.Write(line); err != nil {
 		return Reply{}, err
 	}
-	slice, err := pr.out.ReadSlice('\n')
+	line, err := readHead(pr.out)
 	if err != nil {
 		return Reply{}, err
 	}
-	// ReadSlice returns a view of the reader's buffer, which the payload read below overwrites.
-	head := bytes.Clone(bytes.TrimSpace(slice))
+	head := bytes.TrimSpace(line)
 	var h struct {
 		OK     bool   `json:"ok"`
 		Code   string `json:"code"`

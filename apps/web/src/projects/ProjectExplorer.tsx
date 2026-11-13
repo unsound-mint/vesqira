@@ -6,7 +6,8 @@ import type { ProjectSummary, TreeEntry, TreeGroup } from "../api/projects";
 import { looksEditable } from "../api/editor";
 import { bytes } from "../catalog/format";
 import { Button, Input, Section, TreeRow } from "../ui";
-import { location, num } from "./format";
+import { distinguishNames } from "../ui/distinguish";
+import { location, NO_PROJECT_FILE, num } from "./format";
 import { ScanStatus } from "./ScanStatus";
 import { isScanning } from "./useProject";
 import s from "./Projects.module.css";
@@ -60,11 +61,14 @@ function Listing({ project, version, group, path, level, filter, ...h }: Handler
   }, [load, version]);
 
   const shown = filter ? entries.filter((e) => e.kind === "dir" || matchEntry(e, filter)) : entries;
+  // run labels are long and share a prefix: among these siblings, show where each one differs (the whole label stays its title and name)
+  const runs = shown.filter((e) => e.kind === "run" && e.run);
+  const short = new Map(distinguishNames(runs.map(runLabel)).map((l, i) => [runs[i]!.path, l]));
   return (
     <div role="list" aria-label={path ? `${path}` : GROUPS.find((g) => g.group === group)?.title}>
       {shown.map((e) => (
         <div role="listitem" key={e.path}>
-          <Entry project={project} version={version} group={group} entry={e} level={level} filter={filter} {...h} />
+          <Entry project={project} version={version} group={group} entry={e} level={level} filter={filter} shortLabel={short.get(e.path)} {...h} />
         </div>
       ))}
       {state === "loading" ? <p className={s.rowNote} style={{ paddingLeft: `calc(var(--sp-3) + ${level} * var(--sp-4))` }}>Loading…</p> : null}
@@ -76,7 +80,7 @@ function Listing({ project, version, group, path, level, filter, ...h }: Handler
   );
 }
 
-function Entry({ project, version, group, entry: e, level, filter, selectedDatasetId, onOpenRun, onImportRun, onSelectDataset, onEditFile }: Handlers & { project: ProjectSummary; version: number; group: TreeGroup; entry: TreeEntry; level: number; filter: string }) {
+function Entry({ project, version, group, entry: e, level, filter, shortLabel, selectedDatasetId, onOpenRun, onImportRun, onSelectDataset, onEditFile }: Handlers & { project: ProjectSummary; version: number; group: TreeGroup; entry: TreeEntry; level: number; filter: string; shortLabel?: string }) {
   const [open, setOpen] = useState(false);
   if (e.kind === "dir") {
     return (
@@ -86,7 +90,7 @@ function Entry({ project, version, group, entry: e, level, filter, selectedDatas
       </>
     );
   }
-  if (e.kind === "run" && e.run) return <RunRow project={project} entry={e} level={level} onOpenRun={onOpenRun} onImportRun={onImportRun} />;
+  if (e.kind === "run" && e.run) return <RunRow project={project} entry={e} level={level} shortLabel={shortLabel} onOpenRun={onOpenRun} onImportRun={onImportRun} />;
   const f = e.file;
   // Only a config or job file of a project (on this computer or on a host), that is not marked read-only, and that the server would open as text.
   const editPath = onEditFile && (e.kind === "config" || e.kind === "job") && !f?.readOnly && looksEditable(e.name) ? `${project.path.replace(/\/+$/, "")}/${e.path}` : null;
@@ -110,7 +114,7 @@ function Entry({ project, version, group, entry: e, level, filter, selectedDatas
  * A run row. A run a tool profile can read but nobody has imported gets an Import button: the person's own act applies a profile that
  * came from the project folder, a scan never does. The row says whose profile reads it and that the file only declares.
  */
-function RunRow({ project, entry: e, level, onOpenRun, onImportRun }: { project: ProjectSummary; entry: TreeEntry; level: number; onOpenRun: (runId: number) => void; onImportRun: Handlers["onImportRun"] }) {
+function RunRow({ project, entry: e, level, shortLabel, onOpenRun, onImportRun }: { project: ProjectSummary; entry: TreeEntry; level: number; shortLabel?: string; onOpenRun: (runId: number) => void; onImportRun: Handlers["onImportRun"] }) {
   const [state, setState] = useState<"idle" | "busy" | "error">("idle");
   const [error, setError] = useState("");
   const [madeId, setMadeId] = useState<number | null>(null); // the run this row just imported, until the tree is read again
@@ -132,12 +136,14 @@ function RunRow({ project, entry: e, level, onOpenRun, onImportRun }: { project:
   const origin = run.profile ? ` · read with ${run.profile}${fromProject ? `, declared by this project's ${run.profileFile} (not verified)` : ""}` : "";
   const full = `${e.path}${run.record ? ` · record: ${run.record}` : " · marked by you"}${origin}`;
   const importable = runId === null && run.importable === true;
+  const label = runLabel(e);
   return (
     <>
       <TreeRow
         icon={GitBranch}
         level={level}
-        title={runId === null && !importable ? `${full}\nNot imported as a Vesqira run: no tool profile reads this record's results.` : full}
+        title={`${label !== e.path ? `${label}\n` : ""}${runId === null && !importable ? `${full}\nNot imported as a Vesqira run: no tool profile reads this record's results.` : full}`}
+        fullName={shortLabel !== undefined && shortLabel !== label ? label : undefined}
         onSelect={runId !== null ? () => onOpenRun(runId) : undefined}
         trailing={
           importable ? (
@@ -153,7 +159,7 @@ function RunRow({ project, entry: e, level, onOpenRun, onImportRun }: { project:
           )
         }
       >
-        {runLabel(e)}
+        {shortLabel ?? label}
       </TreeRow>
       {state === "error" ? <p role="alert" className={s.rowErr}>{error}</p> : null}
     </>
@@ -202,7 +208,7 @@ export function ProjectExplorer({ project, version, hostName, selectedDatasetId,
             </ul>
           </details>
         ) : null}
-        {!project.projectFile.exists ? <p className={s.rowNote}>No .vesqira/project.toml yet.</p> : null}
+        {!project.projectFile.exists ? <p className={s.rowNote}>{NO_PROJECT_FILE}</p> : null}
         {rules && rules.rules > 0 && (rules.new > 0 || rules.pending > 0) ? (
           <p className={s.rowNote} role="status">
             {rules.new > 0 ? `${num(rules.new)} new ${rules.new === 1 ? "file matches" : "files match"} your rules.` : `${num(rules.pending)} ${rules.pending === 1 ? "file matches" : "files match"} your rules, not registered yet.`}{" "}

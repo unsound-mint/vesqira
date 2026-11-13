@@ -211,21 +211,113 @@ func (s *Server) deleteHost(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"deleted": true})
 }
 
-// checkHost deploys the worker if needed and asks it who it is: Python, astropy, and whether it enforces the roots.
+// checkHost deploys the worker if needed and asks it who it is: Python, astropy, and whether it enforces the roots. When that
+// fails it runs a fixed probe to say why (ssh, the deploy folder, the Python command) instead of one sentence that blames all of them.
 func (s *Server) checkHost(w http.ResponseWriter, r *http.Request) {
 	h, ok := s.hostFrom(w, r)
 	if !ok {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	s.runHostCheck(w, r, h)
+}
+
+// runHostCheck answers a host check: the worker's own ping, or the classified reason it failed.
+func (s *Server) runHostCheck(w http.ResponseWriter, r *http.Request, h hosts.Host) {
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	rep, status, msg, _ := s.pingHost(ctx, h)
+	if status == 502 {
+		if d, ok := s.diagnoseHost(ctx, h); ok {
+			s.failDiagnosis(w, h, d)
+			return
+		}
+	}
 	if status != 0 {
 		fail(w, status, msg)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(rep.Head)
+}
+
+// diagnoseHost classifies a failed worker start. Tests that stand in for the host check have no probe unless they set diagHook.
+func (s *Server) diagnoseHost(ctx context.Context, h hosts.Host) (hosts.Diagnosis, bool) {
+	if s.diagHook != nil {
+		return s.diagHook(ctx, h), true
+	}
+	if s.pingHook != nil {
+		return hosts.Diagnosis{}, false
+	}
+	return s.Remote.Diagnose(ctx, h), true
+}
+
+// failDiagnosis answers 502 when the host could not be reached (ssh) or the worker misbehaved, and 422 when ssh works and the Python
+// command is the problem. The message is fixed text: no destination, no path.
+func (s *Server) failDiagnosis(w http.ResponseWriter, h hosts.Host, d hosts.Diagnosis) {
+	status := 422
+	switch d.Class {
+	case hosts.ClassSSH:
+		s.reach.set(h.ID, false)
+		status = 502
+	case hosts.ClassProtocol, hosts.ClassDeploy:
+		s.reach.set(h.ID, true)
+		status = 502
+	default:
+		s.reach.set(h.ID, true) // ssh worked: the host answered
+	}
+	extra := map[string]any{}
+	if d.Python != "" {
+		extra["pythonVersion"] = d.Python
+	}
+	if d.Missing != "" {
+		extra["missingModule"] = d.Missing
+	}
+	failCode(w, status, d.Class, d.Message, extra)
+}
+
+// setHostPython changes the Python command of a host (a module's interpreter or a project venv), drops the host's cached worker
+// so the next start uses it, and runs the check again.
+func (s *Server) setHostPython(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.hostFrom(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		Python string `json:"python"`
+	}
+	if !body(w, r, 1<<10, &in, true) {
+		return
+	}
+	nh, err := s.HostDB.SetPython(h.ID, strings.TrimSpace(in.Python))
+	if err != nil {
+		s.hostErr(w, err)
+		return
+	}
+	s.Remote.Forget(h.ID)
+	s.Audit.RecordCtx(r.Context(), "host python changed", "host", h.ID, h.Name)
+	s.runHostCheck(w, r, nh)
+}
+
+// findHostPython runs the fixed search for interpreters with astropy on the host and lists what it tested.
+func (s *Server) findHostPython(w http.ResponseWriter, r *http.Request) {
+	h, ok := s.hostFrom(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	var cands []hosts.PythonCandidate
+	var err error
+	if s.findHook != nil {
+		cands, err = s.findHook(ctx, h)
+	} else {
+		cands, err = s.Remote.FindPython(ctx, h)
+	}
+	if err != nil {
+		failCode(w, 502, hosts.ClassSSH, err.Error(), nil)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"candidates": cands, "minPython": "3.11"})
 }
 
 func (s *Server) listRemote(w http.ResponseWriter, r *http.Request) {

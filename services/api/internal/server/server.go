@@ -150,6 +150,8 @@ type Server struct {
 	vpn        vpnRuns
 	reach      reachability                                                                      // whether each host last answered (vpn.go)
 	pingHook   func(ctx context.Context, h hosts.Host, req map[string]any) (worker.Reply, error) // test stand-in for the host check
+	diagHook   func(ctx context.Context, h hosts.Host) hosts.Diagnosis                           // test stand-in for the probe that explains a failed check
+	findHook   func(ctx context.Context, h hosts.Host) ([]hosts.PythonCandidate, error)          // test stand-in for the Python search
 
 	// MultiUser, when its PublicOrigin is set, makes this listener the group server (--multi-user, ADR 0050 slice 2; multiuser.go).
 	MultiUser MultiUser
@@ -217,6 +219,8 @@ func (s *Server) Handler() http.Handler {
 		s.route(mux, "GET /api/hosts/browse", authz.ClusterRead, s.browseHost)
 		s.route(mux, "POST /api/hosts", authz.ClusterAdmin, s.createHost)
 		s.route(mux, "POST /api/hosts/{id}/check", authz.ClusterRead, s.checkHost)
+		s.route(mux, "POST /api/hosts/{id}/python", authz.ClusterAdmin, s.setHostPython)
+		s.route(mux, "POST /api/hosts/{id}/python/find", authz.ClusterAdmin, s.findHostPython)
 		if s.VPNEnabled {
 			s.route(mux, "POST /api/hosts/{id}/vpn", authz.LocalOnly, s.hostVPN)
 			s.route(mux, "POST /api/hosts/{id}/vpn-config", authz.LocalOnly, s.setHostVPN)

@@ -1,0 +1,59 @@
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.note,
+.err {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  color: var(--text-2);
+}
+
+.err {
+  color: var(--err);
+}
+
+.list {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cand {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  font-size: var(--text-sm);
+}
+
+.path {
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  color: var(--text-2);
+}
+
+.problem {
+  color: var(--text-2);
+}

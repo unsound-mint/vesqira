@@ -2546,6 +2546,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/hosts/{id}/python": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change a host's Python command and check the host again
+         * @description Answers like the host check: 200 with what the worker reported, 502 when ssh could not connect, 422 with a code (python_missing, python_failed, python_old, python_import) when the Python command is the problem.
+         */
+        post: operations["owner_s_setHostPython_post_api_hosts_id_python"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hosts/{id}/python/find": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Look on the host for a Python with numpy and astropy
+         * @description Runs a fixed script over the host's ssh: the login shell's python, environment modules (Anaconda, Miniconda, Miniforge, Python), and virtual environments and conda installs under the home folder. Read-only.
+         */
+        post: operations["owner_s_findHostPython_post_api_hosts_id_python_find"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/hosts/{id}/register": {
         parameters: {
             query?: never;
@@ -12797,6 +12841,29 @@ export interface components {
             /** @description Folders whose answer could not be applied; answering again retries them. */
             failed?: string[];
         };
+        /** @description Sets the host's Python command, drops the host's cached worker and checks the host again. */
+        HostPython: {
+            /** @description The command that starts Python on the host: python3, or the absolute path of a module's interpreter or a project venv. Only letters, digits and . _ / ~ - are accepted. */
+            python: string;
+        };
+        HostPythonCandidate: {
+            /** @description Absolute path of the interpreter on the host; it passes the Python command validator. */
+            path: string;
+            /** @description Python version, when the interpreter ran. */
+            python?: string;
+            astropy?: string;
+            numpy?: string;
+            /** @description Python 3.11 or newer with numpy and astropy importable. */
+            suitable: boolean;
+            /** @description Why it cannot be used. */
+            problem?: string;
+        };
+        HostPythonSearch: {
+            /** @description Every interpreter tested (at most 20, within about 30 seconds), suitable or not. */
+            candidates: components["schemas"]["HostPythonCandidate"][];
+            /** @description The oldest Python the worker runs on (it starts with python -P). */
+            minPython: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -17960,6 +18027,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_setHostPython_post_api_hosts_id_python: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostPython"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description invalid command, or the check found a Python problem */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description ssh could not connect, or the worker did not answer */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_findHostPython_post_api_hosts_id_python_find: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description candidates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostPythonSearch"];
+                };
+            };
+            /** @description ssh could not connect */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

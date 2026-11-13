@@ -51,3 +51,13 @@
   font-family: var(--font-data);
   font-size: var(--text-xs);
 }
+
+/* the whole name for assistive technology, beside the shortened one that is drawn */
+.full {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

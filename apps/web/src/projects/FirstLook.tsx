@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ProjectSummary } from "../api/projects";
 import { Button } from "../ui";
 import { bytes } from "../catalog/format";
-import { num } from "./format";
+import { location, NO_PROJECT_FILE, num } from "./format";
 import { ScanStatus } from "./ScanStatus";
 import s from "./Projects.module.css";
 
@@ -51,7 +51,7 @@ export function summaryLines(p: ProjectSummary): Line[] {
 }
 
 /** Screen 2: what the scan found, and the layout file it proposes. Nothing is written until the button is pressed. */
-export function FirstLook({ project, onWrite, onUseWithout, onCancel }: { project: ProjectSummary; onWrite: (text: string) => Promise<string | null>; onUseWithout: () => void; onCancel: () => void }) {
+export function FirstLook({ project, hostName, onWrite, onUseWithout, onCancel }: { project: ProjectSummary; hostName: (id: number) => string; onWrite: (text: string) => Promise<string | null>; onUseWithout: () => void; onCancel: () => void }) {
   const proposal = project.proposedProjectFile;
   const [text, setText] = useState(proposal ?? "");
   const [edited, setEdited] = useState(false);
@@ -75,7 +75,7 @@ export function FirstLook({ project, onWrite, onUseWithout, onCancel }: { projec
       <div className={s.page}>
         <div className={s.head}>
           <h2 className={s.pageTitle}>{project.name}</h2>
-          <span className={s.dim} title={project.path}>{project.hostId ? `host ${project.hostId} · ` : ""}{project.path}</span>
+          <span className={s.dim} title={`${project.hostId ? `${hostName(project.hostId)} · ` : ""}${project.path}`}>{location(project, hostName)}</span>
         </div>
         <ScanStatus scan={project.scan} onCancel={onCancel} />
         <div className={s.two}>
@@ -107,6 +107,8 @@ export function FirstLook({ project, onWrite, onUseWithout, onCancel }: { projec
             {proposal === null ? (
               project.projectFile.error ? (
                 <p className={s.err} role="alert">The project file exists but could not be read: {project.projectFile.error}</p>
+              ) : !project.projectFile.exists ? (
+                <p className={s.note}>{NO_PROJECT_FILE} Your answers stay in Vesqira’s catalog until one is written.</p>
               ) : (
                 <p className={s.note}>The project file exists{project.projectFile.name ? ` (project name: ${project.projectFile.name})` : ""}. Its layout and your answers are used as written; Vesqira only adds answers you give.</p>
               )

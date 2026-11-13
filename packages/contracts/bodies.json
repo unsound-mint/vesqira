@@ -21912,6 +21912,73 @@
      "description": "Folders whose answer could not be applied; answering again retries them."
     }
    }
+  },
+  "HostPython": {
+   "type": "object",
+   "required": [
+    "python"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "python": {
+     "type": "string",
+     "maxLength": 200,
+     "pattern": "^[A-Za-z0-9_./~-]{1,200}$",
+     "description": "The command that starts Python on the host: python3, or the absolute path of a module's interpreter or a project venv. Only letters, digits and . _ / ~ - are accepted."
+    }
+   },
+   "description": "Sets the host's Python command, drops the host's cached worker and checks the host again."
+  },
+  "HostPythonCandidate": {
+   "type": "object",
+   "required": [
+    "path",
+    "suitable"
+   ],
+   "properties": {
+    "path": {
+     "type": "string",
+     "description": "Absolute path of the interpreter on the host; it passes the Python command validator."
+    },
+    "python": {
+     "type": "string",
+     "description": "Python version, when the interpreter ran."
+    },
+    "astropy": {
+     "type": "string"
+    },
+    "numpy": {
+     "type": "string"
+    },
+    "suitable": {
+     "type": "boolean",
+     "description": "Python 3.11 or newer with numpy and astropy importable."
+    },
+    "problem": {
+     "type": "string",
+     "description": "Why it cannot be used."
+    }
+   }
+  },
+  "HostPythonSearch": {
+   "type": "object",
+   "required": [
+    "candidates",
+    "minPython"
+   ],
+   "properties": {
+    "candidates": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/HostPythonCandidate"
+     },
+     "description": "Every interpreter tested (at most 20, within about 30 seconds), suitable or not."
+    },
+    "minPython": {
+     "type": "string",
+     "description": "The oldest Python the worker runs on (it starts with python -P)."
+    }
+   }
   }
  },
  "operations": {
@@ -33017,6 +33084,93 @@
     },
     "default": {
      "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/hosts/{id}/python": {
+   "summary": "Change a host's Python command and check the host again",
+   "description": "Answers like the host check: 200 with what the worker reported, 502 when ssh could not connect, 422 with a code (python_missing, python_failed, python_old, python_import) when the Python command is the problem.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/HostPython"
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "ok"
+    },
+    "422": {
+     "description": "invalid command, or the check found a Python problem",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "502": {
+     "description": "ssh could not connect, or the worker did not answer",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/hosts/{id}/python/find": {
+   "summary": "Look on the host for a Python with numpy and astropy",
+   "description": "Runs a fixed script over the host's ssh: the login shell's python, environment modules (Anaconda, Miniconda, Miniforge, Python), and virtual environments and conda installs under the home folder. Read-only.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "candidates",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/HostPythonSearch"
+       }
+      }
+     }
+    },
+    "502": {
+     "description": "ssh could not connect",
      "content": {
       "application/json": {
        "schema": {
