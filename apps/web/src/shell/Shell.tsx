@@ -623,7 +623,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
           </Section>
           {actDs && (viewer.view === null || viewer.view.channels === 1) ? (
             <Section title="Interpretation">
-              <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} declare={cat.declare} />
+              <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} declare={cat.declare} applyActions={cat.applyActions} />
             </Section>
           ) : null}
           {actDs ? <HealpixSampleDone dataset={actDs} datasets={cat.allDatasets} onOpen={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} /> : null}

@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Basis, BasisNote, Button, Select } from "../ui";
+import { ApplyToRuns } from "./ApplyToRuns";
+import type { ApplyActions } from "./ApplyToRuns";
 import { TierBadge } from "../ui/TierBadge";
 import { isImage } from "../api/catalog";
 import { ruleOf } from "../api/declared";
@@ -78,7 +80,7 @@ export function reliabilityChoices(self: Dataset, all: Dataset[], currentId: num
 }
 
 /** What the user says this single-plane map is. Declared by the user, stored in the catalog, never written to the file. */
-export function InterpretationPanel({ v, dataset, datasets, declare }: { v: Viewer; dataset: Dataset; datasets: Dataset[]; declare: (id: number, b: InterpretationRequest) => Promise<string | null> }) {
+export function InterpretationPanel({ v, dataset, datasets, declare, applyActions }: { v: Viewer; dataset: Dataset; datasets: Dataset[]; declare: (id: number, b: InterpretationRequest) => Promise<string | null>; applyActions?: ApplyActions }) {
   const cur = dataset.interpretation;
   const [kind, setKind] = useState<"scalar" | "axial">(cur ? "axial" : "scalar");
   const [unit, setUnit] = useState<"" | "deg" | "rad">(cur?.unit ?? "");
@@ -145,8 +147,9 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
       <Button type="button" variant="primary" disabled={busy || (kind === "axial" && unit === "")} onClick={apply}>{kind === "scalar" ? "Use as scalar" : "Declare axial"}</Button>
       {msg ? <p role="alert" className={s.err}>{msg}</p> : null}
       {cur?.stale ? <p role="alert" className={s.warn}>The file changed since you declared it. Declare it again to confirm the unit still applies.</p> : null}
+      {applyActions ? <ApplyToRuns dataset={dataset} actions={applyActions} /> : null}
       <FileDeclaration dataset={dataset} busy={busy} onAdopt={async () => { setBusy(true); setMsg(await declare(dataset.id, { kind: "axial_orientation", fromFile: true })); setBusy(false); }} />
-      <Basis summary={cur ? (isFileHeader(cur.declaredBy) ? `Declared by the file’s own header as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : ruleOf(cur.declaredBy) !== null ? `Declared by your rule ${ruleOf(cur.declaredBy)} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.` : `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? "the run import" : "the analysis that made this map"} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.`) : "Not declared: shown as an ordinary scalar map."}>
+      <Basis summary={cur ? (isFileHeader(cur.declaredBy) ? `Declared by the file’s own header as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : cur.declaredBy === "user" && cur.applyId ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}, applied from another run’s map (dataset ${cur.appliedFrom}); not read from this file.` : cur.declaredBy === "user" ? `Declared by you as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}.` : ruleOf(cur.declaredBy) !== null ? `Declared by your rule ${ruleOf(cur.declaredBy)} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.` : `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? "the run import" : "the analysis that made this map"} as axial orientation in ${cur.unit === "deg" ? "degrees" : "radians"}; not from the file.`) : "Not declared: shown as an ordinary scalar map."}>
         <p>
           {cur && isFileHeader(cur.declaredBy) ? `Read from the file’s own header by the orientation profile ${profileOf(cur.declaredBy)}; choose above and apply to replace it with your own declaration. ` : cur && ruleOf(cur.declaredBy) !== null ? `Declared by your import rule ${ruleOf(cur.declaredBy)}, not by you and not by the file. Choose above and apply to make it your own. ` : cur && cur.declaredBy !== "user" && !isFileHeader(cur.declaredBy) ? `Proposed by ${cur.declaredBy === "vgt-run-adapter" ? `the run import (${cur.declaredBy})` : `the analysis that made this map (${cur.declaredBy})`}. Choose above and apply to override. ` : ""}Kept with the catalog; the file is never changed.{cur && isFileHeader(cur.declaredBy) ? "" : " The file does not declare the unit, the frame or what the angle is."}
         </p>
