@@ -13452,15 +13452,20 @@ components:
           description: "1-based Gaussian number within the pixel, in file order"
         amp:
           type: "number"
-          description: "fitted amplitude in the crop's brightness unit; 0 is a real value"
+          nullable: true
+          description: "fitted amplitude in the unit of the record's amplitude (the crop's brightness unit unless the profile or the amplitude map says another); 0 is a real value; null when the slot is not fitted"
         mean_channel_file:
           type: "number"
-          description: "the file's 1-based channel number"
+          nullable: true
+          description: "the file's own channel number when the centre is declared in channels (ROHSA's 1-based mean); null when the centre is not a channel number"
         mean_channel:
           type: "number"
-          description: "0-based channel index: the file's value minus 1"
+          nullable: true
+          description: "0-based channel index of the centre on the crop's spectral axis; null when the centre cannot be placed there (undeclared unit, base or frame, or another frame)"
         sigma_channel:
           type: "number"
+          nullable: true
+          description: "width as sigma in channels; null when the width cannot be resolved"
         valid:
           type: "boolean"
           description: "false when sigma is not positive and finite; such a component is not drawn"
@@ -13480,6 +13485,17 @@ components:
           type: "number"
           description: "121.2 K (km/s)^-2 x sigma^2 (m_H sigma^2 / k_B for atomic hydrogen): an upper limit on the kinetic temperature"
           nullable: true
+        present:
+          type: "boolean"
+          description: "false when the tool did not fit this slot at this pixel (a NaN in its record): the component does not exist here, which is not the same as an amplitude of 0"
+        centre_raw:
+          type: "number"
+          nullable: true
+          description: "the centre as the source states it, in the unit the record declares"
+        width_raw:
+          type: "number"
+          nullable: true
+          description: "the width as the source states it, in the convention and unit the record declares (sigma, FWHM or dispersion)"
       required:
         - "k"
         - "amp"
@@ -13491,6 +13507,9 @@ components:
         - "sigma"
         - "fwhm"
         - "t_doppler_k"
+        - "present"
+        - "centre_raw"
+        - "width_raw"
     RohsaComponentsHeader:
       type: "object"
       properties:
@@ -13552,6 +13571,97 @@ components:
           additionalProperties:
             type: "string"
           description: "the conventions applied, in words: columns, 1-based mean, sigma, model, invalid components, FWHM, T_D"
+        drawn:
+          type: "boolean"
+          description: "false when the record does not say enough (unit, index base, frame or width convention) to place the components on the spectrum; the table still lists what is known and nothing is computed"
+        not_drawn_reason:
+          type: "string"
+          nullable: true
+          description: "the sentence that says which fact is unresolved"
+        record:
+          type: "object"
+          description: "The decomposition record as resolved for this run: source kind, amplitude, centre (unit, base, frame), width (convention, unit, the explicit FWHM to sigma conversion), component order and notes. Each field is resolved or unresolved with a reason."
+          additionalProperties: true
+          properties:
+            source:
+              type: "string"
+              enum:
+                - "table"
+                - "fits_maps"
+            amplitude:
+              type: "object"
+              description: "One field of the decomposition record as the reader resolved it: what the source or the profile declares, and unresolved with the reason when a fact is missing"
+              properties:
+                unit:
+                  type: "string"
+                  nullable: true
+                status:
+                  type: "string"
+                  enum:
+                    - "resolved"
+                    - "unresolved"
+                reason:
+                  type: "string"
+                basis:
+                  type: "string"
+                  description: "where the unit came from: grid (the crop's), file (the amplitude map's BUNIT) or declared (the profile)"
+                matches_grid:
+                  type: "boolean"
+                  nullable: true
+                  description: "whether the amplitude unit is the crop's brightness unit; null when either is unknown"
+            centre:
+              type: "object"
+              description: "One field of the decomposition record as the reader resolved it: what the source or the profile declares, and unresolved with the reason when a fact is missing"
+              properties:
+                unit:
+                  type: "string"
+                  nullable: true
+                status:
+                  type: "string"
+                  enum:
+                    - "resolved"
+                    - "unresolved"
+                reason:
+                  type: "string"
+                base:
+                  type: "integer"
+                  nullable: true
+                  description: "first channel number (0 or 1) when the centre is in channels"
+                frame:
+                  type: "string"
+                  nullable: true
+                  description: "spectral frame of a velocity centre"
+            width:
+              type: "object"
+              description: "One field of the decomposition record as the reader resolved it: what the source or the profile declares, and unresolved with the reason when a fact is missing"
+              properties:
+                unit:
+                  type: "string"
+                  nullable: true
+                status:
+                  type: "string"
+                  enum:
+                    - "resolved"
+                    - "unresolved"
+                reason:
+                  type: "string"
+                kind:
+                  type: "string"
+                  nullable: true
+                  enum:
+                    - "sigma"
+                    - "fwhm"
+                    - "dispersion"
+                to_sigma:
+                  type: "string"
+                  description: "the explicit conversion to sigma when the width is a FWHM"
+            order:
+              type: "string"
+              nullable: true
+            notes:
+              type: "array"
+              items:
+                type: "string"
       required:
         - "components"
         - "axis"
@@ -13562,6 +13672,9 @@ components:
         - "bunit"
         - "layout"
         - "conventions"
+        - "drawn"
+        - "not_drawn_reason"
+        - "record"
       description: "The JSON header of a rohsa components frame."
     SweepParam:
       type: "object"
@@ -22348,6 +22461,9 @@ components:
             rows:
               type: "integer"
           description: "The index a click on a cell reads instead of the .dat; only the latest binning of a fit is kept, so drawing another diagram of the same fit replaces it. null when no cache folder is set"
+        not_fitted:
+          type: "integer"
+          description: "component slots the tool did not fit at some pixel (a NaN in its record); counted apart from invalid widths, never as zero"
       description: "The sigma-v diagram of a decomposition: the weighted 2D histogram of component width against centroid velocity, with each cell's contributor count"
     RohsaPixelMask:
       type: "object"
@@ -22484,6 +22600,9 @@ components:
         software:
           type: "object"
           additionalProperties: true
+        not_fitted:
+          type: "integer"
+          description: "component slots the tool did not fit at some pixel (a NaN in its record); counted apart from invalid widths, never as zero"
       description: "The decomposition summed per width class, registered as derived maps"
     FamilyRequest:
       type: "object"

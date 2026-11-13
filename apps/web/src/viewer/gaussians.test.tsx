@@ -14,12 +14,17 @@ const axis = Float64Array.from([-2, -1, 0, 1, 2]);
 const curves = [Float64Array.from([0, 1, 2, 1, 0]), Float64Array.from([1, 1, 1, 1, 1]), Float64Array.from([0, 0, 0, 0, 0])];
 const model = Float64Array.from([1, 2, 3, 2, 1]);
 const comp = (k: number, amp: number, sigma: number | null, valid = true) => ({
-  k, amp, mean_channel_file: 3, mean_channel: 2, sigma_channel: 1, valid, centre: valid ? 0 : null, sigma, fwhm: sigma === null ? null : 2.3548 * sigma, t_doppler_k: sigma === null ? null : 121.2 * sigma * sigma,
+  k, present: true, amp: amp as number | null, mean_channel_file: 3 as number | null, mean_channel: 2 as number | null, sigma_channel: 1 as number | null, valid, centre: valid ? 0 : null, sigma, fwhm: sigma === null ? null : 2.3548 * sigma,
+  t_doppler_k: sigma === null ? null : 121.2 * sigma * sigma, centre_raw: 3 as number | null, width_raw: 1 as number | null,
 });
+const tableRecord = {
+  source: "table" as const, amplitude: { unit: "K", basis: "grid", status: "resolved" as const, matches_grid: true },
+  centre: { unit: "channel", base: 1, frame: "grid", status: "resolved" as const }, width: { kind: "sigma" as const, unit: "channel", status: "resolved" as const }, order: null, notes: [],
+};
 const components: Components = {
   axis, model, curves,
   head: {
-    ok: true, x: 2, y: 1, channels: NC, n_gauss: 3, bunit: "K", layout: "", conventions: {},
+    ok: true, x: 2, y: 1, channels: NC, n_gauss: 3, bunit: "K", layout: "", conventions: {}, drawn: true, not_drawn_reason: null, record: tableRecord,
     axis: { kind: "velocity", name: "radio velocity", unit: "km/s", source_unit: "m/s", unit_status: "inferred", note: null },
     components: [comp(1, 2, 1.5), comp(2, 1, 2.03), comp(3, 0, 3)],
   },
@@ -216,5 +221,39 @@ describe("Gaussian components over the spectrum", () => {
     expect(within(table).getByText("invalid σ, not drawn")).toBeInTheDocument();
     expect(within(table).queryByText("CNM")).toBeNull();
     expect(screen.getByText(/need a velocity axis/)).toBeInTheDocument();
+  });
+
+  it("lists what the source states and draws nothing when the record leaves a fact unresolved", async () => {
+    const record = {
+      source: "fits_maps" as const, amplitude: { unit: "K", basis: "file", status: "resolved" as const, matches_grid: true },
+      centre: { unit: "m/s", base: null, frame: null, status: "unresolved" as const, reason: "the spectral frame is not declared" },
+      width: { kind: "fwhm" as const, unit: "km/s", status: "resolved" as const, to_sigma: "sigma = FWHM / (2 sqrt(2 ln 2)) = FWHM / 2.3548" }, order: null, notes: [],
+    };
+    const raw = (k: number, amp: number) => ({ ...comp(k, amp, null, false), centre_raw: -9800 + 1000 * k, width_raw: 2.7 });
+    api.comps.mockResolvedValue({
+      ...components,
+      curves: curves.map(() => new Float64Array(NC)),
+      head: { ...components.head, drawn: false, not_drawn_reason: "the centre is a velocity but its spectral frame is not declared (unresolved)", record, components: [raw(1, 2.25), raw(2, 2.75)] },
+    });
+    const user = userEvent.setup();
+    render(<GaussianComponents v={viewer} />);
+    await user.click(await screen.findByRole("switch", { name: /Gaussian components/ }));
+    const table = await screen.findByRole("region", { name: "Fitted components" });
+    expect(screen.getByText(/Not drawn: the centre is a velocity but its spectral frame is not declared/)).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Gaussian components at pixel/ })).toBeNull();
+    expect(within(table).getByRole("columnheader", { name: /Centre as stated \(m\/s\)/ })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /Width as stated \(fwhm, km\/s\)/ })).toBeInTheDocument();
+    expect(within(table).getByText("-8800")).toBeInTheDocument();
+    expect(within(table).queryByText("CNM")).toBeNull();
+  });
+
+  it("says a slot the tool did not fit is not fitted, rather than showing zeros", async () => {
+    const absent = { ...comp(3, 0, null, false), present: false, amp: null, mean_channel: null, mean_channel_file: null, sigma_channel: null, centre_raw: null, width_raw: null };
+    api.comps.mockResolvedValue({ ...components, head: { ...components.head, components: [comp(1, 2, 1.5), comp(2, 1, 2.03), absent] } });
+    const user = userEvent.setup();
+    render(<GaussianComponents v={viewer} />);
+    await user.click(await screen.findByRole("switch", { name: /Gaussian components/ }));
+    const table = await screen.findByRole("region", { name: "Fitted components" });
+    expect(within(table).getByText("not fitted at this pixel")).toBeInTheDocument();
   });
 });

@@ -6,6 +6,7 @@ so tests can assert exact expected values. Files are written on demand and never
 from __future__ import annotations
 
 import math
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -819,6 +820,12 @@ path = "/scratch/someone/synth_cube.fits"
 [outputs]
 ncomp_file = "/scratch/someone/synth_decomp_ncomp.fits"
 """)
+    # the same maps under a record whose profile leaves the centre's spectral frame undeclared: the viewer must say so and draw nothing
+    bare = directory / "unresolved"
+    bare.mkdir(exist_ok=True)
+    for name in ("synth_cube.fits", f"{D_NAME}_amp.fits", f"{D_NAME}_centre.fits", f"{D_NAME}_fwhm.fits"):
+        shutil.copyfile(directory / name, bare / name)
+    (bare / "synth_decomp_noframe_run.toml").write_text((directory / "synth_decomp_run.toml").read_text())
     return directory / "synth_decomp_run.toml"
 
 

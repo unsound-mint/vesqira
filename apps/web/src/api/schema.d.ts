@@ -7985,13 +7985,14 @@ export interface components {
         RohsaComponent: {
             /** @description 1-based Gaussian number within the pixel, in file order */
             k: number;
-            /** @description fitted amplitude in the crop's brightness unit; 0 is a real value */
-            amp: number;
-            /** @description the file's 1-based channel number */
-            mean_channel_file: number;
-            /** @description 0-based channel index: the file's value minus 1 */
-            mean_channel: number;
-            sigma_channel: number;
+            /** @description fitted amplitude in the unit of the record's amplitude (the crop's brightness unit unless the profile or the amplitude map says another); 0 is a real value; null when the slot is not fitted */
+            amp: number | null;
+            /** @description the file's own channel number when the centre is declared in channels (ROHSA's 1-based mean); null when the centre is not a channel number */
+            mean_channel_file: number | null;
+            /** @description 0-based channel index of the centre on the crop's spectral axis; null when the centre cannot be placed there (undeclared unit, base or frame, or another frame) */
+            mean_channel: number | null;
+            /** @description width as sigma in channels; null when the width cannot be resolved */
+            sigma_channel: number | null;
             /** @description false when sigma is not positive and finite; such a component is not drawn */
             valid: boolean;
             /** @description km/s on the crop's spectral axis; null without a resolved velocity axis */
@@ -8002,6 +8003,12 @@ export interface components {
             fwhm: number | null;
             /** @description 121.2 K (km/s)^-2 x sigma^2 (m_H sigma^2 / k_B for atomic hydrogen): an upper limit on the kinetic temperature */
             t_doppler_k: number | null;
+            /** @description false when the tool did not fit this slot at this pixel (a NaN in its record): the component does not exist here, which is not the same as an amplitude of 0 */
+            present: boolean;
+            /** @description the centre as the source states it, in the unit the record declares */
+            centre_raw: number | null;
+            /** @description the width as the source states it, in the convention and unit the record declares (sigma, FWHM or dispersion) */
+            width_raw: number | null;
         };
         /** @description The JSON header of a rohsa components frame. */
         RohsaComponentsHeader: {
@@ -8026,6 +8033,52 @@ export interface components {
             /** @description the conventions applied, in words: columns, 1-based mean, sigma, model, invalid components, FWHM, T_D */
             conventions: {
                 [key: string]: string;
+            };
+            /** @description false when the record does not say enough (unit, index base, frame or width convention) to place the components on the spectrum; the table still lists what is known and nothing is computed */
+            drawn: boolean;
+            /** @description the sentence that says which fact is unresolved */
+            not_drawn_reason: string | null;
+            /** @description The decomposition record as resolved for this run: source kind, amplitude, centre (unit, base, frame), width (convention, unit, the explicit FWHM to sigma conversion), component order and notes. Each field is resolved or unresolved with a reason. */
+            record: {
+                /** @enum {string} */
+                source?: "table" | "fits_maps";
+                /** @description One field of the decomposition record as the reader resolved it: what the source or the profile declares, and unresolved with the reason when a fact is missing */
+                amplitude?: {
+                    unit?: string | null;
+                    /** @enum {string} */
+                    status?: "resolved" | "unresolved";
+                    reason?: string;
+                    /** @description where the unit came from: grid (the crop's), file (the amplitude map's BUNIT) or declared (the profile) */
+                    basis?: string;
+                    /** @description whether the amplitude unit is the crop's brightness unit; null when either is unknown */
+                    matches_grid?: boolean | null;
+                };
+                /** @description One field of the decomposition record as the reader resolved it: what the source or the profile declares, and unresolved with the reason when a fact is missing */
+                centre?: {
+                    unit?: string | null;
+                    /** @enum {string} */
+                    status?: "resolved" | "unresolved";
+                    reason?: string;
+                    /** @description first channel number (0 or 1) when the centre is in channels */
+                    base?: number | null;
+                    /** @description spectral frame of a velocity centre */
+                    frame?: string | null;
+                };
+                /** @description One field of the decomposition record as the reader resolved it: what the source or the profile declares, and unresolved with the reason when a fact is missing */
+                width?: {
+                    unit?: string | null;
+                    /** @enum {string} */
+                    status?: "resolved" | "unresolved";
+                    reason?: string;
+                    /** @enum {string|null} */
+                    kind?: "sigma" | "fwhm" | "dispersion" | null;
+                    /** @description the explicit conversion to sigma when the width is a FWHM */
+                    to_sigma?: string;
+                };
+                order?: string | null;
+                notes?: string[];
+            } & {
+                [key: string]: unknown;
             };
         };
         /** @description One swept setting. A sweep varies one to three of them; the product of the list lengths is at most 64. */
@@ -11683,6 +11736,8 @@ export interface components {
                 bytes?: number;
                 rows?: number;
             } | null;
+            /** @description component slots the tool did not fit at some pixel (a NaN in its record); counted apart from invalid widths, never as zero */
+            not_fitted?: number;
         };
         /** @description A compact pixel mask */
         RohsaPixelMask: {
@@ -11751,6 +11806,8 @@ export interface components {
             software?: {
                 [key: string]: unknown;
             };
+            /** @description component slots the tool did not fit at some pixel (a NaN in its record); counted apart from invalid widths, never as zero */
+            not_fitted?: number;
         };
         FamilyRequest: {
             /** @description The maps to compare: all scalar maps or all declared axial orientation maps, on this computer, sharing one grid */
