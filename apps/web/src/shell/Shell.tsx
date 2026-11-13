@@ -67,6 +67,7 @@ import { OverlayPanel } from "../viewer/OverlayPanel";
 import { SpectrumPlot } from "../viewer/SpectrumPlot";
 import { ChannelGrid } from "../viewer/ChannelGrid";
 import { PvPanel } from "../viewer/PvPanel";
+import { SkyPanel } from "../sky/SkyPanel";
 import { GaussianComponents } from "../viewer/GaussianComponents";
 import { flagState, spectralText } from "../viewer/format";
 import { useViewer } from "../viewer/useViewer";
@@ -323,6 +324,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   // have to open another dataset first; the scene is applied once that pane has started over on it.
   const [pendingScene, setPendingScene] = useState<Scene | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false); // up to 500 rows are only drawn while the section is open
+  const [skyOpen, setSkyOpen] = useState(false); // footprints are read from the worker only while the sky section is open (ADR 0072)
   const hist = useExplorationHistory({
     projectId: project?.id ?? 0,
     scene: virtualDs ? null : viewerA.scene, // a window is not a dataset the history could continue from
@@ -633,6 +635,9 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
               <RelativeOrientationPanel key={actDs.id} dataset={actDs} datasets={cat.allDatasets} onCreated={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} />
             </Section>
           ) : null}
+          <Section title="Sky" defaultOpen={false} onToggle={setSkyOpen}>
+            {skyOpen ? <SkyPanel datasets={cat.allDatasets} datasetId={actDs && actDs.id > 0 ? actDs.id : null} probe={viewer.probe} onOpen={(id) => { setSubsetId(null); setMode("viewer"); cat.select(id); }} /> : null}
+          </Section>
           <Section title="Display">
             {actDs ? <DisplayControls v={viewer} /> : <p className={s.empty}>{EM}</p>}
           </Section>
