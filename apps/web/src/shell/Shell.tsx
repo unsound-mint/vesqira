@@ -638,7 +638,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
             </Section>
           ) : null}
           <Section title="Sky" defaultOpen={false} onToggle={setSkyOpen}>
-            {skyOpen ? <SkyPanel datasets={cat.allDatasets} datasetId={actDs && actDs.id > 0 ? actDs.id : null} probe={viewer.probe} onOpen={(id) => { setSubsetId(null); setMode("viewer"); cat.select(id); }} /> : null}
+            {skyOpen ? <SkyPanel datasets={cat.allDatasets} subsets={subs.subsets} datasetId={actDs ? actDs.id : subsetId !== null ? virtualId(subsetId) : null} probe={viewer.probe} onOpen={(id) => { if (id < 0) openSubset(virtualId(id)); else { setSubsetId(null); setMode("viewer"); cat.select(id); } }} /> : null}
           </Section>
           <Section title="Display">
             {actDs ? <DisplayControls v={viewer} /> : <p className={s.empty}>{EM}</p>}

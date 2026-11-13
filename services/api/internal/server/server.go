@@ -319,6 +319,7 @@ func (s *Server) Handler() http.Handler {
 	if s.Boards != nil {
 		s.route(mux, "POST /api/figures", authz.FigureWrite, s.createFigure)
 		s.route(mux, "POST /api/figures/runs", authz.FigureWrite, s.createRunFigure)
+		s.route(mux, "POST /api/figures/sky", authz.FigureWrite, s.createSkyFigure)
 		s.route(mux, "GET /api/figures", authz.FigureRead, s.listFigures)
 		s.route(mux, "GET /api/figures/{id}/preview", authz.FigureRead, s.figurePreview)
 		s.route(mux, "GET /api/figures/{id}/download", authz.FigureRead, s.figureDownload)
@@ -403,7 +404,7 @@ func (s *Server) Handler() http.Handler {
 		s.route(mux, "POST /api/regions/{id}", authz.DatasetWrite, s.updateRegion)
 		s.route(mux, "POST /api/regions/{id}/delete", authz.DatasetWrite, s.deleteRegion)
 	}
-	if s.Subsets != nil { // owner listener only. A subset is viewed through these five routes and no other: each reads through its window
+	if s.Subsets != nil { // owner listener only. A subset is viewed through these routes and no other: each reads through its window
 		s.route(mux, "GET /api/subsets", authz.DatasetRead, s.listSubsets)
 		s.route(mux, "GET /api/subsets/{sid}", authz.DatasetRead, s.getSubset)
 		s.route(mux, "POST /api/datasets/{id}/subsets", authz.DatasetWrite, s.createSubset)
@@ -416,6 +417,8 @@ func (s *Server) Handler() http.Handler {
 		s.route(mux, "GET /api/subsets/{sid}/plane", authz.DatasetRead, s.plane)
 		s.route(mux, "GET /api/subsets/{sid}/coord", authz.DatasetRead, s.coord)
 		s.route(mux, "GET /api/subsets/{sid}/spectrum", authz.DatasetRead, s.spectrum)
+		s.route(mux, "GET /api/subsets/{sid}/sky-footprint", authz.DatasetRead, s.skyFootprint)
+		s.route(mux, "GET /api/subsets/{sid}/sky-point", authz.DatasetRead, s.skyPoint)
 	}
 	if s.Offline != nil { // owner listener only: the review listener has no route to an offline copy (ADR 0059)
 		s.route(mux, "GET /api/offline", authz.LocalOnly, s.offlineOverview)

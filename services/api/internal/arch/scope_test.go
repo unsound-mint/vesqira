@@ -341,7 +341,7 @@ func TestEveryScopedQueryNamesTheWorkspace(t *testing.T) {
 			tbl := m[1]
 			where := s.file + ":" + strconv.Itoa(s.line) + " (" + s.fn + ")"
 			switch {
-			case strings.HasPrefix(tbl, "pragma_") || tbl == "excluded" || globalTables[tbl] || localOnlyTables[tbl]:
+			case strings.HasPrefix(tbl, "pragma_") || tbl == "excluded" || tbl == "json_each" || globalTables[tbl] || localOnlyTables[tbl]:
 			case scopedTables[tbl]:
 				if capability {
 					continue

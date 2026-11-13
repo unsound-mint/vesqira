@@ -1147,7 +1147,7 @@
   },
   "FigureView": {
    "type": "object",
-   "description": "What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request.",
+   "description": "What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request. sky is the kind of a sky view (ADR 0072) and is never accepted on a request.",
    "required": [
     "kind"
    ],
@@ -1159,7 +1159,8 @@
       "spectrum",
       "orientation",
       "channelgrid",
-      "runplot"
+      "runplot",
+      "sky"
      ]
     },
     "channel": {
@@ -1540,7 +1541,7 @@
   },
   "FigureProvenance": {
    "type": "object",
-   "description": "Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts.",
+   "description": "Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts. For a sky view (ADR 0072) source says there is no file, view.kind is sky and sky gives the frame, the field, the survey background (context only) and each footprint by file name and WCS basis; it has no dataset id.",
    "required": [
     "source",
     "view",
@@ -1623,12 +1624,15 @@
     },
     "runPlot": {
      "$ref": "#/components/schemas/FigureRunPlot"
+    },
+    "sky": {
+     "$ref": "#/components/schemas/FigureSkyView"
     }
    }
   },
   "Figure": {
    "type": "object",
-   "description": "Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind \"dataset\"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind \"crossrun\".",
+   "description": "Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind \"dataset\"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind \"crossrun\". A sky view (ADR 0072) also has no dataset (datasetId null) and kind \"sky\".",
    "required": [
     "id",
     "datasetId",
@@ -1708,7 +1712,8 @@
      "type": "string",
      "enum": [
       "dataset",
-      "crossrun"
+      "crossrun",
+      "sky"
      ]
     },
     "access": {
@@ -20901,6 +20906,190 @@
     }
    }
   },
+  "FigureSkyBackground": {
+   "type": "object",
+   "required": [
+    "hipsId",
+    "name",
+    "provider",
+    "credit",
+    "role"
+   ],
+   "description": "The survey image behind a sky view. It is context: not data from the author's files and never sampled into a number. The server fills these words from its fixed list.",
+   "properties": {
+    "hipsId": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "provider": {
+     "type": "string"
+    },
+    "credit": {
+     "type": "string"
+    },
+    "role": {
+     "type": "string",
+     "enum": [
+      "context"
+     ]
+    }
+   }
+  },
+  "FigureSkyFootprint": {
+   "type": "object",
+   "required": [
+    "name",
+    "window",
+    "basis"
+   ],
+   "description": "One outline drawn on a sky view: the file's name, whether it is a window onto the file (a virtual subset), and how the file's celestial frame is known.",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "window": {
+     "type": "boolean"
+    },
+    "basis": {
+     "type": "string"
+    }
+   }
+  },
+  "FigureSkyView": {
+   "type": "object",
+   "required": [
+    "frame",
+    "centre",
+    "fovDeg",
+    "background",
+    "footprints"
+   ],
+   "description": "Reviewer-safe account of a sky view: the frame, the centre, the field, the survey background or null, and the footprints. It has no dataset id.",
+   "properties": {
+    "frame": {
+     "type": "string",
+     "enum": [
+      "icrs",
+      "galactic"
+     ]
+    },
+    "centre": {
+     "type": "object",
+     "required": [
+      "lon",
+      "lat"
+     ],
+     "properties": {
+      "lon": {
+       "type": "number"
+      },
+      "lat": {
+       "type": "number"
+      }
+     }
+    },
+    "fovDeg": {
+     "type": "number"
+    },
+    "background": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/FigureSkyBackground"
+      }
+     ],
+     "nullable": true
+    },
+    "footprints": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/FigureSkyFootprint"
+     }
+    }
+   }
+  },
+  "CreateSkyFigureRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "title",
+    "previewPng",
+    "frame",
+    "centre",
+    "fovDeg",
+    "footprints"
+   ],
+   "description": "Saves the sky panel's view as a figure (ADR 0072). The server reads every footprint itself, through the same routes the panel uses, and writes the survey's name, provider and credit from its fixed list; the browser says which datasets or subsets, the frame, the centre, the field and whether a survey was in the picture. The server never contacts the survey host.",
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    },
+    "previewPng": {
+     "type": "string",
+     "description": "base64 PNG"
+    },
+    "frame": {
+     "type": "string",
+     "enum": [
+      "icrs",
+      "galactic"
+     ]
+    },
+    "centre": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "lon",
+      "lat"
+     ],
+     "properties": {
+      "lon": {
+       "type": "number"
+      },
+      "lat": {
+       "type": "number"
+      }
+     }
+    },
+    "fovDeg": {
+     "type": "number"
+    },
+    "survey": {
+     "type": "string",
+     "nullable": true,
+     "description": "The HiPS id of the background in the picture; absent or null for the plain grid."
+    },
+    "footprints": {
+     "type": "array",
+     "maxItems": 120,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "kind",
+       "id"
+      ],
+      "properties": {
+       "kind": {
+        "type": "string",
+        "enum": [
+         "dataset",
+         "subset"
+        ]
+       },
+       "id": {
+        "type": "integer",
+        "format": "int64"
+       }
+      }
+     }
+    }
+   }
+  },
   "SweepFamily": {
    "type": "object",
    "description": "A sweep's finished jobs as a family: one map per job (the run's single output of the chosen role), labelled by the parameters that differ, and the jobs left out with the reason",
@@ -28381,6 +28570,41 @@
     }
    }
   },
+  "POST /api/figures/sky": {
+   "summary": "Save the sky panel's view as a figure that draws no dataset of its own (owner listener only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CreateSkyFigureRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Figure"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
   "GET /api/auth/state": {
    "summary": "Where this browser is in signing in (group server)",
    "responses": {
@@ -31429,12 +31653,132 @@
     }
    }
   },
+  "GET /api/subsets/{sid}/sky-footprint": {
+   "summary": "Where the image lies on the sky, in the sky panel's frame",
+   "description": "From the dataset's celestial WCS with the researcher's corrections in force, by astropy (ADR 0072). A dataset with no usable celestial WCS is a 200 with `footprint` null and the reason. A point catalog or HEALPix map is a 409. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.",
+   "parameters": [
+    {
+     "name": "sid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "frame",
+     "in": "query",
+     "required": true,
+     "description": "The sky panel's frame: the positions come back in it.",
+     "schema": {
+      "type": "string",
+      "enum": [
+       "icrs",
+       "galactic"
+      ]
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SkyFootprint"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
   "GET /api/datasets/{id}/sky-point": {
    "summary": "Where one pixel is on the sky, in the sky panel's frame",
    "description": "The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason.",
    "parameters": [
     {
      "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "frame",
+     "in": "query",
+     "required": true,
+     "description": "The sky panel's frame: the positions come back in it.",
+     "schema": {
+      "type": "string",
+      "enum": [
+       "icrs",
+       "galactic"
+      ]
+     }
+    },
+    {
+     "name": "x",
+     "in": "query",
+     "required": true,
+     "description": "0-based image pixel, as the coordinate readout uses.",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    {
+     "name": "y",
+     "in": "query",
+     "required": true,
+     "description": "0-based image pixel, as the coordinate readout uses.",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SkyPoint"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/subsets/{sid}/sky-point": {
+   "summary": "Where one pixel is on the sky, in the sky panel's frame",
+   "description": "The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.",
+   "parameters": [
+    {
+     "name": "sid",
      "in": "path",
      "required": true,
      "schema": {

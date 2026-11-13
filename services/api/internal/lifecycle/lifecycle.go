@@ -220,7 +220,7 @@ func figuresOf(q querier, ws workspace.ID, datasetIDs ...int64) (figs []Item, re
 		return nil, nil, nil
 	}
 	in, args := inList(datasetIDs)
-	// a figure holds a dataset as its base or as a layer of its scene (contours, orientation lines, a mask: any "datasetId" the owner-only
+	// a figure holds a dataset as its base or as a layer of its scene (contours, orientation lines, a mask, a sky view's footprints: any "datasetId" the owner-only
 	// scene names), and either way deleting the dataset would leave a figure whose provenance names a file that is gone
 	all := append(append([]any{ws}, args...), args...)
 	rows, err := q.Query(`SELECT DISTINCT f.id,f.title,f.revision FROM figures f, json_tree(CASE WHEN json_valid(f.scene) THEN f.scene ELSE '{}' END) t

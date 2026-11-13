@@ -1,7 +1,9 @@
 package boards
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -382,6 +384,49 @@ func (s *Store) rootRevision(ws workspace.ID, rev string) string {
 		rev = id.RedrawnFrom.Revision
 	}
 	return rev
+}
+
+// maxRoundAttempts bounds how often one publish rebuilds its round because another publish of the same board got in first.
+const maxRoundAttempts = 8
+
+// insertRound builds a board's next round and stores it, so that two publishes of one board never take the same round number
+// (ADR 0073). A round is more than a number: its comparison and carried comments are built against the snapshot just before it, so
+// a publish that lost the race must rebuild all of it, not only renumber. Within this process the mutex makes read, build and
+// insert one step. The insert itself says "only if the board still has the snapshots I built against" in one statement, which
+// SQLite runs under the write lock, so another process on the same file cannot slip one in between either; a refused insert
+// rebuilds the round and tries again, a bounded number of times, then answers with a conflict the author can retry.
+func (s *Store) insertRound(ws workspace.ID, by string, boardID int64, fr *Frozen, now time.Time) (int64, string, error) {
+	s.publishing.Lock()
+	defer s.publishing.Unlock()
+	for attempt := 0; attempt < maxRoundAttempts; attempt++ {
+		if err := s.addRound(ws, boardID, fr); err != nil {
+			return 0, "", err
+		}
+		raw, err := json.Marshal(fr)
+		if err != nil {
+			return 0, "", err
+		}
+		var buf [32]byte
+		if _, err := rand.Read(buf[:]); err != nil {
+			return 0, "", err
+		}
+		tok := base64.RawURLEncoding.EncodeToString(buf[:])
+		seen := 0 // the snapshots of this board the round was built against; a figure share has no history to race on
+		if fr.Round != nil {
+			seen = fr.Round.Number - 1
+		}
+		res, err := s.db.Exec(`INSERT INTO snapshots(board_id,label,created_at,expires_at,token_hash,frozen,workspace_id,created_by)
+			SELECT ?,?,?,?,?,?,?,? WHERE ?=0 OR (SELECT COUNT(*) FROM snapshots WHERE board_id=? AND workspace_id=?)=?`,
+			boardID, fr.Label, now.Unix(), fr.ExpiresAt.Unix(), hashToken(tok), string(raw), ws, by, boardID, boardID, ws, seen)
+		if err != nil {
+			return 0, "", err
+		}
+		if n, _ := res.RowsAffected(); n == 1 {
+			id, _ := res.LastInsertId()
+			return id, tok, nil
+		}
+	}
+	return 0, "", fmt.Errorf("%w: this board was published by someone else at the same moment; look at its history and publish again", ErrConflict)
 }
 
 // addRound sets fr.Round for a board's snapshot about to be made (or previewed). items are the live items fr.Items were frozen from.

@@ -1,6 +1,6 @@
 # ADR 0073: Review rounds
 
-- Status: implemented (no schema change); the owner reviews it afterwards
+- Status: implemented (no schema change; concurrent publishes guarded); the owner reviews it afterwards
 - Date: 2026-11-13
 - Related: ADR 0011 (review surface), 0036 (report revisions), 0042 (draw again), 0069 (access labels), 0071 (share this view), GitHub issue 130. Number 0072 is taken by the sky-context branch.
 
@@ -42,14 +42,15 @@ A result such as a phase separation becomes convincing over several review round
 - A snapshot grows by the carried comments (at most 500, the per-snapshot comment limit) and the earlier text of changed figures.
 - Comments made on an earlier link after a later round was published do not appear in the later round. The author sees them in the history.
 - Carried comments may come from a reviewer other than the one holding the new link, if the author gave the two rounds' links to different people. They are shown with the author name each wrote under, as in the first round. Publishing a round is the author's act of sharing them. An author who does not want this can revoke the earlier round before publishing the next, which copies nothing.
-- Two publishes of one board at the same moment could both take the same round number. The owner API serves one author at a time in practice; not guarded.
+- Two publishes of one board at the same moment cannot take the same round number. A round is built against the snapshot before it, so a loser cannot just be renumbered: `insertRound` (`internal/boards/rounds.go`) holds a per-store mutex and inserts the snapshot only if the board still has exactly as many snapshots as the build saw (one conditional INSERT, atomic under SQLite's write lock, so it also holds across processes). A publish that lost rebuilds against the new latest round, up to 8 times, then answers 409 "this board was published by someone else at the same moment; look at its history and publish again". No schema change.
 - A figure replaced by a different figure counts as removed and added.
 
 ## Validation
 - Go (`internal/boards/rounds_test.go`): added, removed, redrawn and unchanged with a caption change; no match by title; a redraw chain followed to its first drawing and not into another workspace; corrections and masks compared from provenance (table); access label and run state; duplicate panels; the history list with round numbers and an old snapshot compared by revision only; comments carried to the same figure with their round, anchors kept or dropped, replies kept, a third round carrying round 1 on; the earlier picture served only while valid (expired and revoked refused, a removed figure's picture never); a revoked round absent from the new link's whole document, including round 1 revoked before or after round 3 is published; a real draw-again save through the server (state redrawn, no redraw link or original revision in the reviewer JSON); nothing copied from a round revoked before publishing; figure shares excluded from numbering and history; another workspace's boards have their own history; the preflight shows the round and creates nothing; a reflection test on every new type and the absence of the redraw link. The reviewer-response contract test validates the new fields against the OpenAPI document.
 - Web: the reviewer page with the list, markers, the earlier drawing, the unavailable wording, carried comments read-only, nothing on round 1; the owner's list and preflight.
 - Playwright (`zzzzzzzzzzz-review-rounds.spec.ts`): publish round 1 and a reviewer comment, change a caption and add and remove figures, publish round 2, the reviewer sees the list, markers and the carried comment, axe in both themes, state cleaned through the API.
-- Not covered: the group server through a browser (the routes are the same and the scope guard test covers them); two simultaneous publishes.
+- Go (`internal/boards/rounds_race_test.go`): concurrent publishes of one board get distinct, consecutive round numbers, each later round compares against the one before it, and the same test fails when the guard is switched off.
+- Not covered: the group server through a browser (the routes are the same and the scope guard test covers them); two publishes from two separate server processes on one database file (the conditional INSERT is meant to cover it; only one process was tested).
 
 ## Rollback/Migration
 No migration. Remove `Round`, the comparison and its two read paths; snapshots made with rounds keep an extra `round` key in their JSON that older code ignores.
