@@ -107,7 +107,7 @@ export function useCatalog() {
       if (first) setSelectedId(first.datasetId);
       return { id: run.id };
     } catch (e) {
-      return { error: e instanceof ApiError ? e.message : "Could not import the run." };
+      return { error: e instanceof ApiError ? [e.message, ...e.reasons].join(" · ") : "Could not import the run." };
     }
   }, []);
   const importRunFolder = useCallback(async (path: string, hostId?: number): Promise<string | null> => {
