@@ -81,7 +81,7 @@ export function ReviewPage({ token }: { token: string }) {
         </p>
         {snap.access ? (
           <p role="note" className={s.noteBox}>
-            <AccessBadge label={snap.access} /> The author marked the data behind {snap.access === "unreleased" ? "this board as unreleased" : "this board as for the collaboration only"}. Do not share or cite what you see here outside that agreement.
+            <AccessBadge label={snap.access} /> The author marked the data shown here as {snap.access === "unreleased" ? "unreleased" : "for the collaboration only"}. Do not share or cite what you see here outside that agreement.
           </p>
         ) : null}
         <Input label="Your name (shown with your comments)" value={author} onChange={(e) => { setAuthor(e.target.value); saveName(e.target.value); }} maxLength={80} />
@@ -100,7 +100,8 @@ export function ReviewPage({ token }: { token: string }) {
         </article>
       ) : (
         <article key={it.revision} className={s.fig} style={place(rect)}>
-          <h2 className={s.h2}>{it.title}</h2>
+          {/* a figure shared on its own has its title as the page heading already: keep the heading for structure, not on screen */}
+          <h2 className={snap.items.length === 1 && it.title === snap.boardTitle ? s.sr : s.h2}>{it.title}</h2>
           {it.access ? <p className={s.note}><AccessBadge label={it.access} /></p> : null}
           <AnchorImage
             src={reviewPreviewUrl(token, it.previewSha)}
