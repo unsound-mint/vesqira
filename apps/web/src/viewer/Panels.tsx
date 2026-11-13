@@ -11,8 +11,6 @@ import { useMaskedHistogram } from "./useMaskedHistogram";
 import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import { axialText, degrees, limitText, precisionNote, provenanceNote, spectralText, unitLabel, valueText } from "./format";
-import { isFileHeader } from "./OrientationPanels";
-import { ruleOf } from "../api/declared";
 import s from "./Panels.module.css";
 
 /** What the other map holds at the pixel the pointer maps to: the same pixel on one grid, `at` (from the worker's transform) otherwise. */
@@ -230,14 +228,8 @@ export function CoordinateReadout({ v, other }: { v: Viewer; other?: { name: str
   );
 }
 
-/** The angle convention the legend states: the one declared for the map, never an assumed one (ADR 0068, slice 2). */
-export function angleConvention(interp: Viewer["interp"]): string {
-  if (!interp) return "";
-  const by = isFileHeader(interp.declaredBy) ? "as the file’s header declares it" : interp.declaredBy === "user" ? "as you declared it" : ruleOf(interp.declaredBy) !== null ? `as your import rule ${ruleOf(interp.declaredBy)} declares it` : `as proposed by ${interp.declaredBy}, not by the file`;
-  if (interp.frame === "pixel") return `Angles run from the image +x axis towards +y (counter-clockwise on screen), ${by}.`;
-  if (interp.frame === "sky") return `Angles are position angles east of north in the file’s celestial frame, ${by}.`;
-  return "The frame the angles are measured in is not declared: declare it under Interpretation before reading directions from this map.";
-}
+import { angleConvention } from "./angleConvention";
+export { angleConvention };
 
 /** Colour mapping, stretch and range, with a legend that always says what "no value" looks like. */
 export function DisplayControls({ v }: { v: Viewer }) {

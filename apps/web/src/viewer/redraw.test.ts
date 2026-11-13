@@ -149,7 +149,7 @@ describe("drawing a scene figure again", () => {
 });
 
 describe("orientation lines and the reliability map they were drawn with", () => {
-  const axialBase = { ...base, interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: 5 } } as unknown as Dataset;
+  const axialBase = { ...base, interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: 5, frame: "pixel", declaredBy: "user" } } as unknown as Dataset;
   const lines: SceneOverlay = { id: "orientation", kind: "orientation", datasetId: 1, visible: true, sampling: { mode: "step", step: 2 }, length: "fixed", opacity: "reliability" };
   function axialStored(): Scene {
     const live = sceneReducer(sceneReducer(newScene(1, DEFAULT_DISPLAY, true, true), { type: "setChannel", channel: 3 }), { type: "updateOverlay", id: "orientation", patch: { opacity: "reliability" } });
