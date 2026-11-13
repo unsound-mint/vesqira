@@ -28,6 +28,9 @@ async function ensure(request: import("@playwright/test").APIRequestContext, fil
   return d!;
 }
 
+/** A dataset's outline on the sky map, by id: other specs register files with the same name. */
+const outline = (panel: import("@playwright/test").Locator, d: Ds) => panel.locator(`[role="button"][data-dataset-id="${d.id}"]`);
+
 /** Everything that is not this machine is refused and written down. */
 async function blockExternal(page: Page): Promise<string[]> {
   const attempts: string[] = [];
@@ -56,11 +59,11 @@ test("the sky panel works offline, draws footprints from the WCS, links the curs
   await expect(panel).toBeVisible();
 
   // the open cube and the overlapping one are drawn; the one without celestial WCS is listed with a reason and has no outline
-  await expect(panel.getByRole("button", { name: `Open ${cube.name}` })).toBeVisible();
-  await expect(panel.getByRole("button", { name: `Open ${coarser.name}` })).toBeVisible();
+  await expect(outline(panel, cube)).toBeVisible();
+  await expect(outline(panel, coarser)).toBeVisible();
   const list = panel.getByRole("list", { name: "Datasets on the sky" });
-  await expect(list.getByRole("listitem").filter({ hasText: bare.name })).toContainText(/no celestial WCS|celestial/i);
-  await expect(panel.getByRole("button", { name: `Open ${bare.name}` })).toHaveCount(0);
+  await expect(list.getByRole("listitem").filter({ hasText: bare.name }).first()).toContainText(/no celestial WCS|celestial/i);
+  await expect(outline(panel, bare)).toHaveCount(0);
 
   // the background is off, says so, and names what turning it on would contact
   await expect(panel.getByText(/Off\. Nothing leaves this computer/)).toBeVisible();
@@ -72,7 +75,7 @@ test("the sky panel works offline, draws footprints from the WCS, links the curs
 
   // the other frame is asked of the worker again, and the outlines stay
   await panel.getByLabel("Frame").selectOption("galactic");
-  await expect(panel.getByRole("button", { name: `Open ${cube.name}` })).toBeVisible();
+  await expect(outline(panel, cube)).toBeVisible();
   await expect(panel.getByRole("group", { name: /Sky map in Galactic/ })).toBeVisible();
   await panel.getByLabel("Frame").selectOption("icrs");
   await expect(panel.getByRole("group", { name: /Sky map in ICRS/ })).toBeVisible();
@@ -88,14 +91,14 @@ test("the sky panel works offline, draws footprints from the WCS, links the curs
   expect(where).toMatch(/^RA \d+\.\d+°?, Dec -?\d+\.\d+/);
 
   // an outline is a button: from the keyboard it opens its dataset (a pointer click would hit whichever of the shared instance's overlapping outlines is on top)
-  await panel.getByRole("button", { name: `Open ${coarser.name}` }).focus();
+  await outline(panel, coarser).focus();
   await page.keyboard.press("Enter");
   await expect(panel.locator("dl").getByText(coarser.name, { exact: true })).toBeVisible();
 
   // a cube whose WCS is Galactic is drawn too, from the worker's transform (it lies far from the others, so open it from the list)
-  await list.getByRole("button", { name: galactic.name, exact: true }).click();
-  await expect(panel.getByRole("button", { name: `Open ${galactic.name}` })).toBeVisible();
-  await expect(list.getByRole("listitem").filter({ hasText: galactic.name })).toContainText(/galactic/i);
+  await list.getByRole("button", { name: galactic.name, exact: true }).first().click();
+  await expect(outline(panel, galactic)).toBeVisible();
+  await expect(list.getByRole("listitem").filter({ hasText: galactic.name }).first()).toContainText(/galactic/i);
 
   // nothing was asked of any server outside this machine
   expect(attempts).toEqual([]);

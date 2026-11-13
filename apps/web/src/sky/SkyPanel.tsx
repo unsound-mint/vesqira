@@ -140,7 +140,7 @@ export function SkyPanel({ datasets, datasetId, probe, onOpen }: {
               <g clipPath="url(#sky-clip)">
                 {scene.grid.runs.map((r, i) => <path key={i} d={pathData(r, false)} className={s.grid} />)}
                 {scene.footprints.map((f) => (
-                  <path key={f.id} d={pathData(f.path, true)} className={f.selected ? s.footSelected : s.foot} role="button" tabIndex={0} aria-label={`Open ${f.name}`} aria-pressed={f.selected}
+                  <path key={f.id} d={pathData(f.path, true)} className={f.selected ? s.footSelected : s.foot} role="button" tabIndex={0} data-dataset-id={f.id} aria-label={`Open ${f.name}`} aria-pressed={f.selected}
                     onClick={() => onOpen(f.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(f.id); } }}>
                     <title>{f.name}</title>
                   </path>
