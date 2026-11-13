@@ -97,9 +97,7 @@ test("a labelled dataset marks its figure, publishing asks for confirmation, and
   await expectNoAxeViolations(page);
   await page.screenshot({ path: test.info().outputPath("board-dark.png") });
   await page.setViewportSize({ width: 390, height: 844 });
-  // heading-order: with the explorer hidden at 390 px the board's panel titles (h3) follow the page's h1 with no h2 between them.
-  // That is how the board screen has been built since ADR 0060, not something the label added; it is skipped here and reported.
-  await expectNoAxeViolations(page, ["heading-order"]);
+  await expectNoAxeViolations(page);
   await page.screenshot({ path: test.info().outputPath("board-390.png") });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ colorScheme: "light" });
