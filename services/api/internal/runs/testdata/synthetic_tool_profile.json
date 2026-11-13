@@ -1,0 +1,70 @@
+{
+  "format": 1,
+  "about": "TEST ONLY. A synthetic profile for a tool that is neither VGT nor ROHSA, with a job template: a typed key with a range, an enum, a bool, a path and the output folder. It is not a public tool and is never shipped. It proves that a script is rendered, validated and submitted from a profile's declaration alone (ADR 0068 slice 5).",
+  "roles": {
+    "orientation": "Orientation map",
+    "reliability": "Reliability",
+    "support": "Support",
+    "component_table": "Component table",
+    "component_maps": "Component maps",
+    "model_cube": "Model cube",
+    "residual_cube": "Residual cube",
+    "crop": "Crop"
+  },
+  "profiles": [
+    {
+      "name": "SynthFit",
+      "version": "1",
+      "kind": "synthfit",
+      "label": "SynthFit",
+      "source": "none: invented for the tests",
+      "template": {
+        "id": "synthfit",
+        "title": "SynthFit run",
+        "tool": "SynthFit",
+        "about": "Runs the invented SynthFit tool on a copy of a config from the host, with the settings you change applied and every other line as it was.",
+        "repo": {
+          "url": "https://example.org/synth/synthfit",
+          "commit": "0123456789abcdef0123456789abcdef01234567",
+          "folderLabel": "SynthFit folder on the host",
+          "placeholder": "/shared/home/you/synthfit",
+          "hint": "The checkout of the invented tool.",
+          "refusal": "the SynthFit folder must be an absolute path without spaces or quotes",
+          "verified": "Nothing: the tool does not exist."
+        },
+        "config": {
+          "var": "cfg",
+          "inputKey": "input_cube",
+          "edit": "section",
+          "required": false,
+          "label": "Base config on the host",
+          "placeholder": "/shared/home/you/synthfit/run.toml"
+        },
+        "keys": [
+          {"name": "input_cube", "section": "input", "kind": "path", "label": "Input cube on the host", "description": "The cube the run reads."},
+          {"name": "output_dir", "section": "output", "kind": "path", "label": "Output folder", "description": "Set by Vesqira for each job.", "internal": true},
+          {
+            "name": "n_bins", "section": "fit", "kind": "int", "min": 2, "max": 64, "label": "n_bins", "description": "Number of histogram bins, from 2 to 64.",
+            "expect": "a whole number from 2 to 64",
+            "default": {"value": "16", "reason": "invented for the tests"}
+          },
+          {
+            "name": "threshold", "section": "fit", "kind": "number", "min": 0, "max": 10, "label": "threshold", "description": "Detection threshold in units of the noise, from 0 to 10.",
+            "expect": "a number from 0 to 10"
+          },
+          {"name": "mode", "section": "fit", "kind": "enum", "enum": ["fast", "exact"], "label": "mode", "description": "fast or exact."},
+          {"name": "smooth", "section": "fit", "kind": "bool", "label": "smooth", "description": "Smooth the result before writing it."}
+        ],
+        "steps": [
+          {"kind": "set", "name": "threads", "value": "{{cpus}}"},
+          {"kind": "export", "name": "OMP_NUM_THREADS", "value": "{{var:threads}}"},
+          {"kind": "announce", "show": [{"label": "threads", "var": "threads"}]},
+          {"kind": "require", "command": "python3", "title": "Python"}
+        ],
+        "command": ["srun", "--ntasks=1", "python3", "synthfit.py", "--config", "{{config}}"],
+        "progress": {"pattern": "^synthfit: (?P<done>[0-9]+)/(?P<total>[0-9]+) tiles$"},
+        "resources": {"cpus": 4, "mem": "8G", "time": "02:00:00", "reason": "invented for the tests"}
+      }
+    }
+  ]
+}

@@ -115,6 +115,9 @@ type VGTRequest struct {
 	// HashInput: the script hashes every byte of the input file before the program starts (set for a configuration run on
 	// another cube, and kept by sweeps drafted from one, so their script is what their settings render).
 	HashInput bool `json:"hashInput,omitempty"`
+	// Profile is the label (name@version) of the tool profile whose template rendered the draft, so a rerun can tell which
+	// declaration the settings were checked against.
+	Profile string `json:"profile,omitempty"`
 }
 
 // VGTRequest returns the stored request, or false for a job that has none (not VGT, or made before it was recorded).

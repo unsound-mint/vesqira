@@ -12,10 +12,40 @@
 package vgtlog
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// ParsePattern is the progress a tool profile's own log pattern reports (ADR 0068): the last line the pattern matches whose
+// groups "done" and "total" are whole numbers. The pattern comes from a profile, which is untrusted, so it runs in Go's regexp
+// engine (linear time) over the tail the job log command returned, and a count that makes no sense (no total, more done than
+// total, an absurd total) reads as no progress.
+func ParsePattern(out string, re *regexp.Regexp) (Progress, bool) {
+	if re == nil {
+		return Progress{}, false
+	}
+	di, ti := re.SubexpIndex("done"), re.SubexpIndex("total")
+	if di < 0 || ti < 0 {
+		return Progress{}, false
+	}
+	var best Progress
+	found := false
+	for _, line := range strings.Split(out, "\n") {
+		m := re.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		d, err1 := strconv.Atoi(m[di])
+		t, err2 := strconv.Atoi(m[ti])
+		if err1 != nil || err2 != nil || t < 1 || t > maxChunks || d < 0 || d > t {
+			continue
+		}
+		best, found = Progress{Done: d, Total: t}, true
+	}
+	return best, found
+}
 
 // Progress is how many of the chunks have been logged as done.
 type Progress struct {

@@ -20290,6 +20290,616 @@
      "description": "The author's explicit yes to sharing a figure that uses labelled data. Without it such a share is refused with 409; it never overrides a blocked label (403)."
     }
    }
+  },
+  "JobTemplateKey": {
+   "type": "object",
+   "required": [
+    "name",
+    "section",
+    "kind",
+    "label",
+    "description",
+    "expect"
+   ],
+   "properties": {
+    "name": {
+     "type": "string",
+     "description": "The config key"
+    },
+    "section": {
+     "type": "string",
+     "description": "The config table the key lives in"
+    },
+    "kind": {
+     "type": "string",
+     "description": "number, int, posint, enum, bool or path: the characters a value may have are fixed by the kind",
+     "enum": [
+      "number",
+      "int",
+      "posint",
+      "enum",
+      "bool",
+      "path"
+     ]
+    },
+    "label": {
+     "type": "string",
+     "description": "The form's label"
+    },
+    "description": {
+     "type": "string",
+     "description": "What the key does, in plain words, from the tool's own documentation"
+    },
+    "expect": {
+     "type": "string",
+     "description": "Completes '<key> must be ...' in a refusal and serves as the form's hint"
+    },
+    "enum": {
+     "type": "array",
+     "description": "The values of an enum key",
+     "items": {
+      "type": "string"
+     }
+    },
+    "enumNumeric": {
+     "type": "array",
+     "description": "Words that may be followed by a non-negative number (gauss1, gauss1.5)",
+     "items": {
+      "type": "string"
+     }
+    },
+    "words": {
+     "type": "array",
+     "description": "Bare words a number key also accepts",
+     "items": {
+      "type": "string"
+     }
+    },
+    "min": {
+     "type": "number",
+     "description": "Smallest accepted value"
+    },
+    "max": {
+     "type": "number",
+     "description": "Largest accepted value"
+    },
+    "real": {
+     "type": "boolean",
+     "description": "A whole number is written as a real (10 as 10.0)"
+    },
+    "list": {
+     "type": "boolean",
+     "description": "A count is written as a one-element list"
+    },
+    "noExponent": {
+     "type": "boolean"
+    },
+    "internal": {
+     "type": "boolean",
+     "description": "Set by Vesqira per job (the output folder), never by a request"
+    },
+    "default": {
+     "type": "object",
+     "description": "The value the tool's documentation gives; shown as a hint and never written into a config the person did not change",
+     "required": [
+      "value",
+      "reason"
+     ],
+     "properties": {
+      "value": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string",
+       "description": "Where the value was read"
+      }
+     }
+    }
+   }
+  },
+  "JobTemplateStep": {
+   "type": "object",
+   "description": "One preparation line of the script, from a closed list of kinds; the script shows the line it becomes",
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "kind": {
+     "type": "string",
+     "description": "export, set, announce, require, modules, build_if_stale, comment or ulimit",
+     "enum": [
+      "export",
+      "set",
+      "announce",
+      "require",
+      "modules",
+      "build_if_stale",
+      "comment",
+      "ulimit"
+     ]
+    },
+    "name": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    },
+    "keepIfSet": {
+     "type": "boolean"
+    },
+    "command": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    },
+    "modules": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "purge": {
+     "type": "boolean"
+    },
+    "var": {
+     "type": "string"
+    },
+    "dir": {
+     "type": "string"
+    },
+    "binary": {
+     "type": "string"
+    },
+    "target": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "sources": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "show": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "label",
+       "var"
+      ],
+      "properties": {
+       "label": {
+        "type": "string"
+       },
+       "var": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "text": {
+     "type": "string",
+     "description": "A plain sentence for the form"
+    }
+   }
+  },
+  "JobTemplate": {
+   "type": "object",
+   "description": "How a Slurm job of a tool is written, as declared by a tool profile (ADR 0068). Declaration only: the server renders, validates and quotes.",
+   "required": [
+    "profile",
+    "id",
+    "title",
+    "tool",
+    "about",
+    "repo",
+    "config",
+    "keys",
+    "steps",
+    "command",
+    "resources"
+   ],
+   "properties": {
+    "profile": {
+     "type": "string",
+     "description": "The label (name@version) of the tool profile that declares the template"
+    },
+    "id": {
+     "type": "string",
+     "description": "What a job's template field holds"
+    },
+    "title": {
+     "type": "string"
+    },
+    "tool": {
+     "type": "string",
+     "description": "The tool's plain name inside sentences"
+    },
+    "about": {
+     "type": "string"
+    },
+    "repo": {
+     "type": "object",
+     "required": [
+      "url",
+      "commit",
+      "folderLabel",
+      "placeholder",
+      "hint",
+      "refusal",
+      "verified"
+     ],
+     "properties": {
+      "url": {
+       "type": "string",
+       "description": "The tool's repository"
+      },
+      "commit": {
+       "type": "string",
+       "description": "The full commit the template was written against"
+      },
+      "folderLabel": {
+       "type": "string"
+      },
+      "placeholder": {
+       "type": "string"
+      },
+      "hint": {
+       "type": "string"
+      },
+      "refusal": {
+       "type": "string"
+      },
+      "verified": {
+       "type": "string",
+       "description": "What was checked against the commit"
+      }
+     }
+    },
+    "config": {
+     "type": "object",
+     "required": [
+      "var",
+      "inputKey",
+      "edit",
+      "required",
+      "label",
+      "placeholder"
+     ],
+     "properties": {
+      "var": {
+       "type": "string"
+      },
+      "inputKey": {
+       "type": "string"
+      },
+      "edit": {
+       "type": "string",
+       "description": "How a changed key is written: section or by_name",
+       "enum": [
+        "section",
+        "by_name"
+       ]
+      },
+      "required": {
+       "type": "boolean",
+       "description": "A job starts from a config the person names"
+      },
+      "label": {
+       "type": "string"
+      },
+      "placeholder": {
+       "type": "string"
+      },
+      "allTables": {
+       "type": "boolean"
+      },
+      "guard": {
+       "type": "object",
+       "required": [
+        "table",
+        "key",
+        "refusal"
+       ],
+       "properties": {
+        "table": {
+         "type": "string"
+        },
+        "key": {
+         "type": "string"
+        },
+        "refusal": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    "keys": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/JobTemplateKey"
+     }
+    },
+    "ties": {
+     "type": "array",
+     "description": "One setting that stands for several keys moved together",
+     "items": {
+      "type": "object",
+      "required": [
+       "name",
+       "label",
+       "keys",
+       "reason"
+      ],
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "label": {
+        "type": "string"
+       },
+       "keys": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "reason": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "steps": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/JobTemplateStep"
+     }
+    },
+    "command": {
+     "type": "array",
+     "description": "The words of the one command that runs; it starts with srun",
+     "items": {
+      "type": "string"
+     }
+    },
+    "progress": {
+     "type": "object",
+     "description": "How progress is read from the log: a reader of Vesqira's or a pattern with the groups done and total",
+     "properties": {
+      "reader": {
+       "type": "string"
+      },
+      "pattern": {
+       "type": "string"
+      }
+     }
+    },
+    "resources": {
+     "type": "object",
+     "required": [
+      "cpus",
+      "mem",
+      "time",
+      "reason"
+     ],
+     "properties": {
+      "cpus": {
+       "type": "integer"
+      },
+      "mem": {
+       "type": "string"
+      },
+      "time": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string",
+       "description": "Why these are the starting request"
+      }
+     }
+    },
+    "probes": {
+     "type": "array",
+     "description": "Environment probes for the record",
+     "items": {
+      "type": "string"
+     }
+    },
+    "sizing": {
+     "type": "string",
+     "description": "A built-in sizing table shown beside the request (rohsa_crop_table), or empty"
+    }
+   }
+  },
+  "JobTemplateList": {
+   "type": "object",
+   "required": [
+    "templates"
+   ],
+   "properties": {
+    "templates": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/JobTemplate"
+     }
+    }
+   }
+  },
+  "CreateJobRequest": {
+   "type": "object",
+   "required": [
+    "hostId",
+    "template",
+    "name"
+   ],
+   "description": "A job draft. template is custom (script) or the id of a job template listed by GET /api/job-templates. The tool body is the same for every template; the older vgt and rohsa bodies are read when tool is absent and template is vgt or rohsa (compatibility, ADR 0068 slice 5).",
+   "properties": {
+    "hostId": {
+     "type": "integer"
+    },
+    "template": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "script": {
+     "type": "string",
+     "description": "The script of a custom job"
+    },
+    "note": {
+     "type": "string",
+     "description": "Why the job is made"
+    },
+    "autoImport": {
+     "type": "boolean"
+    },
+    "parentRunId": {
+     "type": "integer"
+    },
+    "rerunMode": {
+     "type": "string",
+     "description": "strict, best_effort or adapted, for a vgt or rohsa draft with a parentRunId"
+    },
+    "tool": {
+     "type": "object",
+     "description": "The tool's folder, config, settings and resources",
+     "properties": {
+      "repoDir": {
+       "type": "string",
+       "description": "The tool's checkout on the host"
+      },
+      "configPath": {
+       "type": "string",
+       "description": "A config on the host, inside its source folders"
+      },
+      "configText": {
+       "type": "string",
+       "description": "Used instead of reading configPath (a rerun passes the text the parent started from)"
+      },
+      "set": {
+       "type": "object",
+       "description": "Only the settings that change, by key; each is checked against the template's type and range",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "cpus": {
+       "type": "integer"
+      },
+      "mem": {
+       "type": "string"
+      },
+      "time": {
+       "type": "string"
+      },
+      "partition": {
+       "type": "string"
+      },
+      "account": {
+       "type": "string"
+      },
+      "pinProfileCommit": {
+       "type": "boolean",
+       "description": "Stop the job unless the tool's folder is at the commit the profile was written against (off unless asked)"
+      }
+     }
+    },
+    "vgt": {
+     "type": "object",
+     "description": "The tool's folder, config, settings and resources",
+     "properties": {
+      "repoDir": {
+       "type": "string",
+       "description": "The tool's checkout on the host"
+      },
+      "configPath": {
+       "type": "string",
+       "description": "A config on the host, inside its source folders"
+      },
+      "configText": {
+       "type": "string",
+       "description": "Used instead of reading configPath (a rerun passes the text the parent started from)"
+      },
+      "set": {
+       "type": "object",
+       "description": "Only the settings that change, by key; each is checked against the template's type and range",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "cpus": {
+       "type": "integer"
+      },
+      "mem": {
+       "type": "string"
+      },
+      "time": {
+       "type": "string"
+      },
+      "partition": {
+       "type": "string"
+      },
+      "account": {
+       "type": "string"
+      },
+      "pinProfileCommit": {
+       "type": "boolean",
+       "description": "Stop the job unless the tool's folder is at the commit the profile was written against (off unless asked)"
+      }
+     }
+    },
+    "rohsa": {
+     "type": "object",
+     "description": "The tool's folder, config, settings and resources",
+     "properties": {
+      "repoDir": {
+       "type": "string",
+       "description": "The tool's checkout on the host"
+      },
+      "configPath": {
+       "type": "string",
+       "description": "A config on the host, inside its source folders"
+      },
+      "configText": {
+       "type": "string",
+       "description": "Used instead of reading configPath (a rerun passes the text the parent started from)"
+      },
+      "set": {
+       "type": "object",
+       "description": "Only the settings that change, by key; each is checked against the template's type and range",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "cpus": {
+       "type": "integer"
+      },
+      "mem": {
+       "type": "string"
+      },
+      "time": {
+       "type": "string"
+      },
+      "partition": {
+       "type": "string"
+      },
+      "account": {
+       "type": "string"
+      },
+      "pinProfileCommit": {
+       "type": "boolean",
+       "description": "Stop the job unless the tool's folder is at the commit the profile was written against (off unless asked)"
+      }
+     }
+    }
+   }
   }
  },
  "operations": {
@@ -30776,6 +31386,66 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/SnapshotList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/job-templates": {
+   "summary": "The job templates of the tool profiles in force, for the job form",
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/JobTemplateList"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/jobs": {
+   "summary": "Create a job draft: the script is rendered, shown and stored, and nothing is submitted",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CreateJobRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "The draft, with the exact script that will be submitted",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object"
        }
       }
      }

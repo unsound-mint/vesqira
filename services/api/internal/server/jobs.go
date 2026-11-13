@@ -16,6 +16,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/jobs"
+	"github.com/unsound-mint/vesqira/services/api/internal/jobtemplate"
 	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 )
 
@@ -166,30 +167,29 @@ func (s *Server) buildVGT(ctx context.Context, h hosts.Host, name string, in vgt
 	}
 	// The base text and the overrides are kept apart so a rerun can change one setting on the same base, without
 	// reading a file that may have changed on the host since.
+	_, label := s.profiles().TemplateProfile("vgt")
 	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: baseCfg, Set: in.Set,
-		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev, InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil})
+		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev, InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil, Profile: label})
 	if !h.InRoots(out) {
 		return builtJob{}, &apiErr{422, "the output folder must be inside a source root of the host"}
 	}
 	return builtJob{Script: script, OutputDir: out, Request: string(rq)}, nil
 }
 
-// rohsaInput is everything a ROHSA draft is rendered from.
-type rohsaInput struct {
-	RepoDir, ConfigPath, ConfigText string
-	Set                             map[string]string
-	CPUs                            int
-	Mem, Time, Partition, Account   string
-	RerunMode, ExpectRev            string
-	InputRerun                      *jobs.InputRerun
-	HashInput                       bool
+// rohsaInput is vgtInput under the name its callers use: every tool's draft is rendered from the same fields.
+type rohsaInput = vgtInput
+
+// buildROHSA renders a ROHSA job from the ROHSA-LMC profile's template (see buildTool).
+func (s *Server) buildROHSA(ctx context.Context, h hosts.Host, name string, in rohsaInput) (builtJob, *apiErr) {
+	return s.buildTool(ctx, h, name, jobs.ShippedTemplate("rohsa"), in)
 }
 
-// buildROHSA renders a ROHSA job the way buildVGT renders a VGT one: the config text (read from the host unless given), the
-// editable settings applied through the ROHSA whitelist, a fresh output folder inside the host's source roots that Vesqira
-// sets (so a repeated run never writes over an earlier one), the script with the config embedded, and the request kept so a
-// rerun or a sweep can start from an exact copy. Nothing is stored.
-func (s *Server) buildROHSA(ctx context.Context, h hosts.Host, name string, in rohsaInput) (builtJob, *apiErr) {
+// buildTool renders a job of any tool from its profile's template the way buildVGT renders a VGT one: the config text (read from
+// the host unless given), the editable settings applied through the template's typed keys, a fresh output folder inside the
+// host's source roots that Vesqira sets (so a repeated run never writes over an earlier one), the script with the config
+// embedded, and the request kept so a rerun or a sweep can start from an exact copy. Nothing is stored. A request that sets the
+// output folder is refused, as is any key the template does not let a person set.
+func (s *Server) buildTool(ctx context.Context, h hosts.Host, name string, t *jobtemplate.Template, in vgtInput) (builtJob, *apiErr) {
 	cfg := in.ConfigText
 	if cfg == "" && in.ConfigPath != "" {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -200,8 +200,8 @@ func (s *Server) buildROHSA(ctx context.Context, h hosts.Host, name string, in r
 		}
 		cfg = text
 	}
-	if cfg == "" {
-		return builtJob{}, &apiErr{422, "a ROHSA job starts from a config: give the config's path on the host"}
+	if cfg == "" && t.Config.Required {
+		return builtJob{}, &apiErr{422, "a " + t.Tool + " job starts from a config: give the config's path on the host"}
 	}
 	if len(h.Roots) == 0 {
 		return builtJob{}, &apiErr{422, "the host has no source folder to write results into"}
@@ -212,17 +212,60 @@ func (s *Server) buildROHSA(ctx context.Context, h hosts.Host, name string, in r
 	if !h.InRoots(out) {
 		return builtJob{}, &apiErr{422, "the output folder must be inside a source root of the host"}
 	}
-	text, err := jobs.SetROHSAConfig(cfg, in.Set, out)
+	text, err := jobs.SetConfig(t, cfg, in.Set, out)
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
-	script, err := jobs.RenderROHSA(jobs.ROHSASettings{Name: name, RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, Config: text, CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev, HashInput: in.HashInput || in.InputRerun != nil})
+	script, err := jobs.RenderTemplate(t, jobs.Settings{Name: name, RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, Config: text, CPUs: in.CPUs, Mem: in.Mem,
+		Time: in.Time, Partition: in.Partition, Account: in.Account, ExpectCommit: in.ExpectRev, HashInput: in.HashInput || in.InputRerun != nil})
 	if err != nil {
 		return builtJob{}, jobAPIErr(err)
 	}
+	_, label := s.profiles().TemplateProfile(t.ID)
 	rq, _ := json.Marshal(jobs.VGTRequest{RepoDir: in.RepoDir, ConfigPath: in.ConfigPath, BaseConfigText: cfg, Set: in.Set,
-		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev, InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil})
+		CPUs: in.CPUs, Mem: in.Mem, Time: in.Time, Partition: in.Partition, Account: in.Account, RerunMode: in.RerunMode, ExpectCommit: in.ExpectRev,
+		InputRerun: in.InputRerun, HashInput: in.HashInput || in.InputRerun != nil, Profile: label})
 	return builtJob{Script: script, OutputDir: out, Request: string(rq)}, nil
+}
+
+// jobTemplates lists the job templates of the tool profiles in force: what a job form shows (the keys with their types, ranges,
+// defaults and plain descriptions, the preparation steps, the pinned commit) and nothing it could run.
+func (s *Server) jobTemplates(w http.ResponseWriter, r *http.Request) {
+	type entry struct {
+		Profile string `json:"profile"`
+		*jobtemplate.Template
+	}
+	out := []entry{}
+	for _, e := range s.profiles().Templates() {
+		out = append(out, entry{Profile: e.Profile, Template: e.Template})
+	}
+	writeJSON(w, 200, map[string]any{"templates": out})
+}
+
+// toolBody is the part of a job request that names the tool's folder, config, settings and resources.
+type toolBody struct {
+	RepoDir    string            `json:"repoDir"`
+	ConfigPath string            `json:"configPath"` // a config on the host, inside its roots
+	ConfigText string            `json:"configText"`
+	Set        map[string]string `json:"set"`
+	CPUs       int               `json:"cpus"`
+	Mem        string            `json:"mem"`
+	Time       string            `json:"time"`
+	Partition  string            `json:"partition"`
+	Account    string            `json:"account"`
+	// PinProfileCommit makes the script stop unless the tool's folder is at the commit the profile was written against (the
+	// strict-rerun check of ADR 0054, asked for by the person; it is never on by default).
+	PinProfileCommit bool `json:"pinProfileCommit"`
+}
+
+func (b toolBody) isZero() bool {
+	return b.RepoDir == "" && b.ConfigPath == "" && b.ConfigText == "" && len(b.Set) == 0 && b.CPUs == 0 && b.Mem == "" && b.Time == "" &&
+		b.Partition == "" && b.Account == "" && !b.PinProfileCommit
+}
+
+func (b toolBody) input(rerunMode, expectRev string) vgtInput {
+	return vgtInput{RepoDir: b.RepoDir, ConfigPath: b.ConfigPath, ConfigText: b.ConfigText, Set: b.Set, CPUs: b.CPUs, Mem: b.Mem, Time: b.Time,
+		Partition: b.Partition, Account: b.Account, RerunMode: rerunMode, ExpectRev: expectRev}
 }
 
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
@@ -238,28 +281,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		ParentRunID *int64 `json:"parentRunId"`
 		// RerunMode is strict, best_effort or adapted (the default) for a draft that has a ParentRunID (ADR 0054).
 		RerunMode string `json:"rerunMode"`
-		VGT       struct {
-			RepoDir    string            `json:"repoDir"`
-			ConfigPath string            `json:"configPath"` // a config on the host, inside its roots
-			ConfigText string            `json:"configText"`
-			Set        map[string]string `json:"set"`
-			CPUs       int               `json:"cpus"`
-			Mem        string            `json:"mem"`
-			Time       string            `json:"time"`
-			Partition  string            `json:"partition"`
-			Account    string            `json:"account"`
-		} `json:"vgt"`
-		ROHSA struct {
-			RepoDir    string            `json:"repoDir"`
-			ConfigPath string            `json:"configPath"`
-			ConfigText string            `json:"configText"`
-			Set        map[string]string `json:"set"`
-			CPUs       int               `json:"cpus"`
-			Mem        string            `json:"mem"`
-			Time       string            `json:"time"`
-			Partition  string            `json:"partition"`
-			Account    string            `json:"account"`
-		} `json:"rohsa"`
+		// VGT and ROHSA are the older, per-tool bodies; Tool is the same body for any tool a profile declares a template for
+		// (ADR 0068). For vgt and rohsa, Tool is read first and the older body when Tool is empty.
+		VGT   toolBody `json:"vgt"`
+		ROHSA toolBody `json:"rohsa"`
+		Tool  toolBody `json:"tool"`
 	}
 	if !body(w, r, 256<<10, &in, true) {
 		return
@@ -302,28 +328,39 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		s.failAPI(w, aerr)
 		return
 	}
+	body := in.Tool
 	switch in.Template {
-	case "custom":
-		job.Script = in.Script
 	case "vgt":
-		v, aerr := s.buildVGT(r.Context(), h, in.Name, vgtInput{RepoDir: in.VGT.RepoDir, ConfigPath: in.VGT.ConfigPath, ConfigText: in.VGT.ConfigText, Set: in.VGT.Set,
-			CPUs: in.VGT.CPUs, Mem: in.VGT.Mem, Time: in.VGT.Time, Partition: in.VGT.Partition, Account: in.VGT.Account, RerunMode: rerunMode, ExpectRev: expectRev})
-		if aerr != nil {
-			s.failAPI(w, aerr)
-			return
+		if body.isZero() {
+			body = in.VGT
 		}
-		job.Script, job.OutputDir, job.Request = v.Script, v.OutputDir, v.Request
 	case "rohsa":
-		v, aerr := s.buildROHSA(r.Context(), h, in.Name, rohsaInput{RepoDir: in.ROHSA.RepoDir, ConfigPath: in.ROHSA.ConfigPath, ConfigText: in.ROHSA.ConfigText, Set: in.ROHSA.Set,
-			CPUs: in.ROHSA.CPUs, Mem: in.ROHSA.Mem, Time: in.ROHSA.Time, Partition: in.ROHSA.Partition, Account: in.ROHSA.Account, RerunMode: rerunMode, ExpectRev: expectRev})
-		if aerr != nil {
-			s.failAPI(w, aerr)
-			return
+		if body.isZero() {
+			body = in.ROHSA
 		}
-		job.Script, job.OutputDir, job.Request = v.Script, v.OutputDir, v.Request
-	default:
-		fail(w, 400, "template must be vgt, rohsa or custom")
+	}
+	// The pin is the profile's own commit, and only on request; a strict rerun's commit (the base run's) is the stronger claim.
+	if t := s.profiles().TemplateByID(in.Template); t != nil && body.PinProfileCommit && expectRev == "" {
+		expectRev = t.Repo.Commit
+	}
+	var v builtJob
+	switch t := s.profiles().TemplateByID(in.Template); {
+	case in.Template == "custom":
+		job.Script = in.Script
+	case t == nil:
+		fail(w, 400, "template must be custom or the id of a tool template (see /api/job-templates)")
 		return
+	case in.Template == "vgt":
+		v, aerr = s.buildVGT(r.Context(), h, in.Name, body.input(rerunMode, expectRev))
+	default:
+		v, aerr = s.buildTool(r.Context(), h, in.Name, t, body.input(rerunMode, expectRev))
+	}
+	if aerr != nil {
+		s.failAPI(w, aerr)
+		return
+	}
+	if in.Template != "custom" {
+		job.Script, job.OutputDir, job.Request = v.Script, v.OutputDir, v.Request
 	}
 	if aerr := s.refuseStrictSettings(job); aerr != nil {
 		s.failAPI(w, aerr)

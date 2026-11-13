@@ -77,7 +77,13 @@ func (s *Server) logProgress(ctx context.Context, j jobs.Job, live bool) *vgtlog
 		return nil
 	}
 	var p *vgtlog.Progress
-	if pr, ok := vgtlog.ParseTail(out); ok {
+	// a tool whose profile gives a log pattern is read by it; every other job by the Julia pipeline's chunk lines, as before
+	parse := vgtlog.ParseTail
+	if t := s.profiles().TemplateByID(j.Template); t != nil && t.Progress != nil && t.Progress.Regexp() != nil {
+		re := t.Progress.Regexp()
+		parse = func(out string) (vgtlog.Progress, bool) { return vgtlog.ParsePattern(out, re) }
+	}
+	if pr, ok := parse(out); ok {
 		p = &pr
 	}
 	s.progress.put(j.ID, p)

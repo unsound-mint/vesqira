@@ -61,14 +61,14 @@ type Template struct {
 	Repo      Repo      `json:"repo"`
 	Config    Config    `json:"config"`
 	Keys      []Key     `json:"keys"`
-	Ties      []Tie     `json:"ties"`
+	Ties      []Tie     `json:"ties,omitempty"`
 	Steps     []Step    `json:"steps"`
 	Command   []string  `json:"command"`
-	Progress  *Progress `json:"progress"`
+	Progress  *Progress `json:"progress,omitempty"`
 	Resources Resources `json:"resources"`
-	Probes    []string  `json:"probes"`
+	Probes    []string  `json:"probes,omitempty"`
 	// Sizing names a built-in sizing table for the request, shown beside it and never applied ("rohsa_crop_table").
-	Sizing string `json:"sizing"`
+	Sizing string `json:"sizing,omitempty"`
 
 	keys map[string]*Key
 	ties map[string]*Tie
@@ -101,9 +101,9 @@ type Config struct {
 	Label       string `json:"label"`
 	Placeholder string `json:"placeholder"`
 	// AllTables: every top-level entry of the file must be a table, as the tool itself requires.
-	AllTables bool `json:"allTables"`
+	AllTables bool `json:"allTables,omitempty"`
 	// Guard refuses edits to a config where Table.Key is true: the tool runs its own sweep from it and Vesqira does not edit its axes.
-	Guard *Guard `json:"guard"`
+	Guard *Guard `json:"guard,omitempty"`
 }
 
 type Guard struct {
@@ -122,20 +122,20 @@ type Key struct {
 	Description string `json:"description"`
 	// Expect completes "<key> must be ..." in a refusal and doubles as the form's hint.
 	Expect string   `json:"expect"`
-	Enum   []string `json:"enum"`
+	Enum   []string `json:"enum,omitempty"`
 	// EnumNumeric lists words that may be followed by a non-negative number: "gauss" admits gauss1 and gauss1.5.
-	EnumNumeric []string `json:"enumNumeric"`
+	EnumNumeric []string `json:"enumNumeric,omitempty"`
 	// Words are bare words a number key also accepts, written quoted ("auto").
-	Words []string `json:"words"`
-	Min   *float64 `json:"min"`
-	Max   *float64 `json:"max"`
+	Words []string `json:"words,omitempty"`
+	Min   *float64 `json:"min,omitempty"`
+	Max   *float64 `json:"max,omitempty"`
 	// Real writes a whole number as a real (10 as 10.0), as the tool's own configs do. List writes a count as a one-element list.
-	Real       bool `json:"real"`
-	List       bool `json:"list"`
-	NoExponent bool `json:"noExponent"`
+	Real       bool `json:"real,omitempty"`
+	List       bool `json:"list,omitempty"`
+	NoExponent bool `json:"noExponent,omitempty"`
 	// Internal keys are set by Vesqira per job (the output folder) and never by a request.
-	Internal bool     `json:"internal"`
-	Default  *Default `json:"default"`
+	Internal bool     `json:"internal,omitempty"`
+	Default  *Default `json:"default,omitempty"`
 }
 
 // Default is the value the tool's own documentation gives a key, kept with where it was read. The form shows it as a hint; it is
@@ -157,25 +157,25 @@ type Tie struct {
 type Step struct {
 	Kind string `json:"kind"`
 	// export, set, ulimit
-	Name      string `json:"name"`
-	Value     string `json:"value"`
-	KeepIfSet bool   `json:"keepIfSet"`
+	Name      string `json:"name,omitempty"`
+	Value     string `json:"value,omitempty"`
+	KeepIfSet bool   `json:"keepIfSet,omitempty"`
 	// require: the command and the name shown in the message
-	Command string `json:"command"`
-	Title   string `json:"title"`
+	Command string `json:"command,omitempty"`
+	Title   string `json:"title,omitempty"`
 	// modules
-	Modules []string `json:"modules"`
-	Purge   bool     `json:"purge"`
+	Modules []string `json:"modules,omitempty"`
+	Purge   bool     `json:"purge,omitempty"`
 	// build_if_stale
-	Var     string   `json:"var"`
-	Dir     string   `json:"dir"`
-	Binary  string   `json:"binary"`
-	Target  []string `json:"target"`
-	Sources []string `json:"sources"`
+	Var     string   `json:"var,omitempty"`
+	Dir     string   `json:"dir,omitempty"`
+	Binary  string   `json:"binary,omitempty"`
+	Target  []string `json:"target,omitempty"`
+	Sources []string `json:"sources,omitempty"`
 	// announce
-	Show []Shown `json:"show"`
+	Show []Shown `json:"show,omitempty"`
 	// comment, and a plain sentence for the form on any step
-	Text string `json:"text"`
+	Text string `json:"text,omitempty"`
 }
 
 type Shown struct {
@@ -185,8 +185,8 @@ type Shown struct {
 
 // Progress says how to read progress from a job's log: a named reader of Vesqira's, or a pattern with the groups done and total.
 type Progress struct {
-	Reader  string `json:"reader"`
-	Pattern string `json:"pattern"`
+	Reader  string `json:"reader,omitempty"`
+	Pattern string `json:"pattern,omitempty"`
 	re      *regexp.Regexp
 }
 
