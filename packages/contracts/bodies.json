@@ -19968,6 +19968,141 @@
     }
    }
   },
+  "SkyPlacement": {
+   "type": "object",
+   "description": "How a sky-panel position was placed: the dataset's celestial frame and how it is known, and the panel's frame.",
+   "properties": {
+    "frame": {
+     "type": "string",
+     "enum": [
+      "icrs",
+      "galactic"
+     ],
+     "description": "The panel frame the positions are in."
+    },
+    "from_frame": {
+     "type": "string",
+     "description": "The dataset's own celestial frame (ICRS, FK5, FK4, Galactic)."
+    },
+    "from_status": {
+     "type": "string",
+     "enum": [
+      "declared",
+      "corrected",
+      "inferred",
+      "assumed"
+     ],
+     "description": "How the dataset's frame is known: stated by the header, set by the researcher's correction, taken from EQUINOX, or the FITS default (ICRS) because the header says neither."
+    },
+    "from_basis": {
+     "type": "string"
+    },
+    "same_frame": {
+     "type": "boolean",
+     "description": "The dataset is already in the panel's frame: no frame transformation was applied."
+    },
+    "reason": {
+     "type": "string",
+     "nullable": true,
+     "description": "Why there is no position, when there is none."
+    }
+   }
+  },
+  "SkyFootprint": {
+   "type": "object",
+   "description": "The outline of a dataset's image on the sky (ADR 0072), from its celestial WCS (the researcher's corrections applied) carried into the panel's frame by astropy. footprint is null when the dataset has no celestial WCS, its frame is not one the app transforms, or it is a survey-sized map; `reason` says which. Nothing is guessed. It is context for the sky panel and not a measurement.",
+   "allOf": [
+    {
+     "$ref": "#/components/schemas/SkyPlacement"
+    }
+   ],
+   "required": [
+    "footprint",
+    "frame"
+   ],
+   "properties": {
+    "method": {
+     "type": "string"
+    },
+    "footprint": {
+     "type": "object",
+     "nullable": true,
+     "required": [
+      "polygon",
+      "center",
+      "extent_deg"
+     ],
+     "properties": {
+      "polygon": {
+       "type": "array",
+       "description": "Vertices [longitude, latitude] in degrees, counter-clockwise on the pixel grid, sampled along the four pixel edges. Longitudes are continuous across 0/360 (they may be negative or above 360); wrap them for display.",
+       "items": {
+        "type": "array",
+        "items": {
+         "type": "number"
+        },
+        "minItems": 2,
+        "maxItems": 2
+       }
+      },
+      "center": {
+       "type": "object",
+       "required": [
+        "lon",
+        "lat"
+       ],
+       "properties": {
+        "lon": {
+         "type": "number"
+        },
+        "lat": {
+         "type": "number"
+        }
+       }
+      },
+      "extent_deg": {
+       "type": "number",
+       "description": "The largest angular distance of a vertex from the centre."
+      },
+      "dropped": {
+       "type": "integer",
+       "description": "Edge samples with no position in the WCS, left out."
+      }
+     }
+    }
+   }
+  },
+  "SkyPoint": {
+   "type": "object",
+   "description": "The position of one pixel (the viewer's cursor) in the panel's frame, from the dataset's celestial WCS. position is null when there is no celestial WCS or the pixel has no position; `reason` says which.",
+   "allOf": [
+    {
+     "$ref": "#/components/schemas/SkyPlacement"
+    }
+   ],
+   "required": [
+    "position",
+    "frame"
+   ],
+   "properties": {
+    "position": {
+     "type": "object",
+     "nullable": true,
+     "required": [
+      "lon",
+      "lat"
+     ],
+     "properties": {
+      "lon": {
+       "type": "number"
+      },
+      "lat": {
+       "type": "number"
+      }
+     }
+    }
+   }
+  },
   "ShareFigureRequest": {
    "type": "object",
    "description": "Unknown keys are refused.",
@@ -30225,6 +30360,126 @@
           }
          }
         }
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/sky-footprint": {
+   "summary": "Where the image lies on the sky, in the sky panel's frame",
+   "description": "From the dataset's celestial WCS with the researcher's corrections in force, by astropy (ADR 0072). A dataset with no usable celestial WCS is a 200 with `footprint` null and the reason. A point catalog or HEALPix map is a 409.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "frame",
+     "in": "query",
+     "required": true,
+     "description": "The sky panel's frame: the positions come back in it.",
+     "schema": {
+      "type": "string",
+      "enum": [
+       "icrs",
+       "galactic"
+      ]
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SkyFootprint"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/datasets/{id}/sky-point": {
+   "summary": "Where one pixel is on the sky, in the sky panel's frame",
+   "description": "The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason.",
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "frame",
+     "in": "query",
+     "required": true,
+     "description": "The sky panel's frame: the positions come back in it.",
+     "schema": {
+      "type": "string",
+      "enum": [
+       "icrs",
+       "galactic"
+      ]
+     }
+    },
+    {
+     "name": "x",
+     "in": "query",
+     "required": true,
+     "description": "0-based image pixel, as the coordinate readout uses.",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    {
+     "name": "y",
+     "in": "query",
+     "required": true,
+     "description": "0-based image pixel, as the coordinate readout uses.",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SkyPoint"
        }
       }
      }

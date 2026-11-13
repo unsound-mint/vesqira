@@ -86,6 +86,14 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] Family view: maps that differ in one parameter side by side on a shared scale, each compared with a chosen reference (scalar difference and spread, or axial difference and AM for orientation maps), refused with a sentence when the grids are not shared. A family is recognised from derived records and can be picked by hand.
 - [ ] Not built: opening a family from a sweep of jobs, a family of maps on a host, cleanup of old family maps, a design review by a second person.
 
+## Sky context (issue 134, ADR 0072, awaiting owner review)
+
+- [x] Sky panel in the inspector: footprints of registered images from their celestial WCS (corrections applied) in ICRS or Galactic, computed by the worker with astropy; datasets without a celestial WCS, catalogs and HEALPix maps listed with the reason and never drawn.
+- [x] The viewer cursor (hover or pinned pixel) shown as a world position, and a click on an outline or list entry opens the dataset.
+- [x] Opt-in survey background (Aladin Lite 3.8.2, bundled, loaded after opt-in): off by default, the contacted server and what it receives stated before it is contacted, context only, stored per browser. Works fully offline without it.
+- [x] Local PNG of the panel; the survey is in it only when ticked for that file, with its name, HiPS id and provider in the caption.
+- [ ] Not built: a survey background inside a registered board figure with HiPS provenance, footprints for virtual subsets, a check against the live survey servers, a second person's design review.
+
 ## Stage S — Scene, cross-tracer comparison and the researcher's loop (owner direction, 2026-11-11)
 
 The owner asked for the most convenient app for this kind of work, beyond the interview list. Items come from the owner's own research (VGT and ROHSA on LMC H I and CO, Slurm over a VPN, weekly reports) and from common radio-astronomy practice (contours, vectors, channel maps, PV diagrams, relative-orientation statistics). Design: ADR 0042. New screens do not wait for an approved mock during this push; the owner reviews afterwards.

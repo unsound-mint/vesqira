@@ -398,6 +398,10 @@ SOFTWARE.
 
 `react` and `react-dom` (19.3.1) render the web app. MIT License, Copyright (c) Meta Platforms, Inc. and affiliates. Full texts: `node_modules/react/LICENSE` and `node_modules/react-dom/LICENSE`.
 
+## Aladin Lite (GPL-3 or LGPL-3.0, see note)
+
+`aladin-lite` (3.8.2) draws the optional survey background of the sky panel. It is bundled into this app's own build and loaded only after the person turns the background on (ADR 0072). Copyright CDS, Strasbourg. The package.json of 3.8.2 says GPL-3 and the LICENSE file it ships is the GNU Lesser General Public License v3 text; both are compatible with this project's AGPL-3.0. Full text: `node_modules/aladin-lite/LICENSE`. Source: https://github.com/cds-astro/aladin-lite.
+
 ## Monaco Editor (MIT)
 
 `monaco-editor` (0.52.2) provides the code editor. MIT License, Copyright (c) 2016 - present Microsoft Corporation. Full text: `node_modules/monaco-editor/LICENSE`.

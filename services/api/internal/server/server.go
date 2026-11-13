@@ -376,6 +376,8 @@ func (s *Server) Handler() http.Handler {
 	s.route(mux, "GET /api/datasets/{id}/view", authz.DatasetRead, s.view)
 	s.route(mux, "GET /api/datasets/{id}/plane", authz.DatasetRead, s.plane)
 	s.route(mux, "GET /api/datasets/{id}/coord", authz.DatasetRead, s.coord)
+	s.route(mux, "GET /api/datasets/{id}/sky-footprint", authz.DatasetRead, s.skyFootprint)
+	s.route(mux, "GET /api/datasets/{id}/sky-point", authz.DatasetRead, s.skyPoint)
 	s.route(mux, "GET /api/datasets/{id}/conversions", authz.DatasetRead, s.conversions)
 	s.route(mux, "GET /api/datasets/{id}/convert", authz.DatasetRead, s.convert)
 	s.route(mux, "GET /api/datasets/{id}/spectrum", authz.DatasetRead, s.spectrum)

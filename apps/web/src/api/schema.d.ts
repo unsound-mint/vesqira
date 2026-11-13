@@ -1770,6 +1770,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/sky-footprint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Where the image lies on the sky, in the sky panel's frame
+         * @description From the dataset's celestial WCS with the researcher's corrections in force, by astropy (ADR 0072). A dataset with no usable celestial WCS is a 200 with `footprint` null and the reason. A point catalog or HEALPix map is a 409.
+         */
+        get: operations["owner_s_skyFootprint_get_api_datasets_id_sky_footprint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{id}/sky-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Where one pixel is on the sky, in the sky panel's frame
+         * @description The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason.
+         */
+        get: operations["owner_s_skyPoint_get_api_datasets_id_sky_point"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/slab": {
         parameters: {
             query?: never;
@@ -11886,6 +11930,49 @@ export interface components {
             label?: components["schemas"]["AccessLabel"];
             restricted?: components["schemas"]["RestrictedPanel"][];
         };
+        /** @description How a sky-panel position was placed: the dataset's celestial frame and how it is known, and the panel's frame. */
+        SkyPlacement: {
+            /**
+             * @description The panel frame the positions are in.
+             * @enum {string}
+             */
+            frame?: "icrs" | "galactic";
+            /** @description The dataset's own celestial frame (ICRS, FK5, FK4, Galactic). */
+            from_frame?: string;
+            /**
+             * @description How the dataset's frame is known: stated by the header, set by the researcher's correction, taken from EQUINOX, or the FITS default (ICRS) because the header says neither.
+             * @enum {string}
+             */
+            from_status?: "declared" | "corrected" | "inferred" | "assumed";
+            from_basis?: string;
+            /** @description The dataset is already in the panel's frame: no frame transformation was applied. */
+            same_frame?: boolean;
+            /** @description Why there is no position, when there is none. */
+            reason?: string | null;
+        };
+        /** @description The outline of a dataset's image on the sky (ADR 0072), from its celestial WCS (the researcher's corrections applied) carried into the panel's frame by astropy. footprint is null when the dataset has no celestial WCS, its frame is not one the app transforms, or it is a survey-sized map; `reason` says which. Nothing is guessed. It is context for the sky panel and not a measurement. */
+        SkyFootprint: {
+            method?: string;
+            footprint: {
+                /** @description Vertices [longitude, latitude] in degrees, counter-clockwise on the pixel grid, sampled along the four pixel edges. Longitudes are continuous across 0/360 (they may be negative or above 360); wrap them for display. */
+                polygon: number[][];
+                center: {
+                    lon: number;
+                    lat: number;
+                };
+                /** @description The largest angular distance of a vertex from the centre. */
+                extent_deg: number;
+                /** @description Edge samples with no position in the WCS, left out. */
+                dropped?: number;
+            } | null;
+        } & WithRequired<components["schemas"]["SkyPlacement"], "frame">;
+        /** @description The position of one pixel (the viewer's cursor) in the panel's frame, from the dataset's celestial WCS. position is null when there is no celestial WCS or the pixel has no position; `reason` says which. */
+        SkyPoint: {
+            position: {
+                lon: number;
+                lat: number;
+            } | null;
+        } & WithRequired<components["schemas"]["SkyPlacement"], "frame">;
         /** @description Unknown keys are refused. */
         ShareFigureRequest: {
             label?: string;
@@ -15426,6 +15513,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_skyFootprint_get_api_datasets_id_sky_footprint: {
+        parameters: {
+            query: {
+                /** @description The sky panel's frame: the positions come back in it. */
+                frame: "icrs" | "galactic";
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkyFootprint"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_skyPoint_get_api_datasets_id_sky_point: {
+        parameters: {
+            query: {
+                /** @description The sky panel's frame: the positions come back in it. */
+                frame: "icrs" | "galactic";
+                /** @description 0-based image pixel, as the coordinate readout uses. */
+                x: number;
+                /** @description 0-based image pixel, as the coordinate readout uses. */
+                y: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkyPoint"];
                 };
             };
             /** @description Error */
@@ -22871,3 +23030,6 @@ export interface operations {
         };
     };
 }
+type WithRequired<T, K extends keyof T> = T & {
+    [P in K]-?: T[P];
+};
