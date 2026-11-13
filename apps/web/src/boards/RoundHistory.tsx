@@ -25,7 +25,7 @@ export function PreflightRound({ pre }: { pre: Preflight }) {
     <div className={s.note}>
       <p className={s.note}>This will be round {round.number}. Since round {round.number - 1} ({new Date(since.at).toLocaleDateString()}): {summary(since.items, since.removedCount)}.</p>
       <ul className={s.comments} aria-label="Changes since the last round">{since.lines.map((l, i) => <li key={i}>{lineText(l)}</li>)}</ul>
-      {since.carried.length > 0 ? <p className={s.note}>{since.carried.length} earlier comment{since.carried.length === 1 ? "" : "s"} will show beside the same figures, read-only.</p> : null}
+      {since.carried.length > 0 ? <p className={s.note}>{since.carried.length} earlier comment{since.carried.length === 1 ? "" : "s"} will show beside the same figures, read-only, to anyone who opens this new link, under the names they were written with. To leave them out, revoke round {round.number - 1} before publishing.</p> : null}
     </div>
   );
 }
