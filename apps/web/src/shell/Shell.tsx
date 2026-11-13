@@ -464,6 +464,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
               hostName={hostName}
               selectedDatasetId={cat.selectedId}
               onOpenRun={openRun}
+              onImportRun={cat.importRunResult}
               onSelectDataset={selectDataset}
               onEditFile={editor ? (path, hostId) => setEditing({ path, hostId }) : undefined}
               onOverview={() => setMode("look")}

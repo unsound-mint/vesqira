@@ -40,7 +40,7 @@ const project = (hostId: number): ProjectSummary =>
 
 async function renderExplorer(hostId: number, onEditFile: (p: string, h: number) => void) {
   render(
-    <ProjectExplorer project={project(hostId)} version={1} hostName={() => "Cluster login"} selectedDatasetId={null} onOpenRun={() => {}} onSelectDataset={() => {}} onEditFile={onEditFile} onOverview={() => {}} onImport={() => {}} onCancel={() => {}} />,
+    <ProjectExplorer project={project(hostId)} version={1} hostName={() => "Cluster login"} selectedDatasetId={null} onOpenRun={() => {}} onImportRun={async () => ({ error: "not used" })} onSelectDataset={() => {}} onEditFile={onEditFile} onOverview={() => {}} onImport={() => {}} onCancel={() => {}} />,
   );
   await userEvent.click(screen.getByText(/^Configs/)); // the group is collapsed until it is opened
 }

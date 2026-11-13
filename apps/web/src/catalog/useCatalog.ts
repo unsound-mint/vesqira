@@ -98,18 +98,22 @@ export function useCatalog() {
   }, []);
 
   /** Import a run folder; returns an error text, or null. Refreshes datasets, because the import registers outputs and may declare one. */
-  const importRunFolder = useCallback(async (path: string, hostId?: number): Promise<string | null> => {
+  const importRunResult = useCallback(async (path: string, hostId?: number): Promise<{ id: number } | { error: string }> => {
     try {
       const run = await importRun(path, hostId);
       setRuns(await listRuns({ archived: "all" }));
       setDatasets(await listDatasets({ archived: "all" }));
       const first = run.outputs.find((o) => o.role === "orientation") ?? run.outputs[0];
       if (first) setSelectedId(first.datasetId);
-      return null;
+      return { id: run.id };
     } catch (e) {
-      return e instanceof ApiError ? e.message : "Could not import the run.";
+      return { error: e instanceof ApiError ? e.message : "Could not import the run." };
     }
   }, []);
+  const importRunFolder = useCallback(async (path: string, hostId?: number): Promise<string | null> => {
+    const r = await importRunResult(path, hostId);
+    return "error" in r ? r.error : null;
+  }, [importRunResult]);
 
   const refreshHosts = useCallback(async () => setHosts(await listHosts()), []);
   const refreshDatasets = useCallback(async () => {
@@ -160,5 +164,5 @@ export function useCatalog() {
   const selectedCatalog = selected && isCatalog(selected) ? selected : null;
   const selectedHealpix = selected && isHealpix(selected) ? selected : null;
 
-  return { problems, newer, offer, dismissOffer: () => setOffer(null), addAsLocation, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, selectedHealpix, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
+  return { problems, newer, offer, dismissOffer: () => setOffer(null), addAsLocation, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, selectedHealpix, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, importRunResult, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
 }
