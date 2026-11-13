@@ -19,6 +19,16 @@
   padding: 0 var(--sp-3);
   border-bottom: var(--bw) solid var(--line);
   background: var(--bg-1);
+  white-space: nowrap;
+}
+
+/* nothing in the title bar wraps or squeezes except the project crumb, which ellipsizes: the bar never scrolls the page sideways */
+.title > * {
+  flex-shrink: 0;
+}
+
+.title > .crumb {
+  flex-shrink: 1;
 }
 
 .name {
@@ -311,6 +321,20 @@
 }
 
 /* Narrow screens: one pane at a time. Panels open over the canvas. */
+
+/* at phone width the crumb goes (the explorer names the project) and the pills keep their number; the accessible name stays whole */
+@media (width <= 560px) {
+  .title {
+    gap: var(--sp-1);
+    padding: 0 var(--sp-2);
+  }
+
+  .title > .crumb,
+  .wide {
+    display: none;
+  }
+}
+
 @media (width <= 800px) {
   .shell {
     grid-template-columns: var(--w-rail) minmax(0, 1fr) !important;
