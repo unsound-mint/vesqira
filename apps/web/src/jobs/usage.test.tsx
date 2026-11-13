@@ -6,6 +6,9 @@ import { JobsView, previousUse } from "./JobsView";
 import { SizingHint, UsageSummary } from "./JobUsage";
 import { parseTime } from "../ui/duration";
 import { parseMem, usageLines } from "./usageText";
+import { rohsaTemplate, vgtTemplate } from "./templateFixtures";
+
+const answer = (url: string, jobs: Job[]) => (url === "/api/jobs" ? { jobs } : url === "/api/job-templates" ? { templates: [vgtTemplate, rohsaTemplate] } : {});
 
 const GiB = 2 ** 30;
 const usage = (over: Partial<JobUsage> = {}): JobUsage => ({
@@ -115,7 +118,7 @@ describe("the new-job form", () => {
   });
 
   it("offers the suggestion for ROHSA, and the default memory stays until the researcher clicks", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(url === "/api/jobs" ? { jobs: [baseJob] } : {}), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(answer(url, [baseJob])), { status: 200 })));
     render(<JobsView hosts={[host]} onImported={() => {}} onOpenRun={() => {}} />);
     await userEvent.click(await screen.findByRole("button", { name: "+ New job" }));
     await userEvent.selectOptions(screen.getByLabelText("Kind"), "rohsa");
@@ -127,7 +130,7 @@ describe("the new-job form", () => {
   });
 
   it("shows what a finished job used on the job itself", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(url === "/api/jobs" ? { jobs: [baseJob] } : {}), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(answer(url, [baseJob])), { status: 200 })));
     render(<JobsView hosts={[host]} onImported={() => {}} onOpenRun={() => {}} />);
     await userEvent.click(await screen.findByRole("button", { name: /rohsa-1/ }));
     const box = screen.getByRole("region", { name: "What this job used" });

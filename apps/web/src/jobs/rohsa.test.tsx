@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Host } from "../api/hosts";
 import { JobsView } from "./JobsView";
+import { rohsaTemplate, vgtTemplate } from "./templateFixtures";
 import { ROHSA_SETTINGS, ROHSA_SWEEP_KEYS, readRohsaSetting, sameValue } from "./rohsaSettings";
 
 describe("ROHSA settings", () => {
@@ -38,6 +39,7 @@ describe("new ROHSA job", () => {
     const text = "[input]\ncrop_size = 1024\n[rohsa]\nn_gauss = [16]\nlambda_amp = 10.0\nnoise = true\n";
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") { posts.push({ url, body: JSON.parse(String(init.body)) }); return new Response(JSON.stringify({ id: 4, hostId: 1, name: "rohsa-run", template: "rohsa", script: "", scriptHash: "", state: "draft", detail: "", slurmId: "", workDir: "", outputDir: "", createdAt: "", submittedAt: null, finishedAt: null, runId: null, parentRunId: null, note: "", autoImport: false, usage: null }), { status: 201 }); }
+      if (url === "/api/job-templates") return new Response(JSON.stringify({ templates: [vgtTemplate, rohsaTemplate] }), { status: 200 });
       if (url === "/api/jobs") return new Response(JSON.stringify({ jobs: [] }), { status: 200 });
       if (url === "/api/sweeps") return new Response(JSON.stringify({ sweeps: [] }), { status: 200 });
       if (url.startsWith("/api/hosts/1/text")) return new Response(JSON.stringify({ text }), { status: 200 });
@@ -48,6 +50,7 @@ describe("new ROHSA job", () => {
     await userEvent.click(await screen.findByRole("button", { name: "+ New job" }));
     await userEvent.selectOptions(screen.getByLabelText("Kind"), "rohsa");
     expect(screen.getByText(/The output folder is set for each job/)).toBeInTheDocument();
+    expect(screen.getByText(/The checkout of the tool\./)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("ROHSA-LMC folder on the host"), "/shared/vgt");
     await userEvent.type(screen.getByLabelText("ROHSA config on the host"), "/data/configs/rohsa/a.toml");
     await userEvent.click(screen.getByRole("button", { name: "Load settings" }));
@@ -61,8 +64,10 @@ describe("new ROHSA job", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create draft and show the script" }));
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0].url).toBe("/api/jobs");
-    expect(posts[0].body.rohsa.set).toEqual({ n_gauss: "12" }); // the rest of the config stays as the file has it
-    expect(posts[0].body.rohsa.configPath).toBe("/data/configs/rohsa/a.toml");
+    expect(posts[0].body.template).toBe("rohsa");
+    expect(posts[0].body.tool.set).toEqual({ n_gauss: "12" }); // the rest of the config stays as the file has it
+    expect(posts[0].body.tool.pinProfileCommit).toBeUndefined(); // the commit is checked only when asked for
+    expect(posts[0].body.tool.configPath).toBe("/data/configs/rohsa/a.toml");
     vi.unstubAllGlobals();
   });
 });

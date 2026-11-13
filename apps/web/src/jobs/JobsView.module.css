@@ -146,3 +146,22 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.prep {
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.prep summary {
+  cursor: pointer;
+}
+
+.prep ol {
+  display: grid;
+  gap: var(--sp-1);
+  margin: var(--sp-2) 0;
+  padding-left: var(--sp-4);
+}
