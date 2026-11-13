@@ -26,6 +26,22 @@ func WithSynthetic(t testing.TB) *runs.Registry {
 	return reg
 }
 
+// WithSyntheticTool is the shipped registry plus the synthetic SynthFit profile of runs/testdata: a tool that is neither VGT nor
+// ROHSA, declared with a job template (ADR 0068 slice 5). Test only, like WithSynthetic.
+func WithSyntheticTool(t testing.TB) *runs.Registry {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(0)
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "testdata", "synthetic_tool_profile.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := runs.Shipped().With(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reg
+}
+
 // WithSyntheticMaps is the shipped registry plus the synthetic decomposition profiles of runs/testdata (a tool that writes FITS
 // maps, ADR 0068 slice 4). Test only, like WithSynthetic.
 func WithSyntheticMaps(t testing.TB) *runs.Registry {

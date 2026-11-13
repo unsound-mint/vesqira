@@ -29,7 +29,8 @@ export type Job = {
   id: number;
   hostId: number;
   name: string;
-  template: "vgt" | "rohsa" | "custom" | "analysis";
+  /** "vgt" and "rohsa" are the templates Vesqira ships; any other id names a template a tool profile declares (GET /api/job-templates). */
+  template: "vgt" | "rohsa" | "custom" | "analysis" | (string & {});
   script: string;
   scriptHash: string;
   state: JobState;
@@ -81,6 +82,20 @@ export type VgtJobRequest = {
   vgt: { repoDir: string; configPath: string; configText?: string; set: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string };
 };
 
+/** How a Slurm job of a tool is written, as its profile declares it: the keys a person may change with their types and ranges, the preparation, the command, the pinned commit. */
+export type JobTemplate = components["schemas"]["JobTemplate"];
+export type TemplateKey = components["schemas"]["JobTemplateKey"];
+export type TemplateStep = components["schemas"]["JobTemplateStep"];
+
+/** A job draft for any template: the same body whatever the tool. The server checks every setting against the template and writes the script. */
+export type ToolJobRequest = {
+  hostId: number;
+  template: string;
+  name: string;
+  note?: string;
+  tool: { repoDir: string; configPath: string; configText?: string; set?: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string; pinProfileCommit?: boolean };
+};
+
 export const rohsaSizing = (cropSize: string, nGauss: string) => {
   const q = new URLSearchParams();
   if (/^\d+$/.test(cropSize.trim())) q.set("cropSize", cropSize.trim());
@@ -89,8 +104,9 @@ export const rohsaSizing = (cropSize: string, nGauss: string) => {
   return call<RohsaSizing>(`/api/rohsa/sizing${qs ? `?${qs}` : ""}`);
 };
 export const listJobs = () => call<{ jobs: Job[] }>("/api/jobs").then((r) => r.jobs);
+export const listJobTemplates = () => call<{ templates: JobTemplate[] }>("/api/job-templates").then((r) => (Array.isArray(r?.templates) ? r.templates : []));
 export const getJob = (id: number) => call<Job>(`/api/jobs/${id}`);
-export const createJob = (r: VgtJobRequest | RohsaJobRequest) => post<Job>("/api/jobs", r);
+export const createJob = (r: VgtJobRequest | RohsaJobRequest | ToolJobRequest) => post<Job>("/api/jobs", r);
 export const editScript = (id: number, script: string) => post<Job>(`/api/jobs/${id}/script`, { script });
 export const submitJob = (id: number, scriptHash: string, autoImport?: boolean) => post<Job>(`/api/jobs/${id}/submit`, autoImport === undefined ? { scriptHash } : { scriptHash, autoImport });
 export const refreshJob = (id: number) => post<Job>(`/api/jobs/${id}/refresh`, {});

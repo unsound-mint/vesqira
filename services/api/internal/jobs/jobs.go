@@ -24,14 +24,6 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/schema"
 )
 
-// envSpecFor reads the output folder and the input file out of the config text the job embeds ([input] output_dir and
-// input_file), so the preamble describes the files this very script will use.
-func envSpecFor(template, repoDir, config, expect string, hashInput bool) EnvSpec {
-	_, out := ConfigPaths(config)
-	in := InputPathOf(template, config) // a VGT config's input_file, a ROHSA config's input
-	return EnvSpec{RepoDir: repoDir, OutputDir: out, InputFile: in, ExpectCommit: expect, HashInput: hashInput}
-}
-
 // ConfigPaths returns [input] input_file and output_dir from a config text, or "" for one that is missing or not a string.
 func ConfigPaths(config string) (inputFile, outputDir string) {
 	var cfg struct {
@@ -123,6 +115,11 @@ type VGTRequest struct {
 	// HashInput: the script hashes every byte of the input file before the program starts (set for a configuration run on
 	// another cube, and kept by sweeps drafted from one, so their script is what their settings render).
 	HashInput bool `json:"hashInput,omitempty"`
+	// PinProfile: the script insists on the commit the tool's profile was written against (asked for by the person; not a rerun).
+	PinProfile bool `json:"pinProfile,omitempty"`
+	// Profile is the label (name@version) of the tool profile whose template rendered the draft, so a rerun can tell which
+	// declaration the settings were checked against.
+	Profile string `json:"profile,omitempty"`
 }
 
 // VGTRequest returns the stored request, or false for a job that has none (not VGT, or made before it was recorded).
@@ -208,51 +205,15 @@ type VGTSettings struct {
 	// HashInput makes the job hash every byte of its input file before the program starts (a configuration run on another
 	// cube; the run then records input.full_sha256 as the job's own observation).
 	HashInput bool
+	// PinProfile: see Settings.PinProfile.
+	PinProfile bool
 }
 
-const configEnd = "VESQIRA_CONFIG_END"
-
-// RenderVGT renders the batch script for one VGT run, modelled on the pipeline's own VGT cluster script. The user
-// reads and submits exactly this text.
+// RenderVGT renders the batch script for one VGT run, from the VGT.jl profile's template. The user reads and submits exactly
+// this text. The bytes for a given input are the ones this function produced before templates were data (golden_test.go).
 func RenderVGT(p VGTSettings) (string, error) {
-	switch {
-	case !nameRe.MatchString(p.Name):
-		return "", fmt.Errorf("%w: the job name may use letters, digits, . _ - (up to 40)", ErrInvalid)
-	case !ValidPath(p.RepoDir):
-		return "", fmt.Errorf("%w: the VGT folder must be an absolute path without spaces or quotes", ErrInvalid)
-	case p.CPUs < 1 || p.CPUs > 256:
-		return "", fmt.Errorf("%w: CPUs must be between 1 and 256", ErrInvalid)
-	case !memRe.MatchString(p.Mem):
-		return "", fmt.Errorf("%w: memory looks like 64G or 4096M", ErrInvalid)
-	case !timeRe.MatchString(p.Time):
-		return "", fmt.Errorf("%w: time looks like 1-00:00:00 or 12:00:00", ErrInvalid)
-	case p.Partition != "" && !slurmWord.MatchString(p.Partition), p.Account != "" && !slurmWord.MatchString(p.Account):
-		return "", fmt.Errorf("%w: partition and account are plain words", ErrInvalid)
-	case len(p.Config) == 0 || len(p.Config) > MaxScript/2 || strings.Contains(p.Config, configEnd) || strings.ContainsRune(p.Config, 0):
-		return "", fmt.Errorf("%w: the config text is empty, too large or malformed", ErrInvalid)
-	}
-	var b strings.Builder
-	b.WriteString("#!/bin/bash -l\n")
-	fmt.Fprintf(&b, "#SBATCH --job-name=%s\n#SBATCH --nodes=1\n#SBATCH --ntasks=1\n#SBATCH --cpus-per-task=%d\n#SBATCH --mem=%s\n#SBATCH --time=%s\n", p.Name, p.CPUs, p.Mem, p.Time)
-	if p.Partition != "" {
-		fmt.Fprintf(&b, "#SBATCH --partition=%s\n", p.Partition)
-	}
-	if p.Account != "" {
-		fmt.Fprintf(&b, "#SBATCH --account=%s\n", p.Account)
-	}
-	b.WriteString("#SBATCH --output=%x-%j.out\n#SBATCH --error=%x-%j.err\n\n")
-	b.WriteString("# Rendered by Vesqira from the settings in the job record. This exact text is what is submitted.\n")
-	b.WriteString("set -euo pipefail\n")
-	b.WriteString("jobdir=\"$SLURM_SUBMIT_DIR\"\ncfg=\"$jobdir/config.toml\"\n")
-	fmt.Fprintf(&b, "cat > \"$cfg\" <<'%s'\n%s\n%s\n\n", configEnd, strings.TrimRight(p.Config, "\n"), configEnd)
-	fmt.Fprintf(&b, "cd %s\n", p.RepoDir)
-	fmt.Fprintf(&b, "export JULIA_DEPOT_PATH=\"${JULIA_DEPOT_PATH:-%s/.julia-vesqira}\"\n", p.RepoDir)
-	b.WriteString("threads=\"${SLURM_CPUS_PER_TASK:-1}\"\nexport JULIA_NUM_THREADS=\"$threads\"\n")
-	b.WriteString("echo \"job_id=$SLURM_JOB_ID host=$(hostname) threads=$threads\"\ndate --iso-8601=seconds\n")
-	b.WriteString("command -v julia >/dev/null || { echo \"Julia is not on PATH\" >&2; exit 2; }\n")
-	b.WriteString(EnvPreamble(envSpecFor("vgt", p.RepoDir, p.Config, p.ExpectCommit, p.HashInput)))
-	b.WriteString("srun --ntasks=1 julia --project=. --threads=\"$threads\" main.jl \"$cfg\"\ndate --iso-8601=seconds\n")
-	return b.String(), nil
+	return RenderTemplate(vgtTemplate(), Settings{Name: p.Name, RepoDir: p.RepoDir, Config: p.Config, CPUs: p.CPUs, Mem: p.Mem, Time: p.Time,
+		Partition: p.Partition, Account: p.Account, ExpectCommit: p.ExpectCommit, HashInput: p.HashInput, PinProfile: p.PinProfile})
 }
 
 // ROHSASettings are the fields of the ROHSA job template.
@@ -269,63 +230,18 @@ type ROHSASettings struct {
 	// ExpectCommit and HashInput: as for VGTSettings.
 	ExpectCommit string
 	HashInput    bool
+	PinProfile   bool
 }
 
-// RenderROHSA renders the batch script for one ROHSA run, following the pipeline's own ROHSA cluster script: write the
-// config (text embedded here, as the VGT template does, so the script read is the config that runs), build the OpenMP
-// Fortran source when it is newer than the binary, then run the preprocessing command on that config with one OpenMP
-// thread per allocated CPU. The results go where the config's output_dir says, which Vesqira sets per job. They are not
-// imported automatically: a ROHSA fit is read from local files only (ADR 0046).
+// RenderROHSA renders the batch script for one ROHSA run, from the ROHSA-LMC profile's template: write the config (text embedded
+// here, as the VGT template does, so the script read is the config that runs), build the OpenMP Fortran source when it is newer
+// than the binary, then run the preprocessing command on that config with one OpenMP thread per allocated CPU. The results go
+// where the config's output_dir says, which Vesqira sets per job. They are not imported automatically: a ROHSA fit is read from
+// local files only (ADR 0046).
 func RenderROHSA(p ROHSASettings) (string, error) {
-	switch {
-	case !nameRe.MatchString(p.Name):
-		return "", fmt.Errorf("%w: the job name may use letters, digits, . _ - (up to 40)", ErrInvalid)
-	case !ValidPath(p.RepoDir), p.ConfigPath != "" && !ValidPath(p.ConfigPath):
-		return "", fmt.Errorf("%w: the folder and the config must be absolute paths without spaces or quotes", ErrInvalid)
-	case len(p.Config) == 0 || len(p.Config) > MaxScript/2 || strings.Contains(p.Config, configEnd) || strings.ContainsRune(p.Config, 0):
-		return "", fmt.Errorf("%w: the config text is empty, too large or malformed", ErrInvalid)
-	case p.CPUs < 1 || p.CPUs > 256:
-		return "", fmt.Errorf("%w: CPUs must be between 1 and 256", ErrInvalid)
-	case !memRe.MatchString(p.Mem):
-		return "", fmt.Errorf("%w: memory looks like 64G or 4096M", ErrInvalid)
-	case !timeRe.MatchString(p.Time):
-		return "", fmt.Errorf("%w: time looks like 1-00:00:00 or 12:00:00", ErrInvalid)
-	case p.Partition != "" && !slurmWord.MatchString(p.Partition), p.Account != "" && !slurmWord.MatchString(p.Account):
-		return "", fmt.Errorf("%w: partition and account are plain words", ErrInvalid)
-	}
-	var b strings.Builder
-	b.WriteString("#!/bin/bash -l\n")
-	fmt.Fprintf(&b, "#SBATCH --job-name=%s\n#SBATCH --nodes=1\n#SBATCH --ntasks=1\n#SBATCH --cpus-per-task=%d\n#SBATCH --mem=%s\n#SBATCH --time=%s\n", p.Name, p.CPUs, p.Mem, p.Time)
-	if p.Partition != "" {
-		fmt.Fprintf(&b, "#SBATCH --partition=%s\n", p.Partition)
-	}
-	if p.Account != "" {
-		fmt.Fprintf(&b, "#SBATCH --account=%s\n", p.Account)
-	}
-	b.WriteString("#SBATCH --output=%x-%j.out\n#SBATCH --error=%x-%j.err\n\n")
-	b.WriteString("# Rendered by Vesqira from the settings in the job record. This exact text is what is submitted.\n")
-	b.WriteString("set -euo pipefail\n")
-	b.WriteString("jobdir=\"$SLURM_SUBMIT_DIR\"\nconfig=\"$jobdir/config.toml\"\n")
-	fmt.Fprintf(&b, "cat > \"$config\" <<'%s'\n%s\n%s\n\n", configEnd, strings.TrimRight(p.Config, "\n"), configEnd)
-	fmt.Fprintf(&b, "cd %s\n", p.RepoDir)
-	fmt.Fprintf(&b, "export JULIA_DEPOT_PATH=\"${JULIA_DEPOT_PATH:-%s/.julia-vesqira}\"\n", p.RepoDir)
-	b.WriteString("echo \"job_id=$SLURM_JOB_ID host=$(hostname) config=$config\"\ndate --iso-8601=seconds\n")
-	b.WriteString("module purge\nmodule load GCC\n")
-	b.WriteString("rohsa_src=rohsa/upstream/ROHSA/src\n")
-	b.WriteString("# rebuild only when a source is newer than the binary; jobs share this tree, so take the lock\n")
-	b.WriteString("flock \"$rohsa_src/.build.lock\" bash -c '\n")
-	b.WriteString("    if [ ! -x \"$1/ROHSA\" ] || [ -n \"$(find \"$1\" -maxdepth 1 \\( -name \"*.f\" -o -name \"*.f90\" -o -name Makefile \\) -newer \"$1/ROHSA\")\" ]; then\n")
-	b.WriteString("        make -C \"$1\" clean all\n    fi' _ \"$rohsa_src\"\n")
-	b.WriteString("command -v julia >/dev/null || { echo \"Julia is not on PATH\" >&2; exit 2; }\n")
-	b.WriteString("# the optimiser loop is OpenMP-parallel: match threads to the allocation\n")
-	b.WriteString("export OMP_NUM_THREADS=\"${SLURM_CPUS_PER_TASK:-1}\"\nulimit -s unlimited\nexport OMP_STACKSIZE=256M\n")
-	// after the module and build lines above: the environment recorded is the one the program starts in
-	b.WriteString(EnvPreamble(envSpecFor("rohsa", p.RepoDir, p.Config, p.ExpectCommit, p.HashInput)))
-	b.WriteString("srun --ntasks=1 julia --project=. rohsa/cli/preprocess.jl --config \"$config\"\ndate --iso-8601=seconds\n")
-	return b.String(), nil
+	return RenderTemplate(rohsaTemplate(), Settings{Name: p.Name, RepoDir: p.RepoDir, ConfigPath: p.ConfigPath, Config: p.Config, CPUs: p.CPUs, Mem: p.Mem,
+		Time: p.Time, Partition: p.Partition, Account: p.Account, ExpectCommit: p.ExpectCommit, HashInput: p.HashInput, PinProfile: p.PinProfile})
 }
-
-// ---- editing a config.toml: only a small, typed set of keys ----
 
 // ---- remote command templates ----
 

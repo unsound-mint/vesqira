@@ -107,10 +107,26 @@ type EnvSpec struct {
 	// ExpectCommit, for a strict rerun, is the commit of the run being repeated: the job stops before the science starts if
 	// the code folder is at another commit or has changed tracked files.
 	ExpectCommit string
+	// Pin says ExpectCommit is the commit the tool's profile was written against, asked for by the person, not the commit of a run
+	// being repeated: the script and its messages then say "pinned commit", never "strict rerun".
+	Pin bool
 	// HashInput asks the job to read every byte of the input file and record its SHA-256 (input.full_sha256), once, before the
 	// program starts. It costs one pass over the file on the compute node, so it is on only for a run that needs the input's
 	// identity as the job saw it (a configuration run on another cube). Never in probe mode.
 	HashInput bool
+	// NoJulia leaves out the Julia probes (the Manifest.toml hash and the julia version) of a tool whose profile declares none; the
+	// facts are then reported unresolved with that reason, never recorded for an interpreter the job does not use.
+	NoJulia bool
+}
+
+// collectorFor is the collector text for a spec: the full one, or without the Julia probes.
+func collectorFor(noJulia bool) string {
+	if !noJulia {
+		return envCollector
+	}
+	c := strings.Replace(envCollector, "  else ve_code \"$1\"; ve_manifest \"$1\"; fi\n", "  else ve_code \"$1\"; ve_no julia.manifest_sha256 \"this tool's profile declares no Julia probe\"; fi\n", 1)
+	const julia = "  if command -v julia >/dev/null 2>&1; then\n    v=$(ve_t julia --version 2>/dev/null | head -n 1)\n    if [ -n \"$v\" ]; then ve_ok julia.version \"$v\"; else ve_no julia.version \"julia did not report a version\"; fi\n  else ve_no julia.version \"julia is not on PATH at this point of the script\"; fi\n"
+	return strings.Replace(c, julia, "  ve_no julia.version \"this tool's profile declares no Julia probe\"\n", 1)
 }
 
 func plainPath(p string) string {
@@ -130,7 +146,7 @@ func EnvPreamble(e EnvSpec) string {
 	fmt.Fprintf(&b, "ve_out=\"%s\"\nve_file=\"$jobdir/vesqira-env.json\"\n", plainPath(e.OutputDir))
 	b.WriteString("ve_copy() { [ -n \"$ve_out\" ] && [ -d \"$ve_out\" ] && [ ! -L \"$ve_out\" ] && [ ! -L \"$ve_out/vesqira-env.json\" ] && [ -f \"$ve_file\" ] && cp -f \"$ve_file\" \"$ve_out/vesqira-env.json\" 2>/dev/null; return 0; }\n")
 	b.WriteString("(\n  set +e +u\n  ve_emit() { printf '%s|%s|%s\\n' \"$1\" \"$2\" \"$3\"; }\n")
-	b.WriteString(envCollector)
+	b.WriteString(collectorFor(e.NoJulia))
 	hash := ""
 	if e.HashInput {
 		hash = " full"
@@ -142,10 +158,14 @@ func EnvPreamble(e EnvSpec) string {
 	b.WriteString("  printf '\\n  }\\n}\\n'\n} > \"$ve_file\" 2>/dev/null || true\nve_copy\ntrap ve_copy EXIT\n")
 	if c := e.ExpectCommit; c != "" {
 		repo := plainPath(e.RepoDir)
-		b.WriteString("# Strict rerun: stop here, before the science starts, if the code is not the code of the run this repeats.\n")
+		what, why := "strict rerun", "the code is not the code of the run this repeats"
+		if e.Pin {
+			what, why = "pinned commit", "the code is not at the commit this tool's profile was written against, which you asked this job to insist on"
+		}
+		fmt.Fprintf(&b, "# %s: stop here, before the science starts, if %s.\n", strings.ToUpper(what[:1])+what[1:], why)
 		fmt.Fprintf(&b, "ve_now=\"$(git --no-optional-locks -C \"%s\" rev-parse --verify HEAD 2>/dev/null || true)\"\n", repo)
-		fmt.Fprintf(&b, "if [ \"$ve_now\" != \"%s\" ]; then echo \"strict rerun stopped: the code folder is at ${ve_now:-an unknown commit}, not at %s\" >&2; exit 3; fi\n", c, c)
-		fmt.Fprintf(&b, "if [ -n \"$(git --no-optional-locks -C \"%s\" status --porcelain --untracked-files=no 2>/dev/null)\" ]; then echo \"strict rerun stopped: tracked files in the code folder have changed\" >&2; exit 3; fi\n", repo)
+		fmt.Fprintf(&b, "if [ \"$ve_now\" != \"%s\" ]; then echo \"%s stopped: the code folder is at ${ve_now:-an unknown commit}, not at %s\" >&2; exit 3; fi\n", c, what, c)
+		fmt.Fprintf(&b, "if [ -n \"$(git --no-optional-locks -C \"%s\" status --porcelain --untracked-files=no 2>/dev/null)\" ]; then echo \"%s stopped: tracked files in the code folder have changed\" >&2; exit 3; fi\n", repo, what)
 	}
 	b.WriteString("# --- end of the environment record ---\n")
 	return b.String()

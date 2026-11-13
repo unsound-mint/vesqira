@@ -1,6 +1,7 @@
 package vgtlog
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -54,6 +55,32 @@ func TestParseTailRefusesATruncatedFile(t *testing.T) {
 	}
 	if _, ok := ParseTail(""); ok {
 		t.Fatal("empty output has no progress")
+	}
+}
+
+func TestParsePattern(t *testing.T) {
+	re := regexp.MustCompile(`^synthfit: (?P<done>[0-9]+)/(?P<total>[0-9]+) tiles$`)
+	cases := []struct {
+		name string
+		out  string
+		re   *regexp.Regexp
+		want Progress
+		ok   bool
+	}{
+		{"the last matching line wins", "synthfit: 1/8 tiles\nnoise\nsynthfit: 5/8 tiles\n", re, Progress{5, 8}, true},
+		{"no matching line", "starting\n", re, Progress{}, false},
+		{"more done than total is not progress", "synthfit: 9/8 tiles\n", re, Progress{}, false},
+		{"an earlier sane line survives a later nonsense one", "synthfit: 3/8 tiles\nsynthfit: 9/8 tiles\n", re, Progress{3, 8}, true},
+		{"a zero total is not progress", "synthfit: 0/0 tiles\n", re, Progress{}, false},
+		{"an absurd total is not progress", "synthfit: 1/99999999999 tiles\n", re, Progress{}, false},
+		{"a pattern without the groups reads nothing", "synthfit: 1/8 tiles\n", regexp.MustCompile(`tiles`), Progress{}, false},
+		{"no pattern", "synthfit: 1/8 tiles\n", nil, Progress{}, false},
+	}
+	for _, c := range cases {
+		got, ok := ParsePattern(c.out, c.re)
+		if ok != c.ok || got != c.want {
+			t.Errorf("%s: %+v %v, want %+v %v", c.name, got, ok, c.want, c.ok)
+		}
 	}
 }
 

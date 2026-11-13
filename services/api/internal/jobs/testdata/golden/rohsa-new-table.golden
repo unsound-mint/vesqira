@@ -1,0 +1,6 @@
+[rohsa]
+n_gauss = [4]
+
+
+[input]
+crop_size = 256

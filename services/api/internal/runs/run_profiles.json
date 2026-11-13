@@ -19,6 +19,203 @@
       "label": "VGT",
       "source": "https://github.com/ISM-NU/VGT.jl: the run_metadata.toml of a run (tables config, diagnostics, input, outputs, performance, run_parameters, metrics) and its psi_path, reliability_path, support_path and fit_rbar2_path entries, the output names Vesqira has read since ADR 0014",
       "orientation": "VGT.jl",
+      "template": {
+        "id": "vgt",
+        "title": "VGT run",
+        "tool": "VGT",
+        "about": "Runs VGT.jl on a copy of a config from the host, with the settings you change applied and every other line as it was. The output folder is set for each job, inside the host's source folders, so the results can be opened here.",
+        "repo": {
+          "url": "https://github.com/ISM-NU/VGT.jl",
+          "commit": "af0a7946f4579a67f0135e09c96237a4271db28e",
+          "folderLabel": "VGT folder on the host",
+          "placeholder": "/shared/home/you/vgt",
+          "hint": "The checkout of VGT.jl (main.jl is its entry point). The profile was written against commit af0a794; a job stops on another revision only if you ask for that below.",
+          "refusal": "the VGT folder must be an absolute path without spaces or quotes",
+          "verified": "At af0a794 (main): main.jl, config.example.toml and the keys listed here exist, and noise_mode takes scalar, channel, spatial, separable or auto (src/config.jl). The script was not run on a cluster for this record."
+        },
+        "config": {
+          "var": "cfg",
+          "inputKey": "input_file",
+          "edit": "section",
+          "required": false,
+          "label": "Base config on the host",
+          "placeholder": "/shared/home/you/vgt/configs/run.toml",
+          "allTables": false
+        },
+        "keys": [
+          {
+            "name": "input_file",
+            "section": "input",
+            "kind": "path",
+            "label": "Input cube on the host",
+            "description": "The FITS cube the run reads."
+          },
+          {
+            "name": "ker",
+            "section": "vgt",
+            "kind": "int",
+            "label": "ker (smoothing, pixels)",
+            "description": "Gaussian smoothing sigma applied to the Q and U maps before the angle is computed, in pixels.",
+            "default": {
+              "value": "4",
+              "reason": "the value in VGT.jl's config.example.toml at af0a794"
+            }
+          },
+          {
+            "name": "dn",
+            "section": "vgt",
+            "kind": "int",
+            "label": "dn (window, pixels)",
+            "description": "Window size in pixels (even). A larger window averages more gradients (smoother, less detail) and costs more memory and time per chunk.",
+            "default": {
+              "value": "20",
+              "reason": "the value in VGT.jl's config.example.toml at af0a794"
+            }
+          },
+          {
+            "name": "min_valid",
+            "section": "vgt",
+            "kind": "int",
+            "label": "min_valid",
+            "description": "Minimum number of valid above-threshold gradients a window needs before it is fitted.",
+            "default": {
+              "value": "100",
+              "reason": "the value in VGT.jl's config.example.toml at af0a794"
+            }
+          },
+          {
+            "name": "noise",
+            "section": "noise",
+            "kind": "number",
+            "label": "noise (1 sigma)",
+            "description": "The 1-sigma noise floor in data units."
+          },
+          {
+            "name": "noise_mode",
+            "section": "noise",
+            "kind": "enum",
+            "label": "noise mode",
+            "description": "How the noise threshold is modelled: one value, per channel, per spatial tile, or combinations of them.",
+            "enum": [
+              "scalar",
+              "channel",
+              "spatial",
+              "separable",
+              "auto"
+            ],
+            "default": {
+              "value": "scalar",
+              "reason": "marked as the default in VGT.jl's config.example.toml at af0a794"
+            }
+          },
+          {
+            "name": "noise_sigma_multiplier",
+            "section": "noise",
+            "kind": "number",
+            "label": "noise sigma multiplier",
+            "description": "Multiplier on the noise floor that gives the mask threshold (3 with a 1-sigma noise is a 3-sigma threshold).",
+            "default": {
+              "value": "1.0",
+              "reason": "the value in VGT.jl's config.example.toml at af0a794"
+            }
+          },
+          {
+            "name": "noise_tile_size",
+            "section": "noise",
+            "kind": "int",
+            "label": "noise tile size (pixels)",
+            "description": "Tile size of the spatial noise estimate, used by the spatial, separable and auto modes."
+          },
+          {
+            "name": "angle_frame",
+            "section": "vgt",
+            "kind": "enum",
+            "label": "angle frame (PSIFRAME of the outputs)",
+            "description": "Frame of the written psi map: pixel (counter-clockwise from the image x axis), or galactic or icrs (IAU position angle through the cube's WCS).",
+            "enum": [
+              "pixel",
+              "galactic",
+              "icrs"
+            ],
+            "default": {
+              "value": "pixel",
+              "reason": "the value in VGT.jl's config.example.toml at af0a794"
+            }
+          },
+          {
+            "name": "output_bin",
+            "section": "vgt",
+            "kind": "posint",
+            "label": "output binning (pixels, 1 or more)",
+            "description": "Output grid: 1 keeps the input grid, b above 1 averages the smoothed Q, U and I over b by b input pixels and recomputes psi from them.",
+            "default": {
+              "value": "1",
+              "reason": "the value in VGT.jl's config.example.toml at af0a794"
+            }
+          },
+          {
+            "name": "output_dir",
+            "section": "input",
+            "kind": "path",
+            "label": "Output folder",
+            "description": "Set by Vesqira for each job, inside the host's source folders.",
+            "internal": true
+          }
+        ],
+        "steps": [
+          {
+            "kind": "export",
+            "name": "JULIA_DEPOT_PATH",
+            "value": "{{repo}}/.julia-vesqira",
+            "keepIfSet": true
+          },
+          {
+            "kind": "set",
+            "name": "threads",
+            "value": "{{cpus}}"
+          },
+          {
+            "kind": "export",
+            "name": "JULIA_NUM_THREADS",
+            "value": "{{var:threads}}"
+          },
+          {
+            "kind": "announce",
+            "show": [
+              {
+                "label": "threads",
+                "var": "threads"
+              }
+            ]
+          },
+          {
+            "kind": "require",
+            "command": "julia",
+            "title": "Julia"
+          }
+        ],
+        "command": [
+          "srun",
+          "--ntasks=1",
+          "julia",
+          "--project=.",
+          "--threads={{var:threads}}",
+          "main.jl",
+          "{{config}}"
+        ],
+        "progress": {
+          "reader": "vgt_chunks"
+        },
+        "resources": {
+          "cpus": 32,
+          "mem": "64G",
+          "time": "1-00:00:00",
+          "reason": "Vesqira's starting request for a new job, not a measurement of this tool; set it for your cluster. After a job of this kind finishes, the form suggests sizes from what it used."
+        },
+        "probes": [
+          "julia"
+        ]
+      },
       "record": {
         "file": "run_metadata.toml",
         "reader": "run_metadata",
@@ -63,6 +260,322 @@
       "label": "ROHSA",
       "source": "https://github.com/ISM-NU/ROHSA-LMC: rohsa_<label>_run_trace.toml, rohsa_<label>_products_trace.toml, parameters_n<N>.txt and the rohsa/<label>/{maps,cubes} tree, as ADR 0046 reads them",
       "components": "ROHSA",
+      "template": {
+        "id": "rohsa",
+        "title": "ROHSA decomposition",
+        "tool": "ROHSA",
+        "about": "Runs the ROHSA build-and-decompose script of ROHSA-LMC on a copy of a ROHSA config from the host, with the settings you change applied (every other line as it was). The output folder is set for each job, inside the host's source folders; when the job completes its fit is imported from there (the .dat stays on the host and is indexed there when you first open its components).",
+        "repo": {
+          "url": "https://github.com/ISM-NU/ROHSA-LMC",
+          "commit": "baf4a3bfc32112da219d8fbc2fc4a0051faab853",
+          "folderLabel": "ROHSA-LMC folder on the host",
+          "placeholder": "/shared/home/you/ROHSA-LMC",
+          "hint": "The checkout of ROHSA-LMC, which holds rohsa/cli/preprocess.jl. The profile was written against commit baf4a3b; a job stops on another revision only if you ask for that below.",
+          "refusal": "the folder and the config must be absolute paths without spaces or quotes",
+          "verified": "At baf4a3b (main): rohsa/cli/preprocess.jl, configs/rohsa/full_cube.toml, rohsa/configs.jl (which names the keys listed here) and rohsa/upstream/ROHSA/src/Makefile exist. The script was not run on a cluster for this record."
+        },
+        "config": {
+          "var": "config",
+          "inputKey": "input",
+          "edit": "by_name",
+          "required": true,
+          "label": "ROHSA config on the host",
+          "placeholder": "/shared/home/you/vgt/configs/rohsa/run.toml",
+          "allTables": true,
+          "guard": {
+            "table": "auto_config",
+            "key": "enabled",
+            "refusal": "this config runs the pipeline's own candidate sweep ([auto_config] enabled), whose axes Vesqira does not edit; use a config without it"
+          }
+        },
+        "keys": [
+          {
+            "name": "n_gauss",
+            "section": "rohsa",
+            "kind": "int",
+            "label": "n_gauss (Gaussians per pixel)",
+            "description": "Number of Gaussian components fitted to each spectrum.",
+            "min": 1,
+            "max": 64,
+            "list": true
+          },
+          {
+            "name": "lambda_amp",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "lambda_amp (smoothing, amplitude)",
+            "description": "Weight that keeps the amplitude of a component close to its neighbours across the map.",
+            "real": true
+          },
+          {
+            "name": "lambda_mu",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "lambda_mu (smoothing, centre)",
+            "description": "Weight that keeps the centre of a component close to its neighbours across the map.",
+            "real": true
+          },
+          {
+            "name": "lambda_sig",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "lambda_sig (smoothing, width)",
+            "description": "Weight that keeps the width of a component close to its neighbours across the map.",
+            "real": true
+          },
+          {
+            "name": "lambda_var_amp",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "lambda_var_amp",
+            "description": "Weight of the variance term on the amplitude (0 switches it off).",
+            "real": true
+          },
+          {
+            "name": "lambda_var_mu",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "lambda_var_mu",
+            "description": "Weight of the variance term on the centre (0 switches it off).",
+            "real": true
+          },
+          {
+            "name": "lambda_var_sig",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "lambda_var_sig (width term)",
+            "description": "Weight of the variance term on the width (0 switches it off).",
+            "real": true
+          },
+          {
+            "name": "lb_sig",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "lb_sig (width lower bound, channels)",
+            "description": "Lower bound of the width (sigma) in the fit, in channels.",
+            "real": true
+          },
+          {
+            "name": "ub_sig",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "ub_sig (width upper bound, channels)",
+            "description": "Upper bound of the width (sigma) in the fit, in channels.",
+            "real": true
+          },
+          {
+            "name": "sig_init",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "sig_init",
+            "description": "Starting width (sigma) of the components in the initial fit, in channels.",
+            "real": true
+          },
+          {
+            "name": "lb_sig_init",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "lb_sig_init",
+            "description": "Lower bound of the width in the initial fit, in channels.",
+            "real": true
+          },
+          {
+            "name": "ub_sig_init",
+            "section": "rohsa",
+            "kind": "number",
+            "label": "ub_sig_init",
+            "description": "Upper bound of the width in the initial fit, in channels.",
+            "real": true
+          },
+          {
+            "name": "maxiter",
+            "section": "rohsa",
+            "kind": "int",
+            "label": "maxiter (iteration limit)",
+            "description": "Iteration limit of the optimiser in the main fit.",
+            "min": 1,
+            "max": 1000000
+          },
+          {
+            "name": "maxiter_init",
+            "section": "rohsa",
+            "kind": "int",
+            "label": "maxiter_init",
+            "description": "Iteration limit of the optimiser in the initial fit.",
+            "min": 1,
+            "max": 1000000
+          },
+          {
+            "name": "noise",
+            "section": "rohsa",
+            "kind": "bool",
+            "label": "noise (use a noise estimate)",
+            "description": "Whether the fit uses a noise estimate."
+          },
+          {
+            "name": "memory_gb",
+            "section": "input",
+            "kind": "number",
+            "label": "memory_gb (the pipeline's memory check: a number or auto)",
+            "description": "The pipeline's own memory preflight: it estimates what the fit needs and refuses to start when that is above this budget. Raising n_gauss can need it raised, together with the job's Slurm memory (a separate request).",
+            "min": 1,
+            "max": 100000,
+            "noExponent": true,
+            "words": [
+              "auto"
+            ],
+            "expect": "a number of GB (96 or 96.5) or auto"
+          },
+          {
+            "name": "spectral_kernel",
+            "section": "input",
+            "kind": "enum",
+            "label": "spectral_kernel",
+            "description": "Smooths every spectrum before the fit: none, hanning, or gauss followed by sigma in channels (gauss1.5).",
+            "enum": [
+              "none",
+              "hanning"
+            ],
+            "enumNumeric": [
+              "gauss"
+            ],
+            "expect": "none, hanning or gauss<sigma in channels> (gauss1, gauss1.5)",
+            "default": {
+              "value": "none",
+              "reason": "named as the default in ROHSA-LMC's rohsa/README.md at baf4a3b"
+            }
+          },
+          {
+            "name": "crop_size",
+            "section": "input",
+            "kind": "int",
+            "label": "crop_size (0 = whole cube)",
+            "description": "Side of the square crop in pixels; 0 is the whole cube. Set crop_size, crop_x0 and crop_y0 together for an explicit crop.",
+            "min": 0,
+            "max": 100000
+          },
+          {
+            "name": "crop_x0",
+            "section": "input",
+            "kind": "int",
+            "label": "crop_x0",
+            "description": "First column of the crop (counted from 1).",
+            "min": 0,
+            "max": 100000
+          },
+          {
+            "name": "crop_y0",
+            "section": "input",
+            "kind": "int",
+            "label": "crop_y0",
+            "description": "First row of the crop (counted from 1).",
+            "min": 0,
+            "max": 100000
+          },
+          {
+            "name": "output_dir",
+            "section": "input",
+            "kind": "path",
+            "label": "Output folder",
+            "description": "Set by Vesqira for each job, inside the host's source folders.",
+            "internal": true
+          }
+        ],
+        "ties": [
+          {
+            "name": "lambda",
+            "label": "lambda (amp, mu and sig together)",
+            "keys": [
+              "lambda_amp",
+              "lambda_mu",
+              "lambda_sig"
+            ],
+            "reason": "the three smoothing weights are usually moved together, as the smoothNNN configs of ROHSA-LMC do"
+          }
+        ],
+        "steps": [
+          {
+            "kind": "export",
+            "name": "JULIA_DEPOT_PATH",
+            "value": "{{repo}}/.julia-vesqira",
+            "keepIfSet": true
+          },
+          {
+            "kind": "announce",
+            "show": [
+              {
+                "label": "config",
+                "var": "config"
+              }
+            ]
+          },
+          {
+            "kind": "modules",
+            "purge": true,
+            "modules": [
+              "GCC"
+            ]
+          },
+          {
+            "kind": "build_if_stale",
+            "var": "rohsa_src",
+            "dir": "rohsa/upstream/ROHSA/src",
+            "binary": "ROHSA",
+            "target": [
+              "clean",
+              "all"
+            ],
+            "sources": [
+              "*.f",
+              "*.f90",
+              "Makefile"
+            ]
+          },
+          {
+            "kind": "require",
+            "command": "julia",
+            "title": "Julia"
+          },
+          {
+            "kind": "comment",
+            "text": "the optimiser loop is OpenMP-parallel: match threads to the allocation"
+          },
+          {
+            "kind": "export",
+            "name": "OMP_NUM_THREADS",
+            "value": "{{cpus}}"
+          },
+          {
+            "kind": "ulimit",
+            "name": "s",
+            "value": "unlimited"
+          },
+          {
+            "kind": "export",
+            "name": "OMP_STACKSIZE",
+            "value": "256M"
+          }
+        ],
+        "command": [
+          "srun",
+          "--ntasks=1",
+          "julia",
+          "--project=.",
+          "rohsa/cli/preprocess.jl",
+          "--config",
+          "{{config}}"
+        ],
+        "resources": {
+          "cpus": 32,
+          "mem": "64G",
+          "time": "1-00:00:00",
+          "reason": "Vesqira's starting request for a new job, not a measurement of this tool; set it for your cluster. After a job of this kind finishes, the form suggests sizes from what it used."
+        },
+        "probes": [
+          "julia"
+        ],
+        "sizing": "rohsa_crop_table"
+      },
       "record": {
         "pattern": "^rohsa_[A-Za-z0-9._-]+_run_trace\\.toml$",
         "reader": "rohsa_trace",

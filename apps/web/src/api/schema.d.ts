@@ -2663,6 +2663,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/job-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The job templates of the tool profiles in force, for the job form */
+        get: operations["owner_s_jobTemplates_get_api_job_templates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -2672,6 +2689,7 @@ export interface paths {
         };
         get: operations["owner_s_listJobs_get_api_jobs"];
         put?: never;
+        /** Create a job draft: the script is rendered, shown and stored, and nothing is submitted */
         post: operations["owner_s_createJob_post_api_jobs"];
         delete?: never;
         options?: never;
@@ -12044,6 +12062,218 @@ export interface components {
             /** @description The author's explicit yes to sharing a figure that uses labelled data. Without it such a share is refused with 409; it never overrides a blocked label (403). */
             confirmAccess?: boolean;
         };
+        JobTemplateKey: {
+            /** @description The config key */
+            name: string;
+            /** @description The config table the key lives in */
+            section: string;
+            /**
+             * @description number, int, posint, enum, bool or path: the characters a value may have are fixed by the kind
+             * @enum {string}
+             */
+            kind: "number" | "int" | "posint" | "enum" | "bool" | "path";
+            /** @description The form's label */
+            label: string;
+            /** @description What the key does, in plain words, from the tool's own documentation */
+            description: string;
+            /** @description Completes '<key> must be ...' in a refusal and serves as the form's hint */
+            expect: string;
+            /** @description The values of an enum key */
+            enum?: string[];
+            /** @description Words that may be followed by a non-negative number (gauss1, gauss1.5) */
+            enumNumeric?: string[];
+            /** @description Bare words a number key also accepts */
+            words?: string[];
+            /** @description Smallest accepted value */
+            min?: number;
+            /** @description Largest accepted value */
+            max?: number;
+            /** @description A whole number is written as a real (10 as 10.0) */
+            real?: boolean;
+            /** @description A count is written as a one-element list */
+            list?: boolean;
+            noExponent?: boolean;
+            /** @description Set by Vesqira per job (the output folder), never by a request */
+            internal?: boolean;
+            /** @description The value the tool's documentation gives; shown as a hint and never written into a config the person did not change */
+            default?: {
+                value: string;
+                /** @description Where the value was read */
+                reason: string;
+            };
+        };
+        /** @description One preparation line of the script, from a closed list of kinds; the script shows the line it becomes */
+        JobTemplateStep: {
+            /**
+             * @description export, set, announce, require, modules, build_if_stale, comment or ulimit
+             * @enum {string}
+             */
+            kind: "export" | "set" | "announce" | "require" | "modules" | "build_if_stale" | "comment" | "ulimit";
+            name?: string;
+            value?: string;
+            keepIfSet?: boolean;
+            command?: string;
+            title?: string;
+            modules?: string[];
+            purge?: boolean;
+            var?: string;
+            dir?: string;
+            binary?: string;
+            target?: string[];
+            sources?: string[];
+            show?: {
+                label: string;
+                var: string;
+            }[];
+            /** @description A plain sentence for the form */
+            text?: string;
+        };
+        /** @description How a Slurm job of a tool is written, as declared by a tool profile (ADR 0068). Declaration only: the server renders, validates and quotes. */
+        JobTemplate: {
+            /** @description The label (name@version) of the tool profile that declares the template */
+            profile: string;
+            /** @description What a job's template field holds */
+            id: string;
+            title: string;
+            /** @description The tool's plain name inside sentences */
+            tool: string;
+            about: string;
+            repo: {
+                /** @description The tool's repository */
+                url: string;
+                /** @description The full commit the template was written against */
+                commit: string;
+                folderLabel: string;
+                placeholder: string;
+                hint: string;
+                refusal: string;
+                /** @description What was checked against the commit */
+                verified: string;
+            };
+            config: {
+                var: string;
+                inputKey: string;
+                /**
+                 * @description How a changed key is written: section or by_name
+                 * @enum {string}
+                 */
+                edit: "section" | "by_name";
+                /** @description A job starts from a config the person names */
+                required: boolean;
+                label: string;
+                placeholder: string;
+                allTables?: boolean;
+                guard?: {
+                    table: string;
+                    key: string;
+                    refusal: string;
+                };
+            };
+            keys: components["schemas"]["JobTemplateKey"][];
+            /** @description One setting that stands for several keys moved together */
+            ties?: {
+                name: string;
+                label: string;
+                keys: string[];
+                reason: string;
+            }[];
+            steps: components["schemas"]["JobTemplateStep"][];
+            /** @description The words of the one command that runs; it starts with srun */
+            command: string[];
+            /** @description How progress is read from the log: a reader of Vesqira's or a pattern with the groups done and total */
+            progress?: {
+                reader?: string;
+                pattern?: string;
+            };
+            resources: {
+                cpus: number;
+                mem: string;
+                time: string;
+                /** @description Why these are the starting request */
+                reason: string;
+            };
+            /** @description Environment probes for the record */
+            probes?: string[];
+            /** @description A built-in sizing table shown beside the request (rohsa_crop_table), or empty */
+            sizing?: string;
+        };
+        JobTemplateList: {
+            templates: components["schemas"]["JobTemplate"][];
+        };
+        /** @description A job draft. template is custom (script) or the id of a job template listed by GET /api/job-templates. The tool body is the same for every template; the older vgt and rohsa bodies are read when tool is absent and template is vgt or rohsa (compatibility, ADR 0068 slice 5). */
+        CreateJobRequest: {
+            hostId: number;
+            template: string;
+            name: string;
+            /** @description The script of a custom job */
+            script?: string;
+            /** @description Why the job is made */
+            note?: string;
+            autoImport?: boolean;
+            parentRunId?: number;
+            /** @description strict, best_effort or adapted, for a vgt or rohsa draft with a parentRunId */
+            rerunMode?: string;
+            /** @description The tool's folder, config, settings and resources */
+            tool?: {
+                /** @description The tool's checkout on the host */
+                repoDir?: string;
+                /** @description A config on the host, inside its source folders */
+                configPath?: string;
+                /** @description Used instead of reading configPath (a rerun passes the text the parent started from) */
+                configText?: string;
+                /** @description Only the settings that change, by key; each is checked against the template's type and range */
+                set?: {
+                    [key: string]: string;
+                };
+                cpus?: number;
+                mem?: string;
+                time?: string;
+                partition?: string;
+                account?: string;
+                /** @description Stop the job unless the tool's folder is at the commit the profile was written against (off unless asked) */
+                pinProfileCommit?: boolean;
+            };
+            /** @description The tool's folder, config, settings and resources */
+            vgt?: {
+                /** @description The tool's checkout on the host */
+                repoDir?: string;
+                /** @description A config on the host, inside its source folders */
+                configPath?: string;
+                /** @description Used instead of reading configPath (a rerun passes the text the parent started from) */
+                configText?: string;
+                /** @description Only the settings that change, by key; each is checked against the template's type and range */
+                set?: {
+                    [key: string]: string;
+                };
+                cpus?: number;
+                mem?: string;
+                time?: string;
+                partition?: string;
+                account?: string;
+                /** @description Stop the job unless the tool's folder is at the commit the profile was written against (off unless asked) */
+                pinProfileCommit?: boolean;
+            };
+            /** @description The tool's folder, config, settings and resources */
+            rohsa?: {
+                /** @description The tool's checkout on the host */
+                repoDir?: string;
+                /** @description A config on the host, inside its source folders */
+                configPath?: string;
+                /** @description Used instead of reading configPath (a rerun passes the text the parent started from) */
+                configText?: string;
+                /** @description Only the settings that change, by key; each is checked against the template's type and range */
+                set?: {
+                    [key: string]: string;
+                };
+                cpus?: number;
+                mem?: string;
+                time?: string;
+                partition?: string;
+                account?: string;
+                /** @description Stop the job unless the tool's folder is at the commit the profile was written against (off unless asked) */
+                pinProfileCommit?: boolean;
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -17451,6 +17681,35 @@ export interface operations {
             };
         };
     };
+    owner_s_jobTemplates_get_api_job_templates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobTemplateList"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_listJobs_get_api_jobs: {
         parameters: {
             query?: never;
@@ -17476,14 +17735,29 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateJobRequest"];
+            };
+        };
         responses: {
-            /** @description ok */
-            200: {
+            /** @description The draft, with the exact script that will be submitted */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

@@ -195,7 +195,7 @@ func EffectiveVGTSettings(req VGTRequest) map[string]string {
 		}
 	}
 	for k, v := range req.Set {
-		if spec, ok := configKeys[k]; ok {
+		if spec := vgtTemplate().Key(k); spec != nil {
 			out[spec.Section+"."+k] = v
 		}
 	}

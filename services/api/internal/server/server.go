@@ -241,6 +241,7 @@ func (s *Server) Handler() http.Handler {
 		if s.Jobs != nil {
 			s.route(mux, "GET /api/jobs", authz.JobRead, s.listJobs)
 			s.route(mux, "GET /api/rohsa/sizing", authz.JobRead, s.rohsaSizing)
+			s.route(mux, "GET /api/job-templates", authz.JobRead, s.jobTemplates)
 			s.route(mux, "POST /api/jobs", authz.JobSubmit, s.createJob)
 			s.route(mux, "GET /api/jobs/{id}", authz.JobRead, s.getJob)
 			s.route(mux, "POST /api/jobs/{id}/script", authz.JobSubmit, s.editJobScript)

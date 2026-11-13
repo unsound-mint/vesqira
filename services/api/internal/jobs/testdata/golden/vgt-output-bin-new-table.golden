@@ -1,0 +1,6 @@
+[input]
+input_file = "/data/cube.fits"
+
+
+[vgt]
+output_bin = 4

@@ -1,0 +1,6 @@
+[input]
+input = "/d/c.fits"
+[extra]
+noise = false
+[auto_config]
+enabled = false

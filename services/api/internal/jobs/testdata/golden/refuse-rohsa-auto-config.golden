@@ -1,0 +1,1 @@
+ERROR: invalid: this config runs the pipeline's own candidate sweep ([auto_config] enabled), whose axes Vesqira does not edit; use a config without it

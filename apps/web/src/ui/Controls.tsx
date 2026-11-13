@@ -23,28 +23,34 @@ export function Switch({ label, ...rest }: { label: ReactNode } & Omit<InputHTML
   );
 }
 
-export function Select({ label, children, ...rest }: { label: string } & SelectHTMLAttributes<HTMLSelectElement>) {
+/** `description` is a plain sentence under the field, read with it. */
+export function Select({ label, description, children, ...rest }: { label: string; description?: string } & SelectHTMLAttributes<HTMLSelectElement>) {
   const id = useId();
+  const descId = `${id}-desc`;
   return (
     <div className={s.field}>
       <label htmlFor={id} className={s.label}>{label}</label>
       <div className={s.selectWrap}>
-        <select id={id} className={s.select} {...rest}>{children}</select>
+        <select id={id} className={s.select} aria-describedby={description ? descId : undefined} {...rest}>{children}</select>
         <span className={s.chevron}><Icon icon={ChevronDown} /></span>
       </div>
+      {description ? <span id={descId} className={s.hint}>{description}</span> : null}
     </div>
   );
 }
 
-/** `hint` is a short gloss under the field ("1 day" for a time limit of 1-00:00:00), read with the field; nothing shows when it is empty. */
-export function Input({ label, hint, ...rest }: { label: string; hint?: string } & InputHTMLAttributes<HTMLInputElement>) {
+/** `hint` is a short gloss under the field ("1 day" for a time limit of 1-00:00:00), read with the field; nothing shows when it is empty. `description` is a plain sentence under it. */
+export function Input({ label, hint, description, ...rest }: { label: string; hint?: string; description?: string } & InputHTMLAttributes<HTMLInputElement>) {
   const id = useId();
   const hintId = `${id}-hint`;
+  const descId = `${id}-desc`;
+  const described = [hint ? hintId : "", description ? descId : ""].filter(Boolean).join(" ");
   return (
     <div className={s.field}>
       <label htmlFor={id} className={s.label}>{label}</label>
-      <input id={id} className={s.input} aria-describedby={hint ? hintId : undefined} {...rest} />
+      <input id={id} className={s.input} aria-describedby={described || undefined} {...rest} />
       {hint ? <span id={hintId} className={s.hint}>= {hint}</span> : null}
+      {description ? <span id={descId} className={s.hint}>{description}</span> : null}
     </div>
   );
 }

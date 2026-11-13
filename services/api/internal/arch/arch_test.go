@@ -36,16 +36,17 @@ var allowed = map[string][]string{
 	"boards":        {"schema", "workspace"},
 	"reports":       {"publish", "schema", "workspace"},
 	"catalog":       {"identity", "schema", "workspace"},
-	"jobs":          {"schema", "workspace"},
+	"jobs":          {"jobtemplate", "runs", "schema", "workspace"}, // job scripts render from a tool profile's template (ADR 0068 slice 5)
+	"jobtemplate":   {},
 	"sweeps":        {"schema", "workspace"},
-	"runs":          {"schema", "workspace"},
+	"runs":          {"jobtemplate", "schema", "workspace"},
 	"runs/runstest": {"runs"}, // test helper: only _test.go files import it
 	"discover":      {"runs", "sourceroot"},
 	"projects":      {"discover", "schema", "workspace"},
 	"fullschema":    {"access", "accounts", "discussion", "audit", "boards", "derived", "history", "hosts", "jobs", "masks", "notify", "offline", "projects", "regions", "reports", "runs", "subsets", "sweeps", "transfers", "pushed", "outbox", "relay"},
 	"hosts":         {"worker", "sourceroot", "schema", "workspace"},
 	"review":        {"boards", "workspace"},
-	"server":        {"access", "accounts", "audit", "authz", "workspace", "discussion", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker", "pushwire", "pushed", "outbox", "relay"},
+	"server":        {"access", "accounts", "audit", "authz", "workspace", "discussion", "boards", "catalog", "compat", "derived", "discover", "history", "hosts", "identity", "imgmeta", "jobs", "jobtemplate", "lifecycle", "masks", "notify", "offline", "projects", "publish", "regions", "reports", "runs", "scene", "schema", "sourceroot", "subsets", "support", "sweeps", "transfers", "vgtlog", "worker", "pushwire", "pushed", "outbox", "relay"},
 	// ADR 0066 push: the wire contract imports nothing, so client and server cannot disagree about a hash
 	"pushwire": {},
 	"pushed":   {"identity", "pushwire", "schema", "workspace"},

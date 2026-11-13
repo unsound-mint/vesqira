@@ -1,0 +1,1 @@
+ERROR: invalid: every top-level entry of a ROHSA config is a table; "n_gauss" is not

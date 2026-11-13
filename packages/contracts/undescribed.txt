@@ -78,7 +78,6 @@ POST /api/fs/choose
 POST /api/hosts/{id}/check
 POST /api/hosts/{id}/delete
 POST /api/hosts/{id}/register
-POST /api/jobs
 POST /api/jobs/{id}/cancel
 POST /api/jobs/{id}/refresh
 POST /api/jobs/{id}/register
