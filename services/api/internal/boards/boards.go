@@ -5,10 +5,8 @@ package boards
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,6 +14,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -40,6 +39,9 @@ var (
 type Store struct {
 	db  *sql.DB
 	dir string // content-addressed preview files live in dir/figures
+	// publishing serialises the read-build-insert of a board's next round inside this process (ADR 0073); the insert's own
+	// condition (insertRound) is what holds across processes.
+	publishing sync.Mutex
 }
 
 func Open(db *sql.DB, dataDir string) (*Store, error) {
@@ -956,24 +958,10 @@ func (s *Store) publishItems(ws workspace.ID, by string, boardID int64, title st
 		StampAccess(fr.Items, items, a)
 		fr.Access = a.Board
 	}
-	if err := s.addRound(ws, boardID, &fr); err != nil {
-		return Snapshot{}, "", err
-	}
-	raw, err := json.Marshal(fr)
+	id, tok, err := s.insertRound(ws, by, boardID, &fr, now)
 	if err != nil {
 		return Snapshot{}, "", err
 	}
-	var buf [32]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return Snapshot{}, "", err
-	}
-	tok := base64.RawURLEncoding.EncodeToString(buf[:])
-	res, err := s.db.Exec(`INSERT INTO snapshots(board_id,label,created_at,expires_at,token_hash,frozen,workspace_id,created_by) VALUES(?,?,?,?,?,?,?,?)`,
-		boardID, fr.Label, now.Unix(), fr.ExpiresAt.Unix(), hashToken(tok), string(raw), ws, by)
-	if err != nil {
-		return Snapshot{}, "", err
-	}
-	id, _ := res.LastInsertId()
 	if o.Supersedes != 0 {
 		reason := clip(o.Reason, 500)
 		if reason == "" {
