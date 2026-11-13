@@ -65,17 +65,33 @@ func (m *Manager) HostRun(ctx context.Context, h Host, op, name string, argv []s
 			body["missing"] = outs.Missing
 		}
 	}
+	return m.hostProgram(ctx, h, body, derived, false, timeout)
+}
+
+// hostProgram runs hostrun.py on h with one request and returns the last line of its output, its JSON reply. The cache folder is named on
+// the command line only for a review, the one run that writes an index. A review reads a whole fit, so it writes a short progress line
+// every few seconds and stops when that write fails: a request that is cancelled or timed out (ssh killed) or a connection that drops
+// ends the pass on the host instead of leaving it to run. (stdin carries the request to its end, so an older hostrun.py that does not
+// know the operation reads it and refuses at once, rather than waiting for a stream that never ends.)
+func (m *Manager) hostProgram(ctx context.Context, h Host, body map[string]any, derived string, review bool, timeout time.Duration) ([]byte, error) {
 	req, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
+	if len(req) >= 64<<10 {
+		return nil, fmt.Errorf("%w: the request is larger than the program on the host takes", ErrInvalid)
+	}
 	rj, _ := json.Marshal(h.Roots)
-	remote := fmt.Sprintf(`cd "%s" && VESQIRA_ROOTS=%s VESQIRA_DERIVED=%s exec %s -P hostrun.py`, m.remoteDir(), quote(string(rj)), quote(derived), h.Python)
+	cache := ""
+	if review {
+		cache = fmt.Sprintf(` VESQIRA_CACHE="%s"`, m.RemoteCacheDir())
+	}
+	remote := fmt.Sprintf(`cd "%s" && VESQIRA_ROOTS=%s VESQIRA_DERIVED=%s%s exec %s -P hostrun.py`, m.remoteDir(), quote(string(rj)), quote(derived), cache, h.Python)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, m.Ssh, append(m.sshArgs(h), "sh -c "+quote(remote))...) // sh -c: the login shell may not be POSIX
 	cmd.Env = append([]string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME")}, m.env()...)
-	cmd.Stdin = bytes.NewReader(req)
+	cmd.Stdin = bytes.NewReader(append(req, '\n'))
 	out := capped{max: MaxHostRunReply}
 	cmd.Stdout = &out
 	runErr := cmd.Run()

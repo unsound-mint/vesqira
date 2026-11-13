@@ -247,7 +247,7 @@ func TestROHSAReviewRefusesWhatItCannotDoAndAnswersInSentences(t *testing.T) {
 	if resp.StatusCode != 422 || !strings.Contains(string(raw), "draw the diagram again") {
 		t.Errorf("undrawn bins: %d %s", resp.StatusCode, raw)
 	}
-	// a fit that lives on a host is refused before anything is asked of the host
+	// a run whose fit is on a host but whose crop is not on that host is never reviewed here: the program reads both on one machine
 	info := run.Rohsa
 	info.HostID = 7
 	if err := e.srv.Runs.SetROHSA(run.ID, "/somewhere/rohsa_n3.dat", *info); err != nil {
@@ -255,7 +255,7 @@ func TestROHSAReviewRefusesWhatItCannotDoAndAnswersInSentences(t *testing.T) {
 	}
 	for _, p := range []string{"/sigmav", "/sigmav/cell", "/class-maps"} {
 		resp, raw := postJSON(t, base+p, map[string]any{"runId": run.ID, "edges": []float64{2}, "cell": map[string]any{"s": 0, "v": 0}})
-		if resp.StatusCode != 409 || !strings.Contains(string(raw), "lives on a host") {
+		if resp.StatusCode != 409 || !strings.Contains(string(raw), "not on the same machine") {
 			t.Errorf("host %s: %d %s", p, resp.StatusCode, raw)
 		}
 	}
