@@ -21,7 +21,7 @@ In a video call, screen sharing often fails or the right figure cannot be found 
 ## Alternatives
 - **An implicit one-figure board kept out of the boards list.** Reuses `Publish` unchanged, and the snapshot would have an owner and a board to hang the existing lists on. Rejected: it needs a hidden flag on `boards` (a schema change) and every place that lists, archives, deletes, searches, pushes or counts boards would have to remember to skip it. A forgotten place shows the author a board they never made.
 - **A new table for figure shares.** Rejected: it would duplicate tokens, expiry, comments and outcomes, and the reviewer listener would need a second lookup.
-- **A "kind" field on `Frozen`.** Would let the review page say "figure" instead of "board" in its label note. Not added: it widens the reviewer-visible whitelist for wording only. The page still says "this board" in the access note for a figure share.
+- **A "kind" field on `Frozen`.** Would let the review page say "figure" instead of "board" in its label note. Not added: it widens the reviewer-visible whitelist for wording only. The access note says "the data shown here" instead, which is true for both.
 
 ## Consequences
 - No migration. Existing snapshots are untouched, and `board_id` 0 was never used.
