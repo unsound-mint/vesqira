@@ -80,7 +80,7 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
               <span className={s.sub}>parent run not found</span>
             )
           ) : null}
-          {run.profile ? <span className={s.sub} title="The tool profile that recognised this run. A profile is a declaration of how to read a tool's record, not a check that the run is valid.">recognised by {run.profile === "legacy" ? "no profile (recorded before profiles)" : `profile:${run.profile}`}</span> : null}
+          {run.profile ? <span className={s.sub} title="The tool profile that recognised this run. A profile is a declaration of how to read a tool's record, not a check that the run is valid.">{run.profile === "legacy" ? "recorded before tool profiles" : `read with the ${run.profile} profile`}</span> : null}
           {run.dirty ? <Pill tone="warn">code has uncommitted changes</Pill> : null}
           {(run.kind === "vgt" || run.kind === "rohsa") && onRunAgain ? <Button type="button" onClick={() => onRunAgain(run.id)}>Run again with…</Button> : null}
           <PushButton kind="run" id={run.id} />
