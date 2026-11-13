@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../api/http";
 import { listRuns } from "../api/runs";
 import type { Run } from "../api/runs";
-import { approveRelayed, declineRelayed, detachRelayed, draftRelayed, getRelayed, stateText } from "../api/runRequests";
+import { approveRelayed, declineRelayed, detachRelayed, draftRelayed, getRelayed, grantFellBack, grantStateText, stateText } from "../api/runRequests";
 import type { Relayed, RelayedDetail } from "../api/runRequests";
 import { Button, Checkbox, Input, Select } from "../ui";
 import s from "../account/Account.module.css";
@@ -58,6 +58,7 @@ export function RelayedView({ summary, onChanged, onClose }: { summary: Relayed;
       </div>
       <p className={s.note}>{q.localState}{q.refusal ? `: ${q.refusal}` : ""}. On the server: {stateText(q.serverState)}. Expires {when(q.request.expiresAt)}.{q.request.base ? ` Based on ${q.request.base.title}.` : ""}</p>
       {detail?.outsideBounds ? <p className={r.warn} role="alert">{detail.outsideBounds}</p> : null}
+      <GrantNote relayed={q} />
       <Ask relayed={q} />
       {error ? <p className={s.error} role="alert">{error}</p> : null}
       {done ? <p className={s.note} role="status">{done}</p> : null}
@@ -65,6 +66,13 @@ export function RelayedView({ summary, onChanged, onClose }: { summary: Relayed;
       {detail?.code && (q.localState === "draft" || q.localState === "approved") ? <p className={s.note}>{detail.code}</p> : null}
       {/* an approved request whose draft was never submitted (refused before Slurm, or this computer stopped) is approved again */}
       {detail?.job && (q.localState === "draft" || (q.localState === "approved" && detail.job.state === "draft")) ? <SingleReview detail={detail} onError={(m) => { setError(m); setDone(""); }} onDone={(m) => { setError(""); setDone(m); void onChanged(); void load(); }} /> : null}
+      {detail?.job && q.localState === "approved" && detail.job.state !== "draft" ? (
+        <section className={s.form} aria-label="Script that was submitted">
+          <h3 className={s.h2}>The script that was submitted</h3>
+          <p className={s.note}>{detail.job.name}, sha256 {detail.job.scriptHash.slice(0, 12)}, now {detail.job.state}.</p>
+          <pre className={r.script} tabIndex={0} aria-label="Submitted script">{detail.job.script}</pre>
+        </section>
+      ) : null}
       {detail?.sweep && q.localState === "draft" ? <SweepReview detail={detail} onError={(m) => { setError(m); setDone(""); }} onDone={(m) => { setError(""); setDone(m); void onChanged(); void load(); }} /> : null}
       {editable ? <Actions relayed={q} onError={(m) => { setError(m); setDone(""); }} onDone={(m) => { setError(""); setDone(m); void onChanged(); void load(); }} /> : null}
       {/* a request that closed while drafted leaves drafts that cannot be submitted under it: keeping them as your own frees them */}
@@ -74,6 +82,24 @@ export function RelayedView({ summary, onChanged, onClose }: { summary: Relayed;
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** What the standing approval a request named did with it: submitted it without a click, holds it for a slot, or left it to you and why. */
+function GrantNote({ relayed }: { relayed: Relayed }) {
+  const named = relayed.request.ask.grant;
+  if (!named) return null;
+  const g = relayed.grantState;
+  const short = (relayed.grantId || named).slice(0, 8);
+  let text = `Filed under standing approval ${short}; not decided yet.`;
+  if (g === "used") text = `Submitted without a click under standing approval ${short}, after every term was checked on this computer. The script below is exactly what ran.`;
+  else if (g && grantFellBack(g)) text = `Filed under standing approval ${short}, but waiting for you: ${grantStateText(g)}.`;
+  else if (g) text = `Filed under standing approval ${short}: ${grantStateText(g)}.`;
+  return (
+    <div className={r.grantNote} role="note">
+      <p className={s.note}>{text}</p>
+      {relayed.grantNote ? <p className={`${s.note} ${r.plain}`}>{relayed.grantNote}</p> : null}
+    </div>
   );
 }
 

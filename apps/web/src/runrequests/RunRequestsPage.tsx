@@ -4,12 +4,13 @@ import { authState } from "../api/accounts";
 import { ApiError } from "../api/http";
 import { listPushed } from "../api/push";
 import type { PushedSummary } from "../api/push";
-import { boundText, declineRunRequest, fileRunRequest, getRunRequest, isOpen, listRunInboxes, listRunRequests, noteRunRequest, stateText, withdrawRunRequest } from "../api/runRequests";
-import type { RelayResources, RunInbox, RunRequest, RunRequestDetail, TemplateBounds } from "../api/runRequests";
+import { boundText, declineRunRequest, fileRunRequest, getRunRequest, hours, isOpen, listRunInboxes, listRunRequests, noteRunRequest, previewRunRequest, stateText, withdrawRunRequest } from "../api/runRequests";
+import type { GrantOffer, RelayResources, RunInbox, RunRequest, RunRequestDetail, RunRequestFile, RunRequestPreview, TemplateBounds } from "../api/runRequests";
 import { Button, Input, LinkButton, Select } from "../ui";
 import { useCan } from "../account/permissions";
 import s from "../account/Account.module.css";
 import r from "./RunRequests.module.css";
+import { grantKeysText } from "./StandingApprovals";
 
 const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
 const when = (iso: string) => iso.slice(0, 16).replace("T", " ");
@@ -65,15 +66,19 @@ function RequestForm({ inboxes, runs, onFiled }: { inboxes: RunInbox[]; runs: Pu
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const [grant, setGrant] = useState("");
+  const [preview, setPreview] = useState<RunRequestPreview | null>(null);
   const inbox = inboxes.find((i) => i.account === account);
   const lab = inbox?.inbox.labels.find((l) => l.label === label);
   const bounds: TemplateBounds | undefined = lab?.templates.find((t) => t.template === template);
-  const reset = () => { setParams({}); setGrid([]); setRes({ cpus: "", memGiB: "", timeMinutes: "" }); };
+  const reset = () => { setParams({}); setGrid([]); setRes({ cpus: "", memGiB: "", timeMinutes: "" }); setGrant(""); setPreview(null); };
   const keyBound = useMemo(() => new Map((bounds?.keys ?? []).map((k) => [k.key, k])), [bounds]);
+  // the standing approvals the key holder offers this member for this label and tool (the server shows each member only their own)
+  const offers: GrantOffer[] = (inbox?.inbox.grants ?? []).filter((o) => o.label === label && o.template === template);
+  const offer = offers.find((o) => o.id === grant);
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!bounds) return;
+  const build = (): RunRequestFile | null => {
+    if (!bounds) return null;
     const asked: Record<string, string> = {};
     for (const [k, v] of Object.entries(params)) if (v.trim() !== "") asked[k] = v.trim();
     const resources: RelayResources = {};
@@ -84,15 +89,38 @@ function RequestForm({ inboxes, runs, onFiled }: { inboxes: RunInbox[]; runs: Pu
     if (memGiB !== undefined) resources.memGiB = memGiB;
     if (timeMinutes !== undefined) resources.timeMinutes = timeMinutes;
     const g = grid.filter((x) => x.key && x.values.trim()).map((x) => ({ key: x.key, values: x.values.split(",").map((v) => v.trim()).filter(Boolean) }));
+    return {
+      addressee: account,
+      ask: { label, template: bounds.template, params: asked, resources, grid: g, note, ...(grant ? { grant } : {}) },
+      baseItemId: base ? Number(base) : undefined,
+      expiresInDays: Number(days) || undefined,
+    };
+  };
+  const filing = build();
+  const previewKey = grant && filing ? JSON.stringify({ ...filing, ask: { ...filing.ask, note: "" } }) : "";
+  useEffect(() => {
+    if (!previewKey) { setPreview(null); return; }
+    let live = true;
+    const t = setTimeout(() => {
+      previewRunRequest(JSON.parse(previewKey) as RunRequestFile).then((p) => { if (live) setPreview(p); }, (e) => { if (live) setPreview({ route: "review", reason: message(e) }); });
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [previewKey]);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const f = build();
+    if (!f) return;
     setBusy(true);
     setError("");
     setDone("");
-    fileRunRequest({
-      addressee: account,
-      ask: { label, template: bounds.template, params: asked, resources, grid: g, note },
-      baseItemId: base ? Number(base) : undefined,
-      expiresInDays: Number(days) || undefined,
-    }).then(() => { setDone("Request filed."); setNote(""); reset(); return onFiled(); }, (err) => setError(message(err))).finally(() => setBusy(false));
+    const through = preview?.route === "grant";
+    fileRunRequest(f).then(() => {
+      setDone(through ? "Request filed under the standing approval. The key holder's computer submits it at its next check if every term holds there." : "Request filed.");
+      setNote("");
+      reset();
+      return onFiled();
+    }, (err) => setError(message(err))).finally(() => setBusy(false));
   };
 
   return (
@@ -117,6 +145,22 @@ function RequestForm({ inboxes, runs, onFiled }: { inboxes: RunInbox[]; runs: Pu
               <option value="">Choose a template</option>
               {lab.templates.map((t) => <option key={t.template} value={t.template}>{t.template}</option>)}
             </Select>
+          ) : null}
+          {bounds && offers.length ? (
+            <Select label="Standing approval" value={grant} onChange={(e) => setGrant(e.target.value)}
+              description="The key holder lets some of your requests run without a click, inside narrower terms and a budget.">
+              <option value="">None: the key holder reads the script and approves</option>
+              {offers.map((o) => <option key={o.id} value={o.id}>{grantKeysText(o.keys)}, until {o.expiresAt.slice(0, 10)}, {o.maxJobs - o.jobsUsed} of {o.maxJobs} jobs left</option>)}
+            </Select>
+          ) : null}
+          {offer ? (
+            <div className={r.grantNote} aria-live="polite">
+              <p className={s.note}>
+                Under this standing approval: {grantKeysText(offer.keys)}; at most {offer.perJob.maxCpus} CPUs, {offer.perJob.maxMemGiB} GiB and {offer.perJob.maxTimeMinutes} minutes a job;
+                {" "}{offer.jobsUsed} of {offer.maxJobs} jobs and {hours(offer.coreHoursUsed)} of {offer.maxCoreHours} core-hours used, {offer.maxAtOnce} at once. No grid.
+              </p>
+              {preview ? <p className={s.note} role="status"><strong>{preview.route === "grant" ? "Goes through the standing approval." : "Waits for review."}</strong> {preview.reason}</p> : <p className={s.note}>Checking…</p>}
+            </div>
           ) : null}
           {bounds ? (
             <>
@@ -174,7 +218,7 @@ function RequestForm({ inboxes, runs, onFiled }: { inboxes: RunInbox[]; runs: Pu
           ) : null}
           {error ? <p className={s.error} role="alert">{error}</p> : null}
           {done ? <p className={s.note} role="status">{done}</p> : null}
-          <div className={s.row}><Button type="submit" variant="primary" disabled={busy || !bounds}>{busy ? "Sending…" : "File request"}</Button></div>
+          <div className={s.row}><Button type="submit" variant="primary" disabled={busy || !bounds}>{busy ? "Sending…" : preview?.route === "grant" ? "File under the standing approval" : "File request"}</Button></div>
         </form>
       ) : <p className={s.note}>No one has published an inbox in this workspace yet. A member with cluster keys sets one up on their own computer under Inbox, after linking it with &ldquo;Also take run requests&rdquo;.</p>}
     </section>
@@ -219,6 +263,7 @@ function RequestDetail({ detail, me, onChange }: { detail: RunRequestDetail; me:
       <p className={s.note}>{q.requesterName} to {q.addresseeName}: {stateText(q.state)}{q.reportedAt ? `, reported by ${q.addresseeName}'s computer at ${when(q.reportedAt)}` : ""}.</p>
       {q.baseTitle ? <p className={s.note}>Based on {q.baseTitle}.</p> : null}
       {Object.keys(q.ask.params).length ? <p className={s.note}>Settings: {Object.entries(q.ask.params).map(([k, v]) => `${k} = ${v}`).join(", ")}</p> : null}
+      {q.ask.grant ? <p className={s.note}>Filed under a standing approval: the key holder&apos;s computer submits it without a click if every term holds there; otherwise it waits for review and the events below say why.</p> : null}
       {q.ask.grid.length ? <p className={s.note}>Grid: {q.ask.grid.map((g) => `${g.key} in ${g.values.join(", ")}`).join("; ")}</p> : null}
       {q.ask.note ? <p className={`${s.note} ${r.plain}`}>{q.ask.note}</p> : null}
       {q.declineNote ? <p className={`${s.note} ${r.plain}`}>Declined: {q.declineNote}</p> : null}

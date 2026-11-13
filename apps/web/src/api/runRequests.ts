@@ -23,6 +23,13 @@ export type RelayedDetail = Schemas["RelayedDetail"];
 export type RelayedApprove = Schemas["RelayedApproveRequest"];
 export type RelayedApproved = Schemas["RelayedApproved"];
 export type RelayedDraft = Schemas["RelayedDraftRequest"];
+export type GrantOffer = Schemas["RelayGrantOffer"];
+export type Grant = Schemas["RelayGrant"];
+export type GrantList = Schemas["RelayGrantList"];
+export type GrantCreate = Schemas["RelayGrantCreate"];
+export type RelayMember = Schemas["RelayMember"];
+export type RunRequestPreview = Schemas["RunRequestPreview"];
+export type GrantState = NonNullable<Relayed["grantState"]>;
 
 // group server, session
 export const listRunInboxes = () => getJSON<Schemas["RunInboxList"]>("/api/run-inboxes").then((r) => r.inboxes);
@@ -31,6 +38,7 @@ export const getRunRequest = (id: number) => getJSON<RunRequestDetail>(`/api/run
 export const fileRunRequest = (b: RunRequestFile) => postJSON<RunRequest>("/api/run-requests", b);
 export const withdrawRunRequest = (id: number) => postJSON<Schemas["RelayState"]>(`/api/run-requests/${id}/withdraw`);
 export const noteRunRequest = (id: number, text: string) => postJSON<unknown>(`/api/run-requests/${id}/note`, { text });
+export const previewRunRequest = (b: RunRequestFile) => postJSON<RunRequestPreview>("/api/run-requests/preview", b);
 export const declineRunRequest = (id: number, note: string) => postJSON<Schemas["RelayState"]>(`/api/run-requests/${id}/decline`, { note });
 
 // local instance
@@ -42,6 +50,11 @@ export const draftRelayed = (id: number, b: RelayedDraft) => postJSON<Relayed>(`
 export const approveRelayed = (id: number, b: RelayedApprove) => postJSON<RelayedApproved>(`/api/relayed/${id}/approve`, b);
 export const declineRelayed = (id: number, note: string) => postJSON<Relayed>(`/api/relayed/${id}/decline`, { note });
 export const detachRelayed = (id: number) => postJSON<Relayed>(`/api/relayed/${id}/detach`);
+// standing approvals (ADR 0074), local instance
+export const listGrants = () => getJSON<GrantList>("/api/relay/local/grants");
+export const createGrant = (b: GrantCreate) => postJSON<Grant>("/api/relay/local/grants", b);
+export const revokeGrant = (id: string) => postJSON<Grant>(`/api/relay/local/grants/${id}/revoke`, {});
+export const relayMembers = () => getJSON<Schemas["RelayMembers"]>("/api/relay/local/members").then((r) => r.members);
 
 const STATE_TEXT: Record<RequestState, string> = {
   requested: "waiting for the key holder's computer to fetch it",
@@ -68,3 +81,28 @@ export function boundText(b: Bound): string {
   if (b.max !== undefined) parts.push(`max ${b.max}`);
   return parts.join(", ") || "any value";
 }
+
+/** Why a request that named a standing approval waits for the key holder, in the server's fixed words (relay.GrantCodeText). */
+const GRANT_TEXT: Record<GrantState, string> = {
+  "": "",
+  waiting: "waiting for a free slot under the standing approval",
+  pending: "the group server did not answer the claim yet; tried again at the next check",
+  used: "submitted without a click under the standing approval",
+  unknown: "the standing approval it named is not one this computer has for the requester",
+  revoked: "the standing approval was revoked",
+  expired: "the standing approval has expired",
+  stale: "filed before the standing approval was made, or no longer open",
+  outside: "it asks for settings or resources outside the standing approval",
+  grid: "a grid always waits for you",
+  base: "its base run needs you to choose it",
+  input: "the base run's input is outside the standing approval",
+  commit: "the draft would run another code commit than the standing approval allows",
+  budget: "the standing approval's budget is used up",
+  edited: "you changed the draft",
+};
+export const grantStateText = (g: GrantState | undefined) => (g ? GRANT_TEXT[g] : "");
+/** A grant state that sends the request back to the key holder (a code, not waiting, pending or used). */
+export const grantFellBack = (g: GrantState | undefined) => !!g && g !== "waiting" && g !== "pending" && g !== "used";
+
+/** Core-hours with one decimal, without a trailing .0. */
+export const hours = (h: number) => (Math.round(h * 10) / 10).toString();
