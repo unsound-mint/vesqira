@@ -104,46 +104,47 @@ func (s *Server) profiles() *runs.Registry {
 // them as a Run under their generic roles, pairs the reliability map and proposes the axial interpretation of the orientation map
 // as the adapter's (never the user's, never overriding theirs).
 func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, string) {
-	prof := s.profiles().ByRecordFile(src.RecordFile(), runs.ReaderRunMetadata)
-	if prof == nil {
+	reg := s.profilesAt(wsCtx(ctx), src.Key()) // the program's profiles and those of the project the folder is in
+	if !reg.HasRecordFile(src.RecordFile(), runs.ReaderRunMetadata) {
 		return runs.Run{}, 422, src.RecordFile() + " is not a run record any tool profile reads"
 	}
 	data, name, code, msg := src.Meta(ctx)
 	if code != 0 {
 		return runs.Run{}, code, msg
 	}
+	prof := reg.ByRecord(src.RecordFile(), runs.ReaderRunMetadata, data)
+	if prof == nil {
+		return runs.Run{}, 422, src.RecordFile() + " holds none of the keys the tool profiles that read a file of that name look for, so it is not taken for any tool's run"
+	}
 	parsed, err := runs.ParseRecord(prof, data, name)
 	if err != nil {
 		return runs.Run{}, 422, err.Error()
 	}
-	if dec := s.profiles().DecompositionOf(prof); dec != nil && dec.Source.Kind == runs.SourceFitsMaps {
-		return s.importMapsRun(ctx, src, prof, dec, parsed, data) // the tool writes its components as maps, not outputs the record names
+	if dec := reg.DecompositionOf(prof); dec != nil {
+		return s.importDecompRun(ctx, src, prof, dec, parsed, data) // the tool fits components: they are imported with the run
 	}
-	var outs []runs.Output
-	byRole := map[string]catalog.Dataset{}
-	for _, ref := range prof.Products() {
-		file, ok := parsed.OutputFiles[ref.Product]
-		if !ok {
-			continue
-		}
-		d, found, code, msg := src.Register(ctx, file)
-		if code != 0 {
-			return runs.Run{}, code, file + ": " + msg
-		}
-		if !found {
-			continue
-		}
-		byRole[ref.Role] = d
-		outs = append(outs, runs.Output{Role: ref.Role, Product: ref.Product, DatasetID: d.ID, Name: d.Name})
+	if prof.Outputs == nil {
+		return runs.Run{}, 422, "the tool profile " + prof.Label() + " declares neither outputs nor components, so nothing can be imported from its runs; add them to the profile"
+	}
+	outs, byRole, code, msg := s.registerRecordOutputs(ctx, src, prof, parsed)
+	if code != 0 {
+		return runs.Run{}, code, msg
 	}
 	if len(outs) == 0 {
-		return runs.Run{}, 422, "none of the run's output files were found next to its " + src.RecordFile()
+		return runs.Run{}, 422, "none of the output files the profile " + prof.Label() + " names were found next to the run's " + src.RecordFile()
 	}
 	run, err := s.Runs.Save(wsCtx(ctx), actorID(ctx), src.Key(), parsed, outs)
 	if err != nil {
 		log.Printf("runs: %v", err)
 		return runs.Run{}, 500, "internal error"
 	}
+	s.proposeOrientation(ctx, byRole)
+	return run, 0, ""
+}
+
+// proposeOrientation declares, as the adapter's proposal (never the researcher's, never over theirs), the axial interpretation of a
+// run's orientation output when its header lets the profile place frame and unit, and pairs the reliability map found on the same grid.
+func (s *Server) proposeOrientation(ctx context.Context, byRole map[string]catalog.Dataset) {
 	if psi, ok := byRole[runs.RoleOrientation]; ok {
 		cur, _ := s.Store.Get(wsCtx(ctx), psi.ID)
 		if adapterMayDeclare(cur.Interpretation) {
@@ -160,23 +161,66 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 			}
 		}
 	}
-	return run, 0, ""
 }
 
-// importsFromRecord says whether a scanned run is one whose profile has the record itself name the outputs, so that a project
-// scan imports it from the record (a row stored before profiles existed has only its record kind).
-func (s *Server) importsFromRecord(r *discover.Run) bool {
-	p := s.profiles().ByLabel(r.Profile)
-	if p == nil && r.Profile == "" {
-		p = s.profiles().ByKind(r.RecordKind)
+// registerRecordOutputs registers the files the profile's outputs table names in the record, next to it, and returns them under the
+// roles the profile gives them. A name the record does not carry, or a file that is not there, is skipped (nothing is invented);
+// a file that is there and cannot be registered stops the import with the reason.
+func (s *Server) registerRecordOutputs(ctx context.Context, src runSource, prof *runs.Profile, parsed runs.Parsed) ([]runs.Output, map[string]catalog.Dataset, int, string) {
+	var outs []runs.Output
+	byRole := map[string]catalog.Dataset{}
+	for _, ref := range prof.Products() {
+		file, ok := parsed.OutputFiles[ref.Product]
+		if !ok {
+			continue
+		}
+		d, found, code, msg := src.Register(ctx, file)
+		if code != 0 {
+			return nil, nil, code, file + ": " + msg
+		}
+		if !found {
+			continue
+		}
+		byRole[ref.Role] = d
+		outs = append(outs, runs.Output{Role: ref.Role, Product: ref.Product, DatasetID: d.ID, Name: d.Name})
 	}
-	return p != nil && p.NamesOutputs()
+	return outs, byRole, 0, ""
+}
+
+// runProfile is the profile that read a scanned run (a row stored before profiles existed has only its record kind).
+func runProfile(reg *runs.Registry, r *discover.Run) *runs.Profile {
+	p := reg.ByLabel(r.Profile)
+	if p == nil && r.Profile == "" {
+		p = reg.ByKind(r.RecordKind)
+	}
+	return p
+}
+
+// scanImports says whether a project scan imports a run by itself: its profile has the record name the outputs, and the profile is
+// the program's. A profile from the project folder is a researcher's declaration and, like an import rule, is applied by a person's
+// act (the run's Import button), never by a scan (ADR 0058, ADR 0068 slice 6).
+func scanImports(reg *runs.Registry, r *discover.Run) bool {
+	p := runProfile(reg, r)
+	return p != nil && p.NamesOutputs() && !p.FromProject()
+}
+
+// holdsOutputs says whether a scanned run's files belong to its import, so the scan does not register them as loose datasets.
+func holdsOutputs(reg *runs.Registry, r *discover.Run) bool {
+	p := runProfile(reg, r)
+	return p != nil && (p.NamesOutputs() || p.FromProject())
+}
+
+// importable says whether importFrom can read a scanned run: its profile has a record of the run_metadata kind and either names the
+// outputs or declares components.
+func importable(reg *runs.Registry, r *discover.Run) bool {
+	p := runProfile(reg, r)
+	return p != nil && p.Record != nil && p.Record.Reader == runs.ReaderRunMetadata && (p.NamesOutputs() || reg.DecompositionOf(p) != nil)
 }
 
 // recordPath is the run record an import path names: the record itself (a name some profile reads), or the folder holding one.
 // A folder with none of them gets the first profile's name, so the refusal says which file was looked for.
-func (s *Server) recordPath(ws workspace.ID, p string) string {
-	files := s.profiles().RecordFiles(runs.ReaderRunMetadata)
+func (s *Server) recordPath(ws workspace.ID, reg *runs.Registry, p string) string {
+	files := reg.RecordFiles(runs.ReaderRunMetadata)
 	for _, f := range files {
 		if filepath.Base(p) == f {
 			return p
@@ -208,7 +252,8 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		s.importROHSAFromHost(w, r, in.HostID, in.Path)
 		return
 	}
-	if dat, found, code, msg := s.rohsaTarget(wsOf(r), in.Path); found {
+	reg := s.refreshProfilesAt(wsOf(r), in.Path, true) // a project's own profile files, as they are now
+	if dat, found, code, msg := s.rohsaTarget(wsOf(r), reg, in.Path); found {
 		if code != 0 {
 			fail(w, code, msg)
 			return
@@ -221,7 +266,7 @@ func (s *Server) importRun(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 201, s.runView(wsOf(r), run))
 		return
 	}
-	meta := s.recordPath(wsOf(r), in.Path)
+	meta := s.recordPath(wsOf(r), reg, in.Path)
 	realMeta, err := s.roots(wsOf(r)).Resolve(meta) // same containment rules as any file: inside a source root, regular file
 	if err != nil {
 		fail(w, 403, err.Error())
@@ -245,6 +290,9 @@ type runJSON struct {
 	Reproducibility []runs.Fact `json:"reproducibility"`
 	// Rohsa is the decomposition record of a ROHSA run (ADR 0046); null for every other kind.
 	Rohsa *runs.RohsaInfo `json:"rohsa"`
+	// ProfileOrigin is set when the run's profile was read from a project folder: its file (project-relative) and the sha256 of it.
+	// Everything that profile supplied is declared by the researcher's file, never verified. Null for a profile of this program.
+	ProfileOrigin *runs.Origin `json:"profileOrigin"`
 	// JobID is the Vesqira job whose outputs this run is; ParentRunID is the run that job was drafted from.
 	JobID       *int64 `json:"jobId"`
 	ParentRunID *int64 `json:"parentRunId"`
@@ -358,7 +406,14 @@ func (s *Server) runViewWith(ws workspace.ID, r runs.Run, lin map[int64]jobs.Lin
 		}
 	}
 	out.Reproducibility = runs.Reproducibility(r, out.InputHint != nil)
-	if p := s.profiles().ByLabel(r.Profile); r.Kind == "rohsa" || p != nil && s.profiles().DecompositionOf(p) != nil {
+	reg := s.profilesAt(ws, r.Dir)
+	if r.Profile != "" && r.Profile != runs.LegacyProfile && reg.ByLabel(r.Profile) == nil {
+		reg = s.refreshProfilesAt(ws, r.Dir, false) // a project profile not read since this program started
+	}
+	if p := reg.ByLabel(r.Profile); p != nil {
+		out.ProfileOrigin = p.Origin
+	}
+	if p := reg.ByLabel(r.Profile); r.Kind == "rohsa" || p != nil && reg.DecompositionOf(p) != nil {
 		if rr, err := s.Runs.ROHSA(ws, r.ID); err == nil {
 			out.Rohsa = &rr.Info
 		}
@@ -648,10 +703,10 @@ func (s *Server) rohsaSizing(w http.ResponseWriter, r *http.Request) {
 // the pipeline's convention for it, and the map stays unresolved until the researcher declares it. The absence of PSIFRAME is never
 // read as "pixel" from the WCS or from anything else in the file.
 func proposedPsi(d catalog.Dataset, rel *int64) (catalog.Interpretation, bool) {
-	if d.VGT == nil || d.VGT.Orientation == nil {
+	if d.OrientationHeader == nil || d.OrientationHeader.Orientation == nil {
 		return catalog.Interpretation{}, false
 	}
-	o := d.VGT.Orientation
+	o := d.OrientationHeader.Orientation
 	return catalog.Interpretation{Kind: "axial_orientation", Unit: o.Unit, ReliabilityID: rel, Frame: &o.Frame, Quantity: o.Quantity, DeclaredBy: o.Profile}, true
 }
 

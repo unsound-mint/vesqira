@@ -69,9 +69,11 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] 0: template drift fixed (VGT.jl config keys, ROHSA-LMC repository label)
 - [x] 1: analysis presets; results stop citing the owner's script lines
 - [x] 2: orientation conventions from a header-card profile; "unresolved" instead of an assumed default
-- [x] 3: run detection and generic output roles (schema 35; `vgtHeader` goes in schema 36)
+- [x] 3: run detection and generic output roles (schema 35)
 - [x] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps); no schema change, GaussPy+ not shipped (layout not verified)
 - [x] 5: run templates as data (steps, typed keys, command, probes, progress); a synthetic tool runs through the fake Slurm path; schema unchanged
+- [x] 6: a project's own profiles from `.vesqira/profiles/` (declared, never verified; a scan lists, the person imports; no job templates); generic result import for any profiled tool; `vgtHeader` and the `psi` fallbacks removed
+- [ ] Not built: project orientation card tables, profiles on host projects, job templates from a project folder
 
 ## Review rounds (issue 130, ADR 0073, awaiting owner review)
 

@@ -140,6 +140,7 @@ type Server struct {
 	TerminalShell   []string       // argv of the local shell; empty runs the user's login shell ($SHELL -l). Tests set it.
 	TerminalLimits  TerminalLimits // zero values take the defaults
 	terms           termRegistry
+	projProfiles    projectProfiles // profiles read from project folders (ADR 0068, slice 6)
 
 	// VPNEnabled mounts the VPN routes (--enable-vpn, ADR 0029 step 3) and lets a host carry a VPN command. Off by default.
 	VPNEnabled bool

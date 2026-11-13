@@ -362,6 +362,12 @@ type treeRun struct {
 	OutputCount int                `json:"outputCount"`
 	OutputBytes int64              `json:"outputBytes"`
 	RunID       *int64             `json:"runId"`
+	// Profile is the tool profile that recognised the run (name@version), "" for a record that is not a tool's. ProfileFile is set
+	// when that profile came from the project's .vesqira/profiles/ (the file). Importable says the Import button can read the run;
+	// a run of a project profile is imported by that button, never by a scan.
+	Profile     string `json:"profile"`
+	ProfileFile string `json:"profileFile"`
+	Importable  bool   `json:"importable"`
 }
 
 type treeEntry struct {
@@ -431,7 +437,15 @@ func (s *Server) projectTree(w http.ResponseWriter, r *http.Request) {
 			var run discover.Run
 			_ = json.Unmarshal(row.Data, &run)
 			tr := &treeRun{Record: run.Record, RecordKind: run.RecordKind, Fields: run.Fields, Settings: run.Settings, Differs: run.Differs, Notes: run.Notes, OutputCount: run.OutputCount, OutputBytes: run.OutputBytes}
-			if s.Runs != nil && s.importsFromRecord(&run) {
+			reg := s.profilesAt(wsOf(r), absFor(p, ""))
+			if pr := runProfile(reg, &run); pr != nil {
+				tr.Profile = pr.Label()
+				if pr.Origin != nil {
+					tr.ProfileFile = pr.Origin.File
+				}
+			}
+			if s.Runs != nil && importable(reg, &run) {
+				tr.Importable = true
 				key := absFor(p, row.Path)
 				if p.HostID != 0 {
 					key = hostKey(p.HostID, key)

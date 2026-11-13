@@ -64,6 +64,15 @@ type Profile struct {
 	Template *jobtemplate.Template `json:"template"`
 	recordRe *regexp.Regexp        `json:"-"`
 	fileRe   map[string]*regexp.Regexp
+	// Origin says where the profile came from. nil is a profile of this program (shipped, or the developer hook's file); a
+	// project profile carries the file it was read from and the hash of what it declared when it was loaded.
+	Origin *Origin `json:"-"`
+}
+
+// Origin of a profile that was read from a project folder (ADR 0068, slice 6).
+type Origin struct {
+	File string `json:"file"`   // project-relative, slash-separated
+	SHA  string `json:"sha256"` // of the profile file's bytes
 }
 
 // RecordSpec is how a run of the tool is recognised: a record file (by name or by pattern) and, inside it, a key.
@@ -123,6 +132,13 @@ const (
 
 var snake = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
+func compilePattern(p string) (*regexp.Regexp, error) {
+	if len(p) > maxPattern {
+		return nil, fmt.Errorf("a pattern is longer than %d characters", maxPattern)
+	}
+	return regexp.Compile(p)
+}
+
 // LoadProfiles reads and checks a profile file. It refuses an unknown field, a role that is neither generic nor a labelled extra,
 // a name that cannot be part of a label, and a pattern that does not compile.
 func LoadProfiles(data []byte) (*Registry, error) {
@@ -140,11 +156,28 @@ func LoadProfiles(data []byte) (*Registry, error) {
 	if doc.Format != 1 || len(doc.Profiles) == 0 {
 		return nil, errors.New("run profiles: unknown format")
 	}
-	reg := &Registry{roles: doc.Roles, profiles: doc.Profiles}
+	return newRegistry(doc.Roles, doc.Profiles, nil)
+}
+
+// namePart is what a profile's name and version may be made of: they are part of every label (profile:<name>@<version>) and of the
+// messages that carry it. Kind is the run kind the profile's runs get.
+var (
+	namePart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+	kindRe   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+)
+
+// maxPattern bounds a profile's regular expressions (Go's engine is linear time; the bound keeps a profile readable).
+const maxPattern = 300
+
+func newRegistry(roles map[string]string, profiles []*Profile, base *Registry) (*Registry, error) {
+	reg := &Registry{roles: roles, profiles: profiles}
 	seen := map[string]bool{}
 	for _, p := range reg.profiles {
-		if p.Name == "" || p.Version == "" || p.Kind == "" || strings.ContainsAny(p.Name+p.Version, "@:") {
-			return nil, fmt.Errorf("run profile %q needs a name, a version and a kind, and no '@' or ':' in them", p.Name)
+		if !namePart.MatchString(p.Name) || !namePart.MatchString(p.Version) || !kindRe.MatchString(p.Kind) {
+			return nil, fmt.Errorf("run profile %q needs a name and a version of letters, digits, '.', '_' and '-' (at most 64 characters), and a kind in lower case", p.Name)
+		}
+		if len(p.Tool) > 80 || len(p.Source) > 600 || len(p.Components) > 64 {
+			return nil, fmt.Errorf("run profile %s: the label or the source text is too long", p.Label())
 		}
 		if seen[p.Label()] {
 			return nil, fmt.Errorf("run profile %s is declared twice", p.Label())
@@ -164,7 +197,7 @@ func LoadProfiles(data []byte) (*Registry, error) {
 		}
 	}
 	for _, p := range reg.profiles {
-		if p.Components != "" && reg.ByName(p.Components) == nil {
+		if p.Components != "" && reg.ByName(p.Components) == nil && (base == nil || base.ByName(p.Components) == nil) {
 			return nil, fmt.Errorf("run profile %s: components names the unknown profile %q", p.Label(), p.Components)
 		}
 	}
@@ -196,7 +229,7 @@ func (p *Profile) compile(reg *Registry) error {
 			return errors.New("a record needs at least one key to recognise it by content, not by its name alone")
 		}
 		if r.Pattern != "" {
-			re, err := regexp.Compile(r.Pattern)
+			re, err := compilePattern(r.Pattern)
 			if err != nil {
 				return err
 			}
@@ -212,7 +245,7 @@ func (p *Profile) compile(reg *Registry) error {
 			return fmt.Errorf("file %q names a file or a pattern, not both and not neither", role)
 		}
 		if f.Pattern != "" {
-			re, err := regexp.Compile(f.Pattern)
+			re, err := compilePattern(f.Pattern)
 			if err != nil {
 				return err
 			}
@@ -222,6 +255,9 @@ func (p *Profile) compile(reg *Registry) error {
 	if o := p.Outputs; o != nil {
 		if (o.Table == "") == (o.Tree == "") {
 			return errors.New("outputs name a table of the record or a product tree, not both and not neither")
+		}
+		if o.Tree != "" && (p.Record == nil || p.Record.Reader != ReaderROHSATrace) {
+			return errors.New("a product tree is read for the ROHSA trace reader only; a tool with a run_metadata record names its outputs in a table of the record")
 		}
 		check := func(role, extra string) error {
 			_, generic := reg.roles[role]
@@ -234,6 +270,9 @@ func (p *Profile) compile(reg *Registry) error {
 			return nil
 		}
 		for key, ref := range o.Files {
+			if len(ref.Extra) > 80 {
+				return fmt.Errorf("output %q: the label is too long", key)
+			}
 			if key == "" || ref.Product == "" || !snake.MatchString(ref.Product) {
 				return fmt.Errorf("output %q needs a snake_case product name", key)
 			}
@@ -256,7 +295,7 @@ func (p *Profile) compile(reg *Registry) error {
 				}
 			}
 			for i := range f.Match {
-				re, err := regexp.Compile(f.Match[i].Pattern)
+				re, err := compilePattern(f.Match[i].Pattern)
 				if err != nil {
 					return err
 				}
@@ -416,14 +455,25 @@ func (r *Registry) RecordFiles(reader string) []string {
 	return out
 }
 
-// ByRecordFile is the profile with that exact record file name and reader, or nil.
-func (r *Registry) ByRecordFile(name, reader string) *Profile {
+// ByRecord is the profile with that exact record file name and reader whose keys the record holds (Claims). Two profiles may use one
+// file name (a project's tool can write a run_metadata.toml of its own); the content tells them apart, in profile order.
+func (r *Registry) ByRecord(name, reader string, data []byte) *Profile {
 	for _, p := range r.profiles {
-		if p.Record != nil && p.Record.Reader == reader && p.Record.File == name {
+		if p.Record != nil && p.Record.Reader == reader && p.Record.File == name && p.Claims(data) {
 			return p
 		}
 	}
 	return nil
+}
+
+// HasRecordFile says whether some profile reads a record of that exact name with that reader.
+func (r *Registry) HasRecordFile(name, reader string) bool {
+	for _, p := range r.profiles {
+		if p.Record != nil && p.Record.Reader == reader && p.Record.File == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ByKind is the first profile with a run kind that has a record (the one a job of that kind imports).

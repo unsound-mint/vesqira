@@ -117,7 +117,10 @@ type storedSummary struct {
 	} `json:"projectFile"`
 	Proposed string `json:"proposedProjectFile"`
 	// ImportRules counts what the project's saved import rules select (ADR 0058); nil when the project has none.
-	ImportRules  *importSummary `json:"importRules"`
+	ImportRules *importSummary `json:"importRules"`
+	// Profiles is what the project's .vesqira/profiles/ gave at the last scan: the tool profile each file declares, or why a file was
+	// refused (ADR 0068, slice 6). Empty when the folder has none.
+	Profiles     []discover.ProfileStatus `json:"profiles"`
 	Registration struct {
 		Registered int      `json:"registered"`
 		Failed     int      `json:"failed"`
@@ -331,7 +334,8 @@ func (s *Server) runScan(ctx context.Context, p projects.Project, st *scanState)
 	pf, fileExists, _, perr := readProjectFile(fsys)
 	answers, _ := s.Projects.Answers(p.ID)
 	manual := append(pf.ManualRuns(), manualFromAnswers(answers)...)
-	opt := discover.Options{Layout: pf.ScanLayout(), ManualRuns: manual, Inventory: true, Progress: func(n int, _ string) { st.set(func() { st.Entries = n }) }}
+	reg, profileStatus := s.loadProjectProfiles(wsCtx(ctx), p, fsys) // this project's own tool profiles, read as the scan starts
+	opt := discover.Options{Layout: pf.ScanLayout(), ManualRuns: manual, Inventory: true, Profiles: reg, Progress: func(n int, _ string) { st.set(func() { st.Entries = n }) }}
 	if !remote {
 		opt.Dirty = localDirty(p.Path)
 		opt.Catalogs = true
@@ -364,6 +368,7 @@ func (s *Server) runScan(ctx context.Context, p projects.Project, st *scanState)
 	sum := summarize(res)
 	sum.ScannedAt = time.Now().UTC()
 	sum.Changes = diffFingerprints(prev, cur)
+	sum.Profiles = profileStatus
 	sum.ProjectFile.Exists, sum.ProjectFile.Name = fileExists, pf.Project.Name
 	sum.ProjectFile.HostRepos = map[string]string{}
 	for alias, hr := range pf.Hosts {
@@ -396,6 +401,7 @@ func (s *Server) runScan(ctx context.Context, p projects.Project, st *scanState)
 // are skipped, so a rescan costs one catalog read, not one header per file.
 func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.Host, res *discover.Result, prev map[string]string, st *scanState, ignored map[string]bool) {
 	remote := p.HostID != 0
+	profs := s.profilesAt(wsCtx(ctx), p.Path)
 	abs := func(rel string) string {
 		if remote {
 			return hostPath(p.Path, rel)
@@ -412,7 +418,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 	if s.Runs != nil {
 		for i := range res.Runs {
 			r := &res.Runs[i]
-			if !s.importsFromRecord(r) {
+			if !scanImports(profs, r) {
 				continue
 			}
 			key := abs(r.Path)
@@ -439,7 +445,7 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 	}
 	for _, r := range res.Runs {
 		for _, o := range r.Outputs {
-			if o.Format == "FITS" && !s.importsFromRecord(&r) { // a run whose profile has its record name the outputs registers those
+			if o.Format == "FITS" && !holdsOutputs(profs, &r) { // a run's import registers its own outputs (a project profile's run: when the person imports it)
 				fits = append(fits, o)
 			}
 		}

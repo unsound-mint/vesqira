@@ -47,7 +47,7 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
     return () => { live = false; };
   }, [listed.id]);
   const run = detail && detail.id === listed.id ? { ...listed, ...detail } : listed;
-  const first = run.outputs.find((o) => o.role === "orientation" || o.role === "psi") ?? run.outputs[0] ?? null;
+  const first = run.outputs.find((o) => o.role === "orientation") ?? run.outputs[0] ?? null;
   const [shown, setShown] = useState<number | null>(first?.datasetId ?? null);
   const output = run.outputs.find((o) => o.datasetId === shown) ?? first;
   const dataset = output ? datasets.find((d) => d.id === output.datasetId) ?? null : null;
@@ -80,7 +80,18 @@ export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, o
               <span className={s.sub}>parent run not found</span>
             )
           ) : null}
-          {run.profile ? <span className={s.sub} title="The tool profile that recognised this run. A profile is a declaration of how to read a tool's record, not a check that the run is valid.">{run.profile === "legacy" ? "recorded before tool profiles" : `read with the ${run.profile} profile`}</span> : null}
+          {run.profile ? (
+            <span
+              className={s.sub}
+              title={
+                run.profileOrigin
+                  ? `This tool profile came from the project folder (${run.profileOrigin.file}). Whoever wrote that file declared how to read the record and what its outputs are; Vesqira has not verified any of it, and it is not a check that the run is valid.`
+                  : "The tool profile that recognised this run. A profile is a declaration of how to read a tool's record, not a check that the run is valid."
+              }
+            >
+              {run.profile === "legacy" ? "recorded before tool profiles" : run.profileOrigin ? `read with the ${run.profile} profile from the project folder (${run.profileOrigin.file}), declared by that file` : `read with the ${run.profile} profile`}
+            </span>
+          ) : null}
           {run.dirty ? <Pill tone="warn">code has uncommitted changes</Pill> : null}
           {(run.kind === "vgt" || run.kind === "rohsa") && onRunAgain ? <Button type="button" onClick={() => onRunAgain(run.id)}>Run again with…</Button> : null}
           <PushButton kind="run" id={run.id} />

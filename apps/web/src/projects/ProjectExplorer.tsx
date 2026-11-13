@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Database, File, FileCode, Folder, FolderOpen, GitBranch, Settings2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { importRun } from "../api/runs";
 import { projectTree } from "../api/projects";
 import type { ProjectSummary, TreeEntry, TreeGroup } from "../api/projects";
 import { looksEditable } from "../api/editor";
@@ -86,21 +87,7 @@ function Entry({ project, version, group, entry: e, level, filter, selectedDatas
       </>
     );
   }
-  if (e.kind === "run" && e.run) {
-    const runId = e.run.runId;
-    const full = `${e.path}${e.run.record ? ` · record: ${e.run.record}` : " · marked by you"}`;
-    return (
-      <TreeRow
-        icon={GitBranch}
-        level={level}
-        title={runId === null ? `${full}\nNot imported as a Vesqira run (only VGT runs are).` : full}
-        onSelect={runId !== null ? () => onOpenRun(runId) : undefined}
-        trailing={e.run.recordKind === "manual" ? "by you" : e.run.recordKind}
-      >
-        {runLabel(e)}
-      </TreeRow>
-    );
-  }
+  if (e.kind === "run" && e.run) return <RunRow project={project} entry={e} onOpenRun={onOpenRun} />;
   const f = e.file;
   // Only a config or job file of a project (on this computer or on a host), that is not marked read-only, and that the server would open as text.
   const editPath = onEditFile && (e.kind === "config" || e.kind === "job") && !f?.readOnly && looksEditable(e.name) ? `${project.path.replace(/\/+$/, "")}/${e.path}` : null;
@@ -117,6 +104,57 @@ function Entry({ project, version, group, entry: e, level, filter, selectedDatas
     >
       {e.name}
     </TreeRow>
+  );
+}
+
+/**
+ * A run row. A run a tool profile can read but nobody has imported gets an Import button: the person's own act applies a profile that
+ * came from the project folder, a scan never does. The row says whose profile reads it and that the file only declares.
+ */
+function RunRow({ project, entry: e, onOpenRun }: { project: ProjectSummary; entry: TreeEntry; onOpenRun: (runId: number) => void }) {
+  const [state, setState] = useState<"idle" | "busy" | "error">("idle");
+  const [error, setError] = useState("");
+  const run = e.run!;
+  const runId = run.runId;
+  const fromProject = Boolean(run.profileFile);
+  const importHere = async () => {
+    setState("busy");
+    try {
+      const imported = await importRun(`${project.path.replace(/\/+$/, "")}/${e.path}`, project.hostId || undefined);
+      setState("idle");
+      onOpenRun(imported.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "The import failed.");
+      setState("error");
+    }
+  };
+  const origin = run.profile ? ` · read with ${run.profile}${fromProject ? `, declared by this project's ${run.profileFile} (not verified)` : ""}` : "";
+  const full = `${e.path}${run.record ? ` · record: ${run.record}` : " · marked by you"}${origin}`;
+  const importable = runId === null && run.importable === true;
+  return (
+    <>
+      <TreeRow
+        icon={GitBranch}
+        title={runId === null && !importable ? `${full}\nNot imported as a Vesqira run: no tool profile reads this record's results.` : full}
+        onSelect={runId !== null ? () => onOpenRun(runId) : undefined}
+        trailing={
+          importable ? (
+            <Button type="button" onClick={() => void importHere()} disabled={state === "busy"} aria-label={`Import ${e.name}${fromProject ? " with the project's profile" : ""}`}>
+              {state === "busy" ? "Importing…" : "Import"}
+            </Button>
+          ) : fromProject ? (
+            `${run.recordKind} · project profile`
+          ) : run.recordKind === "manual" ? (
+            "by you"
+          ) : (
+            run.recordKind
+          )
+        }
+      >
+        {runLabel(e)}
+      </TreeRow>
+      {state === "error" ? <p role="alert" className={s.rowErr}>{error}</p> : null}
+    </>
   );
 }
 
@@ -147,6 +185,21 @@ export function ProjectExplorer({ project, version, hostName, selectedDatasetId,
         <p className={s.projectWhere} title={project.path}>{location(project, hostName)}</p>
         <ScanStatus scan={project.scan} onCancel={onCancel} />
         {ch && ch.added + ch.removed + ch.changed > 0 ? <p className={s.rowNote}>Since last scan: {num(ch.added)} added · {num(ch.changed)} changed · {num(ch.removed)} removed</p> : null}
+        {project.profiles && project.profiles.length > 0 ? (
+          <details className={s.rowNote}>
+            <summary>
+              {num(project.profiles.filter((p) => !p.why).length)} tool {project.profiles.filter((p) => !p.why).length === 1 ? "profile" : "profiles"} from this folder
+              {project.profiles.some((p) => p.why) ? `, ${num(project.profiles.filter((p) => p.why).length)} refused` : ""}
+            </summary>
+            <ul>
+              {project.profiles.map((p) => (
+                <li key={p.file}>
+                  <span className="mono">{p.file}</span>: {p.why ? p.why : `${p.profile}, declared by this file and not verified`}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
         {!project.projectFile.exists ? <p className={s.rowNote}>No .vesqira/project.toml yet.</p> : null}
         {rules && rules.rules > 0 && (rules.new > 0 || rules.pending > 0) ? (
           <p className={s.rowNote} role="status">

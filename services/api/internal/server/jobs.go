@@ -301,10 +301,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, fmt.Sprintf("the note is at most %d characters", jobs.MaxNote))
 		return
 	}
-	job := jobs.Job{HostID: h.ID, Name: in.Name, Template: in.Template, Note: in.Note, AutoImport: autoImports(in.Template)}
+	job := jobs.Job{HostID: h.ID, Name: in.Name, Template: in.Template, Note: in.Note, AutoImport: s.autoImports(in.Template)}
 	if in.AutoImport != nil {
-		if *in.AutoImport && !autoImports(in.Template) {
-			fail(w, 422, "results are imported automatically for VGT and ROHSA jobs only")
+		if *in.AutoImport && !s.autoImports(in.Template) {
+			fail(w, 422, s.noAutoImport(in.Template))
 			return
 		}
 		job.AutoImport = *in.AutoImport
@@ -431,8 +431,8 @@ func (s *Server) submitDraft(ctx context.Context, j jobs.Job, h hosts.Host, scri
 	if j.State != jobs.StateDraft {
 		return j, &apiErr{409, "only a draft can be submitted"}
 	}
-	if autoImport != nil && *autoImport && !autoImports(j.Template) {
-		return j, &apiErr{422, "results are imported automatically for VGT and ROHSA jobs only"}
+	if autoImport != nil && *autoImport && !s.autoImports(j.Template) {
+		return j, &apiErr{422, s.noAutoImport(j.Template)}
 	}
 	if scriptHash != j.ScriptHash {
 		return j, &apiErr{409, "the script changed since you reviewed it; review the current script and submit again"}
@@ -628,9 +628,47 @@ func (s *Server) jobLog(w http.ResponseWriter, r *http.Request) {
 
 type hostRef struct{ hosts.Host }
 
+// jobImport says how the results of a job of this template are imported (ADR 0043, ADR 0068): the profile that declares the template,
+// and the run record its output folder holds. VGT keeps its own entry, and a job of a template no profile declares (a custom script)
+// is read as a VGT run as it always was. A profile that declares no record of an exact name gets a sentence instead: nothing is guessed
+// about a tool whose results Vesqira has not been told how to read.
+func (s *Server) jobImport(template string) (prof *runs.Profile, record, why string) {
+	if _, label := s.profiles().TemplateProfile(template); label != "" {
+		prof = s.profiles().ByLabel(label)
+	}
+	if prof == nil {
+		if v := s.profiles().ByKind("vgt"); v != nil && v.Record.File != "" {
+			return nil, v.Record.File, ""
+		}
+		return nil, "", "no tool profile reads this job's results"
+	}
+	if prof.Record == nil || prof.Record.File == "" || prof.Record.Reader != runs.ReaderRunMetadata {
+		return prof, "", "the tool profile " + prof.Label() + " declares no run record of a fixed name, so Vesqira has not been told how to read the results of its jobs; register their files by hand"
+	}
+	if !prof.NamesOutputs() && s.profiles().DecompositionOf(prof) == nil {
+		return prof, "", "the tool profile " + prof.Label() + " declares neither outputs nor components, so there is nothing to import from its jobs' results"
+	}
+	return prof, prof.Record.File, ""
+}
+
 // autoImports says which templates can have their results imported by themselves when the job completes (ADR 0043): the two
-// whose output folder holds a run Vesqira knows how to read, VGT (run_metadata.toml) and ROHSA (the fit, ADR 0046).
-func autoImports(template string) bool { return template == "vgt" || template == "rohsa" }
+// built in tools' (VGT's run_metadata.toml, the ROHSA fit of ADR 0046) and any template whose profile has the record name the outputs.
+// Components a profile declares are imported from this computer only, so their jobs keep the Import button and not the automatic path.
+func (s *Server) autoImports(template string) bool {
+	if template == "vgt" || template == "rohsa" {
+		return true
+	}
+	prof, record, _ := s.jobImport(template) // a custom script belongs to no profile and is never imported by itself
+	return prof != nil && record != "" && prof.NamesOutputs()
+}
+
+// noAutoImport is the sentence for a request that asks for an automatic import the template cannot have.
+func (s *Server) noAutoImport(template string) string {
+	if _, _, why := s.jobImport(template); why != "" {
+		return why
+	}
+	return "this template's results are not imported automatically; use Import results on the finished job"
+}
 
 // registerJobOutputs imports the finished job's run folder from its host and links the Run to the job.
 func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
@@ -672,7 +710,12 @@ func (s *Server) registerJobOutputs(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 201, d)
 		return
 	}
-	run, code, msg := s.importFrom(ctx, remoteRun{s: s, h: h, dir: j.OutputDir})
+	_, record, why := s.jobImport(j.Template)
+	if why != "" {
+		fail(w, 422, why)
+		return
+	}
+	run, code, msg := s.importFrom(ctx, remoteRun{s: s, h: h, dir: j.OutputDir, file: record})
 	if code != 0 {
 		fail(w, code, msg)
 		return

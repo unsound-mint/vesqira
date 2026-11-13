@@ -607,7 +607,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
           ) : null}
           {actDs && runFor(cat.runs, actDs.id) ? (
             <Section title="Run">
-              <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} product={runFor(cat.runs, actDs.id)!.product} job={jobFor(cat.jobs, runFor(cat.runs, actDs.id)!.run.id)} orientationUnresolved={["orientation", "psi"].includes(runFor(cat.runs, actDs.id)!.role) && !actDs.interpretation} onOpenPage={() => openRun(runFor(cat.runs, actDs.id)!.run.id)} onRunAgain={() => runAgain(runFor(cat.runs, actDs.id)!.run.id)} />
+              <RunPanel run={runFor(cat.runs, actDs.id)!.run} role={runFor(cat.runs, actDs.id)!.role} product={runFor(cat.runs, actDs.id)!.product} job={jobFor(cat.jobs, runFor(cat.runs, actDs.id)!.run.id)} orientationUnresolved={runFor(cat.runs, actDs.id)!.role === "orientation" && !actDs.interpretation} onOpenPage={() => openRun(runFor(cat.runs, actDs.id)!.run.id)} onRunAgain={() => runAgain(runFor(cat.runs, actDs.id)!.run.id)} />
             </Section>
           ) : null}
           {actDs && !runFor(cat.runs, actDs.id) && cat.runs.some((r) => r.kind === "vgt" && r.inputHint?.datasetId === actDs.id) ? (

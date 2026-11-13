@@ -103,7 +103,7 @@ export function useCatalog() {
       const run = await importRun(path, hostId);
       setRuns(await listRuns({ archived: "all" }));
       setDatasets(await listDatasets({ archived: "all" }));
-      const first = run.outputs.find((o) => o.role === "orientation" || o.role === "psi") ?? run.outputs[0];
+      const first = run.outputs.find((o) => o.role === "orientation") ?? run.outputs[0];
       if (first) setSelectedId(first.datasetId);
       return null;
     } catch (e) {

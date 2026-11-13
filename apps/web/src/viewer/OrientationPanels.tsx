@@ -163,7 +163,7 @@ export function InterpretationPanel({ v, dataset, datasets, declare }: { v: View
  * silently: a conflict is shown with both sides, and adopting the file's declaration is a button.
  */
 export function FileDeclaration({ dataset, busy, onAdopt }: { dataset: Dataset; busy: boolean; onAdopt: () => void }) {
-  const h = dataset.orientationHeader ?? dataset.vgtHeader;
+  const h = dataset.orientationHeader;
   if (!h) return null;
   const cur = dataset.interpretation;
   const o = h.orientation;

@@ -238,14 +238,13 @@ func (o FileOrientation) Text() string {
 	return "measured on the pixel grid, " + o.Sense + " from " + o.ZeroDirection + " (" + card + ")"
 }
 
-// attachVGT fills d.VGT from the stored header and, when a declaration other than the file's is in force, lists where they differ.
+// attachVGT fills d.OrientationHeader from the stored header and, when a declaration other than the file's is in force, lists where they differ.
 func (d *Dataset) attachVGT() {
-	d.VGT = VGTOf(d.Header)
-	d.OrientationHeader = d.VGT // the same value under the name that is not VGT's (ADR 0068, slice 3)
-	if d.VGT == nil || d.VGT.Orientation == nil || d.Interpretation == nil || d.Interpretation.Kind != "axial_orientation" || IsFileHeaderAuthor(d.Interpretation.DeclaredBy) {
+	d.OrientationHeader = VGTOf(d.Header)
+	if d.OrientationHeader == nil || d.OrientationHeader.Orientation == nil || d.Interpretation == nil || d.Interpretation.Kind != "axial_orientation" || IsFileHeaderAuthor(d.Interpretation.DeclaredBy) {
 		return
 	}
-	d.VGT.Conflicts = orientationConflicts(*d.VGT.Orientation, *d.Interpretation, gridFrame(d.Header))
+	d.OrientationHeader.Conflicts = orientationConflicts(*d.OrientationHeader.Orientation, *d.Interpretation, gridFrame(d.Header))
 }
 
 func orientationConflicts(file FileOrientation, in Interpretation, grid string) []string {
