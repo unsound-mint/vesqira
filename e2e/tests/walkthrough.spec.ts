@@ -376,7 +376,7 @@ test("the workbench is usable in the light theme and at phone width", async ({ b
 test("a VGT run is imported with its parameters, linked to its outputs and carried to the reviewer", async ({ page, browser }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Runs", exact: false }).first().click().catch(() => undefined);
-  await page.getByLabel("Import a run (VGT or ROHSA)").fill(path.join(data, "vgt_run_demo"));
+  await page.getByLabel("Import a run folder").fill(path.join(data, "vgt_run_demo"));
   await page.getByRole("button", { name: "Import run" }).click();
   await expect(page.getByRole("listitem").filter({ hasText: "vgt_run_demo" })).toBeVisible();
   await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible();

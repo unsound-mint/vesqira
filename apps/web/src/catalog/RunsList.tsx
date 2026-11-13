@@ -52,7 +52,7 @@ export function RunsList({ runs, hosts = [], jobs = [], query, onQuery, onImport
             {hosts.map((h) => <option key={h.id} value={h.id}>{h.name} (a ROHSA fit)</option>)}
           </Select>
         ) : null}
-        <PathField label={host ? "Import a ROHSA fit from the host" : "Import a run (VGT or ROHSA)"} kind="dir" hostId={host} hosts={hosts} placeholder={host ? "/shared/home/you/run/region (a folder, or its rohsa_*.dat)" : "/path/to/run_folder"} value={path} onChange={setPath} />
+        <PathField label={host ? "Import a ROHSA fit from the host" : "Import a run folder"} kind="dir" hostId={host} hosts={hosts} placeholder={host ? "/shared/home/you/run/region (a folder, or its rohsa_*.dat)" : "/path/to/run_folder"} value={path} onChange={setPath} />
         {host ? <p className={s.note}>The host reads the fit's small records and the headers of its maps; the .dat stays there and is indexed there when you first open its components.</p> : null}
         <Button type="submit" disabled={busy || !path.trim()}>{busy ? "Importing…" : "Import run"}</Button>
         {err ? <p role="alert" className={s.err}>{err}</p> : null}

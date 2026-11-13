@@ -21,7 +21,7 @@ const inspector = (page: Page) => page.getByRole("complementary", { name: "Inspe
 async function importRun(page: Page, folder: string, name: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Runs", exact: false }).first().click().catch(() => undefined);
-  await page.getByLabel("Import a run (VGT or ROHSA)").fill(path.join(data, "synth_decomp_demo", folder));
+  await page.getByLabel("Import a run folder").fill(path.join(data, "synth_decomp_demo", folder));
   await page.getByRole("button", { name: "Import run" }).click();
   await expect(page.getByRole("list", { name: "Runs" }).getByRole("listitem").filter({ hasText: name })).toBeVisible();
 }
