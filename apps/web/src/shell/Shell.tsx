@@ -1,12 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { FileText, LifeBuoy, FolderOpen, FolderPlus, LayoutGrid, Server, Table2, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
+import { Columns3, FileText, LifeBuoy, FolderOpen, FolderPlus, LayoutGrid, Server, Table2, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
 import { ReportsView } from "../reports/ReportsView";
 import { RunsView } from "../runs/RunsView";
 import { initialRunsView } from "../runs/runsViewState";
 import type { RunsViewState } from "../runs/runsViewState";
 import { JobsView, jobFor } from "../jobs/JobsView";
+import { FamilyView } from "../family/FamilyView";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { useNotifications } from "../notifications/useNotifications";
 import { FigurePanel } from "../viewer/FigurePanel";
@@ -296,7 +297,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null), setOutsideIn(null);
   }, [linked, group?.facets.cursor, group?.basis]); // eslint-disable-line react-hooks/exhaustive-deps
   const [focusJob, setFocusJob] = useState<number | null>(null);
-  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs" | "run" | "rerun" | "open" | "look" | "needs" | "health" | "import">("viewer");
+  const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs" | "run" | "rerun" | "open" | "look" | "needs" | "health" | "import" | "family">("viewer");
   const [runId, setRunId] = useState<number | null>(null);
   const [runFrom, setRunFrom] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs">("viewer");
   // The runs page keeps its query, columns, sort, plot and selection while a run is open, so Back returns to it as it was.
@@ -446,6 +447,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
         <IconButton icon={FolderOpen} label="Explorer" size="lg" pressed={L.sideOpen} onClick={() => toggle("sideOpen")} />
         <IconButton icon={LayoutGrid} label="Boards" size="lg" pressed={mode === "boards"} onClick={() => setMode(mode === "boards" ? "viewer" : "boards")} />
         <IconButton icon={Table2} label="Results table" size="lg" pressed={mode === "runs"} onClick={() => setMode(mode === "runs" ? "viewer" : "runs")} />
+        <IconButton icon={Columns3} label="Compare a family of maps" size="lg" pressed={mode === "family"} onClick={() => setMode(mode === "family" ? "viewer" : "family")} />
         <IconButton icon={Server} label="Jobs" size="lg" pressed={mode === "jobs"} onClick={() => setMode(mode === "jobs" ? "viewer" : "jobs")} />
         <IconButton icon={FileText} label="Reports" size="lg" pressed={mode === "reports"} onClick={() => setMode(mode === "reports" ? "viewer" : "reports")} />
         {terminal ? <IconButton icon={TerminalIcon} label="Terminal" size="lg" pressed={terminalOpen} onClick={() => setTerminalOpen(true)} /> : null}
@@ -510,6 +512,8 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
           )
         ) : mode === "runs" ? (
           <RunsView runs={cat.runs} jobs={cat.jobs} hostName={runHostName} state={runsView} onState={patchRunsView} onOpenRun={openRun} />
+        ) : mode === "family" ? (
+          <FamilyView datasets={cat.allDatasets} preset={null} />
         ) : mode === "reports" ? (
           <ReportsView onOpenRun={openRun} />
         ) : mode === "boards" ? (

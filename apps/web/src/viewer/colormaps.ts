@@ -9,7 +9,12 @@ const INFERNO: Rgb[] = [[0, 0, 4], [4, 3, 18], [11, 7, 36], [21, 11, 55], [33, 1
 // Cyclic: the ends meet, so an axial angle (0 and 180 degrees are the same orientation) has no seam.
 const TWILIGHT: Rgb[] = [[226, 217, 226], [215, 215, 221], [196, 206, 212], [172, 194, 204], [149, 181, 199], [129, 166, 195], [114, 151, 193], [104, 135, 190], [98, 118, 186], [95, 100, 181], [94, 81, 173], [93, 61, 161], [89, 42, 143], [81, 27, 119], [69, 19, 92], [56, 17, 69], [47, 20, 54], [58, 17, 58], [74, 19, 66], [95, 23, 74], [116, 30, 79], [135, 39, 80], [152, 53, 80], [166, 69, 80], [178, 86, 82], [187, 105, 88], [194, 124, 99], [200, 144, 115], [204, 163, 137], [209, 182, 163], [216, 199, 190], [223, 212, 214], [226, 217, 226]];
 
+// Diverging, for a signed difference: blue below zero, near-white at zero, red above (ColorBrewer RdBu, 11 classes, Apache-2.0; colour-blind safe).
+const DIVERGING: Rgb[] = [[5, 48, 97], [33, 102, 172], [67, 147, 195], [146, 197, 222], [209, 229, 240], [247, 247, 247], [253, 219, 199], [244, 165, 130], [214, 96, 77], [178, 24, 43], [103, 0, 31]];
+
 export type ColormapId = "viridis" | "inferno" | "gray" | "twilight";
+/** The ramps a saved figure may name (the contract) plus the diverging one, which only the family view draws. */
+export type RampId = ColormapId | "diverging";
 
 export const COLORMAPS: { id: ColormapId; label: string }[] = [
   { id: "viridis", label: "Viridis" },
@@ -17,10 +22,10 @@ export const COLORMAPS: { id: ColormapId; label: string }[] = [
   { id: "gray", label: "Grayscale" },
 ];
 
-const STOPS: Record<Exclude<ColormapId, "gray">, Rgb[]> = { viridis: VIRIDIS, inferno: INFERNO, twilight: TWILIGHT };
+const STOPS: Record<Exclude<RampId, "gray">, Rgb[]> = { viridis: VIRIDIS, inferno: INFERNO, twilight: TWILIGHT, diverging: DIVERGING };
 
 /** 256-entry RGB lookup table (768 bytes) for a colormap. */
-export function lut(id: ColormapId): Uint8ClampedArray {
+export function lut(id: RampId): Uint8ClampedArray {
   const out = new Uint8ClampedArray(256 * 3);
   for (let i = 0; i < 256; i++) {
     let rgb: Rgb;
