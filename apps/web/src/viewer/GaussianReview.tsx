@@ -28,7 +28,7 @@ type Maps = { result: RohsaClassMaps; planes: Plane[] };
 
 /**
  * The review of the whole decomposition (ADR 0046, "Reviewing the decomposition"): the sigma-v diagram, the pixels behind a cell, and
- * one map per width class. Each button is one bounded pass over the run's .dat on this computer; nothing is drawn until it is asked for.
+ * one map per width class. Each button is one bounded pass over the run's .dat where the fit is kept (this computer, or its host); nothing is drawn until it is asked for.
  * A map pixel is pinned in the viewer, which opens its spectrum with the components over it.
  */
 export function GaussianReview({ st, v, cut }: { st: ComponentsState; v: Viewer; cut: number | null }) {
@@ -162,7 +162,7 @@ export function GaussianReview({ st, v, cut }: { st: ComponentsState; v: Viewer;
   return (
     <section className={s.wrap} aria-label="Review of the decomposition">
       <h3 className={s.h}>Review the decomposition</h3>
-      <p className={s.note}>The widths and centres of all {run.nGauss} Gaussians in every pixel, weighted, and maps of them per width class. Drawing the diagram and making the maps each read the whole fit (the .dat, or every map file) once on this computer (a large fit takes minutes); a click on a cell then uses the index the diagram wrote and is quick.</p>
+      <p className={s.note}>The widths and centres of all {run.nGauss} Gaussians in every pixel, weighted, and maps of them per width class. Drawing the diagram and making the maps each read the whole fit (the .dat, or every map file) once, where the fit is kept (a fit on a host is read there and never copied here; a large fit takes minutes); a click on a cell then uses the index the diagram wrote and is quick.</p>
       <Select label="Weight" value={weight} onChange={(e) => setWeight(e.target.value as Weight)}>
         <option value="integrated" disabled={run.cropBunit === null}>Integrated intensity{run.cropBunit === null ? " (the crop's brightness unit is unresolved)" : ` (${run.cropBunit} km/s)`}</option>
         <option value="column_thin" disabled={!thinOk}>Optically thin column density (cm⁻²){thinOk ? "" : " (needs a brightness temperature in K)"}</option>

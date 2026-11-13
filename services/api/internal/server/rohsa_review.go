@@ -1,27 +1,30 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/derived"
-	"github.com/unsound-mint/vesqira/services/api/internal/runs"
+	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 )
 
 // Reviewing a ROHSA decomposition as a whole (ADR 0046, "Reviewing the decomposition"): a sigma-v diagram, the pixels behind one of
 // its cells, and one map per width class. Each reads every row of the run's .dat once, so each runs as an analysis program (heavy
-// workload class, its own memory cap and time budget), on this computer only: a fit on a host is refused, because the analysis
-// program is local and class maps would be files written on the host.
+// workload class, its own memory cap and time budget). A fit kept on a host is reviewed there, by the host's own copy of the program
+// (hosts.HostReview, hostrun.py): the .dat or the maps are read where they are and never copied here, the diagram's pixel index goes in
+// the host's cache folder, and the class maps are written in the host's derived folder and registered as datasets of that host.
 
 const (
 	maxReviewBins    = 128 // per axis; the worker checks again
@@ -89,8 +92,11 @@ func (s *Server) reviewParams(in rohsaReviewReq, op string, t rohsaTask) (map[st
 	if msg := in.SigmaBins.check("width"); msg != "" {
 		return nil, msg
 	}
-	// the diagram writes a per-row cell index here and a cell click reads it, so a click never parses the .dat again
-	p["cache_dir"] = s.CacheDir
+	// the diagram writes a per-row cell index here and a cell click reads it, so a click never parses the .dat again; a host keeps it in
+	// its own cache folder, which its program fixes (the request cannot name one)
+	if t.host == nil {
+		p["cache_dir"] = s.CacheDir
+	}
 	if in.VelocityBins != nil {
 		p["velocity_bins"] = in.VelocityBins
 	}
@@ -107,25 +113,12 @@ func (s *Server) reviewParams(in rohsaReviewReq, op string, t rohsaTask) (map[st
 }
 
 // rohsaReview validates the request, resolves the run (the dataset must be its crop or exactly on its grid) and runs one analysis op
-// over the crop and the .dat. It answers the errors itself and returns ok=false.
-func (s *Server) rohsaReview(w http.ResponseWriter, r *http.Request, op string, extraArgs func(rohsaTask) []string) (rohsaReviewReq, rohsaTask, analysisOutcome, bool) {
+// over the crop and the .dat, here or, for a fit kept on a host, there. stem names the class maps' files (without ".fits"; the folder is
+// this computer's derived folder, or the host's, where only its file name is used) and is nil for the diagram and the cell. It answers the
+// errors itself and returns ok=false.
+func (s *Server) rohsaReview(w http.ResponseWriter, r *http.Request, op string, stem func(rohsaTask) string) (rohsaReviewReq, rohsaTask, analysisOutcome, bool) {
 	var in rohsaReviewReq
 	if !body(w, r, 16<<10, &in, true) {
-		return in, rohsaTask{}, analysisOutcome{}, false
-	}
-	// refuse a fit on a host before anything is asked of the host: the review reads the .dat with a local analysis program
-	rr, err := s.Runs.ROHSA(wsOf(r), in.RunID)
-	if errors.Is(err, runs.ErrNotFound) {
-		fail(w, 404, "ROHSA run not found")
-		return in, rohsaTask{}, analysisOutcome{}, false
-	}
-	if err != nil {
-		log.Printf("rohsa: %v", err)
-		fail(w, 500, "internal error")
-		return in, rohsaTask{}, analysisOutcome{}, false
-	}
-	if rr.Info.HostID != 0 {
-		fail(w, 409, "this fit lives on a host, and the decomposition review runs on this computer only: import a copy of the fit here to review it")
 		return in, rohsaTask{}, analysisOutcome{}, false
 	}
 	t, ok := s.rohsaResolve(w, r, in.RunID)
@@ -138,19 +131,70 @@ func (s *Server) rohsaReview(w http.ResponseWriter, r *http.Request, op string, 
 		return in, t, analysisOutcome{}, false
 	}
 	pj, _ := json.Marshal(params)
-	args := []string{"-P", s.Analysis.Script, op, "--input", t.cropReal, "--params", string(pj)}
+	opts := []string{"--input", t.cropReal, "--params", string(pj)}
 	if u := declaredUnitOf(t.crop); u != "" { // a unit the person declared for a crop with no BUNIT; the worker uses it only to fill that gap
-		args = append(args, "--declared-unit="+u)
+		opts = append(opts, "--declared-unit="+u)
 	}
-	if extraArgs != nil {
-		args = append(args, extraArgs(t)...)
+	var res analysisOutcome
+	var code int
+	var msg string
+	if t.host != nil {
+		res, code, msg = s.hostReview(r.Context(), *t.host, op, stem, t, opts)
+	} else {
+		args := append([]string{"-P", s.Analysis.Script, op}, opts...)
+		if stem != nil {
+			args = append(args, "--out", stem(t)+".fits")
+		}
+		res, code, msg = s.runAnalysisProgram(r, args)
 	}
-	res, code, msg := s.runAnalysisProgram(r, args)
 	if code != 0 {
 		fail(w, code, msg)
 		return in, t, res, false
 	}
 	return in, t, res, true
+}
+
+// hostReview runs a review on the host the fit is kept on (ADR 0068). The budget, the heavy slot, the corrections and the memory cap are a
+// local run's; the host's program reads the fit and the crop where they are. Class maps come back as the resolved paths of the files it
+// placed in the host's derived folder, one per class, under the name asked for.
+func (s *Server) hostReview(ctx context.Context, h hosts.Host, op string, stem func(rohsaTask) string, t rohsaTask, opts []string) (analysisOutcome, int, string) {
+	name := ""
+	if stem != nil {
+		name = filepath.Base(stem(t))
+	}
+	// the same lane as a local review: on a group server one running batch item per account, ten waiting (batchlane.go)
+	leave, err := s.batchSlot(ctx)
+	if err != nil {
+		if full, ok := err.(errBatchFull); ok {
+			return analysisOutcome{}, 429, full.Error()
+		}
+		return analysisOutcome{}, 499, "request cancelled"
+	}
+	defer leave()
+	slow := "this took longer on the host than an analysis may (%s), so Vesqira stopped waiting and the program on the host stopped with it; a fit this large is better reviewed on the host as a job"
+	res, out, code, msg := s.hostCall(ctx, h, op, opts, slow, func(argv []string, timeout time.Duration) ([]byte, error) {
+		return s.Remote.HostReview(ctx, h, op, name, argv, timeout)
+	})
+	if code != 0 {
+		return analysisOutcome{}, code, msg
+	}
+	if stem != nil {
+		var sum struct {
+			Classes []classSummary `json:"classes"`
+		}
+		if json.Unmarshal(res.Summary, &sum) != nil || len(res.Extra) != len(sum.Classes) || len(res.Extra) == 0 {
+			return analysisOutcome{}, 502, "the host answered unexpectedly"
+		}
+		folder := path.Dir(res.Extra[0])
+		for i, f := range res.Extra {
+			// the host resolved its derived folder; each file must be the one asked for, in that one folder
+			if !hostFileNamed(f, fmt.Sprintf("%s-class%d.fits", name, i)) || path.Dir(f) != folder {
+				return analysisOutcome{}, 502, "the host answered unexpectedly"
+			}
+		}
+		out.Files = res.Extra
+	}
+	return out, 0, ""
 }
 
 // reviewReply is the worker's summary with the run it was made from, as one JSON object.
@@ -207,14 +251,22 @@ func (s *Server) rohsaClassMaps(w http.ResponseWriter, r *http.Request) {
 	var b [4]byte
 	_, _ = rand.Read(b[:])
 	var stem string
-	in, t, res, ok := s.rohsaReview(w, r, "rohsa_classmaps", func(t rohsaTask) []string {
-		stem = filepath.Join(s.derivedDirOf(wsOf(r)), fmt.Sprintf("rohsa-classes-%d-%s", t.run.RunID, hex.EncodeToString(b[:])))
-		return []string{"--out", stem + ".fits"}
+	in, t, res, ok := s.rohsaReview(w, r, "rohsa_classmaps", func(t rohsaTask) string {
+		stem = fmt.Sprintf("rohsa-classes-%d-%s", t.run.RunID, hex.EncodeToString(b[:]))
+		if t.host == nil { // on a host the folder is the host's derived folder, which its program chooses
+			stem = filepath.Join(s.derivedDirOf(wsOf(r)), stem)
+		}
+		return stem
 	})
-	if !ok {
-		if stem != "" { // a failed run may have written some classes before it stopped
+	// a failed or refused run here may have written some classes before it stopped; on a host the program removes its own temporaries
+	// and places the maps all or none, so there is nothing to remove from here
+	cleanup := func() {
+		if stem != "" && t.host == nil {
 			removeClassFiles(stem)
 		}
+	}
+	if !ok {
+		cleanup()
 		return
 	}
 	var sum struct {
@@ -222,7 +274,7 @@ func (s *Server) rohsaClassMaps(w http.ResponseWriter, r *http.Request) {
 		Weight  string         `json:"weight"`
 	}
 	if json.Unmarshal(res.Summary, &sum) != nil || len(sum.Classes) != len(in.Edges)+1 {
-		removeClassFiles(stem)
+		cleanup()
 		fail(w, 502, "the analysis answered unexpectedly")
 		return
 	}
@@ -234,11 +286,21 @@ func (s *Server) rohsaClassMaps(w http.ResponseWriter, r *http.Request) {
 	}
 	var out []registered
 	var ids []int64
-	for _, c := range sum.Classes {
-		path := fmt.Sprintf("%s-class%d.fits", stem, c.Index)
-		nd, code, msg := s.registerPath(waiting(r.Context()), path)
+	for i, c := range sum.Classes {
+		var nd catalog.Dataset
+		var code int
+		var msg string
+		if t.host != nil {
+			// the file is on the host, in its derived folder; the dataset is that file there, like a subset written on a host
+			nd, code, msg = s.registerRemoteFile(waiting(r.Context()), *t.host, res.Files[i])
+			if code != 0 {
+				msg = "the width class maps were written on the host (" + path.Base(res.Files[0]) + " and the others of its name, in its derived folder) but class " + strconv.Itoa(c.Index) + " could not be registered: " + msg
+			}
+		} else {
+			nd, code, msg = s.registerPath(waiting(r.Context()), fmt.Sprintf("%s-class%d.fits", stem, c.Index))
+		}
 		if code != 0 {
-			removeClassFiles(stem)
+			cleanup()
 			fail(w, code, msg)
 			return
 		}
@@ -264,7 +326,11 @@ func (s *Server) rohsaClassMaps(w http.ResponseWriter, r *http.Request) {
 			log.Printf("derived: %v", err)
 		}
 	}
-	s.Audit.RecordCtx(r.Context(), "ROHSA width class maps", "run", t.run.RunID, fmt.Sprintf("%d classes, weight %s", len(out), sum.Weight))
+	where := ""
+	if t.host != nil {
+		where = ", written on host " + t.host.Name
+	}
+	s.Audit.RecordCtx(r.Context(), "ROHSA width class maps", "run", t.run.RunID, fmt.Sprintf("%d classes, weight %s%s", len(out), sum.Weight, where))
 	s.reviewReply(w, 201, res, t, map[string]any{"maps": out})
 }
 

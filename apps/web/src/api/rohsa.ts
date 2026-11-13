@@ -59,7 +59,7 @@ export const indexRohsa = (datasetId: number, runId: number, signal?: AbortSigna
 export const getComponents = (datasetId: number, runId: number, x: number, y: number, signal?: AbortSignal) =>
   requestRaw(`${base(datasetId)}/components?run=${runId}&x=${x}&y=${y}`, { signal }).then((r) => r.arrayBuffer()).then(parseComponents);
 
-// ---- the review of a whole decomposition (ADR 0046): each call is one bounded pass over the run's .dat, on this computer
+// ---- the review of a whole decomposition (ADR 0046): each call is one bounded pass over the run's .dat, where the fit is kept (this computer, or its host)
 
 export type RohsaReviewRequest = Schemas["RohsaReviewRequest"];
 export type RohsaSigmav = Schemas["RohsaSigmav"];

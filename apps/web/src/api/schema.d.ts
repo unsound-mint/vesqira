@@ -15720,7 +15720,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only) */
+            /** @description the dataset is not on the run's grid or the run has no crop; for a fit on a host, also the host's worker is too old to have the review (deploy the current one to it) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -15898,7 +15898,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only) */
+            /** @description the dataset is not on the run's grid or the run has no crop; for a fit on a host, also the host's worker is too old to have the review (deploy the current one to it) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -15987,7 +15987,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only) */
+            /** @description the dataset is not on the run's grid or the run has no crop; for a fit on a host, also the host's worker is too old to have the review (deploy the current one to it) */
             409: {
                 headers: {
                     [name: string]: unknown;

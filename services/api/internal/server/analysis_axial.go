@@ -203,7 +203,8 @@ type analysisOutcome struct {
 	// Corrections is the id-free record of the researcher's corrections the program applied to its inputs (ADR 0061), nil for
 	// none: what a derived record keeps, so the result says which correction state it was made with.
 	Corrections []map[string]any
-	// Files are the resolved paths of the other files a host run wrote beside its result, in the program's order (a family's comparison maps).
+	// Files are the resolved paths of the other files a host run wrote beside its result, in the program's order (a family's comparison maps,
+	// the class maps of a decomposition review).
 	Files []string
 }
 
