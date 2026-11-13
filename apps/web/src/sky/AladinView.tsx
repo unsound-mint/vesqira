@@ -11,7 +11,11 @@ import s from "./SkyPanel.module.css";
 export type BackgroundStatus = { state: "connecting" } | { state: "ready" } | { state: "unavailable"; reason: string };
 
 /** What the panel can ask of the picture it does not draw itself. */
-export type BackgroundApi = { capture(): Promise<string | null> };
+export type BackgroundApi = {
+  capture(): Promise<string | null>;
+  /** The view Aladin is showing now, in the panel's frame and as wide as the picture is; null if the library will not say. */
+  view(): View | null;
+};
 
 const REACH_TIMEOUT_MS = 8000;
 
@@ -98,7 +102,7 @@ export function AladinView({ survey, frame, fit, items, selectedId, cursor, onPi
         showCatalog: false,
         showZoomControl: true,
         gridColor: token("--text-3", "#8794a3"),
-        backgroundColor: [20, 24, 30, 255],
+        backgroundColor: "rgb(20, 24, 30)", // a string: 3.8.2 parses it with a colour class that throws on an array, which left the panel on "Contacting"
       });
       if (f) al.gotoRaDec(f.lon, f.lat);
       const foot = A.graphicOverlay({ name: "footprints", color: token("--text-2", "#aab4c0"), lineWidth: 1 });
@@ -119,9 +123,20 @@ export function AladinView({ survey, frame, fit, items, selectedId, cursor, onPi
           const r = await al.getViewDataURL?.({ format: "image/png", logo: false });
           return typeof r === "string" ? r : null;
         },
+        // Aladin Lite 3.8.2 (pinned): getRaDec() converts the view's centre to ICRS (`viewToICRSCooSys`) whatever the grid frame, so it
+        // cannot give the panel's frame for a Galactic view. The centre it converts is `wasm.getCenter()`, which is in the view's own
+        // frame (the panel's: `cooFrame` above), and getFoV()[0] is the width of the view in degrees. A different library version
+        // must be checked again, which is why this says null rather than guess when the shape is not as found.
+        view: () => {
+          const w = (al as unknown as { wasm?: { getCenter?: () => ArrayLike<number> | null } }).wasm;
+          const c = typeof w?.getCenter === "function" ? w.getCenter() : null; // a Float64Array in 3.8.2
+          const [fov] = al.getFoV();
+          if (!c || c.length < 2 || !Number.isFinite(c[0]) || !Number.isFinite(c[1]) || !(fov > 0)) return null;
+          return { lon: wrap360(c[0]!), lat: c[1]!, fov };
+        },
       });
       say({ state: "ready" });
-    })();
+    })().catch(() => say({ state: "unavailable", reason: "the survey viewer failed to start" })); // never leave the panel on "Contacting"
     return () => {
       dead = true;
       clearTimeout(timer);

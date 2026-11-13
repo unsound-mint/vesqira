@@ -164,7 +164,8 @@ func (s *Server) skyFootprintFor(r *http.Request, ref skyRef, frame string) (sky
 
 type skyReply struct {
 	Footprint *struct {
-		ExtentDeg float64 `json:"extent_deg"`
+		ExtentDeg float64      `json:"extent_deg"`
+		Polygon   [][2]float64 `json:"polygon"`
 	} `json:"footprint"`
 	Reason     *string `json:"reason"`
 	FromFrame  string  `json:"from_frame"`
@@ -255,6 +256,10 @@ func (s *Server) createSkyFigure(w http.ResponseWriter, r *http.Request) {
 			fail(w, 422, name+": "+reason)
 			return
 		}
+		// the figure records what its picture shows: an outline that does not meet the field is left out altogether, name included
+		if !outlineInField(rep.Footprint.Polygon, in.Centre.Lon, in.Centre.Lat, in.FovDeg) {
+			continue
+		}
 		rec.DatasetID, rec.Name, rec.ExtentDeg = d.ID, name, rep.Footprint.ExtentDeg
 		rec.FromFrame, rec.FromStatus, rec.FromBasis = rep.FromFrame, rep.FromStatus, rep.FromBasis
 		spec.Footprints = append(spec.Footprints, rec)
@@ -267,6 +272,10 @@ func (s *Server) createSkyFigure(w http.ResponseWriter, r *http.Request) {
 				identity.Datasets = append(identity.Datasets, e)
 			}
 		}
+	}
+	if len(spec.Footprints) == 0 {
+		fail(w, 422, "none of the outlines you drew meets this field, so the picture would show no dataset; move the view onto one and save again")
+		return
 	}
 	sceneJSON, err := json.Marshal(spec)
 	if err != nil {

@@ -95,7 +95,9 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] Local PNG of the panel; the survey is in it only when ticked for that file, with its name, HiPS id and provider in the caption.
 - [x] Footprints and the cursor link for virtual subsets: the worker applies the subset's window to the parent's WCS (ADR 0072).
 - [x] The sky view as a registered figure (schema 36): HiPS id, survey name, provider and credit, frame, field and centre, and each drawn file with its WCS basis in the provenance; the survey is labelled context only in the picture, the reviewer page and exports; the access labels of the drawn datasets apply to publishing it.
-- [ ] Not built: a check against the live survey servers, reading Aladin's own pan back into the saved field, a second person's design review.
+- [x] A sky figure records what its picture shows: only outlines that meet the saved field, and with the survey in the picture the field is read back from Aladin (checked in the 3.8.2 source and by an e2e that drags it, in ICRS and Galactic).
+- [x] Fixed: the survey background never started with the real library (an array `backgroundColor`); a failed start now says so.
+- [ ] Not built: a check against the live survey servers, a second person's design review.
 
 ## Stage S — Scene, cross-tracer comparison and the researcher's loop (owner direction, 2026-11-11)
 

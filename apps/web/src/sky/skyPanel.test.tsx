@@ -234,6 +234,43 @@ describe("save as figure", () => {
     expect(createSkyFigure.mock.calls[0]![0].footprints).toEqual([{ kind: "dataset", id: 1 }, { kind: "subset", id: 1 }]);
   });
 
+  it("records the view Aladin shows when the survey is in the picture, not the panel's own view", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    const shape = { add: vi.fn(), removeAll: vi.fn(), show: vi.fn() };
+    // the person dragged and zoomed Aladin: its centre (in the view's own frame) and width are not the fitted view's
+    const al = {
+      gotoRaDec: vi.fn(), setFoV: vi.fn(), getFoV: () => [0.37, 0.37], getRaDec: () => [1, 1], wasm: { getCenter: () => [150.2, 2.3] },
+      setBaseImageLayer: vi.fn(), addOverlay: vi.fn(), on: vi.fn(), getViewDataURL: vi.fn().mockResolvedValue("data:image/png;base64,AAAA"),
+    };
+    loadAladin.mockResolvedValue({ aladin: () => al, graphicOverlay: () => shape, polygon: vi.fn(), circle: vi.fn(), init: Promise.resolve() });
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: "Choose a survey image…" }));
+    await userEvent.click(screen.getByRole("button", { name: /Contact alasky\.cds\.unistra\.fr and turn on/ }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Include the survey image in the saved file" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save as figure" }));
+    await screen.findByText(/It includes the survey image, which is context only/);
+    const body = createSkyFigure.mock.calls[0]![0];
+    expect(body.centre).toEqual({ lon: 150.2, lat: 2.3 });
+    expect(body.fovDeg).toBe(0.37);
+    expect(body.survey).toBe("CDS/P/DSS2/color");
+    expect(renderPng.mock.calls[0]![1]).toBe("data:image/png;base64,AAAA");
+    expect(renderPng.mock.calls[0]![0].lines.join(" ")).toMatch(/22\.2|0\.37|22\.2″/);
+  });
+
+  it("makes no figure when Aladin will not say where it is looking", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    const shape = { add: vi.fn(), removeAll: vi.fn(), show: vi.fn() };
+    const al = { gotoRaDec: vi.fn(), setFoV: vi.fn(), getFoV: () => [1, 1], getRaDec: () => [150, 2], setBaseImageLayer: vi.fn(), addOverlay: vi.fn(), on: vi.fn(), getViewDataURL: vi.fn() };
+    loadAladin.mockResolvedValue({ aladin: () => al, graphicOverlay: () => shape, polygon: vi.fn(), circle: vi.fn(), init: Promise.resolve() });
+    mount();
+    await userEvent.click(screen.getByRole("button", { name: "Choose a survey image…" }));
+    await userEvent.click(screen.getByRole("button", { name: /Contact alasky\.cds\.unistra\.fr and turn on/ }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Include the survey image in the saved file" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save as figure" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/position could not be read/);
+    expect(createSkyFigure).not.toHaveBeenCalled();
+  });
+
   it("shows the server's refusal and offers no saved message", async () => {
     createSkyFigure.mockRejectedValue(new Error("a footprint could not be read"));
     mount();

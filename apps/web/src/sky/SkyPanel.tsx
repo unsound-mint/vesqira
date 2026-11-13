@@ -129,19 +129,23 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
     setFigure({ state: "saving" });
     try {
       const include = withBackground && shown;
+      // The field of the picture. With the survey in it that is the view Aladin shows now (the person can drag and zoom it, so the
+      // panel's own view is not the picture's), read at the moment of the capture; without it, the panel's own view.
+      const seen = include ? (api?.view() ?? null) : view;
+      if (!seen) throw new Error("The survey view's position could not be read, so no figure was made.");
       const bgUrl = include ? ((await api?.capture()) ?? null) : null;
       if (include && !bgUrl) throw new Error("The survey view could not be captured, so no figure was made.");
       const drawn = items.filter((i) => i.state === "ready");
-      const centre = positionText(frame, view.lon, view.lat);
-      const lines = captionOf({ frame: frameName(frame), centre: `${centre.names[0]} ${centre.deg[0]}, ${centre.names[1]} ${centre.deg[1]}`, fov: fovText(view.fov), selected: selected?.name ?? null, survey: include ? survey : null });
+      const centre = positionText(frame, seen.lon, seen.lat);
+      const lines = captionOf({ frame: frameName(frame), centre: `${centre.names[0]} ${centre.deg[0]}, ${centre.names[1]} ${centre.deg[1]}`, fov: fovText(seen.fov), selected: selected?.name ?? null, survey: include ? survey : null });
       const png = await renderPng({ scene, lines }, bgUrl);
-      const title = `Sky view, ${frameName(frame)}, ${fovText(view.fov)} across`;
+      const title = `Sky view, ${frameName(frame)}, ${fovText(seen.fov)} across`;
       await createSkyFigure({
         title,
         previewPng: await blobToBase64(png),
         frame,
-        centre: { lon: view.lon, lat: view.lat },
-        fovDeg: view.fov,
+        centre: { lon: seen.lon, lat: seen.lat },
+        fovDeg: seen.fov,
         survey: include ? survey.id : null,
         footprints: drawn.map((i) => (i.id < 0 ? { kind: "subset" as const, id: -i.id } : { kind: "dataset" as const, id: i.id })),
       });
@@ -288,7 +292,7 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
         ) : null}
         <Button icon={Download} onClick={() => void save()} disabled={!scene}>Save sky image (PNG)</Button>
         <Button icon={ImagePlus} onClick={() => void saveFigure()} disabled={!scene || withOutline === 0 || figure?.state === "saving"}>Save as figure</Button>
-        {figure?.state === "saved" ? <p className={s.note} role="status">Saved as the figure &quot;{figure.title}&quot;. Add it to a board from the Boards view. {figure.survey ? "It includes the survey image, which is context only." : "It has no survey image."}</p> : null}
+        {figure?.state === "saved" ? <p className={s.note} role="status">Saved as the figure &quot;{figure.title}&quot;. Add it to a board from the Boards view. Outlines outside the picture&apos;s field are not recorded. {figure.survey ? "It includes the survey image, which is context only." : "It has no survey image."}</p> : null}
         {saveError ? <p className={s.error} role="alert">{saveError}</p> : null}
       </div>
     </div>
