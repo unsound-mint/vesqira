@@ -907,6 +907,30 @@ def canonical_dir(path: str) -> dict:
     real = os.path.realpath(path)
     return {"ok": True, "op": "canon", "nbytes": 0, "real": real, "is_dir": os.path.isdir(real),
             "home": os.path.realpath(os.path.expanduser("~"))}
+MODES_MAX_PATHS = 8
+
+
+def path_modes(paths) -> dict:
+    """Who can write each path (ADR 0074, a standing approval's code folder). Answered outside the roots, like canon, because a
+    run's code folder is not a data root; the answer is only whether the path exists, its real path and its permission bits.
+    group_write and other_write are about the real path itself (a link is followed), not about what lies inside it."""
+    if not isinstance(paths, list) or not 1 <= len(paths) <= MODES_MAX_PATHS:
+        raise Refused("bad_request", "bad request")
+    out = []
+    for p in paths:
+        if not isinstance(p, str) or not os.path.isabs(p) or len(p) > 4096 or "\0" in p:
+            raise Refused("bad_request", "bad request")
+        real = os.path.realpath(p)
+        try:
+            st = os.stat(real)
+        except OSError:
+            out.append({"path": p, "exists": False})
+            continue
+        out.append({"path": p, "exists": True, "real": real, "mode": "%04o" % (st.st_mode & 0o7777), "uid": st.st_uid,
+                    "group_write": bool(st.st_mode & 0o020), "other_write": bool(st.st_mode & 0o002)})
+    return {"ok": True, "op": "modes", "nbytes": 0, "paths": out}
+
+
 COMPLETE_MAX_ENTRIES = 50
 COMPLETE_MAX_READ = 2000
 COMPLETE_BUDGET_S = 0.2
@@ -1000,6 +1024,8 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         return canonical_dir(path), b""
     if op == "register_many":
         return register_many(req), b""
+    if op == "modes":
+        return path_modes(req.get("paths")), b""
     if op == "stat_many":
         # the size and time of a few files at once (the map files of a decomposition), each authorized and opened like any source
         paths = req.get("paths")
@@ -1499,7 +1525,7 @@ def _handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "channel must be a non-negative integer")
         import masks as mk
         return mk.mask_plane(path, ch)
-    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "fingerprint", "fingerprint_full", "stat_many", "register_many"):
+    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "modes", "fingerprint", "fingerprint_full", "stat_many", "register_many"):
         return host_op(op, req)
     if isinstance(op, str) and op.startswith("catalog_"):
         return catalog_op(op, path, req)

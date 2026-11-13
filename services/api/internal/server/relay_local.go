@@ -52,6 +52,11 @@ type relayState struct {
 	RelayNow func() time.Time
 	// relayAudits caps refusal audit rows: refused filings on the group server, refused pulled requests here
 	relayAudits auditBudget
+	// grantDown holds the hosts that did not answer during the pass in progress (non-nil only inside applyGrants, which holds
+	// relayMu): a host that timed out once is not asked again for the rest of the pass.
+	grantDown map[int64]bool
+	// grantHook is a test seam: called after a request's claim succeeded and before its submission is checked and sent.
+	grantHook func(relay.Mirrored)
 }
 
 func (s *Server) relayKicker() chan struct{} {
