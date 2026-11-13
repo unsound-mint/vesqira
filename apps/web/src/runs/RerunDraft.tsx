@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Button, Input, PathField, Pill, Select } from "../ui";
-import { createJob, hostText, readSetting } from "../api/jobs";
-import type { Job } from "../api/jobs";
+import { Button, Checkbox, Input, PathField, Pill, Select } from "../ui";
+import { createJob, hostText, listJobTemplates, readSetting } from "../api/jobs";
+import type { Job, JobTemplate } from "../api/jobs";
 import type { Host } from "../api/hosts";
 import { listBoards } from "../api/boards";
 import { addJob } from "../undo/boardCommands";
@@ -9,10 +9,9 @@ import type { Board } from "../api/boards";
 import { getRerun } from "../api/runs";
 import type { Rerun, RerunMode, Run } from "../api/runs";
 import { bytes, EM } from "../catalog/format";
-import { SETTINGS, enumOptions } from "../jobs/JobsView";
 import { SizingHint } from "../jobs/JobUsage";
 import { RohsaSizingHint } from "../jobs/RohsaSizingHint";
-import { KERNELS, ROHSA_SETTINGS, readRohsaSetting, sameValue } from "../jobs/rohsaSettings";
+import { PIN_RERUN_NOTE, choices, editableKeys, keyDescription, pinLabel, readConfigSetting, sameValue } from "../jobs/templateForm";
 import { formatDuration, slurmLimitGloss } from "../ui/duration";
 import s from "./RerunDraft.module.css";
 
@@ -25,13 +24,11 @@ function declared(rerun: Rerun, key: string): string {
 }
 
 /** The value a setting had in the run being repeated: the job's own override, else the config text it started from. */
-function baseline(rerun: Rerun, key: string): string {
-  if (rerun.template === "rohsa") return rerun.settings?.[key] ?? ""; // read by the server from the config the job ran, or declared by the run's trace
+function baseline(rerun: Rerun, key: string, byName: boolean): string {
+  if (byName) return rerun.settings?.[key] ?? ""; // ROHSA: read by the server from the config the job ran, or declared by the run's trace
   if (rerun.source === "imported") return declared(rerun, key);
   return rerun.vgt.set[key] ?? (rerun.vgt.baseConfigText ? readSetting(rerun.vgt.baseConfigText, key) : "");
 }
-
-type Field = { key: string; label: string; kind: string };
 
 const MODES: { id: RerunMode; name: string; what: string }[] = [
   { id: "adapted", name: "Adapted", what: "Change settings. The settings that differ from the parent are marked. The code is the folder on the host as it is when you submit." },
@@ -59,6 +56,7 @@ export function strictRefusal(run: Run): string {
 /** "Run again with…": a draft job that starts from a finished run. Nothing is submitted here; the script is read and submitted on the Jobs screen. */
 export function RerunDraft({ run, hosts, onBack, onPrepared }: { run: Run; hosts: Host[]; onBack: () => void; onPrepared: (job: Job) => void }) {
   const [rerun, setRerun] = useState<Rerun | null>(null);
+  const [templates, setTemplates] = useState<JobTemplate[] | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -67,6 +65,13 @@ export function RerunDraft({ run, hosts, onBack, onPrepared }: { run: Run; hosts
     getRerun(run.id).then((r) => live && setRerun(r)).catch((e) => live && setLoadErr(e instanceof Error ? e.message : "Could not read the run's settings."));
     return () => { live = false; };
   }, [run.id]);
+  // the settings offered are the ones the tool's profile declares (ADR 0068), the same as the job form
+  useEffect(() => {
+    let live = true;
+    listJobTemplates().then((t) => live && setTemplates(t)).catch((e) => live && (setTemplates([]), setLoadErr(e instanceof Error ? e.message : "Could not load the job templates.")));
+    return () => { live = false; };
+  }, []);
+  const template = rerun ? templates?.find((x) => x.id === rerun.template) ?? null : null;
 
   return (
     <div className={s.root}>
@@ -76,26 +81,28 @@ export function RerunDraft({ run, hosts, onBack, onPrepared }: { run: Run; hosts
           <span className={s.trail}>Runs / <span className="mono">{run.name}</span> / run again</span>
         </nav>
         {loadErr ? <p role="alert" className={s.err}>{loadErr}</p> : null}
-        {!rerun && !loadErr ? <p className={s.note} role="status">Reading how {run.name} was set up…</p> : null}
-        {rerun ? <Form key={run.id} run={run} rerun={rerun} hosts={hosts} onPrepared={onPrepared} /> : null}
+        {(!rerun || templates === null) && !loadErr ? <p className={s.note} role="status">Reading how {run.name} was set up…</p> : null}
+        {rerun && templates !== null && !template && !loadErr ? <p role="alert" className={s.err}>No tool profile declares the job template {rerun.template} of this run, so there are no settings to offer.</p> : null}
+        {rerun && template ? <Form key={run.id} run={run} rerun={rerun} template={template} hosts={hosts} onPrepared={onPrepared} /> : null}
       </div>
     </div>
   );
 }
 
-function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts: Host[]; onPrepared: (job: Job) => void }) {
+function Form({ run, rerun, template: t, hosts, onPrepared }: { run: Run; rerun: Rerun; template: JobTemplate; hosts: Host[]; onPrepared: (job: Job) => void }) {
   const imported = rerun.source === "imported";
-  const rohsa = rerun.template === "rohsa";
-  const req = (rohsa ? rerun.rohsa : null) ?? rerun.vgt;
-  const fields: Field[] = rohsa ? ROHSA_SETTINGS : SETTINGS;
+  const rohsa = t.sizing === "rohsa_crop_table";
+  const req = rerun.rohsa ?? rerun.vgt;
+  const fields = editableKeys(t);
   const declaredBase: Record<string, string> = {};
-  for (const st of fields) declaredBase[st.key] = baseline(rerun, st.key);
+  for (const st of fields) declaredBase[st.name] = baseline(rerun, st.name, t.config.edit === "by_name");
   const hostKnown = rerun.hostId !== null && hosts.some((h) => h.id === rerun.hostId);
 
   const [vals, setVals] = useState<Record<string, string>>(declaredBase);
   const [name, setName] = useState(rerun.name);
   const [why, setWhy] = useState("");
   const [mode, setMode] = useState<RerunMode>("adapted");
+  const [pin, setPin] = useState(req.pinProfile === true); // the parent job's script insisted on the profile's commit: a new draft starts the same
   const strictNo = strictRefusal(run);
   const [hostId, setHostId] = useState(hostKnown ? String(rerun.hostId) : "");
   const hostNum = hostId ? Number(hostId) : null; // no host chosen: the path fields do not complete
@@ -108,17 +115,18 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
     partition: req.partition ?? "",
     account: req.account ?? "",
   });
-  // An imported ROHSA run does not declare its crop or its spectral kernel: once a config is chosen on a host, its text gives the
-  // "was" of those fields (and the crop for the sizing table). The server reads the config itself when it renders the job.
+  // An imported run that is edited by key name (ROHSA) does not declare its crop or its spectral kernel: once a config is chosen on a
+  // host, its text gives the "was" of those fields (and the crop for the sizing table). The server reads the config itself.
+  const byName = t.config.edit === "by_name";
   const [cfgText, setCfgText] = useState("");
   useEffect(() => {
-    if (!rohsa || !imported || !hostId || !configPath.trim()) { setCfgText(""); return; }
+    if (!byName || !imported || !hostId || !configPath.trim()) { setCfgText(""); return; }
     let live = true;
     hostText(Number(hostId), configPath.trim()).then((t) => live && setCfgText(t)).catch(() => live && setCfgText(""));
     return () => { live = false; };
-  }, [rohsa, imported, hostId, configPath]);
+  }, [byName, imported, hostId, configPath]);
   const base: Record<string, string> = {};
-  for (const st of fields) base[st.key] = declaredBase[st.key] || (rohsa && cfgText ? readRohsaSetting(cfgText, st.key) : "");
+  for (const st of fields) base[st.name] = declaredBase[st.name] || (byName && cfgText ? readConfigSetting(cfgText, st) : "");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [boards, setBoards] = useState<Board[]>([]);
@@ -131,8 +139,9 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
     return () => { live = false; };
   }, []);
 
-  const changed = (key: string) => rohsa ? (vals[key] ?? "").trim() !== "" && !sameValue(vals[key] ?? "", base[key] ?? "") : (vals[key] ?? "").trim() !== (base[key] ?? "").trim();
-  const nChanged = fields.filter((st) => changed(st.key)).length;
+  // a field left empty is not a change (it is "keep"); the same quantity written two ways ("10" and "10.0") is not one either
+  const changed = (key: string) => (vals[key] ?? "").trim() !== "" && !sameValue(vals[key] ?? "", base[key] ?? "");
+  const nChanged = fields.filter((st) => changed(st.name)).length;
   const strictBlocked = mode === "strict" && (strictNo !== "" || nChanged > 0);
   const missing = strictBlocked || !hostId || !repoDir.trim() || !configPath.trim() || !name.trim() || !res.cpus.trim() || !res.mem.trim() || !res.time.trim();
 
@@ -144,8 +153,8 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
       // the ones it declared are sent explicitly and the config file on the host supplies everything else
       const set: Record<string, string> = imported ? {} : { ...req.set };
       for (const st of fields) {
-        const v = (vals[st.key] ?? "").trim();
-        if (v && (imported || changed(st.key))) set[st.key] = v;
+        const v = (vals[st.name] ?? "").trim();
+        if (v && (imported || changed(st.name))) set[st.name] = v;
       }
       const common = {
         repoDir: repoDir.trim(),
@@ -157,10 +166,9 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
         time: res.time.trim(),
         partition: res.partition.trim(),
         account: res.account.trim(),
+        ...(pin ? { pinProfileCommit: true } : {}),
       };
-      const job = await createJob(rohsa
-        ? { hostId: Number(hostId), template: "rohsa", name: name.trim(), note: why.trim() || undefined, parentRunId: run.id, rerunMode: mode, rohsa: common }
-        : { hostId: Number(hostId), template: "vgt", name: name.trim(), note: why.trim() || undefined, parentRunId: run.id, rerunMode: mode, vgt: common });
+      const job = await createJob({ hostId: Number(hostId), template: t.id, name: name.trim(), note: why.trim() || undefined, parentRunId: run.id, rerunMode: mode, tool: common });
       const board = boards.find((b) => String(b.id) === boardId) ?? null;
       if (!board) {
         onPrepared(job);
@@ -218,25 +226,25 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
       <fieldset className={s.fields}>
         <legend>Settings (as the pipeline reads them){nChanged > 0 ? ` · ${nChanged} changed` : ""}</legend>
         {fields.map((st) => {
-          const hint = `was-${st.key}`;
-          const isChanged = changed(st.key);
-          const wasText = base[st.key] ? base[st.key] : EM;
-          const options = enumOptions(st.kind) ?? (st.kind === "bool" ? ["true", "false"] : st.kind === "kernel" ? KERNELS : null);
+          const hint = `was-${st.name}`;
+          const isChanged = changed(st.name);
+          const wasText = base[st.name] ? base[st.name] : EM;
+          const options = choices(st);
           return (
-            <div key={st.key} className={`${s.setting} ${isChanged ? s.changed : ""}`}>
+            <div key={st.name} className={`${s.setting} ${isChanged ? s.changed : ""}`}>
               {options ? (
-                <Select label={st.label} value={vals[st.key] ?? ""} aria-describedby={isChanged ? hint : undefined} onChange={(e) => setVals({ ...vals, [st.key]: e.target.value })}>
+                <Select label={st.label} description={keyDescription(st)} value={vals[st.name] ?? ""} aria-describedby={isChanged ? hint : undefined} onChange={(e) => setVals({ ...vals, [st.name]: e.target.value })}>
                   <option value="">{imported ? "(not declared)" : "(keep)"}</option>
                   {options.map((m) => <option key={m} value={m}>{m}</option>)}
-                  {vals[st.key] && !options.includes(vals[st.key]!) ? <option value={vals[st.key]}>{vals[st.key]} (not accepted for a new run)</option> : null}
+                  {vals[st.name] && !options.includes(vals[st.name]!) ? <option value={vals[st.name]}>{vals[st.name]} (not accepted for a new run)</option> : null}
                 </Select>
               ) : (
-                <Input label={st.label} value={vals[st.key] ?? ""} aria-describedby={isChanged ? hint : undefined} onChange={(e) => setVals({ ...vals, [st.key]: e.target.value })} spellCheck={false} />
+                <Input label={st.label} description={keyDescription(st)} value={vals[st.name] ?? ""} aria-describedby={isChanged ? hint : undefined} onChange={(e) => setVals({ ...vals, [st.name]: e.target.value })} spellCheck={false} />
               )}
               {isChanged ? (
                 <span id={hint} className={s.was}>changed · was <span className="mono">{wasText}</span></span>
               ) : imported ? (
-                <span className={s.was}>{base[st.key] ? "declared by the run" : "not declared by the run"}</span>
+                <span className={s.was}>{base[st.name] ? "declared by the run" : "not declared by the run"}</span>
               ) : null}
             </div>
           );
@@ -247,7 +255,7 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
         <dt>Code</dt>
         <dd>
           <span className="mono">{run.gitCommit ? run.gitCommit.slice(0, 12) : EM}</span>
-          {run.dirty ? " · uncommitted changes" : ""} <span className={s.src}>(from the parent run; the job runs the code folder on the host as it is now)</span>
+          {run.dirty ? " · uncommitted changes" : ""} <span className={s.src}>(from the parent run; the job runs the code folder on the host as it is now{mode === "strict" ? ", and a strict rerun stops unless it is at this commit" : ""})</span>
         </dd>
         {rohsa ? null : (
           <>
@@ -260,6 +268,9 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
         )}
       </dl>
 
+      <Checkbox label={pinLabel(t)} checked={pin} onChange={(e) => setPin(e.target.checked)} />
+      <p className={s.note}>{PIN_RERUN_NOTE}</p>
+
       <label className={s.label} htmlFor="rerun-why">Why (kept with the job)</label>
       <textarea id="rerun-why" className={s.area} rows={2} maxLength={MAX_NOTE} value={why} onChange={(e) => setWhy(e.target.value)} />
       <span className={s.count}>{why.length} / {MAX_NOTE}</span>
@@ -271,11 +282,11 @@ function Form({ run, rerun, hosts, onPrepared }: { run: Run; rerun: Rerun; hosts
           {hosts.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
         </Select>
         <div className={s.wide}>
-          <PathField label={rohsa ? "ROHSA-LMC folder on the host" : "VGT folder on the host"} kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} required placeholder={rohsa ? "/shared/home/you/ROHSA-LMC" : "/shared/home/you/vgt"} />
-          {rohsa ? <p className={s.note}>The checkout of github.com/ISM-NU/ROHSA-LMC, which holds rohsa/cli/preprocess.jl.</p> : null}
+          <PathField label={t.repo.folderLabel} kind="dir" hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={repoDir} onChange={setRepoDir} required placeholder={t.repo.placeholder} />
+          {t.repo.hint ? <p className={s.note}>{t.repo.hint}</p> : null}
         </div>
         <div className={s.wide}>
-          <PathField label={rohsa ? "ROHSA config on the host" : "Config on the host"} kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} required placeholder="/shared/home/you/vgt/configs/run.toml" />
+          <PathField label={t.config.label} kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(id) => setHostId(String(id))} value={configPath} onChange={setConfigPath} required placeholder={t.config.placeholder} />
         </div>
         <Input label="CPUs" value={res.cpus} onChange={(e) => setRes({ ...res, cpus: e.target.value })} inputMode="numeric" required />
         <Input label="Memory" value={res.mem} onChange={(e) => setRes({ ...res, mem: e.target.value })} required />

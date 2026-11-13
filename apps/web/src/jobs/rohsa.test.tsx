@@ -3,15 +3,17 @@ import userEvent from "@testing-library/user-event";
 import type { Host } from "../api/hosts";
 import { JobsView } from "./JobsView";
 import { rohsaTemplate, vgtTemplate } from "./templateFixtures";
-import { ROHSA_SETTINGS, ROHSA_SWEEP_KEYS, readRohsaSetting, sameValue } from "./rohsaSettings";
+import { editableKeys, readConfigSetting, sameValue, sweepKeys } from "./templateForm";
 
-describe("ROHSA settings", () => {
-  it("never offers the input cube or the output folder, which Vesqira owns, and ties the three smoothing weights for sweeps", () => {
-    const keys = ROHSA_SETTINGS.map((s) => s.key);
+describe("settings drawn from a template", () => {
+  it("never offers the output folder, which Vesqira owns, and puts the tied smoothing weights first for sweeps", () => {
+    const keys = editableKeys(rohsaTemplate).map((k) => k.name);
     for (const bad of ["output_dir", "input", "reuse", "force_full_cube"]) expect(keys).not.toContain(bad);
-    expect(keys).toEqual(expect.arrayContaining(["n_gauss", "lambda_amp", "lambda_mu", "lambda_sig", "lb_sig", "ub_sig", "maxiter", "noise", "memory_gb", "crop_size", "spectral_kernel"]));
-    expect(ROHSA_SWEEP_KEYS[0]!.key).toBe("lambda");
-    expect(ROHSA_SWEEP_KEYS.map((s) => s.key)).toEqual(expect.arrayContaining(keys));
+    expect(keys).toEqual(expect.arrayContaining(["n_gauss", "lambda_amp", "lb_sig", "maxiter", "noise", "crop_size", "spectral_kernel"]));
+    const sweep = sweepKeys(rohsaTemplate).map((k) => k.key);
+    expect(sweep[0]).toBe("lambda");
+    expect(sweep).toEqual(expect.arrayContaining(keys));
+    expect(sweepKeys(vgtTemplate).map((k) => k.key)).not.toContain("input_file"); // a path is not swept
   });
 
   it("treats 10 and 10.0 as the same number and a different number as a change", () => {
@@ -24,10 +26,11 @@ describe("ROHSA settings", () => {
 
   it("reads a Gaussian count written as a list as the number a person types", () => {
     const text = '[rohsa]\nn_gauss = [16]   # N\nlambda_amp = 10.0\nnoise = true\n';
-    expect(readRohsaSetting(text, "n_gauss")).toBe("16");
-    expect(readRohsaSetting(text, "lambda_amp")).toBe("10.0");
-    expect(readRohsaSetting(text, "noise")).toBe("true");
-    expect(readRohsaSetting(text, "crop_size")).toBe("");
+    const key = (n: string) => rohsaTemplate.keys.find((k) => k.name === n)!;
+    expect(readConfigSetting(text, key("n_gauss"))).toBe("16");
+    expect(readConfigSetting(text, key("lambda_amp"))).toBe("10.0");
+    expect(readConfigSetting(text, key("noise"))).toBe("true");
+    expect(readConfigSetting(text, key("crop_size"))).toBe("");
   });
 });
 

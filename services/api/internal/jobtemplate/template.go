@@ -56,12 +56,15 @@ type Template struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 	// Tool is the tool's plain name inside sentences ("VGT", "ROHSA").
-	Tool      string    `json:"tool"`
-	About     string    `json:"about"`
-	Repo      Repo      `json:"repo"`
-	Config    Config    `json:"config"`
-	Keys      []Key     `json:"keys"`
-	Ties      []Tie     `json:"ties,omitempty"`
+	Tool   string `json:"tool"`
+	About  string `json:"about"`
+	Repo   Repo   `json:"repo"`
+	Config Config `json:"config"`
+	Keys   []Key  `json:"keys"`
+	Ties   []Tie  `json:"ties,omitempty"`
+	// SweepKey is the setting a new sweep row starts on: one of the declared keys that a sweep may vary (not the output folder, not a
+	// path). Empty means the first such key. It is a starting choice, not a limit.
+	SweepKey  string    `json:"sweepKey,omitempty"`
 	Steps     []Step    `json:"steps"`
 	Command   []string  `json:"command"`
 	Progress  *Progress `json:"progress,omitempty"`
@@ -397,6 +400,12 @@ func (t *Template) compileKeys() error {
 			if _, err := t.Check(k.Name, d.Value); err != nil {
 				return fail("key %q: its default is not a value the key accepts", k.Name)
 			}
+		}
+	}
+	if t.SweepKey != "" {
+		k := t.keys[t.SweepKey]
+		if k == nil || k.Internal || k.Kind == "path" {
+			return fail("sweepKey %q: not a declared key a sweep may vary (not the output folder, not a path)", t.SweepKey)
 		}
 	}
 	for i := range t.Ties {

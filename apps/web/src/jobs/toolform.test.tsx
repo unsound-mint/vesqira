@@ -31,7 +31,7 @@ describe("a job form drawn from a template", () => {
     await userEvent.click(screen.getByRole("button", { name: "Load settings" }));
     const bins = await screen.findByLabelText("n_bins");
     expect(bins).toHaveValue("16");
-    expect(bins).toHaveAccessibleDescription(/Number of histogram bins\. \(a whole number from 2 to 64; the tool's documented default is 16\)/);
+    expect(bins).toHaveAccessibleDescription(/Number of histogram bins \(a whole number from 2 to 64; the tool's documented default is 16, invented\)\./);
     expect(screen.getByLabelText("threshold")).toHaveAccessibleDescription(/0 to 10/);
     expect(screen.queryByLabelText("Output folder")).toBeNull(); // Vesqira's own per job
     const mode = screen.getByLabelText("mode");
@@ -82,7 +82,7 @@ describe("template form helpers", () => {
     expect(keyHint({ ...k, min: 0, max: 10 })).toBe("0 to 10");
     expect(keyHint({ ...k, min: 1 })).toBe("at least 1");
     expect(keyHint({ ...k, max: 9 })).toBe("at most 9");
-    expect(keyHint({ ...k, expect: "a number of GB", min: 1, default: { value: "auto", reason: "r" } })).toBe("a number of GB; the tool's documented default is auto");
+    expect(keyHint({ ...k, expect: "a number of GB", min: 1, default: { value: "auto", reason: "r" } })).toBe("a number of GB; the tool's documented default is auto, r");
     expect(keyHint(k)).toBe("");
   });
 

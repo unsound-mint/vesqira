@@ -6,7 +6,7 @@ import type { Job, JobTemplate, TemplateKey } from "../api/jobs";
 import type { Host } from "../api/hosts";
 import { RohsaSizingHint } from "./RohsaSizingHint";
 import { SizingHint } from "./JobUsage";
-import { changedSettings, choices, commandLine, editableKeys, keyHint, readConfigSetting, stepLine } from "./templateForm";
+import { changedSettings, choices, commandLine, editableKeys, keyDescription, pinLabel, readConfigSetting, stepLine } from "./templateForm";
 import s from "./JobsView.module.css";
 
 /** The most recent finished job of this kind on this host that has a measured use, to size a new request from. */
@@ -93,8 +93,7 @@ export function NewJob({ hosts, jobs, templates, onCreated }: { hosts: Host[]; j
   }
 
   const field = (k: TemplateKey) => {
-    const hint = keyHint(k);
-    const description = hint ? `${k.description} (${hint})` : k.description;
+    const description = keyDescription(k);
     const opts = choices(k);
     const set = (v: string) => setVals((cur) => ({ ...cur, [k.name]: v }));
     return opts ? (
@@ -126,7 +125,7 @@ export function NewJob({ hosts, jobs, templates, onCreated }: { hosts: Host[]; j
       <Input label="Job name" value={name} onChange={(e) => setName(e.target.value)} />
       <PathField label={t.repo.folderLabel} kind="dir" hostId={hostNum} hosts={hosts} onHost={(h) => setHostId(String(h))} value={repoDir} onChange={setRepoDir} placeholder={t.repo.placeholder} />
       <p className={s.note}>{t.repo.hint || `The checkout of ${t.repo.url}.`} Code: <span className="mono">{t.repo.url}</span> at <span className="mono">{short}</span>.</p>
-      <Checkbox label={`Stop the job unless the folder is at commit ${short}, with no changed tracked files (the revision this profile was written against)`} checked={pin} onChange={(e) => setPin(e.target.checked)} />
+      <Checkbox label={pinLabel(t)} checked={pin} onChange={(e) => setPin(e.target.checked)} />
       <div className={s.inline}>
         <PathField label={t.config.label} kind="file" ext={[".toml"]} hostId={hostNum} hosts={hosts} onHost={(h) => setHostId(String(h))} value={configPath} onChange={setConfigPath} placeholder={t.config.placeholder} />
         <Button type="button" disabled={busy || !configPath || !hostId} onClick={load}>Load settings</Button>

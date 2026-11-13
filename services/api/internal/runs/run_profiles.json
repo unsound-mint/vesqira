@@ -162,6 +162,7 @@
             "internal": true
           }
         ],
+        "sweepKey": "dn",
         "steps": [
           {
             "kind": "export",
@@ -493,6 +494,7 @@
             "reason": "the three smoothing weights are usually moved together, as the smoothNNN configs of ROHSA-LMC do"
           }
         ],
+        "sweepKey": "n_gauss",
         "steps": [
           {
             "kind": "export",

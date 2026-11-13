@@ -113,7 +113,7 @@ func TestSyntheticToolDraftsSubmitsAndRefuses(t *testing.T) {
 		{"injection in an enum", map[string]string{"mode": "fast\"\nrm -rf ~"}, nil, "mode"},
 		{"newline in a bool", map[string]string{"smooth": "true\n[fit]"}, nil, "smooth"},
 		{"unknown key", map[string]string{"shell": "x"}, nil, "not an editable"},
-		{"the output folder", map[string]string{"output_dir": "/etc"}, nil, "not an editable"},
+		{"the output folder", map[string]string{"output_dir": "/etc"}, nil, "set by Vesqira"},
 		{"repo folder", nil, map[string]any{"repoDir": "/x; rm -rf ~"}, "SynthFit folder"},
 		{"repo folder substitution", nil, map[string]any{"repoDir": "/x/$(id)"}, "SynthFit folder"},
 	}

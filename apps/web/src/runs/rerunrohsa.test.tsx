@@ -4,6 +4,7 @@ import type { Host } from "../api/hosts";
 import type { Job, RohsaSizing } from "../api/jobs";
 import type { Rerun, Run } from "../api/runs";
 import { RerunDraft } from "./RerunDraft";
+import { rohsaTemplate, vgtTemplate } from "../jobs/templateFixtures";
 
 const host: Host = { id: 1, name: "Cluster", dest: "login1", python: "python3", roots: ["/data"], createdAt: "" };
 const run = (over: Partial<Run> = {}): Run => ({
@@ -42,6 +43,7 @@ function mockFetch(rerun: Rerun, texts: Record<string, string> = {}) {
   const calls: { url: string; method: string; body: any }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (url === "/api/job-templates") return new Response(JSON.stringify({ templates: [vgtTemplate, rohsaTemplate] }), { status: 200 });
     if (init?.method === "POST") return new Response(JSON.stringify(created), { status: 201 });
     if (url.startsWith("/api/rohsa/sizing")) return new Response(JSON.stringify(table(url)), { status: 200 });
     if (url === "/api/boards") return new Response(JSON.stringify({ boards: [] }), { status: 200 });
@@ -76,9 +78,10 @@ describe("run a ROHSA run again with…", () => {
     await waitFor(() => expect(done).toHaveBeenCalledWith(created));
     const post = calls.find((c) => c.method === "POST")!;
     expect(post.url).toBe("/api/jobs");
-    expect(post.body).toMatchObject({ hostId: 1, template: "rohsa", parentRunId: 1, rohsa: { repoDir: "/shared/vgt", configPath: "/data/configs/rohsa/a.toml", configText: cfgText, set: { lambda: "10", n_gauss: "12" }, cpus: 32, mem: "140G" } });
-    expect(post.body.rohsa.set.output_dir).toBeUndefined();
+    expect(post.body).toMatchObject({ hostId: 1, template: "rohsa", parentRunId: 1, tool: { repoDir: "/shared/vgt", configPath: "/data/configs/rohsa/a.toml", configText: cfgText, set: { lambda: "10", n_gauss: "12" }, cpus: 32, mem: "140G" } });
+    expect(post.body.tool.set.output_dir).toBeUndefined();
     expect(post.body.vgt).toBeUndefined();
+    expect(post.body.rohsa).toBeUndefined();
   });
 
   it("shows your own sizing table for the crop and N, follows N, labels its source, and applies nothing by itself", async () => {
@@ -130,7 +133,7 @@ describe("run a ROHSA run again with…", () => {
     await userEvent.click(prepare);
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     const post = calls.find((c) => c.method === "POST")!;
-    expect(post.body.rohsa.configText).toBeUndefined(); // the file on the host is read
-    expect(post.body.rohsa.set).toEqual({ n_gauss: "8", lambda_amp: "10", lb_sig: "1" });
+    expect(post.body.tool.configText).toBeUndefined(); // the file on the host is read
+    expect(post.body.tool.set).toEqual({ n_gauss: "8", lambda_amp: "10", lb_sig: "1" });
   });
 });

@@ -461,6 +461,9 @@ type rerunVGT struct {
 	Time           *string           `json:"time"`
 	Partition      *string           `json:"partition"`
 	Account        *string           `json:"account"`
+	// PinProfile: the job's script insisted on the commit its tool's profile was written against; a new draft starts with the same
+	// choice (the form's checkbox), which the person may change.
+	PinProfile bool `json:"pinProfile"`
 }
 
 type rerunJSON struct {
@@ -568,13 +571,10 @@ func (s *Server) rerunRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out.Source = "job"
-	set := req.Set
-	if set == nil {
-		set = map[string]string{}
-	}
+	set := jobs.CarriedSet(job.Template, req.Set) // a folder Vesqira chose for the job is not a setting of the next one
 	cpus := req.CPUs
 	rr := rerunVGT{RepoDir: strp(req.RepoDir), ConfigPath: strp(req.ConfigPath), BaseConfigText: strp(req.BaseConfigText), Set: set,
-		CPUs: &cpus, Mem: strp(req.Mem), Time: strp(req.Time), Partition: strp(req.Partition), Account: strp(req.Account)}
+		CPUs: &cpus, Mem: strp(req.Mem), Time: strp(req.Time), Partition: strp(req.Partition), Account: strp(req.Account), PinProfile: req.PinProfile}
 	if rohsa {
 		out.ROHSA = &rr
 		out.Settings = effectiveROHSASettings(req)
