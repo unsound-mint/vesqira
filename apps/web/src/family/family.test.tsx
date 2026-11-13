@@ -43,6 +43,12 @@ describe("family view", () => {
     expect(screen.getByRole("combobox", { name: "Compare each with" })).toHaveDisplayValue("width = 3");
   });
 
+  it("says so when the found families cannot be listed, instead of showing none", async () => {
+    mockFetch({ "/api/analysis/families": () => ({ status: 502, body: { error: "the host did not answer" } }) });
+    render(<FamilyView datasets={maps} preset={null} />);
+    expect(await screen.findByText(/could not be listed \(the host did not answer\)/)).toBeInTheDocument();
+    expect(screen.getByLabelText("a.fits")).toBeInTheDocument();
+  });
   it("sends the chosen maps, reference and spread, and states what was computed", async () => {
     const calls = mockFetch({
       "/api/analysis/families": () => ({ body: { families: [] } }),

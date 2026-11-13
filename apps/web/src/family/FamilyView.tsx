@@ -35,6 +35,7 @@ export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: D
   const [channel, setChannel] = useState("1");
   const [filter, setFilter] = useState("");
   const [cands, setCands] = useState<FamilyCandidate[]>([]);
+  const [candsErr, setCandsErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [rid, setRid] = useState<string | null>(null);
   const queued = useQueueReason(busy, rid);
@@ -44,7 +45,10 @@ export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: D
   const [result, setResult] = useState<{ r: FamilyResult; channel: number; names: string[]; axial: boolean } | null>(null);
 
   useEffect(() => {
-    listFamilyCandidates().then((x) => setCands(Array.isArray(x) ? x : [])).catch(() => setCands([]));
+    // the suggestions are optional, but a failed load must not look like "no families found"
+    listFamilyCandidates()
+      .then((x) => { setCands(Array.isArray(x) ? x : []); setCandsErr(null); })
+      .catch((e) => { setCands([]); setCandsErr(e instanceof Error ? e.message : "the request failed"); });
   }, [datasets.length]);
   useEffect(() => {
     if (!preset) return;
@@ -109,6 +113,7 @@ export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: D
           <ul className={s.cands}>{excluded.map((x, i) => <li key={i}><strong>{x.label}</strong> <span className={s.note}>{x.reason}</span></li>)}</ul>
         </section>
       ) : null}
+      {candsErr ? <p role="status" className={s.note}>Families found in your results could not be listed ({candsErr}); you can still pick maps below.</p> : null}
       {cands.length > 0 ? (
         <section aria-label="Families found in your results" className={s.block}>
           <h3 className={s.h3}>Found in your results</h3>
