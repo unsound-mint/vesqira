@@ -222,8 +222,10 @@ def run(path: str, nx: int, ny: int, nc: int, repeats: int, worker: "Worker | No
         times: list[float] = []
         err = None
         before = w.received
+        resident = None
         if drop is not None:
             drop(path)
+            resident = cached_fraction(path)       # a page the worker still has mapped is not evicted: say so per row
         for i in range(repeats if not isinstance(req, list) else 1):
             for r in reqs:
                 ms, head = w.ask(**r)
@@ -234,6 +236,8 @@ def run(path: str, nx: int, ny: int, nc: int, repeats: int, worker: "Worker | No
             if err:
                 break
         entry: dict = {"rss_mb": w.rss_mb(), "peak_mb": w.peak_mb()}
+        if resident is not None:
+            entry["resident_after_drop_pct"] = round(100 * resident, 2)
         if err:
             entry["error"] = err
         else:
@@ -336,7 +340,7 @@ def sha256_of(path: str) -> str:
     return h.hexdigest()
 
 
-def transfer_bench(d: str, sshd: "UserSshd", mib: int) -> dict:
+def transfer_bench(d: str, sshd: "UserSshd", mib: int, bwlimit_kib: int) -> dict:
     """A download through ssh that is cut at about 40 % and run again, with the flags the app uses for the copy itself
     (hosts.RsyncArgv: --partial-dir, no in-place writes). Reports how much the second run sent again against how much was
     already there, and whether the finished file hashes like the source. The cut kills the rsync client, which is what a
@@ -350,7 +354,7 @@ def transfer_bench(d: str, sshd: "UserSshd", mib: int) -> dict:
         for _ in range(mib):
             f.write(os.urandom(1 << 20))                    # no repeated blocks: rsync's rolling checksum would match them anywhere
     total = os.path.getsize(src)
-    base = ["rsync", "-rlt", "--partial-dir=.vesqira-partial", "--timeout=600", "--stats", "--bwlimit=262144", "-e", sshd.rsh(),
+    base = ["rsync", "-rlt", "--partial-dir=.vesqira-partial", "--timeout=600", "--stats", *([f"--bwlimit={bwlimit_kib}"] if bwlimit_kib else []), "-e", sshd.rsh(),
             "--", f"127.0.0.1:{src}", os.path.join(dst_dir, "cube.fits")]
     part = os.path.join(dst_dir, ".vesqira-partial", "cube.fits")
     t0 = time.perf_counter()
@@ -402,6 +406,7 @@ def main() -> int:
     ap.add_argument("--real-disk", default=None, metavar="DIR", help="also read a dense cube made in DIR (a real file system, not tmpfs) cold and warm")
     ap.add_argument("--ssh", action="store_true", help="also read through a real ssh to a user-mode sshd on loopback (needs sshd; no root)")
     ap.add_argument("--transfer-mib", type=int, default=1024, help="size of the file of the interrupted-and-resumed transfer (with --ssh)")
+    ap.add_argument("--transfer-bwlimit", type=int, default=0, help="rsync --bwlimit in KiB/s for that transfer, 0 for none (a slow link: 20480)")
     ap.add_argument("--check", action="store_true", help="fail when a budget is exceeded")
     ap.add_argument("--json", default=None)
     a = ap.parse_args()
@@ -451,19 +456,19 @@ def main() -> int:
                     res["ops"].update({"ssh_" + k: v for k, v in run(dense, nx, ny, nc, a.repeats, worker=w, drop=evict if a.real_disk else None)["ops"].items()})
                     w.close()
                     if shutil.which("rsync"):
-                        res["transfer_resume"] = transfer_bench(d, sshd, a.transfer_mib)
+                        res["transfer_resume"] = transfer_bench(d, sshd, a.transfer_mib, a.transfer_bwlimit)
     print(f"sparse cube {nx}x{ny}x{nc} ({res['cube']['logical_gib']:.1f} GiB logical); page-cache speed, not disk, except the disk_ and ssh_ rows")
-    print(f"{'op':22s} {'first ms':>9s} {'median':>8s} {'p95':>8s} {'rss MB':>7s} {'peak MB':>8s} {'reply KB':>9s}")
+    print(f"{'op':22s} {'first ms':>9s} {'median':>8s} {'p95':>8s} {'rss MB':>7s} {'peak MB':>8s} {'reply KB':>9s} {'cached %':>9s}")
     for name, e in res["ops"].items():
         if "error" in e:
             print(f"{name:22s} {'refused: ' + str(e['error']):>38s} {e['rss_mb']:7d}")
         else:
-            print(f"{name:22s} {e['first_ms']:9.1f} {e['median_ms']:8.1f} {e['p95_ms']:8.1f} {e['rss_mb']:7d} {e.get('peak_mb', 0):8d} {e.get('reply_bytes', 0) / 1024:9.1f}")
+            print(f"{name:22s} {e['first_ms']:9.1f} {e['median_ms']:8.1f} {e['p95_ms']:8.1f} {e['rss_mb']:7d} {e.get('peak_mb', 0):8d} {e.get('reply_bytes', 0) / 1024:9.1f} {(format(e['resident_after_drop_pct'], '9.2f') if 'resident_after_drop_pct' in e else ' ' * 9)}")
     for n in notes:
         print("note: " + n)
     if "transfer_resume" in res:
         t = res["transfer_resume"]
-        print(f"transfer: {t['file_mib']} MiB download through ssh cut after {t['cut_ms']} ms with {t['partial_kept_mib']} MiB kept; resumed in {t['resume_ms']} ms "
+        print(f"transfer: {t['file_mib']} MiB download through ssh (limit {a.transfer_bwlimit or 'none'} KiB/s) cut after {t['cut_ms']} ms with {t['partial_kept_mib']} MiB kept; resumed in {t['resume_ms']} ms "
               f"(exit {t['resume_exit']}, literal {t['literal_mib']} MiB sent again, matched {t['matched_mib']} MiB, received {t['received_mib']} MiB), "
               f"from scratch {t['from_scratch_ms']} ms; hash equal: {t['hash_equal']}; partial removed: {t['partial_gone']}")
     pl = res["ops"]["plane_under_load"]

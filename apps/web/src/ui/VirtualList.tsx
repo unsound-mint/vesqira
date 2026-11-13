@@ -4,7 +4,8 @@ import { useRoving } from "./roving";
 
 /** Lists up to this many rows are drawn whole; above it only the rows near the viewport exist in the page. */
 export const VIRTUAL_THRESHOLD = 200;
-const ROW_PX = 28; // --row in design/tokens.css; every row of these lists is one row high
+/** --row in design/tokens.css (virtualList.test.tsx checks they agree); every row of these lists is one row high. */
+export const ROW_PX = 28;
 const OVERSCAN = 8;
 const FALLBACK_VIEWPORT_PX = 800; // a scroller that reports no height (a test document)
 

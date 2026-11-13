@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Explorer } from "../catalog/Explorer";
 import type { Dataset } from "../api/catalog";
 import { TreeRow } from "./TreeRow";
-import { VirtualList, windowRange } from "./VirtualList";
+import { ROW_PX, VirtualList, windowRange } from "./VirtualList";
+import tokens from "../../../../design/tokens.css?raw";
 
 // jsdom has no layout. The scroller is a div whose height and scroll position are set by hand, and the list's rectangle is
 // derived from that position the way a browser would report it.
@@ -41,6 +42,10 @@ describe("windowRange", () => {
 });
 
 describe("VirtualList", () => {
+  it("places rows by the design token for a row, so a change of --row cannot leave gaps or overlaps", () => {
+    expect(tokens).toMatch(new RegExp(`--row:\\s*${ROW_PX}px`));
+  });
+
   it("draws a short list whole, in flow", () => {
     render(<Demo n={50} />);
     expect(rows()).toHaveLength(50);
