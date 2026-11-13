@@ -190,7 +190,7 @@ The local instance gains loopback routes for the link settings, the push queue a
 
 ### Not now
 
-Preapproved templates and budgets (shape.md; ADR 0050 slice 6); pushing datasets or managed copies; comments flowing back from the group server to the local instance; a push server stream; requests from review-link holders (ADR 0028 option A).
+Pushing datasets or managed copies; comments flowing back from the group server to the local instance; a push server stream; requests from review-link holders (ADR 0028 option A). Preapproved templates and budgets, once listed here, are ADR 0074.
 
 ## Implementation (slice 4, 2026-11-13)
 
