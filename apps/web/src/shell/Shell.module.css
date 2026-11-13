@@ -291,6 +291,11 @@
   font-size: var(--text-sm);
 }
 
+/* the inspector's own empty text sits inside the panel's gutter like a section body, not against its edge */
+.insp > .scroll > .empty {
+  padding: var(--sp-3);
+}
+
 .canvas .empty {
   color: var(--canvas-text-2);
 }

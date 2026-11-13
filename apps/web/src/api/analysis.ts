@@ -42,7 +42,20 @@ export type Derived = { datasetId: number; op: string; params: { options?: Recor
 
 export const runAnalysis = (r: AnalysisRequest, signal?: AbortSignal, requestId?: string) => post<{ summary: StatsSummary | Record<string, unknown>; dataset?: Dataset }>("/api/analysis", r, signal, requestId);
 export const createAnalysisJob = (r: AnalysisRequest) => post<Job>("/api/analysis/job", r);
-export const getDerived = (id: number) => call<Derived>(`/api/datasets/${id}/derived`);
+// The inspector shows three sections that each read the same record (how it was made, the relative-orientation result, the HEALPix sample),
+// and most datasets have none (a 404, which the console prints for every request). Calls made while one is in flight share it: one
+// request per dataset instead of three. The entry is dropped when it settles, so a record made a moment later is still read afresh.
+const derivedInFlight = new Map<number, Promise<Derived>>();
+export function getDerived(id: number): Promise<Derived> {
+  let p = derivedInFlight.get(id);
+  if (!p) {
+    p = call<Derived>(`/api/datasets/${id}/derived`);
+    derivedInFlight.set(id, p);
+    const done = () => void derivedInFlight.delete(id);
+    p.then(done, done);
+  }
+  return p;
+}
 type Schemas = components["schemas"];
 /** Relative orientation (ADR 0047): a declared orientation map against a catalog with a declared angle, or against a second map. */
 export type RelOrientParams = Schemas["RelativeOrientationParams"];
