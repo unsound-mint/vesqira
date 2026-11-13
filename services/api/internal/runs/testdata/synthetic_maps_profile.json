@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "about": "TEST ONLY. Synthetic profiles for a tool that is neither VGT nor ROHSA and writes its Gaussian decomposition as FITS maps, in the layout invented by fixtures/generate.py write_synth_decomp_run (amplitude in K and centre in m/s from BUNIT, a FWHM in km/s that the maps do not label). It is not a public tool's format and is never shipped. It proves that the decomposition record is read from a profile's declaration alone. SynthDecomp-noframe leaves the centre's spectral frame undeclared, to show that nothing is drawn from a record that does not say enough.",
+  "about": "TEST ONLY. Synthetic profiles for a tool that is neither VGT nor ROHSA and writes its Gaussian decomposition as FITS maps, in the layout invented by fixtures/generate.py write_synth_decomp_run (amplitude in K and centre in m/s from BUNIT, a FWHM in km/s that the maps do not label). It is not a public tool's format and is never shipped. It proves that the decomposition record is read from a profile's declaration alone. SynthDecomp-hdus finds the three maps by EXTNAME and EXTVER in one multi-extension file (write_synth_decomp_named_hdus). SynthDecomp-noframe leaves the centre's spectral frame undeclared, to show that nothing is drawn from a record that does not say enough.",
   "roles": {
     "orientation": "Orientation map",
     "reliability": "Reliability",
@@ -134,6 +134,52 @@
         },
         "amplitude": {},
         "centre": {},
+        "width": {
+          "kind": "fwhm",
+          "unit": "km/s"
+        },
+        "order": "slot index along the component axis, as the tool numbers them",
+        "components": "config.n_components",
+        "crop": "input.path"
+      }
+    },
+    {
+      "name": "SynthDecomp-hdus",
+      "version": "1",
+      "kind": "synthdecomp",
+      "label": "synthetic decomposition",
+      "source": "none: invented for the tests",
+      "record": {
+        "file": "synth_decomp_hdus_run.toml",
+        "reader": "run_metadata",
+        "anyKey": [
+          "synthdecomp.version"
+        ]
+      },
+      "decomposition": {
+        "source": {
+          "kind": "fits_maps",
+          "maps": {
+            "amplitude": {
+              "file": "synth_decomp_ext.fits",
+              "hdu": "AMP",
+              "extver": 1
+            },
+            "centre": {
+              "file": "synth_decomp_ext.fits",
+              "hdu": "CENTRE"
+            },
+            "width": {
+              "file": "synth_decomp_ext.fits",
+              "hdu": "FWHM"
+            }
+          },
+          "componentAxis": 3
+        },
+        "amplitude": {},
+        "centre": {
+          "frame": "LSRK"
+        },
         "width": {
           "kind": "fwhm",
           "unit": "km/s"

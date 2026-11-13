@@ -66,10 +66,12 @@ type DecompColumns struct {
 	Width     int `json:"width"`
 }
 
-// DecompMap says where a parameter's map is: HDU is a number or a name (0 when absent), and the file is an exact name (a cube with
+// DecompMap says where a parameter's map is: HDU is a number or a name (0 when absent; a name is an EXTNAME, and ExtVer, only
+// valid with a name, picks one of several HDUs that carry it: the reader refuses a name that is ambiguous or missing), and the file is an exact name (a cube with
 // a component axis) or a pattern with one group that captures the component number, counted from 1 (a map per component).
 type DecompMap struct {
 	HDU     any    `json:"hdu,omitempty"`
+	ExtVer  *int   `json:"extver,omitempty"`
 	File    string `json:"file,omitempty"`
 	Pattern string `json:"pattern,omitempty"`
 	re      *regexp.Regexp
@@ -150,6 +152,11 @@ func (d *Decomposition) compile() error {
 			default:
 				return fmt.Errorf("the %s map's hdu is a number from 0 or a name", p)
 			}
+			if m.ExtVer != nil {
+				if _, named := m.HDU.(string); !named || *m.ExtVer < 1 || *m.ExtVer > 1<<20 {
+					return fmt.Errorf("the %s map's extver is a whole number from 1, and goes with an hdu named by EXTNAME", p)
+				}
+			}
 		}
 	default:
 		return errors.New("a decomposition source is a table or fits_maps")
@@ -182,6 +189,9 @@ func (d *Decomposition) Declaration() map[string]any {
 			e := map[string]any{}
 			if m.HDU != nil {
 				e["hdu"] = m.HDU
+			}
+			if m.ExtVer != nil {
+				e["extver"] = *m.ExtVer
 			}
 			maps[p] = e
 		}

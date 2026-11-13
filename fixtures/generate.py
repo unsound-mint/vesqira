@@ -820,6 +820,7 @@ path = "/scratch/someone/synth_cube.fits"
 [outputs]
 ncomp_file = "/scratch/someone/synth_decomp_ncomp.fits"
 """)
+    write_synth_decomp_named_hdus(directory / "named_hdus")
     # the same maps under a record whose profile leaves the centre's spectral frame undeclared: the viewer must say so and draw nothing
     bare = directory / "unresolved"
     bare.mkdir(exist_ok=True)
@@ -827,6 +828,49 @@ ncomp_file = "/scratch/someone/synth_decomp_ncomp.fits"
         shutil.copyfile(directory / name, bare / name)
     (bare / "synth_decomp_noframe_run.toml").write_text((directory / "synth_decomp_run.toml").read_text())
     return directory / "synth_decomp_run.toml"
+
+
+def write_synth_decomp_named_hdus(directory: Path) -> Path:
+    """The same fit in one multi-extension file, synth_decomp_ext.fits, whose maps are found by EXTNAME (and EXTVER), and its record
+    synth_decomp_hdus_run.toml. HDU order: an empty primary; AMP with EXTVER 2 (a decoy, 10 x the amplitudes) before AMP with EXTVER 1 (the
+    truth), so a reader that takes the first HDU of that name reads the wrong numbers; CENTRE (m/s) and FWHM (km/s, no BUNIT), each the
+    only HDU of its name; and a decoy table HDU named AMPTAB. Every map HDU keeps the component axis last (FITS axis 3)."""
+    directory.mkdir(parents=True, exist_ok=True)
+    t = decomp_truth()
+    decomp_cube().writeto(directory / "synth_cube.fits", overwrite=True)
+
+    def image(values, name, ver, bunit):
+        hdu = fits.ImageHDU(np.asarray(values, dtype=np.float64))
+        _decomp_sky(hdu.header)
+        hdu.header["EXTNAME"] = name
+        if ver is not None:
+            hdu.header["EXTVER"] = ver
+        if bunit:
+            hdu.header["BUNIT"] = bunit
+        return hdu
+
+    # the three maps are (DN, DY, DX) numpy arrays = FITS axes (x, y, component)
+    hdul = fits.HDUList([
+        fits.PrimaryHDU(),
+        image(t["amp"] * 10.0, "AMP", 2, "K"),
+        image(t["amp"], "AMP", 1, "K"),
+        image(t["centre_kms"] * 1000.0, "CENTRE", None, "m/s"),
+        image(t["fwhm_kms"], "FWHM", 1, None),
+        fits.BinTableHDU.from_columns([fits.Column(name="v", format="D", array=np.zeros(2))], name="AMPTAB"),
+    ])
+    hdul.writeto(directory / "synth_decomp_ext.fits", overwrite=True)
+    (directory / "synth_decomp_hdus_run.toml").write_text("""generated_at_utc = "2026-11-13T09:00:00Z"
+
+[synthdecomp]
+version = "0.1-synthetic"
+
+[config]
+n_components = 3
+
+[input]
+path = "/scratch/someone/synth_cube.fits"
+""")
+    return directory / "synth_decomp_hdus_run.toml"
 
 
 def write_all(directory: Path) -> dict[str, Path]:
