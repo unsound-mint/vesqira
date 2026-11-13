@@ -11,7 +11,8 @@ import { EM } from "../catalog/format";
 import s from "./OrientationPanels.module.css";
 
 /** Whether a declaration was read from the file's own header: by an orientation profile ("profile:VGT.jl@1"), or by the VGT.jl reading that came before profiles. */
-export const isFileHeader = (by: string) => by === "vgt-file-header" || by.startsWith("profile:");
+export { isFileHeader } from "./angleConvention";
+import { isFileHeader } from "./angleConvention";
 const profileOf = (by: string) => (by.startsWith("profile:") ? by.slice("profile:".length) : "VGT.jl");
 const SKY_NAME: Record<string, string> = { galactic: "Galactic", icrs: "ICRS" };
 
