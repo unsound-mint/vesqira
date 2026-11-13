@@ -652,6 +652,72 @@ class RemoteRoots(unittest.TestCase):
         self.assertEqual(st["size"], (self.root / "hi_cube.fits").stat().st_size)
         self.assertEqual(self.ask(op="resolve", path=str(self.root / "link_in.fits"))["real"], p)   # a link inside resolves
 
+    def test_register_many_gives_what_the_single_ops_give_and_refuses_files_alone(self):
+        bad = self.root / "not_fits.fits"
+        bad.write_bytes(b"this is not a FITS file\n" * 200)
+        good = [str(self.root / "hi_cube.fits"), str(self.root / "vgt_psi_deg.fits")]
+        paths = [good[0], str(self.root / "missing.fits"), str(self.other / "secret.fits"), str(bad), good[1], str(self.root / "link_in.fits")]
+        r = self.ask(op="register_many", paths=paths)
+        self.assertTrue(r["ok"])
+        self.assertEqual(len(r["files"]), len(paths))
+        f = r["files"]
+        for i in (0, 4, 5):                                              # the same header, size, time and fingerprint as the single ops
+            one = self.ask(op="header", path=paths[i])
+            for k in ("nbytes", "op", "size", "mtime_ns"):
+                one.pop(k)
+            self.assertTrue(f[i]["ok"])
+            self.assertEqual(f[i]["header"], one)
+            self.assertEqual(f[i]["real"], self.ask(op="resolve", path=paths[i])["real"])
+            fp = self.ask(op="fingerprint", path=paths[i])
+            self.assertEqual((f[i]["sampled"], f[i]["algorithm"], f[i]["size"], f[i]["mtime_ns"]), (fp["sampled"], fp["algorithm"], fp["size"], fp["mtime_ns"]))
+            self.assertNotIn("sampled_error", f[i])
+        self.assertEqual(f[5]["real"], good[0])                          # a link inside the roots resolves
+        single = {p: self.ask(op="header", path=p) for p in (paths[1], paths[2], str(bad))}
+        self.assertEqual((f[1]["ok"], f[1]["stage"], f[1]["code"], f[1]["error"]), (False, "resolve", "forbidden", "not available"))
+        self.assertEqual((f[2]["code"], f[2]["error"]), (single[paths[2]]["code"], single[paths[2]]["error"]))
+        self.assertEqual((f[3]["ok"], f[3]["stage"], f[3]["code"], f[3]["error"]), (False, "header", single[str(bad)]["code"], single[str(bad)]["error"]))
+
+    def test_register_many_bounds_its_input(self):
+        for bad in ([], "x", ["/x"] * 33):
+            r = self.ask(op="register_many", paths=bad)
+            self.assertEqual((r["ok"], r["code"]), (False, "bad_request"))
+        r = self.ask(op="register_many", paths=[1, "relative.fits"])    # a path that is not an absolute string is that file's refusal
+        self.assertEqual([(f["ok"], f["code"]) for f in r["files"]], [(False, "bad_request")] * 2)
+
+    def test_register_many_gives_no_fingerprint_for_a_file_that_changed_while_it_was_read(self):
+        import plane_worker as pw
+        p = str(self.root / "hi_cube.fits")
+        real_stat, calls = pw.stat_source, []
+
+        def moving(path):
+            st = real_stat(path)
+            calls.append(1)
+            return os.stat_result((st.st_mode, st.st_ino, st.st_dev, st.st_nlink, st.st_uid, st.st_gid, st.st_size + len(calls) % 2, st.st_atime, st.st_mtime, st.st_ctime))
+
+        saved = pw.ROOTS
+        pw.ROOTS = [str(self.root)]
+        pw.stat_source = moving
+        try:
+            f = pw.register_many({"paths": [p]})["files"][0]
+        finally:
+            pw.stat_source, pw.ROOTS = real_stat, saved
+        self.assertTrue(f["ok"])
+        self.assertNotIn("sampled", f)
+        self.assertEqual(f["sampled_error"]["code"], "changed")
+
+    def test_register_many_stops_at_its_time_budget_and_leaves_the_rest_for_the_caller(self):
+        import plane_worker as pw
+        paths = [str(self.root / n) for n in ("hi_cube.fits", "vgt_psi_deg.fits", "link_in.fits")]
+        saved = pw.ROOTS
+        pw.ROOTS = [str(self.root)]
+        try:
+            r = pw.register_many({"paths": paths}, budget=-1.0)           # spent before the second file; the first is always done
+            self.assertEqual(len(r["files"]), 1)
+            self.assertTrue(r["files"][0]["ok"])
+            self.assertEqual(len(pw.register_many({"paths": paths})["files"]), 3)
+        finally:
+            pw.ROOTS = saved
+
     def test_raw_header_cards_are_the_files_own_text_and_stay_inside_the_roots(self):
         r = self.ask(op="cards", path=str(self.root / "hi_cube.fits"))
         self.assertTrue(r["ok"] and not r["truncated"])

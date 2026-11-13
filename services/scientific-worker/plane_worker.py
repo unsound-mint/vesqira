@@ -998,6 +998,8 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         return walk_page(req), b""
     if op == "canon":
         return canonical_dir(path), b""
+    if op == "register_many":
+        return register_many(req), b""
     if op == "stat_many":
         # the size and time of a few files at once (the map files of a decomposition), each authorized and opened like any source
         paths = req.get("paths")
@@ -1073,13 +1075,70 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         except (OSError, ValueError, KeyError, TypeError) as e:
             raise Refused("unreadable", clean(str(e), 120))
     if op == "header":
-        from fits_header import describe
-        from healpix_pol import HealpixRefused
-        try:
-            return {**describe(real), "nbytes": 0, "op": op, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
-        except HealpixRefused as e:
-            raise Refused("refused", clean(str(e), 300))
+        return {**header_report(real), "nbytes": 0, "op": op, "size": st.st_size, "mtime_ns": st.st_mtime_ns}, b""
     raise Refused("bad_request", "bad request")
+
+
+def header_report(real: str) -> dict:
+    """What op "header" reports for an authorized file, before the op, size and time fields; also what register_many reports."""
+    from fits_header import describe
+    from healpix_pol import HealpixRefused
+    try:
+        return describe(real)
+    except HealpixRefused as e:
+        raise Refused("refused", clean(str(e), 300))
+
+
+REGISTER_MANY_MAX = 32
+REGISTER_MANY_BUDGET_S = 20.0                        # the API's call may take 90 s; a batch hands back what is done well before
+CAUGHT = (Refused, MemoryError, OSError, ValueError, KeyError, TypeError, IndexError)
+
+
+def register_many(req: dict, budget: float = REGISTER_MANY_BUDGET_S) -> dict:
+    """The work of op "resolve", "header" and "fingerprint" for each of up to 32 files, in order, in one round trip.
+
+    Each file is refused alone (stage "resolve" or "header", with the code and sentence the single op would give) and never
+    fails the batch. The sampled fingerprint is the one op "fingerprint" gives; a file whose size or time changed while it
+    was read gets no fingerprint ("sampled_error") but is still reported, as one-by-one registration does. When the time
+    budget is spent the files not reached are left out: `files` is the prefix done, and the caller sends the rest again."""
+    paths = req.get("paths")
+    if not isinstance(paths, list) or not 1 <= len(paths) <= REGISTER_MANY_MAX:
+        raise Refused("bad_request", "bad request")
+    import fingerprint as fp
+    deadline = time.monotonic() + budget
+    files = []
+    for i, p in enumerate(paths):
+        if i and time.monotonic() > deadline:
+            break
+        stage = "resolve"
+        try:
+            real = authorize(p)
+            st = stat_source(real)
+            stage = "header"
+            out = {"ok": True, "real": real, "size": st.st_size, "mtime_ns": st.st_mtime_ns, "header": header_report(real)}
+            try:
+                out["algorithm"], out["sampled"] = fp.ALGORITHM, fp.sampled(real)
+                again = stat_source(real)
+                if (again.st_size, again.st_mtime_ns) != (st.st_size, st.st_mtime_ns):
+                    del out["sampled"]
+                    out["sampled_error"] = {"code": "changed", "error": "the file changed while it was being read"}
+            except CAUGHT as e:
+                out["sampled_error"] = dict(zip(("code", "error"), refusal_of(e)))
+            files.append(out)
+        except CAUGHT as e:
+            files.append({"ok": False, "stage": stage, **dict(zip(("code", "error"), refusal_of(e)))})
+    return {"ok": True, "op": "register_many", "nbytes": 0, "files": files}
+
+
+def refusal_of(e: BaseException) -> tuple:
+    """The (code, sentence) a request that raised `e` is answered with."""
+    if isinstance(e, Refused):
+        return e.code, e.message
+    if isinstance(e, MemoryError):
+        return "unreadable", over_cap_message()
+    if isinstance(e, (OSError, ValueError, KeyError, TypeError, IndexError)):
+        return "unreadable", "cannot read this file (truncated, corrupt or unsupported)"
+    return "unreadable", "cannot read file"
 
 
 MAX_CARDS = 3000
@@ -1440,7 +1499,7 @@ def _handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "channel must be a non-negative integer")
         import masks as mk
         return mk.mask_plane(path, ch)
-    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "fingerprint", "fingerprint_full", "stat_many"):
+    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "fingerprint", "fingerprint_full", "stat_many", "register_many"):
         return host_op(op, req)
     if isinstance(op, str) and op.startswith("catalog_"):
         return catalog_op(op, path, req)
@@ -1671,18 +1730,10 @@ def main() -> int:
                 raise Refused("bad_request", "bad request")
             rid, op = request_id(req), req.get("op")
             head, payload = handle(req)
-        except Refused as e:
-            head, payload = {"ok": False, "code": e.code, "error": e.message, "nbytes": 0}, b""
-            log_line(rid, op, f"refused code={e.code}")
-        except MemoryError:
-            head, payload = {"ok": False, "code": "unreadable", "error": over_cap_message(), "nbytes": 0}, b""
-            log_line(rid, op, "failed MemoryError")
-        except (OSError, ValueError, KeyError, TypeError, IndexError) as e:
-            head, payload = {"ok": False, "code": "unreadable", "error": "cannot read this file (truncated, corrupt or unsupported)", "nbytes": 0}, b""
-            log_line(rid, op, f"failed {type(e).__name__}")
         except Exception as e:                               # keep the worker alive on anything astropy raises
-            head, payload = {"ok": False, "code": "unreadable", "error": "cannot read file", "nbytes": 0}, b""
-            log_line(rid, op, f"failed {type(e).__name__}")
+            code, error = refusal_of(e)
+            head, payload = {"ok": False, "code": code, "error": error, "nbytes": 0}, b""
+            log_line(rid, op, f"refused code={code}" if isinstance(e, Refused) else f"failed {type(e).__name__}")
         elapsed = time.perf_counter() - t0
         if elapsed > SLOW_REQUEST_S:
             log_line(rid, op, f"slow ms={int(elapsed * 1000)}")
