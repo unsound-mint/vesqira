@@ -1362,7 +1362,7 @@ def _handle(req: dict) -> tuple[dict, bytes]:
     if op == "overlay_catalog":
         return overlay_catalog(req)
     file_ops = ("view", "plane", "coord", "spectrum", "axial", "sky2pix", "convert", "conversions", "orientation_sky", "overlay_geometry",
-                "slab", "channel_grid", "pv", "link", "region_histogram")
+                "slab", "channel_grid", "pv", "link", "region_histogram", "sky_footprint", "sky_point")
     if op in file_ops:
         authorize(path)                                          # also enforces the roots on a remote host
         expect = parse_expect(req.get("expect"))
@@ -1397,6 +1397,14 @@ def _handle(req: dict) -> tuple[dict, bytes]:
         return {**base, **head}, payload
     if op == "link":
         return {**base, "nbytes": 0, **link(c, req)}, b""
+    if op in ("sky_footprint", "sky_point"):                 # the sky panel (ADR 0072): positions in the panel's frame, by astropy
+        import sky_context as sc
+        try:
+            if op == "sky_footprint":
+                return {**base, "nbytes": 0, **sc.footprint(c, req.get("frame"))}, b""
+            return {**base, "nbytes": 0, **sc.point(c, req.get("frame"), req.get("x"), req.get("y"))}, b""
+        except sc.Bad as e:
+            raise Refused("bad_request", str(e))
     if op in ("slab", "channel_grid", "pv"):
         import cube_slices as cs
         try:
