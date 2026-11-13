@@ -103,7 +103,7 @@ type lane struct{ proc *proc }
 var heavyOps = map[string]bool{"spectrum": true, "axial": true, "catalog_describe": true, "catalog_rows": true, "catalog_report": true, "catalog_positions": true, "catalog_transform": true, "overlay_catalog": true, "rohsa_index": true, "channel_grid": true, "pv": true}
 
 // backgroundOps are the reads done to catalog files (header reads, fingerprints), kept off the interactive and heavy classes.
-var backgroundOps = map[string]bool{"describe": true, "header": true, "fingerprint": true, "fingerprint_full": true}
+var backgroundOps = map[string]bool{"describe": true, "header": true, "fingerprint": true, "fingerprint_full": true, "register_many": true}
 
 type proc struct {
 	cmd *exec.Cmd

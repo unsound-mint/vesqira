@@ -464,7 +464,12 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 	st.set(func() { st.State, st.ToRegister = "registering", len(tasks) })
 	var errs []string
 	failed := 0
-	for _, t := range tasks {
+	type outcome struct {
+		what, msg string
+		code      int
+	}
+	oldWorker := false // the host's deployed worker does not know register_many: one by one for this scan
+	for i := 0; i < len(tasks); {
 		if ctx.Err() != nil {
 			break
 		}
@@ -475,44 +480,64 @@ func (s *Server) registerFound(ctx context.Context, p projects.Project, h hosts.
 		if ctx.Err() != nil {
 			break
 		}
-		var code int
-		var msg, what string
+		var done []outcome
 		func() {
 			defer func() { <-s.lane() }()
 			tctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
+			t := tasks[i]
+			if remote && t.run == nil && !oldWorker {
+				// consecutive files of a host go in one call; the call says how many it got through
+				var paths []string
+				for j := i; j < len(tasks) && tasks[j].run == nil && len(paths) < remoteBatchMax; j++ {
+					paths = append(paths, abs(tasks[j].file))
+				}
+				outs, tooOld := s.registerRemoteBatch(tctx, h, paths)
+				for k, o := range outs {
+					done = append(done, outcome{what: tasks[i+k].file, code: o.code, msg: o.msg})
+				}
+				if !tooOld {
+					return
+				}
+				oldWorker = true
+			}
+			o := outcome{}
 			switch {
 			case t.run != nil:
-				what = t.run.Path
+				o.what = t.run.Path
 				src := runSource(localRun{s: s, dir: abs(t.run.Path), meta: abs(t.run.Path + "/" + t.run.Record)})
 				if remote {
 					src = remoteRun{s: s, h: h, dir: abs(t.run.Path)}
 				}
-				_, code, msg = s.importFrom(tctx, src)
+				_, o.code, o.msg = s.importFrom(tctx, src)
 			case remote:
-				what = t.file
-				_, code, msg = s.registerRemoteFile(tctx, h, abs(t.file))
+				o.what = t.file
+				_, o.code, o.msg = s.registerRemoteFile(tctx, h, abs(t.file))
 			default:
-				what = t.file
+				o.what = t.file
 				real, err := s.roots(wsCtx(ctx)).Resolve(abs(t.file))
 				if err != nil {
-					code, msg = 403, "not available"
-					return
+					o.code, o.msg = 403, "not available"
+				} else {
+					_, o.code, o.msg = s.registerPath(tctx, real)
 				}
-				_, code, msg = s.registerPath(tctx, real)
 			}
+			done = append(done, o)
 		}()
-		st.set(func() {
-			if code != 0 {
-				st.Failed++
-			} else {
-				st.Registered++
-			}
-		})
-		if code != 0 {
-			failed++
-			if len(errs) < 20 {
-				errs = append(errs, what+": "+msg)
+		i += len(done)
+		for _, o := range done {
+			st.set(func() {
+				if o.code != 0 {
+					st.Failed++
+				} else {
+					st.Registered++
+				}
+			})
+			if o.code != 0 {
+				failed++
+				if len(errs) < 20 {
+					errs = append(errs, o.what+": "+o.msg)
+				}
 			}
 		}
 	}
