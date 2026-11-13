@@ -6,7 +6,7 @@ The viewer must stay responsive on cubes far larger than memory (shape.md sectio
 
 `tools/bench.py` builds a sparse FITS cube (default 1500 x 1500 x 600, 5 GiB logical; a few channels hold random data, the rest are holes) and drives the scientific worker over its own stdin/stdout protocol, the way the API does. It reports first-call, median and p95 time and the worker's resident memory for: header read (`view`), a plane, a coordinate readout, a small and a box-sized region spectrum. `--check` compares with `tools/bench_budgets.json`; CI runs it with budgets about five times the development-laptop numbers.
 
-Limits of the numbers: a sparse file in the page cache measures access pattern and software overhead, not a disk or a network. No ssh, no 4D cube, no concurrent requests (contention lives in the Go worker pool, not here).
+Limits of the numbers: a sparse file in the page cache measures access pattern and software overhead, not a disk or a network. No concurrent requests (contention lives in the Go worker pool, not here). The `plane_4d`, `spectrum_small_4d` and `spectrum_box_4d` rows read the same cube with a fourth, length-1 STOKES axis in the header (budgets as for the 3D rows). Each row also reports the worker's peak resident memory (`VmHWM`) and the bytes of its replies.
 
 ## What `make viewer-bench` measures
 
@@ -22,9 +22,35 @@ Limits of the numbers: a sparse file in the page cache measures access pattern a
 
 The gain comes from slicing the memory-mapped file instead of astropy's section reader and from reading channels in blocks with one vectorised mean per block. Files that cannot be mapped still fall back to the section reader.
 
-## Not yet done
+## Real disk, ssh, 4D, transfers (`make bench-disk`, measured 2026-11-13)
 
-A browser-side plane cache (the server cache is on loopback, and a browser copy would need its own staleness rule), and measurement over real disks, ssh, 4D cubes and concurrent load. See `docs/roadmap.md` stage P.
+`make bench-disk` writes a dense 5.0 GiB cube (every channel holds data) on a real file system, evicts its pages from the page cache without root (`posix_fadvise(DONTNEED)`; `fincore` confirmed 0 % resident before each series), then reads it cold (first call) and warm (the calls after). The second series goes through a real `ssh` to a user-mode `sshd` on loopback that launches the worker the way `hosts.go` does, so it includes ssh's crypto and channel costs but no network latency or bandwidth limit. The third cuts a 1 GiB `rsync` download through the same ssh and runs it again with the app's flags. No budgets: the machine and file system decide these numbers.
+
+Machine: AMD Ryzen 9 7940HS, 16 threads, 14 GiB RAM, Micron 2400 NVMe, btrfs, Linux 7.2. It was shared with other work (load average 7 to 21 during the runs), so the spread of four runs is given, not one lucky figure.
+
+| operation (1500 x 1500 x 600 float32) | cold, local disk | warm | cold through ssh | reply bytes | worker peak memory |
+|---|---|---|---|---|---|
+| header read | 6 to 24 ms | 2 to 5 ms | 7 to 20 ms | 0.9 KiB | 82 MB |
+| plane, 2.25 MP | 60 to 276 ms | 46 to 161 ms | 133 to 807 ms | 8.6 MiB | 150 MB |
+| coordinate readout | about 1 ms | 0.3 ms | about 1 ms | 0.2 KiB | 150 MB |
+| spectrum, 10 x 10 px | 1.3 to 2.3 s | 7 to 12 ms | 1.4 to 2.3 s | 12.5 KiB | 160 to 170 MB |
+| spectrum, 187 x 187 px | 2.0 to 4.5 s | 270 to 1400 ms | 2.1 to 4.9 s | 12.5 KiB | 820 to 865 MB |
+| next five channels (scrub) | 55 to 125 ms each (420 ms at load 21) | | 57 to 375 ms each | 8.6 MiB each | 150 MB |
+
+What the numbers say:
+
+- A cold plane costs about 20 to 40 ms more than a warm one on NVMe, so channel scrubbing is bound by decoding and the 8.6 MiB reply, not the disk. Through ssh on loopback the warm plane is the same as locally (about 50 ms): the link's software cost is small; a real link's bandwidth is not measured here, which is why large planes on a host go out as a block-mean preview first.
+- The first spectrum on a cold cube is the slow operation: a 10 x 10 box touches one page in each of 600 channels, and the cold read took 1.3 to 2.3 s against 7 ms once those pages are cached. The box spectrum reads about 0.7 GB cold and took 2 to 4.5 s. This is the measured need for a cold-start fix (candidates: `madvise(MADV_WILLNEED)` per channel block, or reading the box's rows in a worker thread pool). It was not changed here: the figure comes from one machine under load, and the choice between candidates should wait for a quiet re-measurement.
+- Peak memory of the box spectrum is 820 to 865 MB for a 187 x 187 x 600 selection, inside the worker cap (3072 MB) and above the `rss_mb` budget of the CI row, which checks resident memory at the end of the scenario, not the peak.
+- Connecting, logging in and starting the worker over ssh took 440 to 700 ms before the first answer.
+- 4D: a cube with a length-1 fourth axis (CASA's STOKES) reads as fast as the 3D one (differences between the 3D and 4D rows stayed inside the run-to-run noise, in both directions). A cube whose fourth axis has more than one plane (a real Stokes cube) is refused with "extra axis of length above 1 (axis 4); only one channel axis is supported": the viewer has no way to pick a Stokes plane yet, so the number measured for it is "not supported", not a time.
+- Resumable transfers: a 1 GiB download through ssh was stopped with SIGTERM after 2.4 s with 520 MiB kept in `.vesqira-partial`; the next run sent 504 MiB again and matched 520 MiB already there, exited 0, left no partial file and the finished file hashed like the source (SHA-256 here; the app also hashes on the host). Data already there is therefore not sent again, but the second run took 7.7 s against 4.1 s for the whole file from nothing: rsync reads and checksums the partial file on both ends before sending. Resuming pays off when the link is slower than roughly 50 to 100 MB/s, which a VPN to a cluster is (an estimate from this one loaded run, with the copy limited to 256 MiB/s); on a fast link a restart is cheaper. The app has no setting to choose; no change was made on this measurement.
+
+The behaviour of interrupted transfers (resume after a dropped connection, after an app restart, cancel keeping or deleting the partial file, never overwriting a file that appeared meanwhile, hash on both ends, one transfer per host at a time and hosts in parallel) was already built under ADR 0051 and is covered by `TestResumeAfterTheConnectionDropsMidFile`, `TestAConnectionDropMidFileIsResumedAndVerified`, `TestAClosedAppResumesTheTransferAtTheNextStart`, `TestCancelStopsARunningTransferAndCanDiscardItsPartialFile`, `TestAFileThatAppearsAfterTheCheckIsNeverOverwritten` and `TestOneTransferPerHostAtATime` (real rsync, a stand-in ssh that cuts the connection at a byte count).
+
+## Long lists
+
+The dataset list and the run list (sidebar) draw a window of rows once they hold more than 200 (`ui/VirtualList.tsx`): rows are placed by index in a box as tall as the whole list inside the nearest scrolling ancestor, so the scroll bar and the layout stay as before. Every row is a `listitem` with `aria-posinset` and `aria-setsize`, so a screen reader hears "3 of 5000". The list is one tab stop; arrows, Home and End move by index and scroll the target row into existence; the row that holds the tab stop is always drawn. Measured with 5000 datasets in jsdom (`virtualList.test.tsx`): 1020 ms and 5000 rows before, 44 ms and 36 rows after. In Chromium (`e2e/tests/zzzzzzzzzzzz-list-scale.spec.ts`, 5000 datasets and 5000 runs at once, served by a route intercept): the lists are ready 0.9 s after a reload with 738 DOM nodes in the whole page. Not virtualised, because they are paged or bounded by what a person draws: catalog table rows (paged by the API), the runs table (`RunsView`), channel lists and overlay lists.
 
 ## Preview and prefetch
 
