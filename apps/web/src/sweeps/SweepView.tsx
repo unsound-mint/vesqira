@@ -139,6 +139,7 @@ export function SubmitDialog({ sweep, onClose, onSubmitted }: { sweep: Sweep; on
           ) : null}
           {tooSmall > 0 ? <p className={s.warn} role="alert">{tooSmall} of {rev.jobs.length} drafts request less memory than your sizing table gives for their size (every draft requests what the base job did). Open a draft below for the numbers; a job that runs out of memory is lost time.</p> : null}
           {unexpected > 0 ? <p className={s.warn} role="alert">{unexpected} differing lines are not a swept setting, the output folder or the job name. Read them below before submitting.</p> : <p className={s.note}>No other line differs.</p>}
+          <p className={s.note}><strong>Code commit.</strong> {rev.codePin.why}</p>
           <Input label={`Jobs at the same time (1 to ${rev.maxConcurrency})`} value={conc} inputMode="numeric" onChange={(e) => setConc(e.target.value)} aria-invalid={!valid} />
           {rev.concurrencyNote && n > 1 ? <p className={s.warn} role="alert">{rev.concurrencyNote}</p> : null}
           <Basis summary={n === 1 ? "Jobs run one after another: the next is submitted when the previous has ended." : `Up to ${valid ? n : "?"} jobs at once. Make sure they do not share a folder they write to.`}>

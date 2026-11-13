@@ -4,6 +4,7 @@ import type { Job } from "../api/jobs";
 import type { Sweep, SweepGrid as Grid, SweepReview } from "../api/sweeps";
 import { parseValues } from "../api/sweeps";
 import { SweepForm } from "./SweepForm";
+import { rohsaTemplate, vgtTemplate } from "../jobs/templateFixtures";
 import { SweepGrid, cell, sortRows } from "./SweepGrid";
 import { SubmitDialog } from "./SweepView";
 
@@ -33,9 +34,10 @@ describe("sweep form", () => {
       "/api/sweeps": () => created,
     });
     const onCreated = vi.fn();
-    render(<SweepForm jobs={[base]} onCreated={onCreated} />);
+    render(<SweepForm templates={[vgtTemplate, rohsaTemplate]} jobs={[base]} onCreated={onCreated} />);
     const create = screen.getByRole("button", { name: /Create/ });
     expect(create).toBeDisabled();
+    await userEvent.selectOptions(screen.getByLabelText("Setting 1"), "dn");
     await userEvent.type(screen.getByLabelText(/Values/), "8, 16");
     await userEvent.click(screen.getByRole("button", { name: "Count the jobs" }));
     expect(await screen.findByText(/4 jobs/)).toBeInTheDocument();
@@ -47,9 +49,23 @@ describe("sweep form", () => {
     expect(calls.find((c) => c.url === "/api/sweeps")?.body).toMatchObject({ baseJobId: 3, params: [{ key: "dn", values: ["8", "16"] }] });
   });
 
+  it("sends the commit pin only when it is chosen, and says what the choice means", async () => {
+    const calls = mock({ "/api/sweeps/preview": () => ({ count: 2, max: 64, baseJob: { id: 3, name: "b", hostId: 1 }, jobs: [], totals, estimate: null }) });
+    render(<SweepForm templates={[vgtTemplate, rohsaTemplate]} jobs={[base]} onCreated={() => {}} />);
+    expect(screen.getByText(/A strict rerun insists on the parent run's own commit instead/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/Values/), "8, 16");
+    await userEvent.click(screen.getByRole("button", { name: "Count the jobs" }));
+    await screen.findByText(/2 jobs/);
+    expect((calls.find((c) => c.url === "/api/sweeps/preview")?.body as any).pinProfileCommit).toBeUndefined(); // absent: the drafts do what the base did
+    await userEvent.selectOptions(screen.getByLabelText("Code commit"), "on");
+    await userEvent.click(screen.getByRole("button", { name: "Count the jobs" }));
+    await screen.findByText(/2 jobs/);
+    expect((calls.filter((c) => c.url === "/api/sweeps/preview").at(-1)?.body as any).pinProfileCommit).toBe(true);
+  });
+
   it("drops the count when a value changes, so what is created is what was counted", async () => {
     mock({ "/api/sweeps/preview": () => ({ count: 2, max: 64, baseJob: { id: 3, name: "b", hostId: 1 }, jobs: [], totals, estimate: null }) });
-    render(<SweepForm jobs={[base]} onCreated={() => {}} />);
+    render(<SweepForm templates={[vgtTemplate, rohsaTemplate]} jobs={[base]} onCreated={() => {}} />);
     await userEvent.type(screen.getByLabelText(/Values/), "8, 16");
     await userEvent.click(screen.getByRole("button", { name: "Count the jobs" }));
     expect(await screen.findByText(/no estimate is offered/)).toBeInTheDocument();
@@ -59,7 +75,7 @@ describe("sweep form", () => {
   });
 
   it("allows at most three parameters", async () => {
-    render(<SweepForm jobs={[base]} onCreated={() => {}} />);
+    render(<SweepForm templates={[vgtTemplate, rohsaTemplate]} jobs={[base]} onCreated={() => {}} />);
     const add = screen.getByRole("button", { name: "Add a parameter" });
     await userEvent.click(add);
     await userEvent.click(add);
@@ -68,7 +84,7 @@ describe("sweep form", () => {
 
   it("says Count before Create inline, and the Create button reads cleanly before and after counting", async () => {
     mock({ "/api/sweeps/preview": () => ({ count: 4, max: 64, baseJob: { id: 3, name: "b", hostId: 1 }, jobs: [], totals, estimate: null }) });
-    render(<SweepForm jobs={[base]} onCreated={() => {}} />);
+    render(<SweepForm templates={[vgtTemplate, rohsaTemplate]} jobs={[base]} onCreated={() => {}} />);
     expect(screen.getByText(/First count the jobs/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create drafts" }).textContent).not.toMatch(/\s\s/);
     await userEvent.type(screen.getByLabelText(/Values/), "8, 16");
@@ -83,7 +99,7 @@ describe("sweep form", () => {
 
 const review: SweepReview = {
   sweep: { id: 9, name: "s" } as Sweep, baseJobId: 3, baseName: "vgt-base", baseScript: "#!/bin/bash\n", baseEditedLines: 0, keys: ["dn"], sweepHash: "h".repeat(64), totals, estimate: null, maxConcurrency: 16,
-  template: "vgt", defaultConcurrency: 1, concurrencyNote: "",
+  template: "vgt", defaultConcurrency: 1, concurrencyNote: "", codePin: { commit: "", basis: "", why: "The script insists on no commit." },
   jobs: [{ jobId: 10, name: "s-dn8", label: "dn = 8", values: { dn: "8" }, scriptHash: "a".repeat(64), script: "#!/bin/bash\ndn = 8\n", unexpected: 0, requested: { cpus: 8, memBytes: 0, timeSeconds: 0 }, sizing: null,
     diff: [{ op: "-", kind: "parameter", text: "dn = 20" }, { op: "+", kind: "parameter", text: "dn = 8" }, { op: "+", kind: "output", text: 'output_dir = "/r/x"' }] }],
 };
@@ -202,7 +218,7 @@ const rohsaReview: SweepReview = {
 describe("ROHSA sweeps", () => {
   it("offers the ROHSA settings with the tied lambda for a ROHSA base, and the VGT ones for a VGT base", async () => {
     mock({});
-    render(<SweepForm jobs={[base, rohsaBase]} baseJobId={5} onCreated={() => {}} />);
+    render(<SweepForm templates={[vgtTemplate, rohsaTemplate]} jobs={[base, rohsaBase]} baseJobId={5} onCreated={() => {}} />);
     const setting = screen.getByLabelText("Setting 1") as HTMLSelectElement;
     const keys = Array.from(setting.options).map((o) => o.value);
     expect(keys).toEqual(expect.arrayContaining(["lambda", "n_gauss", "lb_sig", "maxiter", "noise", "crop_size"]));
@@ -219,7 +235,7 @@ describe("ROHSA sweeps", () => {
 
   it("sends the tied lambda and the Gaussian counts as typed", async () => {
     const calls = mock({ "/api/sweeps/preview": () => ({ count: 4, max: 64, baseJob: { id: 5, name: "rohsa-base", hostId: 1 }, jobs: [], totals, estimate: null }) });
-    render(<SweepForm jobs={[rohsaBase]} onCreated={() => {}} />);
+    render(<SweepForm templates={[vgtTemplate, rohsaTemplate]} jobs={[rohsaBase]} onCreated={() => {}} />);
     await userEvent.type(screen.getByLabelText(/Values/), "8, 12");
     await userEvent.click(screen.getByRole("button", { name: "Add a parameter" }));
     const second = screen.getAllByLabelText(/^Setting/)[1]!;

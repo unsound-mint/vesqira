@@ -10,6 +10,7 @@ import { controlLines, statedText } from "./controlsText";
 import { ControlsEditor, declarationOf } from "./ControlsEditor";
 import { ParentComparison } from "./ParentComparison";
 import { RerunDraft, strictRefusal } from "./RerunDraft";
+import { rohsaTemplate, vgtTemplate } from "../jobs/templateFixtures";
 
 const REV = "0123456789abcdef0123456789abcdef01234567";
 const stated = { basis: "declared" as const, by: "researcher" as const, at: "2026-11-11T10:00:00Z" };
@@ -125,6 +126,7 @@ describe("rerun modes in the draft form", () => {
   function mock() {
     const posts: any[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/job-templates") return new Response(JSON.stringify({ templates: [vgtTemplate, rohsaTemplate] }), { status: 200 });
       if (init?.method === "POST") { posts.push(JSON.parse(String(init.body))); return new Response(JSON.stringify(created), { status: 201 }); }
       if (url === "/api/boards") return new Response(JSON.stringify({ boards: [] }), { status: 200 });
       return new Response(JSON.stringify(rerun), { status: 200 });
@@ -181,7 +183,7 @@ describe("rerun modes in the draft form", () => {
 
 describe("rerun check on a draft", () => {
   const job = { id: 4, parentRunId: 1, template: "vgt", state: "draft" } as Job;
-  const check = (over: Partial<Check>): Check => ({ mode: "strict", parentRunId: 1, codeChecked: true, differences: [], settings: [], settingsKnown: true, blocking: false, messages: [], notes: ["Julia version, loaded modules, node and CPU are known only when the job runs; they are compared on the run page afterwards."], ...over });
+  const check = (over: Partial<Check>): Check => ({ mode: "strict", parentRunId: 1, codeChecked: true, differences: [], settings: [], settingsKnown: true, blocking: false, messages: [], codePin: { commit: "", basis: "", why: "The script insists on no commit." }, notes: ["Julia version, loaded modules, node and CPU are known only when the job runs; they are compared on the run page afterwards."], ...over });
   const serve = (c: Check | number) => vi.stubGlobal("fetch", vi.fn(async () => (typeof c === "number" ? new Response(JSON.stringify({ error: "this job does not repeat a run" }), { status: c }) : new Response(JSON.stringify(c), { status: 200 }))));
 
   it("says a strict draft would be refused, listing what differs", async () => {

@@ -8108,6 +8108,17 @@ export interface components {
             /** @description The explicit list, as typed; never reparsed. Letters, digits and . _ + - only */
             values: string[];
         };
+        /** @description Which commit a draft's script insists on and why (ADR 0054, ADR 0068): the commit of the run it repeats, the commit the tool's profile was written against (asked for with pinProfileCommit), or none. The run's commit wins when both apply. */
+        CodePin: {
+            /** @description The revision the script stops unless the code folder is at; empty when it insists on none */
+            commit: string;
+            /**
+             * @description run: the commit of the run being repeated; profile: the revision the profile was written against; empty: none
+             * @enum {string}
+             */
+            basis: "run" | "profile" | "";
+            why: string;
+        };
         /** @description A sweep to create or preview. Nothing is submitted by either. */
         SweepRequest: {
             /** @description Starts each job's name (letters, digits, . _ -, up to 32) */
@@ -8122,6 +8133,8 @@ export interface components {
             params: components["schemas"]["SweepParam"][];
             /** @description Why, kept with every draft (at most 500 characters) */
             note?: string;
+            /** @description Make every draft stop unless the tool's folder is at the commit its profile was written against. Absent keeps what the base job did */
+            pinProfileCommit?: boolean;
         };
         /** @description What a script asks the scheduler for, read from its #SBATCH lines; zero means the script does not say */
         Requested: {
@@ -8297,6 +8310,7 @@ export interface components {
             defaultConcurrency: number;
             /** @description Why one at a time matters for this kind of sweep; empty when there is nothing specific to say (ROHSA: the shared, rebuilt source folder) */
             concurrencyNote: string;
+            codePin: components["schemas"]["CodePin"];
         };
         SweepSubmitRequest: {
             sweepHash: string;
@@ -9110,6 +9124,7 @@ export interface components {
             blocking: boolean;
             messages: string[];
             notes: string[];
+            codePin: components["schemas"]["CodePin"];
         };
         /** @description The link group this pane was in when the scene was made (ADR 0042, section 4): how its panes followed each other. Panes belong to one group by id; the group's name is the person's. */
         SceneLink: {

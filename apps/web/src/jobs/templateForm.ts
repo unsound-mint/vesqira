@@ -1,6 +1,5 @@
 import { readSetting } from "../api/jobs";
 import type { JobTemplate, TemplateKey, TemplateStep } from "../api/jobs";
-import { sameValue } from "./rohsaSettings";
 
 /**
  * Helpers for a job form drawn from a tool profile's template (ADR 0068). The template says which keys a person may change, with
@@ -9,6 +8,32 @@ import { sameValue } from "./rohsaSettings";
 
 /** The keys a person may change: not the ones Vesqira sets per job (the output folder). */
 export const editableKeys = (t: JobTemplate): TemplateKey[] => t.keys.filter((k) => !k.internal);
+
+/** The same quantity written two ways ("10" and "10.0") is not a change. */
+export function sameValue(a: string, b: string): boolean {
+  const x = a.trim();
+  const y = b.trim();
+  if (x === y) return true;
+  const nx = Number(x);
+  const ny = Number(y);
+  return x !== "" && y !== "" && Number.isFinite(nx) && Number.isFinite(ny) && nx === ny;
+}
+
+/**
+ * What a sweep may vary: the template's ties first (one setting standing for several keys moved together, with the reason), then
+ * every editable key that is not a path. The server refuses anything else.
+ */
+export function sweepKeys(t: JobTemplate): { key: string; label: string; description: string }[] {
+  const ties = (t.ties ?? []).map((x) => ({ key: x.name, label: x.label, description: x.reason }));
+  const keys = editableKeys(t).filter((k) => k.kind !== "path").map((k) => ({ key: k.name, label: k.label, description: keyDescription(k) }));
+  return [...ties, ...keys];
+}
+
+/** A key's plain description with what it accepts and the tool's documented default, as the job form words it. */
+export function keyDescription(k: TemplateKey): string {
+  const hint = keyHint(k);
+  return hint ? `${k.description} (${hint})` : k.description;
+}
 
 /**
  * A setting read from a config's text, for the "was" of a field only: the first line that has the key, as a person would type it
@@ -65,3 +90,10 @@ export function stepLine(s: TemplateStep): string | null {
 
 /** The command as the script writes it, with the config as the file the script makes. */
 export const commandLine = (t: JobTemplate): string => t.command.map((w) => w.replace(/\{\{config\}\}/g, "$" + t.config.var).replace(/\{\{cpus\}\}/g, "$SLURM_CPUS_PER_TASK").replace(/\{\{var:([a-z0-9_]+)\}\}/g, "$$$1").replace(/\{\{repo\}\}/g, "<folder>")).join(" ");
+
+/** The checkbox that asks a job to insist on the commit the profile was written against (ADR 0068). A rerun's own commit wins when both apply. */
+export const pinLabel = (t: JobTemplate): string =>
+  `Stop the job unless the folder is at commit ${t.repo.commit.slice(0, 7)}, with no changed tracked files (the revision this profile was written against)`;
+
+/** Said under the checkbox of a form that can also carry a parent run's commit. */
+export const PIN_RERUN_NOTE = "A strict rerun insists on the parent run's own commit instead; that is the stronger claim and wins when both apply. Each approval screen says which commit the script insists on.";

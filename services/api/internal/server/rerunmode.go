@@ -148,6 +148,8 @@ type rerunCheckJSON struct {
 	Blocking bool     `json:"blocking"`
 	Messages []string `json:"messages"`
 	Notes    []string `json:"notes"`
+	// CodePin is the commit the draft's script insists on and why (the run's, the profile's, or none).
+	CodePin codePin `json:"codePin"`
 }
 
 const afterRunNote = "Julia version, loaded modules, node and CPU are known only when the job runs; they are compared on the run page afterwards."
@@ -164,6 +166,7 @@ func (s *Server) rerunCheck(ctx context.Context, j jobs.Job, h hosts.Host) (reru
 		return rerunCheckJSON{}, &apiErr{409, "this job has no kept settings to check"}
 	}
 	out := rerunCheckJSON{Mode: mode, ParentRunID: *j.ParentRunID, Differences: []runs.EnvDifference{}, Settings: []settingChange{}, Messages: []string{}, Notes: []string{}}
+	out.CodePin = s.codePinOf(j.Template, req)
 	out.Settings, out.SettingsKnown = s.settingsChanges(*j.ParentRunID, j.Template, req)
 	if out.Settings == nil {
 		out.Settings = []settingChange{}

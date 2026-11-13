@@ -93,6 +93,9 @@ export type ToolJobRequest = {
   template: string;
   name: string;
   note?: string;
+  /** A draft that repeats a finished run, and how closely (the server checks the mode against what the run observed). */
+  parentRunId?: number;
+  rerunMode?: "strict" | "best_effort" | "adapted";
   tool: { repoDir: string; configPath: string; configText?: string; set?: Record<string, string>; cpus: number; mem: string; time: string; partition: string; account: string; pinProfileCommit?: boolean };
 };
 

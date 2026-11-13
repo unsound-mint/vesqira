@@ -43,6 +43,10 @@ export const vgtTemplate: JobTemplate = {
   keys: [
     { name: "input_file", section: "input", kind: "path", label: "Input cube on the host", description: "The FITS cube the run reads.", expect: "" },
     { name: "ker", section: "vgt", kind: "int", label: "ker (smoothing, pixels)", description: "Gaussian smoothing sigma.", expect: "" },
+    { name: "dn", section: "vgt", kind: "int", label: "dn (window, pixels)", description: "Window size.", expect: "" },
+    { name: "min_valid", section: "vgt", kind: "int", label: "min_valid", description: "Fewest valid samples in a window.", expect: "" },
+    { name: "angle_frame", section: "output", kind: "enum", label: "angle frame (PSIFRAME of the outputs)", description: "The frame the angles are written in.", expect: "", enum: ["pixel", "galactic", "icrs"] },
+    { name: "output_bin", section: "output", kind: "int", label: "output binning (pixels, 1 or more)", description: "Bin the outputs.", expect: "", min: 1 },
     { name: "noise_mode", section: "noise", kind: "enum", label: "noise mode", description: "How the noise threshold is modelled.", expect: "", enum: ["scalar", "channel", "spatial", "separable", "auto"] },
     { name: "output_dir", section: "input", kind: "path", label: "Output folder", description: "Set by Vesqira.", expect: "", internal: true },
   ],
@@ -59,9 +63,12 @@ export const rohsaTemplate: JobTemplate = {
   repo: { ...base.repo, folderLabel: "ROHSA-LMC folder on the host", placeholder: "/shared/home/you/ROHSA-LMC" },
   config: { ...base.config, edit: "by_name", required: true, inputKey: "input", label: "ROHSA config on the host" },
   sizing: "rohsa_crop_table",
+  ties: [{ name: "lambda", label: "lambda (amp, mu and sig together)", keys: ["lambda_amp", "lambda_mu", "lambda_sig"], reason: "The owner's smoothNNN configs move the three weights together." }],
   keys: [
     { name: "n_gauss", section: "rohsa", kind: "int", label: "n_gauss (Gaussians per pixel)", description: "Number of Gaussian components fitted to each spectrum.", expect: "", min: 1, max: 64, list: true },
     { name: "lambda_amp", section: "rohsa", kind: "number", label: "lambda_amp (smoothing, amplitude)", description: "Smoothness weight of the amplitude.", expect: "", real: true },
+    { name: "lb_sig", section: "rohsa", kind: "number", label: "lb_sig (width lower bound, channels)", description: "Lower bound of the width.", expect: "", real: true },
+    { name: "maxiter", section: "rohsa", kind: "int", label: "maxiter (iteration limit)", description: "Iteration limit.", expect: "", min: 1 },
     { name: "noise", section: "rohsa", kind: "bool", label: "noise (use a noise estimate)", description: "Whether the fit uses a noise estimate.", expect: "" },
     { name: "spectral_kernel", section: "input", kind: "enum", label: "spectral_kernel", description: "Smooths every spectrum before the fit.", expect: "none, hanning or gauss<sigma>", enum: ["none", "hanning"], enumNumeric: ["gauss"] },
     { name: "crop_size", section: "input", kind: "int", label: "crop_size (0 = whole cube)", description: "Side of the square crop in pixels.", expect: "", min: 0, max: 100000 },
